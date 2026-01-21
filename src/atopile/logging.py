@@ -156,7 +156,6 @@ CREATE TABLE IF NOT EXISTS logs (
     timestamp TEXT NOT NULL,
     stage TEXT NOT NULL,
     level TEXT NOT NULL,
-    logger_name TEXT NOT NULL DEFAULT '',
     audience TEXT NOT NULL DEFAULT 'developer',
     message TEXT NOT NULL,
     ato_traceback TEXT,
@@ -168,7 +167,6 @@ CREATE TABLE IF NOT EXISTS logs (
 CREATE INDEX IF NOT EXISTS idx_logs_build_id ON logs(build_id);
 CREATE INDEX IF NOT EXISTS idx_logs_stage ON logs(stage);
 CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level);
-CREATE INDEX IF NOT EXISTS idx_logs_logger_name ON logs(logger_name);
 CREATE INDEX IF NOT EXISTS idx_logs_audience ON logs(audience);
 """
 
@@ -191,7 +189,6 @@ CREATE TABLE IF NOT EXISTS test_logs (
     timestamp TEXT NOT NULL,
     test TEXT NOT NULL,
     level TEXT NOT NULL,
-    logger_name TEXT NOT NULL DEFAULT '',
     audience TEXT NOT NULL DEFAULT 'developer',
     message TEXT NOT NULL,
     ato_traceback TEXT,
@@ -203,7 +200,6 @@ CREATE TABLE IF NOT EXISTS test_logs (
 CREATE INDEX IF NOT EXISTS idx_test_logs_test_run_id ON test_logs(test_run_id);
 CREATE INDEX IF NOT EXISTS idx_test_logs_test ON test_logs(test);
 CREATE INDEX IF NOT EXISTS idx_test_logs_level ON test_logs(level);
-CREATE INDEX IF NOT EXISTS idx_test_logs_logger_name ON test_logs(logger_name);
 CREATE INDEX IF NOT EXISTS idx_test_logs_audience ON test_logs(audience);
 """
 
@@ -234,7 +230,6 @@ class LogEntry:
     stage: str
     level: Level
     message: str
-    logger_name: str = ""
     audience: Audience = Audience.DEVELOPER
     ato_traceback: str | None = None
     python_traceback: str | None = None
@@ -250,7 +245,6 @@ class TestLogEntry:
     test: str  # Name of the Python test being run
     level: Level
     message: str
-    logger_name: str = ""
     audience: Audience = Audience.DEVELOPER
     ato_traceback: str | None = None
     python_traceback: str | None = None
@@ -411,9 +405,9 @@ class SQLiteLogWriter:
             conn.executemany(
                 """
                 INSERT INTO logs (
-                    build_id, timestamp, stage, level, logger_name, audience,
+                    build_id, timestamp, stage, level, audience,
                     message, ato_traceback, python_traceback, objects
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -421,7 +415,6 @@ class SQLiteLogWriter:
                         e.timestamp,
                         e.stage,
                         e.level,
-                        e.logger_name,
                         e.audience,
                         e.message,
                         e.ato_traceback,
@@ -440,9 +433,9 @@ class SQLiteLogWriter:
                 conn.executemany(
                     """
                     INSERT INTO logs (
-                        build_id, timestamp, stage, level, logger_name, audience,
+                        build_id, timestamp, stage, level, audience,
                         message, ato_traceback, python_traceback, objects
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
@@ -450,7 +443,6 @@ class SQLiteLogWriter:
                             e.timestamp,
                             e.stage,
                             e.level,
-                            e.logger_name,
                             e.audience,
                             e.message,
                             e.ato_traceback,
@@ -597,9 +589,9 @@ class SQLiteTestLogWriter:
             conn.executemany(
                 """
                 INSERT INTO test_logs (
-                    test_run_id, timestamp, test, level, logger_name, audience,
+                    test_run_id, timestamp, test, level, audience,
                     message, ato_traceback, python_traceback, objects
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -607,7 +599,6 @@ class SQLiteTestLogWriter:
                         e.timestamp,
                         e.test,
                         e.level,
-                        e.logger_name,
                         e.audience,
                         e.message,
                         e.ato_traceback,
@@ -626,9 +617,9 @@ class SQLiteTestLogWriter:
                 conn.executemany(
                     """
                     INSERT INTO test_logs (
-                        test_run_id, timestamp, test, level, logger_name, audience,
+                        test_run_id, timestamp, test, level, audience,
                         message, ato_traceback, python_traceback, objects
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
@@ -636,7 +627,6 @@ class SQLiteTestLogWriter:
                             e.timestamp,
                             e.test,
                             e.level,
-                            e.logger_name,
                             e.audience,
                             e.message,
                             e.ato_traceback,
@@ -688,7 +678,6 @@ class TestLogger:
         level: Level,
         message: str,
         *,
-        logger_name: str = "",
         audience: Audience = Audience.DEVELOPER,
         ato_traceback: str | None = None,
         python_traceback: str | None = None,
@@ -704,7 +693,6 @@ class TestLogger:
             test=self._test,
             level=level,
             message=message,
-            logger_name=logger_name,
             audience=audience,
             ato_traceback=ato_traceback,
             python_traceback=python_traceback,
@@ -809,7 +797,6 @@ class BuildLogger:
         level: Level,
         message: str,
         *,
-        logger_name: str = "",
         audience: Audience = Audience.DEVELOPER,
         ato_traceback: str | None = None,
         python_traceback: str | None = None,
@@ -821,7 +808,6 @@ class BuildLogger:
         Args:
             level: Log severity level
             message: The log message
-            logger_name: Name of the logger that produced this message
             audience: Who this message is intended for (default: DEVELOPER)
             ato_traceback: Optional ato source context for user exceptions
             python_traceback: Optional Python traceback string
@@ -836,7 +822,6 @@ class BuildLogger:
             stage=self._stage,
             level=level,
             message=message,
-            logger_name=logger_name,
             audience=audience,
             ato_traceback=ato_traceback,
             python_traceback=python_traceback,
@@ -1538,7 +1523,6 @@ class LogHandler(RichHandler):
                 self._build_logger.log(
                     level,
                     message,
-                    logger_name=record.name,
                     audience=Audience.USER,
                     ato_traceback=ato_tb,
                     python_traceback=python_tb,
@@ -1558,7 +1542,6 @@ class LogHandler(RichHandler):
                 self._build_logger.log(
                     level,
                     message,
-                    logger_name=record.name,
                     python_traceback=python_tb,
                 )
         except Exception:
@@ -1590,7 +1573,6 @@ class LogHandler(RichHandler):
                 self._test_logger.log(
                     level,
                     message,
-                    logger_name=record.name,
                     audience=Audience.USER,
                     python_traceback=python_tb,
                 )
@@ -1609,7 +1591,6 @@ class LogHandler(RichHandler):
                 self._test_logger.log(
                     level,
                     message,
-                    logger_name=record.name,
                     python_traceback=python_tb,
                 )
         except Exception:

@@ -110,6 +110,9 @@ const initialState: AppState = {
     stageIds: [],
   },
 
+  // Developer mode - shows all log audiences instead of just 'user'
+  developerMode: false,
+
   // Project modules
   projectModules: {},
   isLoadingModules: false,
@@ -166,6 +169,7 @@ interface StoreActions {
 
   // Problems
   setProblems: (problems: Problem[]) => void;
+  setDeveloperMode: (enabled: boolean) => void;
 
   // Standard Library
   setStdlibItems: (items: StdLibItem[]) => void;
@@ -302,6 +306,7 @@ export const useStore = create<Store>()(
 
       // Problems
       setProblems: (problems) => set({ problems, isLoadingProblems: false }),
+      setDeveloperMode: (enabled) => set({ developerMode: enabled }),
 
       // Standard Library
       setStdlibItems: (items) =>

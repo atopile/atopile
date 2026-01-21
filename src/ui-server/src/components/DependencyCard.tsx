@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { Package, ChevronDown, RefreshCw, Github } from 'lucide-react';
+import { Package, ChevronDown, X } from 'lucide-react';
 import './DependencyCard.css';
 
 export interface ProjectDependency {
@@ -21,14 +21,14 @@ interface DependencyItemProps {
   dependency: ProjectDependency;
   availableVersions?: string[];
   onVersionChange?: (identifier: string, newVersion: string) => void;
-  onOpenRepository?: (url: string) => void;
+  onRemove?: (identifier: string) => void;
 }
 
 function DependencyItem({
   dependency,
   availableVersions = [],
   onVersionChange,
-  onOpenRepository
+  onRemove
 }: DependencyItemProps) {
   const [selectedVersion, setSelectedVersion] = useState(dependency.version);
   const hasUpdate = dependency.hasUpdate ||
@@ -77,26 +77,17 @@ function DependencyItem({
           ))}
         </select>
 
-        {/* GitHub link if available */}
-        {dependency.repository && (
-          <button
-            className="dependency-link-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenRepository?.(dependency.repository!);
-            }}
-            title="View on GitHub"
-          >
-            <Github size={12} />
-          </button>
-        )}
-
-        {/* Update indicator */}
-        {hasUpdate && (
-          <span className="dependency-update-badge" title="Update available">
-            <RefreshCw size={10} />
-          </span>
-        )}
+        {/* Remove button */}
+        <button
+          className="dependency-remove-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove?.(dependency.identifier);
+          }}
+          title={`Remove ${dependency.name}`}
+        >
+          <X size={12} />
+        </button>
       </div>
     </div>
   );
@@ -106,14 +97,14 @@ interface DependencyCardProps {
   dependencies: ProjectDependency[];
   projectId: string;
   onVersionChange?: (projectId: string, identifier: string, newVersion: string) => void;
-  onOpenRepository?: (url: string) => void;
+  onRemove?: (projectId: string, identifier: string) => void;
 }
 
 export function DependencyCard({
   dependencies,
   projectId,
   onVersionChange,
-  onOpenRepository
+  onRemove
 }: DependencyCardProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -121,15 +112,14 @@ export function DependencyCard({
     return null;
   }
 
-  const updateCount = dependencies.filter(d =>
-    d.hasUpdate || (d.latestVersion && d.version !== d.latestVersion)
-  ).length;
-
   return (
-    <div className="dependency-card">
+    <div className="dependency-card" onClick={(e) => e.stopPropagation()}>
       <div
         className="dependency-card-header"
-        onClick={() => setExpanded(!expanded)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setExpanded(!expanded);
+        }}
       >
         <span className="dependency-card-expand">
           <ChevronDown
@@ -142,12 +132,6 @@ export function DependencyCard({
           Dependencies
         </span>
         <span className="dependency-count">{dependencies.length}</span>
-        {updateCount > 0 && (
-          <span className="dependency-update-count" title={`${updateCount} update${updateCount > 1 ? 's' : ''} available`}>
-            <RefreshCw size={10} />
-            {updateCount}
-          </span>
-        )}
       </div>
 
       {expanded && (
@@ -157,7 +141,7 @@ export function DependencyCard({
               key={dep.identifier}
               dependency={dep}
               onVersionChange={(id, v) => onVersionChange?.(projectId, id, v)}
-              onOpenRepository={onOpenRepository}
+              onRemove={(id) => onRemove?.(projectId, id)}
             />
           ))}
         </div>

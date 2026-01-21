@@ -254,11 +254,6 @@ button:focus-visible {
 .stdlib-toolbar .search-box {
   flex: 1;
 }
-.stdlib-total {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  white-space: nowrap;
-}
 
 .stdlib-list {
   flex: 1;

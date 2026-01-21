@@ -483,6 +483,9 @@ class AppState(BaseModel):
     is_loading_problems: bool = False
     problem_filter: ProblemFilter = Field(default_factory=ProblemFilter)
 
+    # Developer mode - shows all log audiences instead of just 'user'
+    developer_mode: bool = False
+
     # Project modules
     project_modules: dict[str, list[ModuleDefinition]] = Field(default_factory=dict)
     is_loading_modules: bool = False
@@ -514,9 +517,16 @@ class AppState(BaseModel):
             components = s.split("_")
             return components[0] + "".join(x.title() for x in components[1:])
 
+        def is_path_key(k: str) -> bool:
+            """Check if a key looks like a file path (should not be converted)."""
+            return "/" in k or k.startswith(".")
+
         def convert_keys(obj: Any) -> Any:
             if isinstance(obj, dict):
-                return {to_camel(k): convert_keys(v) for k, v in obj.items()}
+                return {
+                    (k if is_path_key(k) else to_camel(k)): convert_keys(v)
+                    for k, v in obj.items()
+                }
             elif isinstance(obj, list):
                 return [convert_keys(item) for item in obj]
             else:
@@ -814,6 +824,14 @@ class ServerState:
         self._state.problem_filter.levels = levels
         await self.broadcast_state()
 
+    async def set_developer_mode(self, enabled: bool) -> None:
+        """Set developer mode and refresh problems with appropriate audience filter."""
+        self._state.developer_mode = enabled
+        # Refresh problems with new audience filter
+        from atopile.server.problem_parser import sync_problems_to_state_async
+        await sync_problems_to_state_async(developer_mode=enabled)
+        # broadcast_state is called by sync_problems_to_state_async via set_problems
+
     async def set_stdlib_items(self, items: list[StdLibItem]) -> None:
         """Update stdlib items."""
         self._state.stdlib_items = items
@@ -935,6 +953,11 @@ class ServerState:
                 level = payload.get("level")
                 if level:
                     await self.toggle_problem_level_filter(level)
+                return {"success": True}
+
+            elif action == "setDeveloperMode":
+                enabled = payload.get("enabled", False)
+                await self.set_developer_mode(enabled)
                 return {"success": True}
 
             elif action == "setAtopileSource":

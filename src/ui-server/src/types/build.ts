@@ -373,6 +373,9 @@ export interface AppState {
     stageIds: string[];
   };
 
+  // Developer mode - shows all log audiences instead of just 'user'
+  developerMode: boolean;
+
   // Project modules (from /api/modules endpoint)
   // Map of project root to available modules
   projectModules: Record<string, ModuleDefinition[]>;

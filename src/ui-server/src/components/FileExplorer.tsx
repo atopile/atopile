@@ -142,10 +142,13 @@ export const FileExplorer = memo(function FileExplorer({
   const fileCount = countFiles(files);
 
   return (
-    <div className="file-explorer-card">
+    <div className="file-explorer-card" onClick={(e) => e.stopPropagation()}>
       <div
         className="file-explorer-card-header"
-        onClick={() => setExpanded(!expanded)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setExpanded(!expanded);
+        }}
       >
         <span className="file-explorer-card-expand">
           <ChevronDown

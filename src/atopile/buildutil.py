@@ -1,6 +1,6 @@
 import contextlib
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import faebryk.core.faebrykpy as fbrk
@@ -32,12 +32,27 @@ class BuildContext:
 
 
 @dataclass
+class CompletedStage:
+    """A completed build stage with timing and status."""
+    name: str
+    stage_id: str
+    elapsed_seconds: float
+    status: str  # 'success', 'warning', 'failed'
+    infos: int = 0
+    warnings: int = 0
+    errors: int = 0
+    alerts: int = 0
+
+
+@dataclass
 class BuildStepContext:
     build: BuildContext | None
     app: fabll.Node | None = None
     solver: Solver | None = None
     pcb: F.PCB | None = None
     stage: str | None = None
+    completed_stages: list[CompletedStage] = field(default_factory=list)
+    _stage_start_time: float = field(default=0.0, repr=False)
 
     def require_build(self) -> BuildContext:
         if self.build is None:
@@ -136,9 +151,20 @@ def _load_python_app_class() -> type[fabll.Node]:
         ) from e
 
 
-def build(app: fabll.Node | None = None) -> fabll.Node:
-    """Build the project."""
-    ctx = BuildStepContext(build=None, app=app)
+def build(app: fabll.Node | None = None, ctx: BuildStepContext | None = None) -> fabll.Node:
+    """Build the project.
+
+    Args:
+        app: Optional pre-instantiated app node
+        ctx: Optional build context to use (allows caller to access completed_stages)
+
+    Returns:
+        The built app node
+    """
+    if ctx is None:
+        ctx = BuildStepContext(build=None, app=app)
+    else:
+        ctx.app = app
     run_build_targets(ctx)
     return ctx.require_app()
 

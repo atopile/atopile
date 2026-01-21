@@ -305,6 +305,8 @@ def _extract_children_from_typegraph(
     for identifier, make_child in make_children:
         if not identifier:
             continue
+        if identifier.startswith("anon"):
+            continue
         if not _is_user_facing_child(identifier, ""):
             continue
 

@@ -8,6 +8,18 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  overflow: visible;
+}
+
+/* Ensure panel toolbar allows dropdown to overflow */
+.problems-panel .panel-toolbar {
+  overflow: visible;
+  position: relative;
+  z-index: 10;
+}
+
+.problems-panel .panel-toolbar-row {
+  overflow: visible;
 }
 
 .problems-panel.empty {
@@ -35,24 +47,40 @@
   opacity: 0.7;
 }
 
-/* Error/Warning filter button color variants */
-.filter-btn.error {
+/* Summary header */
+.problems-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--font-size-sm);
+}
+
+.problems-count {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-weight: 500;
+}
+
+.problems-count.error {
   color: var(--ctp-red);
 }
 
-.filter-btn.error.active {
-  background: rgba(243, 139, 168, 0.15);
-  color: var(--ctp-red);
-}
-
-.filter-btn.warning {
+.problems-count.warning {
   color: var(--ctp-yellow);
 }
 
-.filter-btn.warning.active {
-  background: rgba(249, 226, 175, 0.15);
-  color: var(--ctp-yellow);
+/* Inline summary in toolbar */
+.problems-summary-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
 }
+
 
 /* Problems list */
 .problems-list {

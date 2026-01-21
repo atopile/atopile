@@ -106,16 +106,41 @@ class MusterTarget:
 
     def __call__(self, ctx: BuildStepContext) -> None:
         if not self.virtual:
+            import time
+            from atopile.buildutil import CompletedStage
+
             try:
                 # Set up logging for this build stage
                 ctx.stage = self.name
+                ctx._stage_start_time = time.time()
                 from atopile.logging import update_logger_stage
                 update_logger_stage(self.name)
-                
+
                 self.func(ctx)
             except Exception:
                 self.success = False
+                # Record failed stage
+                elapsed = time.time() - ctx._stage_start_time
+                ctx.completed_stages.append(
+                    CompletedStage(
+                        name=self.description or self.name,
+                        stage_id=self.name,
+                        elapsed_seconds=round(elapsed, 2),
+                        status="failed",
+                    )
+                )
                 raise
+
+            # Record successful stage
+            elapsed = time.time() - ctx._stage_start_time
+            ctx.completed_stages.append(
+                CompletedStage(
+                    name=self.description or self.name,
+                    stage_id=self.name,
+                    elapsed_seconds=round(elapsed, 2),
+                    status="success",
+                )
+            )
 
         self.success = True
 

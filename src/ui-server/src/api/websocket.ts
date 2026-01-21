@@ -29,7 +29,13 @@ interface StateMessage {
 interface ActionResultMessage {
   type: 'action_result';
   action: string;
-  success: boolean;
+  result?: {
+    success: boolean;
+    error?: string;
+    [key: string]: unknown;
+  };
+  // Legacy direct fields (for backwards compatibility)
+  success?: boolean;
   error?: string;
 }
 
@@ -171,8 +177,10 @@ function handleMessage(event: MessageEvent): void {
 
       case 'action_result':
         // Action response (success/failure)
-        if (!message.success) {
-          console.error(`[WS] Action failed: ${message.action}`, message.error);
+        // Result is nested in message.result from backend
+        const result = message.result || message;
+        if (!result.success) {
+          console.error(`[WS] Action failed: ${message.action}`, result.error);
         }
         if (typeof window !== 'undefined') {
           window.dispatchEvent(

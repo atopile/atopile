@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -27,7 +28,9 @@ async def get_bom(
 ):
     """Get the bill of materials for a build target."""
     try:
-        result = artifacts_domain.handle_get_bom(project_root, target)
+        result = await asyncio.to_thread(
+            artifacts_domain.handle_get_bom, project_root, target
+        )
         if result is None:
             raise HTTPException(
                 status_code=404,
@@ -48,7 +51,9 @@ async def get_bom_targets(
 ):
     """Get available targets that have BOM data."""
     try:
-        return artifacts_domain.handle_get_bom_targets(project_root)
+        return await asyncio.to_thread(
+            artifacts_domain.handle_get_bom_targets, project_root
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -62,7 +67,9 @@ async def get_variables(
 ):
     """Get design variables for a build target."""
     try:
-        result = artifacts_domain.handle_get_variables(project_root, target)
+        result = await asyncio.to_thread(
+            artifacts_domain.handle_get_variables, project_root, target
+        )
         if result is None:
             raise HTTPException(
                 status_code=404,
@@ -83,7 +90,9 @@ async def get_variables_targets(
 ):
     """Get available targets that have variables data."""
     try:
-        return artifacts_domain.handle_get_variables_targets(project_root)
+        return await asyncio.to_thread(
+            artifacts_domain.handle_get_variables_targets, project_root
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -100,7 +109,9 @@ async def resolve_location(
 ):
     """Resolve an atopile address to a source file location."""
     try:
-        return resolve_domain.handle_resolve_location(address, project_root, ctx)
+        return await asyncio.to_thread(
+            resolve_domain.handle_resolve_location, address, project_root, ctx
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except FileNotFoundError as exc:
@@ -127,13 +138,15 @@ async def get_stdlib(
     ),
 ):
     """Get the atopile standard library."""
-    return stdlib_domain.handle_get_stdlib(type_filter, search, refresh, max_depth)
+    return await asyncio.to_thread(
+        stdlib_domain.handle_get_stdlib, type_filter, search, refresh, max_depth
+    )
 
 
 @router.get("/api/stdlib/{item_id}")
 async def get_stdlib_item(item_id: str):
     """Get details for a specific stdlib item."""
-    result = stdlib_domain.handle_get_stdlib_item(item_id)
+    result = await asyncio.to_thread(stdlib_domain.handle_get_stdlib_item, item_id)
     if result is None:
         raise HTTPException(status_code=404, detail=f"Item not found: {item_id}")
     return result

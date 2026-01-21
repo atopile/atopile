@@ -5,7 +5,7 @@
 
 import { useState, useMemo } from 'react';
 import { AlertCircle, AlertTriangle, FileCode, ChevronDown, ChevronRight, Search, X } from 'lucide-react';
-import { BuildSelector, type Selection, type Project } from './BuildSelector';
+import { ProjectDropdown, type ProjectOption } from './ProjectDropdown';
 import './ProblemsPanel.css';
 
 interface Problem {
@@ -23,26 +23,18 @@ interface Problem {
   ato_traceback?: string; // Source traceback if available
 }
 
-interface ProblemFilter {
-  levels: ('error' | 'warning')[];
-  buildNames: string[];
-  stageIds: string[];
-}
-
 interface ProblemsPanelProps {
   problems: Problem[];
-  filter?: ProblemFilter;
-  selection?: Selection;
-  onSelectionChange?: (selection: Selection) => void;
-  projects?: Project[];
+  projects?: ProjectOption[];
+  selectedProjectRoot?: string | null;
+  onSelectProject?: (projectRoot: string | null) => void;
   onProblemClick?: (problem: Problem) => void;
-  onToggleLevelFilter?: (level: 'error' | 'warning') => void;
 }
 
-// Group problems by file
+// Group problems by file, sorting errors first within each group
 function groupByFile(problems: Problem[]): Map<string, Problem[]> {
   const grouped = new Map<string, Problem[]>();
-  
+
   for (const problem of problems) {
     const key = problem.file || '(no file)';
     if (!grouped.has(key)) {
@@ -50,18 +42,25 @@ function groupByFile(problems: Problem[]): Map<string, Problem[]> {
     }
     grouped.get(key)!.push(problem);
   }
-  
+
+  // Sort each group: errors first, then warnings
+  for (const [, fileProblems] of grouped) {
+    fileProblems.sort((a, b) => {
+      if (a.level === 'error' && b.level === 'warning') return -1;
+      if (a.level === 'warning' && b.level === 'error') return 1;
+      return 0;
+    });
+  }
+
   return grouped;
 }
 
 export function ProblemsPanel({
   problems,
-  filter,
-  selection,
-  onSelectionChange,
   projects = [],
+  selectedProjectRoot,
+  onSelectProject,
   onProblemClick,
-  onToggleLevelFilter
 }: ProblemsPanelProps) {
   // Track collapsed file groups
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
@@ -80,12 +79,9 @@ export function ProblemsPanel({
   }, [problems, searchQuery]);
 
   const errorCount = filteredProblems.filter(p => p.level === 'error').length;
-  const warningCount = filteredProblems.filter(p => p.level === 'warning').length;
-  const grouped = groupByFile(filteredProblems);
+  const grouped = useMemo(() => groupByFile(filteredProblems), [filteredProblems]);
 
-  // Check if a filter is active
-  const showErrors = !filter?.levels?.length || filter.levels.includes('error');
-  const showWarnings = !filter?.levels?.length || filter.levels.includes('warning');
+  const hasProjects = projects.length > 0;
 
   const toggleFileCollapse = (file: string) => {
     setCollapsedFiles(prev => {
@@ -103,61 +99,57 @@ export function ProblemsPanel({
   const hasNoProblems = problems.length === 0;
   const hasNoMatches = !hasNoProblems && filteredProblems.length === 0;
 
+  // Render toolbar
+  const renderToolbar = () => (
+    <div className="panel-toolbar">
+      <div className="panel-toolbar-row">
+        {/* Error count only */}
+        {errorCount > 0 && (
+          <div className="problems-summary-inline">
+            <span className="problems-count error">
+              <AlertCircle size={12} />
+              {errorCount}
+            </span>
+          </div>
+        )}
+
+        <div className="search-box">
+          <Search size={14} />
+          <input
+            type="text"
+            placeholder="Filter problems..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button
+              className="search-clear"
+              onClick={() => setSearchQuery('')}
+              title="Clear search"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+
+        {/* Project dropdown */}
+        {hasProjects && onSelectProject && (
+          <ProjectDropdown
+            projects={projects}
+            selectedProjectRoot={selectedProjectRoot}
+            onSelectProject={onSelectProject}
+            showAllOption={true}
+            allOptionLabel="All projects"
+          />
+        )}
+      </div>
+    </div>
+  );
+
   if (hasNoProblems || hasNoMatches) {
     return (
       <div className="problems-panel empty" data-testid="problems-panel">
-        {/* Unified toolbar */}
-        <div className="panel-toolbar">
-          <div className="panel-toolbar-row">
-            <div className="filter-group">
-              <button
-                className={`filter-btn ${showErrors ? 'active' : ''} error`}
-                onClick={() => onToggleLevelFilter?.('error')}
-                title={showErrors ? 'Hide errors' : 'Show errors'}
-              >
-                <AlertCircle size={12} />
-                <span>{hasNoProblems ? 0 : problems.filter(p => p.level === 'error').length}</span>
-              </button>
-              <button
-                className={`filter-btn ${showWarnings ? 'active' : ''} warning`}
-                onClick={() => onToggleLevelFilter?.('warning')}
-                title={showWarnings ? 'Hide warnings' : 'Show warnings'}
-              >
-                <AlertTriangle size={12} />
-                <span>{hasNoProblems ? 0 : problems.filter(p => p.level === 'warning').length}</span>
-              </button>
-            </div>
-
-            <div className="search-box">
-              <Search size={14} />
-              <input
-                type="text"
-                placeholder="Filter problems..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              {searchQuery && (
-                <button
-                  className="search-clear"
-                  onClick={() => setSearchQuery('')}
-                  title="Clear search"
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-
-            {selection && onSelectionChange && projects.length > 0 && (
-              <BuildSelector
-                selection={selection}
-                onSelectionChange={onSelectionChange}
-                projects={projects}
-                showSymbols={false}
-                compact
-              />
-            )}
-          </div>
-        </div>
+        {renderToolbar()}
         <div className="problems-empty-state">
           <AlertCircle size={24} className="problems-empty-icon" />
           <span className="problems-empty-text">
@@ -170,58 +162,7 @@ export function ProblemsPanel({
 
   return (
     <div className="problems-panel" data-testid="problems-panel">
-      {/* Unified toolbar */}
-      <div className="panel-toolbar">
-        <div className="panel-toolbar-row">
-          <div className="filter-group">
-            <button
-              className={`filter-btn ${showErrors ? 'active' : ''} error`}
-              onClick={() => onToggleLevelFilter?.('error')}
-              title={showErrors ? 'Hide errors' : 'Show errors'}
-            >
-              <AlertCircle size={12} />
-              <span>{errorCount}</span>
-            </button>
-            <button
-              className={`filter-btn ${showWarnings ? 'active' : ''} warning`}
-              onClick={() => onToggleLevelFilter?.('warning')}
-              title={showWarnings ? 'Hide warnings' : 'Show warnings'}
-            >
-              <AlertTriangle size={12} />
-              <span>{warningCount}</span>
-            </button>
-          </div>
-
-          <div className="search-box">
-            <Search size={14} />
-            <input
-              type="text"
-              placeholder="Filter problems..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button
-                className="search-clear"
-                onClick={() => setSearchQuery('')}
-                title="Clear search"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
-
-          {selection && onSelectionChange && projects.length > 0 && (
-            <BuildSelector
-              selection={selection}
-              onSelectionChange={onSelectionChange}
-              projects={projects}
-              showSymbols={false}
-              compact
-            />
-          )}
-        </div>
-      </div>
+      {renderToolbar()}
 
       {/* Problems list grouped by file - scrollable */}
       <div className="problems-list">
@@ -291,58 +232,3 @@ export function ProblemsPanel({
     </div>
   );
 }
-
-// Mock problems for development
-export const mockProblems: Problem[] = [
-  {
-    id: '1',
-    level: 'error',
-    message: 'Cannot find module "missing-module"',
-    file: 'src/main.ato',
-    line: 15,
-    column: 8,
-    stage: 'initializing build context',  // Matches UI stage name
-    buildName: 'default',
-    projectName: 'my-project',
-  },
-  {
-    id: '2',
-    level: 'error',
-    message: 'Type mismatch: expected Resistor, got Capacitor',
-    file: 'src/main.ato',
-    line: 42,
-    stage: 'post instantiation design check',  // Matches UI stage name
-    buildName: 'default',
-    projectName: 'my-project',
-  },
-  {
-    id: '3',
-    level: 'warning',
-    message: 'Unused parameter: debug_mode',
-    file: 'src/main.ato',
-    line: 8,
-    stage: 'initializing build context',  // Matches UI stage name
-    buildName: 'default',
-    projectName: 'my-project',
-  },
-  {
-    id: '4',
-    level: 'warning',
-    message: 'Multiple matches for C1, using first match',
-    file: 'src/power.ato',
-    line: 23,
-    stage: 'picker',
-    buildName: 'default',
-    projectName: 'other-project',
-  },
-  {
-    id: '5',
-    level: 'error',
-    message: 'Constraint violation: voltage out of range (3.3V not in 5V±10%)',
-    file: 'src/power.ato',
-    line: 31,
-    stage: 'post solve checks',  // Matches UI stage name
-    buildName: 'example',
-    projectName: 'other-project',
-  },
-];

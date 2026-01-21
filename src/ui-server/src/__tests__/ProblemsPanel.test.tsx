@@ -1,11 +1,11 @@
 /**
  * ProblemsPanel component tests
- * Tests problem display, filtering, grouping, and interactions
+ * Tests problem display, grouping, sorting, and interactions
  */
 
 import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ProblemsPanel, mockProblems } from '../components/ProblemsPanel';
+import { describe, it, expect, vi } from 'vitest';
+import { ProblemsPanel } from '../components/ProblemsPanel';
 
 // Test data
 const testProblems = [
@@ -52,14 +52,6 @@ describe('ProblemsPanel', () => {
       render(<ProblemsPanel problems={[]} />);
       expect(screen.getByText('No problems')).toBeInTheDocument();
     });
-
-    it('shows filter buttons with zero counts when empty', () => {
-      render(<ProblemsPanel problems={[]} />);
-      const buttons = screen.getAllByRole('button');
-      // Should have error and warning filter buttons
-      expect(buttons.length).toBeGreaterThanOrEqual(2);
-      expect(screen.getAllByText('0').length).toBe(2);
-    });
   });
 
   describe('problem rendering', () => {
@@ -71,18 +63,18 @@ describe('ProblemsPanel', () => {
       expect(screen.getByText('Deprecated API usage')).toBeInTheDocument();
     });
 
-    it('shows error count in toolbar', () => {
+    it('shows error count in summary', () => {
       const { container } = render(<ProblemsPanel problems={testProblems} />);
-      // Two errors in test data - find in the error filter button
-      const errorButton = container.querySelector('.filter-btn.error span');
-      expect(errorButton?.textContent).toBe('2');
+      // Error count is shown as just the number with an icon
+      const errorCount = container.querySelector('.problems-count.error');
+      expect(errorCount?.textContent).toBe('2');
     });
 
-    it('shows warning count in toolbar', () => {
-      render(<ProblemsPanel problems={testProblems} />);
-      // Two warnings in test data - may appear multiple times
-      const twoElements = screen.getAllByText('2');
-      expect(twoElements.length).toBeGreaterThanOrEqual(1);
+    it('shows warning count in summary', () => {
+      const { container } = render(<ProblemsPanel problems={testProblems} />);
+      // Warning count is shown as just the number with an icon
+      const warningCount = container.querySelector('.problems-count.warning');
+      expect(warningCount?.textContent).toBe('2');
     });
 
     it('shows location for problems with line numbers', () => {
@@ -125,6 +117,42 @@ describe('ProblemsPanel', () => {
     });
   });
 
+  describe('error sorting', () => {
+    it('sorts errors before warnings within each file group', () => {
+      // Create problems where warning comes first in input
+      const mixedProblems = [
+        {
+          id: 'w1',
+          level: 'warning' as const,
+          message: 'Warning first',
+          file: 'test.ato',
+          line: 1,
+        },
+        {
+          id: 'e1',
+          level: 'error' as const,
+          message: 'Error second',
+          file: 'test.ato',
+          line: 2,
+        },
+      ];
+
+      const { container } = render(<ProblemsPanel problems={mixedProblems} />);
+
+      // Get all problem items in order
+      const items = container.querySelectorAll('.problem-item');
+      expect(items.length).toBe(2);
+
+      // First item should be error (sorted to top)
+      expect(items[0]).toHaveClass('error');
+      expect(items[0].textContent).toContain('Error second');
+
+      // Second item should be warning
+      expect(items[1]).toHaveClass('warning');
+      expect(items[1].textContent).toContain('Warning first');
+    });
+  });
+
   describe('collapsing file groups', () => {
     it('can collapse file groups by clicking header', () => {
       render(<ProblemsPanel problems={testProblems} />);
@@ -133,7 +161,6 @@ describe('ProblemsPanel', () => {
       const mainAtoHeader = screen.getByText('main.ato').closest('.problems-file-header');
       fireEvent.click(mainAtoHeader!);
 
-      // The problems under main.ato should be hidden
       // The group should have collapsed class
       const fileGroup = mainAtoHeader?.closest('.problems-file-group');
       expect(fileGroup).toHaveClass('collapsed');
@@ -151,57 +178,6 @@ describe('ProblemsPanel', () => {
       // Expand
       fireEvent.click(mainAtoHeader!);
       expect(mainAtoHeader?.closest('.problems-file-group')).not.toHaveClass('collapsed');
-    });
-  });
-
-  describe('filter functionality', () => {
-    it('calls onToggleLevelFilter when error button clicked', () => {
-      const onToggleLevelFilter = vi.fn();
-      const { container } = render(
-        <ProblemsPanel problems={testProblems} onToggleLevelFilter={onToggleLevelFilter} />
-      );
-
-      const errorButton = container.querySelector('.filter-btn.error');
-      fireEvent.click(errorButton!);
-
-      expect(onToggleLevelFilter).toHaveBeenCalledWith('error');
-    });
-
-    it('calls onToggleLevelFilter when warning button clicked', () => {
-      const onToggleLevelFilter = vi.fn();
-      const { container } = render(
-        <ProblemsPanel problems={testProblems} onToggleLevelFilter={onToggleLevelFilter} />
-      );
-
-      const warningButton = container.querySelector('.filter-btn.warning');
-      fireEvent.click(warningButton!);
-
-      expect(onToggleLevelFilter).toHaveBeenCalledWith('warning');
-    });
-
-    it('shows active state when filter includes level', () => {
-      const { container } = render(
-        <ProblemsPanel
-          problems={testProblems}
-          filter={{ levels: ['error'], buildNames: [], stageIds: [] }}
-        />
-      );
-
-      const errorButton = container.querySelector('.filter-btn.error');
-      const warningButton = container.querySelector('.filter-btn.warning');
-
-      expect(errorButton).toHaveClass('active');
-      expect(warningButton).not.toHaveClass('active');
-    });
-
-    it('shows both as active when no filter or empty levels', () => {
-      const { container } = render(<ProblemsPanel problems={testProblems} />);
-
-      const errorButton = container.querySelector('.filter-btn.error');
-      const warningButton = container.querySelector('.filter-btn.warning');
-
-      expect(errorButton).toHaveClass('active');
-      expect(warningButton).toHaveClass('active');
     });
   });
 
@@ -225,26 +201,6 @@ describe('ProblemsPanel', () => {
 
       expect(problemWithFile).toHaveClass('clickable');
       expect(problemWithoutFile).not.toHaveClass('clickable');
-    });
-  });
-
-  describe('mock problems export', () => {
-    it('exports valid mock problems for development', () => {
-      expect(mockProblems).toBeDefined();
-      expect(mockProblems.length).toBeGreaterThan(0);
-
-      // Each mock problem should have required fields
-      mockProblems.forEach((problem) => {
-        expect(problem.id).toBeDefined();
-        expect(problem.level).toMatch(/^(error|warning)$/);
-        expect(problem.message).toBeDefined();
-      });
-    });
-
-    it('can render with mock problems', () => {
-      render(<ProblemsPanel problems={mockProblems} />);
-      // Should render without errors
-      expect(screen.getByText(/Cannot find module/)).toBeInTheDocument();
     });
   });
 });

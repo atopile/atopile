@@ -665,8 +665,6 @@ export function StandardLibraryPanel({
   
   // Use provided items or fall back to mock data
   const stdlibItems = items && items.length > 0 ? items : mockStdLib
-  const totalCount = stdlibItems.length
-  
   // Check if we're in search mode (has search query)
   const isSearching = searchQuery.trim().length > 0
   
@@ -770,11 +768,6 @@ export function StandardLibraryPanel({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
-        </div>
-        <div className="stdlib-total">
-          {isSearching
-            ? `Showing ${filteredItems.length} of ${totalCount}`
-            : `${totalCount} items`}
         </div>
       </div>
       

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -24,7 +25,9 @@ async def get_log_file(
     ctx: AppContext = Depends(get_ctx),
 ):
     """Get raw log file contents."""
-    content = logs_domain.handle_get_log_file(build_name, log_filename, ctx)
+    content = await asyncio.to_thread(
+        logs_domain.handle_get_log_file, build_name, log_filename, ctx
+    )
     if content is None:
         raise HTTPException(
             status_code=404,
@@ -61,7 +64,8 @@ async def query_logs(
 ):
     """Query logs from the central database with filters."""
     try:
-        return logs_domain.handle_query_logs(
+        return await asyncio.to_thread(
+            logs_domain.handle_query_logs,
             build_name=build_name,
             project_name=project_name,
             levels=levels,
@@ -90,7 +94,8 @@ async def get_log_counts(
 ):
     """Get log counts by level."""
     try:
-        return logs_domain.handle_get_log_counts(
+        return await asyncio.to_thread(
+            logs_domain.handle_get_log_counts,
             build_name=build_name,
             project_name=project_name,
             stage=stage,

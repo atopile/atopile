@@ -109,6 +109,102 @@ class ConnectionManager:
         elif action == "unsubscribe":
             client.subscribed_channels.discard(channel)
 
+    def _query_logs_sync(self, filters: dict) -> tuple[list[dict], int]:
+        """
+        Blocking helper to query logs from SQLite database.
+        Returns (logs_list, limit).
+        """
+        if not self._db_path or not self._db_path.exists():
+            return [], filters.get("limit", 100)
+
+        conn = sqlite3.connect(str(self._db_path), timeout=5.0)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # Build WHERE clause based on filters
+        # Use new schema: logs JOIN builds
+        conditions = []
+        params: list = []
+
+        # Handle build_name (format: "project:target" or just "target")
+        if filters.get("build_name"):
+            build_name = filters["build_name"]
+            if ":" in build_name:
+                # Format: "project:target" - filter by both
+                project_part, target_part = build_name.split(":", 1)
+                conditions.append("builds.target = ?")
+                params.append(target_part)
+                conditions.append("builds.project_path LIKE ?")
+                params.append(f"%/{project_part}")
+            else:
+                conditions.append("builds.target = ?")
+                params.append(build_name)
+
+        # Handle project_name - match end of project_path
+        if filters.get("project_name"):
+            conditions.append("builds.project_path LIKE ?")
+            params.append(f"%/{filters['project_name']}")
+
+        # Handle multiple levels
+        if filters.get("levels"):
+            level_list = filters["levels"]
+            if isinstance(level_list, str):
+                level_list = [lv.strip().upper() for lv in level_list.split(",")]
+            placeholders = ",".join("?" * len(level_list))
+            conditions.append(f"logs.level IN ({placeholders})")
+            params.extend([lv.upper() for lv in level_list])
+
+        # Search in message
+        if filters.get("search"):
+            conditions.append("logs.message LIKE ?")
+            params.append(f"%{filters['search']}%")
+
+        # Incremental fetch
+        if filters.get("after_id"):
+            conditions.append("logs.id > ?")
+            params.append(filters["after_id"])
+
+        where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+        limit = filters.get("limit", 100)
+
+        query = f"""
+            SELECT logs.id, logs.build_id, logs.timestamp, logs.stage,
+                   logs.level, logs.audience, logs.message,
+                   logs.ato_traceback, logs.python_traceback,
+                   builds.project_path, builds.target
+            FROM logs
+            JOIN builds ON logs.build_id = builds.build_id
+            {where_clause}
+            ORDER BY logs.id DESC
+            LIMIT ?
+        """
+        params.append(limit)
+
+        log.info(f"Executing query: {where_clause}, params={params}")
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        log.info(f"Query returned {len(rows)} rows")
+        conn.close()
+
+        # Convert to frontend-compatible format
+        logs = []
+        for row in reversed(rows):  # Reverse to chronological order
+            logs.append(
+                {
+                    "id": row["id"],
+                    "timestamp": row["timestamp"],
+                    "stage": row["stage"],
+                    "level": row["level"],
+                    "message": row["message"],
+                    "ato_traceback": row["ato_traceback"],
+                    "python_traceback": row["python_traceback"],
+                    "build_id": row["build_id"],
+                    "target": row["target"],
+                }
+            )
+
+        return logs, limit
+
     async def send_filtered_logs(self, client: ClientSubscription):
         """Query central log database with client's filters and send results."""
         log.info(f"send_filtered_logs called with db_path={self._db_path}")
@@ -121,91 +217,8 @@ class ConnectionManager:
 
         filters = client.log_filters
         try:
-            conn = sqlite3.connect(str(self._db_path), timeout=5.0)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-
-            # Build WHERE clause based on filters
-            # Use new schema: logs JOIN builds
-            conditions = []
-            params: list = []
-
-            # Handle build_name (format: "project:target" or just "target")
-            if filters.get("build_name"):
-                build_name = filters["build_name"]
-                if ":" in build_name:
-                    # Format: "project:target" - filter by both
-                    project_part, target_part = build_name.split(":", 1)
-                    conditions.append("builds.target = ?")
-                    params.append(target_part)
-                    conditions.append("builds.project_path LIKE ?")
-                    params.append(f"%/{project_part}")
-                else:
-                    conditions.append("builds.target = ?")
-                    params.append(build_name)
-
-            # Handle project_name - match end of project_path
-            if filters.get("project_name"):
-                conditions.append("builds.project_path LIKE ?")
-                params.append(f"%/{filters['project_name']}")
-
-            # Handle multiple levels
-            if filters.get("levels"):
-                level_list = filters["levels"]
-                if isinstance(level_list, str):
-                    level_list = [lv.strip().upper() for lv in level_list.split(",")]
-                placeholders = ",".join("?" * len(level_list))
-                conditions.append(f"logs.level IN ({placeholders})")
-                params.extend([lv.upper() for lv in level_list])
-
-            # Search in message
-            if filters.get("search"):
-                conditions.append("logs.message LIKE ?")
-                params.append(f"%{filters['search']}%")
-
-            # Incremental fetch
-            if filters.get("after_id"):
-                conditions.append("logs.id > ?")
-                params.append(filters["after_id"])
-
-            where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
-            limit = filters.get("limit", 100)
-
-            query = f"""
-                SELECT logs.id, logs.build_id, logs.timestamp, logs.stage,
-                       logs.level, logs.audience, logs.message,
-                       logs.ato_traceback, logs.python_traceback,
-                       builds.project_path, builds.target
-                FROM logs
-                JOIN builds ON logs.build_id = builds.build_id
-                {where_clause}
-                ORDER BY logs.id DESC
-                LIMIT ?
-            """
-            params.append(limit)
-
-            log.info(f"Executing query: {where_clause}, params={params}")
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
-            log.info(f"Query returned {len(rows)} rows")
-            conn.close()
-
-            # Convert to frontend-compatible format
-            logs = []
-            for row in reversed(rows):  # Reverse to chronological order
-                logs.append(
-                    {
-                        "id": row["id"],
-                        "timestamp": row["timestamp"],
-                        "stage": row["stage"],
-                        "level": row["level"],
-                        "message": row["message"],
-                        "ato_traceback": row["ato_traceback"],
-                        "python_traceback": row["python_traceback"],
-                        "build_id": row["build_id"],
-                        "target": row["target"],
-                    }
-                )
+            # Run blocking DB query in thread pool
+            logs, limit = await asyncio.to_thread(self._query_logs_sync, filters)
 
             if logs:
                 client.last_log_id = logs[-1]["id"]
@@ -366,7 +379,10 @@ async def _load_projects_background(ctx: AppContext) -> None:
 
     try:
         log.info(f"[background] Loading projects from {len(ctx.workspace_paths)} paths")
-        projects = project_discovery.discover_projects_in_paths(ctx.workspace_paths)
+        # Run blocking discovery in thread pool
+        projects = await asyncio.to_thread(
+            project_discovery.discover_projects_in_paths, ctx.workspace_paths
+        )
         state_projects = [
             StateProject(
                 root=project.root,
@@ -387,38 +403,11 @@ async def _load_projects_background(ctx: AppContext) -> None:
 
 async def _load_packages_background(ctx: AppContext) -> None:
     """Background task to load packages without blocking startup."""
-    from atopile.server.state import PackageInfo as StatePackageInfo
-
     try:
         log.info("[background] Loading packages from registry")
-        installed = packages_domain.get_all_installed_packages(ctx.workspace_paths)
-        enriched = await packages_domain.enrich_packages_with_registry_async(installed)
-
-        state_packages = [
-            StatePackageInfo(
-                identifier=p.identifier,
-                name=p.name,
-                publisher=p.publisher,
-                version=p.version,
-                latest_version=p.latest_version,
-                description=p.description,
-                summary=p.summary,
-                homepage=p.homepage,
-                repository=p.repository,
-                license=p.license,
-                installed=p.installed,
-                installed_in=p.installed_in,
-                has_update=packages_domain.version_is_newer(
-                    p.version, p.latest_version
-                ),
-                downloads=p.downloads,
-                version_count=p.version_count,
-                keywords=p.keywords or [],
-            )
-            for p in enriched.values()
-        ]
-        await server_state.set_packages(state_packages)
-        log.info(f"[background] Loaded {len(state_packages)} packages")
+        # Use refresh_packages_state which properly loads installed + registry packages
+        await packages_domain.refresh_packages_state(scan_paths=ctx.workspace_paths)
+        log.info(f"[background] Loaded {len(server_state.state.packages)} packages")
     except Exception as exc:
         log.error(f"[background] Failed to load packages: {exc}")
         await server_state.set_packages([], error=str(exc))
@@ -428,7 +417,8 @@ async def _refresh_stdlib_state() -> None:
     from atopile.server.state import StdLibItem as StateStdLibItem
     from atopile.server import stdlib as stdlib_domain
 
-    items = stdlib_domain.refresh_standard_library()
+    # Run blocking stdlib refresh in thread pool
+    items = await asyncio.to_thread(stdlib_domain.refresh_standard_library)
     state_items = [StateStdLibItem.model_validate(item.model_dump()) for item in items]
     await server_state.set_stdlib_items(state_items)
 
@@ -442,7 +432,10 @@ async def _refresh_bom_state() -> None:
     target = target_names[0] if target_names else "default"
 
     try:
-        bom_json = artifacts_domain.handle_get_bom(selected, target)
+        # Run blocking BOM fetch in thread pool
+        bom_json = await asyncio.to_thread(
+            artifacts_domain.handle_get_bom, selected, target
+        )
     except Exception as exc:
         await server_state.set_bom_data(None, str(exc))
         return
@@ -463,7 +456,10 @@ async def _refresh_variables_state() -> None:
     target = target_names[0] if target_names else "default"
 
     try:
-        variables_json = artifacts_domain.handle_get_variables(selected, target)
+        # Run blocking variables fetch in thread pool
+        variables_json = await asyncio.to_thread(
+            artifacts_domain.handle_get_variables, selected, target
+        )
     except Exception as exc:
         await server_state.set_variables_data(None, str(exc))
         return
@@ -491,10 +487,12 @@ async def _watch_stdlib_background() -> None:
 
 async def _watch_bom_background() -> None:
     def _paths() -> list[Path]:
-        selected = server_state._state.selected_project_root
-        if not selected:
-            return []
-        return [Path(selected) / "build" / "builds"]
+        projects = server_state._state.projects or []
+        return [
+            Path(project.root) / "build" / "builds"
+            for project in projects
+            if project.root
+        ]
 
     watcher = PollingFileWatcher(
         "bom",
@@ -508,10 +506,12 @@ async def _watch_bom_background() -> None:
 
 async def _watch_variables_background() -> None:
     def _paths() -> list[Path]:
-        selected = server_state._state.selected_project_root
-        if not selected:
-            return []
-        return [Path(selected) / "build" / "builds"]
+        projects = server_state._state.projects or []
+        return [
+            Path(project.root) / "build" / "builds"
+            for project in projects
+            if project.root
+        ]
 
     watcher = PollingFileWatcher(
         "variables",
@@ -558,6 +558,14 @@ def create_app(
     @app.on_event("startup")
     async def on_startup():
         loop = asyncio.get_running_loop()
+
+        # Configure a larger thread pool for asyncio.to_thread() to prevent exhaustion
+        # Default is min(32, os.cpu_count() + 4), we increase it
+        from concurrent.futures import ThreadPoolExecutor
+        executor = ThreadPoolExecutor(max_workers=64, thread_name_prefix="ato_server_")
+        loop.set_default_executor(executor)
+        log.info("Configured thread pool with 64 workers")
+
         ws_manager.set_event_loop(loop)
         server_state.set_event_loop(loop)
         server_state.set_workspace_paths(ctx.workspace_paths)
@@ -637,6 +645,9 @@ class DashboardServer:
             host="127.0.0.1",
             port=self.port,
             log_level="warning",
+            # Increase WebSocket max message size to 10MB (default is 1MB)
+            # Needed because state (especially stdlibItems) can be large
+            ws_max_size=10 * 1024 * 1024,
         )
         self._server = uvicorn.Server(config)
 

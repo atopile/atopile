@@ -37,7 +37,17 @@ def _parse_traceback_location(
     return file_path, line_num, column
 
 
-def _load_problems_from_db(limit: int = PROBLEM_QUERY_LIMIT) -> list[Problem]:
+def _load_problems_from_db(
+    limit: int = PROBLEM_QUERY_LIMIT,
+    developer_mode: bool = False,
+) -> list[Problem]:
+    """
+    Load problems from the central log database.
+
+    Args:
+        limit: Maximum number of problems to load
+        developer_mode: If True, show all audiences. If False (default), only show 'user' audience.
+    """
     db_path = get_central_log_db()
     if not db_path.exists():
         return []
@@ -45,18 +55,27 @@ def _load_problems_from_db(limit: int = PROBLEM_QUERY_LIMIT) -> list[Problem]:
     conn = sqlite3.connect(str(db_path), timeout=5.0)
     conn.row_factory = sqlite3.Row
 
-    query = """
+    # Filter by audience: only show 'user' messages unless developer mode is enabled
+    if developer_mode:
+        audience_filter = ""
+        params: tuple = (limit,)
+    else:
+        audience_filter = "AND logs.audience = ?"
+        params = ("user", limit)
+
+    query = f"""
         SELECT logs.id, logs.timestamp, logs.stage, logs.level,
                logs.message, logs.ato_traceback, logs.python_traceback,
                builds.target, builds.project_path
         FROM logs
         JOIN builds ON logs.build_id = builds.build_id
         WHERE logs.level IN ('WARNING', 'ERROR', 'ALERT')
+        {audience_filter}
         ORDER BY logs.id DESC
         LIMIT ?
     """
 
-    rows = conn.execute(query, (limit,)).fetchall()
+    rows = conn.execute(query, params).fetchall()
     conn.close()
 
     problems: list[Problem] = []
@@ -93,32 +112,45 @@ def _load_problems_from_db(limit: int = PROBLEM_QUERY_LIMIT) -> list[Problem]:
     return problems
 
 
-def sync_problems_to_state() -> None:
+def sync_problems_to_state(developer_mode: bool | None = None) -> None:
     """
     Sync problems to server_state for WebSocket broadcast.
 
     Called after build completes to update problems from log files.
     Uses asyncio.run_coroutine_threadsafe to schedule on main event loop.
+
+    Args:
+        developer_mode: If True, show all audiences. If False, only show 'user' audience.
+            If None, uses the current developer_mode setting from server_state.
     """
+    # If not specified, get from server_state
+    if developer_mode is None:
+        developer_mode = server_state.state.developer_mode
+
     loop = server_state._event_loop
     if loop is not None and loop.is_running():
-        asyncio.run_coroutine_threadsafe(sync_problems_to_state_async(), loop)
+        asyncio.run_coroutine_threadsafe(
+            sync_problems_to_state_async(developer_mode=developer_mode), loop
+        )
     else:
         log.warning("Cannot sync problems to state: event loop not available")
 
 
-async def sync_problems_to_state_async() -> None:
+async def sync_problems_to_state_async(developer_mode: bool = False) -> None:
     """
     Async function to refresh problems from build logs.
 
     Reads problems from the central SQLite log DB and updates server_state.
+
+    Args:
+        developer_mode: If True, show all audiences. If False, only show 'user' audience.
     """
     from atopile.server.state import Problem as StateProblem
 
     try:
         all_problems: list[StateProblem] = []
 
-        for problem in _load_problems_from_db():
+        for problem in _load_problems_from_db(developer_mode=developer_mode):
             all_problems.append(
                 StateProblem(
                     id=problem.id,
@@ -138,7 +170,8 @@ async def sync_problems_to_state_async() -> None:
             )
 
         await server_state.set_problems(all_problems)
-        log.info(f"Refreshed problems after build: {len(all_problems)} problems found")
+        audience_desc = "all audiences" if developer_mode else "user audience only"
+        log.info(f"Refreshed problems ({audience_desc}): {len(all_problems)} problems found")
     except Exception as exc:
         log.error(f"Failed to refresh problems: {exc}")
 

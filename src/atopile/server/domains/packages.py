@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import subprocess
@@ -36,51 +37,53 @@ _registry_cache: dict[str, list[PackageInfo]] = {}
 _registry_cache_time: float = 0.0
 _REGISTRY_CACHE_TTL = int(os.getenv("ATOPILE_REGISTRY_CACHE_TTL", "0"))
 
-# TODO: HACK - Registry API doesn't support listing all packages (empty query returns 0).
-# Workaround: query multiple search terms and merge results to approximate "get all".
-# These terms were empirically chosen for maximum coverage (~140 packages as of 2025-01).
-# Single-character searches return few results; multi-character domain terms work better.
-# Proper fix: add a /v1/packages/list endpoint to the registry API.
+# Lock to prevent concurrent refresh_packages_state calls
+_refresh_lock: asyncio.Lock | None = None
+
+
+def _get_refresh_lock() -> asyncio.Lock:
+    """Get or create the refresh lock (must be called from async context)."""
+    global _refresh_lock
+    if _refresh_lock is None:
+        _refresh_lock = asyncio.Lock()
+    return _refresh_lock
+
+# ##############################################################################
+# TODO: HACK - Registry API doesn't support listing all packages!
+# ##############################################################################
+# The registry API returns 0 results for empty/wildcard queries, so we can't
+# just fetch all packages. This workaround queries multiple search terms and
+# merges results to approximate "get all".
+#
+# These 17 terms were empirically chosen as the minimum set for full coverage
+# (~150 packages as of Jan 2025). If new packages aren't appearing, add more
+# search terms here.
+#
+# PROPER FIX (registry backend):
+#   1. Add a /v1/packages/list endpoint that returns all packages
+#   2. Add a /v1/packages/last-updated endpoint that returns a timestamp of
+#      when the package list was last modified. The UI can poll this cheaply
+#      (e.g. every 5 minutes) and only re-fetch the full list when it changes,
+#      instead of re-fetching 17 search queries every time.
+# ##############################################################################
 _REGISTRY_SEARCH_TERMS = [
-    # Publisher prefixes (most packages are under 'atopile')
-    "atopile",
-    # Domain-specific terms for maximum coverage
-    "sensor",
-    "i2c",
-    "spi",
-    "power",
-    "led",
-    "stm",
-    "usb",
-    "esp",
-    "rp",
-    "adc",
-    "dac",
-    "motor",
-    "battery",
-    "charger",
-    "regulator",
-    "capacitor",
-    "connector",
-    "mcu",
-    "fpga",
-    "rf",
-    "ethernet",
-    "can",
-    "uart",
-    "gpio",
-    "pwm",
-    "clock",
-    "eeprom",
-    "flash",
-    "display",
-    "audio",
-    "accelerometer",
-    "gyro",
-    "magnetometer",
-    "temperature",
-    "pressure",
-    "humidity",
+    "atopile",    # 96 packages (publisher prefix)
+    "i2c",        # +32 new
+    "led",        # +5 new
+    "spi",        # +2 new
+    "battery",    # +2 new
+    "ethernet",   # +2 new
+    "sensor",     # +1 new
+    "power",      # +1 new
+    "adc",        # +1 new
+    "dac",        # +1 new
+    "connector",  # +1 new
+    "audio",      # +1 new
+    "rp",         # +1 new
+    "mcu",        # +1 new
+    "esp",        # +1 new
+    "regulator",  # +1 new
+    "uart",       # +1 new
 ]
 
 # Track active package operations
@@ -436,14 +439,14 @@ def enrich_packages_with_registry(
     return enriched
 
 
-async def refresh_packages_state(
-    scan_paths: list[Path] | None = None,
-) -> None:
-    """Refresh packages and update server_state. Called after install/remove."""
+def _fetch_packages_sync(
+    scan_paths: list[Path] | None,
+) -> tuple[list, str | None]:
+    """
+    Sync helper that fetches installed and registry packages.
+    Returns (state_packages_list, registry_error).
+    """
     from atopile.server.state import PackageInfo as StatePackageInfo
-
-    if scan_paths is None:
-        scan_paths = server_state._workspace_paths
 
     packages_map: dict[str, StatePackageInfo] = {}
     registry_error: str | None = None
@@ -517,8 +520,31 @@ async def refresh_packages_state(
         key=lambda p: (not p.installed, p.identifier.lower()),
     )
 
-    await server_state.set_packages(list(state_packages), registry_error)
-    log.info(f"Refreshed packages after install/remove: {len(state_packages)} packages")
+    return list(state_packages), registry_error
+
+
+async def refresh_packages_state(
+    scan_paths: list[Path] | None = None,
+) -> None:
+    """Refresh packages and update server_state. Called after install/remove."""
+    lock = _get_refresh_lock()
+
+    # Skip if another refresh is already in progress
+    if lock.locked():
+        log.debug("[refresh_packages_state] Skipping - refresh already in progress")
+        return
+
+    async with lock:
+        if scan_paths is None:
+            scan_paths = server_state._workspace_paths
+
+        # Run blocking I/O in thread pool to avoid blocking event loop
+        state_packages, registry_error = await asyncio.to_thread(
+            _fetch_packages_sync, scan_paths
+        )
+
+        await server_state.set_packages(state_packages, registry_error)
+        log.info(f"Refreshed packages: {len(state_packages)} packages")
 
 
 def handle_search_registry(

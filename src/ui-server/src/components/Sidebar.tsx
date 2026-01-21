@@ -679,6 +679,8 @@ export function Sidebar() {
   };
 
   const handlePackageInstall = (packageId: string, projectRoot: string) => {
+    // Set installing state immediately for UI feedback
+    useStore.getState().setInstallingPackage(packageId);
     action('installPackage', { packageId, projectRoot });
   };
 
@@ -688,16 +690,19 @@ export function Sidebar() {
 
   // Fetch modules and files when a project is expanded
   const handleProjectExpand = (projectRoot: string) => {
-    // Fetch modules if not already loaded
-    if (projectRoot && (!state?.projectModules || !state.projectModules[projectRoot])) {
+    // Fetch modules if not already loaded (or empty)
+    const modules = state?.projectModules?.[projectRoot];
+    if (projectRoot && (!modules || modules.length === 0)) {
       action('fetchModules', { projectRoot });
     }
-    // Fetch files if not already loaded
-    if (projectRoot && (!state?.projectFiles || !state.projectFiles[projectRoot])) {
+    // Fetch files if not already loaded (or empty)
+    const files = state?.projectFiles?.[projectRoot];
+    if (projectRoot && (!files || files.length === 0)) {
       action('fetchFiles', { projectRoot });
     }
-    // Fetch dependencies if not already loaded
-    if (projectRoot && (!state?.projectDependencies || !state.projectDependencies[projectRoot])) {
+    // Fetch dependencies if not already loaded (or empty)
+    const deps = state?.projectDependencies?.[projectRoot];
+    if (projectRoot && (!deps || deps.length === 0)) {
       action('fetchDependencies', { projectRoot });
     }
   };
@@ -1159,6 +1164,29 @@ export function Sidebar() {
                   </div>
                 </div>
 
+                <div className="settings-divider" />
+
+                {/* Developer Settings */}
+                <div className="settings-section-header">Developer</div>
+                <div className="settings-group">
+                  <div className="settings-row">
+                    <span className="settings-label-title">Show all problems</span>
+                    <div className="settings-inline-control">
+                      <label className="settings-toggle">
+                        <input
+                          type="checkbox"
+                          checked={state.developerMode || false}
+                          onChange={(e) => action('setDeveloperMode', { enabled: e.target.checked })}
+                        />
+                        <span className="settings-toggle-slider" />
+                      </label>
+                    </div>
+                  </div>
+                  <div className="settings-hint">
+                    Show internal developer messages in Problems panel
+                  </div>
+                </div>
+
               </div>
             )}
           </div>
@@ -1207,8 +1235,8 @@ export function Sidebar() {
             onDependencyVersionChange={(projectId, identifier, newVersion) => {
               action('changeDependencyVersion', { projectId, identifier, version: newVersion });
             }}
-            onOpenRepository={(url) => {
-              action('openUrl', { url });
+            onRemoveDependency={(projectId, identifier) => {
+              action('removePackage', { projectRoot: projectId, packageId: identifier });
             }}
           />
         </CollapsibleSection>
@@ -1276,16 +1304,14 @@ export function Sidebar() {
         >
           <ProblemsPanel
             problems={filteredProblems}
-            filter={state?.problemFilter}
-            selection={selection}
-            onSelectionChange={setSelection}
-            projects={projects}
+            projects={state?.projects?.map(p => ({ id: p.root, name: p.name, root: p.root })) || []}
+            selectedProjectRoot={selectedProjectRoot}
+            onSelectProject={(projectRoot) => {
+              action('selectProject', { projectRoot });
+            }}
             onProblemClick={(problem) => {
               // Navigate to file location
               action('openFile', { file: problem.file, line: problem.line, column: problem.column });
-            }}
-            onToggleLevelFilter={(level) => {
-              action('toggleProblemLevelFilter', { level });
             }}
           />
         </CollapsibleSection>
@@ -1334,7 +1360,6 @@ export function Sidebar() {
             variablesData={state?.currentVariablesData}
             isLoading={state?.isLoadingVariables}
             error={state?.variablesError}
-            onBuild={() => action('build')}
             projects={state?.projects}
             selectedProjectRoot={state?.selectedProjectRoot}
             onSelectProject={(projectRoot) => {

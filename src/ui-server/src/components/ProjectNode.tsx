@@ -40,7 +40,7 @@ interface ProjectNodeProps {
   onOpen3D?: (projectId: string, buildId: string) => void
   onFileClick?: (projectId: string, filePath: string) => void
   onDependencyVersionChange?: (projectId: string, identifier: string, newVersion: string) => void
-  onOpenRepository?: (url: string) => void
+  onRemoveDependency?: (projectId: string, identifier: string) => void
   availableModules?: ModuleDefinition[]
   projectFiles?: FileTreeNode[]
   projectDependencies?: ProjectDependency[]
@@ -68,7 +68,7 @@ export const ProjectNode = memo(function ProjectNode({
   onOpen3D,
   onFileClick,
   onDependencyVersionChange,
-  onOpenRepository,
+  onRemoveDependency,
   availableModules = [],
   projectFiles = [],
   projectDependencies = []
@@ -318,7 +318,7 @@ export const ProjectNode = memo(function ProjectNode({
             dependencies={projectDependencies}
             projectId={project.id}
             onVersionChange={onDependencyVersionChange}
-            onOpenRepository={onOpenRepository}
+            onRemove={onRemoveDependency}
           />
         </>
       )}

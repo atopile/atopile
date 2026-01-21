@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, memo } from 'react'
 import {
   ChevronDown, ChevronRight, Search, Box, Zap,
   Hash, Percent, CircuitBoard, RefreshCw,
-  Check, AlertTriangle, Loader2, Play, Layers
+  Check, AlertTriangle, Loader2, Play
 } from 'lucide-react'
 import type { Project } from '../types/build'
 import { api } from '../api/client'
+import { ProjectDropdown, type ProjectOption } from './ProjectDropdown'
 
 // Variable types
 type VariableType = 'voltage' | 'current' | 'resistance' | 'capacitance' | 'ratio' | 'frequency' | 'power' | 'percentage' | 'dimensionless'
@@ -297,8 +298,6 @@ interface VariablesPanelProps {
   variablesData?: VariablesData | null
   isLoading?: boolean
   error?: string | null
-  // Callbacks
-  onBuild?: () => void
   projects?: Project[]
   selectedProjectRoot?: string | null
   onSelectProject?: (projectRoot: string | null) => void
@@ -308,7 +307,6 @@ export function VariablesPanel({
   variablesData,
   isLoading = false,
   error = null,
-  onBuild,
   projects,
   selectedProjectRoot,
   onSelectProject
@@ -317,9 +315,6 @@ export function VariablesPanel({
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
   const [copiedValue, setCopiedValue] = useState<string | null>(null)
   const [variablesTargetsByProject, setVariablesTargetsByProject] = useState<Record<string, string[]>>({})
-  const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false)
-  const [projectSearchQuery, setProjectSearchQuery] = useState('')
-  const projectDropdownRef = useRef<HTMLDivElement>(null)
   // Always show all sources (filter removed per user request)
   const sourceFilter: SourceFilter = 'all'
   const [lastDataVersion, setLastDataVersion] = useState<string | null>(null)
@@ -337,14 +332,14 @@ export function VariablesPanel({
           const result = await api.variables.targets(project.root)
           return [project.root, result.targets] as const
         } catch {
-          return [project.root, []] as const
+          return [project.root, [] as string[]] as const
         }
       })
     ).then((entries) => {
       if (cancelled) return
       const next: Record<string, string[]> = {}
       for (const [root, targets] of entries) {
-        next[root] = targets
+        next[root] = [...targets]
       }
       setVariablesTargetsByProject(next)
     })
@@ -353,20 +348,6 @@ export function VariablesPanel({
       cancelled = true
     }
   }, [projects])
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        projectDropdownRef.current &&
-        !projectDropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsProjectMenuOpen(false)
-        setProjectSearchQuery('')
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
 
   const sortedProjects = useMemo(() => {
     if (!projects) return []
@@ -378,19 +359,19 @@ export function VariablesPanel({
     })
   }, [projects, variablesTargetsByProject])
 
-  const selectedProject = useMemo(
-    () => sortedProjects.find((project) => project.root === selectedProjectRoot) || null,
-    [sortedProjects, selectedProjectRoot]
-  )
-
-
-  const filteredProjects = useMemo(() => {
-    if (!projectSearchQuery) return sortedProjects
-    const query = projectSearchQuery.toLowerCase()
-    return sortedProjects.filter((project) =>
-      project.name.toLowerCase().includes(query)
-    )
-  }, [sortedProjects, projectSearchQuery])
+  // Transform projects for ProjectDropdown
+  const projectOptions: ProjectOption[] = useMemo(() => {
+    return sortedProjects.map((project) => {
+      const hasVariables = (variablesTargetsByProject[project.root]?.length ?? 0) > 0
+      return {
+        id: project.root,
+        name: project.name,
+        root: project.root,
+        badge: hasVariables ? undefined : 'no variables',
+        badgeMuted: true,
+      }
+    })
+  }, [sortedProjects, variablesTargetsByProject])
 
   const showProjectSelector = Boolean(
     projects && (sortedProjects.length > 0 || selectedProjectRoot)
@@ -463,82 +444,13 @@ export function VariablesPanel({
             />
           </div>
           {showProjectSelector && (
-            <div className="install-dropdown bom-project-select" ref={projectDropdownRef}>
-              <button
-                className="install-btn install-btn-wide"
-                onClick={() => setIsProjectMenuOpen((prev) => !prev)}
-                title={selectedProject ? selectedProject.name : 'Select project'}
-              >
-                <Layers size={12} />
-                <span>{selectedProject?.name || 'Select project'}</span>
-              </button>
-              <button
-                className="install-dropdown-toggle"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  setIsProjectMenuOpen((prev) => !prev)
-                }}
-                title="Change project"
-              >
-                <ChevronDown size={12} />
-              </button>
-              {isProjectMenuOpen && (
-                <div
-                  className={`install-dropdown-menu ${
-                    sortedProjects.length > 5 ? 'scrollable' : ''
-                  }`}
-                >
-                  <div className="dropdown-header">Select project:</div>
-                  {sortedProjects.length > 5 && (
-                    <div className="dropdown-search">
-                      <Search size={10} />
-                      <input
-                        type="text"
-                        placeholder="Filter projects..."
-                        value={projectSearchQuery}
-                        onChange={(event) => setProjectSearchQuery(event.target.value)}
-                        onClick={(event) => event.stopPropagation()}
-                      />
-                    </div>
-                  )}
-                  <div className="dropdown-items">
-                    {filteredProjects.map((project) => {
-                      const hasVariables = (variablesTargetsByProject[project.root]?.length ?? 0) > 0
-                      return (
-                        <button
-                          key={project.root}
-                          className={`dropdown-item ${
-                            project.root === selectedProjectRoot ? 'selected' : ''
-                          }`}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            if (onSelectProject) {
-                              onSelectProject(project.root)
-                            }
-                            setIsProjectMenuOpen(false)
-                            setProjectSearchQuery('')
-                          }}
-                        >
-                          <Layers size={12} />
-                          <span>{project.name}</span>
-                          {!hasVariables && (
-                            <span className="status-badge muted">no variables</span>
-                          )}
-                          {project.root === selectedProjectRoot && (
-                            <Check size={12} className="selected-check" />
-                          )}
-                        </button>
-                      )
-                    })}
-                    {filteredProjects.length === 0 && (
-                      <div className="dropdown-empty">
-                        No projects match "{projectSearchQuery}"
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+            <ProjectDropdown
+              projects={projectOptions}
+              selectedProjectRoot={selectedProjectRoot}
+              onSelectProject={onSelectProject || (() => {})}
+              showAllOption={false}
+              placeholder="Select project"
+            />
           )}
         </div>
       </div>
@@ -556,14 +468,6 @@ export function VariablesPanel({
           <div className="variables-error">
             <AlertTriangle size={16} />
             <span>{error}</span>
-            {onBuild && (
-              <div className="error-actions">
-                <button onClick={onBuild} className="build-btn">
-                  <Play size={12} />
-                  Build
-                </button>
-              </div>
-            )}
           </div>
         )}
 

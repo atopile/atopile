@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -28,7 +29,8 @@ async def get_problems(
     ),
 ):
     """Get problems (errors/warnings) from builds."""
-    return problems_domain.handle_get_problems(
+    return await asyncio.to_thread(
+        problems_domain.handle_get_problems,
         project_root=project_root,
         build_name=build_name,
         level=level,

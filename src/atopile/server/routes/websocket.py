@@ -77,22 +77,49 @@ async def websocket_state(websocket: WebSocket):
             if data.get("type") == "action":
                 # Handle action from client
                 action = data.get("action", "")
-                payload = data.get("payload", {})
-                result = await server_state.handle_action(action, payload)
+                payload = data.get("payload")
+                if not isinstance(payload, dict):
+                    payload = {}
+                inline_payload = {
+                    k: v
+                    for k, v in data.items()
+                    if k not in ("type", "action", "payload")
+                }
+                if inline_payload:
+                    payload = {**inline_payload, **payload}
 
-                if not result.get("success"):
-                    # Try the data action handler
+                log.info(f"WebSocket action received: {action}, payload keys: {list(payload.keys())}")
+
+                try:
                     ctx = websocket.app.state.ctx
                     result = await handle_data_action(action, payload, ctx)
+                    log.info(f"handle_data_action returned for {action}: success={result.get('success')}")
 
-                # Send result back to client
-                await websocket.send_json(
-                    {"type": "action_result", "action": action, "result": result}
-                )
+                    if (
+                        not result.get("success")
+                        and str(result.get("error", "")).startswith("Unknown action:")
+                    ):
+                        log.info(f"Falling back to server_state.handle_action for {action}")
+                        result = await server_state.handle_action(action, payload)
+
+                    # Send result back to client
+                    await websocket.send_json(
+                        {"type": "action_result", "action": action, "result": result}
+                    )
+                except Exception as action_exc:
+                    log.exception(f"Exception handling action {action}: {action_exc}")
+                    await websocket.send_json(
+                        {"type": "action_result", "action": action, "result": {"success": False, "error": str(action_exc)}}
+                    )
 
     except WebSocketDisconnect:
         await server_state.disconnect_client(client_id)
         log.info(f"State WebSocket client disconnected: {client_id}")
     except Exception as e:
-        log.error(f"State WebSocket error: {e}")
+        # Treat "not connected" errors as disconnects (common during hot reload)
+        error_msg = str(e).lower()
+        if "not connected" in error_msg or "accept" in error_msg:
+            log.debug(f"State WebSocket client {client_id} disconnected early: {e}")
+        else:
+            log.error(f"State WebSocket error: {e}")
         await server_state.disconnect_client(client_id)

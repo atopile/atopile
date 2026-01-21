@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -25,7 +26,7 @@ router = APIRouter(tags=["projects"])
 @router.get("/api/projects", response_model=ProjectsResponse)
 async def get_projects(ctx: AppContext = Depends(get_ctx)):
     """List all discovered projects in workspace paths."""
-    return projects_domain.handle_get_projects(ctx)
+    return await asyncio.to_thread(projects_domain.handle_get_projects, ctx)
 
 
 @router.get("/api/modules", response_model=ModulesResponse)
@@ -39,7 +40,9 @@ async def get_modules(
     ),
 ):
     """List all module/interface/component definitions in a project."""
-    result = projects_domain.handle_get_modules(project_root, type_filter)
+    result = await asyncio.to_thread(
+        projects_domain.handle_get_modules, project_root, type_filter
+    )
     if result is None:
         raise HTTPException(
             status_code=404,
@@ -55,7 +58,7 @@ async def get_files(
     )
 ):
     """List all .ato and .py files in a project."""
-    result = projects_domain.handle_get_files(project_root)
+    result = await asyncio.to_thread(projects_domain.handle_get_files, project_root)
     if result is None:
         raise HTTPException(
             status_code=404,
@@ -71,7 +74,9 @@ async def get_dependencies(
     )
 ):
     """List dependencies for a project from ato.yaml."""
-    result = projects_domain.handle_get_dependencies(project_root)
+    result = await asyncio.to_thread(
+        projects_domain.handle_get_dependencies, project_root
+    )
     if result is None:
         raise HTTPException(
             status_code=404,
@@ -87,7 +92,7 @@ async def get_dependencies(
 async def create_project(request: projects_domain.CreateProjectRequest):
     """Create a new project."""
     try:
-        return projects_domain.handle_create_project(request)
+        return await asyncio.to_thread(projects_domain.handle_create_project, request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
@@ -105,7 +110,7 @@ async def create_project(request: projects_domain.CreateProjectRequest):
 async def rename_project(request: projects_domain.RenameProjectRequest):
     """Rename a project."""
     try:
-        return projects_domain.handle_rename_project(request)
+        return await asyncio.to_thread(projects_domain.handle_rename_project, request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:

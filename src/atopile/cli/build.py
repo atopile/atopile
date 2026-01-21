@@ -1114,6 +1114,7 @@ def _run_single_build() -> None:
     This is called when IPC env vars are set by the parent process.
     """
     from atopile import buildutil
+    from atopile.buildutil import BuildStepContext
     from atopile.config import config
     from atopile.logging import close_all_build_loggers
 
@@ -1128,15 +1129,54 @@ def _run_single_build() -> None:
 
     from atopile.cli.excepthook import install_worker_excepthook
 
+    # Create build context to track completed stages
+    ctx = BuildStepContext(build=None)
+
     try:
         with config.select_build(build_name):
             install_worker_excepthook()
-            buildutil.build()
+            buildutil.build(ctx=ctx)
+
+            # Emit completed stages via IPC
+            _emit_completed_stages(ctx.completed_stages)
     finally:
         # Flush all buffered logs to SQLite before subprocess exits
         # This is critical because each subprocess has its own SQLiteLogWriter
         # instance, and buffered logs would be lost without explicit flush
         close_all_build_loggers()
+
+
+def _emit_completed_stages(stages: list) -> None:
+    """Emit completed stages via IPC to the parent process."""
+    import os
+    import pickle
+    import struct
+
+    event_fd = os.environ.get("ATO_BUILD_EVENT_FD")
+    if not event_fd:
+        return
+
+    try:
+        fd = int(event_fd)
+    except ValueError:
+        return
+
+    for stage in stages:
+        try:
+            event = StageCompleteEvent(
+                duration=stage.elapsed_seconds,
+                status=stage.status,
+                infos=stage.infos,
+                warnings=stage.warnings,
+                errors=stage.errors,
+                alerts=stage.alerts,
+                log_name=stage.stage_id,
+                description=stage.name,
+            )
+            payload = pickle.dumps(event)
+            os.write(fd, struct.pack(">I", len(payload)) + payload)
+        except Exception:
+            pass  # Don't fail the build if we can't emit stages
 
 
 def _build_all_projects(
@@ -1300,6 +1340,14 @@ def build(
             help=f"Max concurrent builds (default: {DEFAULT_WORKER_COUNT})",
         ),
     ] = DEFAULT_WORKER_COUNT,
+    dashboard: Annotated[
+        bool,
+        typer.Option(
+            "--dashboard",
+            help="Start the dashboard API server during the build",
+            envvar="ATO_BUILD_DASHBOARD",
+        ),
+    ] = False,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -1418,11 +1466,11 @@ def build(
         keep_designators=keep_designators,
     )
 
-    # Start dashboard API server (unless in verbose mode)
-    # Uses fixed port so extension can connect immediately
+    # Start dashboard API server only when explicitly requested.
+    # Uses fixed port so extension can connect immediately.
     dashboard_server = None
     dashboard_url = None
-    if not verbose:
+    if dashboard:
         try:
             from atopile.server.server import start_dashboard_server
 

@@ -441,7 +441,7 @@ interface ProjectsPanelProps {
   onOpen3D?: (projectId: string, buildId: string) => void  // Open 3D viewer
   onFileClick?: (projectId: string, filePath: string) => void  // Open a file in the editor
   onDependencyVersionChange?: (projectId: string, identifier: string, newVersion: string) => void  // Change dependency version
-  onOpenRepository?: (url: string) => void  // Open repository URL
+  onRemoveDependency?: (projectId: string, identifier: string) => void  // Remove a dependency
   filterType?: 'all' | 'projects' | 'packages'
   projects?: Project[]  // Optional - if not provided, uses mockProjects
   projectModules?: Record<string, ModuleDefinition[]>  // Modules for each project root
@@ -449,7 +449,7 @@ interface ProjectsPanelProps {
   projectDependencies?: Record<string, ProjectDependency[]>  // Dependencies for each project root
 }
 
-export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, onDependencyVersionChange, onOpenRepository, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {}, projectDependencies = {} }: ProjectsPanelProps) {
+export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, onDependencyVersionChange, onRemoveDependency, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {}, projectDependencies = {} }: ProjectsPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [publisherFilter, setPublisherFilter] = useState<string | null>(null)
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
@@ -739,7 +739,7 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
               onOpen3D={onOpen3D}
               onFileClick={onFileClick}
               onDependencyVersionChange={onDependencyVersionChange}
-              onOpenRepository={onOpenRepository}
+              onRemoveDependency={onRemoveDependency}
               availableModules={projectModules[project.root] || []}
               projectFiles={projectFiles[project.root] || []}
               projectDependencies={projectDependencies[project.root] || []}

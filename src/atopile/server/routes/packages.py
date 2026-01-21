@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
@@ -31,7 +32,9 @@ async def search_registry(
     ctx: AppContext = Depends(get_ctx),
 ):
     scan_paths = packages_domain.resolve_scan_paths(ctx, paths)
-    return packages_domain.handle_search_registry(query, scan_paths)
+    return await asyncio.to_thread(
+        packages_domain.handle_search_registry, query, scan_paths
+    )
 
 
 @router.get("/api/packages/summary", response_model=PackagesSummaryResponse)
@@ -46,7 +49,7 @@ async def get_packages_summary(
     ctx: AppContext = Depends(get_ctx),
 ):
     scan_paths = packages_domain.resolve_scan_paths(ctx, paths)
-    return packages_domain.handle_packages_summary(scan_paths)
+    return await asyncio.to_thread(packages_domain.handle_packages_summary, scan_paths)
 
 
 @router.get("/api/packages", response_model=PackagesResponse)
@@ -67,8 +70,8 @@ async def get_packages(
     ctx: AppContext = Depends(get_ctx),
 ):
     scan_paths = packages_domain.resolve_scan_paths(ctx, paths)
-    return packages_domain.handle_get_packages(
-        scan_paths, project_root, include_registry
+    return await asyncio.to_thread(
+        packages_domain.handle_get_packages, scan_paths, project_root, include_registry
     )
 
 
@@ -79,7 +82,9 @@ async def get_package_details(
     ctx: AppContext = Depends(get_ctx),
 ):
     scan_paths = packages_domain.resolve_scan_paths(ctx, paths)
-    return packages_domain.handle_get_package_details(package_id, scan_paths, ctx)
+    return await asyncio.to_thread(
+        packages_domain.handle_get_package_details, package_id, scan_paths, ctx
+    )
 
 
 @router.get("/api/packages/{package_id:path}", response_model=PackageInfo)
@@ -89,7 +94,9 @@ async def get_package(
     ctx: AppContext = Depends(get_ctx),
 ):
     scan_paths = packages_domain.resolve_scan_paths(ctx, paths)
-    return packages_domain.handle_get_package_info(package_id, scan_paths, ctx)
+    return await asyncio.to_thread(
+        packages_domain.handle_get_package_info, package_id, scan_paths, ctx
+    )
 
 
 @router.post("/api/packages/install", response_model=PackageActionResponse)
@@ -97,7 +104,9 @@ async def install_package(
     request: PackageActionRequest,
     background_tasks: BackgroundTasks,
 ):
-    return packages_domain.handle_install_package(request, background_tasks)
+    return await asyncio.to_thread(
+        packages_domain.handle_install_package, request, background_tasks
+    )
 
 
 @router.post("/api/packages/remove", response_model=PackageActionResponse)
@@ -105,5 +114,7 @@ async def remove_package(
     request: PackageActionRequest,
     background_tasks: BackgroundTasks,
 ):
-    return packages_domain.handle_remove_package(request, background_tasks)
+    return await asyncio.to_thread(
+        packages_domain.handle_remove_package, request, background_tasks
+    )
 

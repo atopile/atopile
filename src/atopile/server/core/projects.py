@@ -4,15 +4,49 @@ Project discovery and file scanning logic.
 
 from __future__ import annotations
 
+import json
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 import yaml
 
-from ..schemas.project import BuildTarget, FileTreeNode, ModuleDefinition, Project
+from ..schemas.project import BuildTarget, BuildTargetStatus, FileTreeNode, ModuleDefinition, Project
 
 log = logging.getLogger(__name__)
+
+
+def _load_last_build_for_target(project_root: Path, target_name: str) -> Optional[BuildTargetStatus]:
+    """Load the last build status for a target from its build_summary.json."""
+    summary_path = project_root / "build" / "builds" / target_name / "build_summary.json"
+    if not summary_path.exists():
+        return None
+
+    try:
+        data = json.loads(summary_path.read_text())
+
+        # Convert timestamp from "2026-01-21_17-33-47" to ISO format
+        timestamp = data.get("timestamp", "")
+        if timestamp:
+            try:
+                dt = datetime.strptime(timestamp, "%Y-%m-%d_%H-%M-%S")
+                timestamp = dt.isoformat()
+            except ValueError:
+                # Keep original if format doesn't match
+                pass
+
+        return BuildTargetStatus(
+            status=data.get("status", "unknown"),
+            timestamp=timestamp,
+            elapsed_seconds=data.get("elapsed_seconds"),
+            warnings=data.get("warnings", 0),
+            errors=data.get("errors", 0),
+            stages=data.get("stages"),  # May be None if not present
+        )
+    except Exception as e:
+        log.debug(f"Failed to load build summary for {target_name}: {e}")
+        return None
 
 
 def extract_modules_from_file(
@@ -136,6 +170,10 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
             if ".ato" in ato_file.parts:
                 continue
 
+            # Skip cookiecutter template directories
+            if "{{cookiecutter" in str(ato_file):
+                continue
+
             project_root = ato_file.parent
             root_str = str(project_root)
 
@@ -153,11 +191,13 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                 targets: list[BuildTarget] = []
                 for name, config in data.get("builds", {}).items():
                     if isinstance(config, dict):
+                        last_build = _load_last_build_for_target(project_root, name)
                         targets.append(
                             BuildTarget(
                                 name=name,
                                 entry=config.get("entry", ""),
                                 root=root_str,
+                                last_build=last_build,
                             )
                         )
 

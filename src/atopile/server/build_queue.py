@@ -37,7 +37,27 @@ def set_broadcast_sync(callback: BroadcastFn | None) -> None:
 # Track active builds
 _active_builds: dict[str, dict[str, Any]] = {}
 _build_counter = 0
-_build_lock = threading.Lock()
+_build_lock = threading.RLock()  # Use RLock to allow reentrant locking
+
+
+def _acquire_build_lock(timeout: float = 5.0, context: str = "unknown") -> bool:
+    """
+    Acquire _build_lock with timeout and logging.
+    Returns True if acquired, False if timed out.
+    """
+    log.debug(f"[LOCK] Attempting to acquire _build_lock from {context}")
+    acquired = _build_lock.acquire(timeout=timeout)
+    if acquired:
+        log.debug(f"[LOCK] Acquired _build_lock from {context}")
+    else:
+        log.error(f"[LOCK] TIMEOUT acquiring _build_lock from {context} after {timeout}s")
+    return acquired
+
+
+def _release_build_lock(context: str = "unknown") -> None:
+    """Release _build_lock with logging."""
+    log.debug(f"[LOCK] Releasing _build_lock from {context}")
+    _build_lock.release()
 
 # Build queue configuration
 MAX_CONCURRENT_BUILDS = 4
@@ -97,6 +117,23 @@ def _find_build_in_summary(
     return builds[0] if builds else None
 
 
+def _get_target_summary_path(project_root: str, target: str) -> Path:
+    """Get the path to a target's build_summary.json file."""
+    return Path(project_root) / "build" / "builds" / target / "build_summary.json"
+
+
+def _read_target_summary(project_root: str, target: str) -> dict | None:
+    """Read a target's build_summary.json file."""
+    summary_path = _get_target_summary_path(project_root, target)
+    if not summary_path.exists():
+        return None
+    try:
+        with open(summary_path, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return None
+
+
 def _run_build_subprocess(
     build_id: str,
     project_root: str,
@@ -111,7 +148,7 @@ def _run_build_subprocess(
     Run a single build in a subprocess and report progress.
 
     This function runs in a worker thread. It spawns an `ato build` subprocess
-    and monitors it for completion while polling summary.json for stage updates.
+    and monitors it for completion while polling build_summary.json for stage updates.
     """
     # Send "started" message
     result_q.put(
@@ -132,22 +169,26 @@ def _run_build_subprocess(
         # Build the command
         cmd = ["ato", "build", "--verbose"]
 
-        # Determine the summary.json path for real-time monitoring
-        summary_path = Path(project_root) / "build" / "logs" / "latest" / "summary.json"
+        # Determine which targets to monitor for stage updates
+        # For standalone builds, we use the entry point name
+        # For regular builds, we use the target names
+        monitor_targets: list[str] = []
+        standalone_project_root = project_root
 
         if standalone and entry:
             cmd.append(entry)
             cmd.append("--standalone")
             entry_file = entry.split(":")[0] if ":" in entry else entry
             entry_stem = Path(entry_file).stem
-            standalone_dir = (
-                Path(project_root) / f"standalone_{entry_stem}" / "build" / "logs"
+            standalone_project_root = str(
+                Path(project_root) / f"standalone_{entry_stem}"
             )
-            standalone_dir.mkdir(parents=True, exist_ok=True)
-            summary_path = standalone_dir.parent / "logs" / "latest" / "summary.json"
+            # For standalone builds, the target name is "default"
+            monitor_targets = ["default"]
         else:
             for target in targets:
                 cmd.extend(["--build", target])
+            monitor_targets = targets if targets else ["default"]
 
         if frozen:
             cmd.append("--frozen")
@@ -156,9 +197,14 @@ def _run_build_subprocess(
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
 
+        # Determine the root to use for monitoring (different for standalone builds)
+        effective_root = (
+            standalone_project_root if standalone and entry else project_root
+        )
+
         log.info(
             f"Build {build_id}: starting subprocess - cmd={' '.join(cmd)}, "
-            f"cwd={project_root}, summary_path={summary_path}"
+            f"cwd={project_root}, monitor_targets={monitor_targets}"
         )
 
         process = subprocess.Popen(
@@ -170,8 +216,8 @@ def _run_build_subprocess(
             env=env,
         )
 
-        # Poll for completion while monitoring summary.json
-        last_stages: list[dict] = []
+        # Poll for completion while monitoring per-target build_summary.json files
+        last_stages: dict[str, list[dict]] = {}  # target -> stages
         poll_interval = 0.5
         stderr_output = ""
 
@@ -191,30 +237,37 @@ def _run_build_subprocess(
                 )
                 return  # Exit the function after cancellation
 
-            # Read summary.json for stage updates
-            if summary_path.exists():
-                try:
-                    with open(summary_path, "r") as f:
-                        summary = json.load(f)
-                    # Find the build in summary using the helper function
-                    current_build = _find_build_in_summary(summary, targets, entry)
-                    if current_build:
-                        current_stages = current_build.get("stages", [])
-                        if current_stages != last_stages:
-                            log.debug(
-                                f"Build {build_id}: stage update - "
-                                f"{len(current_stages)} stages"
-                            )
-                            result_q.put(
-                                {
-                                    "type": "stage",
-                                    "build_id": build_id,
-                                    "stages": current_stages,
-                                }
-                            )
-                            last_stages = current_stages
-                except (json.JSONDecodeError, IOError) as exc:
-                    log.debug(f"Build {build_id}: error reading summary.json: {exc}")
+            # Read per-target build_summary.json files for stage updates
+            all_current_stages: list[dict] = []
+            for target in monitor_targets:
+                target_summary = _read_target_summary(effective_root, target)
+                if target_summary:
+                    target_stages = target_summary.get("stages", [])
+                    all_current_stages.extend(target_stages)
+
+            # Check if stages changed
+            flat_last = [s for stages in last_stages.values() for s in stages]
+            if all_current_stages != flat_last:
+                log.debug(
+                    f"Build {build_id}: stage update - "
+                    f"{len(all_current_stages)} stages"
+                )
+                result_q.put(
+                    {
+                        "type": "stage",
+                        "build_id": build_id,
+                        "stages": all_current_stages,
+                    }
+                )
+                # Update last_stages
+                last_stages = {
+                    target: _read_target_summary(effective_root, target).get(
+                        "stages", []
+                    )
+                    if _read_target_summary(effective_root, target)
+                    else []
+                    for target in monitor_targets
+                }
 
             time.sleep(poll_interval)
 
@@ -222,16 +275,12 @@ def _run_build_subprocess(
         return_code = process.returncode
         stderr_output = process.stderr.read() if process.stderr else ""
 
-        # Get final stages from summary
-        if summary_path.exists():
-            try:
-                with open(summary_path, "r") as f:
-                    summary = json.load(f)
-                final_build = _find_build_in_summary(summary, targets, entry)
-                if final_build:
-                    final_stages = final_build.get("stages", [])
-            except (json.JSONDecodeError, IOError):
-                pass
+        # Get final stages from per-target summaries
+        for target in monitor_targets:
+            target_summary = _read_target_summary(effective_root, target)
+            if target_summary:
+                target_stages = target_summary.get("stages", [])
+                final_stages.extend(target_stages)
 
         if return_code != 0:
             error_msg = (

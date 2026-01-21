@@ -784,6 +784,67 @@ body {
   gap: 1px;
 }
 
+.settings-section-header {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--spacing-xs);
+}
+
+.settings-toggle {
+  position: relative;
+  display: inline-block;
+  width: 32px;
+  height: 18px;
+}
+
+.settings-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.settings-toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  transition: 0.2s;
+}
+
+.settings-toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 12px;
+  width: 12px;
+  left: 2px;
+  bottom: 2px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: 0.2s;
+}
+
+.settings-toggle input:checked + .settings-toggle-slider {
+  background: var(--ato-orange);
+  border-color: var(--ato-orange);
+}
+
+.settings-toggle input:checked + .settings-toggle-slider:before {
+  background: white;
+  transform: translateX(14px);
+}
+
+.settings-toggle:hover .settings-toggle-slider {
+  border-color: var(--ato-orange);
+}
+
 /* ============================================
    Action Bar
    ============================================ */
@@ -5359,6 +5420,14 @@ body {
   z-index: 10;
 }
 
+/* Truncate long text in dropdown buttons */
+.install-dropdown .install-btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
 /* When dropdown is open, lift the entire package card above others */
 .package-card:has(.install-dropdown-menu) {
   z-index: 100;
@@ -5538,6 +5607,22 @@ body {
   /* Container for scrollable items */
 }
 
+/* Project dropdown specific styles - sensible height that shrinks to content */
+.project-dropdown-menu .dropdown-items {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* Ensure project dropdown doesn't get clipped by parent panels */
+.project-dropdown {
+  position: relative;
+  z-index: 100;
+}
+
+.project-dropdown:has(.install-dropdown-menu) {
+  z-index: 1001;
+}
+
 .dropdown-empty {
   padding: var(--spacing-sm);
   font-size: 10px;
@@ -5688,11 +5773,6 @@ body {
 }
 .stdlib-toolbar .search-box {
   flex: 1;
-}
-.stdlib-total {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  white-space: nowrap;
 }
 
 .stdlib-filters {
@@ -7859,6 +7939,22 @@ body {
 }
 
 .problems-toolbar:has(.selector-dropdown) {
+  z-index: 1001;
+  position: relative;
+}
+
+/* Project dropdown overflow rules */
+.collapsible-section:has(.project-dropdown .install-dropdown-menu) {
+  overflow: visible !important;
+  z-index: 1000;
+}
+
+.collapsible-section:has(.project-dropdown .install-dropdown-menu) .section-body {
+  overflow: visible !important;
+}
+
+.panel-toolbar:has(.project-dropdown .install-dropdown-menu) {
+  overflow: visible !important;
   z-index: 1001;
   position: relative;
 }

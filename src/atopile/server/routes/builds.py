@@ -42,7 +42,7 @@ async def start_build(request: BuildRequest):
 @router.get("/api/build/{build_id}/status", response_model=BuildStatusResponse)
 async def get_build_status(build_id: str):
     """Get the status of a specific build."""
-    result = builds_domain.handle_get_build_status(build_id)
+    result = await asyncio.to_thread(builds_domain.handle_get_build_status, build_id)
     if result is None:
         raise HTTPException(status_code=404, detail=f"Build not found: {build_id}")
     return result
@@ -51,7 +51,7 @@ async def get_build_status(build_id: str):
 @router.post("/api/build/{build_id}/cancel")
 async def cancel_build(build_id: str):
     """Cancel a running or queued build."""
-    result = builds_domain.handle_cancel_build(build_id)
+    result = await asyncio.to_thread(builds_domain.handle_cancel_build, build_id)
     if not result["success"] and "not found" in result["message"].lower():
         raise HTTPException(status_code=404, detail=result["message"])
     return result
@@ -60,25 +60,28 @@ async def cancel_build(build_id: str):
 @router.get("/api/builds/active")
 async def get_active_builds():
     """Get all active (running or queued) builds."""
-    return builds_domain.handle_get_active_builds()
+    log.info("[DEBUG] /api/builds/active route called, dispatching to thread pool")
+    result = await asyncio.to_thread(builds_domain.handle_get_active_builds)
+    log.info("[DEBUG] /api/builds/active got result from thread pool")
+    return result
 
 
 @router.get("/api/builds/queue")
 async def get_build_queue_status():
     """Get the build queue status."""
-    return builds_domain.handle_get_build_queue_status()
+    return await asyncio.to_thread(builds_domain.handle_get_build_queue_status)
 
 
 @router.get("/api/settings/max-concurrent")
 async def get_max_concurrent_setting():
     """Get max concurrent builds setting."""
-    return builds_domain.handle_get_max_concurrent_setting()
+    return await asyncio.to_thread(builds_domain.handle_get_max_concurrent_setting)
 
 
 @router.post("/api/settings/max-concurrent")
 async def set_max_concurrent_setting(request: builds_domain.MaxConcurrentRequest):
     """Set max concurrent builds setting."""
-    return builds_domain.handle_set_max_concurrent_setting(request)
+    return await asyncio.to_thread(builds_domain.handle_set_max_concurrent_setting, request)
 
 
 @router.get("/api/builds/history")

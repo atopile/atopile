@@ -1,6 +1,6 @@
-import { useState, memo, useCallback, useMemo, useEffect, useRef } from 'react'
+import { useState, memo, useCallback, useMemo, useEffect } from 'react'
 import {
-  ChevronDown, ChevronRight, Search, Package, Layers,
+  ChevronDown, ChevronRight, Search, Package,
   ExternalLink, Copy, Check, AlertTriangle,
   RefreshCw
 } from 'lucide-react'
@@ -11,6 +11,7 @@ import type {
   Project
 } from '../types/build'
 import { api } from '../api/client'
+import { ProjectDropdown, type ProjectOption } from './ProjectDropdown'
 
 // Component types (local type alias for UI)
 type ComponentType = BOMComponentType
@@ -58,6 +59,17 @@ interface UsageGroup {
   parentPath: string      // e.g., "App.power_supply"
   parentLabel: string     // e.g., "power_supply"
   instances: UsageLocation[]
+}
+
+function normalizeUsagePath(path: string): string {
+  const parts = path.split('::')
+  const addressPart = parts.length > 1 ? parts[1] : path
+  return addressPart.split('|')[0]
+}
+
+function getUsageLeafName(path: string): string {
+  const normalized = normalizeUsagePath(path)
+  return normalized.split('.').pop() || normalized
 }
 
 // Transform API response to UI format
@@ -123,10 +135,8 @@ function groupUsagesByModule(usages: UsageLocation[]): UsageGroup[] {
   for (const usage of usages) {
     // Extract the parent module path for grouping
     // e.g., "passives.ato::App.ad1938.decoupling[0]|Cap" -> group by "ad1938"
-    const parts = usage.path.split('::')
-    const addressPart = parts.length > 1 ? parts[1] : usage.path
-    const withoutType = addressPart.split('|')[0]
-    const segments = withoutType.split('.')
+    const normalizedPath = normalizeUsagePath(usage.path)
+    const segments = normalizedPath.split('.')
 
     let parentPath: string
     let parentLabel: string
@@ -139,8 +149,8 @@ function groupUsagesByModule(usages: UsageLocation[]): UsageGroup[] {
       parentPath = segments[0]
       parentLabel = segments[0]
     } else {
-      parentPath = usage.path
-      parentLabel = usage.path
+      parentPath = normalizedPath
+      parentLabel = normalizedPath
     }
 
     if (!groups.has(parentPath)) {
@@ -326,7 +336,7 @@ const BOMRow = memo(function BOMRow({
                           <div className="usage-instances">
                             {group.instances.map((usage, idx) => {
                               // Extract just the leaf name (e.g., "decoupling[0]" from full path)
-                              const leafName = usage.path.split('.').pop()?.split('|')[0] || usage.path
+                              const leafName = getUsageLeafName(usage.path)
                               return (
                                 <div
                                   key={idx}
@@ -350,7 +360,9 @@ const BOMRow = memo(function BOMRow({
                         title={group.instances[0].path}
                       >
                         <span className="usage-designator">{group.instances[0].designator}</span>
-                        <span className="usage-module-path">{group.parentPath}</span>
+                        <span className="usage-module-path">
+                          {getUsageLeafName(group.instances[0].path)}
+                        </span>
                         <ExternalLink size={10} className="usage-goto" />
                       </div>
                     )}
@@ -389,9 +401,6 @@ export function BOMPanel({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [copiedValue, setCopiedValue] = useState<string | null>(null)
   const [bomTargetsByProject, setBomTargetsByProject] = useState<Record<string, string[]>>({})
-  const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false)
-  const [projectSearchQuery, setProjectSearchQuery] = useState('')
-  const projectDropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!projects || projects.length === 0) {
@@ -406,14 +415,14 @@ export function BOMPanel({
           const result = await api.bom.targets(project.root)
           return [project.root, result.targets] as const
         } catch {
-          return [project.root, []] as const
+          return [project.root, [] as string[]] as const
         }
       })
     ).then((entries) => {
       if (cancelled) return
       const next: Record<string, string[]> = {}
       for (const [root, targets] of entries) {
-        next[root] = targets
+        next[root] = [...targets]
       }
       setBomTargetsByProject(next)
     })
@@ -422,20 +431,6 @@ export function BOMPanel({
       cancelled = true
     }
   }, [projects])
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        projectDropdownRef.current &&
-        !projectDropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsProjectMenuOpen(false)
-        setProjectSearchQuery('')
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
 
   const sortedProjects = useMemo(() => {
     if (!projects) return []
@@ -447,19 +442,19 @@ export function BOMPanel({
     })
   }, [projects, bomTargetsByProject])
 
-  const hasProjects = sortedProjects.length > 0
-  const selectedProject = useMemo(
-    () => sortedProjects.find((project) => project.root === selectedProjectRoot) || null,
-    [sortedProjects, selectedProjectRoot]
-  )
-
-  const filteredProjects = useMemo(() => {
-    if (!projectSearchQuery) return sortedProjects
-    const query = projectSearchQuery.toLowerCase()
-    return sortedProjects.filter((project) =>
-      project.name.toLowerCase().includes(query)
-    )
-  }, [sortedProjects, projectSearchQuery])
+  // Transform projects for ProjectDropdown
+  const projectOptions: ProjectOption[] = useMemo(() => {
+    return sortedProjects.map((project) => {
+      const hasBom = (bomTargetsByProject[project.root]?.length ?? 0) > 0
+      return {
+        id: project.root,
+        name: project.name,
+        root: project.root,
+        badge: hasBom ? undefined : 'no BOM',
+        badgeMuted: true,
+      }
+    })
+  }, [sortedProjects, bomTargetsByProject])
 
   // Memoize API data transformation - no mock data fallback
   const bomComponents = useMemo((): BOMComponentUI[] => {
@@ -510,88 +505,13 @@ export function BOMPanel({
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <div className="install-dropdown bom-project-select" ref={projectDropdownRef}>
-            <button
-              className="install-btn install-btn-wide"
-              onClick={() => {
-                if (!hasProjects) return
-                setIsProjectMenuOpen((prev) => !prev)
-              }}
-              title={selectedProject ? selectedProject.name : 'Select project'}
-              disabled={!hasProjects}
-            >
-              <Layers size={12} />
-              <span>{selectedProject?.name || (hasProjects ? 'Select project' : 'No projects')}</span>
-            </button>
-            <button
-              className="install-dropdown-toggle"
-              onClick={(event) => {
-                event.stopPropagation()
-                if (!hasProjects) return
-                setIsProjectMenuOpen((prev) => !prev)
-              }}
-              title="Change project"
-              disabled={!hasProjects}
-            >
-              <ChevronDown size={12} />
-            </button>
-            {hasProjects && isProjectMenuOpen && (
-              <div
-                className={`install-dropdown-menu ${
-                  sortedProjects.length > 5 ? 'scrollable' : ''
-                }`}
-              >
-                <div className="dropdown-header">Select project:</div>
-                {sortedProjects.length > 5 && (
-                  <div className="dropdown-search">
-                    <Search size={10} />
-                    <input
-                      type="text"
-                      placeholder="Filter projects..."
-                      value={projectSearchQuery}
-                      onChange={(event) => setProjectSearchQuery(event.target.value)}
-                      onClick={(event) => event.stopPropagation()}
-                    />
-                  </div>
-                )}
-                <div className="dropdown-items">
-                  {filteredProjects.map((project) => {
-                    const hasBom = (bomTargetsByProject[project.root]?.length ?? 0) > 0
-                    return (
-                      <button
-                        key={project.root}
-                        className={`dropdown-item ${
-                          project.root === selectedProjectRoot ? 'selected' : ''
-                        }`}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          if (onSelectProject) {
-                            onSelectProject(project.root)
-                          }
-                          setIsProjectMenuOpen(false)
-                          setProjectSearchQuery('')
-                        }}
-                      >
-                        <Layers size={12} />
-                        <span>{project.name}</span>
-                        {!hasBom && (
-                          <span className="status-badge muted">no BOM</span>
-                        )}
-                        {project.root === selectedProjectRoot && (
-                          <Check size={12} className="selected-check" />
-                        )}
-                      </button>
-                    )
-                  })}
-                  {filteredProjects.length === 0 && (
-                    <div className="dropdown-empty">
-                      No projects match "{projectSearchQuery}"
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+          <ProjectDropdown
+            projects={projectOptions}
+            selectedProjectRoot={selectedProjectRoot}
+            onSelectProject={onSelectProject || (() => {})}
+            showAllOption={false}
+            placeholder="Select project"
+          />
         </div>
       </div>
   )

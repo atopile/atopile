@@ -233,8 +233,17 @@ def handle_cancel_build(build_id: str) -> dict:
 
 def handle_get_active_builds() -> dict:
     """Get all active (queued or building) builds."""
+    from atopile.server.build_queue import _acquire_build_lock, _release_build_lock
+
+    log.info("[DEBUG] handle_get_active_builds called")
     builds = []
-    with _build_lock:
+
+    if not _acquire_build_lock(timeout=5.0, context="handle_get_active_builds"):
+        log.error("[DEBUG] handle_get_active_builds: lock acquisition timed out, returning empty")
+        return {"builds": [], "error": "Lock timeout - build system may be busy"}
+
+    try:
+        log.info("[DEBUG] handle_get_active_builds acquired lock")
         for bid, build in _active_builds.items():
             status = build["status"]
             if status not in ("queued", "building"):
@@ -275,6 +284,8 @@ def handle_get_active_builds() -> dict:
                     "error": build.get("error"),
                 }
             )
+    finally:
+        _release_build_lock(context="handle_get_active_builds")
 
     builds.sort(
         key=lambda x: (
