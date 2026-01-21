@@ -189,7 +189,7 @@ export function LogViewer() {
 
     setConnectionState('connecting');
 
-    // Connect to /ws/logs on the same host that served this page
+    // Connect to /ws/logs - uses Vite proxy in dev, same host in production
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/logs`);
     wsRef.current = ws;

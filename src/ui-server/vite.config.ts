@@ -311,6 +311,17 @@ export default defineConfig(({ mode }) => ({
   server: {
     port: 5173,
     open: true,
+    // Proxy websocket and API requests to the backend server
+    proxy: {
+      '/ws': {
+        target: 'ws://localhost:8501',
+        ws: true,
+      },
+      '/api': {
+        target: 'http://localhost:8501',
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     outDir: 'dist',
