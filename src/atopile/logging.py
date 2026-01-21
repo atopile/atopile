@@ -1479,6 +1479,96 @@ class LogHandler(RichHandler):
 
 
 # =============================================================================
+# Log database query helpers
+# =============================================================================
+
+LOGS_DEFAULT_COUNT = 500
+LOGS_MAX_COUNT = 5000
+LOGS_ALLOWED_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "ALERT"}
+
+
+def normalize_log_level(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    level = value.strip().upper()
+    return level if level in LOGS_ALLOWED_LEVELS else None
+
+
+def normalize_log_audience(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    audience = value.strip().lower()
+    allowed = {member.value for member in Audience}
+    return audience if audience in allowed else None
+
+
+def load_build_logs(
+    *,
+    build_id: str,
+    stage: str | None,
+    log_level: str | None,
+    audience: str | None,
+    count: int,
+) -> list[dict[str, Any]]:
+    db_path = BuildLogger.get_log_db()
+    if not db_path.exists():
+        return []
+
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+
+    where_clauses = ["logs.build_id = ?"]
+    params: list[Any] = [build_id]
+
+    if stage:
+        where_clauses.append("logs.stage = ?")
+        params.append(stage)
+
+    if log_level:
+        where_clauses.append("logs.level = ?")
+        params.append(log_level)
+
+    if audience:
+        where_clauses.append("logs.audience = ?")
+        params.append(audience)
+
+    where_sql = " AND ".join(where_clauses)
+    query = f"""
+        SELECT logs.timestamp, logs.logger_name, logs.message,
+               logs.ato_traceback, logs.python_traceback, logs.objects
+        FROM logs
+        WHERE {where_sql}
+        ORDER BY logs.id DESC
+        LIMIT ?
+    """
+
+    params.append(count)
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        objects = None
+        if row["objects"]:
+            try:
+                objects = json.loads(row["objects"])
+            except json.JSONDecodeError:
+                objects = None
+        results.append(
+            {
+                "timestamp": row["timestamp"],
+                "logger_name": row["logger_name"],
+                "message": row["message"],
+                "ato_traceback": row["ato_traceback"],
+                "python_traceback": row["python_traceback"],
+                "objects": objects,
+            }
+        )
+
+    return results
+
+
+# =============================================================================
 # Module-level initialization
 # =============================================================================
 
