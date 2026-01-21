@@ -928,7 +928,7 @@ def generate_datasheets(ctx: BuildStepContext) -> None:
 #     produces_artifact=True,
 # )
 # def generate_i2c_tree(
-#     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+#     app: fabll.Node, solver: Solver, pcb: F.PCB
 # ) -> None:
 #     """Generate a Mermaid diagram of the I2C bus tree."""
 #     export_i2c_tree(

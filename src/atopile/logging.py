@@ -20,7 +20,6 @@ import sqlite3
 import struct
 import sys
 import threading
-import time
 import traceback
 from collections.abc import Iterable
 from contextlib import contextmanager
@@ -32,33 +31,20 @@ from pathlib import Path
 from types import ModuleType, TracebackType
 from typing import TYPE_CHECKING, Any
 
-import rich
 from rich._null_file import NullFile
 from rich.console import Console, ConsoleRenderable
 from rich.logging import RichHandler
 from rich.markdown import Markdown
-from rich.padding import Padding
-from rich.progress import ProgressColumn, TextColumn
-from rich.table import Column, Table
-from rich.tree import Tree
 from rich.text import Text
 from rich.traceback import Traceback
-
-import pathvalidate
 
 import atopile
 import faebryk
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 from atopile.logging_utils import (
     PLOG,
-    CompletableSpinnerColumn,
-    IndentedProgress,
-    ShortTimeElapsedColumn,
-    SpacerColumn,
-    StyledMofNCompleteColumn,
     error_console,
 )
-from faebryk.libs.util import Advancable
 
 # =============================================================================
 # Context Variables
@@ -133,13 +119,10 @@ NOW = os.environ.get("ATO_BUILD_TIMESTAMP") or datetime.now().strftime(
     "%Y-%m-%d_%H-%M-%S"
 )
 _DEFAULT_FORMATTER = logging.Formatter("%(message)s", datefmt="[%X]")
-_SHOW_LOG_FILE_PATH_THRESHOLD = 120
 
-
-# displayed during LoggingStage
+# Custom log level for alerts
 ALERT = logging.INFO + 5
 logging.addLevelName(ALERT, "ALERT")
-
 
 # =============================================================================
 # SQLite Logging - Typed API for structured build logs
@@ -939,22 +922,18 @@ class BuildLogger(BaseLogger):
         cls,
         enable_database: bool = True,
         stage: str | None = None,
-        use_live_handler: bool = False,
-        status: "LoggingStage | None" = None,
     ) -> "BuildLogger | None":
         """
         Unified logging setup function.
 
         Sets up logging with optional database support. Can be used for:
         - CLI commands (enable_database=True, stage="cli")
-        - Build stages (enable_database=True, stage="stage-name", use_live_handler=True)
+        - Build stages (enable_database=True, stage="stage-name")
         - Basic Rich-formatted logging (enable_database=False)
 
         Args:
             enable_database: Whether to set up database logging
             stage: Stage name for database logging (defaults to "cli")
-            use_live_handler: Whether to use LiveLogHandler (for LoggingStage)
-            status: LoggingStage instance (required if use_live_handler=True)
         """
         root_logger = logging.getLogger()
 
@@ -973,31 +952,11 @@ class BuildLogger(BaseLogger):
                 stage_name = stage if stage is not None else "cli"
                 build_logger = cls.get(project_path, target, stage=stage_name)
 
-                # Set up LiveLogHandler if requested (for LoggingStage)
-                if use_live_handler and status is not None:
-                    # Remove existing handlers
-                    for handler in root_logger.handlers.copy():
-                        root_logger.removeHandler(handler)
-
-                    # Create LiveLogHandler
-                    live_handler = LiveLogHandler(status, build_logger=build_logger)
-                    live_handler.setFormatter(_DEFAULT_FORMATTER)
-                    live_handler.setLevel(root_logger.level)
-                    root_logger.addHandler(live_handler)
-
-                    # Handle capture log handler if needed
-                    if _log_sink_var.get() is not None:
-                        capture_console = Console(file=_log_sink_var.get())
-                        capture_handler = CaptureLogHandler(status, console=capture_console)
-                        capture_handler.setFormatter(_DEFAULT_FORMATTER)
-                        capture_handler.setLevel(logging.INFO)
-                        root_logger.addHandler(capture_handler)
-                else:
-                    # Just attach build_logger to existing handler
-                    for handler in root_logger.handlers:
-                        if isinstance(handler, LogHandler):
-                            handler._build_logger = build_logger
-                            break
+                # Attach build_logger to existing handler
+                for handler in root_logger.handlers:
+                    if isinstance(handler, LogHandler):
+                        handler._build_logger = build_logger
+                        break
             except Exception:
                 pass
 
@@ -1497,436 +1456,6 @@ class LogHandler(RichHandler):
                 if hashable:
                     self._logged_exceptions.add(hashable)
 
-
-class LiveLogHandler(LogHandler):
-    """
-    Log handler for build stages with integrated SQLite logging.
-
-    Handles:
-    - Rich console output (via parent LogHandler)
-    - Progress bar updates (warning/error counts)
-    - SQLite database logging (via BuildLogger)
-    """
-
-    def __init__(
-        self,
-        status: "LoggingStage",
-        build_logger: "BuildLogger | None" = None,
-        *args,
-        **kwargs,
-    ):
-        # Pass build_logger to parent so it can write to database
-        super().__init__(
-            *args, console=status._console, build_logger=build_logger, **kwargs
-        )
-        self.status = status
-        # In worker mode, we only count warnings/errors but don't print to console
-        self._suppress_output = status._in_worker_mode
-
-    def emit(self, record: logging.LogRecord) -> None:
-        hashable = self._get_hashable(record)
-        if hashable and hashable in self._logged_exceptions:
-            return
-
-        try:
-            # Update progress bar counts
-            if record.levelno >= logging.ERROR:
-                self.status._error_count += 1
-            elif record.levelno >= logging.WARNING:
-                self.status._warning_count += 1
-            elif record.levelno == ALERT:
-                self.status._alert_count += 1
-            elif record.levelno >= logging.INFO:
-                self.status._info_count += 1
-
-            self.status.refresh()
-
-            # Write to SQLite database (always, regardless of console suppression)
-            # Base class handles this, but we call it explicitly here to ensure
-            # it happens before console output suppression
-            self._write_to_sqlite(record)
-
-            # Console output handling
-            if self._suppress_output:
-                # In worker mode, only print errors to console
-                if record.levelno >= logging.ERROR:
-                    super().emit(record)
-                return
-
-            if record.levelno == ALERT:
-                self.status.alert(record.getMessage())
-            elif record.levelno >= logging.ERROR:
-                super().emit(record)
-
-        except Exception:
-            self.handleError(record)
-        finally:
-            if hashable:
-                self._logged_exceptions.add(hashable)
-
-
-class CaptureLogHandler(LogHandler):
-    def __init__(self, status: "LoggingStage", console: Console, *args, **kwargs):
-        super().__init__(*args, console=console, **kwargs)
-        self.status = status
-
-    def emit(self, record: logging.LogRecord) -> None:
-        hashable = self._get_hashable(record)
-        if hashable and hashable in self._logged_exceptions:
-            return
-
-        try:
-            super().emit(record)
-        except Exception:
-            self.handleError(record)
-        finally:
-            if hashable:
-                self._logged_exceptions.add(hashable)
-
-
-# =============================================================================
-# LoggingStage - Build stage context manager
-# =============================================================================
-
-
-class LoggingStage(Advancable):
-    # Timing file name constant
-    TIMING_FILE = "stage_timings.json"
-
-    def __init__(
-        self, name: str, description: str, steps: int | None = None, indent: int = 20
-    ):
-        self.name = name
-        self.description = description
-        self.indent = indent
-        self.steps = steps
-        self._console = error_console
-        self._info_count = 0
-        self._warning_count = 0
-        self._error_count = 0
-        self._alert_count = 0
-        self._info_log_path = None
-        self._log_handler = None
-        self._capture_log_handler = None
-        self._original_handlers: dict = {}
-        self._sanitized_name = pathvalidate.sanitize_filename(self.name)
-        self._result = None
-        self._stage_start_time: float = 0.0
-        self._original_level = logging.INFO
-
-        # Worker subprocesses are identified by IPC env vars set by the parent.
-        self._in_worker_mode = bool(os.environ.get("ATO_BUILD_EVENT_FD"))
-
-        # Only create progress bar for non-worker (single-process) runs
-        if not self._in_worker_mode:
-            self._progress: IndentedProgress | None = IndentedProgress(
-                *self._get_columns(),
-                console=self._console,
-                transient=False,
-                auto_refresh=True,
-                refresh_per_second=10,
-                indent=self.indent,
-                expand=True,
-            )
-        else:
-            self._progress = None
-
-    def _get_columns(self) -> tuple[ProgressColumn, ...]:
-        show_log_file_path = (
-            self._info_log_path and self._console.width >= _SHOW_LOG_FILE_PATH_THRESHOLD
-        )
-
-        indicator_col = CompletableSpinnerColumn()
-        self._indicator_col = indicator_col
-
-        return tuple(
-            col
-            for col in (
-                indicator_col,
-                TextColumn("{task.description}"),
-                StyledMofNCompleteColumn() if self.steps is not None else None,
-                ShortTimeElapsedColumn(),
-                SpacerColumn(),
-                TextColumn(
-                    f"[dim]{self._info_log_path}[/dim]" if show_log_file_path else "",
-                    justify="right",
-                    table_column=Column(justify="right", overflow="ellipsis"),
-                ),
-            )
-            if col is not None
-        )
-
-    def _update_columns(self) -> None:
-        if self._progress is not None:
-            self._progress.columns = self._get_columns()
-
-    def alert(self, message: str) -> None:
-        # In worker mode, alerts are suppressed (logged to file only)
-        if self._in_worker_mode:
-            return
-
-        message = f"[bold][yellow]![/yellow] {message}[/bold]"
-
-        self._console.print(
-            Padding(Text.from_markup(message), pad=(0, 0, 0, self.indent)),
-            highlight=True,
-        )
-
-    def _generate_description(self) -> str:
-        problems = []
-        if self._error_count > 0:
-            plural_e = "s" if self._error_count > 1 else ""
-            problems.append(f"[red]{self._error_count} error{plural_e}[/red]")
-
-        if self._warning_count > 0:
-            plural_w = "s" if self._warning_count > 1 else ""
-            problems.append(f"[yellow]{self._warning_count} warning{plural_w}[/yellow]")
-
-        problems_text = f" ({', '.join(problems)})" if problems else ""
-        return f"{self.description}{problems_text}"
-
-    def refresh(self) -> None:
-        if self._in_worker_mode:
-            return  # No progress bar to refresh
-
-        if not hasattr(self, "_task_id"):
-            return
-
-        if self._progress is not None:
-            self._progress.update(
-                self._task_id, description=self._generate_description()
-            )
-
-    def set_total(self, total: int | None) -> None:
-        self.steps = total
-        self._current_progress = 0
-
-        # Write progress to IPC if in worker mode
-        self._emit_status_event()
-
-        if self._in_worker_mode:
-            # In worker mode, don't update progress bar
-            return
-
-        self._update_columns()
-        if self._progress is not None:
-            self._progress.update(self._task_id, total=total)
-        self.refresh()
-
-    def advance(self, advance: int = 1) -> None:
-        self._current_progress = getattr(self, "_current_progress", 0) + advance
-
-        # Write progress to IPC if in worker mode
-        self._emit_status_event()
-
-        if self._in_worker_mode:
-            return  # Progress tracking handled differently
-        assert self.steps is not None
-        if self._progress is not None:
-            self._progress.advance(self._task_id, advance)
-
-    def _emit_status_event(self) -> None:
-        """Emit current stage and progress over IPC."""
-        event_fd = os.environ.get("ATO_BUILD_EVENT_FD")
-        if not event_fd:
-            return
-
-        try:
-            fd = int(event_fd)
-        except ValueError:
-            return
-
-        try:
-            progress = getattr(self, "_current_progress", 0)
-            total = self.steps
-            BuildLogger._emit_event(
-                fd,
-                StageStatusEvent(
-                    name=self.name,
-                    description=self.description,
-                    progress=progress,
-                    total=total,
-                ),
-            )
-        except Exception:
-            pass  # Don't fail if we can't write status
-
-    def __enter__(self) -> "LoggingStage":
-        self._setup_logging()
-        self._current_progress = 0
-        self._stage_start_time = time.time()
-
-        # Write status to IPC if in worker mode (subprocess parallelism)
-        self._emit_status_event()
-
-        if self._in_worker_mode:
-            # Worker mode: no progress bar, just track internally
-            pass  # Start time already set above
-        else:
-            self._update_columns()
-            if self._progress is not None:
-                self._progress.start()
-                self._task_id = self._progress.add_task(
-                    self.description, total=self.steps if self.steps is not None else 1
-                )
-
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        elapsed = time.time() - getattr(self, "_stage_start_time", time.time())
-        if exc_type is not None:
-            try:
-                from atopile.exceptions import iter_leaf_exceptions
-
-                if isinstance(exc_val, BaseExceptionGroup):
-                    for leaf in iter_leaf_exceptions(exc_val):
-                        # Use unified message extraction
-                        msg = BaseLogger.get_exception_display_message(leaf)
-                        # Pass exc_info so LogHandler can render rich source chunks
-                        logger.error(
-                            msg or "Build step failed",
-                            exc_info=(type(leaf), leaf, leaf.__traceback__),
-                        )
-                else:
-                    # Use unified message extraction
-                    msg = BaseLogger.get_exception_display_message(exc_val)
-                    logger.error(
-                        msg or "Build step failed",
-                        exc_info=(type(exc_val), exc_val, exc_val.__traceback__),
-                    )
-            except Exception:
-                msg = str(exc_val) if exc_val is not None else "Build step failed"
-                logger.error(
-                    msg or "Build step failed",
-                    exc_info=(type(exc_val), exc_val, exc_val.__traceback__)
-                    if exc_val is not None
-                    else None,
-                )
-
-        if exc_type is not None or self._error_count > 0:
-            status = CompletableSpinnerColumn.Status.FAILURE
-        elif self._warning_count > 0:
-            status = CompletableSpinnerColumn.Status.WARNING
-        else:
-            status = CompletableSpinnerColumn.Status.SUCCESS
-
-        self._restore_logging()
-        self._emit_stage_event(elapsed, status)
-
-        if self._in_worker_mode:
-            # Worker mode: no display updates (handled by parent process)
-            pass
-        else:
-            # Normal mode: update progress bar
-            if self._progress is not None:
-                for column in self._progress.columns:
-                    if isinstance(column, CompletableSpinnerColumn):
-                        column.complete(status)
-
-                self.refresh()
-                self._progress.stop()
-
-    def _emit_stage_event(
-        self, elapsed: float, status: CompletableSpinnerColumn.Status
-    ) -> None:
-        """
-        Emit stage completion event to pipe for parent process.
-
-        The parent process reads these events to build stage history,
-        which is later written to JSON at build completion.
-        """
-        event_fd = os.environ.get("ATO_BUILD_EVENT_FD")
-        if not event_fd:
-            return
-        try:
-            fd = int(event_fd)
-        except ValueError:
-            return
-        try:
-            if status == CompletableSpinnerColumn.Status.FAILURE:
-                status_text = "failed"
-            elif status == CompletableSpinnerColumn.Status.WARNING:
-                status_text = "warning"
-            else:
-                status_text = "success"
-            BuildLogger._emit_event(
-                fd,
-                StageCompleteEvent(
-                    duration=elapsed,
-                    status=status_text,
-                    infos=self._info_count,
-                    warnings=self._warning_count,
-                    errors=self._error_count,
-                    alerts=self._alert_count,
-                    log_name=self.name,
-                    description=self.description,
-                ),
-            )
-        except Exception:
-            pass
-
-    def _setup_logging(self) -> None:
-        root_logger = logging.getLogger()
-
-        self._original_level = root_logger.level
-        self._original_handlers = {"root": root_logger.handlers.copy()}
-
-        # log all messages to at least one handler
-        root_logger.setLevel(logging.DEBUG)
-
-        # Use unified setup_logging function
-        build_logger = BuildLogger.setup_logging(
-            enable_database=True,
-            stage=self.name,
-            use_live_handler=True,
-            status=self,
-        )
-
-        if build_logger:
-            self._build_id = build_logger.build_id
-            logger.debug(
-                f"Logs build_id: {self._build_id} (stage={self.name}, ts={NOW})"
-            )
-
-        # Store handlers for cleanup
-        self._log_handler = None
-        self._capture_log_handler = None
-        for handler in root_logger.handlers:
-            if isinstance(handler, LiveLogHandler):
-                self._log_handler = handler
-            elif isinstance(handler, CaptureLogHandler):
-                self._capture_log_handler = handler
-
-        # Show central log database path for info
-        log_file = BuildLogger.get_log_db()
-        try:
-            self._info_log_path = log_file.relative_to(Path.cwd())
-        except ValueError:
-            self._info_log_path = log_file
-
-    def _restore_logging(self) -> None:
-        if not self._log_handler:
-            return
-
-        root_logger = logging.getLogger()
-        root_logger.setLevel(self._original_level)
-
-        if self._log_handler in root_logger.handlers:
-            root_logger.removeHandler(self._log_handler)
-
-        if self._capture_log_handler in root_logger.handlers:
-            root_logger.removeHandler(self._capture_log_handler)
-
-        for handler in root_logger.handlers.copy():
-            root_logger.removeHandler(handler)
-
-        for handler in self._original_handlers.get("root", []):
-            root_logger.addHandler(handler)
-
-        self._original_handlers = {}
-        self._original_level = logging.INFO
-        self._log_handler = None
-        self._capture_log_handler = None
 
 # =============================================================================
 # Module-level initialization
