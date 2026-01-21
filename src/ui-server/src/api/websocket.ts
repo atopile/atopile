@@ -8,11 +8,49 @@
 import { useStore } from '../store';
 import type { AppState } from '../types/build';
 
+// Extended Window type for atopile globals injected by VS Code extension
+interface AtopileWindow extends Window {
+  __ATOPILE_API_URL__?: string;
+  __ATOPILE_WS_URL__?: string;
+  __ATOPILE_WORKSPACE_FOLDERS__?: string[];
+}
+
+const win = (typeof window !== 'undefined' ? window : {}) as AtopileWindow;
+
 // WebSocket URL - configurable for development or injected by extension
 const WS_URL =
-  (typeof window !== 'undefined' && window.__ATOPILE_WS_URL__) ||
+  win.__ATOPILE_WS_URL__ ||
   import.meta.env.VITE_WS_URL ||
   'ws://localhost:8501/ws/state';
+
+// Workspace folders - check multiple sources:
+// 1. Injected by VS Code extension (production mode)
+// 2. URL query param (dev mode with iframe)
+// 3. Empty array (standalone browser)
+const getWorkspaceFolders = (): string[] => {
+  if (typeof window === 'undefined') return [];
+
+  // Check window variable first (production VS Code)
+  if (win.__ATOPILE_WORKSPACE_FOLDERS__) {
+    return win.__ATOPILE_WORKSPACE_FOLDERS__;
+  }
+
+  // Check URL query param (dev mode iframe)
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const workspaceParam = params.get('workspace');
+    if (workspaceParam) {
+      const folders = JSON.parse(decodeURIComponent(workspaceParam));
+      if (Array.isArray(folders)) {
+        return folders;
+      }
+    }
+  } catch (e) {
+    console.warn('[WS] Failed to parse workspace folders from URL:', e);
+  }
+
+  return [];
+};
 
 // Reconnection settings
 const RECONNECT_DELAY_MS = 1000;
@@ -163,6 +201,13 @@ function handleOpen(): void {
   console.log('[WS] Connected');
   reconnectAttempts = 0;
   useStore.getState().setConnected(true);
+
+  // Send workspace folders to backend if provided by VS Code extension
+  const workspaceFolders = getWorkspaceFolders();
+  if (workspaceFolders.length > 0) {
+    console.log('[WS] Sending workspace folders:', workspaceFolders);
+    sendAction('setWorkspaceFolders', { folders: workspaceFolders });
+  }
 }
 
 function handleMessage(event: MessageEvent): void {

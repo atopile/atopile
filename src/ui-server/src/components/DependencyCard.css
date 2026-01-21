@@ -157,6 +157,15 @@
   color: var(--ctp-peach);
 }
 
+/* Read-only version display */
+.dependency-version-display {
+  font-size: var(--font-size-xs);
+  padding: 2px 6px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
 .dependency-remove-btn {
   display: flex;
   align-items: center;

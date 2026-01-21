@@ -15,7 +15,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from atopile.server import build_history
 from atopile.server.domains import artifacts as artifacts_domain
@@ -23,16 +23,6 @@ from atopile.server import problem_parser
 from atopile.server.state import server_state
 
 log = logging.getLogger(__name__)
-
-BroadcastFn = Callable[[str, str, dict], None]
-_broadcast_sync: BroadcastFn | None = None
-
-
-def set_broadcast_sync(callback: BroadcastFn | None) -> None:
-    """Set the broadcast callback used by build events."""
-    global _broadcast_sync
-    _broadcast_sync = callback
-
 
 # Track active builds
 _active_builds: dict[str, dict[str, Any]] = {}
@@ -566,19 +556,6 @@ class BuildQueue:
                             building_started_at
                         )
 
-                if _broadcast_sync:
-                    _broadcast_sync(
-                        "builds",
-                        "build:started",
-                        {
-                            "build_id": build_id,
-                            "project_root": msg.get("project_root"),
-                            "targets": msg.get("targets"),
-                            "status": "building",
-                            "building_started_at": building_started_at,
-                        },
-                    )
-
                 # Sync to server_state for /ws/state clients
                 _sync_builds_to_state()
 
@@ -587,13 +564,6 @@ class BuildQueue:
                 with _build_lock:
                     if build_id in _active_builds:
                         _active_builds[build_id]["stages"] = stages
-
-                if _broadcast_sync:
-                    _broadcast_sync(
-                        "builds",
-                        "build:stage",
-                        {"build_id": build_id, "stages": stages},
-                    )
 
                 # Sync to server_state for /ws/state clients
                 _sync_builds_to_state()
@@ -632,20 +602,6 @@ class BuildQueue:
                 with self._cancel_lock:
                     self._cancel_flags.pop(build_id, None)
 
-                if _broadcast_sync:
-                    _broadcast_sync(
-                        "builds",
-                        "build:completed",
-                        {
-                            "build_id": build_id,
-                            "status": status,
-                            "return_code": return_code,
-                            "error": error,
-                            "stages": stages,
-                            "duration": duration,
-                        },
-                    )
-
                 # Sync to server_state for /ws/state clients
                 _sync_builds_to_state()
 
@@ -677,13 +633,6 @@ class BuildQueue:
 
                 with self._cancel_lock:
                     self._cancel_flags.pop(build_id, None)
-
-                if _broadcast_sync:
-                    _broadcast_sync(
-                        "builds",
-                        "build:cancelled",
-                        {"build_id": build_id},
-                    )
 
                 # Sync to server_state for /ws/state clients
                 _sync_builds_to_state()
@@ -1024,15 +973,6 @@ def cancel_build(build_id: str) -> bool:
     # Signal the BuildQueue to cancel the build
     result = _build_queue.cancel(build_id)
 
-    # If it was pending (not yet started), we need to broadcast cancellation
-    # (active builds will broadcast when the worker detects the cancel flag)
-    if result.get("was_pending") and _broadcast_sync:
-        _broadcast_sync(
-            "builds",
-            "build:cancelled",
-            {"build_id": build_id},
-        )
-
     log.info(f"Build {build_id} cancelled")
     return True
 
@@ -1050,5 +990,4 @@ __all__ = [
     "_sync_builds_to_state_async",
     "BuildQueue",
     "cancel_build",
-    "set_broadcast_sync",
 ]

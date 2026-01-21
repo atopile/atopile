@@ -184,17 +184,18 @@ export function Sidebar() {
       };
       if (!detail?.sectionId || !detail?.type) return;
 
+      const sectionId = detail.sectionId as string;
       setCollapsedSections((prev) => {
         const next = new Set(prev);
         if (detail.type === 'openSection') {
-          next.delete(detail.sectionId);
+          next.delete(sectionId);
         } else if (detail.type === 'closeSection') {
-          next.add(detail.sectionId);
+          next.add(sectionId);
         } else if (detail.type === 'toggleSection') {
-          if (next.has(detail.sectionId)) {
-            next.delete(detail.sectionId);
+          if (next.has(sectionId)) {
+            next.delete(sectionId);
           } else {
-            next.add(detail.sectionId);
+            next.add(sectionId);
           }
         }
         return next;

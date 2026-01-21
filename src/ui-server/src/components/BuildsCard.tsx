@@ -25,6 +25,8 @@ interface BuildsCardProps {
   onOpen3D?: (projectId: string, buildId: string) => void;
   onAddBuild?: (projectId: string) => void;
   availableModules?: ModuleDefinition[];
+  // Read-only mode for packages: hides build/delete buttons, status badges, add build
+  readOnly?: boolean;
 }
 
 export function BuildsCard({
@@ -42,13 +44,21 @@ export function BuildsCard({
   onOpenLayout,
   onOpen3D,
   onAddBuild,
-  availableModules = []
+  availableModules = [],
+  readOnly = false
 }: BuildsCardProps) {
   const [expanded, setExpanded] = useState(true); // Default expanded since builds are primary
 
   const buildingCount = builds.filter(b => b.status === 'building').length;
+  const queuedCount = builds.filter(b => b.status === 'queued').length;
   const errorCount = builds.filter(b => b.status === 'error').length;
+  const warningCount = builds.filter(b => b.status === 'warning').length;
   const successCount = builds.filter(b => b.status === 'success').length;
+  const idleCount = builds.filter(b => b.status === 'idle').length;
+
+  // Show status breakdown instead of total count (only in non-readOnly mode)
+  const hasStatusBadges = !readOnly && (buildingCount > 0 || queuedCount > 0 || errorCount > 0 ||
+                          warningCount > 0 || successCount > 0);
 
   return (
     <div className="builds-card" onClick={(e) => e.stopPropagation()}>
@@ -69,23 +79,43 @@ export function BuildsCard({
         <span className="builds-card-title">
           Builds
         </span>
-        <span className="builds-count">{builds.length}</span>
 
-        {/* Status indicators */}
-        {buildingCount > 0 && (
-          <span className="builds-status-badge building" title={`${buildingCount} building`}>
-            {buildingCount}
-          </span>
-        )}
-        {errorCount > 0 && (
-          <span className="builds-status-badge error" title={`${errorCount} failed`}>
-            {errorCount}
-          </span>
-        )}
-        {successCount > 0 && errorCount === 0 && buildingCount === 0 && (
-          <span className="builds-status-badge success" title={`${successCount} passed`}>
-            {successCount}
-          </span>
+        {/* In readOnly mode, just show count; otherwise show status breakdown */}
+        {readOnly ? (
+          <span className="builds-count">{builds.length}</span>
+        ) : (
+          <>
+            {/* Status breakdown badges - show each non-zero status */}
+            {buildingCount > 0 && (
+              <span className="builds-status-badge building" title={`${buildingCount} building`}>
+                {buildingCount}
+              </span>
+            )}
+            {queuedCount > 0 && (
+              <span className="builds-status-badge queued" title={`${queuedCount} queued`}>
+                {queuedCount}
+              </span>
+            )}
+            {errorCount > 0 && (
+              <span className="builds-status-badge error" title={`${errorCount} failed`}>
+                {errorCount}
+              </span>
+            )}
+            {warningCount > 0 && (
+              <span className="builds-status-badge warning" title={`${warningCount} warnings`}>
+                {warningCount}
+              </span>
+            )}
+            {successCount > 0 && (
+              <span className="builds-status-badge success" title={`${successCount} passed`}>
+                {successCount}
+              </span>
+            )}
+            {/* Only show grey count if all builds are idle (no status yet) */}
+            {!hasStatusBadges && idleCount > 0 && (
+              <span className="builds-count">{idleCount}</span>
+            )}
+          </>
         )}
       </div>
 
@@ -108,21 +138,24 @@ export function BuildsCard({
               onOpenLayout={onOpenLayout}
               onOpen3D={onOpen3D}
               availableModules={availableModules}
+              readOnly={readOnly}
             />
           ))}
 
-          {/* Add new build button */}
-          <button
-            className="add-build-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAddBuild?.(projectId);
-            }}
-            title="Add new build target"
-          >
-            <Plus size={12} />
-            <span>Add build</span>
-          </button>
+          {/* Add new build button - only in edit mode */}
+          {!readOnly && (
+            <button
+              className="add-build-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddBuild?.(projectId);
+              }}
+              title="Add new build target"
+            >
+              <Plus size={12} />
+              <span>Add build</span>
+            </button>
+          )}
         </div>
       )}
     </div>

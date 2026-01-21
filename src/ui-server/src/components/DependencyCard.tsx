@@ -22,18 +22,20 @@ interface DependencyItemProps {
   availableVersions?: string[];
   onVersionChange?: (identifier: string, newVersion: string) => void;
   onRemove?: (identifier: string) => void;
+  readOnly?: boolean;
 }
 
 function DependencyItem({
   dependency,
   availableVersions = [],
   onVersionChange,
-  onRemove
+  onRemove,
+  readOnly = false
 }: DependencyItemProps) {
   const [selectedVersion, setSelectedVersion] = useState(dependency.version);
   const [isRemoving, setIsRemoving] = useState(false);
-  const hasUpdate = dependency.hasUpdate ||
-    (dependency.latestVersion && dependency.version !== dependency.latestVersion);
+  const hasUpdate = !readOnly && (dependency.hasUpdate ||
+    (dependency.latestVersion && dependency.version !== dependency.latestVersion));
 
   // Build versions list
   const versions = availableVersions.length > 0
@@ -60,39 +62,47 @@ function DependencyItem({
       </div>
 
       <div className="dependency-actions">
-        {/* Version selector */}
-        <select
-          className={`dependency-version-select ${hasUpdate ? 'update-available' : ''}`}
-          value={selectedVersion}
-          onChange={(e) => {
-            e.stopPropagation();
-            handleVersionChange(e.target.value);
-          }}
-          onClick={(e) => e.stopPropagation()}
-          title={hasUpdate ? `Update available: ${dependency.latestVersion}` : `Version ${dependency.version}`}
-        >
-          {versions.map((v, idx) => (
-            <option key={v} value={v}>
-              {v}{idx === 0 && hasUpdate && v === dependency.latestVersion ? ' (latest)' : ''}
-            </option>
-          ))}
-        </select>
+        {/* Version display/selector */}
+        {readOnly ? (
+          <span className="dependency-version-display" title={`Version ${dependency.version}`}>
+            {dependency.version}
+          </span>
+        ) : (
+          <select
+            className={`dependency-version-select ${hasUpdate ? 'update-available' : ''}`}
+            value={selectedVersion}
+            onChange={(e) => {
+              e.stopPropagation();
+              handleVersionChange(e.target.value);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            title={hasUpdate ? `Update available: ${dependency.latestVersion}` : `Version ${dependency.version}`}
+          >
+            {versions.map((v, idx) => (
+              <option key={v} value={v}>
+                {v}{idx === 0 && hasUpdate && v === dependency.latestVersion ? ' (latest)' : ''}
+              </option>
+            ))}
+          </select>
+        )}
 
-        {/* Remove button */}
-        <button
-          className={`dependency-remove-btn ${isRemoving ? 'removing' : ''}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (!isRemoving) {
-              setIsRemoving(true);
-              onRemove?.(dependency.identifier);
-            }
-          }}
-          disabled={isRemoving}
-          title={isRemoving ? 'Removing...' : `Remove ${dependency.name}`}
-        >
-          {isRemoving ? <Loader2 size={12} className="spin" /> : <X size={12} />}
-        </button>
+        {/* Remove button - only in edit mode */}
+        {!readOnly && (
+          <button
+            className={`dependency-remove-btn ${isRemoving ? 'removing' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!isRemoving) {
+                setIsRemoving(true);
+                onRemove?.(dependency.identifier);
+              }
+            }}
+            disabled={isRemoving}
+            title={isRemoving ? 'Removing...' : `Remove ${dependency.name}`}
+          >
+            {isRemoving ? <Loader2 size={12} className="spin" /> : <X size={12} />}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -103,13 +113,16 @@ interface DependencyCardProps {
   projectId: string;
   onVersionChange?: (projectId: string, identifier: string, newVersion: string) => void;
   onRemove?: (projectId: string, identifier: string) => void;
+  // Read-only mode for packages: hides version selector and remove button
+  readOnly?: boolean;
 }
 
 export function DependencyCard({
   dependencies,
   projectId,
   onVersionChange,
-  onRemove
+  onRemove,
+  readOnly = false
 }: DependencyCardProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -147,6 +160,7 @@ export function DependencyCard({
               dependency={dep}
               onVersionChange={(id, v) => onVersionChange?.(projectId, id, v)}
               onRemove={(id) => onRemove?.(projectId, id)}
+              readOnly={readOnly}
             />
           ))}
         </div>

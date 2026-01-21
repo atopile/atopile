@@ -120,6 +120,9 @@ class Build(BaseModel):
 
     # Stages and logs
     stages: Optional[list[BuildStage]] = None
+    # TODO: Replace this estimate once builds are defined in the graph
+    # This is the expected total number of stages for progress calculation
+    total_stages: int = 20  # Estimated total stages for progress bar
     log_dir: Optional[str] = None
     log_file: Optional[str] = None
 
@@ -902,6 +905,61 @@ class ServerState:
         self._state.log_has_more = has_more
         await self.broadcast_state()
 
+    async def set_workspace_folders(self, folders: list[str]) -> None:
+        """
+        Update workspace paths from VS Code and re-discover projects.
+
+        This is called when the frontend connects and sends workspace folders
+        from the VS Code extension.
+        """
+        from atopile.server.core import projects as core_projects
+
+        new_paths = [Path(f) for f in folders if f]
+        if not new_paths:
+            log.info("No workspace folders provided, keeping existing paths")
+            return
+
+        # Check if paths actually changed
+        old_paths_set = set(str(p) for p in self._workspace_paths)
+        new_paths_set = set(str(p) for p in new_paths)
+
+        if old_paths_set == new_paths_set:
+            log.debug("Workspace paths unchanged, skipping re-discovery")
+            return
+
+        log.info(f"Updating workspace paths: {[str(p) for p in new_paths]}")
+        self._workspace_paths = new_paths
+
+        # Re-discover projects with new paths
+        try:
+            self._state.is_loading_projects = True
+            await self.broadcast_state()
+
+            projects = core_projects.discover_projects_in_paths(new_paths)
+            state_projects = [
+                Project(
+                    root=str(p.root),
+                    name=p.name,
+                    targets=[
+                        BuildTarget(name=t.name, entry=t.entry, root=t.root)
+                        for t in p.targets
+                    ],
+                )
+                for p in projects
+            ]
+
+            self._state.projects = state_projects
+            self._state.is_loading_projects = False
+            self._state.projects_error = None
+            log.info(f"Discovered {len(state_projects)} projects from workspace folders")
+            await self.broadcast_state()
+
+        except Exception as e:
+            log.error(f"Failed to discover projects: {e}")
+            self._state.is_loading_projects = False
+            self._state.projects_error = str(e)
+            await self.broadcast_state()
+
     # --- Action Handlers ---
 
     async def handle_action(self, action: str, payload: dict) -> dict:
@@ -982,6 +1040,11 @@ class ServerState:
                     "success": False,
                     "error": "browseAtopilePath is not supported in the UI server",
                 }
+
+            elif action == "setWorkspaceFolders":
+                folders = payload.get("folders", [])
+                await self.set_workspace_folders(folders)
+                return {"success": True}
 
             else:
                 log.warning(f"Unknown action: {action}")

@@ -2,7 +2,7 @@
  * ProjectNode component - displays a local project in the sidebar.
  * Includes editable name/description, build targets, files, and dependencies.
  */
-import { useState, memo } from 'react'
+import { useState, useEffect, memo } from 'react'
 import {
   ChevronDown, ChevronRight, Play, Layers, Check,
   AlertCircle, AlertTriangle, Square
@@ -88,6 +88,42 @@ export const ProjectNode = memo(function ProjectNode({
   const isBuilding = project.builds.some(b => b.status === 'building')
   const successCount = project.builds.filter(b => b.status === 'success').length
 
+  // Get the maximum elapsed time from all building builds
+  const buildingBuilds = project.builds.filter(b => b.status === 'building')
+  const maxElapsedFromBuilds = buildingBuilds.length > 0
+    ? Math.max(...buildingBuilds.map(b => b.elapsedSeconds || 0))
+    : 0
+
+  // Live timer for building state
+  const [displayElapsed, setDisplayElapsed] = useState(maxElapsedFromBuilds)
+
+  useEffect(() => {
+    if (!isBuilding) {
+      setDisplayElapsed(0)
+      return
+    }
+
+    // Initialize with current elapsed time from builds
+    setDisplayElapsed(maxElapsedFromBuilds)
+
+    // Update every second
+    const interval = setInterval(() => {
+      setDisplayElapsed(prev => prev + 1)
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [isBuilding, maxElapsedFromBuilds])
+
+  // Format elapsed time as mm:ss or hh:mm:ss
+  const formatBuildTime = (seconds: number): string => {
+    const hrs = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    const secs = Math.floor(seconds % 60)
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
 
   const defaultDescription = "A new atopile project!"
   const displayDescription = description || defaultDescription
@@ -168,6 +204,12 @@ export const ProjectNode = memo(function ProjectNode({
         <div className="project-card-actions-row">
           {/* Indicators wrapper - slides left on hover to make room for play button */}
           <div className="project-indicators">
+            {/* Show build time when building */}
+            {isBuilding && (
+              <span className="build-time-indicator" title="Build time">
+                <span className="build-time">{formatBuildTime(displayElapsed)}</span>
+              </span>
+            )}
             {/* Show errors/warnings/last build when not building (stop button handles building state) */}
             {!isBuilding && (
               <>

@@ -1,20 +1,363 @@
 /**
- * PackageCard styles
- * Note: Most styles are currently in the main styles.css file.
- * This file can be used for component-specific overrides.
+ * PackageCard styles - Clean, consistent design
  */
 
-/* Styles inherited from styles.css:
- * .package-card, .package-card-name-row, .package-name
- * .package-icon, .warn-badge
- * .package-card-description, .clamped
- * .package-actions-bar, .package-version-select
- * .package-publisher-badge, .package-downloads
- * .package-link-btn, .package-install-wrapper
- * .package-stats-bar, .package-stat, .package-stat-links
- * .package-card-builds
- * .install-dropdown, .install-btn, .install-dropdown-toggle
- * .install-dropdown-menu, .dropdown-header, .dropdown-search
- * .dropdown-items, .dropdown-item, .dropdown-empty
- * .status-badge, .selected-check
- */
+.package-card {
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  margin: var(--spacing-xs) 0;
+}
+
+.package-card:hover {
+  border-color: var(--border-default);
+  background: var(--bg-hover);
+}
+
+.package-card.selected {
+  border-color: var(--ctp-blue);
+  background: rgba(137, 180, 250, 0.08);
+}
+
+.package-card.expanded {
+  background: var(--bg-primary);
+}
+
+/* Row 1: Header - name + publisher badge */
+.package-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.package-card-header .tree-expand {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.package-card-header .package-icon {
+  color: var(--ato-orange);
+  flex-shrink: 0;
+}
+
+.package-card-header .package-name {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Publisher badge */
+.package-publisher-badge {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.package-publisher-badge.official {
+  color: var(--ato-orange);
+  background: rgba(255, 160, 60, 0.12);
+}
+
+.package-publisher-badge.community {
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+}
+
+/* Row 2: Description */
+.package-card-description {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  margin-top: var(--spacing-xs);
+  line-height: 1.4;
+}
+
+.package-card-description.clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Row 3: Links bar */
+.package-links-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-xs) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.package-link-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.package-link-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.package-downloads {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  padding: 0 var(--spacing-xs);
+}
+
+.package-downloads svg {
+  opacity: 0.7;
+}
+
+.package-links-spacer {
+  flex: 1;
+}
+
+/* Row 4: Install bar */
+.package-install-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: var(--spacing-sm);
+}
+
+/* Shared styles for all install bar elements */
+.package-install-bar .project-selector-btn,
+.package-install-bar .version-select,
+.package-install-bar .install-btn {
+  height: 26px;
+  font-size: 11px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.package-install-bar .project-selector-btn:hover,
+.package-install-bar .version-select:hover,
+.package-install-bar .install-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-default);
+}
+
+/* Project selector - takes available space */
+.project-selector {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.project-selector-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  width: 100%;
+}
+
+.project-selector-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  text-align: left;
+}
+
+/* Version selector */
+.version-select {
+  padding: 0 6px;
+  min-width: 90px;
+  flex-shrink: 0;
+}
+
+.version-select:focus {
+  outline: none;
+  border-color: var(--ctp-blue);
+}
+
+/* Install button */
+.package-install-bar .install-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 10px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.package-install-bar .install-btn.installed {
+  color: var(--ctp-green);
+  background: rgba(166, 227, 161, 0.1);
+  border-color: rgba(166, 227, 161, 0.3);
+}
+
+.package-install-bar .install-btn.update-available {
+  color: var(--ctp-peach);
+  background: rgba(250, 179, 135, 0.1);
+  border-color: rgba(250, 179, 135, 0.3);
+}
+
+.package-install-bar .install-btn.update-available:hover {
+  background: rgba(250, 179, 135, 0.2);
+}
+
+.project-selector-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 180px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+/* Dropdown styles (shared) */
+.dropdown-header {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+
+.dropdown-search {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+
+.dropdown-search input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.dropdown-search svg {
+  color: var(--text-muted);
+}
+
+.dropdown-items {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  text-align: left;
+}
+
+.dropdown-item:hover {
+  background: var(--bg-hover);
+}
+
+.dropdown-item.selected {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.dropdown-item svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.dropdown-item .selected-check {
+  margin-left: auto;
+  color: var(--ctp-green);
+}
+
+.dropdown-empty {
+  padding: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Expanded content */
+.package-expanded-content {
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Loading state */
+.package-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.package-loading .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Error state */
+.package-error {
+  padding: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--ctp-red);
+  background: rgba(243, 139, 168, 0.1);
+  border-radius: var(--radius-sm);
+  margin-top: var(--spacing-sm);
+}
+
+/* Z-index handling for dropdowns */
+.package-card:has(.project-selector-menu) {
+  z-index: 100;
+}
+
+.project-selector:has(.project-selector-menu) {
+  z-index: 1000;
+}

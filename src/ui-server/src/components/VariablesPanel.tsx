@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, memo } from 'react'
 import {
   ChevronDown, ChevronRight, Search, Box, Zap,
   Hash, Percent, CircuitBoard, RefreshCw,
-  Check, AlertTriangle, Loader2, Play
+  Check, AlertTriangle, Loader2
 } from 'lucide-react'
 import type { Project } from '../types/build'
 import { api } from '../api/client'

@@ -78,9 +78,19 @@
   background: rgba(137, 180, 250, 0.15);
 }
 
+.builds-status-badge.queued {
+  color: var(--ctp-lavender);
+  background: rgba(180, 190, 254, 0.15);
+}
+
 .builds-status-badge.error {
   color: var(--ctp-red);
   background: rgba(243, 139, 168, 0.15);
+}
+
+.builds-status-badge.warning {
+  color: var(--ctp-yellow);
+  background: rgba(249, 226, 175, 0.15);
 }
 
 .builds-status-badge.success {

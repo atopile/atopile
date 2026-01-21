@@ -58,6 +58,8 @@ export interface BuildTarget {
   elapsedSeconds?: number;  // Time elapsed since build started
   currentStage?: string;  // Name of the currently running stage
   queuePosition?: number;  // Position in build queue (1-indexed)
+  // TODO: Replace this estimate once builds are defined in the graph
+  totalStages?: number;  // Expected total stages for progress (default: 14)
   // Persisted last build status
   lastBuild?: LastBuildStatus;
 }

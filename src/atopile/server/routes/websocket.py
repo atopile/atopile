@@ -2,12 +2,10 @@
 WebSocket routes for real-time updates.
 
 Endpoints:
-- WS /ws/events - Event streaming (logs, builds, etc.)
 - WS /ws/state - Full state synchronization
 """
 
 import logging
-from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -18,40 +16,11 @@ log = logging.getLogger(__name__)
 router = APIRouter(tags=["websocket"])
 
 
-def _get_ws_manager():
-    """Get the WebSocket manager from server module."""
-    from ..server import ws_manager
-
-    return ws_manager
-
-
 def _get_server_state():
     """Get the server state singleton."""
     from ..state import server_state
 
     return server_state
-
-
-@router.websocket("/ws/events")
-async def websocket_events(websocket: WebSocket):
-    """
-    WebSocket endpoint for real-time event streaming.
-
-    Clients can subscribe to channels (builds, logs, summary, problems)
-    and receive filtered updates in real-time.
-    """
-    ws_manager = _get_ws_manager()
-
-    await ws_manager.connect(websocket)
-    try:
-        while True:
-            data = await websocket.receive_json()
-            await ws_manager.handle_message(websocket, data)
-    except WebSocketDisconnect:
-        ws_manager.disconnect(websocket)
-    except Exception as e:
-        log.error(f"WebSocket error: {e}")
-        ws_manager.disconnect(websocket)
 
 
 @router.websocket("/ws/state")

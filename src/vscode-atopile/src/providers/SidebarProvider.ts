@@ -71,13 +71,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   /**
+   * Get workspace folder paths from VS Code.
+   */
+  private _getWorkspaceFolders(): string[] {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders) return [];
+    return folders.map(f => f.uri.fsPath);
+  }
+
+  /**
    * Development HTML - loads from Vite dev server.
    * The React app connects directly to the Python backend.
+   * Workspace folders are passed via URL query params since iframe can't access parent window.
    */
   private _getDevHtml(): string {
     const viteDevServer = 'http://localhost:5173';
     const backendUrl = 'http://localhost:8501';
     const wsUrl = 'ws://localhost:8501/ws/state';
+    const workspaceFolders = this._getWorkspaceFolders();
+
+    // Pass workspace folders as URL query param (base64 encoded to handle special chars)
+    const workspaceParam = workspaceFolders.length > 0
+      ? `?workspace=${encodeURIComponent(JSON.stringify(workspaceFolders))}`
+      : '';
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -121,7 +137,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 </head>
 <body>
   <div class="dev-banner">DEV MODE - Loading from Vite</div>
-  <iframe src="${viteDevServer}/sidebar.html"></iframe>
+  <iframe src="${viteDevServer}/sidebar.html${workspaceParam}"></iframe>
 </body>
 </html>`;
   }
@@ -156,6 +172,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const config = vscode.workspace.getConfiguration('atopile');
     const backendUrl = config.get<string>('dashboardApiUrl', 'http://localhost:8501');
     const wsUrl = backendUrl.replace('http', 'ws') + '/ws/state';
+    const workspaceFolders = this._getWorkspaceFolders();
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -177,6 +194,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // Inject backend URLs for the React app
     window.__ATOPILE_API_URL__ = '${backendUrl}';
     window.__ATOPILE_WS_URL__ = '${wsUrl}';
+    // Inject workspace folders for the React app
+    window.__ATOPILE_WORKSPACE_FOLDERS__ = ${JSON.stringify(workspaceFolders)};
   </script>
 </head>
 <body>

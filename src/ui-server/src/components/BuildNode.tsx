@@ -137,6 +137,8 @@ interface BuildNodeProps {
   onOpenLayout?: (projectId: string, buildId: string) => void;
   onOpen3D?: (projectId: string, buildId: string) => void;
   availableModules?: ModuleDefinition[];
+  // Read-only mode for packages: hides build/delete buttons, status icon, progress
+  readOnly?: boolean;
 }
 
 export const BuildNode = memo(function BuildNode({
@@ -153,7 +155,8 @@ export const BuildNode = memo(function BuildNode({
   onOpenKiCad,
   onOpenLayout,
   onOpen3D,
-  availableModules = []
+  availableModules = [],
+  readOnly = false
 }: BuildNodeProps) {
   const [showStages, setShowStages] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -188,59 +191,32 @@ export const BuildNode = memo(function BuildNode({
     return () => clearInterval(interval);
   }, [isBuilding, build.elapsedSeconds, build.duration]);
 
-  // Stage weights for progress calculation
-  const STAGE_WEIGHTS: Record<string, number> = {
-    'init': 1,
-    'modify-type-graph': 1,
-    'instantiate': 1,
-    'prepare-build': 1,
-    'verify-instance-graph': 1,
-    'modify-instance-graph': 1,
-    'verify-electrical-design': 1,
-    'load-pcb': 1,
-    'picker': 10,
-    'prepare-nets': 2,
-    'post-solve-checks': 1,
-    'update-pcb': 3,
-    'post-pcb-checks': 1,
-    'export': 2,
-  };
-  const DEFAULT_WEIGHT = 1;
-  const TOTAL_WEIGHT = Object.values(STAGE_WEIGHTS).reduce((a, b) => a + b, 0) + 5;
-
-  const getStageWeight = (stage: { stageId?: string; name?: string }) => {
-    const id = stage.stageId?.toLowerCase() || '';
-    const name = stage.name?.toLowerCase() || '';
-
-    for (const [key, weight] of Object.entries(STAGE_WEIGHTS)) {
-      if (id.includes(key) || name.includes(key)) {
-        return weight;
-      }
-    }
-    if (id.includes('pick') || name.includes('pick')) return STAGE_WEIGHTS['picker'];
-    return DEFAULT_WEIGHT;
-  };
+  // Progress calculation using totalStages from backend
+  // TODO: Replace this estimate once builds are defined in the graph
+  const ESTIMATED_TOTAL_STAGES = 20;  // Fallback if backend doesn't provide totalStages
 
   const getProgress = () => {
     if (!build.stages || build.stages.length === 0) return 0;
 
-    let completedWeight = 0;
-    let runningWeight = 0;
+    // Use backend-provided totalStages or fall back to estimate
+    const totalStages = build.totalStages || ESTIMATED_TOTAL_STAGES;
+
+    let completedCount = 0;
+    let runningCount = 0;
 
     for (const stage of build.stages) {
-      const weight = getStageWeight(stage);
       const isComplete = stage.status === 'success' || stage.status === 'warning' ||
                         stage.status === 'error' || stage.status === 'skipped';
       const isRunning = stage.status === 'running';
 
       if (isComplete) {
-        completedWeight += weight;
+        completedCount += 1;
       } else if (isRunning) {
-        runningWeight += weight * 0.3;
+        runningCount += 0.5;  // Running stage counts as half complete
       }
     }
 
-    const progress = ((completedWeight + runningWeight) / TOTAL_WEIGHT) * 100;
+    const progress = ((completedCount + runningCount) / totalStages) * 100;
     return Math.min(progress, 100);
   };
 
@@ -332,12 +308,19 @@ export const BuildNode = memo(function BuildNode({
         }}
       >
         <div className="build-header-left">
-          <div className="build-status-icon">
-            {getStatusIcon(build.status, 12, build.queuePosition)}
-          </div>
+          {/* Status icon - hide in readOnly mode, show simple bullet instead */}
+          {readOnly ? (
+            <div className="build-status-icon">
+              <Circle size={8} className="status-icon idle" />
+            </div>
+          ) : (
+            <div className="build-status-icon">
+              {getStatusIcon(build.status, 12, build.queuePosition)}
+            </div>
+          )}
 
-          {/* Editable build name */}
-          {isEditingName && isSelected ? (
+          {/* Editable build name - not editable in readOnly mode */}
+          {isEditingName && isSelected && !readOnly ? (
             <input
               type="text"
               className="build-name-input"
@@ -356,19 +339,19 @@ export const BuildNode = memo(function BuildNode({
             />
           ) : (
             <span
-              className={`build-card-name ${isSelected ? 'editable' : ''}`}
-              onClick={isSelected ? (e) => {
+              className={`build-card-name ${isSelected && !readOnly ? 'editable' : ''}`}
+              onClick={isSelected && !readOnly ? (e) => {
                 e.stopPropagation();
                 setIsEditingName(true);
               } : undefined}
-              title={isSelected ? "Click to edit build name" : undefined}
+              title={isSelected && !readOnly ? "Click to edit build name" : undefined}
             >
               {buildName}
             </span>
           )}
 
-          {/* Current stage shown inline during building */}
-          {isBuilding && currentStage && (
+          {/* Current stage shown inline during building - hide in readOnly */}
+          {!readOnly && isBuilding && currentStage && (
             <span className={`build-inline-stage ${stageAnimating ? 'animating' : ''}`}>
               {currentStage}
             </span>
@@ -376,94 +359,99 @@ export const BuildNode = memo(function BuildNode({
         </div>
 
         <div className="build-header-right">
-          {/* Indicators wrapper */}
-          <div className="build-indicators">
-            {isBuilding && (
-              <span className="build-elapsed-time-inline">{formatBuildTime(elapsedTime)}</span>
-            )}
-            {!isBuilding && (
-              <>
-                {build.errors !== undefined && build.errors > 0 && (
-                  <span
-                    className="error-indicator clickable"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onStageFilter?.('', build.id, projectId);
-                    }}
-                    title="Click to filter problems for this build"
-                  >
-                    <AlertCircle size={12} />
-                    <span>{build.errors}</span>
-                  </span>
+          {/* Indicators and buttons - hide in readOnly mode */}
+          {!readOnly && (
+            <>
+              {/* Indicators wrapper */}
+              <div className="build-indicators">
+                {isBuilding && (
+                  <span className="build-elapsed-time-inline">{formatBuildTime(elapsedTime)}</span>
                 )}
-                {build.warnings !== undefined && build.warnings > 0 && (
-                  <span
-                    className="warning-indicator clickable"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onStageFilter?.('', build.id, projectId);
-                    }}
-                    title="Click to filter problems for this build"
-                  >
-                    <AlertTriangle size={12} />
-                    <span>{build.warnings}</span>
-                  </span>
+                {!isBuilding && (
+                  <>
+                    {build.errors !== undefined && build.errors > 0 && (
+                      <span
+                        className="error-indicator clickable"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onStageFilter?.('', build.id, projectId);
+                        }}
+                        title="Click to filter problems for this build"
+                      >
+                        <AlertCircle size={12} />
+                        <span>{build.errors}</span>
+                      </span>
+                    )}
+                    {build.warnings !== undefined && build.warnings > 0 && (
+                      <span
+                        className="warning-indicator clickable"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onStageFilter?.('', build.id, projectId);
+                        }}
+                        title="Click to filter problems for this build"
+                      >
+                        <AlertTriangle size={12} />
+                        <span>{build.warnings}</span>
+                      </span>
+                    )}
+
+                    {build.duration ? (
+                      <span className="build-duration">{build.duration.toFixed(1)}s</span>
+                    ) : build.lastBuild ? (
+                      <span className="last-build-info" title={`Last build: ${build.lastBuild.status}`}>
+                        {getLastBuildStatusIcon(build.lastBuild.status, 10)}
+                        <span className="last-build-time">{formatRelativeTime(build.lastBuild.timestamp)}</span>
+                      </span>
+                    ) : null}
+                  </>
                 )}
+              </div>
 
-                {build.duration ? (
-                  <span className="build-duration">{build.duration.toFixed(1)}s</span>
-                ) : build.lastBuild ? (
-                  <span className="last-build-info" title={`Last build: ${build.lastBuild.status}`}>
-                    {getLastBuildStatusIcon(build.lastBuild.status, 10)}
-                    <span className="last-build-time">{formatRelativeTime(build.lastBuild.timestamp)}</span>
-                  </span>
-                ) : null}
-              </>
-            )}
-          </div>
-
-          {/* Build play/cancel/delete button */}
-          {isBuilding ? (
-            <button
-              className="build-target-cancel-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (build.buildId && onCancelBuild) {
-                  onCancelBuild(build.buildId);
-                }
-              }}
-              title={`Cancel build ${build.name}`}
-            >
-              <Square size={10} fill="currentColor" />
-            </button>
-          ) : isSelected ? (
-            <button
-              className="build-target-delete-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowDeleteConfirm(true);
-              }}
-              title={`Delete build ${build.name}`}
-            >
-              <Trash2 size={12} />
-            </button>
-          ) : (
-            <button
-              className="build-target-play-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                onBuild('build', `${projectId}:${build.id}`, build.name);
-              }}
-              title={`Build ${build.name}`}
-            >
-              <Play size={12} />
-            </button>
+              {/* Build play/cancel/delete button */}
+              {isBuilding ? (
+                <button
+                  className="build-target-cancel-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (build.buildId && onCancelBuild) {
+                      onCancelBuild(build.buildId);
+                    }
+                  }}
+                  title={`Cancel build ${build.name}`}
+                >
+                  <Square size={10} fill="currentColor" />
+                </button>
+              ) : isSelected ? (
+                <button
+                  className="build-target-delete-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowDeleteConfirm(true);
+                  }}
+                  title={`Delete build ${build.name}`}
+                >
+                  <Trash2 size={12} />
+                </button>
+              ) : (
+                <button
+                  className="build-target-play-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onBuild('build', `${projectId}:${build.id}`, build.name);
+                  }}
+                  title={`Build ${build.name}`}
+                >
+                  <Play size={12} />
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
 
-      {/* Delete confirmation dialog */}
-      {showDeleteConfirm && (
+      {/* Delete confirmation dialog - only in edit mode */}
+      {!readOnly && showDeleteConfirm && (
         <div className="build-delete-confirm" onClick={(e) => e.stopPropagation()}>
           <span className="delete-confirm-text">Delete "{build.name}"?</span>
           <div className="delete-confirm-buttons">
@@ -486,8 +474,8 @@ export const BuildNode = memo(function BuildNode({
         </div>
       )}
 
-      {/* Build progress bar */}
-      {isBuilding && (
+      {/* Build progress bar - only in edit mode */}
+      {!readOnly && isBuilding && (
         <div className="build-progress-container">
           <div className="build-progress-bar">
             <div

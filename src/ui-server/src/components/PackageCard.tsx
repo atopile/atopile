@@ -5,16 +5,23 @@
 import { useState, useRef, useEffect, memo } from 'react'
 import {
   ChevronDown, ChevronRight, Package, Download, Check,
-  Search, ArrowUpCircle, History, Scale, Github, Globe, Layers
+  Search, ArrowUpCircle, Github, Layers, Loader2, ExternalLink
 } from 'lucide-react'
-import { BuildNode } from './BuildNode'
+import { BuildsCard } from './BuildsCard'
+import { DependencyCard, type ProjectDependency } from './DependencyCard'
+import { FileExplorer, type FileTreeNode } from './FileExplorer'
+import { api } from '../api/client'
 import type {
   Selection,
   Project,
   AvailableProject,
   SelectedPackage
 } from './projectsTypes'
+import type { PackageDetails } from '../types/build'
 import './PackageCard.css'
+
+// Simple cache for package details to avoid re-fetching
+const packageDetailsCache = new Map<string, PackageDetails>()
 
 // Check if a package has an update available
 export function hasUpdate(project: Project): boolean {
@@ -35,17 +42,10 @@ export function formatDownloads(count: number | null | undefined): string {
 }
 
 // Check if package is installed in a specific project
-// Uses the package's installed_in array which contains project roots/paths
 function isInstalledInProject(
   pkg: Project,
-  targetProjectPath: string,
-  _allProjects: Project[]
+  targetProjectPath: string
 ): { installed: boolean; version?: string; needsUpdate?: boolean; latestVersion?: string } {
-  // The package has an 'installed_in' property with project paths where it's installed
-  // We need to check if targetProjectPath matches any of them
-  // Note: installed_in may be undefined for packages from mock data
-
-  // For packages from real data, check installed_in array
   const installedIn = (pkg as any).installedIn || []
   const isInstalled = installedIn.some((path: string) =>
     path === targetProjectPath || path.endsWith(`/${targetProjectPath}`) || targetProjectPath.endsWith(path)
@@ -63,26 +63,53 @@ function isInstalledInProject(
   }
 }
 
-// Install dropdown component
-function InstallDropdown({
-  project,
-  onInstall,
-  availableProjects
+// Version selector dropdown
+function VersionSelect({
+  versions,
+  selectedVersion,
+  onVersionChange,
+  latestVersion
 }: {
-  project: Project
-  onInstall: (projectId: string, targetProject: string) => void
+  versions: string[]
+  selectedVersion: string
+  onVersionChange: (version: string) => void
+  latestVersion?: string
+}) {
+  return (
+    <select
+      className="version-select"
+      value={selectedVersion}
+      onChange={(e) => {
+        e.stopPropagation()
+        onVersionChange(e.target.value)
+      }}
+      onClick={(e) => e.stopPropagation()}
+      title="Select version to install"
+    >
+      {versions.map((v) => (
+        <option key={v} value={v}>
+          {v}{v === latestVersion ? ' (latest)' : ''}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+// Project selector dropdown for install target
+function ProjectSelector({
+  availableProjects,
+  selectedProjectId,
+  onSelect
+}: {
   availableProjects: AvailableProject[]
+  selectedProjectId: string
+  onSelect: (projectId: string) => void
 }) {
   const [isOpen, setIsOpen] = useState(false)
-  const [selectedTargetId, setSelectedTargetId] = useState<string>(() => {
-    // Default to active project
-    return availableProjects.find(p => p.isActive)?.id || availableProjects[0]?.id || ''
-  })
   const [searchQuery, setSearchQuery] = useState('')
   const dropdownRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -94,73 +121,31 @@ function InstallDropdown({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Focus search input when dropdown opens (if many projects)
   useEffect(() => {
     if (isOpen && availableProjects.length > 5 && searchInputRef.current) {
       searchInputRef.current.focus()
     }
-  }, [isOpen])
+  }, [isOpen, availableProjects.length])
 
-  const selectedTarget = availableProjects.find(p => p.id === selectedTargetId)
-  const installStatus = isInstalledInProject(project, selectedTarget?.path || selectedTargetId, [])
-
-  const handleInstall = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    onInstall(project.id, selectedTargetId)
-  }
-
-  const handleSelectTarget = (targetId: string) => {
-    setSelectedTargetId(targetId)
-    setIsOpen(false)
-  }
-
-  // Determine button state based on selected target
-  const isInstalled = installStatus.installed
-  const needsUpdate = installStatus.needsUpdate
-
-  // Truncate project name if too long
-  const targetName = selectedTarget?.name || 'project'
-  const displayName = targetName.length > 15 ? targetName.slice(0, 12) + '...' : targetName
+  const selectedProject = availableProjects.find(p => p.id === selectedProjectId)
+  const displayName = selectedProject?.name || 'project'
 
   return (
-    <div className="install-dropdown" ref={dropdownRef}>
+    <div className="project-selector" ref={dropdownRef}>
       <button
-        className={`install-btn install-btn-wide ${isInstalled ? (needsUpdate ? 'update-available' : 'installed') : ''}`}
-        onClick={handleInstall}
-        title={needsUpdate ? `Update to v${installStatus.latestVersion} in ${selectedTarget?.name}` : `Install to ${selectedTarget?.name}`}
-      >
-        {isInstalled ? (
-          needsUpdate ? (
-            <>
-              <ArrowUpCircle size={12} />
-              <span>Update in {displayName}</span>
-            </>
-          ) : (
-            <>
-              <Check size={12} />
-              <span>Installed in {displayName}</span>
-            </>
-          )
-        ) : (
-          <>
-            <Download size={12} />
-            <span>Install to {displayName}</span>
-          </>
-        )}
-      </button>
-      <button
-        className="install-dropdown-toggle"
+        className="project-selector-btn"
         onClick={(e) => {
           e.stopPropagation()
           setIsOpen(!isOpen)
         }}
-        title={`Change target project (${selectedTarget?.name})`}
+        title={`Install to: ${selectedProject?.name}`}
       >
-        <ChevronDown size={12} />
+        <span className="project-selector-name">{displayName}</span>
+        <ChevronDown size={10} />
       </button>
       {isOpen && (
-        <div className={`install-dropdown-menu ${availableProjects.length > 5 ? 'scrollable' : ''}`}>
-          <div className="dropdown-header">Install to project:</div>
+        <div className="project-selector-menu">
+          <div className="dropdown-header">Install to:</div>
           {availableProjects.length > 5 && (
             <div className="dropdown-search">
               <Search size={10} />
@@ -177,28 +162,21 @@ function InstallDropdown({
           <div className="dropdown-items">
             {availableProjects
               .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
-              .map(p => {
-                const status = isInstalledInProject(project, p.path, [])
-                return (
-                  <button
-                    key={p.id}
-                    className={`dropdown-item ${p.id === selectedTargetId ? 'selected' : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleSelectTarget(p.id)
-                    }}
-                  >
-                    <Layers size={12} />
-                    <span>{p.name}</span>
-                    {status.installed && (
-                      <span className={`status-badge ${status.needsUpdate ? 'outdated' : 'installed'}`}>
-                        {status.needsUpdate ? `v${status.version}→${status.latestVersion}` : `v${status.version}`}
-                      </span>
-                    )}
-                    {p.id === selectedTargetId && <Check size={12} className="selected-check" />}
-                  </button>
-                )
-              })}
+              .map(p => (
+                <button
+                  key={p.id}
+                  className={`dropdown-item ${p.id === selectedProjectId ? 'selected' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onSelect(p.id)
+                    setIsOpen(false)
+                  }}
+                >
+                  <Layers size={12} />
+                  <span>{p.name}</span>
+                  {p.id === selectedProjectId && <Check size={12} className="selected-check" />}
+                </button>
+              ))}
             {availableProjects.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
               <div className="dropdown-empty">No projects match "{searchQuery}"</div>
             )}
@@ -218,7 +196,7 @@ interface PackageCardProps {
   onCancelBuild?: (buildId: string) => void
   onStageFilter?: (stageName: string, buildId?: string, projectId?: string) => void
   onOpenPackageDetail?: (pkg: SelectedPackage) => void
-  onInstall: (projectId: string, targetProject: string) => void
+  onInstall: (projectId: string, targetProject: string, version?: string) => void
   onOpenSource?: (projectId: string, entry: string) => void
   onOpenKiCad?: (projectId: string, buildId: string) => void
   onOpenLayout?: (projectId: string, buildId: string) => void
@@ -226,8 +204,7 @@ interface PackageCardProps {
   availableProjects: AvailableProject[]
 }
 
-// Package card component (larger, with summary)
-// Memoized to prevent unnecessary re-renders in lists
+// Package card component
 export const PackageCard = memo(function PackageCard({
   project,
   selection,
@@ -245,22 +222,79 @@ export const PackageCard = memo(function PackageCard({
 }: PackageCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [descExpanded, setDescExpanded] = useState(false)
-  const [selectedVersion, setSelectedVersion] = useState(project.version || '')
+  const [selectedVersion, setSelectedVersion] = useState(project.version || project.latestVersion || '')
+  const [selectedProjectId, setSelectedProjectId] = useState(() => {
+    return availableProjects.find(p => p.isActive)?.id || availableProjects[0]?.id || ''
+  })
+
+  // Package details state (fetched on expand)
+  const [packageDetails, setPackageDetails] = useState<PackageDetails | null>(null)
+  const [detailsLoading, setDetailsLoading] = useState(false)
+  const [detailsError, setDetailsError] = useState<string | null>(null)
+
   const isSelected = selection.type === 'project' && selection.projectId === project.id
 
-  const totalWarnings = project.builds.reduce((sum, b) => sum + (b.warnings || 0), 0)
+  const selectedTarget = availableProjects.find(p => p.id === selectedProjectId)
+  const installStatus = isInstalledInProject(project, selectedTarget?.path || selectedProjectId)
 
-  // Mock available versions - in real implementation this would come from the package data
-  const availableVersions = project.latestVersion && project.version && project.latestVersion !== project.version
-    ? [project.latestVersion, project.version]
-    : project.version ? [project.version] : []
+  // Fetch package details when expanded (with caching)
+  useEffect(() => {
+    if (expanded && !packageDetails && !detailsLoading) {
+      // Check cache first
+      const cached = packageDetailsCache.get(project.id)
+      if (cached) {
+        setPackageDetails(cached)
+        if (cached.versions?.length > 0 && !selectedVersion) {
+          setSelectedVersion(cached.versions[0].version)
+        }
+        return
+      }
+
+      setDetailsLoading(true)
+      setDetailsError(null)
+
+      api.packages.details(project.id)
+        .then(details => {
+          // Store in cache
+          packageDetailsCache.set(project.id, details)
+          setPackageDetails(details)
+          // Update selected version if we now have the versions list
+          if (details.versions?.length > 0 && !selectedVersion) {
+            setSelectedVersion(details.versions[0].version)
+          }
+        })
+        .catch(err => {
+          setDetailsError(err.message || 'Failed to load package details')
+        })
+        .finally(() => {
+          setDetailsLoading(false)
+        })
+    }
+  }, [expanded, packageDetails, detailsLoading, project.id, selectedVersion])
+
+  const handleInstall = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onInstall(project.id, selectedProjectId, selectedVersion || undefined)
+  }
+
+  // Build available versions list
+  const versions = packageDetails?.versions?.map((v: { version: string }) => v.version) ||
+    (project.latestVersion && project.version && project.latestVersion !== project.version
+      ? [project.latestVersion, project.version]
+      : project.version ? [project.version] : project.latestVersion ? [project.latestVersion] : [])
+
+  // Convert dependencies to DependencyCard format
+  const dependencies: ProjectDependency[] = [] // TODO: Add when backend provides
+
+  // Convert to file tree format
+  const fileTree: FileTreeNode[] = [] // TODO: Add when backend provides
 
   return (
     <div
       className={`package-card ${isSelected ? 'selected' : ''} ${expanded ? 'expanded' : ''}`}
       onClick={() => {
         setExpanded(!expanded)
-        if (expanded) setDescExpanded(false) // Reset desc when collapsing
+        if (expanded) setDescExpanded(false)
         onSelect({
           type: 'project',
           projectId: project.id,
@@ -269,166 +303,170 @@ export const PackageCard = memo(function PackageCard({
       }}
     >
       {/* Row 1: Package name */}
-      <div className="package-card-name-row">
+      <div className="package-card-header">
         <span className="tree-expand">
           {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
-        <Package size={18} className="package-icon" />
+        <Package size={16} className="package-icon" />
         <span className="package-name">{project.name}</span>
-        {totalWarnings > 0 && <span className="warn-badge">{totalWarnings}</span>}
+        {project.publisher && (
+          <span className={`package-publisher-badge ${project.publisher === 'atopile' ? 'official' : 'community'}`}>
+            {project.publisher.toLowerCase()}
+          </span>
+        )}
       </div>
 
-      {/* Row 2: Description (summary when collapsed, full when expanded) */}
+      {/* Row 2: Description */}
       {(project.summary || project.description) && (
         <div
-          className={`package-card-description ${expanded && !descExpanded ? 'clamped' : ''}`}
+          className={`package-card-description ${!expanded ? 'clamped' : ''} ${expanded && !descExpanded ? 'clamped' : ''}`}
           onClick={(e) => {
             if (expanded) {
               e.stopPropagation()
               setDescExpanded(!descExpanded)
             }
           }}
-          title={expanded && !descExpanded ? 'Click to expand description' : ''}
         >
           {expanded ? (project.description || project.summary) : project.summary}
         </div>
       )}
 
-      {/* Row 3: Compact actions bar - version, publisher, downloads, github, install */}
-      <div className="package-actions-bar">
-        {/* Version dropdown */}
-        <select
-          className="package-version-select"
-          value={selectedVersion}
-          onChange={(e) => {
-            e.stopPropagation()
-            setSelectedVersion(e.target.value)
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {availableVersions.map((v, idx) => (
-            <option key={v} value={v}>
-              {v}{idx === 0 && hasUpdate(project) ? ' (latest)' : ''}
-            </option>
-          ))}
-        </select>
-
-        {/* Publisher badge */}
-        {project.publisher && (
-          <span
-            className={`package-publisher-badge ${project.publisher === 'atopile' ? 'official' : 'community'}`}
-            title={`Published by ${project.publisher}`}
-          >
-            {project.publisher.toLowerCase()}
-          </span>
-        )}
-
-        {/* Downloads count */}
-        {project.downloads !== undefined && project.downloads > 0 && (
-          <span className="package-downloads" title={`${project.downloads.toLocaleString()} downloads`}>
-            <Download size={10} />
-            {formatDownloads(project.downloads)}
-          </span>
-        )}
-
-        {/* GitHub button */}
+      {/* Row 3: Links bar (GitHub, homepage, downloads) */}
+      <div className="package-links-bar" onClick={(e) => e.stopPropagation()}>
         {project.repository && (
           <a
             href={project.repository}
             className="package-link-btn"
-            onClick={(e) => e.stopPropagation()}
             target="_blank"
             rel="noopener noreferrer"
             title="View on GitHub"
           >
-            <Github size={12} />
+            <Github size={14} />
           </a>
         )}
+        {project.homepage && (
+          <a
+            href={project.homepage}
+            className="package-link-btn"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open homepage"
+          >
+            <ExternalLink size={14} />
+          </a>
+        )}
+        {project.downloads !== undefined && project.downloads > 0 && (
+          <span className="package-downloads">
+            <Download size={12} />
+            <span>{formatDownloads(project.downloads)}</span>
+          </span>
+        )}
+        <div className="package-links-spacer" />
+      </div>
 
-        {/* Install dropdown (pushed to right) */}
-        <div className="package-install-wrapper" onClick={(e) => e.stopPropagation()}>
-          <InstallDropdown project={project} onInstall={onInstall} availableProjects={availableProjects} />
-        </div>
+      {/* Row 4: Install bar (project -> version -> install button) */}
+      <div className="package-install-bar" onClick={(e) => e.stopPropagation()}>
+        {/* Project selector */}
+        <ProjectSelector
+          availableProjects={availableProjects}
+          selectedProjectId={selectedProjectId}
+          onSelect={setSelectedProjectId}
+        />
+
+        {/* Version selector */}
+        {versions.length > 0 && (
+          <VersionSelect
+            versions={versions}
+            selectedVersion={selectedVersion}
+            onVersionChange={setSelectedVersion}
+            latestVersion={project.latestVersion}
+          />
+        )}
+
+        {/* Install button */}
+        <button
+          className={`install-btn ${installStatus.installed ? (installStatus.needsUpdate ? 'update-available' : 'installed') : ''}`}
+          onClick={handleInstall}
+          title={installStatus.needsUpdate
+            ? `Update to ${selectedVersion} in ${selectedTarget?.name}`
+            : installStatus.installed
+              ? `Installed in ${selectedTarget?.name}`
+              : `Install ${selectedVersion} to ${selectedTarget?.name}`}
+        >
+          {installStatus.installed ? (
+            installStatus.needsUpdate ? (
+              <>
+                <ArrowUpCircle size={12} />
+                <span>Update</span>
+              </>
+            ) : (
+              <>
+                <Check size={12} />
+                <span>Installed</span>
+              </>
+            )
+          ) : (
+            <>
+              <Download size={12} />
+              <span>Install</span>
+            </>
+          )}
+        </button>
       </div>
 
       {/* Expanded content */}
       {expanded && (
-        <>
-          {/* Package Stats Bar with Links */}
-          <div className="package-stats-bar">
-            {project.publisher && (
-              <div className={`package-stat publisher ${project.publisher === 'atopile' ? 'official' : 'community'}`}>
-                <span>{project.publisher.toLowerCase()}</span>
-              </div>
-            )}
-            {project.downloads !== undefined && project.downloads > 0 && (
-              <div className="package-stat">
-                <Download size={11} />
-                <span>{formatDownloads(project.downloads)}</span>
-              </div>
-            )}
-            {project.versionCount !== undefined && project.versionCount > 0 && (
-              <div className="package-stat">
-                <History size={11} />
-                <span>{project.versionCount} releases</span>
-              </div>
-            )}
-            {project.license && (
-              <div className="package-stat license">
-                <Scale size={11} />
-                <span>{project.license}</span>
-              </div>
-            )}
+        <div className="package-expanded-content">
+          {/* Build targets using shared BuildsCard */}
+          {project.builds.length > 0 && (
+            <BuildsCard
+              builds={project.builds}
+              projectId={project.id}
+              selection={selection}
+              onSelect={onSelect}
+              onBuild={onBuild}
+              onCancelBuild={onCancelBuild}
+              onStageFilter={onStageFilter}
+              onOpenSource={onOpenSource}
+              onOpenKiCad={onOpenKiCad}
+              onOpenLayout={onOpenLayout}
+              onOpen3D={onOpen3D}
+              readOnly={true}
+            />
+          )}
 
-            {/* Links on right side */}
-            <div className="package-stat-links">
-              {project.homepage && (
-                <a
-                  href={project.homepage}
-                  className="package-stat-link"
-                  onClick={(e) => e.stopPropagation()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Homepage"
-                >
-                  <Globe size={12} />
-                </a>
-              )}
-              {project.repository && (
-                <a
-                  href={project.repository}
-                  className="package-stat-link"
-                  onClick={(e) => e.stopPropagation()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="GitHub Repository"
-                >
-                  <Github size={12} />
-                </a>
-              )}
+          {/* Loading state for details */}
+          {detailsLoading && (
+            <div className="package-loading">
+              <Loader2 size={16} className="spin" />
+              <span>Loading package details...</span>
             </div>
-          </div>
+          )}
 
-          {/* Build targets */}
-          <div className="package-card-builds">
-            {project.builds.map((build, idx) => (
-              <BuildNode
-                key={`${build.id}-${idx}`}
-                build={build}
-                projectId={project.id}
-                selection={selection}
-                onSelect={onSelect}
-                onBuild={onBuild}
-                onCancelBuild={onCancelBuild}
-                onStageFilter={onStageFilter}
-                onOpenSource={onOpenSource}
-                onOpenKiCad={onOpenKiCad}
-                onOpenLayout={onOpenLayout}
-                onOpen3D={onOpen3D}
-              />
-            ))}
-          </div>
-        </>
+          {/* Error state */}
+          {detailsError && (
+            <div className="package-error">
+              <span>Failed to load details: {detailsError}</span>
+            </div>
+          )}
+
+          {/* Dependencies (once loaded) */}
+          {packageDetails && dependencies.length > 0 && (
+            <DependencyCard
+              dependencies={dependencies}
+              projectId={project.id}
+              readOnly={true}
+            />
+          )}
+
+          {/* File explorer (once loaded) */}
+          {packageDetails && fileTree.length > 0 && (
+            <FileExplorer
+              files={fileTree}
+              onFileClick={(path: string) => onOpenSource?.(project.id, path)}
+            />
+          )}
+        </div>
       )}
     </div>
   )

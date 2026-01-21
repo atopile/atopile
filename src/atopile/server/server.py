@@ -8,374 +8,32 @@ directly by VS Code webview for better IDE integration.
 import asyncio
 import logging
 import socket
-import sqlite3
 import threading
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 import uvicorn
-from fastapi import (
-    FastAPI,
-    WebSocket,
-    WebSocketDisconnect,
-)
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from atopile.server import build_history
-from atopile.server import build_queue
+from atopile.logging import BuildLogger
+from atopile.server import build_history, project_discovery
+from atopile.server.app_context import AppContext
 from atopile.server.domains import artifacts as artifacts_domain
 from atopile.server.domains import packages as packages_domain
-from atopile.server import project_discovery
-from atopile.server.app_context import AppContext
 from atopile.server.file_watcher import PollingFileWatcher
 from atopile.server.state import server_state
-from atopile.logging import BuildLogger
 
 log = logging.getLogger(__name__)
 
 init_build_history_db = build_history.init_build_history_db
 
 
-# --- WebSocket Connection Manager ---
-
-
-@dataclass
-class ClientSubscription:
-    """Per-connection subscription state for WebSocket clients."""
-
-    websocket: WebSocket
-    log_filters: dict = field(default_factory=lambda: {"limit": 100})
-    subscribed_channels: set = field(default_factory=set)
-    last_log_id: int = 0  # Track last sent log for incremental updates
-
-
-class ConnectionManager:
-    """Manages WebSocket connections and per-connection filter state."""
-
-    def __init__(self):
-        self.clients: dict[WebSocket, ClientSubscription] = {}
-        self._db_path: Optional[Path] = None
-        self._logs_base: Optional[Path] = None
-
-    def set_paths(self, db_path: Optional[Path], logs_base: Optional[Path]):
-        """Set database and logs paths for querying."""
-        self._db_path = db_path
-        self._logs_base = logs_base
-
-    async def connect(self, websocket: WebSocket):
-        """Accept a new WebSocket connection."""
-        await websocket.accept()
-        self.clients[websocket] = ClientSubscription(websocket=websocket)
-        log.info(f"WebSocket client connected. Total clients: {len(self.clients)}")
-
-    def disconnect(self, websocket: WebSocket):
-        """Remove a disconnected client."""
-        self.clients.pop(websocket, None)
-        log.info(f"WebSocket client disconnected. Total clients: {len(self.clients)}")
-
-    async def handle_message(self, websocket: WebSocket, message: dict):
-        """Handle an incoming message from a client."""
-        client = self.clients.get(websocket)
-        if not client:
-            return
-
-        action = message.get("action")
-        channel = message.get("channel")
-
-        if action == "subscribe":
-            client.subscribed_channels.add(channel)
-            if channel == "logs":
-                client.log_filters = message.get("filters", {"limit": 100})
-                await self.send_filtered_logs(client)
-            elif channel == "summary":
-                # Summary will be sent via broadcast when available
-                pass
-            elif channel == "problems":
-                # Problems will be sent via broadcast when available
-                pass
-            elif channel == "builds":
-                # Builds will be sent via broadcast when available
-                pass
-
-        elif action == "update_filter":
-            if channel == "logs":
-                client.log_filters = message.get("filters", {"limit": 100})
-                client.last_log_id = 0  # Reset cursor on filter change
-                log.info(f"WebSocket: update_filter for logs: {client.log_filters}")
-                await self.send_filtered_logs(client)
-
-        elif action == "unsubscribe":
-            client.subscribed_channels.discard(channel)
-
-    def _query_logs_sync(self, filters: dict) -> tuple[list[dict], int]:
-        """
-        Blocking helper to query logs from SQLite database.
-        Returns (logs_list, limit).
-        """
-        if not self._db_path or not self._db_path.exists():
-            return [], filters.get("limit", 100)
-
-        conn = sqlite3.connect(str(self._db_path), timeout=5.0)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
-        # Build WHERE clause based on filters
-        # Use new schema: logs JOIN builds
-        conditions = []
-        params: list = []
-
-        # Handle build_name (format: "project:target" or just "target")
-        if filters.get("build_name"):
-            build_name = filters["build_name"]
-            if ":" in build_name:
-                # Format: "project:target" - filter by both
-                project_part, target_part = build_name.split(":", 1)
-                conditions.append("builds.target = ?")
-                params.append(target_part)
-                conditions.append("builds.project_path LIKE ?")
-                params.append(f"%/{project_part}")
-            else:
-                conditions.append("builds.target = ?")
-                params.append(build_name)
-
-        # Handle project_name - match end of project_path
-        if filters.get("project_name"):
-            conditions.append("builds.project_path LIKE ?")
-            params.append(f"%/{filters['project_name']}")
-
-        # Handle multiple levels
-        if filters.get("levels"):
-            level_list = filters["levels"]
-            if isinstance(level_list, str):
-                level_list = [lv.strip().upper() for lv in level_list.split(",")]
-            placeholders = ",".join("?" * len(level_list))
-            conditions.append(f"logs.level IN ({placeholders})")
-            params.extend([lv.upper() for lv in level_list])
-
-        # Search in message
-        if filters.get("search"):
-            conditions.append("logs.message LIKE ?")
-            params.append(f"%{filters['search']}%")
-
-        # Incremental fetch
-        if filters.get("after_id"):
-            conditions.append("logs.id > ?")
-            params.append(filters["after_id"])
-
-        where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
-        limit = filters.get("limit", 100)
-
-        query = f"""
-            SELECT logs.id, logs.build_id, logs.timestamp, logs.stage,
-                   logs.level, logs.audience, logs.message,
-                   logs.ato_traceback, logs.python_traceback,
-                   builds.project_path, builds.target
-            FROM logs
-            JOIN builds ON logs.build_id = builds.build_id
-            {where_clause}
-            ORDER BY logs.id DESC
-            LIMIT ?
-        """
-        params.append(limit)
-
-        log.info(f"Executing query: {where_clause}, params={params}")
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        log.info(f"Query returned {len(rows)} rows")
-        conn.close()
-
-        # Convert to frontend-compatible format
-        logs = []
-        for row in reversed(rows):  # Reverse to chronological order
-            logs.append(
-                {
-                    "id": row["id"],
-                    "timestamp": row["timestamp"],
-                    "stage": row["stage"],
-                    "level": row["level"],
-                    "message": row["message"],
-                    "ato_traceback": row["ato_traceback"],
-                    "python_traceback": row["python_traceback"],
-                    "build_id": row["build_id"],
-                    "target": row["target"],
-                }
-            )
-
-        return logs, limit
-
-    async def send_filtered_logs(self, client: ClientSubscription):
-        """Query central log database with client's filters and send results."""
-        log.info(f"send_filtered_logs called with db_path={self._db_path}")
-        if not self._db_path or not self._db_path.exists():
-            log.warning(f"Log DB not found at {self._db_path}, sending empty logs")
-            await client.websocket.send_json(
-                {"event": "logs", "data": {"logs": [], "total": 0, "has_more": False}}
-            )
-            return
-
-        filters = client.log_filters
-        try:
-            # Run blocking DB query in thread pool
-            logs, limit = await asyncio.to_thread(self._query_logs_sync, filters)
-
-            if logs:
-                client.last_log_id = logs[-1]["id"]
-
-            await client.websocket.send_json(
-                {
-                    "event": "logs",
-                    "data": {
-                        "logs": logs,
-                        "total": len(logs),
-                        "has_more": len(logs) >= limit,
-                    },
-                }
-            )
-
-        except Exception as e:
-            log.error(f"Error querying logs for WebSocket client: {e}")
-            await client.websocket.send_json(
-                {"event": "logs", "data": {"logs": [], "total": 0, "has_more": False}}
-            )
-
-    def log_matches_filter(self, log_entry: dict, filters: dict) -> bool:
-        """Check if a log entry matches client's filter criteria."""
-        # Check log levels
-        if filters.get("levels"):
-            level_list = filters["levels"]
-            if isinstance(level_list, str):
-                level_list = [lv.strip().upper() for lv in level_list.split(",")]
-            entry_level = log_entry.get("level", "").upper()
-            if entry_level not in [lv.upper() for lv in level_list]:
-                return False
-
-        # Check build_name (matches target and optionally project)
-        if filters.get("build_name"):
-            build_name = filters["build_name"]
-            target = log_entry.get("target", "")
-            project_path = log_entry.get("project_path", "")
-            if ":" in build_name:
-                # Format: "project:target" - check both
-                project_part, target_part = build_name.split(":", 1)
-                if target != target_part:
-                    return False
-                if not project_path.endswith(f"/{project_part}"):
-                    return False
-            else:
-                if target != build_name:
-                    return False
-
-        # Check project_name (matches end of project_path)
-        if filters.get("project_name"):
-            project_path = log_entry.get("project_path", "")
-            if not project_path.endswith(f"/{filters['project_name']}"):
-                return False
-
-        # Check search term
-        if filters.get("search"):
-            if filters["search"].lower() not in log_entry.get("message", "").lower():
-                return False
-        return True
-
-    async def on_new_log(self, log_entry: dict):
-        """Called when a new log is written - push to matching clients."""
-        for client in list(self.clients.values()):
-            if "logs" not in client.subscribed_channels:
-                continue
-            try:
-                if self.log_matches_filter(log_entry, client.log_filters):
-                    client.last_log_id = log_entry.get("id", 0)
-                    await client.websocket.send_json(
-                        {
-                            "event": "logs",
-                            "data": {
-                                "logs": [log_entry],
-                                "total": 1,
-                                "incremental": True,
-                            },
-                        }
-                    )
-            except Exception as e:
-                log.error(f"Error sending log to WebSocket client: {e}")
-                self.disconnect(client.websocket)
-
-    async def broadcast_to_channel(self, channel: str, event: str, data: dict):
-        """Broadcast an event to all clients subscribed to a channel."""
-        message = {"event": event, "data": data}
-        for client in list(self.clients.values()):
-            if channel in client.subscribed_channels:
-                try:
-                    await client.websocket.send_json(message)
-                except Exception as e:
-                    log.error(f"Error broadcasting to WebSocket client: {e}")
-                    self.disconnect(client.websocket)
-
-    def set_event_loop(self, loop: asyncio.AbstractEventLoop):
-        """Store reference to the main event loop for use in background threads."""
-        self._main_loop = loop
-        log.debug("Event loop stored for background thread broadcasts")
-
-    def broadcast_sync(self, channel: str, event: str, data: dict):
-        """
-        Broadcast an event from synchronous code (e.g., background threads).
-
-        This schedules the broadcast on the stored event loop.
-        """
-        # Use stored event loop (set during app startup)
-        loop = getattr(self, "_main_loop", None)
-        if loop is not None and loop.is_running():
-            asyncio.run_coroutine_threadsafe(
-                self.broadcast_to_channel(channel, event, data), loop
-            )
-            return
-
-        # Fallback: try to get current thread's event loop
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.run_coroutine_threadsafe(
-                    self.broadcast_to_channel(channel, event, data), loop
-                )
-            else:
-                asyncio.run(self.broadcast_to_channel(channel, event, data))
-        except RuntimeError:
-            # No event loop available - log warning (this should be fixed)
-            log.warning(f"No event loop available for broadcast: {event}")
-
-    def on_new_log_sync(self, log_entry: dict):
-        """
-        Called when a new log is written from synchronous code.
-
-        This schedules the log push on the stored event loop.
-        """
-        # Use stored event loop (set during app startup)
-        loop = getattr(self, "_main_loop", None)
-        if loop is not None and loop.is_running():
-            asyncio.run_coroutine_threadsafe(self.on_new_log(log_entry), loop)
-            return
-
-        # Fallback: try to get current thread's event loop
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.run_coroutine_threadsafe(self.on_new_log(log_entry), loop)
-            else:
-                asyncio.run(self.on_new_log(log_entry))
-        except RuntimeError:
-            log.debug("No event loop available for log push")
-
-
-# Global connection manager instance
-ws_manager = ConnectionManager()
-build_queue.set_broadcast_sync(ws_manager.broadcast_sync)
-
-
 async def _load_projects_background(ctx: AppContext) -> None:
     """Background task to load projects without blocking startup."""
-    from atopile.server.state import Project as StateProject
     from atopile.server.state import BuildTarget as StateBuildTarget
+    from atopile.server.state import Project as StateProject
 
     try:
         log.info(f"[background] Loading projects from {len(ctx.workspace_paths)} paths")
@@ -414,8 +72,8 @@ async def _load_packages_background(ctx: AppContext) -> None:
 
 
 async def _refresh_stdlib_state() -> None:
-    from atopile.server.state import StdLibItem as StateStdLibItem
     from atopile.server import stdlib as stdlib_domain
+    from atopile.server.state import StdLibItem as StateStdLibItem
 
     # Run blocking stdlib refresh in thread pool
     items = await asyncio.to_thread(stdlib_domain.refresh_standard_library)
@@ -567,7 +225,6 @@ def create_app(
         loop.set_default_executor(executor)
         log.info("Configured thread pool with 64 workers")
 
-        ws_manager.set_event_loop(loop)
         server_state.set_event_loop(loop)
         server_state.set_workspace_paths(ctx.workspace_paths)
 
@@ -591,11 +248,23 @@ def create_app(
 
     from atopile.server.routes import (
         artifacts as artifacts_routes,
+    )
+    from atopile.server.routes import (
         builds as builds_routes,
+    )
+    from atopile.server.routes import (
         logs as logs_routes,
+    )
+    from atopile.server.routes import (
         packages as packages_routes,
+    )
+    from atopile.server.routes import (
         problems as problems_routes,
+    )
+    from atopile.server.routes import (
         projects as projects_routes,
+    )
+    from atopile.server.routes import (
         websocket as ws_routes,
     )
 
