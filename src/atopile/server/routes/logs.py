@@ -42,11 +42,17 @@ async def websocket_logs(websocket: WebSocket):
                 await websocket.send_json(LogsError(error=str(exc)).model_dump())
                 continue
 
+            # Convert enum values to strings for load_build_logs (StrEnum values are strings)
+            log_levels_str = (
+                [str(level) for level in query.log_levels] if query.log_levels else None
+            )
+            audience_str = str(query.audience) if query.audience else None
+
             logs = load_build_logs(
                 build_id=query.build_id,
                 stage=query.stage,
-                log_levels=query.log_levels,
-                audience=query.audience,
+                log_levels=log_levels_str,
+                audience=audience_str,
                 count=query.count,
             )
 

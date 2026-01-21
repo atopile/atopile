@@ -13,7 +13,7 @@ import sys
 import time
 from pathlib import Path
 
-from atopile.server.server import DashboardServer
+from atopile.server.server import DASHBOARD_PORT, DashboardServer
 
 
 def main():
@@ -21,8 +21,8 @@ def main():
     parser.add_argument(
         "--port",
         type=int,
-        default=8501,
-        help="Port to run the server on (default: 8501)",
+        default=DASHBOARD_PORT,
+        help=f"Port to run the server on (default: {DASHBOARD_PORT})",
     )
     parser.add_argument(
         "--workspace",

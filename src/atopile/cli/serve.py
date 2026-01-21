@@ -13,6 +13,8 @@ from typing import Optional
 
 import typer
 
+from atopile.server.server import DASHBOARD_PORT
+
 serve_app = typer.Typer(no_args_is_help=True)
 
 
@@ -52,7 +54,7 @@ def _install_nodejs() -> Optional[int]:
 
 @serve_app.command()
 def backend(
-    port: int = typer.Option(8501, help="Port to run the backend server on"),
+    port: int = typer.Option(DASHBOARD_PORT, help="Port to run the backend server on"),
     workspace: Optional[list[Path]] = typer.Option(
         None,
         "--workspace",
@@ -81,7 +83,7 @@ def frontend(
         None,
         "--backend",
         "-b",
-        help="Backend host:port (e.g. localhost:8501)",
+        help=f"Backend host:port (e.g. localhost:{DASHBOARD_PORT})",
     ),
 ) -> None:
     """Start the UI server (Vite) in the current terminal."""

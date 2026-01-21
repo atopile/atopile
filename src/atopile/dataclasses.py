@@ -23,23 +23,27 @@ from pydantic import BaseModel, Field
 # =============================================================================
 
 
-class Status(str, Enum):
-    """Build status states."""
+class BuildStatus(str, Enum):
+    """Build status states - overall status of a build."""
 
     QUEUED = "queued"
     BUILDING = "building"
     SUCCESS = "success"
     WARNING = "warning"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
-BuildStatus = Literal["queued", "building", "success", "warning", "failed", "cancelled"]
-StageStatus = Literal[
-    "pending", "running", "success", "warning", "failed", "error", "skipped"
-]
+class StageStatus(str, Enum):
+    """Stage status states - status of individual build stages."""
 
-LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "ALERT"]
-LogAudience = Literal["user", "developer", "agent"]
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCESS = "success"
+    WARNING = "warning"
+    FAILED = "failed"
+    ERROR = "error"
+    SKIPPED = "skipped"
 
 
 class Audience(StrEnum):
@@ -70,7 +74,7 @@ class ProjectState:
     """Aggregate state for a project containing multiple builds."""
 
     builds: list = field(default_factory=list)
-    status: Status = Status.QUEUED
+    status: BuildStatus = BuildStatus.QUEUED
     completed: int = 0
     failed: int = 0
     warnings: int = 0
@@ -93,7 +97,7 @@ class StageStatusEvent:
 @dataclass(frozen=True)
 class StageCompleteEvent:
     duration: float
-    status: str
+    status: StageStatus  # Use StageStatus enum instead of plain string
     infos: int
     warnings: int
     errors: int
@@ -146,7 +150,7 @@ class BuildStage(BaseModel):
     stage_id: str
     display_name: Optional[str] = None
     elapsed_seconds: float = 0.0
-    status: StageStatus = "pending"
+    status: StageStatus = StageStatus.PENDING
     infos: int = 0
     warnings: int = 0
     errors: int = 0
@@ -163,7 +167,7 @@ class Build(BaseModel):
     build_id: Optional[str] = None
 
     # Status
-    status: BuildStatus = "queued"
+    status: BuildStatus = BuildStatus.QUEUED
     elapsed_seconds: float = 0.0
     warnings: int = 0
     errors: int = 0
@@ -211,7 +215,7 @@ class BuildStatusResponse(BaseModel):
     """Response for build status."""
 
     build_id: str
-    status: str  # 'queued', 'building', 'success', 'warning', 'failed'
+    status: BuildStatus  # Use BuildStatus enum
     project_root: str
     targets: list[str]
     return_code: Optional[int] = None
@@ -599,8 +603,8 @@ class ProblemsResponse(BaseModel):
 class LogQuery(BaseModel):
     build_id: str
     stage: str | None = None
-    log_levels: list[LogLevel] | None = None
-    audience: LogAudience | None = None
+    log_levels: list[Level] | None = None
+    audience: Audience | None = None
     count: int = Field(default=500, ge=1)
 
 
@@ -1004,7 +1008,7 @@ class CompletedStage:
     name: str
     stage_id: str
     elapsed_seconds: float
-    status: str  # 'success', 'warning', 'failed'
+    status: StageStatus  # Use StageStatus enum instead of plain string
     infos: int = 0
     warnings: int = 0
     errors: int = 0
@@ -1014,7 +1018,7 @@ class CompletedStage:
 @dataclass
 class BuildReport:
     name: str
-    status: Status
+    status: BuildStatus  # Use BuildStatus enum instead of Status
     warnings: int
     errors: int
     stages: list[StageCompleteEvent]

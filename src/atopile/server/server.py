@@ -26,6 +26,9 @@ from atopile.server.state import server_state
 
 log = logging.getLogger(__name__)
 
+# Fixed port for the dashboard server - extension opens this directly
+DASHBOARD_PORT = 8501
+
 init_build_history_db = build_history.init_build_history_db
 
 

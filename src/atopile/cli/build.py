@@ -19,13 +19,15 @@ import pathvalidate
 import typer
 from rich.console import Console
 
+from atopile.dataclasses import BuildStatus, StageStatus
 from atopile.logging import (
     NOW,
     ProjectState,
     StageCompleteEvent,
     StageStatusEvent,
-    Status,
 )
+from atopile.logging_utils import status_rich_icon, status_rich_text
+from atopile.server.server import DASHBOARD_PORT
 from atopile.telemetry import capture
 
 logger = logging.getLogger(__name__)
@@ -34,37 +36,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_WORKER_COUNT = os.cpu_count() or 4
 
 
-# Fixed port for the dashboard server - extension opens this directly
-DASHBOARD_PORT = 8501
-
-
-def _status_rich_icon(status: Status | str) -> str:
-    """Get Rich-formatted icon for status (for terminal display)."""
-    icon_map = {
-        Status.QUEUED: "[dim]○[/dim]",
-        Status.BUILDING: "[blue]●[/blue]",
-        Status.SUCCESS: "[green]✓[/green]",
-        Status.WARNING: "[yellow]⚠[/yellow]",
-        Status.FAILED: "[red]✗[/red]",
-    }
-    if isinstance(status, str):
-        status = Status(status)
-    return icon_map.get(status, "[dim]○[/dim]")
-
-
-def _status_rich_text(status: Status | str, text: str) -> str:
-    """Format text with Rich color markup for status."""
-    color_map = {
-        Status.QUEUED: "dim",
-        Status.BUILDING: "blue",
-        Status.SUCCESS: "green",
-        Status.WARNING: "yellow",
-        Status.FAILED: "red",
-    }
-    if isinstance(status, str):
-        status = Status(status)
-    color = color_map.get(status, "")
-    return f"[{color}]{text}[/{color}]" if color else text
+# status_rich_icon and status_rich_text are imported from atopile.logging_utils
 
 
 def discover_projects(root: Path) -> list[Path]:
@@ -91,10 +63,13 @@ def discover_projects(root: Path) -> list[Path]:
 
 # Semantic status -> (icon, color)
 _STATUS_STYLE = {
-    "success": ("✓", "green"),
-    "warning": ("⚠", "yellow"),
-    "failed": ("✗", "red"),
-    "running": ("●", "blue"),
+    StageStatus.SUCCESS: ("✓", "green"),
+    StageStatus.WARNING: ("⚠", "yellow"),
+    StageStatus.FAILED: ("✗", "red"),
+    StageStatus.ERROR: ("✗", "red"),  # Error is similar to failed
+    StageStatus.RUNNING: ("●", "blue"),
+    StageStatus.PENDING: ("○", "dim"),
+    StageStatus.SKIPPED: ("⊘", "dim"),
 }
 
 
@@ -338,7 +313,7 @@ class BuildProcess:
             elapsed = (
                 time.time() - self._stage_start_time if self._stage_start_time else 0.0
             )
-            icon, color = _STATUS_STYLE["running"]
+            icon, color = _STATUS_STYLE[StageStatus.RUNNING]
             parts.append(
                 f"[{color}]{icon} {self.current_stage} [{elapsed:.1f}s][/{color}]"
             )
@@ -378,16 +353,16 @@ class BuildProcess:
         return self.process is not None and self.return_code is None
 
     @property
-    def status(self) -> Status:
+    def status(self) -> BuildStatus:
         """Get current status."""
         if self.process is None:
-            return Status.QUEUED
+            return BuildStatus.QUEUED
         elif self.return_code is None:
-            return Status.BUILDING
+            return BuildStatus.BUILDING
         elif self.return_code == 0:
-            return Status.WARNING if self.warnings > 0 else Status.SUCCESS
+            return BuildStatus.WARNING if self.warnings > 0 else BuildStatus.SUCCESS
         else:
-            return Status.FAILED
+            return BuildStatus.FAILED
 
     def terminate(self) -> None:
         """Terminate the build process."""
@@ -525,32 +500,32 @@ class ParallelBuildManager:
             p.elapsed = max(p.elapsed, bp.elapsed)
 
             status = bp.status
-            if status == Status.BUILDING:
+            if status == BuildStatus.BUILDING:
                 p.building += 1
                 p.current_build = bp.name
                 p.current_stage = bp.current_stage
-            elif status == Status.FAILED:
+            elif status == BuildStatus.FAILED:
                 p.failed += 1
                 p.completed += 1
-            elif status in (Status.SUCCESS, Status.WARNING):
+            elif status in (BuildStatus.SUCCESS, BuildStatus.WARNING):
                 p.completed += 1
-                if status == Status.WARNING:
+                if status == BuildStatus.WARNING:
                     p.warnings += 1
-            elif status == Status.QUEUED:
+            elif status == BuildStatus.QUEUED:
                 p.queued += 1
 
         # Determine aggregate status for each project
         for p in projects.values():
             if p.failed > 0:
-                p.status = Status.FAILED
+                p.status = BuildStatus.FAILED
             elif p.building > 0:
-                p.status = Status.BUILDING
+                p.status = BuildStatus.BUILDING
             elif p.queued == p.total:
-                p.status = Status.QUEUED
+                p.status = BuildStatus.QUEUED
             elif p.warnings > 0:
-                p.status = Status.WARNING
+                p.status = BuildStatus.WARNING
             else:
-                p.status = Status.SUCCESS
+                p.status = BuildStatus.SUCCESS
 
         return projects
 
@@ -601,49 +576,49 @@ class ParallelBuildManager:
 
                 # If we've hit the limit, only skip queued items
                 if rows_shown >= max_rows:
-                    if status == Status.QUEUED:
+                    if status == BuildStatus.QUEUED:
                         hidden_queued += 1
                         continue
                     # Always show non-queued items (building/failed/completed)
 
-                icon = _status_rich_icon(status)
+                icon = status_rich_icon(status)
 
                 # Format stage text with colors
-                if status == Status.BUILDING:
+                if status == BuildStatus.BUILDING:
                     stage_name = bp.format_stage_history(
                         status_width, include_current=True
                     )
                     if not stage_name:
                         stage_name = bp.current_stage or "Building..."
-                        stage_text = _status_rich_text(status, stage_name)
+                        stage_text = status_rich_text(status, stage_name)
                     else:
                         stage_text = stage_name
-                elif status in (Status.SUCCESS, Status.WARNING):
+                elif status in (BuildStatus.SUCCESS, BuildStatus.WARNING):
                     stage_name = bp.format_stage_history(
                         status_width, include_current=False
                     )
                     if stage_name:
                         stage_text = stage_name
                     else:
-                        stage_text = _status_rich_text(Status.SUCCESS, "Completed")
-                elif status == Status.FAILED:
+                        stage_text = status_rich_text(BuildStatus.SUCCESS, "Completed")
+                elif status == BuildStatus.FAILED:
                     stage_name = bp.format_stage_history(
                         status_width, include_current=False
                     )
                     if stage_name:
                         stage_text = stage_name
                     else:
-                        stage_text = _status_rich_text(status, "Failed")
-                elif status == Status.QUEUED:
-                    stage_text = _status_rich_text(status, "Queued")
+                        stage_text = status_rich_text(status, "Failed")
+                elif status == BuildStatus.QUEUED:
+                    stage_text = status_rich_text(status, "Queued")
                 else:
-                    stage_text = _status_rich_text(Status.QUEUED, "Waiting...")
+                    stage_text = status_rich_text(BuildStatus.QUEUED, "Waiting...")
 
                 # Format time
-                if status == Status.QUEUED:
-                    time_text = _status_rich_text(status, "-")
+                if status == BuildStatus.QUEUED:
+                    time_text = status_rich_text(status, "-")
                 else:
-                    time_text = _status_rich_text(status, f"{int(bp.elapsed)}s")
+                    time_text = status_rich_text(status, f"{int(bp.elapsed)}s")
 
                 table.add_row(icon, display_name, stage_text, time_text)
                 rows_shown += 1
@@ -704,14 +679,14 @@ class ParallelBuildManager:
 
             # Limit rows, but always show non-queued
             if rows_shown >= max_rows:
-                if status == Status.QUEUED:
+                if status == BuildStatus.QUEUED:
                     hidden_queued += 1
                     continue
 
-            icon = _status_rich_icon(status)
+            icon = status_rich_icon(status)
 
             # Build status text showing progress and current activity
-            if status == Status.BUILDING:
+            if status == BuildStatus.BUILDING:
                 stage = p.current_stage or "Building"
                 build_name = p.current_build or ""
                 progress = f"{p.completed}/{p.total}"
@@ -727,27 +702,27 @@ class ParallelBuildManager:
                 if len(build_name) > 10:
                     build_name = build_name[:8] + ".."
 
-                colored_name = _status_rich_text(status, build_name)
+                colored_name = status_rich_text(status, build_name)
                 status_text = f"{colored_name} {progress} {stage}"
-            elif status == Status.FAILED:
-                failed_text = _status_rich_text(status, f"{p.failed} failed")
+            elif status == BuildStatus.FAILED:
+                failed_text = status_rich_text(status, f"{p.failed} failed")
                 status_text = f"{failed_text}, {p.completed - p.failed}/{p.total} done"
-            elif status == Status.WARNING:
+            elif status == BuildStatus.WARNING:
                 progress_text = f"{p.completed}/{p.total} done"
-                status_text = _status_rich_text(status, progress_text)
-            elif status == Status.SUCCESS:
+                status_text = status_rich_text(status, progress_text)
+            elif status == BuildStatus.SUCCESS:
                 progress_text = f"{p.completed}/{p.total} done"
-                status_text = _status_rich_text(status, progress_text)
-            elif status == Status.QUEUED:
-                status_text = _status_rich_text(status, f"Queued ({p.total} builds)")
+                status_text = status_rich_text(status, progress_text)
+            elif status == BuildStatus.QUEUED:
+                status_text = status_rich_text(status, f"Queued ({p.total} builds)")
             else:
                 status_text = f"{p.completed}/{p.total}"
 
             # Time
-            if status == Status.QUEUED:
-                time_text = _status_rich_text(status, "-")
+            if status == BuildStatus.QUEUED:
+                time_text = status_rich_text(status, "-")
             else:
-                time_text = _status_rich_text(status, f"{int(p.elapsed)}s")
+                time_text = status_rich_text(status, f"{int(p.elapsed)}s")
 
             table.add_row(icon, project_name, status_text, time_text)
             rows_shown += 1
@@ -768,18 +743,18 @@ class ParallelBuildManager:
         """Render summary line."""
         with self._lock:
             queued = sum(
-                1 for bp in self.processes.values() if bp.status == Status.QUEUED
+                1 for bp in self.processes.values() if bp.status == BuildStatus.QUEUED
             )
             building = sum(
-                1 for bp in self.processes.values() if bp.status == Status.BUILDING
+                1 for bp in self.processes.values() if bp.status == BuildStatus.BUILDING
             )
             completed = sum(
                 1
                 for bp in self.processes.values()
-                if bp.status in (Status.SUCCESS, Status.WARNING)
+                if bp.status in (BuildStatus.SUCCESS, BuildStatus.WARNING)
             )
             failed = sum(
-                1 for bp in self.processes.values() if bp.status == Status.FAILED
+                1 for bp in self.processes.values() if bp.status == BuildStatus.FAILED
             )
             warnings = sum(bp.warnings for bp in self.processes.values())
 

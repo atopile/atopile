@@ -11,6 +11,8 @@ from typing import Optional
 
 from fastapi import Depends
 
+from atopile.server.server import DASHBOARD_PORT
+
 log = logging.getLogger(__name__)
 
 
@@ -21,7 +23,7 @@ class ServerConfig:
         self,
         logs_base: Optional[Path] = None,
         workspace_paths: Optional[list[Path]] = None,
-        port: int = 8501,
+        port: int = DASHBOARD_PORT,
         host: str = "127.0.0.1",
     ):
         self.logs_base = logs_base

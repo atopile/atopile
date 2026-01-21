@@ -58,12 +58,12 @@ _log_sink_var = ContextVar[io.StringIO | None]("log_sink", default=None)
 
 from atopile.dataclasses import (
     Audience,
+    BuildStatus,
     Level,
     LogEntry,
     ProjectState,
     StageCompleteEvent,
     StageStatusEvent,
-    Status,
     TestLogEntry,
 )
 

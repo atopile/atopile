@@ -11,6 +11,7 @@ from typing import Optional
 from atopile.dataclasses import (
     BuildRequest,
     BuildResponse,
+    BuildStatus,
     BuildStatusResponse,
     MaxConcurrentRequest,
 )
@@ -62,8 +63,8 @@ def handle_get_summary(ctx: AppContext) -> dict:
             try:
                 build = json.loads(summary_file.read_text())
 
-                if build.get("status") in ("building", "queued"):
-                    build["status"] = "failed"
+                if build.get("status") in (BuildStatus.BUILDING.value, BuildStatus.QUEUED.value):
+                    build["status"] = BuildStatus.FAILED.value
                     build["error"] = "Build was interrupted"
 
                 if not build.get("project_name"):
@@ -86,7 +87,7 @@ def handle_get_summary(ctx: AppContext) -> dict:
     with _build_lock:
         for build_id, build_info in _active_builds.items():
             status = build_info["status"]
-            if status in ("building", "success", "failed", "cancelled"):
+            if status in (BuildStatus.BUILDING.value, BuildStatus.SUCCESS.value, BuildStatus.FAILED.value, BuildStatus.CANCELLED.value):
                 start_time = build_info.get(
                     "building_started_at", build_info.get("started_at", time.time())
                 )
@@ -177,7 +178,7 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
     with _build_lock:
         build_id = next_build_id()
         _active_builds[build_id] = {
-            "status": "queued",
+            "status": BuildStatus.QUEUED.value,
             "project_root": request.project_root,
             "targets": request.targets,
             "entry": request.entry,
@@ -208,7 +209,7 @@ def handle_get_build_status(build_id: str) -> BuildStatusResponse | None:
     build = _active_builds[build_id]
     return BuildStatusResponse(
         build_id=build_id,
-        status=build["status"],
+        status=BuildStatus(build["status"]),  # Convert string to BuildStatus enum
         project_root=build["project_root"],
         targets=build["targets"],
         return_code=build["return_code"],
@@ -247,10 +248,10 @@ def handle_get_active_builds() -> dict:
         log.info("[DEBUG] handle_get_active_builds acquired lock")
         for bid, build in _active_builds.items():
             status = build["status"]
-            if status not in ("queued", "building"):
+            if status not in (BuildStatus.QUEUED.value, BuildStatus.BUILDING.value):
                 continue
 
-            if status == "building":
+            if status == BuildStatus.BUILDING.value:
                 start_time = build.get(
                     "building_started_at", build.get("started_at", time.time())
                 )
@@ -290,7 +291,7 @@ def handle_get_active_builds() -> dict:
 
     builds.sort(
         key=lambda x: (
-            x["status"] != "building",
+            x["status"] != BuildStatus.BUILDING.value,
             x.get("queue_position") or 999,
         )
     )

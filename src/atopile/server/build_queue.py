@@ -17,6 +17,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
+from atopile.dataclasses import BuildStatus, StageStatus
+from atopile.dataclasses import BuildStatus, StageStatus
 from atopile.server import build_history
 from atopile.server.domains import artifacts as artifacts_domain
 from atopile.server import problem_parser
@@ -79,8 +81,8 @@ def _is_duplicate_build(build_key: str) -> str | None:
     with _build_lock:
         for build_id, build in _active_builds.items():
             if build.get("build_key") == build_key and build["status"] in (
-                "queued",
-                "building",
+                BuildStatus.QUEUED.value,
+                BuildStatus.BUILDING.value,
             ):
                 return build_id
     return None
@@ -551,7 +553,7 @@ class BuildQueue:
                 building_started_at = time.time()
                 with _build_lock:
                     if build_id in _active_builds:
-                        _active_builds[build_id]["status"] = "building"
+                        _active_builds[build_id]["status"] = BuildStatus.BUILDING.value
                         _active_builds[build_id]["building_started_at"] = (
                             building_started_at
                         )
@@ -572,7 +574,7 @@ class BuildQueue:
                 return_code = msg.get("return_code", -1)
                 error = msg.get("error")
                 stages = msg.get("stages", [])
-                status = "success" if return_code == 0 else "failed"
+                status = BuildStatus.SUCCESS.value if return_code == 0 else BuildStatus.FAILED.value
                 duration = 0.0
 
                 with _build_lock:
@@ -590,9 +592,9 @@ class BuildQueue:
 
                         # Count warnings/errors from stages
                         warnings = sum(
-                            1 for s in stages if s.get("status") == "warning"
+                            1 for s in stages if s.get("status") == StageStatus.WARNING.value
                         )
-                        errors = sum(1 for s in stages if s.get("status") == "error")
+                        errors = sum(1 for s in stages if s.get("status") == StageStatus.ERROR.value)
                         _active_builds[build_id]["warnings"] = warnings
                         _active_builds[build_id]["errors"] = errors
 
@@ -626,7 +628,7 @@ class BuildQueue:
             elif msg_type == "cancelled":
                 with _build_lock:
                     if build_id in _active_builds:
-                        _active_builds[build_id]["status"] = "cancelled"
+                        _active_builds[build_id]["status"] = BuildStatus.CANCELLED.value
 
                 with self._active_lock:
                     self._active.discard(build_id)
@@ -658,7 +660,7 @@ class BuildQueue:
             if build_id not in _active_builds:
                 log.debug(f"BuildQueue: {build_id} no longer exists, skipping")
                 return
-            if _active_builds[build_id].get("status") == "cancelled":
+            if _active_builds[build_id].get("status") == BuildStatus.CANCELLED.value:
                 log.debug(f"BuildQueue: {build_id} was cancelled, skipping")
                 return
             build_info = _active_builds[build_id].copy()
@@ -811,7 +813,11 @@ def _get_state_builds():
 
     Helper function used by both sync and async state sync functions.
     """
-    from atopile.dataclasses import Build as StateBuild, BuildStage as StateStage
+    from atopile.dataclasses import (
+        Build as StateBuild,
+        BuildStage as StateStage,
+        StageStatus,
+    )
 
     with _build_lock:
         state_builds = []
@@ -825,7 +831,7 @@ def _get_state_builds():
                         stage_id=s.get("stage_id", s.get("name", "")),
                         display_name=s.get("display_name"),
                         elapsed_seconds=s.get("elapsed_seconds", 0.0),
-                        status=s.get("status", "pending"),
+                        status=StageStatus(s.get("status", "pending")),
                         infos=s.get("infos", 0),
                         warnings=s.get("warnings", 0),
                         errors=s.get("errors", 0),
@@ -854,7 +860,7 @@ def _get_state_builds():
                     display_name=display_name,
                     build_id=build_id,
                     project_name=Path(build_info.get("project_root", "")).name,
-                    status=build_info.get("status", "queued"),
+                    status=BuildStatus(build_info.get("status", BuildStatus.QUEUED.value)),
                     elapsed_seconds=build_info.get("duration", 0.0),
                     warnings=build_info.get("warnings", 0),
                     errors=build_info.get("errors", 0),
@@ -878,7 +884,10 @@ def _sync_builds_to_state():
     Uses asyncio.run_coroutine_threadsafe to schedule on main event loop.
     """
     state_builds = _get_state_builds()
-    queued_builds = [b for b in state_builds if b.status in ("queued", "building")]
+    queued_builds = [
+        b for b in state_builds
+        if b.status in (BuildStatus.QUEUED, BuildStatus.BUILDING)
+    ]
 
     # Schedule async state update on main event loop
     loop = server_state._event_loop
@@ -948,7 +957,10 @@ async def _sync_builds_to_state_async():
     # Set all builds
     await server_state.set_builds(state_builds)
     # Set queued builds (active builds only for queue panel)
-    queued_builds = [b for b in state_builds if b.status in ("queued", "building")]
+    queued_builds = [
+        b for b in state_builds
+        if b.status in (BuildStatus.QUEUED, BuildStatus.BUILDING)
+    ]
     await server_state.set_queued_builds(queued_builds)
 
 
@@ -963,11 +975,11 @@ def cancel_build(build_id: str) -> bool:
             return False
 
         build_info = _active_builds[build_id]
-        if build_info["status"] not in ("queued", "building"):
+        if build_info["status"] not in (BuildStatus.QUEUED.value, BuildStatus.BUILDING.value):
             return False
 
         # Mark as cancelled in the build record
-        build_info["status"] = "cancelled"
+        build_info["status"] = BuildStatus.CANCELLED.value
         build_info["error"] = "Build cancelled by user"
 
     # Signal the BuildQueue to cancel the build

@@ -37,6 +37,8 @@ from rich.tree import Tree
 
 from faebryk.libs.util import ConfigFlag, ConfigFlagInt
 
+from atopile.dataclasses import BuildStatus
+
 # =============================================================================
 # Rich Console Configuration (formerly cli/console.py)
 # =============================================================================
@@ -339,3 +341,37 @@ class ReprHighlighter(RegexHighlighter):
 
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
+# =============================================================================
+# Status Formatting Utilities
+# =============================================================================
+
+
+def status_rich_icon(status: BuildStatus | str) -> str:
+    """Get Rich-formatted icon for status (for terminal display)."""
+    icon_map = {
+        BuildStatus.QUEUED: "[dim]○[/dim]",
+        BuildStatus.BUILDING: "[blue]●[/blue]",
+        BuildStatus.SUCCESS: "[green]✓[/green]",
+        BuildStatus.WARNING: "[yellow]⚠[/yellow]",
+        BuildStatus.FAILED: "[red]✗[/red]",
+    }
+    if isinstance(status, str):
+        status = BuildStatus(status)
+    return icon_map.get(status, "[dim]○[/dim]")
+
+
+def status_rich_text(status: BuildStatus | str, text: str) -> str:
+    """Format text with Rich color markup for status."""
+    color_map = {
+        BuildStatus.QUEUED: "dim",
+        BuildStatus.BUILDING: "blue",
+        BuildStatus.SUCCESS: "green",
+        BuildStatus.WARNING: "yellow",
+        BuildStatus.FAILED: "red",
+    }
+    if isinstance(status, str):
+        status = BuildStatus(status)
+    color = color_map.get(status, "")
+    return f"[{color}]{text}[/{color}]" if color else text
