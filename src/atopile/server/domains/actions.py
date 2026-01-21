@@ -29,7 +29,6 @@ from atopile.server.build_queue import (
     _build_lock,
     _build_queue,
     _is_duplicate_build,
-    _make_build_key,
     _sync_builds_to_state_async,
     cancel_build,
 )
@@ -151,10 +150,9 @@ def _handle_build_sync(payload: dict) -> dict:
                 if all_targets:
                     build_ids = []
                     for target_name in all_targets:
-                        target_build_key = _make_build_key(
+                        existing_id = _is_duplicate_build(
                             project_root, [target_name], entry
                         )
-                        existing_id = _is_duplicate_build(target_build_key)
                         if existing_id:
                             build_ids.append(existing_id)
                             continue
@@ -171,7 +169,6 @@ def _handle_build_sync(payload: dict) -> dict:
                                 "entry": entry,
                                 "standalone": standalone,
                                 "frozen": frozen,
-                                "build_key": target_build_key,
                                 "return_code": None,
                                 "error": None,
                                 "started_at": time.time(),
@@ -200,8 +197,7 @@ def _handle_build_sync(payload: dict) -> dict:
                 )
                 targets = ["default"]
 
-    build_key = _make_build_key(project_root, targets, entry)
-    existing_build_id = _is_duplicate_build(build_key)
+    existing_build_id = _is_duplicate_build(project_root, targets, entry)
     if existing_build_id:
         return {
             "success": True,
@@ -225,7 +221,6 @@ def _handle_build_sync(payload: dict) -> dict:
             "entry": entry,
             "standalone": standalone,
             "frozen": frozen,
-            "build_key": build_key,
             "return_code": None,
             "error": None,
             "started_at": time.time(),

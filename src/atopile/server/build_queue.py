@@ -5,7 +5,6 @@ Build queue and active build tracking.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 import os
@@ -55,25 +54,30 @@ def _release_build_lock(context: str = "unknown") -> None:
 MAX_CONCURRENT_BUILDS = 4
 
 
-def _make_build_key(project_root: str, targets: list[str], entry: str | None) -> str:
-    """Create a unique key for a build configuration."""
-    content = f"{project_root}:{':'.join(sorted(targets))}:{entry or 'default'}"
-    return hashlib.sha256(content.encode()).hexdigest()[:16]
-
-
-def _is_duplicate_build(build_key: str) -> str | None:
+def _is_duplicate_build(
+    project_root: str, targets: list[str], entry: str | None
+) -> str | None:
     """
-    Check if a build with this key is already running or queued.
+    Check if a build with the same config is already running or queued.
 
     Returns the existing build_id if duplicate, None otherwise.
     """
+    sorted_targets = sorted(targets) if targets else []
     with _build_lock:
         for build_id, build in _active_builds.items():
-            if build.get("build_key") == build_key and build["status"] in (
+            if build["status"] not in (
                 BuildStatus.QUEUED.value,
                 BuildStatus.BUILDING.value,
             ):
-                return build_id
+                continue
+            if build.get("project_root") != project_root:
+                continue
+            build_targets = build.get("targets") or []
+            if sorted(build_targets) != sorted_targets:
+                continue
+            if build.get("entry") != entry:
+                continue
+            return build_id
     return None
 
 
@@ -986,7 +990,6 @@ __all__ = [
     "_build_settings",
     "_DEFAULT_MAX_CONCURRENT",
     "_is_duplicate_build",
-    "_make_build_key",
     "_sync_builds_to_state",
     "_sync_builds_to_state_async",
     "BuildQueue",

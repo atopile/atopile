@@ -25,7 +25,6 @@ from atopile.server.build_queue import (
     _build_queue,
     _build_settings,
     _is_duplicate_build,
-    _make_build_key,
     _sync_builds_to_state,
     cancel_build,
 )
@@ -164,8 +163,9 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
     if error:
         return BuildResponse(success=False, message=error, build_id=None)
 
-    build_key = _make_build_key(request.project_root, request.targets, request.entry)
-    existing_build_id = _is_duplicate_build(build_key)
+    existing_build_id = _is_duplicate_build(
+        request.project_root, request.targets, request.entry
+    )
     if existing_build_id:
         return BuildResponse(
             success=True,
@@ -186,7 +186,6 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
             "entry": request.entry,
             "standalone": request.standalone,
             "frozen": request.frozen,
-            "build_key": build_key,
             "return_code": None,
             "error": None,
             "started_at": time.time(),
