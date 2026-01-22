@@ -476,6 +476,16 @@ class is_expression(fabll.Node):
             reverse=not ascending,
         )
 
+    @staticmethod
+    def sort_by_depth_expr(
+        exprs: Iterable["is_expression"], ascending: bool = True
+    ) -> list["is_expression"]:
+        return sorted(
+            exprs,
+            key=lambda e: e.as_parameter_operatable.get().get_depth(),
+            reverse=not ascending,
+        )
+
     def get_obj_type_node(self) -> graph.BoundNode:
         return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
 

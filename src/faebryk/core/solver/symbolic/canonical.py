@@ -242,7 +242,7 @@ def convert_to_canonical_operations(mutator: Mutator):
         for Target, Convertible, Converter in MirroredExpressions
     }
 
-    exprs = mutator.get_expressions(sort_by_depth=True)
+    exprs = mutator.get_expressions()
 
     for e in exprs:
         e_type = not_none(fabll.Traits(e).get_obj_raw().get_type_node()).node()
@@ -398,7 +398,7 @@ def flatten_expressions(mutator: Mutator):
     #  - copy param (strip unit etc)
     # - copy expr
 
-    exprs = mutator.get_expressions(sort_by_depth=True)
+    exprs = F.Expressions.is_expression.sort_by_depth_expr(mutator.get_expressions())
 
     exprs = _remove_unit_expressions(mutator, exprs)
     expr_reprs: dict[F.Expressions.is_expression, F.Parameters.can_be_operand] = {}

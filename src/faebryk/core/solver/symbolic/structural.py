@@ -199,7 +199,6 @@ def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
         # setic expressions can't get subset estimated
         if not e.has_trait(F.Expressions.is_setic)
     }
-    exprs = F.Expressions.is_expression.sort_by_depth(exprs, ascending=True)
 
     for expr in exprs:
         expr_e = expr.get_trait(F.Expressions.is_expression)
@@ -297,7 +296,6 @@ def lower_estimation_of_expressions_with_subsets(mutator: Mutator):
         # setic expressions can't get subset estimated
         if not e.has_trait(F.Expressions.is_setic)
     }
-    exprs = F.Expressions.is_expression.sort_by_depth(exprs, ascending=True)
 
     for expr in exprs:
         expr_e = expr.get_trait(F.Expressions.is_expression)

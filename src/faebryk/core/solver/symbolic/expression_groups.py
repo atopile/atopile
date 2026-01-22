@@ -18,9 +18,7 @@ def idempotent_unpack(mutator: Mutator):
     Abs(Abs(A)) -> Abs(A)
     """
 
-    exprs = mutator.get_expressions(
-        sort_by_depth=True, required_traits=(F.Expressions.is_idempotent,)
-    )
+    exprs = mutator.get_expressions(required_traits=(F.Expressions.is_idempotent,))
     for expr in exprs:
         assert len(expr.get_operands()) == 1
         inner = expr.get_operands()[0]
@@ -36,9 +34,7 @@ def unary_identity_unpack(mutator: Mutator):
     for f in [Add, Multiply, Or, Union, Intersection]
     """
 
-    exprs = mutator.get_expressions(
-        sort_by_depth=True, required_traits=(F.Expressions.has_unary_identity,)
-    )
+    exprs = mutator.get_expressions(required_traits=(F.Expressions.has_unary_identity,))
     for expr in exprs:
         if len(expr.get_operands()) != 1:
             continue
@@ -54,9 +50,7 @@ def involutory_fold(mutator: Mutator):
     Not(Not(A)) -> A (a not lit, else pure + superset estimate)
     """
 
-    exprs = mutator.get_expressions(
-        sort_by_depth=True, required_traits=(F.Expressions.is_involutory,)
-    )
+    exprs = mutator.get_expressions(required_traits=(F.Expressions.is_involutory,))
     for expr in exprs:
         if len(expr.get_operands()) != 1:
             continue

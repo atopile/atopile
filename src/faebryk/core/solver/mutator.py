@@ -530,6 +530,7 @@ class MutationStage:
                 )
             ]
 
+        # note not necessarily used for a flattened expr graph
         nodes = [n for n in nodes if not n.has_trait(is_irrelevant)]
         out = ""
         node_by_depth = groupby(
@@ -1924,7 +1925,7 @@ class Mutator:
         )
 
     def get_parameter_operatables(
-        self, include_terminated: bool = False, sort_by_depth: bool = False
+        self, include_terminated: bool = False
     ) -> (
         list[F.Parameters.is_parameter_operatable]
         | set[F.Parameters.is_parameter_operatable]
@@ -1944,9 +1945,6 @@ class Mutator:
             )
             out.difference_update(terminated)
 
-        if sort_by_depth:
-            out = F.Expressions.is_expression.sort_by_depth_po(out, ascending=True)
-
         return out
 
     def get_parameters(self) -> OrderedSet[F.Parameters.is_parameter]:
@@ -1962,7 +1960,6 @@ class Mutator:
     def get_typed_expressions[T: "fabll.NodeT"](
         self,
         t: type[T] = fabll.Node[Any],
-        sort_by_depth: bool = False,
         created_only: bool = False,
         new_only: bool = False,
         include_terminated: bool = False,
@@ -2061,14 +2058,10 @@ class Mutator:
             }
             out.difference_update(mutated_objs)
 
-        if sort_by_depth:
-            out = F.Expressions.is_expression.sort_by_depth(out, ascending=True)
-
         return out
 
     def get_expressions(
         self,
-        sort_by_depth: bool = False,
         created_only: bool = False,
         new_only: bool = False,
         include_terminated: bool = False,
@@ -2077,7 +2070,6 @@ class Mutator:
         # TODO make this first class instead of calling
         typed = self.get_typed_expressions(
             t=fabll.Node,
-            sort_by_depth=sort_by_depth,
             created_only=created_only,
             new_only=new_only,
             include_terminated=include_terminated,
@@ -2170,16 +2162,13 @@ class Mutator:
 
     def _copy_unmutated(self):
         touched = self.transformations.mutated.keys() | self.transformations.removed
-        to_copy = F.Expressions.is_expression.sort_by_depth(
-            (
-                fabll.Traits(p).get_obj_raw()
-                for p in (
-                    set(self.get_parameter_operatables(include_terminated=True))
-                    - touched
-                )
-            ),
-            ascending=True,
-        )
+        to_copy = [
+            fabll.Traits(p).get_obj_raw()
+            for p in (
+                set(self.get_parameter_operatables(include_terminated=True))
+                - touched
+            )
+        ]
         for p in to_copy:
             p_po = p.get_trait(F.Parameters.is_parameter_operatable)
             self.copy_operand(p_po)

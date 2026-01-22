@@ -50,7 +50,7 @@ def fold_expression_type[T: fabll.NodeT](
     Not(Not(A)) -> neutralize=replace: A
     ```
     """
-    exprs = mutator.get_typed_expressions(expr_type, sort_by_depth=True)
+    exprs = mutator.get_typed_expressions(expr_type)
     for expr in exprs:
         if mutator.utils.is_pure_literal_expression(
             expr.get_trait(F.Parameters.can_be_operand)

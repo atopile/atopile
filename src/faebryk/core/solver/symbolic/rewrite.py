@@ -349,9 +349,7 @@ def rewrite_equation_for_variable(
 
 @algorithm("permutate equation operands", terminal=False)
 def permutate_equation_operands(mutator: Mutator):
-    for equation in mutator.get_typed_expressions(
-        Is, sort_by_depth=True, required_traits=(is_predicate,)
-    ):
+    for equation in mutator.get_typed_expressions(Is, required_traits=(is_predicate,)):
         leaves = equation.is_expression.get().get_operand_leaves_operatable()
         if len(leaves) < 2:
             continue
