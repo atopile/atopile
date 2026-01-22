@@ -1150,7 +1150,15 @@ class LogHandler(RichHandler):
         Returns:
             ConsoleRenderable: Renderable to display log message.
         """
+        # Check if message contains ANSI escape codes (from rich_to_string tables, etc.)
+        # ANSI codes start with ESC[ which is \x1b[ or \033[
+        has_ansi = "\x1b[" in message or "\033[" in message
+
         if not self._is_terminal:
+            # For non-terminal output, parse ANSI codes if present to strip them
+            # or preserve the formatted structure
+            if has_ansi:
+                return Text.from_ansi(message)
             return Text(message)
 
         use_markdown = getattr(record, "markdown", False)
@@ -1159,6 +1167,9 @@ class LogHandler(RichHandler):
 
         if use_markdown:
             message_text = Markdown(message)
+        elif has_ansi:
+            # Parse ANSI escape codes (from rich_to_string tables, trees, etc.)
+            message_text = Text.from_ansi(message)
         else:
             message_text = Text.from_markup(message) if use_markup else Text(message)
 
