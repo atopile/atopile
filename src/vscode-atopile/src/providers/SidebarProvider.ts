@@ -103,6 +103,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.options = {
       enableScripts: true,
+      retainContextWhenHidden: true,
       localResourceRoots: isDev
         ? [] // No local resources in dev mode
         : [

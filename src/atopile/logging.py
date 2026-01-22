@@ -398,6 +398,7 @@ def capture_logs():
 def log_exceptions(log_sink: io.StringIO):
     """Context manager to capture exceptions to a log sink."""
     from atopile.cli.excepthook import _handle_exception
+
     exc_console = Console(file=log_sink)
     exc_handler = LogHandler(console=exc_console)
     logger.addHandler(exc_handler)
@@ -480,6 +481,7 @@ class TestLogger(BaseLogger):
     @staticmethod
     def get_log_db() -> Path:
         from faebryk.libs.paths import get_log_dir
+
         return get_log_dir() / "test_logs.db"
 
     @classmethod
@@ -554,6 +556,7 @@ class BuildLogger(BaseLogger):
     @staticmethod
     def get_log_db() -> Path:
         from faebryk.libs.paths import get_log_dir
+
         return get_log_dir() / "build_logs.db"
 
     @classmethod
@@ -566,7 +569,6 @@ class BuildLogger(BaseLogger):
         build_id: str | None = None,
     ) -> "BuildLogger":
         timestamp = timestamp or NOW
-
         writer = SQLiteLogWriter.get_instance(
             "build",
             cls.get_log_db(),
@@ -696,6 +698,7 @@ class BuildLogger(BaseLogger):
     def _extract_ato_traceback(self, exc: BaseException) -> str | None:
         try:
             from rich.console import Console as RC
+
             buf = io.StringIO()
             c = RC(file=buf, width=120, force_terminal=True)
             if hasattr(exc, "__rich_console__"):
@@ -749,6 +752,7 @@ class LogHandler(RichHandler):
         self.tracebacks_unwrap = tracebacks_unwrap or [UserPythonModuleError]
         if hide_traceback_types is None:
             from atopile.compiler import DslRichException
+
             hide_traceback_types = (_BaseBaseUserException, DslRichException)
         self.hide_traceback_types = hide_traceback_types
         self.always_show_traceback_types = always_show_traceback_types
@@ -790,10 +794,9 @@ class LogHandler(RichHandler):
             exc_type, exc_value, exc_tb = self._unwrap_chain(
                 exc_type, exc_value, exc_tb
             )
-        is_hidden_type = (
-            isinstance(exc_value, self.hide_traceback_types)
-            and not isinstance(exc_value, self.always_show_traceback_types)
-        )
+        is_hidden_type = isinstance(
+            exc_value, self.hide_traceback_types
+        ) and not isinstance(exc_value, self.always_show_traceback_types)
         hide = is_hidden_type or record.levelno < self.traceback_level
         if hide or not exc_type or not exc_value:
             return None
@@ -915,12 +918,8 @@ class LogHandler(RichHandler):
         else:
             try:
                 if record.levelno >= logging.ERROR and record.exc_info:
-                    stderr_console = Console(
-                        file=sys.stderr, width=self.console.width
-                    )
-                    stderr_console.print(
-                        renderable, crop=False, overflow="ignore"
-                    )
+                    stderr_console = Console(file=sys.stderr, width=self.console.width)
+                    stderr_console.print(renderable, crop=False, overflow="ignore")
                 self.console.print(renderable, crop=False, overflow="ignore")
             except Exception:
                 self.handleError(record)
@@ -1148,6 +1147,7 @@ atexit.register(TestLogger.close_all)
 
 if PLOG:
     from faebryk.libs.picker.picker import logger as plog
+
     plog.setLevel(logging.DEBUG)
 
 logger: AtoLogger = logging.getLogger(__name__)  # type: ignore[assignment]

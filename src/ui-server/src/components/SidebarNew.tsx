@@ -30,6 +30,14 @@ export function SidebarNew() {
   const { queuedBuilds } = useBuilds();
   const { errorCount, warningCount } = useProblems();
   const { isConnected } = useConnection();
+  const buildQueueItemHeight = 34;
+  const buildQueueMinHeight = 40;
+  const buildQueuePadding = 12;
+  const buildQueueDesiredHeight = Math.max(
+    buildQueueMinHeight,
+    Math.max(1, queuedBuilds.length) * buildQueueItemHeight + buildQueuePadding
+  );
+  const buildQueueMaxHeight = Math.min(240, buildQueueDesiredHeight);
 
   // Get version and logo from store
   const version = useStore((state) => state.version);
@@ -97,6 +105,7 @@ export function SidebarNew() {
           collapsed={collapsedSections.has('buildQueue')}
           onToggle={() => toggleSection('buildQueue')}
           badge={queuedBuilds.length > 0 ? queuedBuilds.length : undefined}
+          maxHeight={buildQueueMaxHeight}
         >
           <BuildQueuePanelConnected />
         </CollapsibleSection>

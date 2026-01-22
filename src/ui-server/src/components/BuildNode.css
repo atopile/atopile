@@ -98,8 +98,9 @@
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-sm);
-  background: rgba(249, 226, 175, 0.1);
+  background: var(--bg-secondary);
   border-top: 1px solid var(--ctp-yellow);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .duplicate-warning-icon {
@@ -111,8 +112,8 @@
 
 .duplicate-warning-text {
   font-size: var(--font-size-xs);
-  color: var(--ctp-yellow);
-  font-weight: 500;
+  color: var(--text-primary);
+  font-weight: 600;
   flex: 1;
 }
 

@@ -12,7 +12,7 @@ from atopile.server import build_history
 from faebryk.libs.picker.api.api import get_api_client
 from faebryk.libs.picker.api.models import Component, LCSCParams
 
-_LCSC_RE = re.compile(r"^C\\d+$", re.IGNORECASE)
+_LCSC_RE = re.compile(r"^C\d+$", re.IGNORECASE)
 _OUT_OF_STOCK_TTL_S = 24 * 60 * 60
 _out_of_stock_cache: dict[tuple[str, str], float] = {}
 

@@ -136,7 +136,7 @@
   z-index: 100;
   margin-top: 4px;
   padding: 6px 8px;
-  background: var(--bg-elevated);
+  background: var(--bg-primary);
   border: 1px solid var(--ctp-red);
   border-radius: var(--radius-sm);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
@@ -148,13 +148,22 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--ctp-red);
+  color: var(--text-primary);
   font-size: 11px;
   font-weight: 500;
+  background: var(--bg-secondary);
+  border: 1px solid var(--ctp-red);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
 }
 
 .name-validation-dropdown .validation-icon {
   flex-shrink: 0;
+  color: var(--ctp-red);
+}
+
+.name-validation-dropdown .validation-error span {
+  color: var(--ctp-red);
 }
 
 .name-validation-dropdown .validation-suggestion {

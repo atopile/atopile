@@ -91,6 +91,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.options = {
       enableScripts: true,
+      retainContextWhenHidden: true,
       localResourceRoots: isDev
         ? []
         : [
@@ -188,7 +189,6 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     // Get backend URLs from backendServer (uses discovered port or config)
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
-    const uiMode = getUiMode();
 
     return `<!DOCTYPE html>
 <html lang="en">

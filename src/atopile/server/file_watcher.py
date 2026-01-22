@@ -75,6 +75,8 @@ class _EventDispatcher(FileSystemEventHandler):
 
     def _dispatch(self, path_str: str, event_type: str) -> None:
         path = Path(path_str)
+        if self._is_ignored(path):
+            return
         with self._lock:
             for hid, (glob, callback, debounce_s, loop) in self._handlers.items():
                 if not self._matches(glob, path_str):
@@ -126,6 +128,13 @@ class _EventDispatcher(FileSystemEventHandler):
     @staticmethod
     def _path_str(path: str | bytes) -> str:
         return path.decode() if isinstance(path, bytes) else path
+
+    @staticmethod
+    def _is_ignored(path: Path) -> bool:
+        for part in path.parts:
+            if part.startswith("."):
+                return True
+        return False
 
 
 # Module-level singleton state
