@@ -4705,11 +4705,11 @@ class Numbers(fabll.Node):
                 if min_val == -math.inf:
                     return "any"
                 if min_val == 0:
-                    return "any ≥0"
+                    return "ℝ+"
                 return f"≥{f(min_val, scale)}"
             if min_val == -math.inf:
                 if max_val == 0:
-                    return "any ≤0"
+                    return "ℝ⁻"
                 return f"≤{f(max_val, scale)}"
 
             # Calculate relative tolerance for finite, non-zero-centered intervals
