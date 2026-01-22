@@ -30,6 +30,13 @@ def _log_add_package(identifier: str, version: str):
     )
 
 
+def _log_pin_package(identifier: str, version: str):
+    logger.info(
+        f"[yellow]Pinned[/] {identifier}@{version}",
+        extra={"markup": True},
+    )
+
+
 def _log_remove_package(identifier: str, version: str | None):
     dep_str = f"{identifier}@{version}" if version else identifier
     logger.info(f"[red]-[/] {dep_str}", extra={"markup": True})
@@ -186,6 +193,7 @@ class ProjectDependencies:
         sync_versions: bool = True,
         install_missing: bool = False,
         clean_unmanaged_dirs: bool = False,
+        pin_versions: bool = False,
     ):
         if pcfg is None:
             if self.gcfg is None:
@@ -207,6 +215,8 @@ class ProjectDependencies:
             self.install_missing_dependencies()
         if clean_unmanaged_dirs:
             self.clean_unmanaged_directories()
+        if pin_versions:
+            self.pin_versions()
 
     @property
     def all_deps(self) -> set[ProjectDependency]:
@@ -507,3 +517,17 @@ class ProjectDependencies:
         if dirty:
             self.reload()
             self.clean_unmanaged_directories()
+
+    def pin_versions(self):
+        """
+        Pin any unpinned registry dependencies to their current installed versions
+        """
+        for dep in self.direct_deps:
+            if (
+                isinstance(dep.spec, config.RegistryDependencySpec)
+                and dep.cfg is not None
+                and dep.cfg.package is not None
+            ):
+                dep.spec.release = dep.cfg.package.version
+                dep.add_to_manifest()
+                _log_pin_package(dep.identifier, dep.cfg.package.version)
