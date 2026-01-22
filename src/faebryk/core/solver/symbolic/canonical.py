@@ -10,7 +10,7 @@ import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import ExpressionBuilder, Mutator
 from faebryk.core.solver.utils import S_LOG
-from faebryk.libs.util import not_none
+from faebryk.libs.util import not_none, one
 
 Add = F.Expressions.Add
 And = F.Expressions.And
@@ -453,15 +453,18 @@ def flatten_expressions(mutator: Mutator):
         if original_operands == operands:
             mutator.transformations.copied.add(e_po)
 
+        aliases = e_op.get_operations(F.Expressions.Is, predicates_only=True)
+
         # no aliases for predicates
         if e.try_get_sibling_trait(F.Expressions.is_predicate):
             logger.debug(
                 f"No aliases for predicate {e.compact_repr(mutator.print_ctx)}"
             )
+            for a in aliases:
+                mutator.remove(a.is_parameter_operatable.get(), no_check_roots=True)
             expr_reprs[e] = mutator.make_singleton(True).can_be_operand.get()
             continue
 
-        aliases = e_op.get_operations(F.Expressions.Is, predicates_only=True)
         alias_params = {
             p
             for alias in aliases
@@ -476,3 +479,13 @@ def flatten_expressions(mutator: Mutator):
 
         expr_reprs[e] = representative_op
         # alias is added by mutate_expression / invariant
+
+        alias = one(
+            e_copy.as_operand.get().get_operations(
+                F.Expressions.Is, predicates_only=True
+            )
+        )
+        for a in aliases:
+            mutator.transformations.mutated[a.is_parameter_operatable.get()] = (
+                alias.is_parameter_operatable.get()
+            )

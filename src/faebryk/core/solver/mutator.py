@@ -107,6 +107,8 @@ class Transformations:
         default_factory=OrderedSet[F.Expressions.is_assertable]
     )
 
+    _no_log: bool = False
+
     def is_dirty(self) -> bool:
         # Use allow_different_graph=True because mutations go from G_in to G_out
         # We want to detect actual changes, not just graph differences
@@ -122,7 +124,7 @@ class Transformations:
             if k.try_get_sibling_trait(F.Expressions.is_predicate)
         }
 
-        if S_LOG:
+        if S_LOG and not self._no_log:
             non_copy = list(non_copy)
             if bool(non_copy):
                 for k, v in non_copy:
@@ -179,8 +181,11 @@ class Transformations:
         )
 
     def __str__(self) -> str:
+        self._no_log = True
         if not self.is_dirty():
+            self._no_log = False
             return "Transformations()"
+        self._no_log = False
         assert self.print_ctx
 
         ctx = self.print_ctx

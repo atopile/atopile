@@ -3359,8 +3359,7 @@ def _run_lldb_macos(test_bin: Path | None, created_after: float | None) -> None:
             )
         elif not os.access(cores_dir, os.W_OK):
             print(
-                "The /cores directory is not writable. "
-                "Fix with: sudo chmod 1777 /cores"
+                "The /cores directory is not writable. Fix with: sudo chmod 1777 /cores"
             )
         else:
             print(
@@ -3388,9 +3387,7 @@ def _run_lldb_macos(test_bin: Path | None, created_after: float | None) -> None:
         print("Failed to run lldb on core dump")
 
 
-def run_gdb(
-    test_bin: Path | None = None, created_after: float | None = None
-) -> None:
+def run_gdb(test_bin: Path | None = None, created_after: float | None = None) -> None:
     """Debug a crash using platform-appropriate tools (gdb on Linux, lldb on macOS)."""
     if sys.platform.startswith("win"):
         print("Debugging with core dumps is not supported on Windows")
@@ -3499,6 +3496,16 @@ class OrderedSet[T: Hashable](collections.abc.MutableSet[T]):
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({list(self._data)})"
+
+
+def one[T](iterable: Iterable[T]) -> T:
+    it = iter(iterable)
+    out = next(it)
+    try:
+        next(it)
+    except StopIteration:
+        return out
+    raise ValueError("Iterable has more than one element")
 
 
 class TestEnvironmentVariables:
