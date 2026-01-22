@@ -16,7 +16,6 @@ from typing import (
     Sequence,
     cast,
     overload,
-    Literal,
 )
 
 from more_itertools import first
@@ -27,7 +26,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.logging import rich_to_string
+from atopile.logging_utils import rich_to_string
 from faebryk.core.solver.algorithm import SolverAlgorithm
 from faebryk.core.solver.utils import (
     S_LOG,
@@ -42,7 +41,6 @@ from faebryk.libs.util import (
     groupby,
     indented_container,
     invert_dict,
-    not_none,
     once,
 )
 
@@ -138,9 +136,10 @@ class Transformations:
             # Filter created to only include truly new expressions
             # If a "created" expression existed in G_in (was copied), it's not truly new
             if created_preds:
-                logger.error(
-                    f"DIRTY: new preds={indented_container(k.compact_repr(self.print_ctx) for k in created_preds)}"
+                x = indented_container(
+                    k.compact_repr(self.print_ctx) for k in created_preds
                 )
+                logger.error(f"DIRTY: new preds={x}")
             if bool(self.terminated):
                 logger.error(f"DIRTY: terminated={len(self.terminated)}")
             if bool(self.asserted):
@@ -1449,7 +1448,10 @@ class ExpressionBuilder[
         return pretty_expr(self)
 
     def __str__(self) -> str:
-        return f"ExpressionBuilder({self.factory.__name__}, {self.operands}, {self.assert_}, {self.terminate})"
+        return (
+            f"ExpressionBuilder({self.factory.__name__}, {self.operands},"
+            f" {self.assert_}, {self.terminate})"
+        )
 
     def matches(self, other: F.Expressions.is_expression) -> bool:
         return (
@@ -1598,7 +1600,8 @@ class Mutator:
 
         if I_LOG:
             logger.debug(
-                f"Inserted expression: {new_expr.is_expression.get().compact_repr(self.print_ctx)}"
+                f"Inserted expression: "
+                f"{new_expr.is_expression.get().compact_repr(self.print_ctx)}"
             )
 
         op_graphs = {
@@ -2248,7 +2251,7 @@ def test_mutator_basic_bootstrap():
         iteration=0,
         terminal=True,
     )
-    result = mutator.run()
+    mutator.run()
     # TODO next: check that params/exprs copied
 
 

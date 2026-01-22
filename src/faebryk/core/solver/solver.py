@@ -17,7 +17,7 @@ from faebryk.core.solver.algorithm import SolverAlgorithm
 
 if TYPE_CHECKING:
     import faebryk.library._F as F
-from atopile.logging import NET_LINE_WIDTH
+from atopile.logging_utils import NET_LINE_WIDTH
 from faebryk.core.solver.mutator import MutationMap, MutationStage, Mutator
 from faebryk.core.solver.symbolic import (
     expression_groups,
@@ -379,9 +379,9 @@ def test_solver_basic():
 if __name__ == "__main__":
     import typer
 
-    from atopile.logging import setup_basic_logging
+    from atopile.logging import BuildLogger
 
-    setup_basic_logging()
+    BuildLogger.setup_logging(enable_database=False)
     logger.setLevel(logging.DEBUG)
     from faebryk.core.solver.mutator import logger as mutator_logger
 

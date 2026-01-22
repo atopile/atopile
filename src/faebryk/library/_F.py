@@ -98,6 +98,7 @@ from faebryk.library.PDM import PDM
 from faebryk.library.RS232 import RS232
 from faebryk.library.SPI import SPI
 from faebryk.library.SWD import SWD
+from faebryk.library.SinglePinAddressor import SinglePinAddressor
 from faebryk.library.UART_Base import UART_Base
 from faebryk.library.requires_pulls import requires_pulls
 from faebryk.library.CAN import CAN
@@ -199,6 +200,7 @@ __all__ = [
     "RS232",
     "SPI",
     "SWD",
+    "SinglePinAddressor",
     "UART_Base",
     "requires_pulls",
     "CAN",

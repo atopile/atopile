@@ -227,57 +227,18 @@ def _generate_txt_parameters(
     return out
 
 
-def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
-    """Write all parameters of the given module to a file."""
-    # {module_name: [{param_name: param_value}, {param_name: param_value},...]}
+def export_parameters_to_file(
+    module: fabll.Node, solver: Solver, path: Path, build_id: str | None = None
+):
+    """Write the JSON variables report for the given module.
 
-    parameters: dict[str, list[tuple[str, str]]] = {}
+    Args:
+        module: The application root node
+        solver: The solver used for parameter resolution
+        path: Output file path
+        build_id: Build ID from server (links to build history)
+    """
+    from faebryk.exporters.parameters.json_parameters import write_json_variables
 
-    for m in module.get_children(
-        direct_only=False,
-        types=fabll.Node,
-        required_trait=fabll.is_module,
-        include_root=True,
-    ):
-        module_name = m.get_name(accept_no_parent=True)
-        module_params = m.get_children(
-            direct_only=True,
-            types=fabll.Node,
-            include_root=True,
-            required_trait=F.Parameters.is_parameter,
-        )
-        # Pair names and values together before sorting to maintain correct association
-        param_name_values = [
-            (
-                param.get_full_name().split(".")[-1],
-                solver.extract_superset(
-                    param.get_trait(F.Parameters.is_parameter)
-                ).pretty_str(),
-            )
-            for param in module_params
-        ]
-        parameters[module_name] = sorted(param_name_values, key=lambda x: x[0])
-
-    logger.info(f"Writing parameters to {path}")
-
-    match path.suffix:
-        case ".txt":
-            out = _generate_txt_parameters(parameters)
-        case ".md":
-            out = _generate_md_parameters(parameters)
-        case ".json":
-            out = _generate_json_parameters(parameters)
-        case _:
-            raise ValueError(
-                f"Export to file extension [{path.suffix}] not supported in {path}"
-            )
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = path.with_suffix(path.suffix + ".tmp")
-
-    try:
-        temp_path.write_text(out, encoding="utf-8")
-        temp_path.replace(path)
-    finally:
-        if temp_path.exists():
-            temp_path.unlink()
+    logger.info(f"Writing JSON variables to {path}")
+    write_json_variables(module, solver, path, build_id=build_id)

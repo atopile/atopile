@@ -9,7 +9,7 @@ import pytest
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.logging import rich_to_string
+from atopile.logging import BaseLogger
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import (
     MutationMap,
@@ -18,7 +18,9 @@ from faebryk.core.solver.mutator import (
     Transformations,
 )
 from faebryk.core.solver.solver import Solver
-from faebryk.core.solver.utils import ContradictionByLiteral
+from faebryk.core.solver.utils import (
+    ContradictionByLiteral,
+)
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 from faebryk.libs.util import not_none
@@ -375,7 +377,7 @@ def test_traceback_filtering_tree():
     A_new = out.data.mutation_map.map_forward(A).maps_to
     assert A_new
     tb = out.data.mutation_map.get_traceback(A_new)
-    logger.info(rich_to_string(tb.filtered().as_rich_tree()))
+    logger.info(BaseLogger.rich_to_string(tb.filtered().as_rich_tree()))
 
     # A{⊆|([5, 10])} <-
     #  CONSTRAINED[Transitive subset]  <- A{⊆|([0, ∞])}

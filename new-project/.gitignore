@@ -1,0 +1,12 @@
+# Build outputs
+build/
+
+# Dependencies
+.ato/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store

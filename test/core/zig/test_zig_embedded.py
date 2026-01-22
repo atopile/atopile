@@ -174,7 +174,4 @@ def main(glob_pattern: str, test_name: str):
 if __name__ == "__main__":
     import typer
 
-    from atopile.logging import setup_basic_logging
-
-    setup_basic_logging()
     typer.run(main)

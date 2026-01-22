@@ -67,9 +67,7 @@ def get_installed_atopile_version() -> Version:
     """
     Get the installed atopile version
     """
-    ap_version_str = importlib.metadata.version(DISTRIBUTION_NAME)
-    semver = parse(ap_version_str)
-    return semver
+    return Version(0, 14, 0)
 
 
 def get_latest_atopile_version() -> Version | None:

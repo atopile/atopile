@@ -29,7 +29,7 @@ from faebryk.libs.github import (
     GithubRepoNotFound,
     GithubUserNotLoggedIn,
 )
-from atopile.logging import rich_print_robust
+from atopile.logging import BaseLogger
 from faebryk.libs.util import (
     get_code_bin_of_terminal,
     in_git_repo,
@@ -57,7 +57,7 @@ def _stuck_user_helper() -> Iterator[bool]:
     for i in itertools.count():
         if i >= threshold:
             if questionary.confirm("Are you trying to exit?").unsafe_ask():
-                rich_print_robust("No worries! Try Ctrl+C next time!")
+                BaseLogger.rich_print_robust("No worries! Try Ctrl+C next time!")
                 exit(0)
             threshold += 5
         yield True
@@ -69,7 +69,7 @@ def _open_in_editor_or_print_path(path: Path):
         # open in vscode / cursor
         subprocess.Popen([code_bin, path])
     else:
-        rich_print_robust(f" \n[cyan]cd {path.relative_to(Path.cwd())}[/cyan]")
+        BaseLogger.rich_print_robust(f" \n[cyan]cd {path.relative_to(Path.cwd())}[/cyan]")
 
 
 stuck_user_helper_generator = _stuck_user_helper()
@@ -90,7 +90,7 @@ def query_helper[T: str | Path | bool](
     """Query a user for input."""
     from atopile.config import config
 
-    rich_print_robust(prompt)
+    BaseLogger.rich_print_robust(prompt)
 
     # Check the default value
     if default is not None:
@@ -178,15 +178,15 @@ def query_helper[T: str | Path | bool](
 
         if (proposed_value := upgrader(value)) != value:
             if upgrader_msg:
-                rich_print_robust(upgrader_msg.format(proposed_value=proposed_value))
+                BaseLogger.rich_print_robust(upgrader_msg.format(proposed_value=proposed_value))
 
-            rich_print_robust(f"Use [cyan]{proposed_value}[/] instead?")
+            BaseLogger.rich_print_robust(f"Use [cyan]{proposed_value}[/] instead?")
             if questionary.confirm("").unsafe_ask():
                 value = proposed_value
 
         if not validator_func(value):
             if validation_failure_msg:
-                rich_print_robust(validation_failure_msg.format(value=value))
+                BaseLogger.rich_print_robust(validation_failure_msg.format(value=value))
             value = None
             continue
 
@@ -222,36 +222,36 @@ def setup_github(
             try:
                 url = gh_cli.get_repo_url(repo_id)
                 repo.create_remote("origin", url)
-                rich_print_robust(f"Added remote origin: {url}")
+                BaseLogger.rich_print_robust(f"Added remote origin: {url}")
                 # Try to push, but don't fail validation if it doesn't work
                 # (e.g. repo not empty, or other reasons)
                 try:
-                    rich_print_robust(
+                    BaseLogger.rich_print_robust(
                         f"Attempting to push initial commit to"
                         f" {repo.active_branch.name}..."
                     )
                     repo.git.push("-u", "origin", repo.active_branch.name)
-                    rich_print_robust("[green]Pushed successfully![/]")
+                    BaseLogger.rich_print_robust("[green]Pushed successfully![/]")
                 except git.GitCommandError as e:
-                    rich_print_robust(
+                    BaseLogger.rich_print_robust(
                         f"[yellow]Could not push to remote:[/yellow] {e.stderr.strip()}"
                     )
-                    rich_print_robust("You may need to push manually.")
+                    BaseLogger.rich_print_robust("You may need to push manually.")
                 return True
             except GithubRepoNotFound:
-                rich_print_robust(f"[red]Repository {repo_id} not found on GitHub.[/]")
+                BaseLogger.rich_print_robust(f"[red]Repository {repo_id} not found on GitHub.[/]")
                 return False
             except git.GitCommandError as e:
                 # This might happen if remote 'origin' already exists
-                rich_print_robust(
+                BaseLogger.rich_print_robust(
                     f"[red]Failed to add remote:[/red] {e.stderr.strip()}"
                 )
                 return False
             except KeyboardInterrupt:
-                rich_print_robust("[red]Aborted.[/red]")
+                BaseLogger.rich_print_robust("[red]Aborted.[/red]")
                 return False
             except Exception as e:
-                rich_print_robust(f"[red]An unexpected error occurred:[/red] {e}")
+                BaseLogger.rich_print_robust(f"[red]An unexpected error occurred:[/red] {e}")
                 return False
 
         query_helper(
@@ -283,29 +283,29 @@ def setup_github(
                     add_remote=True,
                     path=project_path,
                 )
-                rich_print_robust(
+                BaseLogger.rich_print_robust(
                     f"[green]Successfully created repository {repo_url} and"
                     " pushed initial commit![/]"
                 )
                 return True
             except GithubRepoAlreadyExists:
-                rich_print_robust(
+                BaseLogger.rich_print_robust(
                     f"[red]Repository {repo_id} already exists on GitHub.[/]"
                 )
                 # We could offer to use it, but for now, let's just fail validation
                 return False
             except git.GitCommandError as e:
                 # This might happen if the push fails for some reason
-                rich_print_robust(
+                BaseLogger.rich_print_robust(
                     f"[red]Failed during git operation (e.g. push):[/red]"
                     f" {e.stderr.strip()}"
                 )
                 return False
             except KeyboardInterrupt:
-                rich_print_robust("[red]Aborted.[/red]")
+                BaseLogger.rich_print_robust("[red]Aborted.[/red]")
                 return False
             except Exception as e:
-                rich_print_robust(f"[red]An unexpected error occurred:[/red] {e}")
+                BaseLogger.rich_print_robust(f"[red]An unexpected error occurred:[/red] {e}")
                 return False
 
         query_helper(
@@ -328,7 +328,7 @@ def _create_git_repo(project_path: Path) -> "git.Repo":
         repo.git.commit(m="Initial commit")
     except git.GitCommandError as e:
         if "Author identity unknown" in e.stderr:
-            rich_print_robust(
+            BaseLogger.rich_print_robust(
                 "[yellow]Warning: Author identity unknown. "
                 "Staged but not committed.[/yellow]"
             )
@@ -521,11 +521,11 @@ def project(path: Annotated[Path | None, typer.Option()] = None):
                 try:
                     setup_github(project_path, gh_cli, git_repo)
                 except Exception:
-                    rich_print_robust("[red]Creating GitHub repo interrupted.[/red]")
+                    BaseLogger.rich_print_robust("[red]Creating GitHub repo interrupted.[/red]")
                     return
 
     # Wew! New repo created!
-    rich_print_robust(
+    BaseLogger.rich_print_robust(
         f':sparkles: [green]Created new project "{project_path.name}"![/] :sparkles:'
     )
 
@@ -568,7 +568,7 @@ def package(
     )
     package_path = template.run(output_dir=output_dir)
 
-    rich_print_robust(
+    BaseLogger.rich_print_robust(
         f':sparkles: [green]Created new package "{package_path.name}"![/] :sparkles:'
     )
 
@@ -615,14 +615,14 @@ def build_target(
 
     def _check_build_target_name(value: str) -> bool:
         if not re.match(r"^[a-zA-Z][a-zA-Z0-9_-]*$", value):
-            rich_print_robust(
+            BaseLogger.rich_print_robust(
                 "[red]Build-target names must start with a letter and"
                 " contain only letters, numbers, dashes and underscores.[/]"
             )
             return False
 
         if value in config.project.builds:
-            rich_print_robust(f"[red]Build-target `{value}` already exists[/]")
+            BaseLogger.rich_print_robust(f"[red]Build-target `{value}` already exists[/]")
             return False
 
         return True
@@ -658,17 +658,17 @@ def build_target(
 
     def _file_validator(f: Path) -> bool:
         if f.is_dir():
-            rich_print_robust(f"{f} is a directory")
+            BaseLogger.rich_print_robust(f"{f} is a directory")
             return False
 
         if f.suffix != ".ato":
-            rich_print_robust(f"{f} must end in .ato")
+            BaseLogger.rich_print_robust(f"{f} must end in .ato")
             return False
 
         try:
             f.relative_to(src_path)
         except ValueError:
-            rich_print_robust(f"{f} is outside the project's src dir")
+            BaseLogger.rich_print_robust(f"{f} is outside the project's src dir")
             return False
 
         return True
@@ -725,7 +725,7 @@ def build_target(
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text(module_text, encoding="utf-8")
 
-    rich_print_robust(
+    BaseLogger.rich_print_robust(
         ":sparkles: Successfully created a new build configuration "
         f"[cyan]{build_target}[/] at [cyan]{file}[/]! :sparkles:"
     )
@@ -785,7 +785,7 @@ def part(
 
         if len(components) == 0:
             if config.interactive:
-                rich_print_robust(f'No components found for "{search_term}"')
+                BaseLogger.rich_print_robust(f'No components found for "{search_term}"')
                 search_term = None
                 continue
             else:
@@ -849,10 +849,10 @@ def part(
     except Exception as e:
         raise errors.UserException(str(e)) from e
 
-    rich_print_robust(
+    BaseLogger.rich_print_robust(
         f":sparkles: Created {apart.identifier} at {apart.path} ! Import with:\n"
     )
-    rich_print_robust(
+    BaseLogger.rich_print_robust(
         f"```ato\n{apart.generate_import_statement(config.project.paths.src)}\n```",
         markdown=True,
     )

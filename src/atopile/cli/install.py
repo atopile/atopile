@@ -89,6 +89,10 @@ def sync(
     #        "--upgrade", "-U", help="Allow package upgrades, ignoring pinned versions"
     #    ),
     # ] = False,
+    pin: Annotated[
+        bool,
+        typer.Option("--pin", "-p", help="Pin package versions if not already pinned"),
+    ] = False,
     path: Annotated[
         Path | None, typer.Option("--project-path", "-C", help="Path to the project")
     ] = None,
@@ -104,7 +108,10 @@ def sync(
     config.apply_options(None, working_dir=path)
 
     try:
-        ProjectDependencies(install_missing=True, clean_unmanaged_dirs=True)
+        ProjectDependencies(
+            install_missing=True, clean_unmanaged_dirs=True, pin_versions=pin
+        )
+
     except (
         api.Errors.PackageNotFoundError,
         api.Errors.ReleaseNotFoundError,

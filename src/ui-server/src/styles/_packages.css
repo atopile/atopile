@@ -1,0 +1,535 @@
+/* ============================================
+   _packages.css
+   Standard Library Panel, Package Cards, Package Filters,
+   Package Groups, Package Children, Enum Dropdowns
+   ============================================ */
+
+/* Empty state improvements */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-lg);
+  color: var(--text-muted);
+  font-size: 12px;
+  gap: var(--spacing-xs);
+}
+
+.empty-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+/* ============================================
+   Standard Library Panel
+   ============================================ */
+
+.stdlib-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.stdlib-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.stdlib-toolbar .search-box {
+  flex: 1;
+}
+
+.stdlib-filters {
+  display: flex;
+  gap: 4px;
+}
+
+.stdlib-filters .filter-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  font-size: 10px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.stdlib-filters .filter-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.stdlib-filters .filter-btn.active {
+  background: var(--accent);
+  color: var(--ctp-crust);
+}
+
+.stdlib-filters .filter-btn:not(:first-child).active {
+  background: var(--filter-color);
+  color: var(--ctp-crust);
+}
+
+.stdlib-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-xs);
+}
+
+/* Grouped view */
+.stdlib-group {
+  margin-bottom: var(--spacing-sm);
+}
+
+.stdlib-group-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+.stdlib-group-header:hover {
+  background: var(--bg-hover);
+  color: var(--group-color, var(--text-primary));
+}
+
+.stdlib-group-header .group-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.stdlib-group-header .group-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.stdlib-group-header .group-label {
+  color: var(--group-color, var(--text-primary));
+}
+
+.stdlib-group-header .group-count {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.stdlib-group.collapsed .stdlib-group-header {
+  margin-bottom: 0;
+}
+
+.stdlib-group-items {
+  /* Container for items when expanded */
+}
+
+/* Search results (flat list mode) */
+.stdlib-search-results {
+  padding: 0;
+}
+
+.search-results-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+}
+
+.stdlib-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xl);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.stdlib-empty svg {
+  opacity: 0.5;
+}
+
+/* Standard library card */
+.stdlib-card {
+  padding: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-left: 2px solid transparent;
+}
+
+.stdlib-card:hover {
+  background: var(--bg-hover);
+}
+
+.stdlib-card.selected {
+  background: var(--bg-secondary);
+  border-left-color: var(--accent);
+}
+
+.stdlib-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.stdlib-type-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.stdlib-card-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.stdlib-type-badge {
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 500;
+  margin-left: auto;
+}
+
+/* Expanded content */
+.stdlib-card-description {
+  margin-top: var(--spacing-sm);
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.stdlib-card-params,
+.stdlib-card-exports {
+  margin-top: var(--spacing-sm);
+  font-size: 10px;
+}
+
+.params-label,
+.exports-label {
+  color: var(--text-muted);
+  margin-right: var(--spacing-xs);
+}
+
+.params-list,
+.exports-list {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.param-item,
+.export-item {
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.param-type {
+  color: var(--ctp-blue);
+}
+
+/* Usage code block */
+.stdlib-card-usage {
+  margin-top: var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.usage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: rgba(0,0,0,0.2);
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.copy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 4px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.copy-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.usage-code {
+  padding: var(--spacing-sm);
+  margin: 0;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--ctp-green);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+/* Actions */
+.stdlib-card-actions {
+  display: flex;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-sm);
+}
+
+.stdlib-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  font-size: 10px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.stdlib-action-btn:hover {
+  background: var(--accent);
+  color: var(--ctp-crust);
+}
+
+.stdlib-action-btn.primary {
+  background: var(--ctp-green);
+  color: var(--ctp-crust);
+}
+
+.stdlib-action-btn.primary:hover {
+  background: var(--ctp-teal);
+}
+
+/* Children tree view - flows naturally under parent */
+.stdlib-card-children {
+  margin-top: var(--spacing-xs);
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.stdlib-child-node {
+  /* Container for child nodes */
+}
+
+.stdlib-child-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px;
+  margin-left: -4px;
+  cursor: default;
+  transition: background 0.1s ease;
+  border-radius: var(--radius-sm);
+}
+
+.stdlib-child-row.expandable {
+  cursor: pointer;
+}
+
+.stdlib-child-row:hover {
+  background: var(--bg-hover);
+}
+
+.stdlib-child-row .expand-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.stdlib-child-row .expand-btn:hover {
+  color: var(--text-primary);
+}
+
+.stdlib-child-row .expand-spacer {
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.stdlib-child-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.stdlib-child-name {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.stdlib-child-type {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  opacity: 0.7;
+  margin-left: auto;
+}
+
+.stdlib-child-children {
+  /* Nested children - compact tree styling */
+  margin-left: 4px;
+  padding-left: 4px;
+  border-left: 1px solid var(--border-subtle);
+}
+
+/* Enum parameter styles */
+.stdlib-child-row.has-enum {
+  cursor: pointer;
+}
+
+.stdlib-child-row.has-enum:hover .stdlib-child-name {
+  color: var(--ctp-peach);
+}
+
+.stdlib-child-row .enum-expand {
+  color: var(--ctp-peach);
+}
+
+.enum-count {
+  font-size: 9px;
+  opacity: 0.8;
+  margin-left: 4px;
+}
+
+/* Enum dropdown */
+.enum-dropdown {
+  margin: 4px 0 4px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  max-width: 280px;
+}
+
+.enum-dropdown-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.enum-dropdown-header svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.enum-dropdown-header input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 11px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+.enum-dropdown-header input::placeholder {
+  color: var(--text-muted);
+}
+
+.enum-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.enum-close-btn:hover {
+  color: var(--text-primary);
+}
+
+.enum-dropdown-list {
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.enum-value-item {
+  padding: 5px 10px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.enum-value-item:last-child {
+  border-bottom: none;
+}
+
+.enum-value-item:hover {
+  background: var(--bg-hover);
+  color: var(--ctp-peach);
+}
+
+.enum-empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.enum-dropdown-footer {
+  padding: 4px 8px;
+  font-size: 9px;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-subtle);
+  text-align: right;
+}

@@ -1,0 +1,157 @@
+/* ============================================
+   _base.css
+   Reset, Body, Scrollbars, Panel Container, Header, Icon Buttons
+   ============================================ */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: 0.01em;
+  transition: var(--theme-transition);
+}
+
+/* Refined scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ctp-surface1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ctp-surface2);
+}
+
+/* Hide scrollbar until hover */
+.section-body {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.section-body:hover {
+  scrollbar-color: var(--ctp-surface1) transparent;
+}
+
+/* ============================================
+   Panel Container
+   ============================================ */
+
+.atopile-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  max-width: 320px;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-color);
+}
+
+/* ============================================
+   Header
+   ============================================ */
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--ato-orange);
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, rgba(249, 80, 21, 0.03) 100%);
+  min-height: 36px;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-weight: 600;
+  font-size: 12px;
+  color: #ffffff;
+  text-transform: lowercase;
+  letter-spacing: 0.5px;
+}
+
+/* Light mode: navy text */
+[data-theme="light"] .header-title {
+  color: var(--ato-navy);
+}
+
+@media (prefers-color-scheme: light) {
+  [data-theme="system"] .header-title {
+    color: var(--ato-navy);
+  }
+}
+
+.logo {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 4px rgba(249, 80, 21, 0.4));
+}
+
+/* In light mode, the logo needs more contrast */
+[data-theme="light"] .logo {
+  filter: drop-shadow(0 0 2px rgba(217, 68, 16, 0.6));
+}
+
+@media (prefers-color-scheme: light) {
+  [data-theme="system"] .logo {
+    filter: drop-shadow(0 0 2px rgba(217, 68, 16, 0.6));
+  }
+}
+
+.header-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.icon-btn.active {
+  background: var(--bg-hover);
+  color: var(--ato-orange);
+}
+
+/* Version badge in header - don't push to far right */
+.header-title .version-badge {
+  margin-left: 0;
+  font-size: 9px;
+  padding: 1px 5px;
+  background: rgba(249, 80, 21, 0.15);
+  color: var(--ato-orange);
+  border-radius: var(--radius-sm);
+}

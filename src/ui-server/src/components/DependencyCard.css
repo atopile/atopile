@@ -1,0 +1,207 @@
+/**
+ * DependencyCard styles - Compact dependency display
+ * Similar styling to BuildQueuePanel for consistency
+ */
+
+.dependency-card {
+  margin-top: var(--spacing-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.dependency-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+
+.dependency-card-header:hover {
+  background: var(--bg-hover);
+}
+
+.dependency-card-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dependency-card-expand .expand-icon {
+  transition: transform var(--transition-fast);
+  color: var(--text-muted);
+}
+
+.dependency-card-expand .expand-icon.expanded {
+  transform: rotate(0deg);
+}
+
+.dependency-card-expand .expand-icon:not(.expanded) {
+  transform: rotate(-90deg);
+}
+
+.dependency-card-icon {
+  color: var(--ctp-mauve);
+  flex-shrink: 0;
+}
+
+.dependency-card-title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.dependency-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+
+.dependency-card-content {
+  padding: var(--spacing-xs);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Individual dependency item */
+.dependency-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: all var(--transition-fast);
+}
+
+.dependency-item:hover {
+  border-color: var(--border-subtle);
+  background: var(--bg-hover);
+}
+
+.dependency-item.has-update {
+  border-left: 2px solid var(--ctp-peach);
+}
+
+.dependency-info {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 0;
+  flex: 1;
+}
+
+.dependency-icon {
+  color: var(--ctp-blue);
+  flex-shrink: 0;
+}
+
+.dependency-name {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dependency-publisher {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.dependency-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
+}
+
+.dependency-version-select {
+  font-size: var(--font-size-xs);
+  padding: 2px 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  max-width: 80px;
+}
+
+.dependency-version-select:hover {
+  border-color: var(--border-default);
+  background: var(--bg-hover);
+}
+
+.dependency-version-select:focus {
+  outline: none;
+  border-color: var(--ctp-blue);
+}
+
+.dependency-version-select.update-available {
+  border-color: var(--ctp-peach);
+  color: var(--ctp-peach);
+}
+
+/* Read-only version display */
+.dependency-version-display {
+  font-size: var(--font-size-xs);
+  padding: 2px 6px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.dependency-remove-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.dependency-remove-btn:hover:not(:disabled) {
+  color: var(--ctp-red);
+  background: rgba(243, 139, 168, 0.15);
+}
+
+.dependency-remove-btn:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.dependency-remove-btn.removing {
+  color: var(--ctp-yellow);
+}
+
+.dependency-remove-btn .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

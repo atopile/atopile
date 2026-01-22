@@ -14,7 +14,8 @@ import { onBuildTargetChanged } from './common/target';
 import { Build } from './common/manifest';
 import { openPackageExplorer } from './ui/packagexplorer';
 import * as llm from './common/llm';
-import { appStateManager } from './common/appState';
+import { appStateManager, initAtopileSettingsSync } from './common/appState';
+import { backendServer } from './common/backendServer';
 
 export let g_lsClient: LanguageClient | undefined;
 
@@ -81,13 +82,50 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await initializeTelemetry(context);
     captureEvent('vsce:startup');
 
-    // Setup Language Server
-    const _reStartServer = async () => {
-        g_lsClient = await startOrRestartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient);
+    // Setup Language Server and Backend Server
+    let isInitialStart = true;
+
+    const _reStartServers = async () => {
+        // Restart LSP server
+        const newClient = await startOrRestartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient);
+        g_lsClient = newClient;
+
+        // On initial start, start backend server
+        // On subsequent restarts (version change), restart backend server too
+        if (isInitialStart) {
+            isInitialStart = false;
+            // Start backend server in background (don't block extension activation)
+            backendServer.startServer().then(success => {
+                if (success) {
+                    traceInfo('Backend server started successfully');
+                } else {
+                    traceInfo('Backend server failed to start (may need manual start)');
+                }
+            });
+        } else {
+            // Version changed - restart backend server to use new version
+            traceInfo('Version changed, restarting backend server...');
+            backendServer.restartServer().then(success => {
+                if (!success) {
+                    traceInfo('Backend server restart failed');
+                }
+            });
+        }
+
+        // Notify backend that installation/restart completed
+        if (newClient) {
+            appStateManager.sendAction('setAtopileInstalling', { installing: false });
+        } else {
+            appStateManager.sendAction('setAtopileInstalling', {
+                installing: false,
+                error: 'Failed to start language server'
+            });
+        }
     };
+
     context.subscriptions.push(
         onNeedsRestart(async () => {
-            await _reStartServer();
+            await _reStartServers();
         }),
         onBuildTargetChanged(async (target: Build | undefined) => {
             if (g_lsClient) {
@@ -96,15 +134,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 });
             }
         }),
+        // Register backend server for cleanup on deactivate
+        backendServer,
     );
 
     await initServer(context);
 
-    // Backend server connection is now tracked via WebSocket in appStateManager
-    // No HTTP polling needed - appStateManager.startListening() handles it
+    // Backend server is now auto-started via _reStartServers when ato binary is found
 
     await ui.activate(context);
     await llm.activate(context);
+
+    // Sync atopile settings from UI to extension (triggers reinstall when changed)
+    context.subscriptions.push(initAtopileSettingsSync(context));
 
     context.subscriptions.push(vscode.window.registerUriHandler(new atopileUriHandler()));
 
@@ -114,10 +156,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export async function deactivate(): Promise<void> {
+    // Stop LSP server
     if (g_lsClient) {
         await g_lsClient.stop();
     }
 
+    // Stop backend server (also handled by dispose, but explicit is clearer)
+    await backendServer.stopServer();
 
     deinitializeTelemetry();
 }

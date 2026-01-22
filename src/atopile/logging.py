@@ -15,75 +15,60 @@ import json
 import logging
 import os
 import pickle
+import re
 import sqlite3
 import struct
 import sys
 import threading
-import time
 import traceback
 from collections.abc import Iterable
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum, IntEnum, StrEnum
+from enum import Enum, StrEnum
 from pathlib import Path
 from types import ModuleType, TracebackType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-import pathvalidate
-import rich
 from rich._null_file import NullFile
-from rich.console import Console, ConsoleRenderable, RenderableType
+from rich.console import Console, ConsoleRenderable
 from rich.logging import RichHandler
 from rich.markdown import Markdown
-from rich.padding import Padding
-from rich.progress import (
-    MofNCompleteColumn,
-    Progress,
-    ProgressColumn,
-    RenderableColumn,
-    SpinnerColumn,
-    Task,
-    TextColumn,
-    TimeElapsedColumn,
-)
-from rich.table import Column
 from rich.text import Text
-from rich.theme import Theme
 from rich.traceback import Traceback
 
 import atopile
 import faebryk
+from atopile.buildutil import generate_build_id
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
-from faebryk.libs.util import Advancable
+from atopile.logging_utils import (
+    PLOG,
+    error_console,
+)
+
+# =============================================================================
+# Context Variables
+# =============================================================================
+
+_log_sink_var = ContextVar[io.StringIO | None]("log_sink", default=None)
+
+# =============================================================================
+# Build Status and Events
+# =============================================================================
+
+from atopile.dataclasses import (
+    BuildStatus,
+    Log,
+    ProjectState,
+    StageCompleteEvent,
+    StageStatusEvent,
+)
 
 # =============================================================================
 # Rich Console Configuration (formerly cli/console.py)
 # =============================================================================
-
-# Theme for faebryk-style node highlighting
-faebryk_theme = Theme(
-    {
-        "node.Node": "bold magenta",
-        "node.Type": "bright_cyan",
-        "node.Parent": "bright_red",
-        "node.Child": "bright_yellow",
-        "node.Root": "bold yellow",
-        "node.Number": "bright_green",
-        "logging.level.warning": "yellow",
-        "node.Quantity": "bright_yellow",
-        "node.IsSubset": "bright_blue",
-        "node.Predicate": "bright_magenta",
-        "node.Op": "red",
-    }
-)
-
-rich.reconfigure(theme=faebryk_theme)
-
-# Console should be a singleton to avoid intermixing logging w/ other output
-console = rich.get_console()
-error_console = rich.console.Console(theme=faebryk_theme, stderr=True)
+# (Imported from logging_utils at top of file)
 
 if TYPE_CHECKING:
     pass
@@ -96,40 +81,10 @@ NOW = os.environ.get("ATO_BUILD_TIMESTAMP") or datetime.now().strftime(
     "%Y-%m-%d_%H-%M-%S"
 )
 _DEFAULT_FORMATTER = logging.Formatter("%(message)s", datefmt="[%X]")
-_SHOW_LOG_FILE_PATH_THRESHOLD = 120
 
-
-# displayed during LoggingStage
+# Custom log level for alerts
 ALERT = logging.INFO + 5
 logging.addLevelName(ALERT, "ALERT")
-
-
-# =============================================================================
-# Shared logging utilities
-# =============================================================================
-
-
-def _atopile_log_filter(record: logging.LogRecord) -> bool:
-    """Filter to only include atopile and faebryk logs."""
-    return record.name.startswith("atopile") or record.name.startswith("faebryk")
-
-
-def get_exception_display_message(exc: BaseException) -> str:
-    """
-    Get a unified display message for any exception.
-
-    For UserException types, returns the message attribute (the detailed description).
-    Falls back to str(exc) for other exceptions.
-
-    This is the SINGLE source of truth for exception message extraction
-    across all logging handlers.
-    """
-    if isinstance(exc, _BaseBaseUserException):
-        # Use message for the detailed error description
-        # message is the user-facing explanation of what went wrong
-        return exc.message or str(exc) or type(exc).__name__
-    return str(exc) or type(exc).__name__
-
 
 # =============================================================================
 # SQLite Logging - Typed API for structured build logs
@@ -156,6 +111,7 @@ CREATE TABLE IF NOT EXISTS logs (
     timestamp TEXT NOT NULL,
     stage TEXT NOT NULL,
     level TEXT NOT NULL,
+    logger_name TEXT NOT NULL DEFAULT '',
     audience TEXT NOT NULL DEFAULT 'developer',
     message TEXT NOT NULL,
     ato_traceback TEXT,
@@ -170,53 +126,244 @@ CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level);
 CREATE INDEX IF NOT EXISTS idx_logs_audience ON logs(audience);
 """
 
+# Schema for the test logs table (different from build logs)
+TEST_SCHEMA_SQL = """
+-- Test runs table
+CREATE TABLE IF NOT EXISTS test_runs (
+    test_run_id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
-class Audience(StrEnum):
-    """Who a log message is intended for."""
+-- Test logs table: all log entries from all test runs
+CREATE TABLE IF NOT EXISTS test_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    test_run_id TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    test_name TEXT NOT NULL,
+    level TEXT NOT NULL,
+    logger_name TEXT NOT NULL DEFAULT '',
+    audience TEXT NOT NULL DEFAULT 'developer',
+    message TEXT NOT NULL,
+    ato_traceback TEXT,
+    python_traceback TEXT,
+    objects TEXT,
+    FOREIGN KEY (test_run_id) REFERENCES test_runs(test_run_id)
+);
 
-    USER = "user"  # End users (syntax errors, build failures)
-    DEVELOPER = "developer"  # Design debugging (parameter resolution)
-    AGENT = "agent"  # AI agents consuming logs programmatically
-
-
-class Level(StrEnum):
-    """Log severity levels."""
-
-    DEBUG = "DEBUG"
-    INFO = "INFO"
-    WARNING = "WARNING"
-    ERROR = "ERROR"
-
-
-@dataclass
-class LogEntry:
-    """A structured log entry."""
-
-    build_id: str
-    timestamp: str
-    stage: str
-    level: Level
-    message: str
-    audience: Audience = Audience.DEVELOPER
-    ato_traceback: str | None = None
-    python_traceback: str | None = None
-    objects: dict | None = None
+CREATE INDEX IF NOT EXISTS idx_test_logs_test_run_id ON test_logs(test_run_id);
+CREATE INDEX IF NOT EXISTS idx_test_logs_test_name ON test_logs(test_name);
+CREATE INDEX IF NOT EXISTS idx_test_logs_level ON test_logs(level);
+CREATE INDEX IF NOT EXISTS idx_test_logs_audience ON test_logs(audience);
+"""
 
 
-def get_central_log_db() -> Path:
-    """Get the path to the central log database."""
-    from faebryk.libs.paths import get_log_dir
-
-    return get_log_dir() / "build_logs.db"
+# Log.Audience and Log.Level are imported from atopile.dataclasses
 
 
-def generate_build_id(project_path: str, target: str, timestamp: str) -> str:
-    """Generate a unique build ID from project, target, and timestamp."""
-    import hashlib
+class BaseLogger:
+    """Common structured logger base for build/test loggers."""
 
-    # Create a deterministic but unique ID
-    content = f"{project_path}:{target}:{timestamp}"
-    return hashlib.sha256(content.encode()).hexdigest()[:16]
+    def __init__(self, identifier: str, context: str = ""):
+        self._identifier = identifier
+        self._context = context
+        self._writer: Any | None = None
+
+    @staticmethod
+    def _atopile_log_filter(record: logging.LogRecord) -> bool:
+        """Filter to only include atopile and faebryk logs, excluding server/http logs unless running 'ato serve'."""
+        # Check if we're running the server (either via 'ato serve' or 'python -m atopile.server')
+        main_module = sys.modules.get("__main__")
+        is_serving = (
+            "serve" in sys.argv
+            or "atopile.server" in sys.argv
+            or (main_module is not None and main_module.__package__ == "atopile.server")
+        )
+
+        # When running server, allow ALL logs to console
+        if is_serving:
+            return True
+        # Filter out httpcore logs unless running server
+        if record.name.startswith("httpcore"):
+            return False
+        if not (record.name.startswith("atopile") or record.name.startswith("faebryk")):
+            return False
+        # Filter server logs from console unless running server
+        if record.name.startswith("atopile.server"):
+            return False
+        return True
+
+    @staticmethod
+    def get_exception_display_message(exc: BaseException) -> str:
+        """
+        Get a unified display message for any exception.
+
+        For UserException types, returns the message attribute (the detailed description).
+        Falls back to str(exc) for other exceptions.
+        """
+        if isinstance(exc, _BaseBaseUserException):
+            # Use message for the detailed error description
+            # message is the user-facing explanation of what went wrong
+            return exc.message or str(exc) or type(exc).__name__
+        return str(exc) or type(exc).__name__
+
+    @staticmethod
+    @contextmanager
+    def capture_logs():
+        log_sink = _log_sink_var.get()
+        _log_sink_var.set(io.StringIO())
+        _log_sink = _log_sink_var.get()
+        assert _log_sink is not None
+        yield _log_sink
+        _log_sink_var.set(log_sink)
+
+    @staticmethod
+    @contextmanager
+    def log_exceptions(log_sink: io.StringIO):
+        from atopile.cli.excepthook import _handle_exception
+
+        exc_log_console = Console(file=log_sink)
+        exc_log_handler = LogHandler(console=exc_log_console)
+        logger.addHandler(exc_log_handler)
+
+        try:
+            yield
+        except Exception as exc:
+            _handle_exception(type(exc), exc, exc.__traceback__)
+            raise exc
+        finally:
+            logger.removeHandler(exc_log_handler)
+
+    def set_context(self, context: str) -> None:
+        """Update the current context label (stage/test name)."""
+        self._context = context
+
+    def set_writer(self, writer: Any) -> None:
+        """Set the SQLite writer for this logger."""
+        self._writer = writer
+
+    def log(
+        self,
+        level: Log.Level,
+        message: str,
+        *,
+        logger_name: str = "",
+        audience: Log.Audience = Log.Audience.DEVELOPER,
+        ato_traceback: str | None = None,
+        python_traceback: str | None = None,
+        objects: dict | None = None,
+    ) -> None:
+        """Log a structured message to the database."""
+        if self._writer is None:
+            return
+
+        entry = self._build_entry(
+            level=level,
+            message=message,
+            logger_name=logger_name,
+            audience=audience,
+            ato_traceback=ato_traceback,
+            python_traceback=python_traceback,
+            objects=objects,
+        )
+        self._writer.write(entry)
+
+    def debug(
+        self,
+        message: str,
+        *,
+        audience: Log.Audience = Log.Audience.DEVELOPER,
+        ato_traceback: str | None = None,
+        python_traceback: str | None = None,
+        objects: dict | None = None,
+    ) -> None:
+        """Log a DEBUG level message."""
+        self.log(
+            Log.Level.DEBUG,
+            message,
+            audience=audience,
+            ato_traceback=ato_traceback,
+            python_traceback=python_traceback,
+            objects=objects,
+        )
+
+    def info(
+        self,
+        message: str,
+        *,
+        audience: Log.Audience = Log.Audience.DEVELOPER,
+        ato_traceback: str | None = None,
+        python_traceback: str | None = None,
+        objects: dict | None = None,
+    ) -> None:
+        """Log an INFO level message."""
+        self.log(
+            Log.Level.INFO,
+            message,
+            audience=audience,
+            ato_traceback=ato_traceback,
+            python_traceback=python_traceback,
+            objects=objects,
+        )
+
+    def warning(
+        self,
+        message: str,
+        *,
+        audience: Log.Audience = Log.Audience.DEVELOPER,
+        ato_traceback: str | None = None,
+        python_traceback: str | None = None,
+        objects: dict | None = None,
+    ) -> None:
+        """Log a WARNING level message."""
+        self.log(
+            Log.Level.WARNING,
+            message,
+            audience=audience,
+            ato_traceback=ato_traceback,
+            python_traceback=python_traceback,
+            objects=objects,
+        )
+
+    def error(
+        self,
+        message: str,
+        *,
+        audience: Log.Audience = Log.Audience.DEVELOPER,
+        ato_traceback: str | None = None,
+        python_traceback: str | None = None,
+        objects: dict | None = None,
+    ) -> None:
+        """Log an ERROR level message."""
+        self.log(
+            Log.Level.ERROR,
+            message,
+            audience=audience,
+            ato_traceback=ato_traceback,
+            python_traceback=python_traceback,
+            objects=objects,
+        )
+
+    def flush(self) -> None:
+        """Flush any buffered log entries."""
+        if self._writer is not None:
+            self._writer.flush()
+
+
+    def _build_entry(
+        self,
+        *,
+        level: Log.Level,
+        message: str,
+        logger_name: str,
+        audience: Log.Audience,
+        ato_traceback: str | None,
+        python_traceback: str | None,
+        objects: dict | None,
+    ) -> Any:
+        raise NotImplementedError
+
+
+# Log.Entry and Log.TestEntry are imported from atopile.dataclasses
 
 
 class SQLiteLogWriter:
@@ -225,30 +372,96 @@ class SQLiteLogWriter:
     BATCH_SIZE = 50
     FLUSH_INTERVAL = 1.0  # seconds
 
-    # Singleton instance for central database
-    _instance: SQLiteLogWriter | None = None
+    # Singleton instances for different databases
+    _build_instance: "SQLiteLogWriter | None" = None
+    _test_instance: "SQLiteLogWriter | None" = None
     _instance_lock = threading.Lock()
 
     @classmethod
-    def get_instance(cls) -> SQLiteLogWriter:
-        """Get the singleton instance of the central log writer."""
+    def get_build_instance(cls) -> "SQLiteLogWriter":
+        """Get the singleton instance for build logs."""
         with cls._instance_lock:
-            if cls._instance is None:
-                cls._instance = cls(get_central_log_db())
-            return cls._instance
+            if cls._build_instance is None:
+                cls._build_instance = cls(
+                    BuildLogger.get_log_db(),
+                    SCHEMA_SQL,
+                    """
+                    INSERT INTO logs (
+                        build_id, timestamp, stage, level, logger_name, audience,
+                        message, ato_traceback, python_traceback, objects
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    lambda e: (
+                        e.build_id,
+                        e.timestamp,
+                        e.stage,
+                        e.level,
+                        e.logger_name,
+                        e.audience,
+                        e.message,
+                        e.ato_traceback,
+                        e.python_traceback,
+                    ),
+                )
+            return cls._build_instance
 
     @classmethod
-    def close_instance(cls) -> None:
-        """Close the singleton instance."""
+    def get_test_instance(cls) -> "SQLiteLogWriter":
+        """Get the singleton instance for test logs."""
         with cls._instance_lock:
-            if cls._instance is not None:
-                cls._instance.close()
-                cls._instance = None
+            if cls._test_instance is None:
+                cls._test_instance = cls(
+                    TestLogger.get_log_db(),
+                    TEST_SCHEMA_SQL,
+                    """
+                    INSERT INTO test_logs (
+                        test_run_id, timestamp, test_name, level, logger_name, audience,
+                        message, ato_traceback, python_traceback, objects
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    lambda e: (
+                        e.test_run_id,
+                        e.timestamp,
+                        e.test_name,
+                        e.level,
+                        e.logger_name,
+                        e.audience,
+                        e.message,
+                        e.ato_traceback,
+                        e.python_traceback,
+                    ),
+                )
+            return cls._test_instance
 
-    def __init__(self, db_path: Path):
+    @classmethod
+    def close_build_instance(cls) -> None:
+        """Close the build log writer instance."""
+        with cls._instance_lock:
+            if cls._build_instance is not None:
+                cls._build_instance.close()
+                cls._build_instance = None
+
+    @classmethod
+    def close_test_instance(cls) -> None:
+        """Close the test log writer instance."""
+        with cls._instance_lock:
+            if cls._test_instance is not None:
+                cls._test_instance.close()
+                cls._test_instance = None
+
+    def __init__(
+        self,
+        db_path: Path,
+        schema_sql: str,
+        insert_sql: str,
+        entry_to_tuple: Any,
+    ):
         self._db_path = db_path
+        self._schema_sql = schema_sql
+        self._insert_sql = insert_sql
+        self._entry_to_tuple = entry_to_tuple
         self._local = threading.local()
-        self._buffer: list[LogEntry] = []
+        self._buffer: list[Any] = []
         self._buffer_lock = threading.Lock()
         self._last_flush = datetime.now()
         self._closed = False
@@ -273,12 +486,10 @@ class SQLiteLogWriter:
         """Initialize the database schema."""
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = self._get_connection()
-        conn.executescript(SCHEMA_SQL)
+        conn.executescript(self._schema_sql)
         conn.commit()
 
-    def register_build(
-        self, project_path: str, target: str, timestamp: str
-    ) -> str:
+    def register_build(self, project_path: str, target: str, timestamp: str) -> str:
         """
         Register a new build and return its build_id.
 
@@ -300,7 +511,41 @@ class SQLiteLogWriter:
             pass  # Best effort
         return build_id
 
-    def write(self, entry: LogEntry) -> None:
+    def register_build_id(
+        self, build_id: str, project_path: str, target: str, timestamp: str
+    ) -> str:
+        """
+        Register a build with an explicit build_id.
+
+        This is used when the build_id is provided by an external orchestrator.
+        """
+        conn = self._get_connection()
+        try:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO builds (build_id, project_path, target, timestamp)
+                VALUES (?, ?, ?, ?)
+                """,
+                (build_id, project_path, target, timestamp),
+            )
+            conn.commit()
+        except sqlite3.Error:
+            pass  # Best effort
+        return build_id
+
+    def register_test_run(self, test_run_id: str) -> None:
+        """Register a test run in the database."""
+        conn = self._get_connection()
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO test_runs (test_run_id) VALUES (?)",
+                (test_run_id,),
+            )
+            conn.commit()
+        except sqlite3.Error:
+            pass  # Best effort
+
+    def write(self, entry: Any) -> None:
         """Write a log entry (batched for performance)."""
         if self._closed:
             return
@@ -340,24 +585,9 @@ class SQLiteLogWriter:
         conn = self._get_connection()
         try:
             conn.executemany(
-                """
-                INSERT INTO logs (
-                    build_id, timestamp, stage, level, audience,
-                    message, ato_traceback, python_traceback, objects
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+                self._insert_sql,
                 [
-                    (
-                        e.build_id,
-                        e.timestamp,
-                        e.stage,
-                        e.level,
-                        e.audience,
-                        e.message,
-                        e.ato_traceback,
-                        e.python_traceback,
-                        self._serialize_objects(e.objects),
-                    )
+                    (*self._entry_to_tuple(e), self._serialize_objects(e.objects))
                     for e in entries
                 ],
             )
@@ -368,30 +598,15 @@ class SQLiteLogWriter:
             try:
                 conn = self._get_connection()
                 conn.executemany(
-                    """
-                    INSERT INTO logs (
-                        build_id, timestamp, stage, level, audience,
-                        message, ato_traceback, python_traceback, objects
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
+                    self._insert_sql,
                     [
-                        (
-                            e.build_id,
-                            e.timestamp,
-                            e.stage,
-                            e.level,
-                            e.audience,
-                            e.message,
-                            e.ato_traceback,
-                            e.python_traceback,
-                            self._serialize_objects(e.objects),
-                        )
+                        (*self._entry_to_tuple(e), self._serialize_objects(e.objects))
                         for e in entries
                     ],
                 )
                 conn.commit()
             except sqlite3.Error:
-                pass  # Best effort - don't crash the build for logging failures
+                pass  # Best effort - don't crash for logging failures
 
     def close(self) -> None:
         """Close the writer and flush pending entries."""
@@ -405,134 +620,319 @@ class SQLiteLogWriter:
             self._local.connection = None
 
 
-class BuildLogger:
-    """Typed logging interface for structured build logs."""
+class TestLogger(BaseLogger):
+    """Typed logging interface for structured test logs."""
 
-    def __init__(self, build_id: str, stage: str = ""):
-        self._build_id = build_id
-        self._stage = stage
-        self._writer: SQLiteLogWriter | None = None
+    def __init__(self, test_run_id: str, test: str = ""):
+        super().__init__(test_run_id, test)
 
-    def set_stage(self, stage: str) -> None:
-        """Update the current build stage."""
-        self._stage = stage
+    @staticmethod
+    def get_log_db() -> Path:
+        """Get the path to the test log database."""
+        from faebryk.libs.paths import get_log_dir
 
-    def set_writer(self, writer: SQLiteLogWriter) -> None:
-        """Set the SQLite writer for this logger."""
-        self._writer = writer
+        return get_log_dir() / "test_logs.db"
+
+    @classmethod
+    def close_all(cls) -> None:
+        """
+        Close the test SQLite writer.
+
+        This should be called at the end of a test session to ensure
+        all logs are flushed and resources are properly released.
+        """
+        SQLiteLogWriter.close_test_instance()
+
+    @classmethod
+    def setup_logging(
+        cls,
+        test_run_id: str,
+        test: str = "",
+    ) -> "TestLogger | None":
+        """
+        Set up logging for test workers.
+
+        This sets up logging to write to the test_logs.db database instead of
+        build_logs.db. The schema uses test_run_id and test_name columns instead of
+        build_id and stage.
+        """
+        root_logger = logging.getLogger()
+
+        try:
+            writer = SQLiteLogWriter.get_test_instance()
+            writer.register_test_run(test_run_id)
+            test_logger = cls(test_run_id, test)
+            test_logger.set_writer(writer)
+            for handler in root_logger.handlers:
+                if isinstance(handler, LogHandler):
+                    handler._test_logger = test_logger
+                    break
+            return test_logger
+        except Exception:
+            return None
+
+    @classmethod
+    def update_test_name(cls, test: str | None) -> None:
+        """
+        Update the current test name for test database logging.
+
+        This updates the test logger's test name so that subsequent log entries
+        are tagged with the correct test name.
+        """
+        root_logger = logging.getLogger()
+        for handler in root_logger.handlers:
+            if isinstance(handler, LogHandler):
+                test_logger = getattr(handler, "_test_logger", None)
+                if test_logger is not None:
+                    test_logger.set_test(test or "")
+                    break
+
+    def set_test(self, test: str) -> None:
+        """Update the current test name."""
+        self.set_context(test)
 
     @property
-    def build_id(self) -> str:
-        """Get the build ID for this logger."""
-        return self._build_id
+    def test_run_id(self) -> str:
+        """Get the test run ID for this logger."""
+        return self._identifier
 
-    def log(
+    def _build_entry(
         self,
-        level: Level,
-        message: str,
         *,
-        audience: Audience = Audience.DEVELOPER,
-        ato_traceback: str | None = None,
-        python_traceback: str | None = None,
-        objects: dict | None = None,
-    ) -> None:
-        """
-        Log a structured message to the build database.
-
-        Args:
-            level: Log severity level
-            message: The log message
-            audience: Who this message is intended for (default: DEVELOPER)
-            ato_traceback: Optional ato source context for user exceptions
-            python_traceback: Optional Python traceback string
-            objects: Optional dict of structured data (serialized to JSON)
-        """
-        if self._writer is None:
-            return
-
-        entry = LogEntry(
-            build_id=self._build_id,
+        level: Log.Level,
+        message: str,
+        logger_name: str,
+        audience: Log.Audience,
+        ato_traceback: str | None,
+        python_traceback: str | None,
+        objects: dict | None,
+    ) -> Log.TestEntry:
+        return Log.TestEntry(
+            test_run_id=self._identifier,
             timestamp=datetime.now().isoformat(),
-            stage=self._stage,
+            test_name=self._context,
             level=level,
+            logger_name=logger_name,
             message=message,
             audience=audience,
             ato_traceback=ato_traceback,
             python_traceback=python_traceback,
             objects=objects,
         )
-        self._writer.write(entry)
 
-    def debug(
-        self,
-        message: str,
-        *,
-        audience: Audience = Audience.DEVELOPER,
-        ato_traceback: str | None = None,
-        python_traceback: str | None = None,
-        objects: dict | None = None,
-    ) -> None:
-        """Log a DEBUG level message."""
-        self.log(
-            Level.DEBUG,
-            message,
-            audience=audience,
-            ato_traceback=ato_traceback,
-            python_traceback=python_traceback,
-            objects=objects,
-        )
 
-    def info(
-        self,
-        message: str,
-        *,
-        audience: Audience = Audience.DEVELOPER,
-        ato_traceback: str | None = None,
-        python_traceback: str | None = None,
-        objects: dict | None = None,
-    ) -> None:
-        """Log an INFO level message."""
-        self.log(
-            Level.INFO,
-            message,
-            audience=audience,
-            ato_traceback=ato_traceback,
-            python_traceback=python_traceback,
-            objects=objects,
-        )
+class BuildLogger(BaseLogger):
+    """Typed logging interface for structured build logs."""
 
-    def warning(
-        self,
-        message: str,
-        *,
-        audience: Audience = Audience.DEVELOPER,
-        ato_traceback: str | None = None,
-        python_traceback: str | None = None,
-        objects: dict | None = None,
-    ) -> None:
-        """Log a WARNING level message."""
-        self.log(
-            Level.WARNING,
-            message,
-            audience=audience,
-            ato_traceback=ato_traceback,
-            python_traceback=python_traceback,
-            objects=objects,
-        )
+    _loggers: dict[str, "BuildLogger"] = {}
 
-    def error(
-        self,
-        message: str,
-        *,
-        audience: Audience = Audience.DEVELOPER,
-        ato_traceback: str | None = None,
-        python_traceback: str | None = None,
-        objects: dict | None = None,
+    def __init__(self, build_id: str, stage: str = ""):
+        super().__init__(build_id, stage)
+
+    @staticmethod
+    def get_log_db() -> Path:
+        """Get the path to the central log database."""
+        from faebryk.libs.paths import get_log_dir
+
+        return get_log_dir() / "build_logs.db"
+
+    @staticmethod
+    def _emit_event(
+        fd: int, event: "StageStatusEvent | StageCompleteEvent"
     ) -> None:
-        """Log an ERROR level message."""
-        self.log(
-            Level.ERROR,
-            message,
+        payload = pickle.dumps(event, protocol=pickle.HIGHEST_PROTOCOL)
+        header = struct.pack(">I", len(payload))
+        data = header + payload
+        offset = 0
+        while offset < len(data):
+            offset += os.write(fd, data[offset:])
+
+    @classmethod
+    def get(
+        cls,
+        project_path: str,
+        target: str,
+        timestamp: str | None = None,
+        stage: str = "",
+    ) -> "BuildLogger":
+        """
+        Get or create a build logger for a project/target/timestamp combination.
+
+        All logs go to the central database at ~/.local/share/atopile/build_logs.db.
+        Each build is identified by a unique build_id generated from project+target+timestamp.
+        """
+        if timestamp is None:
+            timestamp = NOW
+
+        writer = SQLiteLogWriter.get_build_instance()
+        build_id = writer.register_build(project_path, target, timestamp)
+
+        if build_id not in cls._loggers:
+            build_logger = cls(build_id, stage)
+            build_logger.set_writer(writer)
+            cls._loggers[build_id] = build_logger
+        else:
+            build_logger = cls._loggers[build_id]
+            build_logger.set_stage(stage)
+
+        return build_logger
+
+    @classmethod
+    def get_with_id(
+        cls,
+        build_id: str,
+        project_path: str,
+        target: str,
+        timestamp: str | None = None,
+        stage: str = "",
+    ) -> "BuildLogger":
+        """
+        Get or create a build logger using an explicit build_id.
+        """
+        if timestamp is None:
+            timestamp = NOW
+
+        writer = SQLiteLogWriter.get_build_instance()
+        writer.register_build_id(build_id, project_path, target, timestamp)
+
+        if build_id not in cls._loggers:
+            build_logger = cls(build_id, stage)
+            build_logger.set_writer(writer)
+            cls._loggers[build_id] = build_logger
+        else:
+            build_logger = cls._loggers[build_id]
+            build_logger.set_stage(stage)
+
+        return build_logger
+
+    @classmethod
+    def get_by_id(cls, build_id: str) -> "BuildLogger | None":
+        """Get an existing build logger by its build ID."""
+        return cls._loggers.get(build_id)
+
+    @classmethod
+    def close(cls, build_id: str) -> None:
+        """Close and flush a build logger by its build ID."""
+        if build_id in cls._loggers:
+            build_logger = cls._loggers.pop(build_id)
+            build_logger.flush()
+
+    @classmethod
+    def close_all(cls) -> None:
+        """
+        Close all build loggers and the central SQLite writer.
+
+        This should be called at the end of a build session to ensure
+        all logs are flushed and resources are properly released.
+        """
+        for build_id in list(cls._loggers.keys()):
+            cls.close(build_id)
+        SQLiteLogWriter.close_build_instance()
+
+    @classmethod
+    def setup_logging(
+        cls,
+        enable_database: bool = True,
+        stage: str | None = None,
+    ) -> "BuildLogger | None":
+        """
+        Unified logging setup function.
+
+        Sets up logging with optional database support. Can be used for:
+        - CLI commands (enable_database=True, stage="cli")
+        - Build stages (enable_database=True, stage="stage-name")
+        - Basic Rich-formatted logging (enable_database=False)
+
+        Args:
+            enable_database: Whether to set up database logging
+            stage: Stage name for database logging (defaults to "cli")
+        """
+        root_logger = logging.getLogger()
+
+        build_logger = None
+        if enable_database:
+            try:
+                from atopile.config import config
+
+                try:
+                    project_path = str(config.project.paths.root.resolve())
+                    target = config.build.name if hasattr(config, "build") else "cli"
+                except (RuntimeError, AttributeError):
+                    project_path = "cli"
+                    target = "default"
+
+                stage_name = stage if stage is not None else "cli"
+                env_build_id = os.environ.get("ATO_BUILD_ID")
+                if not env_build_id:
+                    raise RuntimeError("ATO_BUILD_ID is required for database logging")
+
+                env_timestamp = os.environ.get("ATO_BUILD_TIMESTAMP")
+                if not env_timestamp:
+                    raise RuntimeError(
+                        "ATO_BUILD_TIMESTAMP is required for database logging"
+                    )
+                build_logger = cls.get_with_id(
+                    env_build_id,
+                    project_path,
+                    target,
+                    timestamp=env_timestamp,
+                    stage=stage_name,
+                )
+
+                # Attach build_logger to existing handler
+                for handler in root_logger.handlers:
+                    if isinstance(handler, LogHandler):
+                        handler._build_logger = build_logger
+                        break
+            except Exception:
+                pass
+
+        return build_logger
+
+    @classmethod
+    def update_stage(cls, stage: str | None) -> None:
+        """
+        Update the current stage for database logging.
+
+        This updates the build logger's stage so that subsequent log entries
+        are tagged with the correct stage name. Also logs that the stage has started.
+        """
+        root_logger = logging.getLogger()
+        for handler in root_logger.handlers:
+            if isinstance(handler, LogHandler) and handler._build_logger is not None:
+                handler._build_logger.set_stage(stage or "")
+                if stage:
+                    logger = logging.getLogger(__name__)
+                    logger.debug(f"Starting build stage: {stage}")
+                break
+
+    def set_stage(self, stage: str) -> None:
+        """Update the current build stage."""
+        self.set_context(stage)
+
+    @property
+    def build_id(self) -> str:
+        """Get the build ID for this logger."""
+        return self._identifier
+
+    def _build_entry(
+        self,
+        *,
+        level: Log.Level,
+        message: str,
+        logger_name: str,
+        audience: Log.Audience,
+        ato_traceback: str | None,
+        python_traceback: str | None,
+        objects: dict | None,
+    ) -> Log.Entry:
+        return Log.Entry(
+            build_id=self._identifier,
+            timestamp=datetime.now().isoformat(),
+            stage=self._context,
+            level=level,
+            logger_name=logger_name,
+            message=message,
             audience=audience,
             ato_traceback=ato_traceback,
             python_traceback=python_traceback,
@@ -543,8 +943,8 @@ class BuildLogger:
         self,
         exc: BaseException,
         *,
-        audience: Audience = Audience.DEVELOPER,
-        level: Level = Level.ERROR,
+        audience: Log.Audience = Log.Audience.DEVELOPER,
+        level: Log.Level = Log.Level.ERROR,
     ) -> None:
         """
         Log an exception with automatic traceback extraction.
@@ -605,151 +1005,6 @@ class BuildLogger:
         except Exception:
             return None
 
-    def flush(self) -> None:
-        """Flush any buffered log entries."""
-        if self._writer is not None:
-            self._writer.flush()
-
-
-# Build-level logger registry (keyed by build_id)
-_build_loggers: dict[str, BuildLogger] = {}
-
-
-def get_build_logger(
-    project_path: str,
-    target: str,
-    timestamp: str | None = None,
-    stage: str = "",
-) -> BuildLogger:
-    """
-    Get or create a build logger for a project/target/timestamp combination.
-
-    All logs go to the central database at ~/.local/share/atopile/build_logs.db.
-    Each build is identified by a unique build_id generated from project+target+timestamp.
-
-    Args:
-        project_path: Path to the project root
-        target: Build target name
-        timestamp: Build timestamp (defaults to NOW)
-        stage: Initial build stage name
-
-    Returns:
-        BuildLogger instance for this build
-    """
-    if timestamp is None:
-        timestamp = NOW
-
-    # Get the central writer
-    writer = SQLiteLogWriter.get_instance()
-
-    # Register the build and get its ID
-    build_id = writer.register_build(project_path, target, timestamp)
-
-    if build_id not in _build_loggers:
-        build_logger = BuildLogger(build_id, stage)
-        build_logger.set_writer(writer)
-        _build_loggers[build_id] = build_logger
-    else:
-        build_logger = _build_loggers[build_id]
-        build_logger.set_stage(stage)
-
-    return build_logger
-
-
-def get_build_logger_by_id(build_id: str) -> BuildLogger | None:
-    """Get an existing build logger by its build ID."""
-    return _build_loggers.get(build_id)
-
-
-def close_build_logger(build_id: str) -> None:
-    """Close and flush a build logger by its build ID."""
-    if build_id in _build_loggers:
-        build_logger = _build_loggers.pop(build_id)
-        build_logger.flush()
-
-
-def close_all_build_loggers() -> None:
-    """
-    Close all build loggers and the central SQLite writer.
-
-    This should be called at the end of a build session to ensure
-    all logs are flushed and resources are properly released.
-    """
-    # Flush and close all build loggers
-    for build_id in list(_build_loggers.keys()):
-        close_build_logger(build_id)
-
-    # Close the central writer
-    SQLiteLogWriter.close_instance()
-
-
-# Register atexit handler to ensure logs are flushed on process exit
-# This is a safety net for subprocess workers that may exit unexpectedly
-import atexit
-
-atexit.register(close_all_build_loggers)
-
-
-# =============================================================================
-# Build Status and Events
-# =============================================================================
-
-
-class Status(str, Enum):
-    """Build status states."""
-
-    QUEUED = "queued"
-    BUILDING = "building"
-    SUCCESS = "success"
-    WARNING = "warning"
-    FAILED = "failed"
-
-
-@dataclass
-class ProjectState:
-    """Aggregate state for a project containing multiple builds."""
-
-    builds: list = field(default_factory=list)
-    status: Status = Status.QUEUED
-    completed: int = 0
-    failed: int = 0
-    warnings: int = 0
-    building: int = 0
-    queued: int = 0
-    total: int = 0
-    current_build: str | None = None
-    current_stage: str | None = None
-    elapsed: float = 0.0
-
-
-@dataclass(frozen=True)
-class StageStatusEvent:
-    name: str
-    description: str
-    progress: int
-    total: int | None
-
-
-@dataclass(frozen=True)
-class StageCompleteEvent:
-    duration: float
-    status: str
-    infos: int
-    warnings: int
-    errors: int
-    alerts: int
-    log_name: str
-    description: str
-
-
-def _emit_event(fd: int, event: StageStatusEvent | StageCompleteEvent) -> None:
-    payload = pickle.dumps(event, protocol=pickle.HIGHEST_PROTOCOL)
-    header = struct.pack(">I", len(payload))
-    data = header + payload
-    offset = 0
-    while offset < len(data):
-        offset += os.write(fd, data[offset:])
-
 
 # =============================================================================
 # Rich Console Logging Handlers
@@ -761,6 +1016,7 @@ class LogHandler(RichHandler):
     A logging handler that renders output with Rich.
 
     Suppresses frames from tracebacks conditionally depending on the exception type.
+    Optionally supports database logging via BuildLogger.
     """
 
     def __init__(
@@ -779,6 +1035,7 @@ class LogHandler(RichHandler):
         ),
         traceback_level: int = logging.ERROR,
         force_terminal: bool = False,
+        build_logger: "BuildLogger | None" = None,
         **kwargs,
     ):
         super().__init__(
@@ -800,9 +1057,10 @@ class LogHandler(RichHandler):
         self.traceback_level = traceback_level
         self._logged_exceptions = set()
         self._is_terminal = force_terminal or console.is_terminal
-
-        # Use shared filter for atopile/faebryk logs only
-        self.addFilter(_atopile_log_filter)
+        self._build_logger = build_logger
+        self._test_logger: TestLogger | None = None
+        # Note: _atopile_log_filter is applied in both _write_to_sqlite() and
+        # emit() to filter logs for database and console output respectively.
 
     def _get_suppress(
         self, exc_type: type[BaseException] | None
@@ -861,17 +1119,22 @@ class LogHandler(RichHandler):
         if hide_traceback or exc_type is None or exc_value is None:
             return None
 
+        # Use console width or None (unlimited) for traceback width to prevent truncation
+        width = getattr(self, 'tracebacks_width', None) or getattr(self.console, 'width', None)
+        # If width is None, Rich will use full available width
+        
         return Traceback.from_exception(
             exc_type,
             exc_value,
             exc_traceback,
-            width=self.tracebacks_width,
-            extra_lines=self.tracebacks_extra_lines,
-            theme=self.tracebacks_theme,
-            word_wrap=self.tracebacks_word_wrap,
-            show_locals=self.tracebacks_show_locals,
-            locals_max_length=self.locals_max_length,
-            locals_max_string=self.locals_max_string,
+            width=width,
+            extra_lines=getattr(self, 'tracebacks_extra_lines', 3),
+            theme=getattr(self, 'tracebacks_theme', None),
+            word_wrap=getattr(self, 'tracebacks_word_wrap', True),
+            show_locals=getattr(self, 'tracebacks_show_locals', False),
+            locals_max_length=getattr(self, 'locals_max_length', 10),
+            locals_max_string=getattr(self, 'locals_max_string', 80),
+            max_frames=getattr(self, 'tracebacks_max_frames', 1000),  # Increased from default 100 to show full tracebacks
             suppress=suppress,
         )
 
@@ -943,13 +1206,158 @@ class LogHandler(RichHandler):
         message_renderable = self.render_message(record, message)
 
         log_renderable = self.render(
-            record=record, traceback=traceback_obj, message_renderable=message_renderable
+            record=record,
+            traceback=traceback_obj,
+            message_renderable=message_renderable,
         )
 
         return log_renderable
 
+    def _level_to_enum(self, levelno: int) -> Log.Level:
+        """Convert logging level number to Level enum."""
+        if levelno >= logging.ERROR:
+            return Log.Level.ERROR
+        elif levelno >= logging.WARNING:
+            return Log.Level.WARNING
+        elif levelno >= logging.INFO:
+            return Log.Level.INFO
+        return Log.Level.DEBUG
+
+    def _write_to_sqlite(self, record: logging.LogRecord) -> None:
+        """Write log record to SQLite via BuildLogger or TestLogger if available."""
+        # Check if we're running the server (either via 'ato serve' or 'python -m atopile.server')
+        main_module = sys.modules.get("__main__")
+        is_serving = (
+            "serve" in sys.argv
+            or "atopile.server" in sys.argv
+            or (main_module is not None and main_module.__package__ == "atopile.server")
+        )
+        # Skip database writes when running server
+        if is_serving:
+            return
+        # Write to build logger if available
+        if self._build_logger is not None:
+            self._write_to_build_logger(record)
+
+        # Write to test logger if available
+        if self._test_logger is not None:
+            self._write_to_test_logger(record)
+
+    def _write_to_build_logger(self, record: logging.LogRecord) -> None:
+        """Write log record to build database via BuildLogger."""
+        if self._build_logger is None:
+            return
+
+        try:
+            level = self._level_to_enum(record.levelno)
+
+            # Handle user exceptions specially
+            exc_value = None
+            if record.exc_info and record.exc_info[1] is not None:
+                exc_value = record.exc_info[1]
+
+            if exc_value and isinstance(exc_value, _BaseBaseUserException):
+                # Use unified message extraction
+                message = BaseLogger.get_exception_display_message(exc_value)
+
+                # Extract ato-specific context
+                ato_tb = self._build_logger._extract_ato_traceback(exc_value)
+
+                # Get Python traceback
+                exc_type, exc_val, exc_tb = record.exc_info  # type: ignore[misc]
+                python_tb = "".join(
+                    traceback.format_exception(exc_type, exc_val, exc_tb)
+                )
+
+                self._build_logger.log(
+                    level,
+                    message,
+                    logger_name=record.name,
+                    audience=Log.Audience.DEVELOPER,
+                    ato_traceback=ato_tb,
+                    python_traceback=python_tb,
+                )
+            else:
+                # Regular log message
+                message = record.getMessage()
+
+                # Add Python traceback if present
+                python_tb = None
+                if record.exc_info and record.exc_info[1] is not None:
+                    exc_type, exc_val, exc_tb = record.exc_info
+                    python_tb = "".join(
+                        traceback.format_exception(exc_type, exc_val, exc_tb)
+                    )
+
+                self._build_logger.log(
+                    level,
+                    message,
+                    logger_name=record.name,
+                    python_traceback=python_tb,
+                )
+        except Exception:
+            pass  # Don't fail if SQLite logging fails
+
+    def _write_to_test_logger(self, record: logging.LogRecord) -> None:
+        """Write log record to test database via TestLogger."""
+        if self._test_logger is None:
+            return
+
+        try:
+            level = self._level_to_enum(record.levelno)
+
+            # Handle user exceptions specially
+            exc_value = None
+            if record.exc_info and record.exc_info[1] is not None:
+                exc_value = record.exc_info[1]
+
+            if exc_value and isinstance(exc_value, _BaseBaseUserException):
+                # Use unified message extraction
+                message = BaseLogger.get_exception_display_message(exc_value)
+
+                # Get Python traceback
+                exc_type, exc_val, exc_tb = record.exc_info  # type: ignore[misc]
+                python_tb = "".join(
+                    traceback.format_exception(exc_type, exc_val, exc_tb)
+                )
+
+                self._test_logger.log(
+                    level,
+                    message,
+                    logger_name=record.name,
+                    audience=Log.Audience.DEVELOPER,
+                    python_traceback=python_tb,
+                )
+            else:
+                # Regular log message
+                message = record.getMessage()
+
+                # Add Python traceback if present
+                python_tb = None
+                if record.exc_info and record.exc_info[1] is not None:
+                    exc_type, exc_val, exc_tb = record.exc_info
+                    python_tb = "".join(
+                        traceback.format_exception(exc_type, exc_val, exc_tb)
+                    )
+
+                self._test_logger.log(
+                    level,
+                    message,
+                    logger_name=record.name,
+                    python_traceback=python_tb,
+                )
+        except Exception:
+            pass  # Don't fail if SQLite logging fails
+
     def emit(self, record: logging.LogRecord) -> None:
         """Invoked by logging."""
+        # Filter out non-atopile/faebryk logs and httpcore (unless serving)
+        if not BaseLogger._atopile_log_filter(record):
+            return
+
+        # Write to database
+        self._write_to_sqlite(record)
+
         # Worker subprocesses suppress console output, except for errors
         is_worker = bool(os.environ.get("ATO_BUILD_EVENT_FD"))
         is_console = self.console.file in (sys.stdout, sys.stderr)
@@ -969,7 +1377,16 @@ class LogHandler(RichHandler):
             self.handleError(record)
         else:
             try:
-                self.console.print(log_renderable)
+                # For errors/exceptions, also print to stderr to ensure visibility
+                # even if stdout is being overwritten by Live displays
+                if record.levelno >= logging.ERROR and record.exc_info:
+                    # Print to stderr as well to avoid being overwritten by Live displays
+                    stderr_console = Console(file=sys.stderr, width=self.console.width)
+                    stderr_console.print(log_renderable, crop=False, overflow="ignore")
+                
+                # Print without height limit to show full tracebacks
+                # Use crop=False to prevent truncation, and ensure full output
+                self.console.print(log_renderable, crop=False, overflow="ignore")
             except Exception:
                 self.handleError(record)
             finally:
@@ -977,859 +1394,373 @@ class LogHandler(RichHandler):
                     self._logged_exceptions.add(hashable)
 
 
-class LiveLogHandler(LogHandler):
+# =============================================================================
+# Log database query helpers
+# =============================================================================
+
+LOGS_DEFAULT_COUNT = 500
+LOGS_MAX_COUNT = 5000
+LOGS_ALLOWED_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "ALERT"}
+
+
+def normalize_log_levels(value: Any) -> list[str] | None:
+    if not isinstance(value, list):
+        return None
+    levels: list[str] = []
+    for entry in value:
+        if not isinstance(entry, str):
+            return None
+        level = entry.strip().upper()
+        if level not in LOGS_ALLOWED_LEVELS:
+            return None
+        levels.append(level)
+    return levels
+
+
+def normalize_log_audience(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    audience = value.strip().lower()
+    allowed = {member.value for member in Log.Audience}
+    return audience if audience in allowed else None
+
+
+def load_build_logs(
+    *,
+    build_id: str,
+    stage: str | None,
+    log_levels: list[str] | None,
+    audience: str | None,
+    count: int,
+) -> list[dict[str, Any]]:
+    count = max(1, min(count, LOGS_MAX_COUNT))
+    db_path = BuildLogger.get_log_db()
+    if not db_path.exists():
+        return []
+
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+
+    where_clauses = ["logs.build_id = ?"]
+    params: list[Any] = [build_id]
+
+    if stage:
+        where_clauses.append("logs.stage = ?")
+        params.append(stage)
+
+    if log_levels:
+        placeholders = ", ".join(["?"] * len(log_levels))
+        where_clauses.append(f"logs.level IN ({placeholders})")
+        params.extend(log_levels)
+
+    if audience:
+        where_clauses.append("logs.audience = ?")
+        params.append(audience)
+
+    where_sql = " AND ".join(where_clauses)
+    query = f"""
+        SELECT logs.timestamp, logs.level, logs.audience, logs.logger_name,
+               logs.message, logs.stage, logs.ato_traceback, logs.python_traceback,
+               logs.objects
+        FROM logs
+        WHERE {where_sql}
+        ORDER BY logs.id DESC
+        LIMIT ?
     """
-    Log handler for build stages with integrated SQLite logging.
 
-    Handles:
-    - Rich console output (via parent LogHandler)
-    - Progress bar updates (warning/error counts)
-    - SQLite database logging (via BuildLogger)
-    """
-
-    def __init__(
-        self,
-        status: "LoggingStage",
-        build_logger: "BuildLogger | None" = None,
-        *args,
-        **kwargs,
-    ):
-        super().__init__(*args, console=status._console, **kwargs)
-        self.status = status
-        self._build_logger = build_logger
-        # In worker mode, we only count warnings/errors but don't print to console
-        self._suppress_output = status._in_worker_mode
-
-    def _level_to_enum(self, levelno: int) -> Level:
-        """Convert logging level number to Level enum."""
-        if levelno >= logging.ERROR:
-            return Level.ERROR
-        elif levelno >= logging.WARNING:
-            return Level.WARNING
-        elif levelno >= logging.INFO:
-            return Level.INFO
-        return Level.DEBUG
-
-    def _write_to_sqlite(self, record: logging.LogRecord) -> None:
-        """Write log record to SQLite via BuildLogger."""
-        if self._build_logger is None:
-            return
-
-        try:
-            level = self._level_to_enum(record.levelno)
-
-            # Handle user exceptions specially
-            exc_value = None
-            if record.exc_info and record.exc_info[1] is not None:
-                exc_value = record.exc_info[1]
-
-            if exc_value and isinstance(exc_value, _BaseBaseUserException):
-                # Use unified message extraction
-                message = get_exception_display_message(exc_value)
-
-                # Extract ato-specific context
-                ato_tb = self._build_logger._extract_ato_traceback(exc_value)
-
-                # Get Python traceback
-                exc_type, exc_val, exc_tb = record.exc_info  # type: ignore[misc]
-                python_tb = "".join(
-                    traceback.format_exception(exc_type, exc_val, exc_tb)
-                )
-
-                self._build_logger.log(
-                    level,
-                    message,
-                    audience=Audience.USER,
-                    ato_traceback=ato_tb,
-                    python_traceback=python_tb,
-                )
-            else:
-                # Regular log message
-                message = record.getMessage()
-
-                # Add Python traceback if present
-                python_tb = None
-                if record.exc_info and record.exc_info[1] is not None:
-                    exc_type, exc_val, exc_tb = record.exc_info
-                    python_tb = "".join(
-                        traceback.format_exception(exc_type, exc_val, exc_tb)
-                    )
-
-                self._build_logger.log(
-                    level,
-                    message,
-                    python_traceback=python_tb,
-                )
-        except Exception:
-            pass  # Don't fail the build if SQLite logging fails
-
-    def emit(self, record: logging.LogRecord) -> None:
-        hashable = self._get_hashable(record)
-        if hashable and hashable in self._logged_exceptions:
-            return
-
-        try:
-            # Update progress bar counts
-            if record.levelno >= logging.ERROR:
-                self.status._error_count += 1
-            elif record.levelno >= logging.WARNING:
-                self.status._warning_count += 1
-            elif record.levelno == ALERT:
-                self.status._alert_count += 1
-            elif record.levelno >= logging.INFO:
-                self.status._info_count += 1
-
-            self.status.refresh()
-
-            # Write to SQLite database (always, regardless of console suppression)
-            self._write_to_sqlite(record)
-
-            # Console output handling
-            if self._suppress_output:
-                # In worker mode, only print errors to console
-                if record.levelno >= logging.ERROR:
-                    super().emit(record)
-                return
-
-            if record.levelno == ALERT:
-                self.status.alert(record.getMessage())
-            elif record.levelno >= logging.ERROR:
-                super().emit(record)
-
-        except Exception:
-            self.handleError(record)
-        finally:
-            if hashable:
-                self._logged_exceptions.add(hashable)
-
-
-class CaptureLogHandler(LogHandler):
-    def __init__(self, status: "LoggingStage", console: Console, *args, **kwargs):
-        super().__init__(*args, console=console, **kwargs)
-        self.status = status
-
-    def emit(self, record: logging.LogRecord) -> None:
-        hashable = self._get_hashable(record)
-        if hashable and hashable in self._logged_exceptions:
-            return
-
-        try:
-            super().emit(record)
-        except Exception:
-            self.handleError(record)
-        finally:
-            if hashable:
-                self._logged_exceptions.add(hashable)
-
-
-# =============================================================================
-# Progress Bar Components
-# =============================================================================
-
-
-class IndentedProgress(Progress):
-    def __init__(self, *args, indent: int = 20, **kwargs):
-        self.indent = indent
-        super().__init__(*args, **kwargs)
-
-    def get_renderable(self):
-        return Padding(super().get_renderable(), pad=(0, 0, 0, self.indent))
-
-
-class ShortTimeElapsedColumn(TimeElapsedColumn):
-    """Renders time elapsed."""
-
-    def render(self, task: "Task") -> Text:
-        """Show time elapsed."""
-        elapsed = task.elapsed or 0
-        return Text.from_markup(f"[blue][{elapsed:.1f}s][/blue]")
-
-
-class StyledMofNCompleteColumn(MofNCompleteColumn):
-    def render(self, task: "Task") -> Text:
-        return Text.from_markup(
-            f"[dim]{task.completed}[/dim]{self.separator}[dim]{task.total}[/dim]"
-        )
-
-
-class SpacerColumn(RenderableColumn):
-    def __init__(self, *args, **kwargs):
-        super().__init__(
-            *args, renderable=Text(), table_column=Column(ratio=1), **kwargs
-        )
-
-
-class CompletableSpinnerColumn(SpinnerColumn):
-    class Status(StrEnum):
-        SUCCESS = "[green]✓[/green]"
-        FAILURE = "[red]✗[/red]"
-        WARNING = "[yellow]⚠[/yellow]"
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.status = None
-
-    def complete(self, status: Status) -> None:
-        self.status = status
-
-    def render(self, task: "Task") -> RenderableType:
-        text = (
-            Text.from_markup(self.status)
-            if self.status is not None
-            else self.spinner.render(task.get_time())
-        )
-        return text
-
-
-# =============================================================================
-# Context Variables
-# =============================================================================
-
-_log_sink_var = ContextVar[io.StringIO | None]("log_sink", default=None)
-
-
-@contextmanager
-def capture_logs():
-    log_sink = _log_sink_var.get()
-    _log_sink_var.set(io.StringIO())
-    _log_sink = _log_sink_var.get()
-    assert _log_sink is not None
-    yield _log_sink
-    _log_sink_var.set(log_sink)
-
-
-@contextmanager
-def log_exceptions(log_sink: io.StringIO):
-    from atopile.cli.excepthook import _handle_exception
-
-    exc_log_console = Console(file=log_sink)
-    exc_log_handler = LogHandler(console=exc_log_console)
-    logger.addHandler(exc_log_handler)
-
-    try:
-        yield
-    except Exception as e:
-        _handle_exception(type(e), e, e.__traceback__)
-        raise e
-    finally:
-        logger.removeHandler(exc_log_handler)
-
-
-# =============================================================================
-# LoggingStage - Build stage context manager
-# =============================================================================
-
-
-class LoggingStage(Advancable):
-    # Timing file name constant
-    TIMING_FILE = "stage_timings.json"
-
-    def __init__(
-        self, name: str, description: str, steps: int | None = None, indent: int = 20
-    ):
-        self.name = name
-        self.description = description
-        self.indent = indent
-        self.steps = steps
-        self._console = error_console
-        self._info_count = 0
-        self._warning_count = 0
-        self._error_count = 0
-        self._alert_count = 0
-        self._info_log_path = None
-        self._log_handler = None
-        self._capture_log_handler = None
-        self._original_handlers: dict = {}
-        self._sanitized_name = pathvalidate.sanitize_filename(self.name)
-        self._result = None
-        self._stage_start_time: float = 0.0
-        self._original_level = logging.INFO
-
-        # Worker subprocesses are identified by IPC env vars set by the parent.
-        self._in_worker_mode = bool(os.environ.get("ATO_BUILD_EVENT_FD"))
-
-        # Only create progress bar for non-worker (single-process) runs
-        if not self._in_worker_mode:
-            self._progress: IndentedProgress | None = IndentedProgress(
-                *self._get_columns(),
-                console=self._console,
-                transient=False,
-                auto_refresh=True,
-                refresh_per_second=10,
-                indent=self.indent,
-                expand=True,
-            )
-        else:
-            self._progress = None
-
-    def _get_columns(self) -> tuple[ProgressColumn, ...]:
-        show_log_file_path = (
-            self._info_log_path and self._console.width >= _SHOW_LOG_FILE_PATH_THRESHOLD
-        )
-
-        indicator_col = CompletableSpinnerColumn()
-        self._indicator_col = indicator_col
-
-        return tuple(
-            col
-            for col in (
-                indicator_col,
-                TextColumn("{task.description}"),
-                StyledMofNCompleteColumn() if self.steps is not None else None,
-                ShortTimeElapsedColumn(),
-                SpacerColumn(),
-                TextColumn(
-                    f"[dim]{self._info_log_path}[/dim]" if show_log_file_path else "",
-                    justify="right",
-                    table_column=Column(justify="right", overflow="ellipsis"),
-                ),
-            )
-            if col is not None
-        )
-
-    def _update_columns(self) -> None:
-        if self._progress is not None:
-            self._progress.columns = self._get_columns()
-
-    def alert(self, message: str) -> None:
-        # In worker mode, alerts are suppressed (logged to file only)
-        if self._in_worker_mode:
-            return
-
-        message = f"[bold][yellow]![/yellow] {message}[/bold]"
-
-        self._console.print(
-            Padding(Text.from_markup(message), pad=(0, 0, 0, self.indent)),
-            highlight=True,
-        )
-
-    def _generate_description(self) -> str:
-        problems = []
-        if self._error_count > 0:
-            plural_e = "s" if self._error_count > 1 else ""
-            problems.append(f"[red]{self._error_count} error{plural_e}[/red]")
-
-        if self._warning_count > 0:
-            plural_w = "s" if self._warning_count > 1 else ""
-            problems.append(f"[yellow]{self._warning_count} warning{plural_w}[/yellow]")
-
-        problems_text = f" ({', '.join(problems)})" if problems else ""
-        return f"{self.description}{problems_text}"
-
-    def refresh(self) -> None:
-        if self._in_worker_mode:
-            return  # No progress bar to refresh
-
-        if not hasattr(self, "_task_id"):
-            return
-
-        if self._progress is not None:
-            self._progress.update(
-                self._task_id, description=self._generate_description()
-            )
-
-    def set_total(self, total: int | None) -> None:
-        self.steps = total
-        self._current_progress = 0
-
-        # Write progress to IPC if in worker mode
-        self._emit_status_event()
-
-        if self._in_worker_mode:
-            # In worker mode, don't update progress bar
-            return
-
-        self._update_columns()
-        if self._progress is not None:
-            self._progress.update(self._task_id, total=total)
-        self.refresh()
-
-    def advance(self, advance: int = 1) -> None:
-        self._current_progress = getattr(self, "_current_progress", 0) + advance
-
-        # Write progress to IPC if in worker mode
-        self._emit_status_event()
-
-        if self._in_worker_mode:
-            return  # Progress tracking handled differently
-        assert self.steps is not None
-        if self._progress is not None:
-            self._progress.advance(self._task_id, advance)
-
-    def _emit_status_event(self) -> None:
-        """Emit current stage and progress over IPC."""
-        event_fd = os.environ.get("ATO_BUILD_EVENT_FD")
-        if not event_fd:
-            return
-
-        try:
-            fd = int(event_fd)
-        except ValueError:
-            return
-
-        try:
-            progress = getattr(self, "_current_progress", 0)
-            total = self.steps
-            _emit_event(
-                fd,
-                StageStatusEvent(
-                    name=self.name,
-                    description=self.description,
-                    progress=progress,
-                    total=total,
-                ),
-            )
-        except Exception:
-            pass  # Don't fail if we can't write status
-
-    def __enter__(self) -> "LoggingStage":
-        self._setup_logging()
-        self._current_progress = 0
-        self._stage_start_time = time.time()
-
-        # Write status to IPC if in worker mode (subprocess parallelism)
-        self._emit_status_event()
-
-        if self._in_worker_mode:
-            # Worker mode: no progress bar, just track internally
-            pass  # Start time already set above
-        else:
-            self._update_columns()
-            if self._progress is not None:
-                self._progress.start()
-                self._task_id = self._progress.add_task(
-                    self.description, total=self.steps if self.steps is not None else 1
-                )
-
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        elapsed = time.time() - getattr(self, "_stage_start_time", time.time())
-        if exc_type is not None:
+    params.append(count)
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        objects = None
+        if row["objects"]:
             try:
-                from atopile.exceptions import iter_leaf_exceptions
-
-                if isinstance(exc_val, BaseExceptionGroup):
-                    for leaf in iter_leaf_exceptions(exc_val):
-                        # Use unified message extraction
-                        msg = get_exception_display_message(leaf)
-                        # Pass exc_info so LogHandler can render rich source chunks
-                        logger.error(
-                            msg or "Build step failed",
-                            exc_info=(type(leaf), leaf, leaf.__traceback__),
-                        )
-                else:
-                    # Use unified message extraction
-                    msg = get_exception_display_message(exc_val)
-                    logger.error(
-                        msg or "Build step failed",
-                        exc_info=(type(exc_val), exc_val, exc_val.__traceback__),
-                    )
-            except Exception:
-                msg = str(exc_val) if exc_val is not None else "Build step failed"
-                logger.error(
-                    msg or "Build step failed",
-                    exc_info=(type(exc_val), exc_val, exc_val.__traceback__)
-                    if exc_val is not None
-                    else None,
-                )
-
-        if exc_type is not None or self._error_count > 0:
-            status = CompletableSpinnerColumn.Status.FAILURE
-        elif self._warning_count > 0:
-            status = CompletableSpinnerColumn.Status.WARNING
-        else:
-            status = CompletableSpinnerColumn.Status.SUCCESS
-
-        self._restore_logging()
-        self._emit_stage_event(elapsed, status)
-
-        if self._in_worker_mode:
-            # Worker mode: no display updates (handled by parent process)
-            pass
-        else:
-            # Normal mode: update progress bar
-            if self._progress is not None:
-                for column in self._progress.columns:
-                    if isinstance(column, CompletableSpinnerColumn):
-                        column.complete(status)
-
-                self.refresh()
-                self._progress.stop()
-
-    def _emit_stage_event(
-        self, elapsed: float, status: CompletableSpinnerColumn.Status
-    ) -> None:
-        """
-        Emit stage completion event to pipe for parent process.
-
-        The parent process reads these events to build stage history,
-        which is later written to JSON at build completion.
-        """
-        event_fd = os.environ.get("ATO_BUILD_EVENT_FD")
-        if not event_fd:
-            return
-        try:
-            fd = int(event_fd)
-        except ValueError:
-            return
-        try:
-            if status == CompletableSpinnerColumn.Status.FAILURE:
-                status_text = "failed"
-            elif status == CompletableSpinnerColumn.Status.WARNING:
-                status_text = "warning"
-            else:
-                status_text = "success"
-            _emit_event(
-                fd,
-                StageCompleteEvent(
-                    duration=elapsed,
-                    status=status_text,
-                    infos=self._info_count,
-                    warnings=self._warning_count,
-                    errors=self._error_count,
-                    alerts=self._alert_count,
-                    log_name=self.name,
-                    description=self.description,
-                ),
-            )
-        except Exception:
-            pass
-
-    def _setup_logging(self) -> None:
-        from atopile.config import config
-
-        root_logger = logging.getLogger()
-
-        self._original_level = root_logger.level
-        self._original_handlers = {"root": root_logger.handlers.copy()}
-
-        # log all messages to at least one handler
-        root_logger.setLevel(logging.DEBUG)
-
-        # Get project and target info for the central database
-        # Use resolved absolute path to ensure consistency with summary generation
-        try:
-            project_path = str(config.project.paths.root.resolve())
-            target = config.build.name
-        except RuntimeError:
-            # Fallback if config is not fully initialized
-            project_path = "unknown"
-            target = "default"
-
-        # Get or create BuildLogger for SQLite logging
-        build_logger = get_build_logger(project_path, target, stage=self.name)
-        self._build_id = build_logger.build_id
-        logger.debug(f"Logs build_id: {self._build_id} (project={project_path}, target={target}, ts={NOW})")
-
-        # Create LiveLogHandler with integrated SQLite logging
-        self._log_handler = LiveLogHandler(self, build_logger=build_logger)
-        self._log_handler.setFormatter(_DEFAULT_FORMATTER)
-        self._log_handler.setLevel(self._original_level)
-
-        if _log_sink_var.get() is not None:
-            capture_console = Console(file=_log_sink_var.get())
-            self._capture_log_handler = CaptureLogHandler(self, console=capture_console)
-            self._capture_log_handler.setFormatter(_DEFAULT_FORMATTER)
-            self._capture_log_handler.setLevel(logging.INFO)
-
-        for handler in root_logger.handlers.copy():
-            root_logger.removeHandler(handler)
-
-        root_logger.addHandler(self._log_handler)
-        if self._capture_log_handler is not None:
-            root_logger.addHandler(self._capture_log_handler)
-
-        # Show central log database path for info
-        log_file = get_central_log_db()
-        try:
-            self._info_log_path = log_file.relative_to(Path.cwd())
-        except ValueError:
-            self._info_log_path = log_file
-
-    def _restore_logging(self) -> None:
-        if not self._log_handler:
-            return
-
-        root_logger = logging.getLogger()
-        root_logger.setLevel(self._original_level)
-
-        if self._log_handler in root_logger.handlers:
-            root_logger.removeHandler(self._log_handler)
-
-        if self._capture_log_handler in root_logger.handlers:
-            root_logger.removeHandler(self._capture_log_handler)
-
-        for handler in root_logger.handlers.copy():
-            root_logger.removeHandler(handler)
-
-        for handler in self._original_handlers.get("root", []):
-            root_logger.addHandler(handler)
-
-        self._original_handlers = {}
-        self._original_level = logging.INFO
-        self._log_handler = None
-        self._capture_log_handler = None
-
-
-# =============================================================================
-# Faebryk Logging Utilities (formerly faebryk.libs.logging)
-# =============================================================================
-
-import re
-
-import rich
-from rich.highlighter import RegexHighlighter
-from rich.table import Table
-from rich.tree import Tree
-
-from faebryk.libs.util import ConfigFlag, ConfigFlagInt
-
-
-def rich_print_robust(message: str, markdown: bool = False):
-    """
-    Hack for terminals that don't support unicode
-    There is probably a better way to do this, but this is a quick fix for now.
-    """
-    try:
-        rich.print(Markdown(message) if markdown else message)
-    except UnicodeEncodeError:
-        message = message.encode("ascii", errors="ignore").decode("ascii")
-        rich.print(Markdown(message) if markdown else message)
-    except Exception:
-        # Handle errors from Pygments plugin loading (e.g., old entry points)
-        # or other rendering issues - fall back to plain text
-        if markdown:
-            # Try to extract plain text from markdown code blocks
-            # Remove markdown code block syntax but keep content
-            plain_message = re.sub(r"```\w*\n", "", message)
-            plain_message = re.sub(r"```$", "", plain_message, flags=re.MULTILINE)
-            rich.print(plain_message)
-        else:
-            rich.print(message)
-
-
-def is_piped_to_file() -> bool:
-    return not sys.stdout.isatty()
-
-
-def get_terminal_width() -> int:
-    if is_piped_to_file():
-        if "COLUMNS" in os.environ:
-            return int(os.environ["COLUMNS"])
-        else:
-            return 240
-    else:
-        return Console().size.width
-
-
-PLOG = ConfigFlag("PLOG", descr="Enable picker debug log")
-FLOG_FMT = ConfigFlag("LOG_FMT", descr="Enable (old) log formatting")
-TERMINAL_WIDTH = ConfigFlagInt(
-    "TERMINAL_WIDTH",
-    default=get_terminal_width(),
-    descr="Width of the terminal",
-)
-
-
-LOG_TIME = ConfigFlag("LOG_TIME", default=True, descr="Enable logging of time")
-LOG_FILEINFO = ConfigFlag(
-    "LOG_FILEINFO", default=True, descr="Enable logging of file info"
-)
-
-TIME_LEN = 5 + 2 if LOG_TIME else 0
-LEVEL_LEN = 1
-FILE_LEN = 12 + 4 if LOG_FILEINFO else 0
-FMT_HEADER_LEN = TIME_LEN + 1 + LEVEL_LEN + 1 + FILE_LEN + 1
-
-NET_LINE_WIDTH = min(120, int(TERMINAL_WIDTH) - FMT_HEADER_LEN)
-
-
-class NestedConsole(Console):
-    def __init__(self, *args, **kwargs):
-        super().__init__(
-            *args,
-            record=True,
-            width=NET_LINE_WIDTH - 1,
-            file=io.StringIO(),
-            force_terminal=True,  # Enable ANSI colors for frontend rendering
-            **kwargs,
+                objects = json.loads(row["objects"])
+            except json.JSONDecodeError:
+                objects = None
+        results.append(
+            {
+                "timestamp": row["timestamp"],
+                "level": row["level"],
+                "audience": row["audience"],
+                "logger_name": row["logger_name"],
+                "message": row["message"],
+                "stage": row["stage"],
+                "ato_traceback": row["ato_traceback"],
+                "python_traceback": row["python_traceback"],
+                "objects": objects,
+            }
         )
 
-    def __str__(self):
-        return self.export_text(styles=True)
+    return results
 
 
-def rich_to_string(rich_obj: Table | Tree) -> str:
-    nested_console = NestedConsole()
-    nested_console.print(rich_obj)
-    return str(nested_console)
+def load_test_logs(
+    *,
+    test_run_id: str,
+    test_name: str | None,
+    log_levels: list[str] | None,
+    audience: str | None,
+    count: int,
+) -> list[dict[str, Any]]:
+    """Load test logs from the test log database."""
+    count = max(1, min(count, LOGS_MAX_COUNT))
+    db_path = TestLogger.get_log_db()
+    if not db_path.exists():
+        return []
 
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
 
-# Abbreviated level names with Rich color markup
-_LEVEL_ABBREV = {
-    "DEBUG": "[cyan]D[/cyan]",
-    "INFO": "[green]I[/green]",
-    "WARNING": "[yellow]W[/yellow]",
-    "ERROR": "[red]E[/red]",
-    "CRITICAL": "[bold red]C[/bold red]",
-}
+    where_clauses = ["test_logs.test_run_id = ?"]
+    params: list[Any] = [test_run_id]
 
+    if test_name:
+        where_clauses.append("test_logs.test_name LIKE ?")
+        params.append(f"%{test_name}%")
 
-def format_line(line: str) -> str:
-    # doesn't take ansii codes like `\x1b[0m\` into account that don't take space
-    stripped_line = line.lstrip(" ")
-    prefix = " " * ((len(line) - len(stripped_line)) + 2)
-    chunk_size = NET_LINE_WIDTH - len(prefix)
-    stripped_line = stripped_line.rstrip()
-    lines = []
-    for i in range(0, len(stripped_line), chunk_size):
-        chunk = stripped_line[i : i + chunk_size]
-        lines.append(f"{prefix}{chunk}")
+    if log_levels:
+        placeholders = ", ".join(["?"] * len(log_levels))
+        where_clauses.append(f"test_logs.level IN ({placeholders})")
+        params.extend(log_levels)
 
-    return "\n".join(lines).removeprefix(" " * 2)
+    if audience:
+        where_clauses.append("test_logs.audience = ?")
+        params.append(audience)
 
-
-class RelativeTimeFormatter(logging.Formatter):
-    """Custom formatter with ms-since-start timestamp and abbreviated colored levels."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.start_time = time.perf_counter()
-
-    def format(self, record: logging.LogRecord) -> str:
-        # Calculate ms since logging started
-        elapsed_s = time.perf_counter() - self.start_time
-        record.elapsed_ms = f"{elapsed_s:>3.2f}s".rjust(7)
-
-        # Replace level name with abbreviated colored version
-        record.level_abbrev = _LEVEL_ABBREV.get(record.levelname, record.levelname)
-
-        INDENT = " " * (FMT_HEADER_LEN + 1)
-        message = record.getMessage()
-        message = message.replace("\n", f"\n{INDENT}")
-        if "\x1b" not in message:
-            # If any line is longer than NET_LINE_WIDTH, wrap into chunks.
-            if NET_LINE_WIDTH > 0 and len(message) > NET_LINE_WIDTH:
-                message = "\n".join(format_line(line) for line in message.splitlines())
-
-        record.nmessage = message
-
-        # fileinfo
-        filename, ext = record.filename.rsplit(".", 1)
-        if len(filename) > 12:
-            filename = filename[:5] + "..." + filename[-4:]
-        lineno = record.lineno
-        fileinfo = f"{filename}:{lineno}"
-        record.fileinfo = f"{fileinfo:16s}"
-
-        return super().format(record)
-
-
-class NodeHighlighter(RegexHighlighter):
-    """
-    Apply style to anything that looks like an faebryk fabll.Node\n
-    <*|XOR_with_NANDS.nands[2]|NAND.inputs[0]|Logic> with
-      <*|TI_CD4011BE.nands[2]|ElectricNAND.inputs[0]|ElectricLogic>\n
-    \t<> = fabll.Node\n
-    \t|  = Type\n
-    \t.  = Parent\n
-    \t*  = Root
+    where_sql = " AND ".join(where_clauses)
+    query = f"""
+        SELECT test_logs.timestamp, test_logs.level, test_logs.audience,
+               test_logs.logger_name, test_logs.message, test_logs.ato_traceback,
+               test_logs.python_traceback, test_logs.objects, test_logs.test_name
+        FROM test_logs
+        WHERE {where_sql}
+        ORDER BY test_logs.id DESC
+        LIMIT ?
     """
 
-    base_style = "node."
-    highlights = [
-        #  r"(?P<Rest>(.*))",
-        r"(?P<Node>([/</>]))",
-        r"[?=\|](?P<Type>([a-zA-Z_0-9]+))[?=\>]",
-        r"[\.](?P<Child>([a-zA-Z_0-9]+))[?=\[]",
-        r"[\|](?P<Parent>([a-zA-Z_0-9]+))[?=\.]",
-        r"[?<=*.](?P<Root>(\*))",
-        r"[?=\[](?P<Number>([0-9]+))[?=\]]",
-        # Solver/Parameter stuff -------------------------------------------------------
-        # Literals
-        r"(?P<Quantity>Quantity_Interval(_Disjoint)?\([^)]*\))",
-        r"(?P<Quantity>\(\[[^)]*\]\))",
-        r"(?P<Quantity>\[(True|False)+\])",
-        # Predicates / Expressions
-        r"(?P<Op> (\+|\*|/))[ {]",
-        r"(?P<Predicate> (is|⊆|≥|≤|)!?!?[✓✗]?) ",
-        # Literal Is/IsSubset
-        r"(?P<IsSubset>{(I|S)\|[^}]+})",
-    ]
+    params.append(count)
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
 
-
-class ReprHighlighter(RegexHighlighter):
-    """Highlights the text typically produced from ``__repr__`` methods."""
-
-    base_style = "repr."
-    highlights = [
-        r"(?P<tag_start><)(?P<tag_name>[-\w.:|]*)(?P<tag_contents>[\w\W]*)(?P<tag_end>>)",
-        r'(?P<attrib_name>[\w_]{1,50})=(?P<attrib_value>"?[\w_]+"?)?',
-        r"(?P<brace>[][{}()])",
-        "|".join(
-            [
-                r"(?P<ipv4>[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})",
-                r"(?P<ipv6>([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4})",
-                r"(?P<eui64>(?:[0-9A-Fa-f]{1,2}-){7}[0-9A-Fa-f]{1,2}|(?:[0-9A-Fa-f]{1,2}:){7}[0-9A-Fa-f]{1,2}|(?:[0-9A-Fa-f]{4}\.){3}[0-9A-Fa-f]{4})",
-                r"(?P<eui48>(?:[0-9A-Fa-f]{1,2}-){5}[0-9A-Fa-f]{1,2}|(?:[0-9A-Fa-f]{1,2}:){5}[0-9A-Fa-f]{1,2}|(?:[0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4})",
-                r"(?P<call>[\w.]*?)\(",
-                r"\b(?P<bool_true>True)\b|\b(?P<bool_false>False)\b|\b(?P<none>None)\b",
-                r"(?P<ellipsis>\.\.\.)",
-                r"(?P<number_complex>(?<!\w)(?:\-?[0-9]+\.?[0-9]*(?:e[-+]?\d+?)?)(?:[-+](?:[0-9]+\.?[0-9]*(?:e[-+]?\d+)?))?j)",
-                r"(?P<number>(?<!\w)\-?[0-9]+\.?[0-9]*(e[-+]?\d+?)?\b|0x[0-9a-fA-F]*)",
-                # matches paths with or without leading / (@windows)
-                r"(?P<path>(\b|/)([-\w._+]+)(/[-\w._+]+)*/)(?P<filename>[-\w._+]*)?",
-                r"(?<![\\\w])(?P<str>b?'''.*?(?<!\\)'''|b?'.*?(?<!\\)'|b?\"\"\".*?(?<!\\)\"\"\"|b?\".*?(?<!\\)\")",
-                r"(?P<url>(file|https|http|ws|wss)://[-0-9a-zA-Z$_+!`(),.?/;:&=%#~@]*)",
-            ]
-        ),
-    ]
-
-
-def setup_basic_logging():
-    if FLOG_FMT:
-        flog_handler = RichHandler(
-            console=Console(
-                safe_box=False,
-                theme=faebryk_theme,
-                force_terminal=True,
-                width=int(TERMINAL_WIDTH),
-            ),
-            highlighter=NodeHighlighter(),
-            show_path=False,  # Disable path column, we include it in format
-            show_level=False,  # Disable level column, we include it in format
-            show_time=False,  # Disable time column, we include it in format
-            markup=True,  # Enable Rich markup in format string
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        objects = None
+        if row["objects"]:
+            try:
+                objects = json.loads(row["objects"])
+            except json.JSONDecodeError:
+                objects = None
+        results.append(
+            {
+                "timestamp": row["timestamp"],
+                "level": row["level"],
+                "audience": row["audience"],
+                "logger_name": row["logger_name"],
+                "message": row["message"],
+                "ato_traceback": row["ato_traceback"],
+                "python_traceback": row["python_traceback"],
+                "objects": objects,
+                "test_name": row["test_name"],
+            }
         )
-        flog_handler.setFormatter(
-            RelativeTimeFormatter(
-                ("[dim]%(fileinfo)s[/dim] " if LOG_FILEINFO else "")
-                + ("[dim]%(elapsed_ms)s[/dim] " if LOG_TIME else "")
-                + "%(level_abbrev)s %(nmessage)s"
-            )
+
+    return results
+
+
+def load_build_logs_stream(
+    *,
+    build_id: str,
+    stage: str | None,
+    log_levels: list[str] | None,
+    audience: str | None,
+    after_id: int,
+    count: int,
+) -> tuple[list[dict[str, Any]], int]:
+    """
+    Load build logs for streaming - returns logs with id > after_id.
+
+    Returns (logs, last_id) where last_id is the highest id returned.
+    Logs are returned in ascending order (oldest first) for appending.
+    """
+    count = max(1, min(count, 5000))
+    db_path = BuildLogger.get_log_db()
+    if not db_path.exists():
+        return [], after_id
+
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+
+    where_clauses = ["logs.build_id = ?", "logs.id > ?"]
+    params: list[Any] = [build_id, after_id]
+
+    if stage:
+        where_clauses.append("logs.stage = ?")
+        params.append(stage)
+
+    if log_levels:
+        placeholders = ", ".join(["?"] * len(log_levels))
+        where_clauses.append(f"logs.level IN ({placeholders})")
+        params.extend(log_levels)
+
+    if audience:
+        where_clauses.append("logs.audience = ?")
+        params.append(audience)
+
+    where_sql = " AND ".join(where_clauses)
+    # ORDER BY id ASC for streaming (oldest first, append to end)
+    query = f"""
+        SELECT logs.id, logs.timestamp, logs.level, logs.audience, logs.logger_name,
+               logs.message, logs.stage, logs.ato_traceback, logs.python_traceback,
+               logs.objects
+        FROM logs
+        WHERE {where_sql}
+        ORDER BY logs.id ASC
+        LIMIT ?
+    """
+
+    params.append(count)
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    results: list[dict[str, Any]] = []
+    last_id = after_id
+
+    for row in rows:
+        last_id = row["id"]  # Track highest id
+        objects = None
+        if row["objects"]:
+            try:
+                objects = json.loads(row["objects"])
+            except json.JSONDecodeError:
+                objects = None
+        results.append(
+            {
+                "id": row["id"],
+                "timestamp": row["timestamp"],
+                "level": row["level"],
+                "audience": row["audience"],
+                "logger_name": row["logger_name"],
+                "message": row["message"],
+                "stage": row["stage"],
+                "ato_traceback": row["ato_traceback"],
+                "python_traceback": row["python_traceback"],
+                "objects": objects,
+            }
         )
-        # force=True clears existing handlers so our formatter is used
-        logging.basicConfig(level=logging.INFO, handlers=[flog_handler], force=True)
 
-    if PLOG:
-        from faebryk.libs.picker.picker import logger as plog
+    return results, last_id
 
-        plog.setLevel(logging.DEBUG)
 
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+def load_test_logs_stream(
+    *,
+    test_run_id: str,
+    test_name: str | None,
+    log_levels: list[str] | None,
+    audience: str | None,
+    after_id: int,
+    count: int,
+) -> tuple[list[dict[str, Any]], int]:
+    """
+    Load test logs for streaming - returns logs with id > after_id.
+
+    Returns (logs, last_id) where last_id is the highest id returned.
+    Logs are returned in ascending order (oldest first) for appending.
+    """
+    count = max(1, min(count, 5000))
+    db_path = TestLogger.get_log_db()
+    if not db_path.exists():
+        return [], after_id
+
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+
+    where_clauses = ["test_logs.test_run_id = ?", "test_logs.id > ?"]
+    params: list[Any] = [test_run_id, after_id]
+
+    if test_name:
+        where_clauses.append("test_logs.test_name LIKE ?")
+        params.append(f"%{test_name}%")
+
+    if log_levels:
+        placeholders = ", ".join(["?"] * len(log_levels))
+        where_clauses.append(f"test_logs.level IN ({placeholders})")
+        params.extend(log_levels)
+
+    if audience:
+        where_clauses.append("test_logs.audience = ?")
+        params.append(audience)
+
+    where_sql = " AND ".join(where_clauses)
+    query = f"""
+        SELECT test_logs.id, test_logs.timestamp, test_logs.level, test_logs.audience,
+               test_logs.logger_name, test_logs.message, test_logs.ato_traceback,
+               test_logs.python_traceback, test_logs.objects, test_logs.test_name
+        FROM test_logs
+        WHERE {where_sql}
+        ORDER BY test_logs.id ASC
+        LIMIT ?
+    """
+
+    params.append(count)
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    results: list[dict[str, Any]] = []
+    last_id = after_id
+
+    for row in rows:
+        last_id = row["id"]
+        objects = None
+        if row["objects"]:
+            try:
+                objects = json.loads(row["objects"])
+            except json.JSONDecodeError:
+                objects = None
+        results.append(
+            {
+                "id": row["id"],
+                "timestamp": row["timestamp"],
+                "level": row["level"],
+                "audience": row["audience"],
+                "logger_name": row["logger_name"],
+                "message": row["message"],
+                "ato_traceback": row["ato_traceback"],
+                "python_traceback": row["python_traceback"],
+                "objects": objects,
+                "test_name": row["test_name"],
+            }
+        )
+
+    return results, last_id
 
 
 # =============================================================================
 # Module-level initialization
 # =============================================================================
 
+# Always use LogHandler which supports both Rich console output and database logging
+# Root logger is set to DEBUG so all debug messages go to the database.
+# Console output is filtered to only show atopile/faebryk logs (see emit()).
 handler = LogHandler(console=error_console)
 handler.setFormatter(_DEFAULT_FORMATTER)
+logging.basicConfig(level=logging.DEBUG, handlers=[handler])
 
-if FLOG_FMT:
-    setup_basic_logging()
-else:
-    logging.basicConfig(level=logging.INFO, handlers=[handler])
+# Ensure logs flush on process exit.
+import atexit
+
+atexit.register(BuildLogger.close_all)
+atexit.register(TestLogger.close_all)
+
+# Set up picker debug logging if enabled
+if PLOG:
+    from faebryk.libs.picker.picker import logger as plog
+
+    plog.setLevel(logging.DEBUG)
 
 logger = logging.getLogger(__name__)
+
+# Module-level exports for convenience
+get_exception_display_message = BaseLogger.get_exception_display_message

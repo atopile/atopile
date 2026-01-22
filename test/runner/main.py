@@ -1149,9 +1149,11 @@ class TestAggregator:
         pytest_args: list[str] | None = None,
         baseline_requested: str | None = None,
         collection_errors: dict[str, str] | None = None,
+        test_run_id: str | None = None,
     ):
         self._baseline = baseline
         self._tests: dict[str, TestState] = {}
+        self._test_run_id = test_run_id
         self._pytest_args = list(pytest_args or [])
         self._baseline_requested = baseline_requested
         self._collection_errors = collection_errors or {}
@@ -1183,6 +1185,9 @@ class TestAggregator:
 
     def set_orchestrator_report_url(self, url: str) -> None:
         self._orchestrator_report_url = url
+
+    def set_test_run_id(self, test_run_id: str) -> None:
+        self._test_run_id = test_run_id
 
     def register_worker(self, worker_id: int, pid: int) -> None:
         """Register a worker's PID to worker_id mapping for log file access."""
@@ -2374,6 +2379,7 @@ class TestAggregator:
                 baselines_json=baselines_json,
                 current_baseline=current_baseline,
                 current_baseline_info=current_baseline_info,
+                test_run_id=self._test_run_id or "",
             )
         except Exception as e:
             print(f"Failed to format HTML report: {e}")
@@ -2851,6 +2857,77 @@ async def change_baseline(request: Request):
         return {"error": str(e)}
 
 
+# Mount the existing logs WebSocket router from atopile.server
+from atopile.server.routes.logs import router as logs_router
+
+app.include_router(logs_router)
+
+# Path to the log viewer static files
+LOG_VIEWER_DIST_DIR = (
+    Path(__file__).parent.parent.parent / "src" / "ui-server" / "dist"
+)
+
+
+@app.get("/logs")
+async def serve_log_viewer():
+    """Serve the log viewer HTML page."""
+    html_path = LOG_VIEWER_DIST_DIR / "log-viewer.html"
+    if not html_path.exists():
+        return HTMLResponse(
+            content="<html><body><h1>Log viewer not found</h1>"
+            f"<p>Expected at: {html_path}</p>"
+            "<p>Run 'npm run build' in src/ui-server to build it.</p></body></html>",
+            status_code=404,
+        )
+
+    content = html_path.read_text(encoding="utf-8")
+    return HTMLResponse(content=content)
+
+
+@app.get("/logViewer.js")
+async def serve_log_viewer_js():
+    """Serve the log viewer JavaScript bundle."""
+    from starlette.responses import FileResponse
+
+    js_path = LOG_VIEWER_DIST_DIR / "logViewer.js"
+    if js_path.exists():
+        return FileResponse(js_path, media_type="application/javascript")
+    return HTMLResponse("Not found", status_code=404)
+
+
+@app.get("/logViewer.css")
+async def serve_log_viewer_css():
+    """Serve the log viewer CSS."""
+    from starlette.responses import FileResponse
+
+    css_path = LOG_VIEWER_DIST_DIR / "logViewer.css"
+    if css_path.exists():
+        return FileResponse(css_path, media_type="text/css")
+    return HTMLResponse("Not found", status_code=404)
+
+
+@app.get("/index.css")
+async def serve_index_css():
+    """Serve the shared CSS."""
+    from starlette.responses import FileResponse
+
+    css_path = LOG_VIEWER_DIST_DIR / "index.css"
+    if css_path.exists():
+        return FileResponse(css_path, media_type="text/css")
+    return HTMLResponse("Not found", status_code=404)
+
+
+@app.get("/index-{hash}.js")
+async def serve_shared_js(hash: str):
+    """Serve the shared JavaScript chunk."""
+    from starlette.responses import FileResponse
+
+    # Find any file matching the pattern
+    for f in LOG_VIEWER_DIST_DIR.glob("index-*.js"):
+        return FileResponse(f, media_type="application/javascript")
+    return HTMLResponse("Not found", status_code=404)
+
+
 class ReportTimer:
     """Periodically prints status reports."""
 
@@ -3159,6 +3236,15 @@ def main(
     env["FBRK_ZIG_NORECOMPILE"] = "1"
     if "FBRK_LOG_FMT" not in env:
         env["FBRK_LOG_FMT"] = "1"
+    # Generate test_run_id once and share across all workers
+    import hashlib
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    test_run_id = hashlib.sha256(f"pytest:{timestamp}".encode()).hexdigest()[:16]
+    env["ATO_TEST_RUN_ID"] = test_run_id
+
+    # Store test_run_id for HTML template
+    if aggregator:
+        aggregator.set_test_run_id(test_run_id)
 
     worker_count = min(WORKER_COUNT, tests_total)
 

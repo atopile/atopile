@@ -627,6 +627,31 @@
         font-size: 16px;
       }
 
+      /* Logs button */
+      .logs-btn {
+        margin-left: 8px;
+        padding: 4px 10px;
+        font-size: 11px;
+        background-color: var(--ctp-surface0);
+        color: var(--ctp-text);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 3px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        transition: background-color 0.2s;
+        text-decoration: none;
+      }
+
+      .logs-btn:hover {
+        background-color: var(--ctp-surface1);
+      }
+
+      .logs-btn .icon {
+        font-size: 14px;
+      }
+
       /* Baseline selector dropdown */
       .baseline-selector {
         display: flex;
@@ -1489,6 +1514,10 @@
         </select>
         <span id="baselineStatus" class="baseline-status"></span>
       </div>
+      <a id="logsBtn" class="logs-btn" href="/logs?test_run_id=[[test_run_id]]" target="_blank" title="View test logs">
+        <span class="icon">&#128203;</span>
+        <span class="text">Logs</span>
+      </a>
       <button id="themeToggle" class="theme-toggle" onclick="toggleTheme()">
         <span class="icon">&#9728;</span>
         <span class="text">Light</span>

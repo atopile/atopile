@@ -304,7 +304,4 @@ def test_performance_parameters(A: int, B: int, rs: int, pick: bool):
 if __name__ == "__main__":
     import typer
 
-    from atopile.logging import setup_basic_logging
-
-    setup_basic_logging()
     typer.run(test_performance_parameters)

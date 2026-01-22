@@ -14,12 +14,9 @@ import typer
 from rich.console import Console
 from rich.traceback import Traceback
 
-from atopile.logging import FLOG_FMT, setup_basic_logging
 from faebryk.libs.util import indented_container
 
 logger = logging.getLogger(__name__)
-
-FLOG_FMT.set(True, force=True)
 
 
 class DiscoveryMode(str, Enum):
@@ -207,8 +204,6 @@ def run_tests(matches: list[tuple[Path, Callable]]) -> None:
     import tempfile
 
     import typer
-
-    setup_basic_logging()
 
     for filepath, test_func in matches:
         logger.info(f"Running {test_func.__name__}")

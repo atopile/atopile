@@ -1,0 +1,12 @@
+/**
+ * SymbolNode styles
+ * Note: Most styles are currently in the main styles.css file.
+ * This file can be used for component-specific overrides.
+ */
+
+/* Styles inherited from styles.css:
+ * .symbol-node, .symbol-row, .symbol-name, .symbol-play-btn
+ * .tree-expand, .tree-spacer
+ * .type-icon (module, interface, component, parameter)
+ * .indicator (error, warning)
+ */

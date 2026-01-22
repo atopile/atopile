@@ -26,9 +26,9 @@ from atopile.errors import (
     UserPickError,
 )
 from atopile.exceptions import accumulate, iter_leaf_exceptions
-from atopile.logging import LoggingStage
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom
+from faebryk.exporters.bom.json_bom import write_json_bom
 from faebryk.exporters.documentation.datasheets import export_datasheets
 
 # from faebryk.exporters.documentation.i2c import export_i2c_tree
@@ -85,7 +85,7 @@ def _githash_layout(layout: Path) -> Generator[Path, None, None]:
         yield tmp_layout
 
 
-MusterFuncType = Callable[[BuildStepContext, LoggingStage], None]
+MusterFuncType = Callable[[BuildStepContext], None]
 
 
 @dataclass
@@ -103,15 +103,43 @@ class MusterTarget:
 
     def __call__(self, ctx: BuildStepContext) -> None:
         if not self.virtual:
+            import time
+
+            from atopile.dataclasses import CompletedStage
+
             try:
-                with LoggingStage(
-                    self.name,
-                    self.description or f"Building '{self.name}'",
-                ) as log_context:
-                    self.func(ctx, log_context)
+                # Set up logging for this build stage
+                ctx.stage = self.name
+                ctx._stage_start_time = time.time()
+                from atopile.logging import BuildLogger
+
+                BuildLogger.update_stage(self.name)
+
+                self.func(ctx)
             except Exception:
                 self.success = False
+                # Record failed stage
+                elapsed = time.time() - ctx._stage_start_time
+                ctx.completed_stages.append(
+                    CompletedStage(
+                        name=self.description or self.name,
+                        stage_id=self.name,
+                        elapsed_seconds=round(elapsed, 2),
+                        status="failed",
+                    )
+                )
                 raise
+
+            # Record successful stage
+            elapsed = time.time() - ctx._stage_start_time
+            ctx.completed_stages.append(
+                CompletedStage(
+                    name=self.description or self.name,
+                    stage_id=self.name,
+                    elapsed_seconds=round(elapsed, 2),
+                    status="success",
+                )
+            )
 
         self.success = True
 
@@ -210,7 +238,7 @@ muster = Muster()
     "init-build-context",
     description="Initializing build context",
 )
-def init_build_context_step(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def init_build_context_step(ctx: BuildStepContext) -> None:
     if ctx.build is not None or ctx.app is not None:
         return
 
@@ -257,7 +285,7 @@ def init_build_context_step(ctx: BuildStepContext, log_context: LoggingStage) ->
     description="Modify type graph",
     dependencies=[init_build_context_step],
 )
-def modify_typegraph(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def modify_typegraph(ctx: BuildStepContext) -> None:
     """Hook for typegraph mutations before instantiation."""
     if ctx.build is None:
         return
@@ -268,7 +296,7 @@ def modify_typegraph(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     description="Instantiate app",
     dependencies=[modify_typegraph],
 )
-def instantiate_app_step(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def instantiate_app_step(ctx: BuildStepContext) -> None:
     if ctx.app is not None:
         return
     build_ctx = ctx.require_build()
@@ -325,7 +353,7 @@ def instantiate_app_step(ctx: BuildStepContext, log_context: LoggingStage) -> No
     description="Preparing build",
     dependencies=[instantiate_app_step],
 )
-def prepare_build(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def prepare_build(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
     ctx.solver = Solver()
     if ctx.pcb is None:
@@ -355,9 +383,7 @@ def prepare_build(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     description="Verify instance graph",
     dependencies=[prepare_build],
 )
-def post_instantiation_graph_check(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def post_instantiation_graph_check(ctx: BuildStepContext) -> None:
     """
     Run POST_INSTANTIATION_GRAPH_CHECK checks for early graph validation.
 
@@ -378,7 +404,7 @@ def post_instantiation_graph_check(
     description="Modify instance graph",
     dependencies=[post_instantiation_graph_check],
 )
-def post_instantiation_setup(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def post_instantiation_setup(ctx: BuildStepContext) -> None:
     """
     Run POST_INSTANTIATION_SETUP checks which modify the graph structure.
 
@@ -402,9 +428,7 @@ def post_instantiation_setup(ctx: BuildStepContext, log_context: LoggingStage) -
     description="Verify electrical design",
     dependencies=[post_instantiation_setup],
 )
-def post_instantiation_design_check(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def post_instantiation_design_check(ctx: BuildStepContext) -> None:
     """
     Run POST_INSTANTIATION_DESIGN_CHECK checks for verification and late setup.
 
@@ -425,7 +449,7 @@ def post_instantiation_design_check(
     description="Loading PCB",
     dependencies=[post_instantiation_design_check],
 )
-def load_pcb(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def load_pcb(ctx: BuildStepContext) -> None:
     pcb = ctx.require_pcb()
     pcb.run_transformer()
     if config.build.keep_designators:
@@ -433,14 +457,14 @@ def load_pcb(ctx: BuildStepContext, log_context: LoggingStage) -> None:
 
 
 @muster.register("picker", description="Picking parts", dependencies=[load_pcb])
-def pick_parts(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def pick_parts(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
     solver = ctx.require_solver()
     if config.build.keep_picked_parts:
         pcb = ctx.require_pcb()
         load_part_info_from_pcb(pcb.transformer.pcb, app.tg)
     try:
-        pick_parts_recursively(app, solver, progress=log_context)
+        pick_parts_recursively(app, solver, progress=None)
     except* PickError as ex:
         raise ExceptionGroup(
             "Failed to pick parts for some modules",
@@ -452,7 +476,7 @@ def pick_parts(ctx: BuildStepContext, log_context: LoggingStage) -> None:
 @muster.register(
     "prepare-nets", description="Preparing nets", dependencies=[pick_parts]
 )
-def prepare_nets(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def prepare_nets(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
     pcb = ctx.require_pcb()
     logger.info("Preparing nets")
@@ -485,7 +509,7 @@ def prepare_nets(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     description="Running post-solve checks",
     dependencies=[prepare_nets],
 )
-def post_solve_checks(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def post_solve_checks(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
     logger.info("Running checks")
     check_design(
@@ -498,7 +522,7 @@ def post_solve_checks(ctx: BuildStepContext, log_context: LoggingStage) -> None:
 @muster.register(
     "update-pcb", description="Updating PCB", dependencies=[post_solve_checks]
 )
-def update_pcb(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def update_pcb(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
     pcb = ctx.require_pcb()
 
@@ -635,7 +659,7 @@ def update_pcb(ctx: BuildStepContext, log_context: LoggingStage) -> None:
 @muster.register(
     "post-pcb-checks", description="Running post-pcb checks", dependencies=[update_pcb]
 )
-def post_pcb_checks(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def post_pcb_checks(ctx: BuildStepContext) -> None:
     pcb = ctx.require_pcb()
     _ = fabll.Traits.create_and_add_instance_to(pcb, F.PCB.requires_drc_check)
     try:
@@ -649,7 +673,7 @@ def post_pcb_checks(ctx: BuildStepContext, log_context: LoggingStage) -> None:
 
 
 @muster.register("build-design", dependencies=[post_pcb_checks], virtual=True)
-def build_design(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def build_design(ctx: BuildStepContext) -> None:
     pass
 
 
@@ -658,8 +682,8 @@ def build_design(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     dependencies=[build_design],
     produces_artifact=True,
 )
-def generate_bom(ctx: BuildStepContext, log_context: LoggingStage) -> None:
-    """Generate a BOM for the project."""
+def generate_bom(ctx: BuildStepContext) -> None:
+    """Generate a BOM for the project in both CSV and JSON formats."""
     app = ctx.require_app()
     pickable_parts = [
         part
@@ -671,7 +695,14 @@ def generate_bom(ctx: BuildStepContext, log_context: LoggingStage) -> None:
         for part in [m.get_trait(F.Pickable.has_part_picked)]
         if not part.is_removed()
     ]
+    # Generate CSV BOM (for JLCPCB manufacturing)
     write_bom(pickable_parts, config.build.paths.output_base.with_suffix(".bom.csv"))
+    # Generate JSON BOM (for VSCode extension BOM panel)
+    write_json_bom(
+        pickable_parts,
+        config.build.paths.output_base.with_suffix(".bom.json"),
+        build_id=ctx.build_id,
+    )
 
 
 @muster.register(
@@ -681,7 +712,7 @@ def generate_bom(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     dependencies=[build_design],
     produces_artifact=True,
 )
-def generate_glb(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def generate_glb(ctx: BuildStepContext) -> None:
     """Generate PCBA 3D model as GLB. Used for 3D preview in extension."""
     ctx.require_app()
     with _githash_layout(config.build.paths.layout) as tmp_layout:
@@ -701,7 +732,7 @@ def generate_glb(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     dependencies=[build_design],
     produces_artifact=True,
 )
-def generate_step(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def generate_step(ctx: BuildStepContext) -> None:
     """Generate PCBA 3D model as STEP."""
     ctx.require_app()
     with _githash_layout(config.build.paths.layout) as tmp_layout:
@@ -721,7 +752,7 @@ def generate_step(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     virtual=True,
     produces_artifact=True,
 )
-def generate_3d_models(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def generate_3d_models(ctx: BuildStepContext) -> None:
     """Generate PCBA 3D model as GLB and STEP."""
     pass
 
@@ -732,7 +763,7 @@ def generate_3d_models(ctx: BuildStepContext, log_context: LoggingStage) -> None
     dependencies=[build_design],
     produces_artifact=True,
 )
-def generate_3d_render(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def generate_3d_render(ctx: BuildStepContext) -> None:
     """Generate PCBA 3D rendered image."""
     ctx.require_app()
     with _githash_layout(config.build.paths.layout) as tmp_layout:
@@ -752,7 +783,7 @@ def generate_3d_render(ctx: BuildStepContext, log_context: LoggingStage) -> None
     dependencies=[build_design],
     produces_artifact=True,
 )
-def generate_2d_render(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def generate_2d_render(ctx: BuildStepContext) -> None:
     """Generate PCBA 2D rendered image."""
     ctx.require_app()
     with _githash_layout(config.build.paths.layout) as tmp_layout:
@@ -773,9 +804,7 @@ def generate_2d_render(ctx: BuildStepContext, log_context: LoggingStage) -> None
     dependencies=[generate_3d_models, post_pcb_checks],
     produces_artifact=True,
 )
-def generate_manufacturing_data(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def generate_manufacturing_data(ctx: BuildStepContext) -> None:
     """
     Generate manufacturing artifacts for the project.
     - DXF
@@ -827,7 +856,7 @@ def generate_manufacturing_data(
     dependencies=[build_design],
     produces_artifact=True,
 )
-def generate_manifest(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def generate_manifest(ctx: BuildStepContext) -> None:
     """Generate a manifest for the project."""
     ctx.require_app()
     with accumulate() as accumulator:
@@ -855,13 +884,15 @@ def generate_manifest(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     dependencies=[build_design],
     produces_artifact=True,
 )
-def generate_variable_report(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def generate_variable_report(ctx: BuildStepContext) -> None:
     """Generate a report of all the variable values in the design."""
     app = ctx.require_app()
     solver = ctx.require_solver()
-    # TODO: support other file formats
     export_parameters_to_file(
-        app, solver, config.build.paths.output_base.with_suffix(".variables.md")
+        app,
+        solver,
+        config.build.paths.output_base.with_suffix(".variables.json"),
+        build_id=ctx.build_id,
     )
 
 
@@ -870,7 +901,7 @@ def generate_variable_report(ctx: BuildStepContext, log_context: LoggingStage) -
     dependencies=[build_design],
     produces_artifact=True,
 )
-def generate_power_tree(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def generate_power_tree(ctx: BuildStepContext) -> None:
     """Generate power tree visualization and data exports."""
     app = ctx.require_app()
     solver = ctx.require_solver()
@@ -887,10 +918,10 @@ def generate_power_tree(ctx: BuildStepContext, log_context: LoggingStage) -> Non
     dependencies=[build_design],
     produces_artifact=True,
 )
-def generate_datasheets(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def generate_datasheets(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
     export_datasheets(
-        app, config.build.paths.documentation / "datasheets", progress=log_context
+        app, config.build.paths.documentation / "datasheets", progress=None
     )
 
 
@@ -900,7 +931,7 @@ def generate_datasheets(ctx: BuildStepContext, log_context: LoggingStage) -> Non
 #     produces_artifact=True,
 # )
 # def generate_i2c_tree(
-#     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+#     app: fabll.Node, solver: Solver, pcb: F.PCB
 # ) -> None:
 #     """Generate a Mermaid diagram of the I2C bus tree."""
 #     export_i2c_tree(
@@ -920,7 +951,7 @@ def generate_datasheets(ctx: BuildStepContext, log_context: LoggingStage) -> Non
     ],
     virtual=True,
 )
-def generate_default(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def generate_default(ctx: BuildStepContext) -> None:
     pass
 
 
@@ -934,7 +965,7 @@ def generate_default(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     ],
     virtual=True,
 )
-def generate_all(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def generate_all(ctx: BuildStepContext) -> None:
     """Generate all targets."""
     pass
 

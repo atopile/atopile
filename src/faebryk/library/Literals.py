@@ -4613,37 +4613,87 @@ class Numbers(fabll.Node):
             return "<empty>"
         intervals = numeric_set.get_intervals()
 
-        def f(number: float) -> str:
+        # Get unit symbol and check if we should auto-scale
+        try:
+            unit = self.get_is_unit()
+            base_unit_symbol = is_unit.compact_repr(unit)
+        except Exception:
+            base_unit_symbol = ""
+
+        # SI prefixes for auto-scaling
+        SI_PREFIXES = [
+            (1e12, "T"),
+            (1e9, "G"),
+            (1e6, "M"),
+            (1e3, "k"),
+            (1, ""),
+            (1e-3, "m"),
+            (1e-6, "µ"),
+            (1e-9, "n"),
+            (1e-12, "p"),
+        ]
+
+        def get_scale_factor(value: float) -> tuple[float, str]:
+            """Find the best SI prefix for a value."""
+            if value == 0 or math.isinf(value):
+                return 1, ""
+            abs_val = abs(value)
+            for scale, prefix in SI_PREFIXES:
+                if abs_val >= scale * 0.999:  # Allow slight tolerance
+                    return scale, prefix
+            return 1e-12, "p"  # Smallest prefix
+
+        def f(number: float, scale: float = 1) -> str:
             """
             Format and clean floats for printing.
             Handles infinity values with ∞ symbol.
-            Strips trailing zeros and unnecessary decimal points.
+            Rounds to PRINT_DIGITS significant decimal places.
             """
             if math.isinf(number):
                 return "∞" if number > 0 else "-∞"
-            str_num = str(number)
-            if "." in str_num:
-                num, digits = str_num.split(".")
-                digits = digits[:PRINT_DIGITS].rstrip("0")
-                if digits:
-                    str_num = f"{num}.{digits}"
-                else:
-                    str_num = num
+            scaled = number / scale
+            # Round to PRINT_DIGITS decimal places
+            rounded = round(scaled, PRINT_DIGITS)
+            # Check if it's effectively an integer
+            if abs(rounded) >= 1 and rounded == int(rounded):
+                return str(int(rounded))
+            # Format with limited decimal places
+            str_num = f"{rounded:.{PRINT_DIGITS}f}".rstrip("0").rstrip(".")
             return str_num
 
-        # Get unit symbol
-        try:
-            unit = self.get_is_unit()
-            unit_symbol = is_unit.compact_repr(unit)
-        except Exception:
-            unit_symbol = ""
+        # Determine scale factor based on representative value
+        scale = 1
+        prefix = ""
+        if base_unit_symbol and base_unit_symbol not in ("", "dimensionless"):
+            # Find a representative value for scaling
+            rep_value = None
+            if numeric_set.is_singleton():
+                rep_value = numeric_set.get_min_value()
+            elif intervals:
+                # Use center of first finite interval
+                for iv in intervals:
+                    min_v, max_v = iv.get_min_value(), iv.get_max_value()
+                    if not math.isinf(min_v) and not math.isinf(max_v):
+                        rep_value = (min_v + max_v) / 2
+                        break
+                    elif not math.isinf(min_v):
+                        rep_value = min_v
+                        break
+                    elif not math.isinf(max_v):
+                        rep_value = max_v
+                        break
+
+            if rep_value is not None and rep_value != 0:
+                scale, prefix = get_scale_factor(rep_value)
+
+        unit_symbol = f"{prefix}{base_unit_symbol}"
 
         if numeric_set.is_singleton():
             min_val = numeric_set.get_min_value()
-            return f"{f(min_val)}{unit_symbol}"
+            return f"{f(min_val, scale)}{unit_symbol}"
 
         if numeric_set.is_discrete_set():
-            values_str = ", ".join(f(v) for v in numeric_set.get_values())
+            values_str = ", ".join(f(v, scale) for v in numeric_set.get_values())
             return f"{{{values_str}}}{unit_symbol}"
 
         def format_interval(iv: NumericInterval) -> str:
@@ -4653,14 +4703,14 @@ class Numbers(fabll.Node):
 
             if max_val == math.inf:
                 if min_val == -math.inf:
-                    return "ℝ"
+                    return "any"
                 if min_val == 0:
-                    return "ℝ+"
-                return f"≥{f(min_val)}"
+                    return "any ≥0"
+                return f"≥{f(min_val, scale)}"
             if min_val == -math.inf:
                 if max_val == 0:
-                    return "ℝ-"
-                return f"≤{f(max_val)}"
+                    return "any ≤0"
+                return f"≤{f(max_val, scale)}"
 
             # Calculate relative tolerance for finite, non-zero-centered intervals
             tolerance_rel = (
@@ -4669,22 +4719,25 @@ class Numbers(fabll.Node):
 
             # When show_tolerance=False, just show center value (for finite intervals)
             if not show_tolerance:
-                return f"{f(center)}"
+                return f"{f(center, scale)}"
 
             # Format both ways and pick the cleaner one
-            range_fmt = f"{f(min_val)}..{f(max_val)}"
+            range_fmt = f"{f(min_val, scale)}..{f(max_val, scale)}"
 
             # Use center±tolerance format for small tolerances (< 25%)
             # but prefer range if it's cleaner (shorter or no truncation needed)
             if tolerance_rel is not None and tolerance_rel < 25:
-                center_fmt = f"{f(center)}±{tolerance_rel:.1f}%"
+                center_fmt = f"{f(center, scale)}±{tolerance_rel:.1f}%"
                 if force_center:
                     return center_fmt
                 # Prefer range if min/max are cleaner (integers) while center has
                 # decimals
-                min_is_int = min_val == int(min_val)
-                max_is_int = max_val == int(max_val)
-                center_is_int = center == int(center)
+                scaled_min = min_val / scale
+                scaled_max = max_val / scale
+                scaled_center = center / scale
+                min_is_int = scaled_min == int(scaled_min)
+                max_is_int = scaled_max == int(scaled_max)
+                center_is_int = scaled_center == int(scaled_center)
                 if min_is_int and max_is_int and not center_is_int:
                     return range_fmt
                 # Otherwise prefer the shorter representation
@@ -7480,9 +7533,32 @@ class AbstractEnums(fabll.Node):
 
     def pretty_str(self) -> str:
         values = self.get_names()
+        if len(values) == 0:
+            return "∅"  # Empty set
         if len(values) == 1:
             return values[0]
-        return str(values)
+
+        # Check if all possible values are selected (unconstrained)
+        try:
+            all_members = self.get_all_members_of_enum_literal()
+            all_count = len(all_members)
+            if len(values) == all_count:
+                # All values selected - show as "any" with type hint
+                return f"any of {all_count}"
+        except Exception:
+            # If we can't get all members, fall back to showing values
+            all_count = None
+
+        # For small sets (2-3 values), show all joined with "|"
+        if len(values) <= 3:
+            return " | ".join(values)
+
+        # For larger sets, show count or abbreviated list
+        if all_count is not None:
+            return f"{len(values)} of {all_count}"
+        else:
+            # Show first 2 values + count of remaining
+            return f"{values[0]}, {values[1]}, +{len(values) - 2} more"
 
     @staticmethod
     def try_cast_to_enum(lit: "is_literal") -> "AbstractEnums | None":

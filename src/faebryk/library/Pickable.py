@@ -258,6 +258,13 @@ class has_part_picked(fabll.Node):
     supplier_partno = F.Parameters.StringParameter.MakeChild()
     supplier_id = F.Parameters.StringParameter.MakeChild()
 
+    # Info fields (stock, price, description, basic/preferred) - stored as strings
+    info_stock = F.Parameters.StringParameter.MakeChild()
+    info_price = F.Parameters.StringParameter.MakeChild()
+    info_description = F.Parameters.StringParameter.MakeChild()
+    info_is_basic = F.Parameters.StringParameter.MakeChild()
+    info_is_preferred = F.Parameters.StringParameter.MakeChild()
+
     # Store picked attribute literals for display (e.g., BOM Value field)
     # Each tuple: literals contains name (string), pointer points to value literal
     picked_attributes_ = F.Collections.PointerSet.MakeChild()
@@ -283,10 +290,28 @@ class has_part_picked(fabll.Node):
         if supplier_id != "lcsc":
             raise ValueError(f"Supplier {supplier_id} not supported")
 
+        # Try to reconstruct info if available (stored as strings)
+        info = None
+        stock_str = self.info_stock.get().try_extract_singleton()
+        price_str = self.info_price.get().try_extract_singleton()
+        description = self.info_description.get().try_extract_singleton()
+        is_basic_str = self.info_is_basic.get().try_extract_singleton()
+        is_preferred_str = self.info_is_preferred.get().try_extract_singleton()
+
+        if stock_str and price_str:
+            info = PickedPartLCSC.Info(
+                stock=int(float(stock_str)),
+                price=float(price_str),
+                description=description or "",
+                basic=is_basic_str == "true" if is_basic_str else False,
+                preferred=is_preferred_str == "true" if is_preferred_str else False,
+            )
+
         return PickedPartLCSC(
             manufacturer=manufacturer,
             partno=partno,
             supplier_partno=supplier_partno,
+            info=info,
         )
 
     def is_removed(self) -> bool:
@@ -323,10 +348,29 @@ class has_part_picked(fabll.Node):
         return out
 
     def setup(self, picked_part: "PickedPart") -> Self:
+        from faebryk.libs.picker.lcsc import PickedPartLCSC
+
         self.manufacturer.get().set_singleton(value=picked_part.manufacturer)
         self.partno.get().set_singleton(value=picked_part.partno)
         self.supplier_partno.get().set_singleton(value=picked_part.supplier_partno)
         self.supplier_id.get().set_singleton(value=picked_part.supplier.supplier_id)
+
+        # Store info fields if available (only PickedPartLCSC has info)
+        # Store as strings since we're using StringParameter for simpler storage
+        if isinstance(picked_part, PickedPartLCSC) and picked_part.info:
+            self.info_stock.get().set_singleton(value=str(picked_part.info.stock))
+            self.info_price.get().set_singleton(value=str(picked_part.info.price))
+            if picked_part.info.description:
+                self.info_description.get().set_singleton(
+                    value=picked_part.info.description
+                )
+            self.info_is_basic.get().set_singleton(
+                value="true" if picked_part.info.basic else "false"
+            )
+            self.info_is_preferred.get().set_singleton(
+                value="true" if picked_part.info.preferred else "false"
+            )
+
         return self
 
     def set_attributes(

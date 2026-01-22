@@ -1,0 +1,36 @@
+/* ============================================
+   Atopile VS Code Extension Panel - Atopile Theme
+   ============================================
+
+   This file imports all CSS modules from the styles/ directory.
+   For better maintainability, edit the individual module files:
+
+   Core:
+   - styles/_variables.css    - CSS custom properties, design tokens
+   - styles/_base.css         - Reset, body, scrollbars, panel container
+
+   Layout:
+   - styles/_toolbar.css      - Panel toolbar, search boxes, filters
+   - styles/_collapsible.css  - Collapsible sections
+
+   Panels:
+   - styles/_settings.css     - Settings dropdown
+   - styles/_build.css        - Build status, stages, actions
+   - styles/_log.css          - Log panel
+   - styles/_explorer.css     - Explorer tree navigation
+   - styles/_projects.css     - Projects panel
+
+   Package Management:
+   - styles/_packages.css     - Package manager panel
+   - styles/_package-detail.css - Package detail panel
+   - styles/_dropdown.css     - All dropdown styles
+
+   Data Panels:
+   - styles/_variables-panel.css - Variables panel
+   - styles/_bom.css          - BOM panel
+
+   Utilities:
+   - styles/_utilities.css    - Z-index, overflow, toast
+   ============================================ */
+
+@import './styles/index.css';

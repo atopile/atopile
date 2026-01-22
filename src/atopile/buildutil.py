@@ -1,6 +1,8 @@
 import contextlib
+import hashlib
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import faebryk.core.faebrykpy as fbrk
@@ -8,6 +10,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.config import BuildType, config
+from atopile.dataclasses import CompletedStage
 from atopile.errors import UserToolNotAvailableError
 from atopile.exceptions import accumulate
 from faebryk.core.solver.solver import Solver
@@ -17,6 +20,30 @@ if TYPE_CHECKING:
     from atopile.compiler.build import BuildFileResult, Linker
 
 logger = logging.getLogger(__name__)
+
+
+def generate_build_id(project_path: str, target: str, timestamp: str) -> str:
+    """
+    Generate a unique build ID from project, target, and timestamp.
+
+    This is the single source of truth for build ID generation.
+    All components (server, CLI, logging) must use this function.
+
+    Args:
+        project_path: Absolute path to the project root
+        target: Build target name
+        timestamp: Timestamp string in format "%Y-%m-%d_%H-%M-%S"
+
+    Returns:
+        16-character hex string (truncated SHA256 hash)
+    """
+    content = f"{project_path}:{target}:{timestamp}"
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+
+def generate_build_timestamp() -> str:
+    """Generate a build timestamp in the standard format."""
+    return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 
 @dataclass
@@ -37,6 +64,10 @@ class BuildStepContext:
     app: fabll.Node | None = None
     solver: Solver | None = None
     pcb: F.PCB | None = None
+    stage: str | None = None
+    build_id: str | None = None  # Build ID from server (via ATO_BUILD_ID env var)
+    completed_stages: list[CompletedStage] = field(default_factory=list)
+    _stage_start_time: float = field(default=0.0, repr=False)
 
     def require_build(self) -> BuildContext:
         if self.build is None:
@@ -135,9 +166,22 @@ def _load_python_app_class() -> type[fabll.Node]:
         ) from e
 
 
-def build(app: fabll.Node | None = None) -> fabll.Node:
-    """Build the project."""
-    ctx = BuildStepContext(build=None, app=app)
+def build(
+    app: fabll.Node | None = None, ctx: BuildStepContext | None = None
+) -> fabll.Node:
+    """Build the project.
+
+    Args:
+        app: Optional pre-instantiated app node
+        ctx: Optional build context to use (allows caller to access completed_stages)
+
+    Returns:
+        The built app node
+    """
+    if ctx is None:
+        ctx = BuildStepContext(build=None, app=app)
+    else:
+        ctx.app = app
     run_build_targets(ctx)
     return ctx.require_app()
 

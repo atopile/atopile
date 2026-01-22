@@ -11,20 +11,23 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Callable
+from typing import Callable
 
 import typer
 from rich.console import Console
+from typing_extensions import Annotated
 
+from atopile.buildutil import generate_build_id
+from atopile.dataclasses import BuildReport, BuildStatus, StageStatus
 from atopile.logging import (
     NOW,
     ProjectState,
     StageCompleteEvent,
     StageStatusEvent,
-    Status,
 )
+from atopile.logging_utils import status_rich_icon, status_rich_text
+from atopile.server.server import DASHBOARD_PORT
 from atopile.telemetry import capture
 
 logger = logging.getLogger(__name__)
@@ -33,37 +36,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_WORKER_COUNT = os.cpu_count() or 4
 
 
-# Fixed port for the dashboard server - extension opens this directly
-DASHBOARD_PORT = 8501
-
-
-def _status_rich_icon(status: Status | str) -> str:
-    """Get Rich-formatted icon for status (for terminal display)."""
-    icon_map = {
-        Status.QUEUED: "[dim]○[/dim]",
-        Status.BUILDING: "[blue]●[/blue]",
-        Status.SUCCESS: "[green]✓[/green]",
-        Status.WARNING: "[yellow]⚠[/yellow]",
-        Status.FAILED: "[red]✗[/red]",
-    }
-    if isinstance(status, str):
-        status = Status(status)
-    return icon_map.get(status, "[dim]○[/dim]")
-
-
-def _status_rich_text(status: Status | str, text: str) -> str:
-    """Format text with Rich color markup for status."""
-    color_map = {
-        Status.QUEUED: "dim",
-        Status.BUILDING: "blue",
-        Status.SUCCESS: "green",
-        Status.WARNING: "yellow",
-        Status.FAILED: "red",
-    }
-    if isinstance(status, str):
-        status = Status(status)
-    color = color_map.get(status, "")
-    return f"[{color}]{text}[/{color}]" if color else text
+# status_rich_icon and status_rich_text are imported from atopile.logging_utils
 
 
 def discover_projects(root: Path) -> list[Path]:
@@ -140,20 +113,14 @@ def _write_early_build_summaries(
 
 # Semantic status -> (icon, color)
 _STATUS_STYLE = {
-    "success": ("✓", "green"),
-    "warning": ("⚠", "yellow"),
-    "failed": ("✗", "red"),
-    "running": ("●", "blue"),
+    StageStatus.SUCCESS: ("✓", "green"),
+    StageStatus.WARNING: ("⚠", "yellow"),
+    StageStatus.FAILED: ("✗", "red"),
+    StageStatus.ERROR: ("✗", "red"),  # Error is similar to failed
+    StageStatus.RUNNING: ("●", "blue"),
+    StageStatus.PENDING: ("○", "dim"),
+    StageStatus.SKIPPED: ("⊘", "dim"),
 }
-
-
-@dataclass
-class BuildReport:
-    name: str
-    status: Status
-    warnings: int
-    errors: int
-    stages: list[StageCompleteEvent]
 
 
 def _format_stage_entry(entry: StageCompleteEvent) -> str:
@@ -217,6 +184,7 @@ class BuildProcess:
         self._stage_printer: (
             Callable[[StageCompleteEvent, Path | None], None] | None
         ) = None
+        self.build_id: str | None = None
 
     def start(self) -> None:
         """Start the build subprocess."""
@@ -236,7 +204,24 @@ class BuildProcess:
         env = os.environ.copy()
         if self._event_wfd is not None:
             env["ATO_BUILD_EVENT_FD"] = str(self._event_wfd)
-        env["ATO_BUILD_TIMESTAMP"] = NOW
+
+        # Use existing timestamp/build_id if passed from server, otherwise generate
+        # This ensures server-triggered builds use consistent IDs across workers
+        if "ATO_BUILD_TIMESTAMP" not in env:
+            env["ATO_BUILD_TIMESTAMP"] = NOW
+        if "ATO_BUILD_ID" not in env:
+            # Use pre-generated build_id if available (from ParallelBuildManager)
+            if self.build_id:
+                env["ATO_BUILD_ID"] = self.build_id
+            else:
+                project_path = str(self.project_root.resolve())
+                timestamp = env["ATO_BUILD_TIMESTAMP"]
+                build_id = generate_build_id(project_path, self.name, timestamp)
+                env["ATO_BUILD_ID"] = build_id
+                self.build_id = build_id
+        else:
+            # Store build_id from environment for display purposes
+            self.build_id = env["ATO_BUILD_ID"]
 
         # Pass build options to worker subprocess via environment variables
         # These are picked up by the corresponding CLI options
@@ -365,9 +350,9 @@ class BuildProcess:
 
     def _stage_info_log_path(self, stage_name: str) -> Path | None:
         """Return the log path for a build (central SQLite database)."""
-        from atopile.logging import get_central_log_db
+        from atopile.logging import BuildLogger
 
-        return get_central_log_db()
+        return BuildLogger.get_log_db()
 
     def set_stage_printer(
         self, printer: Callable[[StageCompleteEvent, Path | None], None] | None
@@ -393,7 +378,7 @@ class BuildProcess:
             elapsed = (
                 time.time() - self._stage_start_time if self._stage_start_time else 0.0
             )
-            icon, color = _STATUS_STYLE["running"]
+            icon, color = _STATUS_STYLE[StageStatus.RUNNING]
             parts.append(
                 f"[{color}]{icon} {self.current_stage} [{elapsed:.1f}s][/{color}]"
             )
@@ -433,16 +418,16 @@ class BuildProcess:
         return self.process is not None and self.return_code is None
 
     @property
-    def status(self) -> Status:
+    def status(self) -> BuildStatus:
         """Get current status."""
         if self.process is None:
-            return Status.QUEUED
+            return BuildStatus.QUEUED
         elif self.return_code is None:
-            return Status.BUILDING
+            return BuildStatus.BUILDING
         elif self.return_code == 0:
-            return Status.WARNING if self.warnings > 0 else Status.SUCCESS
+            return BuildStatus.WARNING if self.warnings > 0 else BuildStatus.SUCCESS
         else:
-            return Status.FAILED
+            return BuildStatus.FAILED
 
     def terminate(self) -> None:
         """Terminate the build process."""
@@ -455,7 +440,7 @@ class BuildProcess:
 
 
 class ParallelBuildManager:
-    """Manages multiple build processes with live display and job queue."""
+    """Manages multiple build processes with job queue."""
 
     _STAGE_WIDTH = 22  # "Building... [123.4s]" fits in ~22 chars
 
@@ -521,23 +506,21 @@ class ParallelBuildManager:
                 keep_net_names=self.keep_net_names,
                 keep_designators=self.keep_designators,
             )
+            # Pre-generate build_id so it's available for display before start()
+            project_path = str(project_root.resolve())
+            bp.build_id = generate_build_id(project_path, build_name, self._now)
             self.processes[display_name] = bp
             self._task_queue.put(display_name)
 
         self._lock = threading.Lock()
-        self._display_lock = threading.Lock()  # Synchronize display updates
-        self._stop_display = threading.Event()
-        self._display_thread: threading.Thread | None = None
         self._active_workers: set[str] = set()
 
         # Import rich for display
         from rich.console import Console
-        from rich.live import Live
         from rich.table import Table
 
         self._console = Console()
         self._Table = Table
-        self._live: Live | None = None
 
         # Write initial summary immediately so UI shows builds as "queued" right away
         # This reduces delay between when a build is requested and when the UI updates
@@ -589,32 +572,32 @@ class ParallelBuildManager:
             p.elapsed = max(p.elapsed, bp.elapsed)
 
             status = bp.status
-            if status == Status.BUILDING:
+            if status == BuildStatus.BUILDING:
                 p.building += 1
                 p.current_build = bp.name
                 p.current_stage = bp.current_stage
-            elif status == Status.FAILED:
+            elif status == BuildStatus.FAILED:
                 p.failed += 1
                 p.completed += 1
-            elif status in (Status.SUCCESS, Status.WARNING):
+            elif status in (BuildStatus.SUCCESS, BuildStatus.WARNING):
                 p.completed += 1
-                if status == Status.WARNING:
+                if status == BuildStatus.WARNING:
                     p.warnings += 1
-            elif status == Status.QUEUED:
+            elif status == BuildStatus.QUEUED:
                 p.queued += 1
 
         # Determine aggregate status for each project
         for p in projects.values():
             if p.failed > 0:
-                p.status = Status.FAILED
+                p.status = BuildStatus.FAILED
             elif p.building > 0:
-                p.status = Status.BUILDING
+                p.status = BuildStatus.BUILDING
             elif p.queued == p.total:
-                p.status = Status.QUEUED
+                p.status = BuildStatus.QUEUED
             elif p.warnings > 0:
-                p.status = Status.WARNING
+                p.status = BuildStatus.WARNING
             else:
-                p.status = Status.SUCCESS
+                p.status = BuildStatus.SUCCESS
 
         return projects
 
@@ -665,49 +648,49 @@ class ParallelBuildManager:
 
                 # If we've hit the limit, only skip queued items
                 if rows_shown >= max_rows:
-                    if status == Status.QUEUED:
+                    if status == BuildStatus.QUEUED:
                         hidden_queued += 1
                         continue
                     # Always show non-queued items (building/failed/completed)
 
-                icon = _status_rich_icon(status)
+                icon = status_rich_icon(status)
 
                 # Format stage text with colors
-                if status == Status.BUILDING:
+                if status == BuildStatus.BUILDING:
                     stage_name = bp.format_stage_history(
                         status_width, include_current=True
                     )
                     if not stage_name:
                         stage_name = bp.current_stage or "Building..."
-                        stage_text = _status_rich_text(status, stage_name)
+                        stage_text = status_rich_text(status, stage_name)
                     else:
                         stage_text = stage_name
-                elif status in (Status.SUCCESS, Status.WARNING):
+                elif status in (BuildStatus.SUCCESS, BuildStatus.WARNING):
                     stage_name = bp.format_stage_history(
                         status_width, include_current=False
                     )
                     if stage_name:
                         stage_text = stage_name
                     else:
-                        stage_text = _status_rich_text(Status.SUCCESS, "Completed")
-                elif status == Status.FAILED:
+                        stage_text = status_rich_text(BuildStatus.SUCCESS, "Completed")
+                elif status == BuildStatus.FAILED:
                     stage_name = bp.format_stage_history(
                         status_width, include_current=False
                     )
                     if stage_name:
                         stage_text = stage_name
                     else:
-                        stage_text = _status_rich_text(status, "Failed")
-                elif status == Status.QUEUED:
-                    stage_text = _status_rich_text(status, "Queued")
+                        stage_text = status_rich_text(status, "Failed")
+                elif status == BuildStatus.QUEUED:
+                    stage_text = status_rich_text(status, "Queued")
                 else:
-                    stage_text = _status_rich_text(Status.QUEUED, "Waiting...")
+                    stage_text = status_rich_text(BuildStatus.QUEUED, "Waiting...")
 
                 # Format time
-                if status == Status.QUEUED:
-                    time_text = _status_rich_text(status, "-")
+                if status == BuildStatus.QUEUED:
+                    time_text = status_rich_text(status, "-")
                 else:
-                    time_text = _status_rich_text(status, f"{int(bp.elapsed)}s")
+                    time_text = status_rich_text(status, f"{int(bp.elapsed)}s")
 
                 table.add_row(icon, display_name, stage_text, time_text)
                 rows_shown += 1
@@ -768,14 +751,14 @@ class ParallelBuildManager:
 
             # Limit rows, but always show non-queued
             if rows_shown >= max_rows:
-                if status == Status.QUEUED:
+                if status == BuildStatus.QUEUED:
                     hidden_queued += 1
                     continue
 
-            icon = _status_rich_icon(status)
+            icon = status_rich_icon(status)
 
             # Build status text showing progress and current activity
-            if status == Status.BUILDING:
+            if status == BuildStatus.BUILDING:
                 stage = p.current_stage or "Building"
                 build_name = p.current_build or ""
                 progress = f"{p.completed}/{p.total}"
@@ -791,27 +774,27 @@ class ParallelBuildManager:
                 if len(build_name) > 10:
                     build_name = build_name[:8] + ".."
 
-                colored_name = _status_rich_text(status, build_name)
+                colored_name = status_rich_text(status, build_name)
                 status_text = f"{colored_name} {progress} {stage}"
-            elif status == Status.FAILED:
-                failed_text = _status_rich_text(status, f"{p.failed} failed")
+            elif status == BuildStatus.FAILED:
+                failed_text = status_rich_text(status, f"{p.failed} failed")
                 status_text = f"{failed_text}, {p.completed - p.failed}/{p.total} done"
-            elif status == Status.WARNING:
+            elif status == BuildStatus.WARNING:
                 progress_text = f"{p.completed}/{p.total} done"
-                status_text = _status_rich_text(status, progress_text)
-            elif status == Status.SUCCESS:
+                status_text = status_rich_text(status, progress_text)
+            elif status == BuildStatus.SUCCESS:
                 progress_text = f"{p.completed}/{p.total} done"
-                status_text = _status_rich_text(status, progress_text)
-            elif status == Status.QUEUED:
-                status_text = _status_rich_text(status, f"Queued ({p.total} builds)")
+                status_text = status_rich_text(status, progress_text)
+            elif status == BuildStatus.QUEUED:
+                status_text = status_rich_text(status, f"Queued ({p.total} builds)")
             else:
                 status_text = f"{p.completed}/{p.total}"
 
             # Time
-            if status == Status.QUEUED:
-                time_text = _status_rich_text(status, "-")
+            if status == BuildStatus.QUEUED:
+                time_text = status_rich_text(status, "-")
             else:
-                time_text = _status_rich_text(status, f"{int(p.elapsed)}s")
+                time_text = status_rich_text(status, f"{int(p.elapsed)}s")
 
             table.add_row(icon, project_name, status_text, time_text)
             rows_shown += 1
@@ -832,18 +815,18 @@ class ParallelBuildManager:
         """Render summary line."""
         with self._lock:
             queued = sum(
-                1 for bp in self.processes.values() if bp.status == Status.QUEUED
+                1 for bp in self.processes.values() if bp.status == BuildStatus.QUEUED
             )
             building = sum(
-                1 for bp in self.processes.values() if bp.status == Status.BUILDING
+                1 for bp in self.processes.values() if bp.status == BuildStatus.BUILDING
             )
             completed = sum(
                 1
                 for bp in self.processes.values()
-                if bp.status in (Status.SUCCESS, Status.WARNING)
+                if bp.status in (BuildStatus.SUCCESS, BuildStatus.WARNING)
             )
             failed = sum(
-                1 for bp in self.processes.values() if bp.status == Status.FAILED
+                1 for bp in self.processes.values() if bp.status == BuildStatus.FAILED
             )
             warnings = sum(bp.warnings for bp in self.processes.values())
 
@@ -879,19 +862,6 @@ class ParallelBuildManager:
             f"{'':>{self._VERBOSE_INDENT}}{_format_stage_entry(entry)}{log_text}"
         )
 
-    def _display_loop(self) -> None:
-        """Background thread that updates display."""
-        from rich.console import Group
-
-        while not self._stop_display.is_set():
-            if self._live:
-                with self._display_lock:
-                    table = self._render_table()
-                    summary = self._render_summary()
-                    self._live.update(Group(table, "", summary))
-            self._write_live_summary()
-            time.sleep(0.5)
-
     def _write_live_summary(self) -> None:
         """Write per-target build summaries to each target's build output directory."""
         import json
@@ -919,7 +889,7 @@ class ParallelBuildManager:
 
     def run_until_complete(self) -> dict[str, int]:
         """
-        Run all builds until complete, showing live progress.
+        Run all builds until complete.
 
         Uses a queue to limit concurrent builds to max_workers.
         In verbose mode, runs sequentially with full output.
@@ -934,9 +904,6 @@ class ParallelBuildManager:
 
         results = self._run_parallel()
 
-        # Errors are now printed above the table during the live display,
-        # so we don't need to print them again here.
-
         return results
 
     def _print_build_logs(
@@ -948,14 +915,14 @@ class ParallelBuildManager:
         """Print logs from the SQLite database for a build."""
         import sqlite3
 
-        from atopile.logging import generate_build_id, get_central_log_db
+        from atopile.logging import BuildLogger
 
-        # Generate build_id for this build
-        project_path = str(bp.project_root.resolve()) if bp.project_root else "unknown"
-        build_id = generate_build_id(project_path, bp.name, self._now)
+        if not bp.build_id:
+            return
+        build_id = bp.build_id
 
         try:
-            db_path = get_central_log_db()
+            db_path = BuildLogger.get_log_db()
             if not db_path.exists():
                 return
 
@@ -1044,7 +1011,6 @@ class ParallelBuildManager:
         """Run builds sequentially without live display."""
         console = self._get_full_width_console()
         return self._run_parallel(
-            live=False,
             max_workers=1,
             print_headers=True,
             print_results=True,
@@ -1064,16 +1030,13 @@ class ParallelBuildManager:
     def _run_parallel(
         self,
         *,
-        live: bool = True,
         max_workers: int | None = None,
         print_headers: bool = False,
         print_results: bool = False,
         stage_printer: Callable[[StageCompleteEvent, Path | None], None] | None = None,
         console: Console | None = None,
     ) -> dict[str, int]:
-        """Run builds with an optional live progress display."""
-        from rich.console import Group
-        from rich.live import Live
+        """Run builds."""
 
         results: dict[str, int] = {}
         console = console or self._console
@@ -1085,8 +1048,12 @@ class ParallelBuildManager:
                 return False
 
             bp = self.processes[display_name]
-            if print_headers:
-                console.print(f"[bold cyan]▶ Building {display_name}[/bold cyan]\n")
+            build_id_str = f" (build_id= {bp.build_id})" if bp.build_id else ""
+            # Add newline after header in verbose mode for cleaner stage output
+            newline = "\n" if print_headers else ""
+            console.print(
+                f"[bold cyan]▶ Building {display_name}{build_id_str}[/bold cyan]{newline}"
+            )
             if stage_printer is not None:
                 bp.set_stage_printer(stage_printer)
             bp.start()
@@ -1152,9 +1119,8 @@ class ParallelBuildManager:
                     if all_done:
                         break
 
-                    # Update JSON summary (verbose mode; live mode uses _display_loop)
-                    if not live:
-                        self._write_live_summary()
+                    # Update JSON summary
+                    self._write_live_summary()
 
                     time.sleep(0.5)
 
@@ -1166,49 +1132,20 @@ class ParallelBuildManager:
 
             return results
 
-        if live:
-            with Live(
-                self._render_table(),
-                console=console,
-                refresh_per_second=2,
-            ) as live_display:
-                self._live = live_display
-                self._stop_display.clear()
-
-                # Start display update thread
-                self._display_thread = threading.Thread(
-                    target=self._display_loop, daemon=True
-                )
-                self._display_thread.start()
-
-                try:
-                    run_loop(live_display.console)
-                finally:
-                    self._stop_display.set()
-                    if self._display_thread:
-                        self._display_thread.join(timeout=1.0)
-
-                # Final update
-                table = self._render_table()
-                summary = self._render_summary()
-                live_display.update(Group(table, "", summary))
-        else:
-            run_loop(self._console)
+        run_loop(console)
 
         return results
 
     def _get_build_data(self, bp: "BuildProcess") -> dict:
         """Collect minimal data for a single build as a dictionary."""
-        from atopile.logging import generate_build_id
-
-        # Generate build_id for this build
-        # Use resolved absolute path to ensure consistency with subprocess
-        project_path = str(bp.project_root.resolve()) if bp.project_root else "unknown"
-        build_id = generate_build_id(project_path, bp.name, self._now)
-        logger.debug(
-            f"Summary build_id: {build_id} "
-            + f"(project={project_path}, target={bp.name}, ts={self._now})"
-        )
+        # Use pre-generated build_id from BuildProcess, or generate if not available
+        if bp.build_id:
+            build_id = bp.build_id
+        else:
+            project_path = (
+                str(bp.project_root.resolve()) if bp.project_root else "unknown"
+            )
+            build_id = generate_build_id(project_path, bp.name, self._now)
 
         data = {
             "name": bp.name,  # Target name for matching
@@ -1227,8 +1164,11 @@ class ParallelBuildManager:
                     "name": entry.description,
                     "stage_id": entry.log_name,
                     "status": entry.status,
+                    "elapsed_seconds": round(entry.duration, 2),
+                    "infos": entry.infos,
                     "warnings": entry.warnings,
                     "errors": entry.errors,
+                    "alerts": entry.alerts,
                 }
                 for entry in bp._stage_history
             ]
@@ -1247,8 +1187,8 @@ def _run_single_build() -> None:
     This is called when IPC env vars are set by the parent process.
     """
     from atopile import buildutil
+    from atopile.buildutil import BuildStepContext
     from atopile.config import config
-    from atopile.logging import close_all_build_loggers
 
     # Get the single build target from config
     build_names = list(config.selected_builds)
@@ -1261,15 +1201,56 @@ def _run_single_build() -> None:
 
     from atopile.cli.excepthook import install_worker_excepthook
 
+    # Read build_id from environment (passed by server subprocess)
+    build_id = os.environ.get("ATO_BUILD_ID")
+
+    # Create build context to track completed stages
+    ctx = BuildStepContext(build=None, build_id=build_id)
+
+    with config.select_build(build_name):
+        install_worker_excepthook()
+        buildutil.build(ctx=ctx)
+
+        # Emit completed stages via IPC
+        _emit_completed_stages(ctx.completed_stages)
+
+    # Note: BuildLogger.close_all() is registered as an atexit handler,
+    # so logs will be flushed during process shutdown. We don't call it
+    # explicitly here because the excepthook needs to log errors AFTER
+    # any exceptions occur, and close_all() would close the writer too early.
+
+
+def _emit_completed_stages(stages: list) -> None:
+    """Emit completed stages via IPC to the parent process."""
+    import os
+    import pickle
+    import struct
+
+    event_fd = os.environ.get("ATO_BUILD_EVENT_FD")
+    if not event_fd:
+        return
+
     try:
-        with config.select_build(build_name):
-            install_worker_excepthook()
-            buildutil.build()
-    finally:
-        # Flush all buffered logs to SQLite before subprocess exits
-        # This is critical because each subprocess has its own SQLiteLogWriter
-        # instance, and buffered logs would be lost without explicit flush
-        close_all_build_loggers()
+        fd = int(event_fd)
+    except ValueError:
+        return
+
+    for stage in stages:
+        try:
+            event = StageCompleteEvent(
+                duration=stage.elapsed_seconds,
+                status=stage.status,
+                infos=stage.infos,
+                warnings=stage.warnings,
+                errors=stage.errors,
+                alerts=stage.alerts,
+                log_name=stage.stage_id,
+                description=stage.name,
+            )
+            payload = pickle.dumps(event)
+            os.write(fd, struct.pack(">I", len(payload)) + payload)
+        except Exception:
+            pass  # Don't fail the build if we can't emit stages
 
 
 def _build_all_projects(
@@ -1437,6 +1418,14 @@ def build(
             help=f"Max concurrent builds (default: {DEFAULT_WORKER_COUNT})",
         ),
     ] = DEFAULT_WORKER_COUNT,
+    dashboard: Annotated[
+        bool,
+        typer.Option(
+            "--dashboard",
+            help="Start the dashboard API server during the build",
+            envvar="ATO_BUILD_DASHBOARD",
+        ),
+    ] = False,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -1555,17 +1544,22 @@ def build(
         keep_designators=keep_designators,
     )
 
-    # Start dashboard API server (unless in verbose mode)
-    # Uses fixed port so extension can connect immediately
+    # Start dashboard API server only when explicitly requested.
+    # Uses fixed port so extension can connect immediately.
     dashboard_server = None
     dashboard_url = None
-    if not verbose:
+    if dashboard:
         try:
-            from atopile.dashboard.server import start_dashboard_server
+            from atopile.server.server import start_dashboard_server
 
+            # Use the first build target's summary file for the dashboard
+            first_build = build_names[0] if build_names else "default"
+            build_dir = project_root / "build" / "builds" / first_build
+            summary_file = build_dir / "build_summary.json"
             dashboard_server, dashboard_url = start_dashboard_server(
+                summary_file=summary_file,
                 port=DASHBOARD_PORT,
-                project_root=project_root,
+                workspace_paths=[project_root],
             )
             logger.info("Dashboard API available at: %s", dashboard_url)
         except Exception as e:
@@ -1584,9 +1578,9 @@ def build(
     manager.generate_summary()
 
     # Flush and close all build loggers to ensure logs are written to SQLite
-    from atopile.logging import close_all_build_loggers
+    from atopile.logging import BuildLogger
 
-    close_all_build_loggers()
+    BuildLogger.close_all()
 
     failed = [name for name, code in results.items() if code != 0]
 

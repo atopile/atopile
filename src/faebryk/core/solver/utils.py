@@ -15,7 +15,7 @@ from typing import (
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.logging import rich_to_string
+from atopile.logging_utils import rich_to_string
 from faebryk.core import graph
 from faebryk.libs.util import (
     ConfigFlag,

@@ -1,0 +1,196 @@
+/* ============================================
+   _toolbar.css
+   Panel Toolbar Pattern, Search Box, Filter Group,
+   Log Toolbar, Toolbar Separator
+   ============================================ */
+
+/* Unified Panel Toolbar Pattern */
+.panel-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs);
+}
+
+.panel-toolbar-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.panel-toolbar-row .search-box {
+  flex: 1;
+  min-width: 0;
+}
+
+.panel-toolbar-row .filter-group {
+  flex-shrink: 0;
+}
+
+.panel-toolbar-row .build-selector {
+  flex-shrink: 0;
+  margin-left: var(--spacing-sm);
+}
+
+.panel-toolbar-row .bom-project-select {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.bom-project-select select {
+  padding: 4px var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  transition: all var(--transition-fast);
+}
+
+.bom-project-select select:hover {
+  border-color: var(--border-subtle);
+}
+
+.bom-project-select select:focus {
+  outline: none;
+  border-color: var(--border-default);
+}
+
+/* Separator between filters and build selector */
+.toolbar-separator {
+  width: 1px;
+  height: 16px;
+  background: var(--border-subtle);
+  margin: 0 var(--spacing-xs);
+  flex-shrink: 0;
+}
+
+.log-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.log-toolbar > .search-box {
+  width: 100%;
+}
+
+.log-toolbar > .panel-toolbar-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.log-toolbar > .panel-toolbar-row .filter-group {
+  flex: 1;
+  min-width: 0;
+}
+
+.log-toolbar > .panel-toolbar-row .build-selector {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 4px var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+}
+
+.search-box:hover {
+  border-color: var(--border-subtle);
+}
+
+.search-box input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 10px;
+  outline: none;
+}
+
+.search-box input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-box:focus-within {
+  border-color: var(--accent);
+  background: var(--bg-secondary);
+}
+
+/* Search clear button */
+.search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.search-clear:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.filter-group {
+  display: flex;
+  gap: 1px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+
+.filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.filter-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.filter-btn.active {
+  background: var(--ato-orange-subtle);
+  color: var(--ato-orange);
+  border-color: var(--ato-orange);
+}
+
+/* Icon-only filter buttons */
+.filter-btn.icon-filter {
+  padding: 4px 6px;
+  min-width: 24px;
+  justify-content: center;
+}
+
+.filter-btn.icon-filter svg {
+  width: 12px;
+  height: 12px;
+}

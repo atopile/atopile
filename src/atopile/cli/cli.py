@@ -45,8 +45,6 @@ from atopile.exceptions import (
     UserResourceException,
     iter_leaf_exceptions,
 )
-from atopile.logging import FLOG_FMT
-
 
 SAFE_MODE_OPTION = ConfigFlag(
     "SAFE_MODE", False, "Handle exceptions gracefully (coredump)"
@@ -54,7 +52,7 @@ SAFE_MODE_OPTION = ConfigFlag(
 
 app = typer.Typer(
     no_args_is_help=True,
-    pretty_exceptions_enable=bool(FLOG_FMT),  # required to override the excepthook
+    pretty_exceptions_enable=False,  # Use custom excepthook instead
     rich_markup_mode="rich",
 )
 
@@ -202,6 +200,12 @@ def cli(
 
     configure.setup()
 
+    # Set up database logging for all CLI commands (not just builds)
+    # This ensures logs from validate, inspect, etc. are also stored in the database
+    from atopile.logging import BuildLogger
+
+    BuildLogger.setup_logging(enable_database=True, stage="cli")
+
 
 app.command()(build.build)
 app.add_typer(create.create_app, name="create")
@@ -218,7 +222,7 @@ app.add_typer(lsp.lsp_app, name="lsp", hidden=True)
 app.add_typer(mcp.mcp_app, name="mcp", hidden=True)
 app.add_typer(kicad_ipc.kicad_ipc_app, name="kicad-ipc", hidden=True)
 app.add_typer(dev.dev_app, name="dev", hidden=True)
-app.add_typer(serve.serve_app, name="serve", hidden=True)
+app.add_typer(serve.serve_app, name="serve")
 
 
 @app.command(hidden=True)

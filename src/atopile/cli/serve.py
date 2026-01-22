@@ -1,155 +1,137 @@
 """
-CLI command to start the atopile dashboard server.
-
-The server provides API endpoints for build execution and status monitoring.
+Serve commands for local backend/frontend development.
 """
 
-import logging
-import socket
+from __future__ import annotations
+
+import os
+import shutil
 import subprocess
 import sys
-from typing import Annotated
+from pathlib import Path
+from typing import Optional
 
 import typer
 
-from atopile.dashboard.server import DEFAULT_PORT, start_dashboard_server
+from atopile.server.server import DASHBOARD_PORT
 
-logger = logging.getLogger(__name__)
-
-serve_app = typer.Typer()
+serve_app = typer.Typer(no_args_is_help=True)
 
 
-def _is_port_in_use(port: int) -> bool:
-    """Check if a port is in use."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex(("127.0.0.1", port)) == 0
-
-
-def _find_process_on_port(port: int) -> list[int]:
-    """Find process IDs listening on the given port."""
-    pids = []
-    try:
-        # Use lsof to find processes on the port (works on macOS and Linux)
-        result = subprocess.run(
-            ["lsof", "-t", "-i", f":{port}"],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0:
-            for line in result.stdout.strip().split("\n"):
-                if line:
-                    pids.append(int(line))
-    except (subprocess.SubprocessError, FileNotFoundError, ValueError):
-        pass
-    return pids
-
-
-def _kill_process(pid: int) -> bool:
-    """Kill a process by PID."""
-    import os
-    import signal
-
-    try:
-        os.kill(pid, signal.SIGTERM)
-        return True
-    except OSError:
-        return False
+def _install_nodejs() -> Optional[int]:
+    if sys.platform == "darwin":
+        if shutil.which("brew"):
+            return subprocess.run(["brew", "install", "node"]).returncode
+        return None
+    if sys.platform.startswith("linux"):
+        if shutil.which("apt-get"):
+            return subprocess.run(
+                ["sudo", "apt-get", "install", "-y", "nodejs", "npm"]
+            ).returncode
+        if shutil.which("dnf"):
+            return subprocess.run(
+                ["sudo", "dnf", "install", "-y", "nodejs", "npm"]
+            ).returncode
+        if shutil.which("yum"):
+            return subprocess.run(
+                ["sudo", "yum", "install", "-y", "nodejs", "npm"]
+            ).returncode
+        if shutil.which("pacman"):
+            return subprocess.run(
+                ["sudo", "pacman", "-S", "--noconfirm", "nodejs", "npm"]
+            ).returncode
+        return None
+    if sys.platform == "win32":
+        if shutil.which("choco"):
+            return subprocess.run(["choco", "install", "-y", "nodejs"]).returncode
+        if shutil.which("winget"):
+            return subprocess.run(
+                ["winget", "install", "-e", "--id", "OpenJS.NodeJS"]
+            ).returncode
+        return None
+    return None
 
 
 @serve_app.command()
-def start(
-    port: Annotated[
-        int,
-        typer.Option("--port", "-p", help="Port to run the server on"),
-    ] = DEFAULT_PORT,
-    force: Annotated[
-        bool,
-        typer.Option("--force", "-f", help="Kill any existing server on the port"),
-    ] = False,
-):
-    """Start the atopile dashboard server."""
-    import signal
-    import time
+def backend(
+    port: int = typer.Option(DASHBOARD_PORT, help="Port to run the backend server on"),
+    workspace: Optional[list[Path]] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path to scan for projects (can be specified multiple times)",
+    ),
+    logs_dir: Optional[Path] = typer.Option(
+        None, help="Directory for build logs (default: ./build/logs)"
+    ),
+) -> None:
+    """Start the backend server in the current terminal."""
+    cmd = [sys.executable, "-m", "atopile.server", "--port", str(port)]
+    for path in workspace or []:
+        cmd.extend(["--workspace", str(path)])
+    if logs_dir:
+        cmd.extend(["--logs-dir", str(logs_dir)])
 
-    # Check if port is already in use
-    if _is_port_in_use(port):
-        if force:
-            print(f"Port {port} is in use, stopping existing server...")
-            pids = _find_process_on_port(port)
-            for pid in pids:
-                _kill_process(pid)
-            # Wait for port to be released
-            for _ in range(20):  # Wait up to 2 seconds
-                if not _is_port_in_use(port):
-                    break
-                time.sleep(0.1)
-            else:
-                print(f"Error: Could not stop existing server on port {port}")
-                sys.exit(1)
-        else:
-            print(f"Error: Port {port} is already in use.")
-            print("Use --force to stop the existing server, or 'ato serve stop' first.")
-            sys.exit(1)
-
-    logger.info(f"Starting dashboard server on port {port}")
-
-    server, url = start_dashboard_server(port=port)
-    logger.info(f"Dashboard server running at {url}")
-    print(f"Dashboard server running at {url}")
-    print("Press Ctrl+C to stop")
-
-    # Handle graceful shutdown
-    def signal_handler(signum, frame):
-        print("\nShutting down...")
-        server.shutdown()
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
-    # Keep the main thread alive
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        server.shutdown()
+    raise typer.Exit(subprocess.run(cmd).returncode)
 
 
 @serve_app.command()
-def stop(
-    port: Annotated[
-        int,
-        typer.Option("--port", "-p", help="Port the server is running on"),
-    ] = DEFAULT_PORT,
-):
-    """Stop the atopile dashboard server."""
-    if not _is_port_in_use(port):
-        print(f"No server running on port {port}")
-        return
+def frontend(
+    port: int = typer.Option(5173, help="Port to run the UI server on"),
+    host: str = typer.Option("127.0.0.1", help="Host to bind the UI server to"),
+    backend: Optional[str] = typer.Option(
+        None,
+        "--backend",
+        "-b",
+        help=f"Backend host:port (e.g. localhost:{DASHBOARD_PORT})",
+    ),
+) -> None:
+    """Start the UI server (Vite) in the current terminal."""
+    repo_root = Path(__file__).resolve().parents[3]
+    ui_server_dir = repo_root / "src" / "ui-server"
 
-    pids = _find_process_on_port(port)
-    if not pids:
-        print(f"Could not find server process on port {port}")
-        sys.exit(1)
+    if not ui_server_dir.exists():
+        raise typer.BadParameter(f"UI server not found at {ui_server_dir}")
 
-    for pid in pids:
-        if _kill_process(pid):
-            print(f"Stopped server process {pid}")
-        else:
-            print(f"Failed to stop process {pid}")
-            sys.exit(1)
+    if not shutil.which("npm"):
+        if not typer.confirm(
+            "npm not found. Attempt to install Node.js now?", default=False
+        ):
+            raise typer.BadParameter("npm is required to serve the frontend.")
+        result = _install_nodejs()
+        if result is None:
+            raise typer.BadParameter(
+                "No supported package manager found. Install Node.js from https://nodejs.org/"
+            )
+        if result != 0:
+            raise typer.Exit(result)
+        if not shutil.which("npm"):
+            raise typer.BadParameter(
+                "npm is still missing after installation attempt. Install Node.js from https://nodejs.org/"
+            )
 
+    node_modules_dir = ui_server_dir / "node_modules"
+    vite_bin = node_modules_dir / ".bin" / ("vite.cmd" if os.name == "nt" else "vite")
+    if not node_modules_dir.exists() or not vite_bin.exists():
+        install_cmd = ["npm", "install"]
+        result = subprocess.run(install_cmd, cwd=str(ui_server_dir))
+        if result.returncode != 0:
+            raise typer.Exit(result.returncode)
 
-@serve_app.command()
-def status(
-    port: Annotated[
-        int,
-        typer.Option("--port", "-p", help="Port to check"),
-    ] = DEFAULT_PORT,
-):
-    """Check if the dashboard server is running."""
-    if _is_port_in_use(port):
-        pids = _find_process_on_port(port)
-        print(f"Server running on port {port} (PID: {', '.join(map(str, pids))})")
-    else:
-        print(f"No server running on port {port}")
+    dist_dir = ui_server_dir / "dist"
+    if not dist_dir.exists():
+        build_cmd = ["npm", "run", "build"]
+        result = subprocess.run(build_cmd, cwd=str(ui_server_dir))
+        if result.returncode != 0:
+            raise typer.Exit(result.returncode)
+
+    env = None
+    if backend:
+        backend_host = backend if "://" in backend else f"http://{backend}"
+        ws_host = backend_host.replace("http://", "ws://").replace("https://", "wss://")
+        env = os.environ.copy()
+        env["VITE_API_URL"] = backend_host
+        env["VITE_WS_URL"] = f"{ws_host}/ws/state"
+
+    cmd = ["npm", "run", "dev", "--", "--host", host, "--port", str(port)]
+    raise typer.Exit(subprocess.run(cmd, cwd=str(ui_server_dir), env=env).returncode)

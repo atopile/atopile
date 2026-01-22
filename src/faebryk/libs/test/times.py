@@ -12,7 +12,7 @@ from typing import Callable, Iterator
 
 from rich.table import Table
 
-from atopile.logging import rich_to_string
+from atopile.logging_utils import rich_to_string
 
 
 class Times:
