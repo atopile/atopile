@@ -300,7 +300,8 @@ class BackendServerManager implements vscode.Disposable {
 
         try {
             const workspaceRoot = getWorkspaceRoot();
-            const args = ['serve', 'backend', '--port', String(this.port)];
+            // Use --force to kill any stale server on this port from a previous session
+            const args = ['serve', 'backend', '--force', '--port', String(this.port)];
             if (workspaceRoot) {
                 args.push('--workspace', workspaceRoot);
             }

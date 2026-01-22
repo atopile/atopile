@@ -563,6 +563,54 @@ def find_free_port() -> int:
         return s.getsockname()[1]
 
 
+def is_port_in_use(port: int, host: str = "127.0.0.1") -> bool:
+    """Check if a port is already in use."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex((host, port)) == 0
+
+
+def kill_process_on_port(port: int, host: str = "127.0.0.1") -> bool:
+    """
+    Kill the process using the specified port.
+
+    Uses lsof to find the process and sends SIGTERM (then SIGKILL if needed).
+    Waits up to 3 seconds for the port to become available.
+
+    Returns True if the port is now available, False otherwise.
+    """
+    import subprocess
+    import time
+
+    try:
+        # Use lsof to find the PID using the port (works on macOS and Linux)
+        result = subprocess.run(
+            ["lsof", "-ti", f":{port}"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return False
+
+        pids = result.stdout.strip().split("\n")
+        for pid in pids:
+            try:
+                subprocess.run(["kill", "-TERM", pid], check=True)
+            except subprocess.CalledProcessError:
+                # Try SIGKILL if SIGTERM fails
+                subprocess.run(["kill", "-KILL", pid], check=False)
+
+        # Wait for port to become available
+        for _ in range(30):  # Wait up to 3 seconds
+            if not is_port_in_use(port, host):
+                return True
+            time.sleep(0.1)
+
+        return not is_port_in_use(port, host)
+    except FileNotFoundError:
+        # lsof not available
+        return False
+
+
 class DashboardServer:
     """Manages the dashboard server lifecycle."""
 

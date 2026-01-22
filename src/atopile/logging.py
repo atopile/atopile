@@ -16,7 +16,7 @@ import sqlite3
 import sys
 import threading
 import traceback
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime
@@ -33,7 +33,6 @@ from rich.traceback import Traceback
 
 import atopile
 import faebryk
-from atopile.buildutil import generate_build_id
 from atopile.dataclasses import (
     Log,
     ProjectState,
@@ -157,6 +156,51 @@ CREATE INDEX IF NOT EXISTS idx_test_logs_level ON test_logs(level);
 CREATE INDEX IF NOT EXISTS idx_test_logs_audience ON test_logs(audience);
 """
 
+BUILD_LOG_INSERT = (
+    "INSERT INTO logs"
+    " (build_id, timestamp, stage, level, logger_name, audience,"
+    " message, ato_traceback, python_traceback, objects)"
+    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+)
+
+TEST_LOG_INSERT = (
+    "INSERT INTO test_logs"
+    " (test_run_id, timestamp, test_name, level, logger_name, audience,"
+    " message, ato_traceback, python_traceback, objects)"
+    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+)
+
+
+def _build_entry_to_tuple(e: Log.Entry) -> tuple[Any, ...]:
+    """Convert a build log entry to a tuple for SQLite insertion."""
+    return (
+        e.build_id,
+        e.timestamp,
+        e.stage,
+        e.level,
+        e.logger_name,
+        e.audience,
+        e.message,
+        e.ato_traceback,
+        e.python_traceback,
+    )
+
+
+def _test_entry_to_tuple(e: Log.TestEntry) -> tuple[Any, ...]:
+    """Convert a test log entry to a tuple for SQLite insertion."""
+    return (
+        e.test_run_id,
+        e.timestamp,
+        e.test_name,
+        e.level,
+        e.logger_name,
+        e.audience,
+        e.message,
+        e.ato_traceback,
+        e.python_traceback,
+    )
+
+
 # =============================================================================
 # SQLite Writer
 # =============================================================================
@@ -165,15 +209,20 @@ CREATE INDEX IF NOT EXISTS idx_test_logs_audience ON test_logs(audience);
 class SQLiteLogWriter:
     """Thread-safe SQLite log writer with WAL mode and batching."""
 
-    BATCH_SIZE = 50
-    FLUSH_INTERVAL = 1.0
+    BATCH_SIZE = 300
+    FLUSH_INTERVAL = 0.5
 
     _instances: dict[str, "SQLiteLogWriter"] = {}
     _lock = threading.Lock()
 
     @classmethod
     def get_instance(
-        cls, key: str, db_path: Path, schema: str, insert_sql: str, entry_to_tuple: Any
+        cls,
+        key: str,
+        db_path: Path,
+        schema: str,
+        insert_sql: str,
+        entry_to_tuple: Callable[[Any], tuple[Any, ...]],
     ) -> "SQLiteLogWriter":
         with cls._lock:
             if key not in cls._instances:
@@ -187,14 +236,18 @@ class SQLiteLogWriter:
                 cls._instances.pop(key).close()
 
     def __init__(
-        self, db_path: Path, schema_sql: str, insert_sql: str, entry_to_tuple: Any
+        self,
+        db_path: Path,
+        schema_sql: str,
+        insert_sql: str,
+        entry_to_tuple: Callable[[Any], tuple[Any, ...]],
     ):
         self._db_path = db_path
         self._schema_sql = schema_sql
         self._insert_sql = insert_sql
         self._entry_to_tuple = entry_to_tuple
         self._local = threading.local()
-        self._buffer: list[Any] = []
+        self._buffer: list[Log.Entry | Log.TestEntry] = []
         self._buffer_lock = threading.Lock()
         self._last_flush = datetime.now()
         self._closed = False
@@ -257,7 +310,7 @@ class SQLiteLogWriter:
         except sqlite3.Error:
             pass
 
-    def write(self, entry: Any) -> None:
+    def write(self, entry: Log.Entry | Log.TestEntry) -> None:
         if self._closed:
             return
         with self._buffer_lock:
@@ -290,14 +343,22 @@ class SQLiteLogWriter:
             conn = self._get_connection()
             conn.executemany(self._insert_sql, data)
             conn.commit()
-        except sqlite3.Error:
+        except sqlite3.Error as e:
+            # Connection may be stale, retry with fresh connection
             self._local.conn = None
             try:
                 conn = self._get_connection()
                 conn.executemany(self._insert_sql, data)
                 conn.commit()
-            except sqlite3.Error:
-                pass
+            except sqlite3.Error as e2:
+                # Log to stderr since we can't use the logging system here
+                import sys
+
+                print(
+                    f"SQLiteLogWriter: Failed to write {len(data)} log entries "
+                    f"to {self._db_path}: {e2} (original: {e})",
+                    file=sys.stderr,
+                )
 
     def close(self) -> None:
         self._closed = True
@@ -409,7 +470,7 @@ class BaseLogger:
         _ato_traceback: str | None,
         _python_traceback: str | None,
         _objects: dict | None,
-    ) -> Any:
+    ) -> Log.Entry | Log.TestEntry:
         raise NotImplementedError
 
 
@@ -428,29 +489,15 @@ class TestLogger(BaseLogger):
     @classmethod
     def setup_logging(cls, test_run_id: str, test: str = "") -> "TestLogger | None":
         try:
-            insert_sql = (
-                "INSERT INTO test_logs"
-                " (test_run_id, timestamp, test_name, level, logger_name, audience,"
-                " message, ato_traceback, python_traceback, objects)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-            )
-
-            def entry_to_tuple(e):
-                return (
-                    e.test_run_id,
-                    e.timestamp,
-                    e.test_name,
-                    e.level,
-                    e.logger_name,
-                    e.audience,
-                    e.message,
-                    e.ato_traceback,
-                    e.python_traceback,
-                )
             writer = SQLiteLogWriter.get_instance(
-                "test", cls.get_log_db(), TEST_SCHEMA_SQL, insert_sql, entry_to_tuple
+                "test",
+                cls.get_log_db(),
+                TEST_SCHEMA_SQL,
+                TEST_LOG_INSERT,
+                _test_entry_to_tuple,
             )
             writer.register_test_run(test_run_id)
+
             test_logger = cls(test_run_id, test)
             test_logger.set_writer(writer)
             for h in logging.getLogger().handlers:
@@ -519,29 +566,16 @@ class BuildLogger(BaseLogger):
         build_id: str | None = None,
     ) -> "BuildLogger":
         timestamp = timestamp or NOW
-        insert_sql = (
-            "INSERT INTO logs"
-            " (build_id, timestamp, stage, level, logger_name, audience,"
-            " message, ato_traceback, python_traceback, objects)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        )
 
-        def entry_to_tuple(e):
-            return (
-                e.build_id,
-                e.timestamp,
-                e.stage,
-                e.level,
-                e.logger_name,
-                e.audience,
-                e.message,
-                e.ato_traceback,
-                e.python_traceback,
-            )
         writer = SQLiteLogWriter.get_instance(
-            "build", cls.get_log_db(), SCHEMA_SQL, insert_sql, entry_to_tuple
+            "build",
+            cls.get_log_db(),
+            SCHEMA_SQL,
+            BUILD_LOG_INSERT,
+            _build_entry_to_tuple,
         )
         build_id = writer.register_build(project_path, target, timestamp, build_id)
+
         if build_id not in cls._loggers:
             bl = cls(build_id, stage)
             bl.set_writer(writer)
@@ -938,8 +972,11 @@ def _query_logs(
     if not db_path.exists():
         return [], after_id or 0
 
-    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
+    # Match writer pragmas for consistent behavior under concurrent load
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.execute("PRAGMA journal_mode=WAL")
 
     where = [f"{table}.{id_col} = ?"]
     params: list[Any] = [id_val]
