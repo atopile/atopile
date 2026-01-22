@@ -1098,6 +1098,36 @@ class LogHandler(RichHandler):
 
         return exc_type, exc_value, exc_traceback
 
+    def _extract_ato_traceback(self, exc: BaseException) -> str | None:
+        """
+        Extract the ato-specific traceback info (source location, code context).
+
+        This renders the exception using Rich to a string buffer to capture
+        the user-facing context like source file paths and code snippets.
+        """
+        try:
+            from io import StringIO
+
+            from rich.console import Console as RichConsole
+
+            buffer = StringIO()
+            temp_console = RichConsole(
+                file=buffer,
+                width=120,
+                force_terminal=True,
+            )
+
+            if hasattr(exc, "__rich_console__"):
+                renderables = exc.__rich_console__(temp_console, temp_console.options)
+                # Skip the first renderable (title) since we use it as message
+                for renderable in list(renderables)[1:]:
+                    temp_console.print(renderable)
+
+            result = buffer.getvalue().strip()
+            return result if result else None
+        except Exception:
+            return None
+
     def _get_traceback(self, record: logging.LogRecord) -> Traceback | None:
         if not record.exc_info:
             return None
@@ -1272,7 +1302,7 @@ class LogHandler(RichHandler):
                 message = BaseLogger.get_exception_display_message(exc_value)
 
                 # Extract ato-specific context
-                ato_tb = self._build_logger._extract_ato_traceback(exc_value)
+                ato_tb = self._extract_ato_traceback(exc_value)
 
                 # Get Python traceback
                 exc_type, exc_val, exc_tb = record.exc_info  # type: ignore[misc]
@@ -1326,6 +1356,9 @@ class LogHandler(RichHandler):
                 # Use unified message extraction
                 message = BaseLogger.get_exception_display_message(exc_value)
 
+                # Extract ato-specific context (same as build logger)
+                ato_tb = self._extract_ato_traceback(exc_value)
+
                 # Get Python traceback
                 exc_type, exc_val, exc_tb = record.exc_info  # type: ignore[misc]
                 python_tb = "".join(
@@ -1337,6 +1370,7 @@ class LogHandler(RichHandler):
                     message,
                     logger_name=record.name,
                     audience=Log.Audience.DEVELOPER,
+                    ato_traceback=ato_tb,
                     python_traceback=python_tb,
                 )
             else:

@@ -6,6 +6,7 @@ and send JSON events for test start/finish.
 """
 
 import io
+import logging
 import os
 import sys
 import time
@@ -20,6 +21,9 @@ from rich.console import Console
 from rich.traceback import Traceback
 
 from test.runner.common import ORCHESTRATOR_URL_ENV, EventRequest, EventType, Outcome
+
+# Use atopile prefix so logs pass through the _atopile_log_filter
+logger = logging.getLogger("atopile.test.plugin")
 
 FBRK_TEST_TEST_TIMEOUT = int(os.environ.get("FBRK_TEST_TEST_TIMEOUT", -1))
 
@@ -221,6 +225,12 @@ def pytest_runtest_logreport(report: pytest.TestReport):
                 output["error"] = _format_rich_traceback(exc_type, exc_value, exc_tb)
                 # Extract error message from the exception directly
                 error_message = f"{exc_type.__name__}: {exc_value}"
+                # Log the exception so it gets captured in the test_logs database
+                # with python_traceback (and ato_traceback for user exceptions)
+                logger.error(
+                    f"Test failed: {error_message}",
+                    exc_info=(exc_type, exc_value, exc_tb),
+                )
         elif hasattr(report, "longreprtext") and report.longreprtext:
             output["error"] = report.longreprtext
             # Extract a concise error message from the full traceback
