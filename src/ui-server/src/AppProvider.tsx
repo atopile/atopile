@@ -12,6 +12,7 @@
 
 import React, { ReactNode, useEffect } from 'react';
 import { useConnection } from './hooks/useConnection';
+import { sendAction } from './api/websocket';
 import { initUILogger } from './ui-logger';
 
 interface AppProviderProps {
@@ -26,6 +27,20 @@ export function AppProvider({ children }: AppProviderProps) {
   useConnection();
   useEffect(() => {
     initUILogger();
+  }, []);
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      const data = event?.data as { type?: string; folders?: unknown };
+      if (data?.type !== 'workspace-folders') return;
+      if (!Array.isArray(data.folders)) return;
+      // Update injected workspace folders for future reads
+      (window as { __ATOPILE_WORKSPACE_FOLDERS__?: string[] }).__ATOPILE_WORKSPACE_FOLDERS__ =
+        data.folders as string[];
+      sendAction('setWorkspaceFolders', { folders: data.folders as string[] });
+    }
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
   }, []);
 
   return <>{children}</>;

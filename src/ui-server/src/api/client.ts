@@ -20,7 +20,7 @@ import type {
   VariablesData,
   ProjectDependency,
 } from '../types/build';
-import { API_URL } from './index';
+import { API_URL } from './config';
 
 // Base URL - from centralized config
 const BASE_URL = API_URL;
