@@ -24,7 +24,6 @@ after the simplifications (single backend URL, no auto-port, explicit restarts).
 - `atopile.dashboardApiUrl` (default `http://localhost:8501`)
 - `atopile.backendAutoStart` (default `true`)
 - `atopile.ato` / `atopile.from` (binary/source selection)
-- `atopile.uiMode` (`auto` | `dev` | `prod`)
 
 ## State Model (High-Level)
 
@@ -128,5 +127,3 @@ after the simplifications (single backend URL, no auto-port, explicit restarts).
 
 - `atopile.dashboardApiUrl` is the single address used by UI and extension.
 - Any backend on a different port must be started explicitly and configured.
-- Developer UI settings can force UI mode via `atopile.uiMode`.
-  The webview still needs reload to apply the change.

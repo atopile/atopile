@@ -21,11 +21,6 @@ function isDevelopmentMode(extensionPath: string): boolean {
   return !fs.existsSync(prodPath);
 }
 
-function getUiMode(): 'auto' | 'dev' | 'prod' {
-  const config = vscode.workspace.getConfiguration('atopile');
-  return config.get<'auto' | 'dev' | 'prod'>('uiMode', 'auto');
-}
-
 /**
  * Generate a nonce for Content Security Policy.
  */
@@ -75,8 +70,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     });
 
     const extensionPath = this._extensionUri.fsPath;
-    const uiMode = getUiMode();
-    const isDev = uiMode === 'dev' ? true : uiMode === 'prod' ? false : isDevelopmentMode(extensionPath);
+    const isDev = isDevelopmentMode(extensionPath);
 
     if (isDev) {
       this._view.webview.html = this._getDevHtml();
@@ -93,8 +87,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     this._view = webviewView;
 
     const extensionPath = this._extensionUri.fsPath;
-    const uiMode = getUiMode();
-    const isDev = uiMode === 'dev' ? true : uiMode === 'prod' ? false : isDevelopmentMode(extensionPath);
+    const isDev = isDevelopmentMode(extensionPath);
 
     webviewView.webview.options = {
       enableScripts: true,
@@ -120,7 +113,6 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     const viteDevServer = 'http://localhost:5173';
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
-    const uiMode = getUiMode();
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -217,7 +209,6 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
   <script nonce="${nonce}">
     window.__ATOPILE_API_URL__ = '${apiUrl}';
     window.__ATOPILE_WS_URL__ = '${wsUrl}';
-    window.__ATOPILE_UI_MODE__ = '${uiMode}';
   </script>
 </head>
 <body>

@@ -103,17 +103,6 @@
                     "scope": "resource",
                     "type": "boolean",
                     "default": true
-                },
-                "atopile.uiMode": {
-                    "description": "UI mode selection for the sidebar/log viewer webviews",
-                    "scope": "resource",
-                    "type": "string",
-                    "enum": [
-                        "auto",
-                        "dev",
-                        "prod"
-                    ],
-                    "default": "auto"
                 }
             }
         },

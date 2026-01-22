@@ -25,11 +25,6 @@ function isDevelopmentMode(extensionPath: string): boolean {
   return !fs.existsSync(prodPath);
 }
 
-function getUiMode(): 'auto' | 'dev' | 'prod' {
-  const config = vscode.workspace.getConfiguration('atopile');
-  return config.get<'auto' | 'dev' | 'prod'>('uiMode', 'auto');
-}
-
 /**
  * Generate a nonce for Content Security Policy.
  */
@@ -80,8 +75,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     });
 
     const extensionPath = this._extensionUri.fsPath;
-    const uiMode = getUiMode();
-    const isDev = uiMode === 'dev' ? true : uiMode === 'prod' ? false : isDevelopmentMode(extensionPath);
+    const isDev = isDevelopmentMode(extensionPath);
 
     if (isDev) {
       this._view.webview.html = this._getDevHtml();
@@ -98,13 +92,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._view = webviewView;
 
     const extensionPath = this._extensionUri.fsPath;
-    const uiMode = getUiMode();
-    const isDev = uiMode === 'dev' ? true : uiMode === 'prod' ? false : isDevelopmentMode(extensionPath);
+    const isDev = isDevelopmentMode(extensionPath);
 
     traceInfo('[SidebarProvider] resolveWebviewView called', {
       extensionPath,
       isDev,
-      uiMode,
       apiUrl: backendServer.apiUrl,
       wsUrl: backendServer.wsUrl,
     });
@@ -241,7 +233,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
     const workspaceFolders = this._getWorkspaceFolders();
-    const uiMode = getUiMode();
 
     // Debug: log URLs being used
     traceInfo('SidebarProvider: Generating HTML with apiUrl:', apiUrl, 'wsUrl:', wsUrl);
@@ -271,7 +262,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // Inject backend URLs for the React app
     window.__ATOPILE_API_URL__ = '${apiUrl}';
     window.__ATOPILE_WS_URL__ = '${wsUrl}';
-    window.__ATOPILE_UI_MODE__ = '${uiMode}';
     // Inject workspace folders for the React app
     window.__ATOPILE_WORKSPACE_FOLDERS__ = ${JSON.stringify(workspaceFolders)};
   </script>

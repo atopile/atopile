@@ -61,16 +61,6 @@ class atopileUriHandler implements vscode.UriHandler {
         } else if (path === "/restartExtensionHost") {
             traceInfo('restartExtensionHost - restarting extension host');
             vscode.commands.executeCommand('workbench.action.restartExtensionHost');
-        } else if (path === "/setUiMode") {
-            const params = new URLSearchParams(uri.query);
-            const mode = params.get("mode");
-            if (mode) {
-                const config = vscode.workspace.getConfiguration('atopile');
-                const hasWorkspace = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0;
-                const target = hasWorkspace ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
-                traceInfo(`setUiMode - setting atopile.uiMode=${mode} (target: ${hasWorkspace ? 'workspace' : 'global'})`);
-                config.update('uiMode', mode, target);
-            }
         }
     }
 }

@@ -3,10 +3,9 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Settings, ChevronDown, FolderOpen, Loader2, AlertCircle, Check, GitBranch, Package, Search, Sun, Moon, Monitor, X } from 'lucide-react';
+import { Settings, ChevronDown, FolderOpen, Loader2, AlertCircle, Check, GitBranch, Package, Search, X } from 'lucide-react';
 import { sendAction } from '../../api/websocket';
 import { DEFAULT_LOGO } from './sidebarUtils';
-import { useTheme } from '../../hooks/useTheme';
 
 // Send action to backend via WebSocket
 const action = (name: string, data?: Record<string, unknown>) => {
@@ -52,9 +51,6 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
 
-  // Theme management
-  const { theme, setTheme } = useTheme();
-
   // Max concurrent builds setting
   const detectedCores = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 4 : 4;
   const [maxConcurrentUseDefault, setMaxConcurrentUseDefault] = useState(true);
@@ -82,27 +78,6 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
   }>({ type: null, value: null });
 
   const noReleaseVersions = (atopile?.availableVersions?.length ?? 0) === 0;
-
-  const uiModeFromHost =
-    typeof window !== 'undefined' && (window as { __ATOPILE_UI_MODE__?: string }).__ATOPILE_UI_MODE__;
-
-  const getWorkspaceParam = (): string => {
-    if (typeof window === 'undefined') return '';
-    const win = window as { __ATOPILE_WORKSPACE_FOLDERS__?: string[] };
-    if (win.__ATOPILE_WORKSPACE_FOLDERS__ && win.__ATOPILE_WORKSPACE_FOLDERS__.length > 0) {
-      return `?workspace=${encodeURIComponent(JSON.stringify(win.__ATOPILE_WORKSPACE_FOLDERS__))}`;
-    }
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const workspaceParam = params.get('workspace');
-      if (workspaceParam) {
-        return `?workspace=${workspaceParam}`;
-      }
-    } catch {
-      return '';
-    }
-    return '';
-  };
 
   // Clear pending install when the actual version/branch matches what we requested
   // Also timeout after 60 seconds to prevent infinite spinner
@@ -533,40 +508,6 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                 </div>
               )}
 
-              <div className="settings-divider" />
-
-              {/* Theme Setting */}
-              <div className="settings-group">
-                <div className="settings-row">
-                  <span className="settings-label-title">Theme</span>
-                  <div className="settings-inline-control">
-                    <div className="theme-toggle-group">
-                      <button
-                        className={`theme-btn${theme === 'system' ? ' active' : ''}`}
-                        onClick={() => setTheme('system')}
-                        title="Follow system preference"
-                      >
-                        <Monitor size={12} />
-                      </button>
-                      <button
-                        className={`theme-btn${theme === 'light' ? ' active' : ''}`}
-                        onClick={() => setTheme('light')}
-                        title="Light theme"
-                      >
-                        <Sun size={12} />
-                      </button>
-                      <button
-                        className={`theme-btn${theme === 'dark' ? ' active' : ''}`}
-                        onClick={() => setTheme('dark')}
-                        title="Dark theme"
-                      >
-                        <Moon size={12} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               {/* Parallel Builds Setting */}
               <div className="settings-group">
                 <div className="settings-row">
@@ -636,57 +577,6 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                 </div>
                 <div className="settings-hint">
                   Show internal developer messages in Problems panel
-                </div>
-              </div>
-
-              <div className="settings-group">
-                <div className="settings-row">
-                  <span className="settings-label-title">UI Mode</span>
-                  <div className="settings-inline-control">
-                    <button
-                      className={`settings-value-btn${uiModeFromHost === 'auto' || !uiModeFromHost ? ' active' : ''}`}
-                      onClick={() => action('openUrl', { url: 'vscode://atopile.atopile/setUiMode?mode=auto' })}
-                      title="Follow auto detection"
-                    >
-                      Auto
-                    </button>
-                    <button
-                      className={`settings-value-btn${uiModeFromHost === 'dev' ? ' active' : ''}`}
-                      onClick={() => action('openUrl', { url: 'vscode://atopile.atopile/setUiMode?mode=dev' })}
-                      title="Force dev (Vite)"
-                    >
-                      Dev
-                    </button>
-                    <button
-                      className={`settings-value-btn${uiModeFromHost === 'prod' ? ' active' : ''}`}
-                      onClick={() => action('openUrl', { url: 'vscode://atopile.atopile/setUiMode?mode=prod' })}
-                      title="Force prod (compiled webviews)"
-                    >
-                      Prod
-                    </button>
-                  </div>
-                </div>
-                <div className="settings-row">
-                  <span className="settings-label-title">Switch UI</span>
-                  <div className="settings-inline-control">
-                    <button
-                      className="settings-value-btn"
-                      onClick={() => action('openUrl', { url: `http://localhost:5173/sidebar.html${getWorkspaceParam()}` })}
-                      title="Open dev UI in browser"
-                    >
-                      Open Dev UI
-                    </button>
-                    <button
-                      className="settings-value-btn"
-                      onClick={() => window.location.reload()}
-                      title="Reload webview"
-                    >
-                      Reload UI
-                    </button>
-                  </div>
-                </div>
-                <div className="settings-hint">
-                  Mode selection is based on built assets. Reload after starting or stopping Vite.
                 </div>
               </div>
 
