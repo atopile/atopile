@@ -156,10 +156,10 @@ def main():
         elif args.auto_port:
             old_port = port  # noqa: F841
             port = find_free_port()
-            print("Port {old_port} in use, using port {port} instead")
+            print(f"Port {old_port} in use, using port {port} instead")
         elif is_atopile_server_running(port):
-            print("Atopile server already running on port {port}")
-            print("Dashboard available at http://localhost:{port}")
+            print(f"atopile server already running on port {port}")
+            print(f"Dashboard available at http://localhost:{port}")
             print("Use --force to restart, or --auto-port to use a different port")
             sys.exit(0)
         else:

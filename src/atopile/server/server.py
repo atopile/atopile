@@ -22,7 +22,7 @@ from atopile.server import build_history, project_discovery
 from atopile.server.app_context import AppContext
 from atopile.server.domains import artifacts as artifacts_domain
 from atopile.server.domains import packages as packages_domain
-from atopile.server.file_watcher import PollingFileWatcher
+from atopile.server.file_watcher import FileChangeResult, FileWatcher
 from atopile.server.state import server_state
 
 log = logging.getLogger(__name__)
@@ -183,11 +183,10 @@ async def _refresh_variables_state() -> None:
 async def _watch_stdlib_background() -> None:
     from atopile.server import stdlib as stdlib_domain
 
-    watcher = PollingFileWatcher(
+    watcher = FileWatcher(
         "stdlib",
         paths=stdlib_domain.get_stdlib_watch_paths(),
         on_change=lambda _result: _refresh_stdlib_state(),
-        interval_s=1.0,
     )
     await watcher.run()
 
@@ -201,12 +200,11 @@ async def _watch_bom_background() -> None:
             if project.root
         ]
 
-    watcher = PollingFileWatcher(
+    watcher = FileWatcher(
         "bom",
         paths_provider=_paths,
         on_change=lambda _result: _refresh_bom_state(),
         glob="**/*.bom.json",
-        interval_s=1.0,
     )
     await watcher.run()
 
@@ -220,12 +218,11 @@ async def _watch_variables_background() -> None:
             if project.root
         ]
 
-    watcher = PollingFileWatcher(
+    watcher = FileWatcher(
         "variables",
         paths_provider=_paths,
         on_change=lambda _result: _refresh_variables_state(),
         glob="**/*.variables.json",
-        interval_s=1.0,
     )
     await watcher.run()
 
@@ -258,7 +255,7 @@ def _get_project_roots() -> list[Path]:
 
 
 def _affected_project_roots(
-    result: "PollingFileWatcher.Result",
+    result: "FileChangeResult",
 ) -> list[Path]:
     roots = _get_project_roots()
     if not roots:
@@ -318,51 +315,47 @@ async def _watch_projects_background() -> None:
     def _paths() -> list[Path]:
         return server_state._workspace_paths or []
 
-    watcher = PollingFileWatcher(
+    watcher = FileWatcher(
         "projects",
         paths_provider=_paths,
         on_change=lambda _result: _refresh_projects_state(),
         glob="**/ato.yaml",
-        interval_s=1.0,
     )
     await watcher.run()
 
 
 async def _watch_project_sources_background() -> None:
-    watcher = PollingFileWatcher(
+    watcher = FileWatcher(
         "project-sources",
         paths_provider=_get_project_roots,
         on_change=lambda result: _handle_project_sources_change(result),
         glob="**/*.ato",
-        interval_s=1.0,
     )
     await watcher.run()
 
 
 async def _watch_project_python_background() -> None:
-    watcher = PollingFileWatcher(
+    watcher = FileWatcher(
         "project-python",
         paths_provider=_get_project_roots,
         on_change=lambda result: _handle_project_python_change(result),
         glob="**/*.py",
-        interval_s=1.0,
     )
     await watcher.run()
 
 
 async def _watch_project_dependencies_background() -> None:
-    watcher = PollingFileWatcher(
+    watcher = FileWatcher(
         "project-deps",
         paths_provider=_get_project_roots,
         on_change=lambda result: _handle_project_dependencies_change(result),
         glob="**/ato.yaml",
-        interval_s=1.0,
     )
     await watcher.run()
 
 
 async def _handle_project_sources_change(
-    result: "PollingFileWatcher.Result",
+    result: "FileChangeResult",
 ) -> None:
     roots = _affected_project_roots(result)
     if not roots:
@@ -381,7 +374,7 @@ async def _handle_project_sources_change(
 
 
 async def _handle_project_python_change(
-    result: "PollingFileWatcher.Result",
+    result: "FileChangeResult",
 ) -> None:
     roots = _affected_project_roots(result)
     if not roots:
@@ -395,7 +388,7 @@ async def _handle_project_python_change(
 
 
 async def _handle_project_dependencies_change(
-    result: "PollingFileWatcher.Result",
+    result: "FileChangeResult",
 ) -> None:
     roots = _affected_project_roots(result)
     if not roots:
