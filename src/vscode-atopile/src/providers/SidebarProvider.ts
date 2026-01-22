@@ -45,6 +45,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _disposables: vscode.Disposable[] = [];
   private _lastMode: 'dev' | 'prod' | null = null;
   private _hasHtml: boolean = false;
+  private _lastWorkspaceFoldersJson: string | null = null;
 
   constructor(private readonly _extensionUri: vscode.Uri) {
     this._disposables.push(
@@ -52,6 +53,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         if (connected) {
           this._refreshWebview();
         }
+      })
+    );
+    this._disposables.push(
+      vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        this._postWorkspaceFolders();
       })
     );
   }
@@ -137,6 +143,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     this._hasHtml = true;
     this._lastMode = mode;
+    this._postWorkspaceFolders();
   }
 
   /**
@@ -146,6 +153,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders) return [];
     return folders.map(f => f.uri.fsPath);
+  }
+
+  private _postWorkspaceFolders(): void {
+    if (!this._view) {
+      return;
+    }
+    const folders = this._getWorkspaceFolders();
+    const foldersJson = JSON.stringify(folders);
+    if (this._lastWorkspaceFoldersJson === foldersJson) {
+      return;
+    }
+    this._lastWorkspaceFoldersJson = foldersJson;
+    this._view.webview.postMessage({ type: 'workspace-folders', folders });
   }
 
   /**
@@ -207,6 +227,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 <body>
   <div class="dev-banner">DEV MODE - Loading from Vite</div>
   <iframe src="${viteDevServer}/sidebar.html${workspaceParam}"></iframe>
+  <script>
+    window.addEventListener('message', (event) => {
+      const data = event && event.data;
+      if (!data || data.type !== 'workspace-folders') return;
+      const iframe = document.querySelector('iframe');
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage(data, '*');
+      }
+    });
+  </script>
 </body>
 </html>`;
   }

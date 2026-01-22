@@ -9,7 +9,9 @@ import json
 import logging
 import os
 import queue
+import shutil
 import subprocess
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -155,8 +157,13 @@ def _run_build_subprocess(
     return_code: int = -1
 
     try:
-        # Build the command
-        cmd = ["ato", "build", "--verbose"]
+        # Build the command (prefer explicit binary, then PATH, then module)
+        ato_binary = os.environ.get("ATO_BINARY") or os.environ.get("ATO_BINARY_PATH")
+        resolved_ato = ato_binary or shutil.which("ato")
+        if resolved_ato:
+            cmd = [resolved_ato, "build", "--verbose"]
+        else:
+            cmd = [sys.executable, "-m", "atopile", "build", "--verbose"]
 
         # Determine which targets to monitor for stage updates
         # For standalone builds, we use the entry point name
