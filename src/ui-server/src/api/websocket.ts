@@ -7,7 +7,7 @@
 
 import { useStore } from '../store';
 import type { AppState } from '../types/build';
-import { WS_STATE_URL, getWorkspaceFolders } from './index';
+import { WS_STATE_URL, getWorkspaceFolders } from './config';
 
 // Reconnection settings
 const RECONNECT_DELAY_MS = 1000;
