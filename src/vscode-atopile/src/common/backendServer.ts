@@ -9,18 +9,13 @@
  */
 
 import * as vscode from 'vscode';
-import axios from 'axios';
 import { traceInfo, traceError, traceVerbose } from './log/logging';
 import { getAtoBin, getAtoCommand } from './findbin';
+import { appStateManager } from './appState';
 
 const DEFAULT_API_URL = 'http://localhost:8501';
 const SERVER_STARTUP_TIMEOUT_MS = 30000; // 30 seconds to wait for server startup
 const SERVER_HEALTH_CHECK_INTERVAL_MS = 1000; // Check every second during startup
-
-interface BuildRequest {
-    project_path: string;
-    targets: string[];
-}
 
 interface BuildResponse {
     success: boolean;
@@ -122,7 +117,7 @@ class BackendServerManager implements vscode.Disposable {
         this._isStarting = true;
 
         try {
-            const command = await getAtoCommand(undefined, ['serve', 'start', '--force']);
+            const command = await getAtoCommand(undefined, ['serve', 'backend']);
             if (!command) {
                 traceError('BackendServer: Cannot start server - ato binary not found');
                 return false;
@@ -192,8 +187,9 @@ class BackendServerManager implements vscode.Disposable {
      * Show the server terminal (creates one if needed).
      */
     async showTerminal(): Promise<void> {
-        if (this._terminal) {
-            this._terminal.show();
+        const existingTerminal = this._terminal;
+        if (existingTerminal) {
+            existingTerminal.show();
             return;
         }
 
@@ -216,13 +212,17 @@ class BackendServerManager implements vscode.Disposable {
         this._terminal?.show();
     }
 
+    async startOrShowTerminal(): Promise<void> {
+        await this.showTerminal();
+    }
+
     /**
      * Check if the server is healthy.
      */
     private async _checkServerHealth(): Promise<boolean> {
         try {
-            const response = await axios.get(`${this.apiUrl}/health`, { timeout: 2000 });
-            return response.status === 200;
+            await appStateManager.sendActionWithResponse('ping', {}, { timeoutMs: 2000 });
+            return true;
         } catch {
             return false;
         }
@@ -252,10 +252,11 @@ class BackendServerManager implements vscode.Disposable {
             const atoBinInfo = await getAtoBin();
             if (atoBinInfo && atoBinInfo.command.length > 0) {
                 const atoBinary = atoBinInfo.command[0];
-                await axios.post(`${this.apiUrl}/api/config`, null, {
-                    params: { ato_binary: atoBinary },
-                    timeout: 5000,
-                });
+                await appStateManager.sendActionWithResponse(
+                    'setAtoBinary',
+                    { atoBinary },
+                    { timeoutMs: 5000 }
+                );
                 traceInfo(`BackendServer: Configured ato binary: ${atoBinary} (source: ${atoBinInfo.source})`);
             }
         } catch (error) {
@@ -271,24 +272,16 @@ class BackendServerManager implements vscode.Disposable {
             throw new Error('Backend server is not connected. Run "ato serve" to start it.');
         }
 
-        const request: BuildRequest = {
-            project_path: projectPath,
-            targets: targets,
-        };
-
         try {
-            const response = await axios.post<BuildResponse>(
-                `${this.apiUrl}/api/build`,
-                request,
-                { timeout: 10000 }
+            const response = await appStateManager.sendActionWithResponse(
+                'build',
+                { projectRoot: projectPath, targets },
+                { timeoutMs: 10000 }
             );
-            traceInfo(`Build started: ${response.data.build_id}`);
-            return response.data;
+            const result = response.result || {};
+            traceInfo(`Build started: ${result.build_id || 'unknown'}`);
+            return result as BuildResponse;
         } catch (error) {
-            if (axios.isAxiosError(error)) {
-                const detail = error.response?.data?.detail || error.message;
-                throw new Error(`Build failed: ${detail}`);
-            }
             throw error;
         }
     }

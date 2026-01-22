@@ -22,7 +22,7 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-xs);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
@@ -33,7 +33,7 @@
 .stdlib-list {
   flex: 1;
   overflow-y: auto;
-  padding: var(--spacing-sm);
+  padding: var(--spacing-sm) 0;
 }
 
 /* Loading State */

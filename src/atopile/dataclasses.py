@@ -1021,6 +1021,14 @@ class AppState(BaseModel):
     is_loading_variables: bool = False
     variables_error: Optional[str] = None
 
+    # Open signals (one-shot signals to open files/apps)
+    open_file: Optional[str] = None
+    open_file_line: Optional[int] = None
+    open_file_column: Optional[int] = None
+    open_layout: Optional[str] = None
+    open_kicad: Optional[str] = None
+    open_3d: Optional[str] = None
+
     class Config:
         # Use camelCase for JSON serialization to match frontend
         populate_by_name = True

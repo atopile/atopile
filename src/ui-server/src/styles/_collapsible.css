@@ -13,16 +13,19 @@
   flex-direction: column;
   border-bottom: 1px solid var(--border-color);
   overflow: hidden;
-  /* Default: only take up content height, don't expand */
-  flex: 0 0 auto;
+  /* Default: share available space with other expanded sections */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .collapsible-section.collapsed {
   flex: 0 0 auto !important;
+  min-height: auto;
 }
 
 /* When manually resized, respect the height and make body scroll */
 .collapsible-section.has-height {
+  flex: 0 0 auto;
   overflow: hidden;
 }
 
@@ -52,7 +55,8 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  padding: 5px var(--spacing-sm);
+  /* Edge-to-edge: minimal padding, border-left is visual indicator */
+  padding: 5px var(--spacing-xs) 5px 0;
   background: var(--bg-secondary);
   cursor: pointer;
   user-select: none;
@@ -182,9 +186,11 @@
 }
 
 .section-body {
-  /* Don't expand by default - only take content height */
-  flex: 0 0 auto;
-  overflow-x: visible;
+  /* Expand to fill section and scroll */
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
 }
 
 /* For flex-grow sections, body should expand and scroll */

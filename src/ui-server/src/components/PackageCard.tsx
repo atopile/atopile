@@ -10,7 +10,7 @@ import {
 import { BuildsCard } from './BuildsCard'
 import { DependencyCard, type ProjectDependency } from './DependencyCard'
 import { FileExplorer, type FileTreeNode } from './FileExplorer'
-import { api } from '../api/client'
+import { sendActionWithResponse } from '../api/websocket'
 import type {
   Selection,
   Project,
@@ -19,9 +19,6 @@ import type {
 } from './projectsTypes'
 import type { PackageDetails } from '../types/build'
 import './PackageCard.css'
-
-// Simple cache for package details to avoid re-fetching
-const packageDetailsCache = new Map<string, PackageDetails>()
 
 // Check if a package has an update available
 export function hasUpdate(project: Project): boolean {
@@ -280,30 +277,23 @@ export const PackageCard = memo(function PackageCard({
   const selectedTarget = availableProjects.find(p => p.id === selectedProjectId)
   const installStatus = isInstalledInProject(project, selectedTarget?.path || selectedProjectId)
 
-  // Fetch package details when expanded (with caching)
+  // Fetch package details when expanded
   useEffect(() => {
     if (expanded && !packageDetails && !detailsLoading) {
-      // Check cache first
-      const cached = packageDetailsCache.get(project.id)
-      if (cached) {
-        setPackageDetails(cached)
-        if (cached.versions?.length > 0 && !selectedVersion) {
-          setSelectedVersion(cached.versions[0].version)
-        }
-        return
-      }
-
       setDetailsLoading(true)
       setDetailsError(null)
 
-      api.packages.details(project.id)
-        .then(details => {
-          // Store in cache
-          packageDetailsCache.set(project.id, details)
-          setPackageDetails(details)
-          // Update selected version if we now have the versions list
-          if (details.versions?.length > 0 && !selectedVersion) {
-            setSelectedVersion(details.versions[0].version)
+      sendActionWithResponse('getPackageDetails', { packageId: project.id })
+        .then(response => {
+          const result = response.result ?? {}
+          const details = (result as { details?: PackageDetails }).details
+          if (details) {
+            setPackageDetails(details)
+            if (details.versions?.length > 0 && !selectedVersion) {
+              setSelectedVersion(details.versions[0].version)
+            }
+          } else {
+            setDetailsError('Failed to load package details')
           }
         })
         .catch(err => {

@@ -90,7 +90,6 @@ logging.addLevelName(ALERT, "ALERT")
 # SQLite Logging - Typed API for structured build logs
 # =============================================================================
 
-# Schema for the logs table
 SCHEMA_SQL = """
 -- Builds table: maps project/target/instance to a unique build_id
 CREATE TABLE IF NOT EXISTS builds (

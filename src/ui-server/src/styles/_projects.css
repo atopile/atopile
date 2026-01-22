@@ -19,7 +19,8 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  padding: var(--spacing-sm);
+  /* Edge-to-edge: no horizontal padding */
+  padding: var(--spacing-sm) 0;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -457,12 +458,16 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  margin: var(--spacing-xs) var(--spacing-xs);
+  /* Edge-to-edge: no horizontal margins, small vertical spacing */
+  margin: var(--spacing-xs) 0;
   overflow: visible;
   transition: all var(--transition-fast);
   position: relative;
   cursor: pointer;
-  padding: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-xs);
+  border-left: none;
+  border-right: none;
+  border-radius: 0;
 }
 
 .project-card:hover {

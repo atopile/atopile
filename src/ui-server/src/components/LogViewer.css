@@ -334,7 +334,7 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  background: var(--ctp-crust);
+  background: var(--bg-primary);
 }
 
 .lv-empty {
@@ -352,11 +352,11 @@
   padding: 2px var(--spacing-sm);
   font-size: var(--font-size-sm);
   line-height: 1.4;
-  border-bottom: 1px solid var(--ctp-mantle);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .lv-entry:hover {
-  background: var(--ctp-mantle);
+  background: var(--bg-secondary);
 }
 
 .lv-entry:last-child {

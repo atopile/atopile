@@ -459,6 +459,8 @@ If you're writing `filter()`, `sort()`, or `map()` with business logic in the fr
 
 ## Tips for Contributors
 
+See `src/vscode-atopile/install_flow_test_plan.md` for the install/bootstrap test plan.
+
 1. **Types live in one place** - `src/vscode-atopile/webviews/src/types/build.ts` is the source of truth for TypeScript types. Don't duplicate.
 
 2. **Backend changes require restart** - The dev server auto-starts the backend, so restart `./dev.sh`.

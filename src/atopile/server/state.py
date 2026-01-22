@@ -256,6 +256,16 @@ class ServerState:
         self._state.atopile.available_branches = branches
         await self.broadcast_state()
 
+    async def set_atopile_installing(
+        self, installing: bool, error: Optional[str] = None
+    ) -> None:
+        """Set atopile install status and optional error."""
+        self._state.atopile.is_installing = installing
+        self._state.atopile.error = error
+        if not installing:
+            self._state.atopile.install_progress = None
+        await self.broadcast_state()
+
     async def set_atopile_detected_installations(
         self, installations: list[dict]
     ) -> None:
@@ -356,6 +366,43 @@ class ServerState:
         self._state.variables_error = error
         self._state.is_loading_variables = False
         await self.broadcast_state()
+
+    async def set_open_file(
+        self,
+        file_path: str,
+        line: Optional[int] = None,
+        column: Optional[int] = None,
+    ) -> None:
+        """Signal to open a file in the editor."""
+        self._state.open_file = file_path
+        self._state.open_file_line = line
+        self._state.open_file_column = column
+        await self.broadcast_state()
+        # Clear after broadcast so it acts as a one-shot signal
+        self._state.open_file = None
+        self._state.open_file_line = None
+        self._state.open_file_column = None
+
+    async def set_open_layout(self, layout_path: str) -> None:
+        """Signal to open a layout file."""
+        self._state.open_layout = layout_path
+        await self.broadcast_state()
+        # Clear after broadcast so it acts as a one-shot signal
+        self._state.open_layout = None
+
+    async def set_open_kicad(self, kicad_path: str) -> None:
+        """Signal to open KiCad with a project."""
+        self._state.open_kicad = kicad_path
+        await self.broadcast_state()
+        # Clear after broadcast so it acts as a one-shot signal
+        self._state.open_kicad = None
+
+    async def set_open_3d(self, model_path: str) -> None:
+        """Signal to open the 3D viewer."""
+        self._state.open_3d = model_path
+        await self.broadcast_state()
+        # Clear after broadcast so it acts as a one-shot signal
+        self._state.open_3d = None
 
 
 # Global singleton instance

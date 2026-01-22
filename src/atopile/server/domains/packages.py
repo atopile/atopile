@@ -501,6 +501,47 @@ async def refresh_packages_state(
         log.info(f"Refreshed packages: {len(state_packages)} packages")
 
 
+async def refresh_installed_packages_state(
+    scan_paths: list[Path] | None = None,
+) -> None:
+    """Refresh installed package flags without hitting the registry."""
+    if scan_paths is None:
+        scan_paths = server_state._workspace_paths
+
+    if not scan_paths:
+        await server_state.set_packages([], error=None)
+        return
+
+    installed_map = await asyncio.to_thread(
+        core_packages.get_all_installed_packages, scan_paths
+    )
+
+    existing = list(server_state.state.packages or [])
+    existing_by_id = {pkg.identifier: pkg for pkg in existing}
+    updated: list[PackageInfo] = []
+
+    for pkg in existing:
+        installed = installed_map.get(pkg.identifier)
+        if installed:
+            pkg.installed = True
+            pkg.installed_in = installed.installed_in
+            pkg.version = installed.version
+            if pkg.latest_version:
+                pkg.has_update = version_is_newer(pkg.version, pkg.latest_version)
+        else:
+            pkg.installed = False
+            pkg.installed_in = []
+            pkg.version = None
+            pkg.has_update = False
+        updated.append(pkg)
+
+    for identifier, installed in installed_map.items():
+        if identifier not in existing_by_id:
+            updated.append(installed)
+
+    await server_state.set_packages(updated, server_state.state.packages_error)
+
+
 def handle_search_registry(
     query: str,
     scan_paths: list[Path] | None,

@@ -86,6 +86,12 @@ let reconnectAttempts = 0;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 let connectionTimeout: ReturnType<typeof setTimeout> | null = null;
 let isIntentionallyClosed = false;
+let requestCounter = 0;
+const pendingRequests = new Map<string, {
+  resolve: (message: ActionResultMessage) => void;
+  reject: (error: Error) => void;
+  timeoutId: ReturnType<typeof setTimeout>;
+}>();
 
 /**
  * Clean up any pending timeouts and close the current WebSocket.
@@ -94,6 +100,13 @@ function cleanup(): void {
   if (connectionTimeout) {
     clearTimeout(connectionTimeout);
     connectionTimeout = null;
+  }
+  if (pendingRequests.size > 0) {
+    for (const [requestId, pending] of pendingRequests.entries()) {
+      clearTimeout(pending.timeoutId);
+      pending.reject(new Error('WebSocket disconnected'));
+      pendingRequests.delete(requestId);
+    }
   }
   if (ws) {
     // Remove handlers to prevent callbacks during cleanup
@@ -185,6 +198,33 @@ export function sendAction(action: string, payload?: Record<string, unknown>): v
 }
 
 /**
+ * Send an action and await the corresponding action_result.
+ */
+export function sendActionWithResponse(
+  action: string,
+  payload: Record<string, unknown> = {},
+  options?: { timeoutMs?: number }
+): Promise<ActionResultMessage> {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    return Promise.reject(new Error('WebSocket not connected'));
+  }
+
+  requestCounter += 1;
+  const requestId = `${Date.now()}-${requestCounter}`;
+  const timeoutMs = options?.timeoutMs ?? 10000;
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      pendingRequests.delete(requestId);
+      reject(new Error(`Action timeout: ${action}`));
+    }, timeoutMs);
+
+    pendingRequests.set(requestId, { resolve, reject, timeoutId });
+    sendAction(action, { ...payload, requestId });
+  });
+}
+
+/**
  * Check if WebSocket is connected.
  */
 export function isConnected(): boolean {
@@ -225,6 +265,19 @@ function handleMessage(event: MessageEvent): void {
         // Action response (success/failure)
         // Result is nested in message.result from backend
         const result = message.result || message;
+        const requestId = typeof message.payload?.requestId === 'string'
+          ? message.payload.requestId
+          : null;
+        if (requestId && pendingRequests.has(requestId)) {
+          const pending = pendingRequests.get(requestId)!;
+          clearTimeout(pending.timeoutId);
+          pendingRequests.delete(requestId);
+          if (result.success) {
+            pending.resolve(message);
+          } else {
+            pending.reject(new Error(String(result.error || 'Action failed')));
+          }
+        }
         if (!result.success) {
           console.error(`[WS] Action failed: ${message.action}`, result.error);
         }

@@ -17,7 +17,6 @@ from atopile.config import ProjectConfig
 from atopile.dataclasses import Log
 from atopile.logging import BuildLogger
 from atopile.server import (
-    module_discovery,
     path_utils,
     problem_parser,
     project_discovery,
@@ -33,6 +32,10 @@ from atopile.server.build_queue import (
 )
 from atopile.server.core import projects as core_projects
 from atopile.server.domains import packages as packages_domain
+from atopile.server.domains import projects as projects_domain
+from atopile.server.domains import artifacts as artifacts_domain
+from atopile.server.domains import parts as parts_domain
+from atopile.server.domains import builds as builds_domain
 from atopile.server.state import server_state
 from atopile.server.stdlib import get_standard_library
 
@@ -301,6 +304,15 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             await packages_domain.refresh_packages_state(scan_paths=ctx.workspace_paths)
             return {"success": True}
 
+        if action == "searchPackages":
+            query = payload.get("query", "")
+            paths = payload.get("paths")
+            scan_paths = packages_domain.resolve_scan_paths(ctx, paths)
+            result = await asyncio.to_thread(
+                packages_domain.handle_search_registry, query, scan_paths
+            )
+            return {"success": True, **result.model_dump(by_alias=True)}
+
         if action == "refreshStdlib":
             from atopile.dataclasses import StdLibItem as StateStdLibItem
 
@@ -366,30 +378,28 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 "message": f"Build {build_id} cannot be cancelled (already completed)",
             }
 
-        # if action == "fetchModules":
-        #     project_root = payload.get("projectRoot", "")
-        #     if project_root:
-        #         from atopile.dataclasses import (
-        #             ModuleDefinition as StateModuleDefinition,
-        #         )
+        if action == "fetchModules":
+            project_root = payload.get("projectRoot", "")
+            if not project_root:
+                return {"success": True, "info": "No project specified"}
 
-        #         # Run blocking module discovery in thread pool
-        #         modules = await asyncio.to_thread(
-        #             module_discovery.discover_modules_in_project, Path(project_root)
-        #         )
-        #         state_modules = [
-        #             StateModuleDefinition(
-        #                 name=m.name,
-        #                 type=m.type,
-        #                 file=m.file,
-        #                 entry=m.entry,
-        #                 line=m.line,
-        #                 super_type=m.super_type,
-        #             )
-        #             for m in modules
-        #         ]
-        #         await server_state.set_project_modules(project_root, state_modules)
-        #     return {"success": True}
+            project_path = Path(project_root)
+            if not await asyncio.to_thread(project_path.exists):
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            from atopile.server.domains import projects as projects_domain
+
+            response = await asyncio.to_thread(
+                projects_domain.handle_get_modules, project_root
+            )
+            if response:
+                await server_state.set_project_modules(
+                    project_root, response.modules
+                )
+            return {"success": True}
 
         if action == "getPackageDetails":
             package_id = payload.get("packageId", "")
@@ -401,35 +411,35 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     packages_domain.get_package_details_from_registry, package_id
                 )
                 if details:
-                    state_details = StatePackageDetails(
-                        identifier=details.identifier,
-                        name=details.name,
-                        publisher=details.publisher,
-                        version=details.version,
-                        summary=details.summary,
-                        description=details.description,
-                        homepage=details.homepage,
-                        repository=details.repository,
-                        license=details.license,
-                        downloads=details.downloads,
-                        downloads_this_week=details.downloads_this_week,
-                        downloads_this_month=details.downloads_this_month,
-                        versions=[],
-                        version_count=details.version_count,
-                        installed=details.installed,
-                        installed_version=details.installed_version,
-                        installed_in=details.installed_in,
+                    state_details = StatePackageDetails.model_validate(
+                        details.model_dump()
                     )
                     await server_state.set_package_details(state_details)
+                    return {
+                        "success": True,
+                        "details": state_details.model_dump(by_alias=True),
+                    }
                 else:
                     await server_state.set_package_details(
                         None, f"Package not found: {package_id}"
                     )
-            return {"success": True}
+            return {"success": False, "error": f"Package not found: {package_id}"}
 
         if action == "clearPackageDetails":
             await server_state.set_package_details(None)
             return {"success": True}
+
+        if action == "getBomTargets":
+            project_root = payload.get("projectRoot", "")
+            if not project_root:
+                return {"success": False, "error": "Missing projectRoot"}
+            try:
+                result = await asyncio.to_thread(
+                    artifacts_domain.handle_get_bom_targets, project_root
+                )
+                return {"success": True, **result}
+            except Exception as exc:
+                return {"success": False, "error": str(exc)}
 
         if action == "refreshBOM":
             project_root = payload.get("projectRoot", "")
@@ -521,6 +531,18 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 return {"success": True}
             except Exception as exc:
                 await server_state.set_variables_data(None, str(exc))
+                return {"success": False, "error": str(exc)}
+
+        if action == "getVariablesTargets":
+            project_root = payload.get("projectRoot", "")
+            if not project_root:
+                return {"success": False, "error": "Missing projectRoot"}
+            try:
+                result = await asyncio.to_thread(
+                    artifacts_domain.handle_get_variables_targets, project_root
+                )
+                return {"success": True, **result}
+            except Exception as exc:
                 return {"success": False, "error": str(exc)}
 
         if action == "installPackage":
@@ -833,6 +855,116 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             await server_state.set_project_dependencies(project_root, dependencies)
             return {"success": True}
 
+        if action == "getModuleChildren":
+            project_root = payload.get("projectRoot", "")
+            entry_point = payload.get("entryPoint", "")
+            max_depth = int(payload.get("maxDepth", 2))
+            if not project_root or not entry_point:
+                return {"success": False, "error": "Missing projectRoot or entryPoint"}
+            from pathlib import Path
+            from atopile.server.module_introspection import introspect_module
+
+            max_depth = max(0, min(5, max_depth))
+            result = await asyncio.to_thread(
+                introspect_module, Path(project_root), entry_point, max_depth
+            )
+            if result is None:
+                return {
+                    "success": False,
+                    "error": f"Could not introspect module: {entry_point}",
+                }
+            return {
+                "success": True,
+                "children": [child.model_dump(by_alias=True) for child in result],
+            }
+
+        if action == "getBuildsByProject":
+            project_root = payload.get("projectRoot")
+            target = payload.get("target")
+            limit = int(payload.get("limit", 50))
+            result = await asyncio.to_thread(
+                builds_domain.handle_get_builds_by_project, project_root, target, limit
+            )
+            return {"success": True, **result}
+
+        if action == "fetchLcscParts":
+            lcsc_ids = payload.get("lcscIds", [])
+            project_root = payload.get("projectRoot")
+            target = payload.get("target")
+            if not lcsc_ids:
+                return {"success": False, "error": "Missing lcscIds"}
+            try:
+                result = await asyncio.to_thread(
+                    parts_domain.handle_get_lcsc_parts,
+                    lcsc_ids,
+                    project_root=project_root,
+                    target=target,
+                )
+                return {"success": True, **result}
+            except Exception as exc:
+                return {"success": False, "error": str(exc)}
+
+        if action == "addBuildTarget":
+            try:
+                data = {k: v for k, v in payload.items() if k != "requestId"}
+                result = await asyncio.to_thread(
+                    projects_domain.handle_add_build_target,
+                    projects_domain.AddBuildTargetRequest(**data),
+                )
+                return {"success": True, **result.model_dump(by_alias=True)}
+            except Exception as exc:
+                return {"success": False, "error": str(exc)}
+
+        if action == "updateBuildTarget":
+            try:
+                data = {k: v for k, v in payload.items() if k != "requestId"}
+                result = await asyncio.to_thread(
+                    projects_domain.handle_update_build_target,
+                    projects_domain.UpdateBuildTargetRequest(**data),
+                )
+                return {"success": True, **result.model_dump(by_alias=True)}
+            except Exception as exc:
+                return {"success": False, "error": str(exc)}
+
+        if action == "deleteBuildTarget":
+            try:
+                data = {k: v for k, v in payload.items() if k != "requestId"}
+                result = await asyncio.to_thread(
+                    projects_domain.handle_delete_build_target,
+                    projects_domain.DeleteBuildTargetRequest(**data),
+                )
+                return {"success": True, **result.model_dump(by_alias=True)}
+            except Exception as exc:
+                return {"success": False, "error": str(exc)}
+
+        if action == "updateDependencyVersion":
+            try:
+                data = {k: v for k, v in payload.items() if k != "requestId"}
+                result = await asyncio.to_thread(
+                    projects_domain.handle_update_dependency_version,
+                    projects_domain.UpdateDependencyVersionRequest(**data),
+                )
+                return {"success": True, **result.model_dump(by_alias=True)}
+            except Exception as exc:
+                return {"success": False, "error": str(exc)}
+
+        if action == "uiLog":
+            level = payload.get("level", "info")
+            message = payload.get("message", "")
+            log_method = getattr(log, level, log.info)
+            log_method(f"[ui] {message}")
+            return {"success": True}
+
+        if action == "setAtoBinary":
+            ato_binary = payload.get("atoBinary")
+            if not ato_binary:
+                return {"success": False, "error": "Missing atoBinary"}
+            log.info(f"Received ato binary from client: {ato_binary}")
+            return {"success": True}
+
+        if action == "ping":
+            return {"success": True}
+
         if action == "openFile":
             file_path = payload.get("file")
             line = payload.get("line")
@@ -1019,7 +1151,11 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
         elif action == "setWorkspaceFolders":
             folders = payload.get("folders", [])
-            await server_state.set_workspace_folders(folders)
+            paths = [Path(p) for p in folders if p]
+            ctx.workspace_paths = paths
+            server_state.set_workspace_paths(paths)
+            await handle_data_action("refreshProjects", {}, ctx)
+            await handle_data_action("refreshPackages", {}, ctx)
             return {"success": True}
 
         return {"success": False, "error": f"Unknown action: {action}"}

@@ -86,7 +86,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     script-src 'unsafe-inline';
     connect-src ${viteDevServer} ${backendUrl} ${wsUrl};
   ">
-  <title>Atopile Logs</title>
+  <title>atopile Logs</title>
   <style>
     html, body {
       margin: 0;
@@ -157,12 +157,12 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'none';
     style-src ${webview.cspSource} 'unsafe-inline';
-    script-src 'nonce-${nonce}';
+    script-src ${webview.cspSource} 'nonce-${nonce}';
     font-src ${webview.cspSource};
     img-src ${webview.cspSource} data:;
     connect-src ${backendUrl} ${wsUrl};
   ">
-  <title>Atopile Logs</title>
+  <title>atopile Logs</title>
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
   ${cssUri ? `<link rel="stylesheet" href="${cssUri}">` : ''}
   <script nonce="${nonce}">

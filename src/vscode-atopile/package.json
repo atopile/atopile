@@ -111,7 +111,7 @@
             "panel": [
                 {
                     "id": "atopile-panel",
-                    "title": "Atopile Logs",
+                    "title": "atopile Logs",
                     "icon": "ato_logo_256x256.png"
                 }
             ]

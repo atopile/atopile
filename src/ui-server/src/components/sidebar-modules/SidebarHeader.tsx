@@ -81,6 +81,8 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
     value: string | null;
   }>({ type: null, value: null });
 
+  const noReleaseVersions = (atopile?.availableVersions?.length ?? 0) === 0;
+
   // Clear pending install when the actual version/branch matches what we requested
   // Also timeout after 60 seconds to prevent infinite spinner
   useEffect(() => {
@@ -101,6 +103,14 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
       return () => clearTimeout(timeout);
     }
   }, [atopile?.currentVersion, atopile?.branch, pendingInstall]);
+
+  // Force user to pick branch/local when no compatible release exists
+  useEffect(() => {
+    if (noReleaseVersions && atopile?.source === 'release') {
+      setPendingInstall({ type: null, value: null });
+      action('setAtopileSource', { source: 'branch' });
+    }
+  }, [noReleaseVersions, atopile?.source]);
 
   // Helper to check if currently installing (from backend or pending local)
   const isInstalling = atopile?.isInstalling || pendingInstall.type !== null;
@@ -236,6 +246,12 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                   <span>{atopile.error}</span>
                 </div>
               )}
+              {noReleaseVersions && (
+                <div className="settings-error">
+                  <AlertCircle size={12} />
+                  <span>No compatible release found. Select a branch or local install.</span>
+                </div>
+              )}
 
               {/* Source Type Selector */}
               <div className="settings-group">
@@ -244,12 +260,16 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                 </label>
                 <div className="settings-source-buttons">
                   <button
-                    className={`source-btn${atopile?.source === 'release' ? ' active' : ''}`}
+                    className={`source-btn${atopile?.source === 'release' ? ' active' : ''}${noReleaseVersions ? ' disabled' : ''}`}
                     onClick={() => {
+                      if (noReleaseVersions) {
+                        return;
+                      }
                       setPendingInstall({ type: null, value: null });
                       action('setAtopileSource', { source: 'release' });
                     }}
                     title="Use a released version from PyPI"
+                    disabled={noReleaseVersions}
                   >
                     <Package size={12} />
                     Release
@@ -280,7 +300,7 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
               </div>
 
               {/* Version Selector (when using release) */}
-              {atopile?.source === 'release' && (
+              {atopile?.source === 'release' && !noReleaseVersions && (
                 <div className="settings-group">
                   <label className="settings-label">
                     <span className="settings-label-title">Version</span>

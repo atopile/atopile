@@ -7,6 +7,7 @@ directly by VS Code webview for better IDE integration.
 
 import asyncio
 import logging
+import os
 import socket
 import threading
 import time
@@ -28,6 +29,12 @@ log = logging.getLogger(__name__)
 
 # Fixed port for the dashboard server - extension opens this directly
 DASHBOARD_PORT = 8501
+UI_DEBOUNCE_S = float(os.getenv("ATOPILE_UI_DEBOUNCE_S", "0.5"))
+PACKAGES_REFRESH_MIN_INTERVAL_S = float(
+    os.getenv("ATOPILE_PACKAGES_REFRESH_MIN_INTERVAL_S", "30")
+)
+_debounce_tasks: dict[str, asyncio.Task] = {}
+_last_packages_registry_refresh: float = 0.0
 
 init_build_history_db = build_history.init_build_history_db
 
@@ -63,6 +70,41 @@ async def _load_projects_background(ctx: AppContext) -> None:
         log.info(f"[background] Loaded {len(state_projects)} projects")
     except Exception as exc:
         log.error(f"[background] Failed to load projects: {exc}")
+        await server_state.set_projects([], error=str(exc))
+
+
+async def _refresh_projects_state() -> None:
+    from atopile.dataclasses import BuildTarget as StateBuildTarget
+    from atopile.dataclasses import Project as StateProject
+
+    workspace_paths = server_state._workspace_paths or []
+    if not workspace_paths:
+        await server_state.set_projects([], error=None)
+        return
+
+    try:
+        projects = await asyncio.to_thread(
+            project_discovery.discover_projects_in_paths, workspace_paths
+        )
+        state_projects = [
+            StateProject(
+                root=p.root,
+                name=p.name,
+                targets=[
+                    StateBuildTarget(
+                        name=t.name,
+                        entry=t.entry,
+                        root=t.root,
+                        last_build=t.last_build,
+                    )
+                    for t in p.targets
+                ],
+            )
+            for p in projects
+        ]
+        await server_state.set_projects(state_projects)
+    except Exception as exc:
+        log.error(f"[background] Failed to refresh projects: {exc}")
         await server_state.set_projects([], error=str(exc))
 
 
@@ -188,6 +230,203 @@ async def _watch_variables_background() -> None:
     await watcher.run()
 
 
+def _debounce(key: str, delay_s: float, coro_factory) -> None:
+    existing = _debounce_tasks.get(key)
+    if existing and not existing.done():
+        existing.cancel()
+
+    async def _runner():
+        try:
+            await asyncio.sleep(delay_s)
+            await coro_factory()
+        except asyncio.CancelledError:
+            return
+        finally:
+            task = _debounce_tasks.get(key)
+            if task is asyncio.current_task():
+                _debounce_tasks.pop(key, None)
+
+    _debounce_tasks[key] = asyncio.create_task(_runner())
+
+
+def _get_project_roots() -> list[Path]:
+    return [
+        Path(project.root)
+        for project in server_state._state.projects or []
+        if project.root
+    ]
+
+
+def _affected_project_roots(
+    result: "FileChangedWatcher.Result",
+) -> list[Path]:
+    roots = _get_project_roots()
+    if not roots:
+        return []
+
+    changed_paths = result.created + result.changed + result.deleted
+    if not changed_paths:
+        return []
+
+    resolved_roots = {root.resolve(): root for root in roots}
+    affected: set[Path] = set()
+    for path in changed_paths:
+        try:
+            resolved_path = path.resolve()
+        except FileNotFoundError:
+            resolved_path = path
+        for resolved_root, root in resolved_roots.items():
+            if resolved_path.is_relative_to(resolved_root):
+                affected.add(root)
+    return list(affected)
+
+
+async def _refresh_project_files_for_roots(roots: list[Path]) -> None:
+    from atopile.server.domains import projects as projects_domain
+
+    for root in roots:
+        response = await asyncio.to_thread(
+            projects_domain.handle_get_files, str(root)
+        )
+        if response:
+            await server_state.set_project_files(str(root), response.files)
+
+
+async def _refresh_project_modules_for_roots(roots: list[Path]) -> None:
+    from atopile.server.domains import projects as projects_domain
+
+    for root in roots:
+        response = await asyncio.to_thread(
+            projects_domain.handle_get_modules, str(root)
+        )
+        if response:
+            await server_state.set_project_modules(str(root), response.modules)
+
+
+async def _refresh_project_dependencies_for_roots(roots: list[Path]) -> None:
+    from atopile.server.domains import projects as projects_domain
+
+    for root in roots:
+        response = await asyncio.to_thread(
+            projects_domain.handle_get_dependencies, str(root)
+        )
+        if response:
+            await server_state.set_project_dependencies(
+                str(root), response.dependencies
+            )
+
+
+async def _watch_projects_background() -> None:
+    def _paths() -> list[Path]:
+        return server_state._workspace_paths or []
+
+    watcher = PollingFileWatcher(
+        "projects",
+        paths_provider=_paths,
+        on_change=lambda _result: _refresh_projects_state(),
+        glob="**/ato.yaml",
+        interval_s=1.0,
+    )
+    await watcher.run()
+
+
+async def _watch_project_sources_background() -> None:
+    watcher = PollingFileWatcher(
+        "project-sources",
+        paths_provider=_get_project_roots,
+        on_change=lambda result: _handle_project_sources_change(result),
+        glob="**/*.ato",
+        interval_s=1.0,
+    )
+    await watcher.run()
+
+
+async def _watch_project_python_background() -> None:
+    watcher = PollingFileWatcher(
+        "project-python",
+        paths_provider=_get_project_roots,
+        on_change=lambda result: _handle_project_python_change(result),
+        glob="**/*.py",
+        interval_s=1.0,
+    )
+    await watcher.run()
+
+
+async def _watch_project_dependencies_background() -> None:
+    watcher = PollingFileWatcher(
+        "project-deps",
+        paths_provider=_get_project_roots,
+        on_change=lambda result: _handle_project_dependencies_change(result),
+        glob="**/ato.yaml",
+        interval_s=1.0,
+    )
+    await watcher.run()
+
+
+async def _handle_project_sources_change(
+    result: "FileChangedWatcher.Result",
+) -> None:
+    roots = _affected_project_roots(result)
+    if not roots:
+        return
+    for root in roots:
+        _debounce(
+            f"project-files:{root}",
+            UI_DEBOUNCE_S,
+            lambda r=root: _refresh_project_files_for_roots([r]),
+        )
+        _debounce(
+            f"project-modules:{root}",
+            UI_DEBOUNCE_S,
+            lambda r=root: _refresh_project_modules_for_roots([r]),
+        )
+
+
+async def _handle_project_python_change(
+    result: "FileChangedWatcher.Result",
+) -> None:
+    roots = _affected_project_roots(result)
+    if not roots:
+        return
+    for root in roots:
+        _debounce(
+            f"project-files:{root}",
+            UI_DEBOUNCE_S,
+            lambda r=root: _refresh_project_files_for_roots([r]),
+        )
+
+
+async def _handle_project_dependencies_change(
+    result: "FileChangedWatcher.Result",
+) -> None:
+    roots = _affected_project_roots(result)
+    if not roots:
+        return
+    for root in roots:
+        _debounce(
+            f"project-deps:{root}",
+            UI_DEBOUNCE_S,
+            lambda r=root: _refresh_project_dependencies_for_roots([r]),
+        )
+    _debounce(
+        "packages-refresh",
+        UI_DEBOUNCE_S,
+        _refresh_packages_for_deps_change,
+    )
+
+
+async def _refresh_packages_for_deps_change() -> None:
+    from atopile.server.domains import packages as packages_domain
+
+    global _last_packages_registry_refresh
+    now = time.time()
+    if now - _last_packages_registry_refresh >= PACKAGES_REFRESH_MIN_INTERVAL_S:
+        await packages_domain.refresh_packages_state()
+        _last_packages_registry_refresh = time.time()
+    else:
+        await packages_domain.refresh_installed_packages_state()
+
+
 async def _load_atopile_install_options() -> None:
     """Background task to load atopile versions, branches, and detect installations."""
     from atopile.server.domains import atopile_install
@@ -264,6 +503,10 @@ def create_app(
         asyncio.create_task(_watch_stdlib_background())
         asyncio.create_task(_watch_bom_background())
         asyncio.create_task(_watch_variables_background())
+        asyncio.create_task(_watch_projects_background())
+        asyncio.create_task(_watch_project_sources_background())
+        asyncio.create_task(_watch_project_python_background())
+        asyncio.create_task(_watch_project_dependencies_background())
         asyncio.create_task(_load_atopile_install_options())
 
         if not ctx.workspace_paths:

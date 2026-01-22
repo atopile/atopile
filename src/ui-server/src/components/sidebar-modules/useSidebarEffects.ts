@@ -4,7 +4,6 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { api } from '../../api/client';
 import { useStore } from '../../store';
 
 interface UseSidebarEffectsProps {
@@ -87,19 +86,7 @@ export function useSidebarEffects({
     const requestId = ++bomRequestIdRef.current;
     useStore.getState().setLoadingBom(true);
     useStore.getState().setBomError(null);
-
-    api.bom
-      .get(selectedProjectRoot, selectedTargetName)
-      .then((data) => {
-        if (requestId !== bomRequestIdRef.current) return;
-        useStore.getState().setBomData(data);
-      })
-      .catch((error) => {
-        if (requestId !== bomRequestIdRef.current) return;
-        const message = error instanceof Error ? error.message : 'Failed to load BOM';
-        useStore.getState().setBomData(null);
-        useStore.getState().setBomError(message);
-      });
+    action('refreshBOM', { projectRoot: selectedProjectRoot, target: selectedTargetName, requestId });
   }, [selectedProjectRoot, selectedTargetName]);
 
   // Fetch Variables data when project or target selection changes
@@ -117,19 +104,7 @@ export function useSidebarEffects({
     const requestId = ++variablesRequestIdRef.current;
     useStore.getState().setLoadingVariables(true);
     useStore.getState().setVariablesError(null);
-
-    api.variables
-      .get(selectedProjectRoot, selectedTargetName)
-      .then((data) => {
-        if (requestId !== variablesRequestIdRef.current) return;
-        useStore.getState().setVariablesData(data);
-      })
-      .catch((error) => {
-        if (requestId !== variablesRequestIdRef.current) return;
-        const message = error instanceof Error ? error.message : 'Failed to load variables';
-        useStore.getState().setVariablesData(null);
-        useStore.getState().setVariablesError(message);
-      });
+    action('fetchVariables', { projectRoot: selectedProjectRoot, target: selectedTargetName, requestId });
   }, [selectedProjectRoot, selectedTargetName]);
 
   // Handle package install action results (only errors - success comes when packages refresh)

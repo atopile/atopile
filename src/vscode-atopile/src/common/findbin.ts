@@ -237,7 +237,7 @@ export async function runAtoCommandInTerminal(
     // Run the full command directly (no alias setup needed)
     terminal.sendText(fullCommand);
 
-    // Don't show terminal for build commands - user will see output in Atopile Logs panel
+    // Don't show terminal for build commands - user will see output in atopile Logs panel
     const isBuildCommand = subcommand[0] === 'build';
     if (!isBuildCommand) {
         terminal.show();

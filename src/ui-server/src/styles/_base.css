@@ -9,6 +9,14 @@
   box-sizing: border-box;
 }
 
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   font-family: var(--font-sans);
   font-size: 11px;
@@ -18,6 +26,12 @@ body {
   -webkit-font-smoothing: antialiased;
   letter-spacing: 0.01em;
   transition: var(--theme-transition);
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
 /* Refined scrollbars */
@@ -71,7 +85,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-sm) var(--spacing-md);
+  /* Edge-to-edge: minimal horizontal padding */
+  padding: var(--spacing-sm) var(--spacing-xs);
   border-bottom: 1px solid var(--ato-orange);
   background: linear-gradient(180deg, var(--bg-secondary) 0%, rgba(249, 80, 21, 0.03) 100%);
   min-height: 36px;
