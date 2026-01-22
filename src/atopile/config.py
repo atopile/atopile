@@ -1,6 +1,5 @@
 import fnmatch
 import functools
-import logging
 import os
 import re
 import sys
@@ -53,6 +52,7 @@ from atopile.errors import (
     UserNoProjectException,
 )
 from atopile.exceptions import UserResourceException
+from atopile.logging import get_logger
 from atopile.version import (
     DISTRIBUTION_NAME,
     clean_version,
@@ -62,7 +62,7 @@ from faebryk.libs.paths import get_config_dir
 from faebryk.libs.test.testutil import in_test
 from faebryk.libs.util import indented_container, md_list
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 yaml = YAML()
 
 

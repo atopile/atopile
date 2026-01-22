@@ -1,7 +1,6 @@
 import contextlib
 import itertools
 import json
-import logging
 import tempfile
 import time
 from collections.abc import Callable, Generator
@@ -26,6 +25,7 @@ from atopile.errors import (
     UserPickError,
 )
 from atopile.exceptions import accumulate, iter_leaf_exceptions
+from atopile.logging import AtoLogger, get_logger
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom
 from faebryk.exporters.bom.json_bom import write_json_bom
@@ -71,7 +71,7 @@ from faebryk.libs.picker.picker import (
 )
 from faebryk.libs.util import DAG, md_table
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 MAX_PCB_DIFF_LENGTH = 100
@@ -154,10 +154,10 @@ class MusterTarget:
 class Muster:
     """A class to register targets to."""
 
-    def __init__(self, logger: logging.Logger | None = None) -> None:
+    def __init__(self, log: AtoLogger | None = None) -> None:
         self.targets: dict[str, MusterTarget] = {}
         self.dependency_dag: DAG[str] = DAG()
-        self.log = logger or logging.getLogger(__name__)
+        self.log = log or get_logger(__name__)
 
     def add_target(self, target: MusterTarget) -> MusterTarget:
         """Register a function as a target."""

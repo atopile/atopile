@@ -19,18 +19,20 @@ from rich.console import Console
 from typing_extensions import Annotated
 
 from atopile.buildutil import generate_build_id
-from atopile.dataclasses import BuildReport, BuildStatus, StageStatus
-from atopile.logging import (
-    NOW,
+from atopile.dataclasses import (
+    BuildReport,
+    BuildStatus,
     ProjectState,
     StageCompleteEvent,
+    StageStatus,
     StageStatusEvent,
 )
+from atopile.logging import NOW, get_logger
 from atopile.logging_utils import status_rich_icon, status_rich_text
 from atopile.server.server import DASHBOARD_PORT
 from atopile.telemetry import capture
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Constants
 DEFAULT_WORKER_COUNT = os.cpu_count() or 4
@@ -73,7 +75,7 @@ def _write_early_build_summaries(
     """
     import json
 
-    from atopile.logging import generate_build_id
+    from atopile.buildutil import generate_build_id
 
     now = NOW
 

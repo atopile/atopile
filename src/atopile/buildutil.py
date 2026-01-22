@@ -1,6 +1,5 @@
 import contextlib
 import hashlib
-import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -13,13 +12,14 @@ from atopile.config import BuildType, config
 from atopile.dataclasses import CompletedStage
 from atopile.errors import UserToolNotAvailableError
 from atopile.exceptions import accumulate
+from atopile.logging import get_logger
 from faebryk.core.solver.solver import Solver
 from faebryk.libs.util import once
 
 if TYPE_CHECKING:
     from atopile.compiler.build import BuildFileResult, Linker
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def generate_build_id(project_path: str, target: str, timestamp: str) -> str:

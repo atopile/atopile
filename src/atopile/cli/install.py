@@ -6,16 +6,16 @@ This CLI command provides the `ato install` command to:
 - download JLCPCB footprints
 """
 
-import logging
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from atopile import errors
+from atopile.logging import get_logger
 from atopile.telemetry import capture
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 dependencies_app = typer.Typer(rich_markup_mode="rich")
 

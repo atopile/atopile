@@ -17,8 +17,10 @@ import faebryk.core.graph as graph
 from faebryk.core.graph_render import GraphRenderer
 from faebryk.library import _F as F
 
+from atopile.logging import get_logger
+
 logging.basicConfig(level=logging.WARNING)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

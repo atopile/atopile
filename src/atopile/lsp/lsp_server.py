@@ -16,7 +16,6 @@ This LSP server provides:
 from __future__ import annotations
 
 import inspect
-import logging
 import re
 import textwrap
 from dataclasses import dataclass, field
@@ -43,8 +42,9 @@ from atopile.compiler.parse_utils import get_src_info_from_token
 from atopile.config import find_project_dir
 from atopile.errors import UserException
 from atopile.exceptions import DowngradedExceptionCollector, iter_leaf_exceptions
+from atopile.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # LSP Server Configuration
 DISTRIBUTION_NAME = "atopile"

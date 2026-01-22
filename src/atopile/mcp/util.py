@@ -1,4 +1,3 @@
-import logging
 from typing import Callable
 
 from mcp.server.fastmcp import FastMCP
@@ -9,8 +8,9 @@ from atopile.dataclasses import (
     NodeInfoOverview,
     NodeType,
 )
+from atopile.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 MCP_DECORATOR = Callable[[FastMCP], Callable]

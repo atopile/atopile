@@ -1,9 +1,9 @@
-import logging
 from pathlib import Path
 
+from atopile.logging import get_logger
 from faebryk.libs.util import ConfigFlag
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 DEBUG = ConfigFlag("MCP_DEBUG", default=False)
 

@@ -3,7 +3,6 @@ Shared data structures and helpers for the TypeGraph-generation IR.
 """
 
 import itertools
-import logging
 import re
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
@@ -15,6 +14,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.compiler import CompilerException, DslException
 from atopile.compiler import ast_types as AST
+from atopile.logging import get_logger
 from faebryk.core.faebrykpy import (
     EdgeComposition,
     EdgePointer,
@@ -24,7 +24,7 @@ from faebryk.core.faebrykpy import (
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.Lead import can_attach_to_pad_by_name, is_lead
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 LinkPath = list[str | EdgeTraversal]
 

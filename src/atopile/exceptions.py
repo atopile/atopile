@@ -35,6 +35,8 @@ if TYPE_CHECKING:
     import faebryk.core.node as fabll
 
 
+# NOTE: Using standard logging here to avoid circular import.
+# atopile.logging imports modules that eventually import atopile.exceptions.
 logger = logging.getLogger(__name__)
 
 
