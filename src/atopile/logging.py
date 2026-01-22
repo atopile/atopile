@@ -981,7 +981,8 @@ class LogHandler(RichHandler):
                 if record.levelno >= logging.ERROR and record.exc_info:
                     stderr_console = Console(file=sys.stderr, width=self.console.width)
                     stderr_console.print(renderable, crop=False, overflow="ignore")
-                self.console.print(renderable, crop=False, overflow="ignore")
+                else:
+                    self.console.print(renderable, crop=False, overflow="ignore")
             except Exception:
                 self.handleError(record)
             finally:

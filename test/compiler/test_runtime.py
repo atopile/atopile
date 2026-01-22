@@ -3776,3 +3776,21 @@ module MainModule:
 
             assert extracted is not None
             assert str(extracted) == test_path
+
+    def test_unconfigured_module_templating_rich_exception(self):
+        """Test that using a module requiring templating without template args
+        raises a DslRichException with source location."""
+        with pytest.raises(DslRichException) as exc_info:
+            build_instance(
+                """
+                import MultiCapacitor
+
+                module App:
+                    caps = new MultiCapacitor
+                """,
+                "App",
+            )
+
+        assert "requires module templating" in exc_info.value.message
+        assert "MultiCapacitor" in exc_info.value.message
+        assert exc_info.value.source_node is not None
