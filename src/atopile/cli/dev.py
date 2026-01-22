@@ -1,5 +1,4 @@
 import json
-import logging
 import os
 import subprocess
 import tempfile
@@ -11,9 +10,10 @@ from pathlib import Path
 
 import typer
 
+from atopile.logging import get_logger
 from atopile.telemetry import capture
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 dev_app = typer.Typer(rich_markup_mode="rich")

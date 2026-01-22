@@ -7,6 +7,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import AnsiToHtml from 'ansi-to-html';
 import { useStore } from '../store';
+import { WS_LOGS_URL } from '../api';
 import './LogViewer.css';
 
 const LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'ALERT'] as const;
@@ -188,6 +189,9 @@ export function LogViewer() {
   const [levelDropdownOpen, setLevelDropdownOpen] = useState(false);
   const levelDropdownRef = useRef<HTMLDivElement>(null);
 
+  // Status tooltip state
+  const [showStatusTooltip, setShowStatusTooltip] = useState(false);
+
   // Keep ref in sync with state
   useEffect(() => {
     autoScrollRef.current = autoScroll;
@@ -213,6 +217,7 @@ export function LogViewer() {
   const reconnectTimeoutRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
   const reconnectAttempts = useRef(0);
+  const [wsUrl, setWsUrl] = useState<string | null>(null);
 
   const toggleLevel = (level: LogLevel) => {
     setLogLevels(prev =>
@@ -255,9 +260,9 @@ export function LogViewer() {
 
     setConnectionState('connecting');
 
-    // Connect to /ws/logs - uses Vite proxy in dev, same host in production
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/logs`);
+    // Connect to /ws/logs - use centralized config
+    setWsUrl(WS_LOGS_URL);
+    const ws = new WebSocket(WS_LOGS_URL);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -464,12 +469,28 @@ export function LogViewer() {
           {/* Left section: Status + Mode + ID */}
           <div className="lv-controls-left">
             {/* Status indicator */}
-            <div className={`lv-status ${connectionState}`}>
+            <div
+              className={`lv-status ${connectionState}`}
+              onMouseEnter={() => setShowStatusTooltip(true)}
+              onMouseLeave={() => setShowStatusTooltip(false)}
+            >
               <span className="lv-status-dot" />
               <span className="lv-status-count">
                 {search ? `${filteredLogs.length}/${logs.length}` : logs.length}
               </span>
               {streaming && <span className="lv-live-badge">LIVE</span>}
+              {showStatusTooltip && wsUrl && (
+                <div className="lv-status-tooltip">
+                  <div className="lv-status-tooltip-row">
+                    <span className="lv-status-tooltip-label">Status:</span>
+                    <span className="lv-status-tooltip-value">{connectionState}</span>
+                  </div>
+                  <div className="lv-status-tooltip-row">
+                    <span className="lv-status-tooltip-label">URL:</span>
+                    <span className="lv-status-tooltip-value">{wsUrl}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Mode Toggle */}

@@ -17,6 +17,7 @@ interface CollapsibleSectionProps {
   onResizeStart?: (e: React.MouseEvent) => void
   children: React.ReactNode
   flexGrow?: boolean
+  autoSize?: boolean
 }
 
 export function CollapsibleSection({
@@ -35,18 +36,22 @@ export function CollapsibleSection({
   maxHeight,
   onResizeStart,
   children,
-  flexGrow
+  flexGrow,
+  autoSize
 }: CollapsibleSectionProps) {
   // Has a manually set height?
   const hasManualHeight = !collapsed && height && !flexGrow
   // Auto-size with max constraint?
   const hasMaxHeight = !collapsed && !height && maxHeight && !flexGrow
+  const hasAutoSize = !collapsed && autoSize && !height && !maxHeight && !flexGrow
 
   // Build style object
   const sectionStyle: React.CSSProperties | undefined = hasManualHeight
-    ? { height, flex: '0 0 auto' }
+    ? { height, flex: '0 1 auto', minHeight: 0 }
     : hasMaxHeight
-    ? { maxHeight, flex: '0 0 auto' }
+    ? { maxHeight, flex: '0 1 auto', minHeight: 0 }
+    : hasAutoSize
+    ? { flex: '0 1 auto', minHeight: 0 }
     : undefined
 
   return (

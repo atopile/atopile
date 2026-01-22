@@ -5,7 +5,7 @@ import {
   Check, AlertTriangle, Loader2
 } from 'lucide-react'
 import type { Project } from '../types/build'
-import { api } from '../api/client'
+import { sendActionWithResponse } from '../api/websocket'
 import { ProjectDropdown, type ProjectOption } from './ProjectDropdown'
 import { smartTruncatePair } from './sidebar-modules/sidebarUtils'
 
@@ -339,8 +339,14 @@ export function VariablesPanel({
     Promise.all(
       projects.map(async (project) => {
         try {
-          const result = await api.variables.targets(project.root)
-          return [project.root, result.targets] as const
+          const response = await sendActionWithResponse('getVariablesTargets', {
+            projectRoot: project.root,
+          })
+          const result = response.result ?? {}
+          const targets = Array.isArray((result as { targets?: unknown }).targets)
+            ? (result as { targets: string[] }).targets
+            : []
+          return [project.root, targets] as const
         } catch {
           return [project.root, [] as string[]] as const
         }
@@ -391,14 +397,14 @@ export function VariablesPanel({
   // Extract variables from data
   const variables = variablesData?.nodes || []
 
-  // Auto-expand root nodes when new data arrives
+  // Collapse all nodes when new data arrives
   useEffect(() => {
     const version = variablesData?.version
-    if (variables.length > 0 && version && version !== lastDataVersion) {
-      setExpandedNodes(new Set(variables.map(n => n.path)))
+    if (version && version !== lastDataVersion) {
+      setExpandedNodes(new Set())
       setLastDataVersion(version)
     }
-  }, [variables, variablesData?.version, lastDataVersion])
+  }, [variablesData?.version, lastDataVersion])
 
   // Memoized callbacks to prevent child re-renders
   const handleToggleExpand = useCallback((path: string) => {

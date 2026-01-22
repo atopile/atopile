@@ -90,26 +90,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const newClient = await startOrRestartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient);
         g_lsClient = newClient;
 
+        const autoStartBackend = vscode.workspace
+            .getConfiguration('atopile')
+            .get<boolean>('backendAutoStart', true);
+
         // On initial start, start backend server
-        // On subsequent restarts (version change), restart backend server too
+        // On user-initiated restarts, restart backend server if configured
         if (isInitialStart) {
             isInitialStart = false;
-            // Start backend server in background (don't block extension activation)
-            backendServer.startServer().then(success => {
-                if (success) {
-                    traceInfo('Backend server started successfully');
-                } else {
-                    traceInfo('Backend server failed to start (may need manual start)');
-                }
-            });
-        } else {
-            // Version changed - restart backend server to use new version
-            traceInfo('Version changed, restarting backend server...');
+            if (autoStartBackend) {
+                // Start backend server in background (don't block extension activation)
+                backendServer.startServer().then(success => {
+                    if (success) {
+                        traceInfo('Backend server started successfully');
+                    } else {
+                        traceInfo('Backend server failed to start (may need manual start)');
+                    }
+                });
+            } else {
+                traceInfo('Backend auto-start disabled; connecting to configured dashboardApiUrl');
+            }
+        } else if (autoStartBackend) {
+            traceInfo('User requested restart, restarting backend server...');
             backendServer.restartServer().then(success => {
                 if (!success) {
                     traceInfo('Backend server restart failed');
                 }
             });
+        } else {
+            traceInfo('Backend auto-start disabled; skipping backend restart');
         }
 
         // Notify backend that installation/restart completed
@@ -139,13 +148,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
 
     await initServer(context);
-
-    // Backend server is now auto-started via _reStartServers when ato binary is found
+    await _reStartServers();
 
     await ui.activate(context);
     await llm.activate(context);
 
-    // Sync atopile settings from UI to extension (triggers reinstall when changed)
+    // Sync atopile settings from UI to extension (manual restart required to apply)
     context.subscriptions.push(initAtopileSettingsSync(context));
 
     context.subscriptions.push(vscode.window.registerUriHandler(new atopileUriHandler()));

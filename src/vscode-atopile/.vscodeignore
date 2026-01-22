@@ -22,3 +22,6 @@ noxfile.py
 **/requirements.txt
 **/requirements.in
 **/tool/_debug_server.py
+docs/internal/**
+webviews/**
+**/*.map

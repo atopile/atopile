@@ -19,18 +19,19 @@ from rich.console import Console
 from typing_extensions import Annotated
 
 from atopile.buildutil import generate_build_id
-from atopile.dataclasses import BuildReport, BuildStatus, StageStatus
-from atopile.logging import (
-    NOW,
+from atopile.dataclasses import (
+    BuildReport,
+    BuildStatus,
     ProjectState,
     StageCompleteEvent,
+    StageStatus,
     StageStatusEvent,
 )
+from atopile.logging import NOW, get_logger
 from atopile.logging_utils import status_rich_icon, status_rich_text
-from atopile.server.server import DASHBOARD_PORT
 from atopile.telemetry import capture
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Constants
 DEFAULT_WORKER_COUNT = os.cpu_count() or 4
@@ -73,7 +74,7 @@ def _write_early_build_summaries(
     """
     import json
 
-    from atopile.logging import generate_build_id
+    from atopile.buildutil import generate_build_id
 
     now = NOW
 
@@ -1418,14 +1419,6 @@ def build(
             help=f"Max concurrent builds (default: {DEFAULT_WORKER_COUNT})",
         ),
     ] = DEFAULT_WORKER_COUNT,
-    dashboard: Annotated[
-        bool,
-        typer.Option(
-            "--dashboard",
-            help="Start the dashboard API server during the build",
-            envvar="ATO_BUILD_DASHBOARD",
-        ),
-    ] = False,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -1544,34 +1537,10 @@ def build(
         keep_designators=keep_designators,
     )
 
-    # Start dashboard API server only when explicitly requested.
-    # Uses fixed port so extension can connect immediately.
-    dashboard_server = None
-    dashboard_url = None
-    if dashboard:
-        try:
-            from atopile.server.server import start_dashboard_server
-
-            # Use the first build target's summary file for the dashboard
-            first_build = build_names[0] if build_names else "default"
-            build_dir = project_root / "build" / "builds" / first_build
-            summary_file = build_dir / "build_summary.json"
-            dashboard_server, dashboard_url = start_dashboard_server(
-                summary_file=summary_file,
-                port=DASHBOARD_PORT,
-                workspace_paths=[project_root],
-            )
-            logger.info("Dashboard API available at: %s", dashboard_url)
-        except Exception as e:
-            logger.debug("Failed to start dashboard server: %s", e)
-
     try:
         results = manager.run_until_complete()
     except KeyboardInterrupt:
-        # Handle Ctrl+C during build
         logger.info("Build interrupted")
-        if dashboard_server:
-            dashboard_server.shutdown()
         raise typer.Exit(1)
 
     # Generate per-target summaries
@@ -1584,7 +1553,6 @@ def build(
 
     failed = [name for name, code in results.items() if code != 0]
 
-    # Report results (don't exit yet if dashboard is running)
     build_exit_code = _report_build_results(
         failed=failed,
         total=len(build_names),
@@ -1613,30 +1581,6 @@ def build(
             except Exception as e:
                 logger.warning(f"{e}\nReload pcb manually in KiCAD")
 
-    # Keep dashboard server running after build completes
-    # Skip waiting in CI environments to prevent hangs
-    is_ci = (
-        os.getenv("CI")
-        or os.getenv("GITHUB_ACTIONS")
-        or os.getenv("CONTINUOUS_INTEGRATION")
-    )
-    if dashboard_server:
-        if is_ci:
-            logger.info("CI environment detected, shutting down dashboard immediately")
-            dashboard_server.shutdown()
-        else:
-            logger.info("Dashboard still available at: %s", dashboard_url)
-            logger.info("Press Ctrl+C to stop")
-            try:
-                # Wait until interrupted (cross-platform)
-                while True:
-                    time.sleep(1)
-            except KeyboardInterrupt:
-                logger.info("Shutting down dashboard...")
-            finally:
-                dashboard_server.shutdown()
-
-    # Exit with appropriate code after dashboard is closed
     if build_exit_code != 0:
         raise typer.Exit(build_exit_code)
 

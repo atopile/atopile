@@ -25,7 +25,8 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
             SidebarProvider.viewType,
-            sidebarProvider
+            sidebarProvider,
+            { webviewOptions: { retainContextWhenHidden: true } }
         )
     );
 
@@ -34,7 +35,8 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
             LogViewerProvider.viewType,
-            logViewerProvider
+            logViewerProvider,
+            { webviewOptions: { retainContextWhenHidden: true } }
         )
     );
 

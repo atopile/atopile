@@ -10,7 +10,7 @@ import {
 import { BuildsCard } from './BuildsCard'
 import { DependencyCard, type ProjectDependency } from './DependencyCard'
 import { FileExplorer, type FileTreeNode } from './FileExplorer'
-import { api } from '../api/client'
+import { sendActionWithResponse } from '../api/websocket'
 import type {
   Selection,
   Project,
@@ -19,9 +19,6 @@ import type {
 } from './projectsTypes'
 import type { PackageDetails } from '../types/build'
 import './PackageCard.css'
-
-// Simple cache for package details to avoid re-fetching
-const packageDetailsCache = new Map<string, PackageDetails>()
 
 // Check if a package has an update available
 export function hasUpdate(project: Project): boolean {
@@ -39,6 +36,18 @@ export function formatDownloads(count: number | null | undefined): string {
     return (count / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
   }
   return count.toString()
+}
+
+function compareVersionsDesc(a: string, b: string): number {
+  const aParts = a.split('.').map(part => parseInt(part, 10));
+  const bParts = b.split('.').map(part => parseInt(part, 10));
+  const maxLen = Math.max(aParts.length, bParts.length);
+  for (let i = 0; i < maxLen; i += 1) {
+    const aVal = Number.isFinite(aParts[i]) ? aParts[i] : 0;
+    const bVal = Number.isFinite(bParts[i]) ? bParts[i] : 0;
+    if (aVal !== bVal) return bVal - aVal;
+  }
+  return b.localeCompare(a);
 }
 
 // Check if package is installed in a specific project
@@ -262,9 +271,9 @@ export const PackageCard = memo(function PackageCard({
   const [expanded, setExpanded] = useState(false)
   const [descExpanded, setDescExpanded] = useState(false)
   const [selectedVersion, setSelectedVersion] = useState(() => {
-    const version = project.version && project.version !== 'unknown' ? project.version : null
     const latestVersion = project.latestVersion && project.latestVersion !== 'unknown' ? project.latestVersion : null
-    return version || latestVersion || ''
+    const version = project.version && project.version !== 'unknown' ? project.version : null
+    return latestVersion || version || ''
   })
   const [selectedProjectId, setSelectedProjectId] = useState(() => {
     return availableProjects.find(p => p.isActive)?.id || availableProjects[0]?.id || ''
@@ -280,30 +289,30 @@ export const PackageCard = memo(function PackageCard({
   const selectedTarget = availableProjects.find(p => p.id === selectedProjectId)
   const installStatus = isInstalledInProject(project, selectedTarget?.path || selectedProjectId)
 
-  // Fetch package details when expanded (with caching)
+  // Fetch package details when expanded
   useEffect(() => {
     if (expanded && !packageDetails && !detailsLoading) {
-      // Check cache first
-      const cached = packageDetailsCache.get(project.id)
-      if (cached) {
-        setPackageDetails(cached)
-        if (cached.versions?.length > 0 && !selectedVersion) {
-          setSelectedVersion(cached.versions[0].version)
-        }
-        return
-      }
-
       setDetailsLoading(true)
       setDetailsError(null)
 
-      api.packages.details(project.id)
-        .then(details => {
-          // Store in cache
-          packageDetailsCache.set(project.id, details)
-          setPackageDetails(details)
-          // Update selected version if we now have the versions list
-          if (details.versions?.length > 0 && !selectedVersion) {
-            setSelectedVersion(details.versions[0].version)
+      sendActionWithResponse('getPackageDetails', { packageId: project.id })
+        .then(response => {
+          const result = response.result ?? {}
+          const details = (result as { details?: PackageDetails }).details
+          if (details) {
+            setPackageDetails(details)
+            const sortedDetailVersions = (details.versions || [])
+              .map((v) => v.version)
+              .filter((v) => v && v !== 'unknown')
+              .sort(compareVersionsDesc)
+            if (
+              sortedDetailVersions.length > 0 &&
+              (!selectedVersion || selectedVersion === project.version)
+            ) {
+              setSelectedVersion(sortedDetailVersions[0])
+            }
+          } else {
+            setDetailsError('Failed to load package details')
           }
         })
         .catch(err => {
@@ -325,7 +334,9 @@ export const PackageCard = memo(function PackageCard({
     (project.latestVersion && project.version && project.latestVersion !== project.version
       ? [project.latestVersion, project.version]
       : project.version ? [project.version] : project.latestVersion ? [project.latestVersion] : [])
-  const versions = rawVersions.filter(v => v && v !== 'unknown')
+  const versions = rawVersions
+    .filter(v => v && v !== 'unknown')
+    .sort(compareVersionsDesc)
 
   // Convert dependencies to DependencyCard format
   const dependencies: ProjectDependency[] = (packageDetails?.dependencies || []).map(dep => {

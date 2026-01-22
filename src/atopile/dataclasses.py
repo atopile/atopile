@@ -208,13 +208,13 @@ class Log:
         """Response containing build log entries."""
 
         type: Literal["logs_result"] = "logs_result"
-        logs: list["BuildEntryPydantic"]
+        logs: list["Log.BuildEntryPydantic"]
 
     class TestResult(BaseModel):
         """Response containing test log entries."""
 
         type: Literal["test_logs_result"] = "test_logs_result"
-        logs: list["TestEntryPydantic"]
+        logs: list["Log.TestEntryPydantic"]
 
     class Error(BaseModel):
         """Error response for log queries."""
@@ -263,14 +263,14 @@ class Log:
         """Streaming response with cursor."""
 
         type: Literal["logs_stream"] = "logs_stream"
-        logs: list["BuildStreamEntryPydantic"]
+        logs: list["Log.BuildStreamEntryPydantic"]
         last_id: int  # Highest id returned - client sends this back as after_id
 
     class TestStreamResult(BaseModel):
         """Streaming response for test logs."""
 
         type: Literal["test_logs_stream"] = "test_logs_stream"
-        logs: list["TestStreamEntryPydantic"]
+        logs: list["Log.TestStreamEntryPydantic"]
         last_id: int
 
 
@@ -967,6 +967,8 @@ class AppState(BaseModel):
     packages: list[PackageInfo] = Field(default_factory=list)
     is_loading_packages: bool = False
     packages_error: Optional[str] = None
+    installing_package_ids: list[str] = Field(default_factory=list)
+    install_error: Optional[str] = None
 
     # Standard Library
     stdlib_items: list[StdLibItem] = Field(default_factory=list)
@@ -1020,6 +1022,14 @@ class AppState(BaseModel):
     current_variables_data: Optional[VariablesData] = None
     is_loading_variables: bool = False
     variables_error: Optional[str] = None
+
+    # Open signals (one-shot signals to open files/apps)
+    open_file: Optional[str] = None
+    open_file_line: Optional[int] = None
+    open_file_column: Optional[int] = None
+    open_layout: Optional[str] = None
+    open_kicad: Optional[str] = None
+    open_3d: Optional[str] = None
 
     class Config:
         # Use camelCase for JSON serialization to match frontend

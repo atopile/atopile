@@ -11,7 +11,7 @@ import type {
   Project,
   LcscPartData
 } from '../types/build'
-import { api } from '../api/client'
+import { sendActionWithResponse } from '../api/websocket'
 import { ProjectDropdown, type ProjectOption } from './ProjectDropdown'
 
 // Component types (local type alias for UI)
@@ -67,6 +67,16 @@ function normalizeUsagePath(path: string): string {
   const parts = path.split('::')
   const addressPart = parts.length > 1 ? parts[1] : path
   return addressPart.split('|')[0]
+}
+
+function getUsageFilePath(path: string): string | null {
+  if (!path) return null
+  const primary = path.split('|')[0] ?? path
+  const filePart = primary.split('::')[0]
+  if (filePart.endsWith('.ato')) {
+    return filePart
+  }
+  return null
 }
 
 function getUsageDisplayPath(path: string): string {
@@ -208,7 +218,9 @@ const BOMRow = memo(function BOMRow({
 
   const handleUsageClick = (e: React.MouseEvent, usage: UsageLocation) => {
     e.stopPropagation()
-    onGoToSource(usage.path, usage.line)
+    const filePath = getUsageFilePath(usage.path)
+    if (!filePath) return
+    onGoToSource(filePath, usage.line)
   }
 
   const toggleGroup = (groupPath: string, e: React.MouseEvent) => {
@@ -269,15 +281,21 @@ const BOMRow = memo(function BOMRow({
                       onClick={(e) => handleCopy('lcsc', component.lcsc!, e)}
                     >
                       <span className="mono">{component.lcsc}</span>
-                      <a
-                        href={`https://www.lcsc.com/product-detail/${component.lcsc}.html`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
+                      <button
+                        type="button"
                         className="external-link"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          window.open(
+                            `https://www.lcsc.com/product-detail/${component.lcsc}.html`,
+                            '_blank',
+                            'noopener,noreferrer'
+                          )
+                        }}
+                        aria-label="Open LCSC part in browser"
                       >
                         <ExternalLink size={10} />
-                      </a>
+                      </button>
                       {copiedField === 'lcsc' ? (
                         <Check size={10} className="copy-icon copied" />
                       ) : (
@@ -441,8 +459,14 @@ export function BOMPanel({
     Promise.all(
       projects.map(async (project) => {
         try {
-          const result = await api.bom.targets(project.root)
-          return [project.root, result.targets] as const
+          const response = await sendActionWithResponse('getBomTargets', {
+            projectRoot: project.root,
+          })
+          const result = response.result ?? {}
+          const targets = Array.isArray((result as { targets?: unknown }).targets)
+            ? (result as { targets: string[] }).targets
+            : []
+          return [project.root, targets] as const
         } catch {
           return [project.root, [] as string[]] as const
         }
@@ -494,17 +518,22 @@ export function BOMPanel({
       return
     }
 
-    api.builds
-      .byProject(selectedProjectRoot, selectedTargetName ?? undefined, 1)
+    sendActionWithResponse('getBuildsByProject', {
+      projectRoot: selectedProjectRoot,
+      target: selectedTargetName ?? undefined,
+      limit: 1,
+    })
       .then((response) => {
-        const build = response.builds?.[0]
+        const result = response.result ?? {}
+        const build = Array.isArray((result as { builds?: unknown }).builds)
+          ? (result as { builds: any[] }).builds[0]
+          : null
         setLatestBuildInfo(build ? {
-          build_id: build.buildId,
-          started_at: build.startedAt,
-          // completed_at not available on Build type, calculate from startedAt + elapsedSeconds
-          completed_at: build.startedAt && build.elapsedSeconds
-            ? build.startedAt + build.elapsedSeconds
-            : undefined,
+          build_id: build.build_id,
+          started_at: build.started_at,
+          completed_at: build.completed_at ?? (
+            build.started_at && build.duration ? build.started_at + build.duration : undefined
+          ),
         } : null)
       })
       .catch((error) => {
@@ -561,14 +590,16 @@ export function BOMPanel({
       for (const id of missing) next.add(id)
       return next
     })
-    api.parts
-      .lcsc(missing, {
-        projectRoot: selectedProjectRoot ?? undefined,
-        target: selectedTargetName ?? undefined,
-      })
+    sendActionWithResponse('fetchLcscParts', {
+      lcscIds: missing,
+      projectRoot: selectedProjectRoot ?? undefined,
+      target: selectedTargetName ?? undefined,
+    })
       .then((response) => {
         if (requestId !== lcscRequestIdRef.current) return
-        setLcscParts((prev) => ({ ...prev, ...response.parts }))
+        const result = response.result ?? {}
+        const parts = (result as { parts?: Record<string, LcscPartData | null> }).parts || {}
+        setLcscParts((prev) => ({ ...prev, ...parts }))
       })
       .catch((error) => {
         if (requestId !== lcscRequestIdRef.current) return

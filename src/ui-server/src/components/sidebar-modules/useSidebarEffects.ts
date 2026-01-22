@@ -4,7 +4,6 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { api } from '../../api/client';
 import { useStore } from '../../store';
 
 interface UseSidebarEffectsProps {
@@ -87,19 +86,7 @@ export function useSidebarEffects({
     const requestId = ++bomRequestIdRef.current;
     useStore.getState().setLoadingBom(true);
     useStore.getState().setBomError(null);
-
-    api.bom
-      .get(selectedProjectRoot, selectedTargetName)
-      .then((data) => {
-        if (requestId !== bomRequestIdRef.current) return;
-        useStore.getState().setBomData(data);
-      })
-      .catch((error) => {
-        if (requestId !== bomRequestIdRef.current) return;
-        const message = error instanceof Error ? error.message : 'Failed to load BOM';
-        useStore.getState().setBomData(null);
-        useStore.getState().setBomError(message);
-      });
+    action('refreshBOM', { projectRoot: selectedProjectRoot, target: selectedTargetName, requestId });
   }, [selectedProjectRoot, selectedTargetName]);
 
   // Fetch Variables data when project or target selection changes
@@ -117,96 +104,10 @@ export function useSidebarEffects({
     const requestId = ++variablesRequestIdRef.current;
     useStore.getState().setLoadingVariables(true);
     useStore.getState().setVariablesError(null);
-
-    api.variables
-      .get(selectedProjectRoot, selectedTargetName)
-      .then((data) => {
-        if (requestId !== variablesRequestIdRef.current) return;
-        useStore.getState().setVariablesData(data);
-      })
-      .catch((error) => {
-        if (requestId !== variablesRequestIdRef.current) return;
-        const message = error instanceof Error ? error.message : 'Failed to load variables';
-        useStore.getState().setVariablesData(null);
-        useStore.getState().setVariablesError(message);
-      });
+    action('fetchVariables', { projectRoot: selectedProjectRoot, target: selectedTargetName, requestId });
   }, [selectedProjectRoot, selectedTargetName]);
 
-  // Handle package install action results (only errors - success comes when packages refresh)
-  // Also add timeout fallbacks to clear stuck installing states
-  useEffect(() => {
-    const timeoutIds = new Map<string, ReturnType<typeof setTimeout>>();
-
-    const handleActionResult = (event: Event) => {
-      const detail = (event as CustomEvent).detail as {
-        action?: string;
-        payload?: { packageId?: string };
-        result?: {
-          success?: boolean;
-          error?: string;
-        };
-      };
-
-      if (detail?.action === 'installPackage') {
-        const packageId = detail.payload?.packageId;
-
-        // Only handle errors - the install runs async in background
-        // Success is detected when packages refresh and show as installed
-        if (detail.result && !detail.result.success && detail.result.error) {
-          if (packageId) {
-            // setInstallError removes the package from installingPackageIds
-            useStore.getState().setInstallError(packageId, detail.result.error);
-            const existingTimeout = timeoutIds.get(packageId);
-            if (existingTimeout) {
-              clearTimeout(existingTimeout);
-              timeoutIds.delete(packageId);
-            }
-          }
-        } else if (detail.result?.success && packageId) {
-          // Start a 60-second timeout as a fallback in case package refresh doesn't clear the state
-          const existingTimeout = timeoutIds.get(packageId);
-          if (existingTimeout) clearTimeout(existingTimeout);
-
-          const timeoutId = setTimeout(() => {
-            const currentInstalling = useStore.getState().installingPackageIds;
-            if (currentInstalling.includes(packageId)) {
-              console.log('[install-debug] Timeout fallback: clearing stuck package:', packageId);
-              useStore.getState().removeInstallingPackage(packageId);
-            }
-            timeoutIds.delete(packageId);
-          }, 60000);
-          timeoutIds.set(packageId, timeoutId);
-        }
-      }
-    };
-    window.addEventListener('atopile:action_result', handleActionResult);
-    return () => {
-      window.removeEventListener('atopile:action_result', handleActionResult);
-      timeoutIds.forEach((id) => clearTimeout(id));
-      timeoutIds.clear();
-    };
-  }, []);
-
-  // Subscribe to store changes to clear installing state when packages refresh
-  // Only clear packages that are now showing as installed (supports concurrent installs)
-  useEffect(() => {
-    const unsubscribe = useStore.subscribe((state, prevState) => {
-      const installingIds = state.installingPackageIds;
-      if (installingIds.length === 0) return;
-
-      // If packages were updated while we have installingPackageIds, check which are now installed
-      if (state.packages !== prevState.packages && state.packages) {
-        // Only clear packages that are now installed (not all of them)
-        installingIds.forEach((packageId) => {
-          const pkg = state.packages.find((p) => p.identifier === packageId);
-          if (pkg?.installed) {
-            useStore.getState().removeInstallingPackage(packageId);
-          }
-        });
-      }
-    });
-    return () => unsubscribe();
-  }, []);
+  // Package install state is owned by backend; frontend is read-only.
 
   // Auto-expand: detect unused space and cropped sections
   useEffect(() => {

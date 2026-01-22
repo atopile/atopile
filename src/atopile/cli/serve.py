@@ -64,6 +64,12 @@ def backend(
     logs_dir: Optional[Path] = typer.Option(
         None, help="Directory for build logs (default: ./build/logs)"
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Kill existing server on the port and start fresh",
+    ),
 ) -> None:
     """Start the backend server in the current terminal."""
     cmd = [sys.executable, "-m", "atopile.server", "--port", str(port)]
@@ -71,7 +77,8 @@ def backend(
         cmd.extend(["--workspace", str(path)])
     if logs_dir:
         cmd.extend(["--logs-dir", str(logs_dir)])
-
+    if force:
+        cmd.append("--force")
     raise typer.Exit(subprocess.run(cmd).returncode)
 
 
@@ -83,7 +90,7 @@ def frontend(
         None,
         "--backend",
         "-b",
-        help=f"Backend host:port (e.g. localhost:{DASHBOARD_PORT})",
+        help="Backend host:port (e.g. localhost:{DASHBOARD_PORT}).",
     ),
 ) -> None:
     """Start the UI server (Vite) in the current terminal."""
@@ -125,13 +132,17 @@ def frontend(
         if result.returncode != 0:
             raise typer.Exit(result.returncode)
 
-    env = None
     if backend:
         backend_host = backend if "://" in backend else f"http://{backend}"
-        ws_host = backend_host.replace("http://", "ws://").replace("https://", "wss://")
-        env = os.environ.copy()
-        env["VITE_API_URL"] = backend_host
-        env["VITE_WS_URL"] = f"{ws_host}/ws/state"
+    else:
+        backend_host = f"http://localhost:{DASHBOARD_PORT}"
+
+    ws_host = backend_host.replace("http://", "ws://").replace("https://", "wss://")
+    env = os.environ.copy()
+    env["VITE_API_URL"] = backend_host
+    env["VITE_WS_URL"] = f"{ws_host}/ws/state"
+
+    print(f"Frontend connecting to backend at {backend_host}")
 
     cmd = ["npm", "run", "dev", "--", "--host", host, "--port", str(port)]
     raise typer.Exit(subprocess.run(cmd, cwd=str(ui_server_dir), env=env).returncode)

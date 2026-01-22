@@ -1,4 +1,3 @@
-import logging
 import os
 from typing import TYPE_CHECKING, Annotated, Iterator
 
@@ -7,13 +6,13 @@ from semver import Version
 
 from atopile.errors import UserBadParameterError, UserException, UserFileNotFoundError
 from atopile.exceptions import accumulate
+from atopile.logging import get_logger
 from atopile.telemetry import capture
 
 if TYPE_CHECKING:
     from atopile.config import Config
 
-# Set up logging
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 package_app = typer.Typer(rich_markup_mode="rich")
 

@@ -74,6 +74,15 @@ export function Sidebar() {
     totalWarnings,
   } = useSidebarData({ state, selection, activeStageFilter });
 
+  const buildQueueItemHeight = 34;
+  const buildQueueMinHeight = 40;
+  const buildQueuePadding = 12;
+  const buildQueueDesiredHeight = Math.max(
+    buildQueueMinHeight,
+    Math.max(1, queuedBuilds.length) * buildQueueItemHeight + buildQueuePadding
+  );
+  const buildQueueMaxHeight = Math.min(240, buildQueueDesiredHeight);
+
   // Use effects hook for side effects
   useSidebarEffects({
     selectedProjectRoot,
@@ -170,6 +179,7 @@ export function Sidebar() {
           collapsed={collapsedSections.has('buildQueue')}
           onToggle={() => handlers.toggleSection('buildQueue')}
           height={collapsedSections.has('buildQueue') ? undefined : sectionHeights.buildQueue}
+          maxHeight={sectionHeights.buildQueue ? undefined : buildQueueMaxHeight}
           onResizeStart={(e) => handlers.handleResizeStart('buildQueue', e)}
         >
           <BuildQueuePanel
@@ -242,6 +252,7 @@ export function Sidebar() {
           collapsed={collapsedSections.has('stdlib')}
           onToggle={() => handlers.toggleSection('stdlib')}
           height={collapsedSections.has('stdlib') ? undefined : sectionHeights.stdlib}
+          autoSize
           onResizeStart={(e) => handlers.handleResizeStart('stdlib', e)}
         >
           <StandardLibraryPanel
@@ -333,7 +344,6 @@ export function Sidebar() {
             onInstall={(version) => {
               const projectRoot = state?.selectedProjectRoot || (state?.projects?.[0]?.root);
               if (projectRoot) {
-                useStore.getState().addInstallingPackage(selectedPackage.fullName);
                 action('installPackage', {
                   packageId: selectedPackage.fullName,
                   projectRoot,

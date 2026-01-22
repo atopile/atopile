@@ -2,31 +2,9 @@
 Configure the user's system for atopile development.
 """
 
-import logging
+from atopile.logging import get_logger
 
-from atopile.telemetry import capture
-
-logger = logging.getLogger(__name__)
-
-
-@capture("cli:configure_start", "cli:configure_end")
-def configure() -> None:
-    """
-    Configure the user's system for atopile development.
-    """
-    from textwrap import dedent
-
-    from atopile.logging import BaseLogger
-
-    # Just here for legacy support
-    BaseLogger.rich_print_robust(
-        dedent(
-            """
-            This command is deprecated and will be removed in a future version.
-            Configuration/Setup should be automatically handled.
-            """
-        )
-    )
+logger = get_logger(__name__)
 
 
 def setup() -> None:

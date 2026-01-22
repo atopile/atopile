@@ -15,7 +15,7 @@ import { getWorkspaceSettings, ISettings } from './settings';
 import { getLSClientTraceLevel, getProjectRoot } from './utilities';
 import { isVirtualWorkspace, onDidChangeConfiguration, registerCommand } from './vscodeapi';
 import { SERVER_ID } from './constants';
-import { AtoBinInfo, getAtoBin, initAtoBin, onDidChangeAtoBinInfo } from './findbin';
+import { getAtoBin, initAtoBin } from './findbin';
 import * as fs from 'fs/promises';
 import * as cp from 'child_process';
 import { constants as fsc } from 'fs';
@@ -165,21 +165,10 @@ export const onNeedsRestart = onNeedsRestartEvent.event;
 
 export async function initServer(context: ExtensionContext): Promise<void> {
     context.subscriptions.push(
-        onDidChangeAtoBinInfo(async (e: AtoBinInfo) => {
-            // No need to fire, already triggering with setImmediate
-            if (e.init) {
-                return;
-            }
-            onNeedsRestartEvent.fire();
-        }),
         registerCommand(`${SERVER_ID}.restart`, async () => {
             onNeedsRestartEvent.fire();
         }),
     );
 
     await initAtoBin(context);
-
-    setImmediate(async () => {
-        onNeedsRestartEvent.fire();
-    });
 }
