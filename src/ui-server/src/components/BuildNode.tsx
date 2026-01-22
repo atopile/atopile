@@ -457,8 +457,8 @@ export const BuildNode = memo(function BuildNode({
             </span>
           )}
 
-          {/* Current stage shown inline during building - hide in readOnly */}
-          {!readOnly && isBuilding && currentStage && (
+          {/* Current stage shown inline during building */}
+          {isBuilding && currentStage && (
             <span className={`build-inline-stage ${stageAnimating ? 'animating' : ''}`}>
               {currentStage}
             </span>

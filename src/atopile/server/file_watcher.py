@@ -17,6 +17,54 @@ from watchdog.observers import Observer
 log = logging.getLogger(__name__)
 
 
+def _configure_watchdog_logging() -> None:
+    for name in (
+        "watchdog",
+        "watchdog.events",
+        "watchdog.observers",
+        "watchdog.observers.fsevents",
+        "watchdog.observers.inotify_buffer",
+        "watchdog.observers.polling",
+    ):
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.WARNING)
+        logger.propagate = False
+        logger.disabled = True
+
+
+_IGNORED_DIR_NAMES = {
+    ".git",
+    ".hg",
+    ".svn",
+    ".ato",
+    ".cache",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    ".vscode",
+    ".cursor",
+    "__pycache__",
+    "node_modules",
+    "dist",
+    "build",
+    "out",
+    "zig-out",
+}
+_ALLOWED_EXTENSIONS = {
+    ".ato",
+    ".py",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".kicad_pcb",
+    ".kicad_pro",
+    ".kicad_sch",
+    ".kicad_mod",
+    ".kicad_sym",
+}
+
+
 @dataclass
 class FileChangeResult:
     """Result of file change detection."""
@@ -102,6 +150,20 @@ class _EventDispatcher(FileSystemEventHandler):
                             return
                         self._pending[hid] = FileChangeResult()
                         self._timers.pop(hid, None)
+                    if result.created or result.changed or result.deleted:
+                        sample = (
+                            result.created[:2] + result.changed[:2] + result.deleted[:2]
+                        )
+                        log.info(
+                            "File watcher triggered: %s created, %s changed, %s deleted",  # noqa: E501
+                            len(result.created),
+                            len(result.changed),
+                            len(result.deleted),
+                        )
+                        log.info(
+                            "File watcher sample: %s",
+                            ", ".join(str(p) for p in sample[:3]),
+                        )
                     cb(result)
 
                 self._timers[hid] = loop.call_later(debounce_s, fire)
@@ -132,8 +194,11 @@ class _EventDispatcher(FileSystemEventHandler):
     @staticmethod
     def _is_ignored(path: Path) -> bool:
         for part in path.parts:
-            if part.startswith("."):
+            if part.startswith(".") or part in _IGNORED_DIR_NAMES:
                 return True
+        suffix = path.suffix.lower()
+        if suffix and suffix not in _ALLOWED_EXTENSIONS:
+            return True
         return False
 
 
@@ -150,6 +215,7 @@ def _get_observer() -> tuple[Any, _EventDispatcher]:
     global _observer, _dispatcher
     with _watch_lock:
         if _observer is None:
+            _configure_watchdog_logging()
             obs = Observer()
             obs.start()
             _observer = obs

@@ -114,7 +114,6 @@ export function useSidebarHandlers({
   };
 
   const handlePackageInstall = (packageId: string, projectRoot: string, version?: string) => {
-    useStore.getState().addInstallingPackage(packageId);
     action('installPackage', { packageId, projectRoot, version });
   };
 

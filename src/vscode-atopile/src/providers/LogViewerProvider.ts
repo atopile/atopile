@@ -38,6 +38,8 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
 
   private _view?: vscode.WebviewView;
   private _disposables: vscode.Disposable[] = [];
+  private _lastMode: 'dev' | 'prod' | null = null;
+  private _hasHtml: boolean = false;
 
   constructor(private readonly _extensionUri: vscode.Uri) {
     this._disposables.push(
@@ -71,12 +73,20 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
 
     const extensionPath = this._extensionUri.fsPath;
     const isDev = isDevelopmentMode(extensionPath);
+    const mode: 'dev' | 'prod' = isDev ? 'dev' : 'prod';
+
+    if (this._hasHtml && this._lastMode === mode) {
+      console.log('[LogViewerProvider] Skipping refresh (already loaded)', { mode });
+      return;
+    }
 
     if (isDev) {
       this._view.webview.html = this._getDevHtml();
     } else {
       this._view.webview.html = this._getProdHtml(this._view.webview);
     }
+    this._hasHtml = true;
+    this._lastMode = mode;
   }
 
   public resolveWebviewView(
@@ -88,8 +98,11 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
 
     const extensionPath = this._extensionUri.fsPath;
     const isDev = isDevelopmentMode(extensionPath);
+    const mode: 'dev' | 'prod' = isDev ? 'dev' : 'prod';
 
-    webviewView.webview.options = {
+    const webviewOptions: vscode.WebviewOptions & {
+      retainContextWhenHidden?: boolean;
+    } = {
       enableScripts: true,
       retainContextWhenHidden: true,
       localResourceRoots: isDev
@@ -99,12 +112,15 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
             vscode.Uri.file(path.join(extensionPath, 'webviews', 'dist')),
           ],
     };
+    webviewView.webview.options = webviewOptions;
 
     if (isDev) {
       webviewView.webview.html = this._getDevHtml();
     } else {
       webviewView.webview.html = this._getProdHtml(webviewView.webview);
     }
+    this._hasHtml = true;
+    this._lastMode = mode;
   }
 
   /**

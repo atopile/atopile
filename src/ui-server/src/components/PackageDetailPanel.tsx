@@ -59,6 +59,18 @@ function formatReleaseDate(dateStr: string | null | undefined): string {
   }
 }
 
+function compareVersionsDesc(a: string, b: string): number {
+  const aParts = a.split('.').map(part => parseInt(part, 10));
+  const bParts = b.split('.').map(part => parseInt(part, 10));
+  const maxLen = Math.max(aParts.length, bParts.length);
+  for (let i = 0; i < maxLen; i += 1) {
+    const aVal = Number.isFinite(aParts[i]) ? aParts[i] : 0;
+    const bVal = Number.isFinite(bParts[i]) ? bParts[i] : 0;
+    if (aVal !== bVal) return bVal - aVal;
+  }
+  return b.localeCompare(a);
+}
+
 export function PackageDetailPanel({
   package: pkg,
   packageDetails,
@@ -81,14 +93,25 @@ export function PackageDetailPanel({
     size: undefined
   })) || []
 
-  const [selectedVersion, setSelectedVersion] = useState(details?.version || pkg.version || '')
+  const sortedVersions = [...availableVersions].sort((a, b) => {
+    if (a.releasedAt && b.releasedAt) {
+      return new Date(b.releasedAt).getTime() - new Date(a.releasedAt).getTime()
+    }
+    return compareVersionsDesc(a.version, b.version)
+  })
+
+  const latestAvailableVersion = sortedVersions[0]?.version || ''
+  const [selectedVersion, setSelectedVersion] = useState(
+    latestAvailableVersion || details?.version || pkg.version || ''
+  )
 
   // Update selected version when details load
   useEffect(() => {
-    if (details?.version) {
-      setSelectedVersion(details.version)
+    if (!sortedVersions.length) return
+    if (!selectedVersion || selectedVersion === details?.installedVersion || selectedVersion === pkg.version) {
+      setSelectedVersion(sortedVersions[0]?.version || selectedVersion)
     }
-  }, [details?.version])
+  }, [sortedVersions, details?.installedVersion, pkg.version, selectedVersion])
 
   // Get description from details or package
   const description = details?.description || details?.summary || pkg.description
@@ -154,13 +177,13 @@ export function PackageDetailPanel({
         <section className="detail-section detail-actions">
           <div className="detail-install-row">
             {/* Version dropdown */}
-            {availableVersions.length > 0 ? (
+            {sortedVersions.length > 0 ? (
               <select
                 className="detail-version-select"
                 value={selectedVersion}
                 onChange={(e) => setSelectedVersion(e.target.value)}
               >
-                {availableVersions.map((v, idx) => (
+                {sortedVersions.map((v, idx) => (
                   <option key={v.version} value={v.version}>
                     v{v.version}{idx === 0 ? ' (latest)' : ''}
                   </option>
@@ -213,10 +236,10 @@ export function PackageDetailPanel({
           )}
 
           {/* Release date info */}
-          {availableVersions.length > 0 && (
+          {sortedVersions.length > 0 && (
             <div className="detail-version-info">
               <Calendar size={12} />
-              Released: {formatReleaseDate(availableVersions.find(v => v.version === selectedVersion)?.releasedAt)}
+              Released: {formatReleaseDate(sortedVersions.find(v => v.version === selectedVersion)?.releasedAt)}
             </div>
           )}
         </section>

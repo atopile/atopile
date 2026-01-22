@@ -8,6 +8,7 @@ Endpoints:
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 
 from ..domains.actions import handle_data_action
 
@@ -21,6 +22,20 @@ def _get_server_state():
     from ..state import server_state
 
     return server_state
+
+
+async def _safe_send_json(websocket: WebSocket, payload: dict) -> bool:
+    if websocket.client_state != WebSocketState.CONNECTED:
+        log.debug("WebSocket send skipped: client not connected")
+        return False
+    try:
+        await websocket.send_json(payload)
+        return True
+    except RuntimeError as exc:
+        if "close message has been sent" in str(exc).lower():
+            log.debug("WebSocket send skipped: close already sent")
+            return False
+        raise
 
 
 @router.websocket("/ws/state")
@@ -44,7 +59,7 @@ async def websocket_state(websocket: WebSocket):
             data = await websocket.receive_json()
 
             if data.get("type") == "ping":
-                await websocket.send_json({"type": "pong"})
+                await _safe_send_json(websocket, {"type": "pong"})
                 continue
             if data.get("type") == "action":
                 # Handle action from client
@@ -72,23 +87,25 @@ async def websocket_state(websocket: WebSocket):
                     )
 
                     # Send result back to client (include payload for tracking)
-                    await websocket.send_json(
+                    await _safe_send_json(
+                        websocket,
                         {
                             "type": "action_result",
                             "action": action,
                             "payload": payload,
                             "result": result,
-                        }
+                        },
                     )
                 except Exception as action_exc:
                     log.exception(f"Exception handling action {action}: {action_exc}")
-                    await websocket.send_json(
+                    await _safe_send_json(
+                        websocket,
                         {
                             "type": "action_result",
                             "action": action,
                             "payload": payload,
                             "result": {"success": False, "error": str(action_exc)},
-                        }
+                        },
                     )
 
     except WebSocketDisconnect:

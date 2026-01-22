@@ -221,6 +221,23 @@ class ServerState:
         self._state.is_loading_packages = loading
         await self.broadcast_state()
 
+    async def add_installing_package(self, package_id: str) -> None:
+        """Track a package install in progress."""
+        if package_id not in self._state.installing_package_ids:
+            self._state.installing_package_ids.append(package_id)
+        self._state.install_error = None
+        await self.broadcast_state()
+
+    async def remove_installing_package(
+        self, package_id: str, error: Optional[str] = None
+    ) -> None:
+        """Stop tracking a package install."""
+        if package_id in self._state.installing_package_ids:
+            self._state.installing_package_ids.remove(package_id)
+        if error:
+            self._state.install_error = error
+        await self.broadcast_state()
+
     async def set_selected_build(self, build_name: Optional[str]) -> None:
         """Set the selected build."""
         self._state.selected_build_name = build_name
@@ -317,9 +334,16 @@ class ServerState:
         await self.broadcast_state()
 
     async def set_bom_data(
-        self, bom: Optional[BOMData], error: Optional[str] = None
+        self, bom: Optional[BOMData | dict], error: Optional[str] = None
     ) -> None:
         """Update BOM data."""
+        if isinstance(bom, dict):
+            try:
+                bom = BOMData.model_validate(bom)
+            except Exception as exc:
+                log.warning("Failed to parse BOMData payload: %s", exc)
+                bom = None
+                error = error or "Invalid BOM data"
         self._state.bom_data = bom
         self._state.bom_error = error
         self._state.is_loading_bom = False
@@ -359,9 +383,16 @@ class ServerState:
         await self.broadcast_state()
 
     async def set_variables_data(
-        self, data: Optional[VariablesData], error: Optional[str] = None
+        self, data: Optional[VariablesData | dict], error: Optional[str] = None
     ) -> None:
         """Update variables data."""
+        if isinstance(data, dict):
+            try:
+                data = VariablesData.model_validate(data)
+            except Exception as exc:
+                log.warning("Failed to parse VariablesData payload: %s", exc)
+                data = None
+                error = error or "Invalid variables data"
         self._state.current_variables_data = data
         self._state.variables_error = error
         self._state.is_loading_variables = False

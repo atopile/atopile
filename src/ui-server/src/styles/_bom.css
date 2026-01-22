@@ -342,6 +342,12 @@
 .lcsc-link .external-link {
   color: var(--ctp-blue);
   opacity: 0.7;
+  background: transparent;
+  border: none;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
 }
 
 .lcsc-link:hover .external-link {
@@ -460,6 +466,12 @@
   color: var(--ctp-blue);
   opacity: 0.7;
   transition: opacity 0.15s ease;
+  background: transparent;
+  border: none;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
 }
 
 .bom-detail-item .external-link:hover {

@@ -215,7 +215,28 @@ function handleMessage(event: MessageEvent): void {
     switch (message.type) {
       case 'state':
         // Full state replacement from backend
-        useStore.getState().replaceState(message.data);
+        {
+          const rawState = message.data as unknown as Record<string, unknown>;
+          const {
+            installing_package_ids,
+            install_error,
+            ...rest
+          } = rawState as Record<string, unknown>;
+
+          const restState = rest as unknown as AppState;
+
+          useStore.getState().replaceState({
+            ...restState,
+            installingPackageIds:
+              (installing_package_ids as string[] | undefined) ??
+              restState.installingPackageIds ??
+              [],
+            installError:
+              (install_error as string | null | undefined) ??
+              restState.installError ??
+              null,
+          });
+        }
         break;
 
       case 'action_result':

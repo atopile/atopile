@@ -252,6 +252,7 @@ export function Sidebar() {
           collapsed={collapsedSections.has('stdlib')}
           onToggle={() => handlers.toggleSection('stdlib')}
           height={collapsedSections.has('stdlib') ? undefined : sectionHeights.stdlib}
+          autoSize
           onResizeStart={(e) => handlers.handleResizeStart('stdlib', e)}
         >
           <StandardLibraryPanel
@@ -343,7 +344,6 @@ export function Sidebar() {
             onInstall={(version) => {
               const projectRoot = state?.selectedProjectRoot || (state?.projects?.[0]?.root);
               if (projectRoot) {
-                useStore.getState().addInstallingPackage(selectedPackage.fullName);
                 action('installPackage', {
                   packageId: selectedPackage.fullName,
                   projectRoot,

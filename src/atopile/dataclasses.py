@@ -967,6 +967,8 @@ class AppState(BaseModel):
     packages: list[PackageInfo] = Field(default_factory=list)
     is_loading_packages: bool = False
     packages_error: Optional[str] = None
+    installing_package_ids: list[str] = Field(default_factory=list)
+    install_error: Optional[str] = None
 
     # Standard Library
     stdlib_items: list[StdLibItem] = Field(default_factory=list)

@@ -35,9 +35,6 @@ import atopile
 import faebryk
 from atopile.dataclasses import (
     Log,
-    ProjectState,
-    StageCompleteEvent,
-    StageStatusEvent,
 )
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 from atopile.logging_utils import PLOG, error_console
@@ -457,6 +454,70 @@ class BaseLogger:
                     objects,
                 )
             )
+
+    def debug(
+        self,
+        message: str,
+        *,
+        logger_name: str = "",
+        audience: Log.Audience = Log.Audience.DEVELOPER,
+        objects: dict | None = None,
+    ) -> None:
+        self.log(
+            Log.Level.DEBUG,
+            message,
+            logger_name=logger_name,
+            audience=audience,
+            objects=objects,
+        )
+
+    def info(
+        self,
+        message: str,
+        *,
+        logger_name: str = "",
+        audience: Log.Audience = Log.Audience.DEVELOPER,
+        objects: dict | None = None,
+    ) -> None:
+        self.log(
+            Log.Level.INFO,
+            message,
+            logger_name=logger_name,
+            audience=audience,
+            objects=objects,
+        )
+
+    def warning(
+        self,
+        message: str,
+        *,
+        logger_name: str = "",
+        audience: Log.Audience = Log.Audience.DEVELOPER,
+        objects: dict | None = None,
+    ) -> None:
+        self.log(
+            Log.Level.WARNING,
+            message,
+            logger_name=logger_name,
+            audience=audience,
+            objects=objects,
+        )
+
+    def error(
+        self,
+        message: str,
+        *,
+        logger_name: str = "",
+        audience: Log.Audience = Log.Audience.DEVELOPER,
+        objects: dict | None = None,
+    ) -> None:
+        self.log(
+            Log.Level.ERROR,
+            message,
+            logger_name=logger_name,
+            audience=audience,
+            objects=objects,
+        )
 
     def flush(self) -> None:
         if self._writer:

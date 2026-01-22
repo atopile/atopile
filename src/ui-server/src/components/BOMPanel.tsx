@@ -69,6 +69,16 @@ function normalizeUsagePath(path: string): string {
   return addressPart.split('|')[0]
 }
 
+function getUsageFilePath(path: string): string | null {
+  if (!path) return null
+  const primary = path.split('|')[0] ?? path
+  const filePart = primary.split('::')[0]
+  if (filePart.endsWith('.ato')) {
+    return filePart
+  }
+  return null
+}
+
 function getUsageDisplayPath(path: string): string {
   const normalized = normalizeUsagePath(path)
   const segments = normalized.split('.')
@@ -208,7 +218,9 @@ const BOMRow = memo(function BOMRow({
 
   const handleUsageClick = (e: React.MouseEvent, usage: UsageLocation) => {
     e.stopPropagation()
-    onGoToSource(usage.path, usage.line)
+    const filePath = getUsageFilePath(usage.path)
+    if (!filePath) return
+    onGoToSource(filePath, usage.line)
   }
 
   const toggleGroup = (groupPath: string, e: React.MouseEvent) => {
@@ -269,15 +281,21 @@ const BOMRow = memo(function BOMRow({
                       onClick={(e) => handleCopy('lcsc', component.lcsc!, e)}
                     >
                       <span className="mono">{component.lcsc}</span>
-                      <a
-                        href={`https://www.lcsc.com/product-detail/${component.lcsc}.html`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
+                      <button
+                        type="button"
                         className="external-link"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          window.open(
+                            `https://www.lcsc.com/product-detail/${component.lcsc}.html`,
+                            '_blank',
+                            'noopener,noreferrer'
+                          )
+                        }}
+                        aria-label="Open LCSC part in browser"
                       >
                         <ExternalLink size={10} />
-                      </a>
+                      </button>
                       {copiedField === 'lcsc' ? (
                         <Check size={10} className="copy-icon copied" />
                       ) : (

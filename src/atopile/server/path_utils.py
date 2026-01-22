@@ -8,7 +8,8 @@ from pathlib import Path
 
 
 def resolve_workspace_file(path_str: str, workspace_paths: list[Path]) -> Path | None:
-    candidate = Path(path_str)
+    normalized = path_str.split("::", 1)[0].split("|", 1)[0]
+    candidate = Path(normalized)
     if candidate.exists():
         return candidate
 

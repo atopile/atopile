@@ -547,6 +547,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             version = payload.get("version")
 
             if not package_id or not project_root:
+                await server_state.remove_installing_package(
+                    package_id or "<unknown>", "Missing packageId or projectRoot"
+                )
                 return {
                     "success": False,
                     "error": "Missing packageId or projectRoot",
@@ -555,6 +558,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             project_path = Path(project_root)
             # Run blocking path checks in thread pool
             if not await asyncio.to_thread(project_path.exists):
+                await server_state.remove_installing_package(
+                    package_id, f"Project not found: {project_root}"
+                )
                 return {
                     "success": False,
                     "error": f"Project not found: {project_root}",
@@ -562,6 +568,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             ato_yaml_path = project_path / "ato.yaml"
             if not await asyncio.to_thread(ato_yaml_path.exists):
+                await server_state.remove_installing_package(
+                    package_id, f"No ato.yaml in: {project_root}"
+                )
                 return {
                     "success": False,
                     "error": f"No ato.yaml in: {project_root}",
@@ -577,6 +586,8 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 target="package-install",
                 stage="install",
             )
+
+            await server_state.add_installing_package(package_id)
 
             action_logger.info(
                 f"Installing {pkg_spec}...",
@@ -597,11 +608,18 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                             f"Successfully installed {pkg_spec}",
                             audience=Log.Audience.USER,
                         )
-                        # Refresh packages state to update UI
                         loop = server_state._event_loop
+
+                        async def finalize_install() -> None:
+                            await packages_domain.refresh_packages_state(
+                                scan_paths=[project_path]
+                            )
+                            await server_state.remove_installing_package(package_id)
+
                         if loop and loop.is_running():
                             asyncio.run_coroutine_threadsafe(
-                                packages_domain.refresh_packages_state(), loop
+                                finalize_install(),
+                                loop,
                             )
                     else:
                         error_msg = (
@@ -614,11 +632,29 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                             f"Failed to install {pkg_spec}: {error_msg}",
                             audience=Log.Audience.USER,
                         )
+                        loop = server_state._event_loop
+                        if loop and loop.is_running():
+                            asyncio.run_coroutine_threadsafe(
+                                server_state.remove_installing_package(
+                                    package_id,
+                                    f"Failed to install {pkg_spec}: {error_msg}",
+                                ),
+                                loop,
+                            )
                 except Exception as exc:
                     action_logger.error(
                         f"Failed to install {pkg_spec}: {exc}",
                         audience=Log.Audience.USER,
                     )
+                    loop = server_state._event_loop
+                    if loop and loop.is_running():
+                        asyncio.run_coroutine_threadsafe(
+                            server_state.remove_installing_package(
+                                package_id,
+                                f"Failed to install {pkg_spec}: {exc}",
+                            ),
+                            loop,
+                        )
                 finally:
                     action_logger.flush()
 
@@ -881,6 +917,32 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 builds_domain.handle_get_builds_by_project, project_root, target, limit
             )
             return {"success": True, **result}
+
+        if action == "getMaxConcurrentSetting":
+            try:
+                result = await asyncio.to_thread(
+                    builds_domain.handle_get_max_concurrent_setting
+                )
+                return {"success": True, "setting": result}
+            except Exception as exc:
+                return {"success": False, "error": str(exc)}
+
+        if action == "setMaxConcurrentSetting":
+            try:
+                data = {k: v for k, v in payload.items() if k != "requestId"}
+                use_default = data.get("useDefault", data.get("use_default", True))
+                custom_value = data.get("customValue", data.get("custom_value", None))
+                request = builds_domain.MaxConcurrentRequest(
+                    use_default=bool(use_default),
+                    custom_value=custom_value,
+                )
+                result = await asyncio.to_thread(
+                    builds_domain.handle_set_max_concurrent_setting,
+                    request,
+                )
+                return {"success": True, "setting": result}
+            except Exception as exc:
+                return {"success": False, "error": str(exc)}
 
         if action == "fetchLcscParts":
             lcsc_ids = payload.get("lcscIds", [])

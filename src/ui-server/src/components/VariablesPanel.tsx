@@ -397,14 +397,14 @@ export function VariablesPanel({
   // Extract variables from data
   const variables = variablesData?.nodes || []
 
-  // Auto-expand root nodes when new data arrives
+  // Collapse all nodes when new data arrives
   useEffect(() => {
     const version = variablesData?.version
-    if (variables.length > 0 && version && version !== lastDataVersion) {
-      setExpandedNodes(new Set(variables.map(n => n.path)))
+    if (version && version !== lastDataVersion) {
+      setExpandedNodes(new Set())
       setLastDataVersion(version)
     }
-  }, [variables, variablesData?.version, lastDataVersion])
+  }, [variablesData?.version, lastDataVersion])
 
   // Memoized callbacks to prevent child re-renders
   const handleToggleExpand = useCallback((path: string) => {
