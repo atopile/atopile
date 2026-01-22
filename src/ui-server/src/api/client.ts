@@ -20,20 +20,10 @@ import type {
   VariablesData,
   ProjectDependency,
 } from '../types/build';
+import { API_URL } from './index';
 
-// Declare window properties for TypeScript
-declare global {
-  interface Window {
-    __ATOPILE_API_URL__?: string;
-    __ATOPILE_WS_URL__?: string;
-  }
-}
-
-// Base URL - configurable for development or injected by extension
-const BASE_URL =
-  (typeof window !== 'undefined' && window.__ATOPILE_API_URL__) ||
-  import.meta.env.VITE_API_URL ||
-  'http://localhost:8501';
+// Base URL - from centralized config
+const BASE_URL = API_URL;
 
 /**
  * Custom error class for API errors.
