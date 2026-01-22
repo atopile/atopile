@@ -559,15 +559,17 @@ class PartLifecycle:
                 )
 
             # At this point, all footprints MUST have a KiCAD identifier
+            # Prioritize library footprint (from picker) over PCB footprint (existing)
+            # This ensures that when a part changes, we use the NEW footprint identifier
             k_pcb_fp_t = f_fp.try_get_trait(
                 F.KiCadFootprints.has_associated_kicad_pcb_footprint
             )
-            if k_pcb_fp_t:
-                fp_id = k_pcb_fp_t.get_kicad_identifier()
-                logger.debug(f"Using KiCAD-PCB footprint identifier: {fp_id}")
-            elif k_lib_file_fp_t:
+            if k_lib_file_fp_t:
                 fp_id = k_lib_file_fp_t.get_kicad_identifier()
                 logger.debug(f"Using KiCAD-Library-File footprint identifier: {fp_id}")
+            elif k_pcb_fp_t:
+                fp_id = k_pcb_fp_t.get_kicad_identifier()
+                logger.debug(f"Using KiCAD-PCB footprint identifier: {fp_id}")
             else:
                 raise IngestFootprintError(
                     f"Footprint {f_fp.get_name()} has no "
