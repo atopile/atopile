@@ -10,14 +10,15 @@
  */
 
 import * as vscode from 'vscode';
+import * as cp from 'child_process';
+import axios from 'axios';
 import { traceInfo, traceError, traceVerbose } from './log/logging';
-import { getAtoBin, getAtoCommand } from './findbin';
+import { getAtoBin } from './findbin';
 import { appStateManager } from './appState';
 
 const DEFAULT_PORT = 8501;
 const DEFAULT_API_URL = `http://localhost:${DEFAULT_PORT}`;
 const SERVER_STARTUP_TIMEOUT_MS = 30000; // 30 seconds to wait for server startup
-const SERVER_HEALTH_CHECK_INTERVAL_MS = 1000; // Check every second during startup
 
 interface BuildResponse {
     success: boolean;
@@ -26,6 +27,8 @@ interface BuildResponse {
     targets?: string[];
     build_targets?: { target: string; build_id: string }[];
 }
+
+type ServerState = 'stopped' | 'starting' | 'running' | 'error';
 
 function getApiUrl(): string {
     const config = vscode.workspace.getConfiguration('atopile');
@@ -72,20 +75,42 @@ function buildWsUrl(port: number): string {
 }
 
 /**
+ * Check server health via HTTP endpoint (doesn't require WebSocket).
+ */
+async function checkServerHealthHttp(apiUrl: string): Promise<boolean> {
+    try {
+        const response = await axios.get(`${apiUrl}/health`, { timeout: 2000 });
+        return response.status === 200 && response.data?.status === 'ok';
+    } catch {
+        return false;
+    }
+}
+
+/**
  * Manages the backend server lifecycle.
  */
 class BackendServerManager implements vscode.Disposable {
-    private _terminal: vscode.Terminal | undefined;
-    private _isStarting: boolean = false;
+    private _process: cp.ChildProcess | undefined;
+    private _outputChannel: vscode.OutputChannel | vscode.LogOutputChannel;
+    private _serverState: ServerState = 'stopped';
+    private _stdoutBuffer: string = '';
+    private _stderrBuffer: string = '';
+    private _stdoutFlushTimer: NodeJS.Timeout | undefined;
+    private _stderrFlushTimer: NodeJS.Timeout | undefined;
     private _isConnected: boolean = false;
+    private _serverReady: boolean = false;
     private _startupPromise: Promise<boolean> | null = null;
     private _disposables: vscode.Disposable[] = [];
     private _statusBarItem: vscode.StatusBarItem | undefined;
+    private _lastError: string | undefined;
 
     private readonly _onStatusChange = new vscode.EventEmitter<boolean>();
     public readonly onStatusChange = this._onStatusChange.event;
 
     constructor() {
+        // Create output channel for server logs (log channel when available)
+        this._outputChannel = vscode.window.createOutputChannel('atopile Server', { log: true });
+
         // Create status bar item
         this._statusBarItem = vscode.window.createStatusBarItem(
             vscode.StatusBarAlignment.Right,
@@ -98,17 +123,6 @@ class BackendServerManager implements vscode.Disposable {
 
         const configuredPort = getConfiguredPort();
         traceInfo(`BackendServer: Init - configuredPort=${configuredPort}, apiUrl=${getApiUrl()}`);
-
-        // Listen for terminal close events to clean up our reference
-        this._disposables.push(
-            vscode.window.onDidCloseTerminal((terminal) => {
-                if (terminal === this._terminal) {
-                    traceInfo('BackendServer: Terminal was closed');
-                    this._terminal = undefined;
-                    this._updateStatusBar();
-                }
-            })
-        );
 
         // Register the backend status command
         this._disposables.push(
@@ -134,14 +148,136 @@ class BackendServerManager implements vscode.Disposable {
     }
 
     /**
+     * Process buffered output and emit complete lines.
+     */
+    private _processBufferedOutput(
+        buffer: string,
+        data: string,
+        level: 'info' | 'error',
+        flushPartial: boolean = false
+    ): { newBuffer: string } {
+        buffer += data.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+        // Split by newlines but keep track of incomplete lines
+        const lines = buffer.split('\n');
+
+        // The last element might be an incomplete line
+        const newBuffer = flushPartial ? '' : (lines.pop() || '');
+
+        // Output complete lines
+        for (const line of lines) {
+            this._appendOutputLine(level, line);
+        }
+
+        return { newBuffer };
+    }
+
+    private _appendOutputLine(level: 'info' | 'error', line: string): void {
+        this._log(level, line);
+    }
+
+    private _log(level: 'info' | 'warn' | 'error' | 'debug' | 'trace', message: string): void {
+        if ('info' in this._outputChannel) {
+            const logChannel = this._outputChannel as vscode.LogOutputChannel;
+            switch (level) {
+                case 'error':
+                    logChannel.error(message);
+                    break;
+                case 'warn':
+                    logChannel.warn(message);
+                    break;
+                case 'debug':
+                    logChannel.debug(message);
+                    break;
+                case 'trace':
+                    logChannel.trace(message);
+                    break;
+                default:
+                    logChannel.info(message);
+            }
+            return;
+        }
+
+        const prefix = level === 'info' ? '' : `[${level}] `;
+        this._outputChannel.appendLine(`${prefix}${message}`);
+    }
+
+    private _schedulePartialFlush(kind: 'stdout' | 'stderr'): void {
+        const isStdout = kind === 'stdout';
+        const buffer = isStdout ? this._stdoutBuffer : this._stderrBuffer;
+        const timer = isStdout ? this._stdoutFlushTimer : this._stderrFlushTimer;
+        if (!buffer) {
+            if (timer) {
+                clearTimeout(timer);
+            }
+            if (isStdout) {
+                this._stdoutFlushTimer = undefined;
+            } else {
+                this._stderrFlushTimer = undefined;
+            }
+            return;
+        }
+
+        if (timer) {
+            clearTimeout(timer);
+        }
+        const newTimer = setTimeout(() => {
+            this._flushPartial(kind);
+        }, 250);
+        if (isStdout) {
+            this._stdoutFlushTimer = newTimer;
+        } else {
+            this._stderrFlushTimer = newTimer;
+        }
+    }
+
+    private _flushPartial(kind: 'stdout' | 'stderr'): void {
+        if (kind === 'stdout') {
+            if (this._stdoutBuffer) {
+                this._stdoutBuffer = this._processBufferedOutput(this._stdoutBuffer, '', 'info', true).newBuffer;
+            }
+            if (this._stdoutFlushTimer) {
+                clearTimeout(this._stdoutFlushTimer);
+                this._stdoutFlushTimer = undefined;
+            }
+        } else {
+            if (this._stderrBuffer) {
+                this._stderrBuffer = this._processBufferedOutput(
+                    this._stderrBuffer,
+                    '',
+                    'error',
+                    true
+                ).newBuffer;
+            }
+            if (this._stderrFlushTimer) {
+                clearTimeout(this._stderrFlushTimer);
+                this._stderrFlushTimer = undefined;
+            }
+        }
+    }
+
+    /**
+     * Flush any remaining buffered output.
+     */
+    private _flushBuffers(): void {
+        this._flushPartial('stdout');
+        this._flushPartial('stderr');
+        this._stdoutBuffer = '';
+        this._stderrBuffer = '';
+    }
+
+    /**
      * Update the status bar item to reflect current connection state.
      */
     private _updateStatusBar(): void {
         if (!this._statusBarItem) return;
 
-        if (this._isStarting) {
+        if (this._serverState === 'starting') {
             this._statusBarItem.text = '$(sync~spin) ato: Starting...';
             this._statusBarItem.backgroundColor = undefined;
+        } else if (this._serverState === 'error') {
+            this._statusBarItem.text = '$(error) ato: Error';
+            this._statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
         } else if (this._isConnected) {
             this._statusBarItem.text = `$(check) ato: ${this.port}`;
             this._statusBarItem.backgroundColor = undefined;
@@ -155,11 +291,16 @@ class BackendServerManager implements vscode.Disposable {
      * Show the backend status quick pick menu.
      */
     private async _showBackendStatusMenu(): Promise<void> {
-        const statusText = this._isConnected
-            ? `Connected to port ${this.port}`
-            : this._isStarting
-                ? 'Starting...'
-                : 'Disconnected';
+        let statusText: string;
+        if (this._serverState === 'error') {
+            statusText = `Error: ${this._lastError || 'Unknown error'}`;
+        } else if (this._isConnected) {
+            statusText = `Connected to port ${this.port}`;
+        } else if (this._serverState === 'starting') {
+            statusText = 'Starting...';
+        } else {
+            statusText = 'Disconnected';
+        }
 
         interface BackendMenuItem extends vscode.QuickPickItem {
             action: string;
@@ -180,7 +321,7 @@ class BackendServerManager implements vscode.Disposable {
             { label: '', kind: vscode.QuickPickItemKind.Separator, action: 'none' },
         ];
 
-        if (this._isConnected) {
+        if (this._isConnected || this._serverState === 'running') {
             items.push({
                 label: '$(debug-restart) Restart Backend Server',
                 description: 'Stop and restart the backend server',
@@ -189,15 +330,15 @@ class BackendServerManager implements vscode.Disposable {
         } else {
             items.push({
                 label: '$(play) Start Backend Server',
-                description: 'Start the backend server in a terminal',
+                description: 'Start the backend server',
                 action: 'start',
             });
         }
 
         items.push({
-            label: '$(terminal) Show Server Terminal',
-            description: 'Show the backend server terminal',
-            action: 'show_terminal',
+            label: '$(output) Show Server Logs',
+            description: 'Show the backend server output',
+            action: 'show_logs',
         });
 
         const selected = await vscode.window.showQuickPick(items, {
@@ -220,8 +361,8 @@ class BackendServerManager implements vscode.Disposable {
             case 'start':
                 await this.startServer();
                 break;
-            case 'show_terminal':
-                await this.showTerminal();
+            case 'show_logs':
+                this.showLogs();
                 break;
         }
     }
@@ -231,7 +372,7 @@ class BackendServerManager implements vscode.Disposable {
     }
 
     get isStarting(): boolean {
-        return this._isStarting;
+        return this._serverState === 'starting';
     }
 
     get port(): number {
@@ -257,11 +398,15 @@ class BackendServerManager implements vscode.Disposable {
             this._onStatusChange.fire(connected);
             this._updateStatusBar();
 
-            // Configure ato binary path on first connection
-            if (connected) {
-                this._configureAtoBinary();
-            }
+            // No-op: connection state shouldn't trigger backend configuration.
         }
+    }
+
+    /**
+     * Show the server logs output channel.
+     */
+    showLogs(): void {
+        this._outputChannel.show();
     }
 
     /**
@@ -274,16 +419,17 @@ class BackendServerManager implements vscode.Disposable {
             return this._startupPromise;
         }
 
-        // If already connected, nothing to do
-        if (this._isConnected) {
-            traceVerbose('BackendServer: Already connected, skipping start');
-            return true;
+        // If we already have a process, assume we're in control
+        if (this._process) {
+            if (this._serverState === 'running' || this._serverState === 'starting') {
+                traceVerbose('BackendServer: Process already managed, skipping start');
+                return true;
+            }
+            await this.stopServer();
         }
 
-        // Check if server is already running on configured URL
-        if (await this._checkServerHealth()) {
-            traceInfo('BackendServer: Server already running on configured URL');
-            return true;
+        if (await checkServerHealthHttp(this.apiUrl)) {
+            this._log('info', 'server: Existing server detected; restarting to take ownership');
         }
 
         this._startupPromise = this._doStartServer();
@@ -295,50 +441,147 @@ class BackendServerManager implements vscode.Disposable {
     }
 
     private async _doStartServer(): Promise<boolean> {
-        this._isStarting = true;
+        this._serverState = 'starting';
+        this._lastError = undefined;
+        this._stdoutBuffer = '';
+        this._stderrBuffer = '';
+        this._serverReady = false;
         this._updateStatusBar();
 
         try {
             const workspaceRoot = getWorkspaceRoot();
-            // Use --force to kill any stale server on this port from a previous session
-            const args = ['serve', 'backend', '--force', '--port', String(this.port)];
+            const atoBin = await getAtoBin();
+
+            if (!atoBin) {
+                this._lastError = 'ato binary not found';
+                traceError(`BackendServer: Cannot start server - ${this._lastError}`);
+                this._serverState = 'error';
+                this._updateStatusBar();
+                return false;
+            }
+
+            if (this._process) {
+                await this.stopServer();
+            }
+
+            // Build command args: ato serve backend --force --port <port> [--workspace <path>]
+            const args = [
+                ...atoBin.command.slice(1),
+                'serve', 'backend',
+                '--force',
+                '--port', String(this.port),
+            ];
             if (workspaceRoot) {
                 args.push('--workspace', workspaceRoot);
             }
 
-            const command = await getAtoCommand(undefined, args);
-            if (!command) {
-                traceError('BackendServer: Cannot start server - ato binary not found');
-                return false;
-            }
+            const command = atoBin.command[0];
+            traceInfo(`BackendServer: Starting server: ${command} ${args.join(' ')}`);
+            this._log('info', `server: Starting: ${command} ${args.join(' ')}`);
 
-            traceInfo(`BackendServer: Starting server: ${command}`);
-
-            // Create terminal (hidden by default for auto-start)
-            this._terminal = vscode.window.createTerminal({
-                name: 'ato serve',
-                hideFromUser: true,
+            // Spawn the server process with unbuffered Python output
+            const child = cp.spawn(command, args, {
+                cwd: workspaceRoot,
+                env: {
+                    ...process.env,
+                    ATO_NON_INTERACTIVE: 'y',
+                    PYTHONUNBUFFERED: '1',  // Disable Python output buffering
+                },
+                stdio: ['ignore', 'pipe', 'pipe'],
             });
-            this._terminal.sendText(command);
 
-            // Wait for server to be ready
-            const ready = await this._waitForServerReady();
+            this._process = child;
+
+            let stderrCollected = '';
+            child.stdout?.on('data', (data: Buffer) => {
+                const text = data.toString();
+                this._stdoutBuffer = this._processBufferedOutput(this._stdoutBuffer, text, 'info').newBuffer;
+                this._schedulePartialFlush('stdout');
+            });
+
+            child.stderr?.on('data', (data: Buffer) => {
+                const text = data.toString();
+                stderrCollected += text;
+                this._stderrBuffer = this._processBufferedOutput(this._stderrBuffer, text, 'error').newBuffer;
+                this._schedulePartialFlush('stderr');
+            });
+
+            child.on('exit', (code, signal) => {
+                this._flushBuffers();
+                const exitMsg = signal
+                    ? `Server process killed by signal ${signal}`
+                    : `Server process exited with code ${code}`;
+
+                traceInfo(`BackendServer: ${exitMsg}`);
+                this._log('info', `server: ${exitMsg}`);
+                this._process = undefined;
+                this._serverReady = false;
+
+                if (this._serverState === 'starting') {
+                    const errorMsg = stderrCollected.trim() || `Process exited with code ${code}`;
+                    this._lastError = errorMsg.slice(0, 200);
+                    this._serverState = 'error';
+                    this._updateStatusBar();
+                } else if (this._serverState === 'running') {
+                    this._serverState = 'stopped';
+                    this._lastError = exitMsg;
+                    this._updateStatusBar();
+                }
+            });
+
+            child.on('error', (err) => {
+                traceError(`BackendServer: Spawn error: ${err.message}`);
+                this._log('error', `server: Spawn error: ${err.message}`);
+                this._lastError = err.message;
+                this._serverState = 'error';
+                this._process = undefined;
+                this._serverReady = false;
+                this._updateStatusBar();
+            });
+
+            const ready = await this._waitForServerReady(child);
+
             if (ready) {
+                this._serverReady = true;
                 traceInfo(`BackendServer: Server started successfully on port ${this.port}`);
+                this._log('info', `server: Started successfully on port ${this.port}`);
+                this._serverState = 'running';
+                this._updateStatusBar();
             } else {
-                traceError('BackendServer: Server failed to start within timeout');
-                // Show terminal so user can see what went wrong
-                this._terminal?.show();
+                if (!this._lastError) {
+                    this._lastError = 'Server startup timeout';
+                }
+                traceError(`BackendServer: Server failed to start: ${this._lastError}`);
+                this._log('error', `server: Failed to start: ${this._lastError}`);
+                this._serverState = 'error';
+                this._updateStatusBar();
+                await this.stopServer();
             }
 
             return ready;
         } catch (error) {
-            traceError(`BackendServer: Failed to start server: ${error}`);
-            return false;
-        } finally {
-            this._isStarting = false;
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            this._lastError = errorMsg;
+            traceError(`BackendServer: Failed to start server: ${errorMsg}`);
+            this._log('error', `server: Failed to start: ${errorMsg}`);
+            this._serverState = 'error';
             this._updateStatusBar();
+            return false;
         }
+    }
+
+    private async _waitForServerReady(child: cp.ChildProcess): Promise<boolean> {
+        const start = Date.now();
+        while (Date.now() - start < SERVER_STARTUP_TIMEOUT_MS) {
+            if (this._process !== child) {
+                return false;
+            }
+            if (await checkServerHealthHttp(this.apiUrl)) {
+                return true;
+            }
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        return false;
     }
 
     /**
@@ -346,6 +589,7 @@ class BackendServerManager implements vscode.Disposable {
      */
     async restartServer(): Promise<boolean> {
         traceInfo('BackendServer: Restarting server...');
+        this._log('info', 'server: Restarting...');
 
         // Stop existing server
         await this.stopServer();
@@ -361,97 +605,53 @@ class BackendServerManager implements vscode.Disposable {
      * Stop the backend server.
      */
     async stopServer(): Promise<void> {
-        if (this._terminal) {
+        if (this._process) {
             traceInfo('BackendServer: Stopping server...');
-            // Send Ctrl+C to gracefully stop
-            this._terminal.sendText('\x03');
-            // Give it a moment to shut down
-            await new Promise(resolve => setTimeout(resolve, 500));
-            // Dispose the terminal
-            this._terminal.dispose();
-            this._terminal = undefined;
+            this._log('info', 'server: Stopping...');
+
+            const proc = this._process;
+            this._process = undefined;
+            this._serverReady = false;
+
+            // Try graceful shutdown first (SIGTERM)
+            proc.kill('SIGTERM');
+
+            // Wait for process to exit, with timeout
+            const exitPromise = new Promise<void>((resolve) => {
+                proc.once('exit', () => resolve());
+                // Force kill after 3 seconds if still running
+                setTimeout(() => {
+                    if (!proc.killed) {
+                        traceInfo('BackendServer: Force killing server (SIGKILL)');
+                        proc.kill('SIGKILL');
+                    }
+                    resolve();
+                }, 3000);
+            });
+
+            await exitPromise;
+            if (this._serverState !== 'error') {
+                this._serverState = 'stopped';
+            }
+            this._updateStatusBar();
+            traceInfo('BackendServer: Server stopped');
+            this._log('info', 'server: Stopped');
         }
     }
 
     /**
-     * Show the server terminal (creates one if needed).
+     * Show the server logs (for backwards compatibility with showTerminal).
      */
     async showTerminal(): Promise<void> {
-        const existingTerminal = this._terminal;
-        if (existingTerminal) {
-            existingTerminal.show();
-            return;
+        // If server is not running, start it
+        if (!this._process && !this._isConnected) {
+            await this.startServer();
         }
-
-        // No terminal but maybe server is running externally
-        if (this._isConnected) {
-            const choice = await vscode.window.showInformationMessage(
-                'Server is running but terminal is not available. Restart server in a new terminal?',
-                'Restart Server',
-                'Cancel'
-            );
-            if (choice === 'Restart Server') {
-                await this.restartServer();
-                this._terminal?.show();
-            }
-            return;
-        }
-
-        // Start server and show terminal
-        await this.startServer();
-        this._terminal?.show();
+        this.showLogs();
     }
 
     async startOrShowTerminal(): Promise<void> {
         await this.showTerminal();
-    }
-
-    /**
-     * Check if the server is healthy.
-     */
-    private async _checkServerHealth(): Promise<boolean> {
-        try {
-            await appStateManager.sendActionWithResponse('ping', {}, { timeoutMs: 2000 });
-            return true;
-        } catch {
-            return false;
-        }
-    }
-
-    /**
-     * Wait for the server to be ready.
-     */
-    private async _waitForServerReady(): Promise<boolean> {
-        const startTime = Date.now();
-
-        while (Date.now() - startTime < SERVER_STARTUP_TIMEOUT_MS) {
-            if (await this._checkServerHealth()) {
-                return true;
-            }
-            await new Promise(resolve => setTimeout(resolve, SERVER_HEALTH_CHECK_INTERVAL_MS));
-        }
-
-        return false;
-    }
-
-    /**
-     * Configure the ato binary path on the server.
-     */
-    private async _configureAtoBinary(): Promise<void> {
-        try {
-            const atoBinInfo = await getAtoBin();
-            if (atoBinInfo && atoBinInfo.command.length > 0) {
-                const atoBinary = atoBinInfo.command[0];
-                await appStateManager.sendActionWithResponse(
-                    'setAtoBinary',
-                    { atoBinary },
-                    { timeoutMs: 5000 }
-                );
-                traceInfo(`BackendServer: Configured ato binary: ${atoBinary} (source: ${atoBinInfo.source})`);
-            }
-        } catch (error) {
-            traceError(`BackendServer: Failed to configure ato binary: ${error}`);
-        }
     }
 
     /**
@@ -478,11 +678,19 @@ class BackendServerManager implements vscode.Disposable {
 
     dispose(): void {
         // Stop the server gracefully
-        if (this._terminal) {
-            this._terminal.sendText('\x03');
-            this._terminal.dispose();
-            this._terminal = undefined;
+        if (this._process) {
+            this._process.kill('SIGTERM');
+            // Give it a moment, then force kill
+            setTimeout(() => {
+                if (this._process && !this._process.killed) {
+                    this._process.kill('SIGKILL');
+                }
+            }, 1000);
+            this._process = undefined;
         }
+
+        // Dispose output channel
+        this._outputChannel.dispose();
 
         // Dispose status bar item
         if (this._statusBarItem) {

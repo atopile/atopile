@@ -1012,13 +1012,6 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             log_method(f"[ui] {message}")
             return {"success": True}
 
-        if action == "setAtoBinary":
-            ato_binary = payload.get("atoBinary")
-            if not ato_binary:
-                return {"success": False, "error": "Missing atoBinary"}
-            log.info(f"Received ato binary from client: {ato_binary}")
-            return {"success": True}
-
         if action == "ping":
             return {"success": True}
 

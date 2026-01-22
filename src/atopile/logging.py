@@ -37,7 +37,7 @@ from atopile.dataclasses import (
     Log,
 )
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
-from atopile.logging_utils import PLOG, error_console
+from atopile.logging_utils import PLOG, console, error_console
 
 # Suppress noisy third-party loggers
 logging.getLogger("requests").setLevel(logging.WARNING)
@@ -1203,6 +1203,9 @@ def load_test_logs_stream(
 handler = LogHandler(console=error_console)
 handler.setFormatter(_DEFAULT_FORMATTER)
 logging.basicConfig(level=logging.DEBUG, handlers=[handler])
+
+if _is_serving():
+    handler.console = console
 
 atexit.register(BuildLogger.close_all)
 atexit.register(TestLogger.close_all)
