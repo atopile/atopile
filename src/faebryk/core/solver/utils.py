@@ -635,9 +635,9 @@ class MutatorUtils:
         op!(op_inv(A), ...) -> A!
         '''
         """
-        inner_expr = expr.get_operands()[0]
+        inner_expr_rep = expr.get_operands()[0]
         if not (
-            (inner_expr_po := inner_expr.as_parameter_operatable.try_get())
+            (inner_expr_po := inner_expr_rep.as_parameter_operatable.try_get())
             and (inner_expr_e := inner_expr_po.as_expression.try_get())
         ):
             raise ValueError("Inner operand must be an expression")

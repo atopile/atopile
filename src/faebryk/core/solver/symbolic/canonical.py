@@ -3,7 +3,7 @@
 
 import logging
 from cmath import pi
-from typing import Callable, Iterable
+from typing import Callable, Iterable, cast
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -108,11 +108,14 @@ def convert_to_canonical_operations(mutator: Mutator):
     def c(
         op: type[fabll.NodeT], *operands: F.Parameters.can_be_operand
     ) -> F.Parameters.can_be_operand | None:
-        return mutator.create_check_and_insert_expression(
-            op,
+        out = mutator.create_check_and_insert_expression(
+            cast(type[F.Expressions.ExpressionNodes], op),
             *operands,
             from_ops=getattr(c, "from_ops", None),
-        ).out_operand
+        ).out
+        if out is None:
+            return None
+        return out.as_operand.get()
 
     def curry(e_type: type[fabll.NodeT]):
         def _(*operands: F.Parameters.can_be_operand | F.Literals.LiteralValues | None):
@@ -222,7 +225,7 @@ def convert_to_canonical_operations(mutator: Mutator):
         (
             GreaterOrEqual,
             GreaterThan,
-            lambda operands: operands,
+            lambda operands: list(operands),
         ),
         (
             IsSubset,
@@ -277,11 +280,7 @@ def convert_to_canonical_operations(mutator: Mutator):
         mutator.mutate_expression(
             e,
             converted,
-            expression_factory=Target,
-            # TODO: copy-pasted this from convert_to_canonical_literals
-            # need to ignore existing because non-canonical literals
-            # are congruent to canonical
-            # ignore_existing=True,
+            expression_factory=Target,  # pyright: ignore[reportArgumentType]
         )
 
 
@@ -310,14 +309,14 @@ def _create_alias_parameter_for_expression(
         p = next(iter(mutated.values())).as_parameter.force_get()
         if S_LOG:
             logger.debug(
-                f"Using mutated {p.compact_repr(mutator.print_ctx)} for {expr_repr}"
+                f"Using mutated {p.compact_repr(mutator.print_ctx)} for {expr_repr}"  # pyright: ignore[reportPossiblyUnboundVariable]
             )
     elif existing_params:
         p_old = next(iter(existing_params))
         p = mutator.mutate_parameter(p_old)
         if S_LOG:
             logger.debug(
-                f"Using and mutating {p.compact_repr(mutator.print_ctx)} for {expr_repr}"
+                f"Using and mutating {p.compact_repr(mutator.print_ctx)} for {expr_repr}"  # pyright: ignore[reportPossiblyUnboundVariable]
             )
     else:
         p = mutator.register_created_parameter(
@@ -326,7 +325,7 @@ def _create_alias_parameter_for_expression(
         )
         if S_LOG:
             logger.debug(
-                f"Using created {p.compact_repr(mutator.print_ctx)} for {expr_repr}"
+                f"Using created {p.compact_repr(mutator.print_ctx)} for {expr_repr}"  # pyright: ignore[reportPossiblyUnboundVariable]
             )
     is_expr = mutator._create_and_insert_expression(
         ExpressionBuilder(
@@ -397,6 +396,21 @@ def flatten_expressions(mutator: Mutator):
     #  - map exprs to repr
     #  - copy param (strip unit etc)
     # - copy expr
+    # - create representative for expr
+    #  - if aliases before use
+    #  - else new
+
+    # How we deal with alias classes
+    # - every expr has an alias class with exactly 1 parameter and at least 1 expr (itself)
+    #  - except predicates, those have no aliases
+    # - expressions only have literals or parameters as operands, except "Is"
+    # - if we create new expressions we need to make sure it has the representative
+    #  - congruent/subsumed/dropped, nothing to do
+    #  - copy/adjust, create new repr since no alias yet
+    # - if we mutate expr
+    #  - if congruent, merge old alias class into congruent expr
+    #  - if subsumed/subsuming, no alias for predicates
+    #  - if copy/adjusted, copy alias over
 
     exprs = F.Expressions.is_expression.sort_by_depth_expr(mutator.get_expressions())
 

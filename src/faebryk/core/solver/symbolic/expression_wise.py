@@ -382,9 +382,13 @@ def fold_pow(expr: F.Expressions.Power, mutator: Mutator):
     #TODO rethink: 0^0 -> 1
     ```
     """
+    # A^1 -> A
+    if (
+        exp := expr.is_expression.get().get_operand_literals().get(1)
+    ) and exp.op_setic_equals_singleton(1):
+        mutator.utils.mutate_unpack_expression(expr.is_expression.get())
 
     # TODO if (litex0)^negative -> new predicate
-    pass
 
 
 # @expression_wise_algorithm(Log)

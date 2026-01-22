@@ -16,6 +16,7 @@ from typing import (
     Sequence,
     cast,
     overload,
+    Literal,
 )
 
 from more_itertools import first
@@ -105,9 +106,6 @@ class Transformations:
     asserted: OrderedSet[F.Expressions.is_assertable] = field(
         default_factory=OrderedSet[F.Expressions.is_assertable]
     )
-    soft_replaced: dict[
-        F.Parameters.is_parameter_operatable, F.Parameters.can_be_operand
-    ] = field(default_factory=dict)
 
     def is_dirty(self) -> bool:
         # Use allow_different_graph=True because mutations go from G_in to G_out
@@ -586,12 +584,6 @@ class MutationStage:
                 result[new_expr] = result[new_expr] + sources
             else:
                 result[new_expr] = list(sources)
-        # soft_replaced needs inversion
-        for src, dest in self.transformations.soft_replaced.items():
-            if dest in result:
-                result[dest].append(src)
-            else:
-                result[dest] = [src]
         return result
 
     def map_backward(
@@ -652,7 +644,7 @@ class MutationStage:
             rows.append(
                 (
                     "terminated",
-                    ___repr_op(op.as_expression.get().as_parameter_operatable.get()),
+                    ___repr_op(op.as_parameter_operatable.get()),
                 )
             )
 
@@ -755,11 +747,6 @@ class MutationStage:
         elif param in self.transformations.created:
             srcs = self.transformations.created[param]
             reason = Traceback.Type.CREATED
-        elif param in self.transformations.soft_replaced:
-            srcs = [
-                k for k, v in self.transformations.soft_replaced.items() if v is param
-            ]
-            reason = Traceback.Type.SOFT_REPLACED
         else:
             origins = self.map_backward(param)
             # TODO remove (when backwards_mapping @once cache is fixed)
@@ -871,6 +858,7 @@ class MutationMap:
         chain_fronts = [param]
         collected = []
 
+        next_fronts = []
         for m in reversed(self.mutation_stages):
             next_fronts = []
             for chain_front in chain_fronts:
@@ -1430,7 +1418,7 @@ class ExpressionBuilder[
     @classmethod
     def from_e(cls, e: F.Expressions.is_expression) -> "ExpressionBuilder[T]":
         return cls(
-            factory=MutatorUtils.hack_get_expr_type(e),
+            factory=MutatorUtils.hack_get_expr_type(e),  # pyright: ignore[reportArgumentType]
             operands=e.get_operands(),
             assert_=bool(e.try_get_sibling_trait(F.Expressions.is_predicate)),
             terminate=bool(e.try_get_sibling_trait(is_terminated)),
@@ -1486,7 +1474,7 @@ class ExpressionBuilder[
 class Mutator:
     # Algorithm Interface --------------------------------------------------------------
     @overload
-    def make_singleton(self, value: bool) -> F.Literals.Booleans: ...
+    def make_singleton(self, value: bool) -> F.Literals.Booleans: ...  # pyright: ignore[reportOverlappingOverload]
 
     @overload
     def make_singleton(self, value: float) -> F.Literals.Numbers: ...
@@ -1567,7 +1555,7 @@ class Mutator:
             new_param,
         ).as_parameter.force_get()
 
-    def _create_and_insert_expression[T: fabll.NodeT](
+    def _create_and_insert_expression[T: F.Expressions.ExpressionNodes](
         self,
         builder: ExpressionBuilder[T],
     ) -> T:
@@ -1589,17 +1577,7 @@ class Mutator:
             )
 
         # map operands to mutated
-        new_operands = [
-            copy
-            for op in operands
-            if (
-                copy := self.get_copy(
-                    op,
-                    accept_soft=not (expr_factory is F.Expressions.Is and assert_),
-                )
-            )
-            is not None
-        ]
+        new_operands = [self.get_operand_copy(op) for op in operands]
 
         new_expr = (
             expr_factory.bind_typegraph(self.tg_out)
@@ -1625,20 +1603,35 @@ class Mutator:
             self.G_out.get_self_node().node().get_uuid()
         }, f"Graph mismatch: {op_graphs} != {self.G_out}"
 
-        return new_expr
+        return cast(T, new_expr)
 
     def create_check_and_insert_expression_from_builder(
         self,
         builder: ExpressionBuilder,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
+        allow_uncorrelated_congruence_match: bool = False,
     ) -> "InsertExpressionResult":
-        return self.create_check_and_insert_expression(
-            builder.factory,
-            *builder.operands,
-            assert_=builder.assert_,
-            terminate=builder.terminate,
-            from_ops=from_ops,
+        import faebryk.core.solver.symbolic.invariants as invariants
+
+        from_ops = list(set(from_ops or []))
+        c_operands = [self.get_operand_copy(op) for op in builder.operands]
+        builder_new = builder.with_(operands=c_operands)
+
+        res = invariants.wrap_insert_expression(
+            self,
+            builder_new,
+            alias=None,
+            allow_uncorrelated_congruence_match=allow_uncorrelated_congruence_match,
+            expr_already_exists_in_old_graph=False,
         )
+
+        if res.is_new and res.out is not None:
+            res_po = res.out.as_parameter_operatable.get()
+            if S_LOG:
+                logger.error(f"Mark new expr: {res_po.compact_repr(self.print_ctx)}")
+            self.transformations.created[res_po] = from_ops
+
+        return res
 
     def create_check_and_insert_expression(
         self,
@@ -1649,39 +1642,16 @@ class Mutator:
         terminate: bool = False,
         allow_uncorrelated_congruence_match: bool = False,
     ) -> "InsertExpressionResult":
-        import faebryk.core.solver.symbolic.invariants as invariants
-
-        from_ops = list(set(from_ops or []))
-        c_operands = [
-            self.get_copy(
-                op, accept_soft=not (expr_factory is F.Expressions.Is and assert_)
-            )
-            for op in operands
-        ]
-
-        builder = invariants.ExpressionBuilder(
-            expr_factory,
-            c_operands,
-            assert_=assert_,
-            terminate=terminate,
-        )
-
-        res = invariants.wrap_insert_expression(
-            self,
-            builder,
-            alias=None,
+        return self.create_check_and_insert_expression_from_builder(
+            ExpressionBuilder(
+                expr_factory,
+                list(operands),
+                assert_=assert_,
+                terminate=terminate,
+            ),
+            from_ops=from_ops,
             allow_uncorrelated_congruence_match=allow_uncorrelated_congruence_match,
-            expr_already_exists_in_old_graph=False,
         )
-
-        if res.is_new and (
-            out_po := not_none(res.out_operand).as_parameter_operatable.try_get()
-        ):
-            if S_LOG:
-                logger.error(f"Mark new expr: {out_po.compact_repr(self.print_ctx)}")
-            self.transformations.created[out_po] = from_ops
-
-        return res
 
     def mutate_expression(
         self,
@@ -1691,11 +1661,10 @@ class Mutator:
     ) -> F.Parameters.can_be_operand:
         import faebryk.core.solver.symbolic.invariants as invariants
 
-        # Handle Is! predicates specially to merge alias classes
-        if fabll.Traits(expr).get_obj_raw().isinstance(
-            F.Expressions.Is
-        ) and expr.try_get_sibling_trait(F.Expressions.is_predicate):
-            return self.make_singleton(True).can_be_operand.get()
+        expr_po = expr.as_parameter_operatable.get()
+        # if mutated
+        if expr_po in self.transformations.mutated:
+            return self.get_mutated(expr_po).as_operand.get()
 
         if expression_factory is None:
             expression_factory = self.utils.hack_get_expr_type(expr)
@@ -1704,37 +1673,30 @@ class Mutator:
         if operands is None:
             operands = e_operands
 
-        expr_po = expr.as_parameter_operatable.get()
-        # if mutated
-        if expr_po in self.transformations.mutated:
-            return self.get_mutated(expr_po).as_operand.get()
-
-        expr_pred = expr.try_get_sibling_trait(F.Expressions.is_predicate)
-        assert_ = expr_pred is not None
-        terminate = (assert_ or not expr_pred) and self.is_terminated(expr)
+        assert_ = bool(expr.try_get_sibling_trait(F.Expressions.is_predicate))
+        terminate = self.is_terminated(expr)
 
         expr_obj = fabll.Traits(expr).get_obj_raw()
         copy_only = (
             expr_obj.isinstance(expression_factory) and operands == expr.get_operands()
         )
 
-        # predicates don't get aliases
+        # predicates don't have aliases
         if assert_:
-            pre_alias_p = None
             alias_p = None
         else:
-            pre_alias_po = (
-                invariants.AliasClass.of(expr.as_operand.get())
-                .representative()
-                .as_parameter_operatable.force_get()
-            )
-            pre_alias_p = pre_alias_po.as_parameter.force_get()
+            pre_alias_op = invariants.AliasClass.of(
+                expr.as_operand.get()
+            ).representative()
             alias_p = (
-                self.copy_operand(pre_alias_po)
+                self.get_operand_copy(pre_alias_op)
                 .as_parameter_operatable.force_get()
                 .as_parameter.force_get()
             )
-        c_operands = [self.get_copy(op) for op in operands]
+
+        # TODO automatically flatten exprs if algo layer wants the comfort
+        # enforce lit or param
+        c_operands = [self.get_operand_copy(op) for op in operands]
 
         builder = invariants.ExpressionBuilder(
             factory=expression_factory,
@@ -1747,113 +1709,66 @@ class Mutator:
             builder,
             alias_p,
             expr_already_exists_in_old_graph=copy_only,
+            allow_uncorrelated_congruence_match=False,
         )
-        if res.out_operand.as_literal.try_get():
-            return res.out_operand
 
-        new_expr_po = res.out_operand.as_parameter_operatable.force_get()
-        out = self._mutate(expr_po, new_expr_po)
+        new_expr_e = res.out
+        if new_expr_e is None:
+            return self.make_singleton(True).can_be_operand.get()
+
+        new_expr_po = new_expr_e.as_parameter_operatable.get()
+        self._mutate(expr_po, new_expr_po)
 
         # copy detection
-        if (
-            operands == e_operands
-            and (new_expr_e := new_expr_po.as_expression.try_get())
-            and builder.matches(new_expr_e)
-        ) or not res.is_new:
+        if operands == e_operands and builder.matches(new_expr_e):
             self.transformations.copied.add(expr_po)
-        # else:
-        #     logger.error(
-        #         f"Not a copy: {expr.compact_repr(self.print_ctx)}: op_eq: {operands == e_operands}, is_new: {res.is_new}, matches: {builder.matches(new_expr_e) if new_expr_e else None}"
-        # )
 
-        # copy over alias
-        if pre_alias_p:
-            alias_is = pre_alias_p.as_operand.get().get_operations(
-                F.Expressions.Is, predicates_only=True
-            )
-            assert len(alias_is) == 1, "Expected 1 alias"
-            alias_is_po = next(iter(alias_is)).is_parameter_operatable.get()
-            logger.debug(f"Copied alias: {alias_is_po.compact_repr(self.print_ctx)}")
-            if not self.has_been_mutated(alias_is_po):
-                copied_alias = self._create_and_insert_expression(
-                    ExpressionBuilder(
-                        F.Expressions.Is,
-                        [new_expr_po.as_operand.get(), alias_p.as_operand.get()],
-                        assert_=True,
-                        terminate=True,
-                    )
-                )
-                self._mutate(alias_is_po, copied_alias.is_parameter_operatable.get())
-                self.transformations.copied.add(alias_is_po)
-
-        return out.as_operand.get()
-
-    def soft_replace(
-        self,
-        current: F.Parameters.is_parameter_operatable,
-        new: F.Parameters.can_be_operand,
-    ):
-        """
-        Replace A in all operations with B, but keep A in the graph.
-        Except for A is! B
-        """
-
-        self.transformations.soft_replaced[current] = new
+        return new_expr_e.as_operand.get()
 
     def get_copy(
         self,
         obj: F.Parameters.can_be_operand,
-        accept_soft: bool = True,
     ) -> F.Parameters.can_be_operand:
         if obj.is_in_graph(self.G_out):
             return obj
         if obj_po := obj.as_parameter_operatable.try_get():
-            return self.copy_operand(obj_po, accept_soft)
+            if obj_po in self.transformations.mutated:
+                return self.transformations.mutated[obj_po].as_operand.get()
+            if obj_e := obj_po.as_expression.try_get():
+                return self.mutate_expression(obj_e)
+            if obj_p := obj_po.as_parameter.try_get():
+                return self.mutate_parameter(obj_p).as_operand.get()
+            assert False, "Unreachable"
         if obj_lit := obj.as_literal.try_get():
             self.tg_out
             return obj_lit.copy_into(self.G_out).as_operand.get()
         raise ValueError(f"Cannot copy {obj}")
 
-    def copy_operand(
+    def get_operand_copy(
         self,
-        obj_po: F.Parameters.is_parameter_operatable,
-        accept_soft: bool = True,
+        obj: F.Parameters.can_be_operand,
     ) -> F.Parameters.can_be_operand:
-        if accept_soft and obj_po in self.transformations.soft_replaced:
-            return self.transformations.soft_replaced[obj_po]
+        if obj.is_in_graph(self.G_out):
+            return obj
+        if obj_lit := obj.as_literal.try_get():
+            self.tg_out
+            return obj_lit.copy_into(self.G_out).as_operand.get()
+        if obj_po := obj.as_parameter_operatable.try_get():
+            if obj_e := obj_po.as_expression.try_get():
+                assert False, f"Expressions should never be operands in solver {obj_e}"
+            obj_p = obj_po.as_parameter.force_get()
 
-        if m := self.try_get_mutated(obj_po):
-            return m.as_operand.get()
+            if m := self.try_get_mutated(obj_po):
+                return m.as_operand.get()
 
-        # If the expression was removed, we can't copy it
-        assert not self.is_removed(obj_po), (
-            f"Cannot copy removed operand: {obj_po.compact_repr(self.print_ctx)}"
-        )
+            # If the expression was removed, we can't copy it
+            assert not self.is_removed(obj_po), (
+                f"Cannot copy removed operand: {obj_po.compact_repr(self.print_ctx)}"
+            )
 
-        # TODO: not sure if ok
-        # if obj is new, no need to copy
-        # TODO add guard to _mutate to not let new stuff be mutated
-        if obj_po in self.transformations.created or obj_po in set(
-            self.transformations.mutated.values()
-        ):
-            return obj_po.as_operand.get()
+            return self.mutate_parameter(obj_p).as_operand.get()
 
-        if expr := obj_po.as_expression.try_get():
-            return self.mutate_expression(expr)
-        elif p := obj_po.as_parameter.try_get():
-            self.transformations.copied.add(obj_po)
-            return self.mutate_parameter(p).as_operand.get()
-
-        assert False
-
-    def get_copy_po(
-        self,
-        obj_po: F.Parameters.is_parameter_operatable,
-        accept_soft: bool = True,
-    ) -> F.Parameters.is_parameter_operatable:
-        return self.copy_operand(
-            obj_po, accept_soft=accept_soft
-        ).as_parameter_operatable.force_get()
+        assert False, "Unreachable"
 
     def remove(
         self, *po: F.Parameters.is_parameter_operatable, no_check_roots: bool = False
@@ -1961,7 +1876,6 @@ class Mutator:
         self,
         t: type[T] = fabll.Node[Any],
         created_only: bool = False,
-        new_only: bool = False,
         include_terminated: bool = False,
         required_traits: tuple[type[fabll.NodeT], ...] = (),
         require_literals: bool = False,
@@ -1969,15 +1883,7 @@ class Mutator:
         include_removed: bool = False,
         include_mutated: bool = False,
     ) -> list[T] | OrderedSet[T]:
-        assert not new_only or not created_only
-
-        if new_only:
-            out: OrderedSet[T] = OrderedSet(
-                ne
-                for n in self._new_operables
-                if (ne := fabll.Traits(n).get_obj_raw().try_cast(t))
-            )
-        elif created_only:
+        if created_only:
             out = OrderedSet(
                 ne
                 for n in self.transformations.created
@@ -2063,7 +1969,6 @@ class Mutator:
     def get_expressions(
         self,
         created_only: bool = False,
-        new_only: bool = False,
         include_terminated: bool = False,
         required_traits: tuple[type[fabll.NodeT], ...] = (),
     ) -> OrderedSet[F.Expressions.is_expression] | list[F.Expressions.is_expression]:
@@ -2071,7 +1976,6 @@ class Mutator:
         typed = self.get_typed_expressions(
             t=fabll.Node,
             created_only=created_only,
-            new_only=new_only,
             include_terminated=include_terminated,
             required_traits=required_traits,
         )
@@ -2144,19 +2048,6 @@ class Mutator:
     def tg_out(self) -> fbrk.TypeGraph:
         return self.tg_in.copy_into(target_graph=self.G_out, minimal=False)
 
-    @property
-    @once
-    def _new_operables(self) -> OrderedSet[F.Parameters.is_parameter_operatable]:
-        _last_run_operables: OrderedSet[F.Parameters.is_parameter_operatable] = (
-            OrderedSet()
-        )
-        if self._mutations_since_last_iteration is not None:
-            _last_run_operables = OrderedSet(
-                self._mutations_since_last_iteration.compressed_mapping_forwards_complete.values()
-            )
-        assert _last_run_operables.issubset(self._starting_operables)
-        return self._starting_operables - _last_run_operables
-
     def _run(self):
         self.algo(self)
 
@@ -2165,13 +2056,11 @@ class Mutator:
         to_copy = [
             fabll.Traits(p).get_obj_raw()
             for p in (
-                set(self.get_parameter_operatables(include_terminated=True))
-                - touched
+                set(self.get_parameter_operatables(include_terminated=True)) - touched
             )
         ]
         for p in to_copy:
-            p_po = p.get_trait(F.Parameters.is_parameter_operatable)
-            self.copy_operand(p_po)
+            self.get_copy(p.get_trait(F.Parameters.can_be_operand))
 
     def check_no_illegal_mutations(self):
         # TODO should only run during dev
