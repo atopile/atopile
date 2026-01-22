@@ -1140,6 +1140,8 @@ def insert_expression(
             sub_lit = super_lit
             builder = builder.with_(terminate=True)
 
+            # TODO can consider later a shortcut for singletons to not make the expr
+
     # * terminate A ss! X, X ss! A
     if (
         builder.factory is F.Expressions.IsSubset
