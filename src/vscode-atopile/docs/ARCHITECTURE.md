@@ -193,10 +193,11 @@ When user changes version in UI:
     "atopile.ato": "",           // Direct path to ato binary
     "atopile.from": "atopile",   // UV source (PyPI or git+URL)
     "atopile.autoInstall": true, // Auto-install UV/atopile
-    "atopile.telemetry": true,   // Send telemetry
-    "atopile.dashboardApiUrl": "http://localhost:8501"
+    "atopile.telemetry": true    // Send telemetry
 }
 ```
+
+The backend server is always extension-managed and bound to a per-session local port.
 
 ### Version Requirements
 

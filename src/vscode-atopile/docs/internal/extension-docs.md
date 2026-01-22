@@ -40,9 +40,12 @@ For basic validation, it is easy to build a VSIX:
 
 ### Config inputs
 
-- `atopile.dashboardApiUrl` (default `http://localhost:8501`)
-- `atopile.backendAutoStart` (default `true`)
 - `atopile.ato` / `atopile.from` (binary/source selection)
+
+### Backend connection
+
+- Backend is always started by the extension and bound to a per-session local port.
+- The extension never connects to externally configured or pre-existing backend instances.
 
 ### State model (high-level)
 
@@ -54,10 +57,10 @@ For basic validation, it is easy to build a VSIX:
 - Initialize logging + telemetry
 - Ensure ato binary
 - Start / restart LSP (explicit)
-- Optionally auto-start backend server
+- Start backend server
 - Register webviews and commands
 
-3) Backend booting (optional)
+3) Backend booting
 - Starts `ato serve backend --port <PORT>` in a hidden terminal
 - Booting → Connected (WS `/ws/state` responds)
 - Booting → Failed (no response within timeout)

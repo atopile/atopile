@@ -235,32 +235,7 @@ const DEFAULT_STATE: AppState = {
     open3d: null,
 };
 
-const DEFAULT_PORT = 8501;
-const DEFAULT_API_URL = `http://localhost:${DEFAULT_PORT}`;
 const RECONNECT_INTERVAL = 3000;
-
-function getApiUrl(): string {
-    const config = vscode.workspace.getConfiguration('atopile');
-    return config.get<string>('dashboardApiUrl', DEFAULT_API_URL);
-}
-
-function buildWsUrlFromApiUrl(apiUrl: string): string | undefined {
-    try {
-        const url = new URL(apiUrl);
-        const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-        const port = url.port ? `:${url.port}` : '';
-        return `${wsProtocol}//${url.hostname}${port}/ws/state`;
-    } catch {
-        return undefined;
-    }
-}
-
-/**
- * Get the WebSocket URL from configuration.
- */
-function getWsUrl(): string {
-    return buildWsUrlFromApiUrl(getApiUrl()) || `ws://localhost:${DEFAULT_PORT}/ws/state`;
-}
 
 type StateChangeListener = (state: AppState) => void;
 
@@ -272,6 +247,7 @@ class WebSocketAppStateManager {
     private _listeners: StateChangeListener[] = [];
     private _disposables: vscode.Disposable[] = [];
     private _isConnecting = false;
+    private _wsUrl: string | null = null;
     private _requestCounter = 0;
     private _pendingRequests = new Map<string, {
         resolve: (message: any) => void;
@@ -280,15 +256,7 @@ class WebSocketAppStateManager {
     }>();
 
     constructor() {
-        this._disposables.push(
-            vscode.workspace.onDidChangeConfiguration((event) => {
-                if (event.affectsConfiguration('atopile.dashboardApiUrl')) {
-                    traceInfo('AppState: dashboardApiUrl changed, reconnecting');
-                    this.reconnect();
-                }
-            })
-        );
-        this.connect();
+        // Intentionally empty: connection is explicitly managed by the extension.
     }
 
     getState(): AppState {
@@ -415,7 +383,22 @@ class WebSocketAppStateManager {
     }
 
     /**
-     * Reconnect to the server (e.g., after port change).
+     * Update the backend WebSocket URL and reconnect if needed.
+     */
+    setBackendWsUrl(wsUrl: string | null): void {
+        if (this._wsUrl === wsUrl) {
+            return;
+        }
+        this._wsUrl = wsUrl;
+        if (!this._wsUrl) {
+            this.disconnect();
+            return;
+        }
+        this.reconnect();
+    }
+
+    /**
+     * Reconnect to the server (e.g., after endpoint change).
      */
     reconnect(): void {
         if (this._ws) {
@@ -431,12 +414,15 @@ class WebSocketAppStateManager {
     }
 
     connect(): void {
+        if (!this._wsUrl) {
+            return;
+        }
         if (this._isConnecting || (this._ws && this._ws.readyState === WebSocket.OPEN)) {
             return;
         }
 
         this._isConnecting = true;
-        const wsUrl = getWsUrl();
+        const wsUrl = this._wsUrl;
         traceInfo(`Connecting to Python backend: ${wsUrl}`);
 
         try {
@@ -504,6 +490,9 @@ class WebSocketAppStateManager {
     }
 
     private _scheduleReconnect(): void {
+        if (!this._wsUrl) {
+            return;
+        }
         if (this._reconnectTimer) return;
         this._reconnectTimer = setTimeout(() => {
             this._reconnectTimer = null;

@@ -90,35 +90,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const newClient = await startOrRestartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient);
         g_lsClient = newClient;
 
-        const autoStartBackend = vscode.workspace
-            .getConfiguration('atopile')
-            .get<boolean>('backendAutoStart', true);
-
         // On initial start, start backend server
         // On user-initiated restarts, restart backend server if configured
         if (isInitialStart) {
             isInitialStart = false;
-            if (autoStartBackend) {
-                // Start backend server in background (don't block extension activation)
-                backendServer.startServer().then(success => {
-                    if (success) {
-                        traceInfo('Backend server started successfully');
-                    } else {
-                        traceInfo('Backend server failed to start (may need manual start)');
-                    }
-                });
+            const success = await backendServer.startServer();
+            if (success) {
+                traceInfo('Backend server started successfully');
             } else {
-                traceInfo('Backend auto-start disabled; connecting to configured dashboardApiUrl');
+                traceInfo('Backend server failed to start');
             }
-        } else if (autoStartBackend) {
-            traceInfo('User requested restart, restarting backend server...');
-            backendServer.restartServer().then(success => {
-                if (!success) {
-                    traceInfo('Backend server restart failed');
-                }
-            });
         } else {
-            traceInfo('Backend auto-start disabled; skipping backend restart');
+            traceInfo('User requested restart, restarting backend server...');
+            const success = await backendServer.restartServer();
+            if (!success) {
+                traceInfo('Backend server restart failed');
+            }
         }
 
         // Notify backend that installation/restart completed

@@ -12,12 +12,12 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import axios from 'axios';
+import * as net from 'net';
 import { traceInfo, traceError, traceVerbose } from './log/logging';
 import { getAtoBin } from './findbin';
 import { appStateManager } from './appState';
 
-const DEFAULT_PORT = 8501;
-const DEFAULT_API_URL = `http://localhost:${DEFAULT_PORT}`;
+const BACKEND_HOST = '127.0.0.1';
 const SERVER_STARTUP_TIMEOUT_MS = 30000; // 30 seconds to wait for server startup
 
 interface BuildResponse {
@@ -30,33 +30,35 @@ interface BuildResponse {
 
 type ServerState = 'stopped' | 'starting' | 'running' | 'error';
 
-function getApiUrl(): string {
-    const config = vscode.workspace.getConfiguration('atopile');
-    return config.get<string>('dashboardApiUrl', DEFAULT_API_URL);
+function buildApiUrl(port: number): string {
+    return `http://${BACKEND_HOST}:${port}`;
 }
 
-function getConfiguredPort(): number | undefined {
-    try {
-        const url = new URL(getApiUrl());
-        const port = url.port ? parseInt(url.port, 10) : undefined;
-        if (port && !isNaN(port) && port > 0 && port < 65536) {
-            return port;
-        }
-        return undefined;
-    } catch {
-        return undefined;
-    }
+function buildWsUrl(port: number): string {
+    return `ws://${BACKEND_HOST}:${port}/ws/state`;
 }
 
-function buildWsUrlFromApiUrl(apiUrl: string): string | undefined {
-    try {
-        const url = new URL(apiUrl);
-        const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-        const port = url.port ? `:${url.port}` : '';
-        return `${wsProtocol}//${url.hostname}${port}/ws/state`;
-    } catch {
-        return undefined;
-    }
+async function getAvailablePort(): Promise<number> {
+    return new Promise((resolve, reject) => {
+        const server = net.createServer();
+        server.unref();
+        server.once('error', reject);
+        server.listen(0, BACKEND_HOST, () => {
+            const address = server.address();
+            if (!address || typeof address === 'string') {
+                server.close(() => reject(new Error('Failed to allocate port')));
+                return;
+            }
+            const { port } = address;
+            server.close((err) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                resolve(port);
+            });
+        });
+    });
 }
 
 /**
@@ -70,10 +72,6 @@ function getWorkspaceRoot(): string | undefined {
 /**
  * Build the WebSocket URL from a port number.
  */
-function buildWsUrl(port: number): string {
-    return `ws://localhost:${port}/ws/state`;
-}
-
 /**
  * Check server health via HTTP endpoint (doesn't require WebSocket).
  */
@@ -103,6 +101,9 @@ class BackendServerManager implements vscode.Disposable {
     private _disposables: vscode.Disposable[] = [];
     private _statusBarItem: vscode.StatusBarItem | undefined;
     private _lastError: string | undefined;
+    private _port: number = 0;
+    private _apiUrl: string = buildApiUrl(0);
+    private _wsUrl: string = buildWsUrl(0);
 
     private readonly _onStatusChange = new vscode.EventEmitter<boolean>();
     public readonly onStatusChange = this._onStatusChange.event;
@@ -117,25 +118,14 @@ class BackendServerManager implements vscode.Disposable {
             100
         );
         this._statusBarItem.command = 'atopile.backendStatus';
-        this._statusBarItem.tooltip = 'Click to configure atopile backend';
+        this._statusBarItem.tooltip = 'Click to manage atopile backend';
         this._updateStatusBar();
         this._statusBarItem.show();
-
-        const configuredPort = getConfiguredPort();
-        traceInfo(`BackendServer: Init - configuredPort=${configuredPort}, apiUrl=${getApiUrl()}`);
 
         // Register the backend status command
         this._disposables.push(
             vscode.commands.registerCommand('atopile.backendStatus', () => {
                 this._showBackendStatusMenu();
-            })
-        );
-
-        this._disposables.push(
-            vscode.workspace.onDidChangeConfiguration((event) => {
-                if (event.affectsConfiguration('atopile.dashboardApiUrl')) {
-                    this._updateStatusBar();
-                }
             })
         );
 
@@ -313,12 +303,6 @@ class BackendServerManager implements vscode.Disposable {
                 action: 'none',
             },
             { label: '', kind: vscode.QuickPickItemKind.Separator, action: 'none' },
-            {
-                label: '$(settings) Configure Backend URL',
-                description: 'Open settings for atopile.dashboardApiUrl',
-                action: 'open_settings',
-            },
-            { label: '', kind: vscode.QuickPickItemKind.Separator, action: 'none' },
         ];
 
         if (this._isConnected || this._serverState === 'running') {
@@ -349,12 +333,6 @@ class BackendServerManager implements vscode.Disposable {
         if (!selected || selected.action === 'none') return;
 
         switch (selected.action) {
-            case 'open_settings':
-                await vscode.commands.executeCommand(
-                    'workbench.action.openSettings',
-                    'atopile.dashboardApiUrl'
-                );
-                break;
             case 'restart':
                 await this.restartServer();
                 break;
@@ -376,15 +354,21 @@ class BackendServerManager implements vscode.Disposable {
     }
 
     get port(): number {
-        return getConfiguredPort() || DEFAULT_PORT;
+        return this._port;
     }
 
     get apiUrl(): string {
-        return getApiUrl();
+        return this._apiUrl;
     }
 
     get wsUrl(): string {
-        return buildWsUrlFromApiUrl(this.apiUrl) || buildWsUrl(this.port);
+        return this._wsUrl;
+    }
+
+    private _setPort(port: number): void {
+        this._port = port;
+        this._apiUrl = buildApiUrl(port);
+        this._wsUrl = buildWsUrl(port);
     }
 
     /**
@@ -428,10 +412,6 @@ class BackendServerManager implements vscode.Disposable {
             await this.stopServer();
         }
 
-        if (await checkServerHealthHttp(this.apiUrl)) {
-            this._log('info', 'server: Existing server detected; restarting to take ownership');
-        }
-
         this._startupPromise = this._doStartServer();
         try {
             return await this._startupPromise;
@@ -464,11 +444,13 @@ class BackendServerManager implements vscode.Disposable {
                 await this.stopServer();
             }
 
-            // Build command args: ato serve backend --force --port <port> [--workspace <path>]
+            const port = await getAvailablePort();
+            this._setPort(port);
+
+            // Build command args: ato serve backend --port <port> [--workspace <path>]
             const args = [
                 ...atoBin.command.slice(1),
                 'serve', 'backend',
-                '--force',
                 '--port', String(this.port),
             ];
             if (workspaceRoot) {
@@ -547,6 +529,7 @@ class BackendServerManager implements vscode.Disposable {
                 this._log('info', `server: Started successfully on port ${this.port}`);
                 this._serverState = 'running';
                 this._updateStatusBar();
+                appStateManager.setBackendWsUrl(this.wsUrl);
             } else {
                 if (!this._lastError) {
                     this._lastError = 'Server startup timeout';
@@ -555,6 +538,7 @@ class BackendServerManager implements vscode.Disposable {
                 this._log('error', `server: Failed to start: ${this._lastError}`);
                 this._serverState = 'error';
                 this._updateStatusBar();
+                appStateManager.setBackendWsUrl(null);
                 await this.stopServer();
             }
 
@@ -566,6 +550,7 @@ class BackendServerManager implements vscode.Disposable {
             this._log('error', `server: Failed to start: ${errorMsg}`);
             this._serverState = 'error';
             this._updateStatusBar();
+            appStateManager.setBackendWsUrl(null);
             return false;
         }
     }
@@ -637,6 +622,7 @@ class BackendServerManager implements vscode.Disposable {
             traceInfo('BackendServer: Server stopped');
             this._log('info', 'server: Stopped');
         }
+        appStateManager.setBackendWsUrl(null);
     }
 
     /**

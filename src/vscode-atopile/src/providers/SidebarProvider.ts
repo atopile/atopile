@@ -37,6 +37,14 @@ function getNonce(): string {
   return text;
 }
 
+function getWsOrigin(wsUrl: string): string {
+  try {
+    return new URL(wsUrl).origin;
+  } catch {
+    return wsUrl;
+  }
+}
+
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
   public static readonly viewType = 'atopile.project';
@@ -46,6 +54,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _lastMode: 'dev' | 'prod' | null = null;
   private _hasHtml: boolean = false;
   private _lastWorkspaceFoldersJson: string | null = null;
+  private _lastApiUrl: string | null = null;
+  private _lastWsUrl: string | null = null;
 
   constructor(private readonly _extensionUri: vscode.Uri) {
     this._disposables.push(
@@ -86,7 +96,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const isDev = isDevelopmentMode(extensionPath);
     const mode: 'dev' | 'prod' = isDev ? 'dev' : 'prod';
 
-    if (this._hasHtml && this._lastMode === mode) {
+    const apiUrl = backendServer.apiUrl;
+    const wsUrl = backendServer.wsUrl;
+    const urlsUnchanged = this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl;
+    if (this._hasHtml && this._lastMode === mode && urlsUnchanged) {
       traceInfo('[SidebarProvider] Skipping refresh (already loaded)', { mode });
       return;
     }
@@ -98,6 +111,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     this._hasHtml = true;
     this._lastMode = mode;
+    this._lastApiUrl = apiUrl;
+    this._lastWsUrl = wsUrl;
   }
 
   public resolveWebviewView(
@@ -143,6 +158,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     this._hasHtml = true;
     this._lastMode = mode;
+    this._lastApiUrl = backendServer.apiUrl;
+    this._lastWsUrl = backendServer.wsUrl;
     this._postWorkspaceFolders();
   }
 
@@ -177,6 +194,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const viteDevServer = 'http://localhost:5173';
     const backendUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
+    const wsOrigin = getWsOrigin(wsUrl);
     const workspaceFolders = this._getWorkspaceFolders();
 
     // Pass workspace folders as URL query param (base64 encoded to handle special chars)
@@ -194,7 +212,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     frame-src ${viteDevServer};
     style-src 'unsafe-inline';
     script-src 'unsafe-inline';
-    connect-src ${viteDevServer} ${backendUrl} ${wsUrl};
+    connect-src ${viteDevServer} ${backendUrl} ${wsOrigin};
   ">
   <title>atopile</title>
   <style>
@@ -279,6 +297,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // Get backend URLs from backendServer (uses discovered port or config)
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
+    const wsOrigin = getWsOrigin(wsUrl);
     const workspaceFolders = this._getWorkspaceFolders();
 
     // Debug: log URLs being used
@@ -295,7 +314,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     script-src ${webview.cspSource} 'nonce-${nonce}';
     font-src ${webview.cspSource};
     img-src ${webview.cspSource} data:;
-    connect-src ${apiUrl} ${wsUrl} ws://localhost:* http://localhost:*;
+    connect-src ${apiUrl} ${wsOrigin};
   ">
   <title>atopile</title>
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
@@ -308,7 +327,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     // Inject backend URLs for the React app
     window.__ATOPILE_API_URL__ = '${apiUrl}';
-    window.__ATOPILE_WS_URL__ = '${wsUrl}';
+    window.__ATOPILE_WS_URL__ = '${wsOrigin}';
     // Inject workspace folders for the React app
     window.__ATOPILE_WORKSPACE_FOLDERS__ = ${JSON.stringify(workspaceFolders)};
   </script>

@@ -33,6 +33,14 @@ function getNonce(): string {
   return text;
 }
 
+function getWsOrigin(wsUrl: string): string {
+  try {
+    return new URL(wsUrl).origin;
+  } catch {
+    return wsUrl;
+  }
+}
+
 export class LogViewerProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'atopile.logViewer';
 
@@ -40,6 +48,8 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
   private _disposables: vscode.Disposable[] = [];
   private _lastMode: 'dev' | 'prod' | null = null;
   private _hasHtml: boolean = false;
+  private _lastApiUrl: string | null = null;
+  private _lastWsUrl: string | null = null;
 
   constructor(private readonly _extensionUri: vscode.Uri) {
     this._disposables.push(
@@ -75,7 +85,10 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     const isDev = isDevelopmentMode(extensionPath);
     const mode: 'dev' | 'prod' = isDev ? 'dev' : 'prod';
 
-    if (this._hasHtml && this._lastMode === mode) {
+    const apiUrl = backendServer.apiUrl;
+    const wsUrl = backendServer.wsUrl;
+    const urlsUnchanged = this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl;
+    if (this._hasHtml && this._lastMode === mode && urlsUnchanged) {
       console.log('[LogViewerProvider] Skipping refresh (already loaded)', { mode });
       return;
     }
@@ -87,6 +100,8 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     }
     this._hasHtml = true;
     this._lastMode = mode;
+    this._lastApiUrl = apiUrl;
+    this._lastWsUrl = wsUrl;
   }
 
   public resolveWebviewView(
@@ -121,6 +136,8 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     }
     this._hasHtml = true;
     this._lastMode = mode;
+    this._lastApiUrl = backendServer.apiUrl;
+    this._lastWsUrl = backendServer.wsUrl;
   }
 
   /**
@@ -130,6 +147,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     const viteDevServer = 'http://localhost:5173';
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
+    const wsOrigin = getWsOrigin(wsUrl);
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -141,7 +159,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     frame-src ${viteDevServer};
     style-src 'unsafe-inline';
     script-src 'unsafe-inline';
-    connect-src ${viteDevServer} ${apiUrl} ${wsUrl};
+    connect-src ${viteDevServer} ${apiUrl} ${wsOrigin};
   ">
   <title>atopile Logs</title>
   <style>
@@ -205,6 +223,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     // Get backend URLs from backendServer (uses discovered port or config)
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
+    const wsOrigin = getWsOrigin(wsUrl);
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -217,14 +236,14 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     script-src ${webview.cspSource} 'nonce-${nonce}';
     font-src ${webview.cspSource};
     img-src ${webview.cspSource} data:;
-    connect-src ${apiUrl} ${wsUrl} ws://localhost:* http://localhost:*;
+    connect-src ${apiUrl} ${wsOrigin};
   ">
   <title>atopile Logs</title>
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
   ${cssUri ? `<link rel="stylesheet" href="${cssUri}">` : ''}
   <script nonce="${nonce}">
     window.__ATOPILE_API_URL__ = '${apiUrl}';
-    window.__ATOPILE_WS_URL__ = '${wsUrl}';
+    window.__ATOPILE_WS_URL__ = '${wsOrigin}';
   </script>
 </head>
 <body>

@@ -91,18 +91,6 @@
                     "scope": "resource",
                     "type": "boolean",
                     "default": true
-                },
-                "atopile.dashboardApiUrl": {
-                    "description": "URL of the atopile build dashboard API server",
-                    "scope": "resource",
-                    "type": "string",
-                    "default": "http://localhost:8501"
-                },
-                "atopile.backendAutoStart": {
-                    "description": "Automatically start the atopile backend server when the extension activates",
-                    "scope": "resource",
-                    "type": "boolean",
-                    "default": true
                 }
             }
         },
