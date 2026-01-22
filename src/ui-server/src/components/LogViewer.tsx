@@ -142,6 +142,28 @@ function highlightText(text: string, search: string): string {
   return text.replace(regex, '<mark class="lv-highlight">$1</mark>');
 }
 
+// Detect separator lines: messages with >5 consecutive '-' or '=' characters
+// Patterns: "--------", "--- Label ---", "Label -------", "------- Label"
+function isSeparatorLine(message: string): { isSeparator: boolean; char: '-' | '=' | null; label: string | null } {
+  const trimmed = message.trim();
+
+  // Check if line contains 6+ consecutive dashes or equals
+  const hasDashes = /-{6,}/.test(trimmed);
+  const hasEquals = /={6,}/.test(trimmed);
+
+  if (!hasDashes && !hasEquals) {
+    return { isSeparator: false, char: null, label: null };
+  }
+
+  const char = hasEquals ? '=' : '-';
+  const sepRegex = char === '=' ? /={6,}/g : /-{6,}/g;
+
+  // Extract label by removing all separator sequences
+  const label = trimmed.replace(sepRegex, '').trim() || null;
+
+  return { isSeparator: true, char, label };
+}
+
 /**
  * Try to parse python_traceback as structured JSON.
  * Returns null if not valid structured traceback.
@@ -233,8 +255,19 @@ export function LogViewer() {
   // Mode toggle: build logs vs test logs
   const [mode, setMode] = useState<LogMode>(initialParams.mode);
 
-  // Query parameters - shared
-  const [logLevels, setLogLevels] = useState<LogLevel[]>(['INFO', 'WARNING', 'ERROR', 'ALERT']);
+  // Query parameters - shared (logLevels persisted in localStorage)
+  const [logLevels, setLogLevels] = useState<LogLevel[]>(() => {
+    const stored = localStorage.getItem('lv-logLevels');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.every(l => LOG_LEVELS.includes(l))) {
+          return parsed;
+        }
+      } catch { /* ignore */ }
+    }
+    return ['INFO', 'WARNING', 'ERROR', 'ALERT'];
+  });
   const [audience, setAudience] = useState<Audience>('developer');
   const [search, setSearch] = useState('');
 
@@ -266,30 +299,33 @@ export function LogViewer() {
   const [levelDropdownOpen, setLevelDropdownOpen] = useState(false);
   const levelDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Display toggle states - persisted in sessionStorage
+  // Display toggle states - persisted in localStorage
   const [levelFull, setLevelFull] = useState(() => {
-    const stored = sessionStorage.getItem('lv-levelFull');
+    const stored = localStorage.getItem('lv-levelFull');
     return stored !== null ? stored === 'true' : true;
   });
   const [timeMode, setTimeMode] = useState<'delta' | 'wall'>(() => {
-    const stored = sessionStorage.getItem('lv-timeMode');
+    const stored = localStorage.getItem('lv-timeMode');
     return (stored === 'wall' || stored === 'delta') ? stored : 'delta';
   });
   const [sourceMode, setSourceMode] = useState<'source' | 'logger'>(() => {
-    const stored = sessionStorage.getItem('lv-sourceMode');
+    const stored = localStorage.getItem('lv-sourceMode');
     return (stored === 'source' || stored === 'logger') ? stored : 'source';
   });
 
-  // Persist display states to sessionStorage
+  // Persist display states to localStorage
   useEffect(() => {
-    sessionStorage.setItem('lv-levelFull', String(levelFull));
+    localStorage.setItem('lv-levelFull', String(levelFull));
   }, [levelFull]);
   useEffect(() => {
-    sessionStorage.setItem('lv-timeMode', timeMode);
+    localStorage.setItem('lv-timeMode', timeMode);
   }, [timeMode]);
   useEffect(() => {
-    sessionStorage.setItem('lv-sourceMode', sourceMode);
+    localStorage.setItem('lv-sourceMode', sourceMode);
   }, [sourceMode]);
+  useEffect(() => {
+    localStorage.setItem('lv-logLevels', JSON.stringify(logLevels));
+  }, [logLevels]);
 
   // Column search filters
   const [sourceFilter, setSourceFilter] = useState('');
@@ -611,6 +647,48 @@ export function LogViewer() {
     setBuildId(latestBuildId);
   }, [queuedBuilds, builds, mode, buildId, streaming]);
 
+  // Restart stream when log levels change while streaming
+  const prevLogLevelsRef = useRef(logLevels);
+  useEffect(() => {
+    // Skip on initial render
+    if (prevLogLevelsRef.current === logLevels) return;
+    prevLogLevelsRef.current = logLevels;
+
+    // If streaming, restart to apply new log levels
+    if (streaming && wsRef.current?.readyState === WebSocket.OPEN) {
+      // Stop current stream
+      wsRef.current.send(JSON.stringify({ unsubscribe: true }));
+      // Clear logs and restart
+      setLogs([]);
+      lastIdRef.current = 0;
+
+      // Send new subscription with updated log levels
+      const id = mode === 'build' ? buildId.trim() : testRunId.trim();
+      if (id) {
+        const payload = mode === 'build'
+          ? {
+              build_id: buildId.trim(),
+              stage: stage.trim() || null,
+              log_levels: logLevels.length > 0 ? logLevels : null,
+              audience: audience,
+              after_id: 0,
+              count: 1000,
+              subscribe: true,
+            }
+          : {
+              test_run_id: testRunId.trim(),
+              test_name: testName.trim() || null,
+              log_levels: logLevels.length > 0 ? logLevels : null,
+              audience: audience,
+              after_id: 0,
+              count: 1000,
+              subscribe: true,
+            };
+        wsRef.current.send(JSON.stringify(payload));
+      }
+    }
+  }, [logLevels, streaming, mode, buildId, testRunId, stage, testName, audience]);
+
   // Get display label for level dropdown
   const getLevelLabel = () => {
     return `Log Levels (${logLevels.length})`;
@@ -728,7 +806,6 @@ export function LogViewer() {
               <button
                 className={`selector-trigger ${levelDropdownOpen ? 'open' : ''}`}
                 onClick={() => setLevelDropdownOpen(!levelDropdownOpen)}
-                disabled={streaming}
               >
                 <span className="selector-label">{getLevelLabel()}</span>
                 <ChevronDown className={`selector-chevron ${levelDropdownOpen ? 'rotated' : ''}`} />
@@ -900,10 +977,24 @@ export function LogViewer() {
                         <span className="lv-test-badge-popup">{testLabel}</span>
                       </span>
                     )}
-                    <pre
-                      className="lv-message"
-                      dangerouslySetInnerHTML={{ __html: html }}
-                    />
+                    {(() => {
+                      const sepInfo = isSeparatorLine(entry.message);
+                      if (sepInfo.isSeparator) {
+                        return (
+                          <div className={`lv-separator-line lv-separator-${sepInfo.char === '=' ? 'double' : 'single'}`}>
+                            <span className="lv-separator-line-bar" />
+                            {sepInfo.label && <span className="lv-separator-line-label">{sepInfo.label}</span>}
+                            {sepInfo.label && <span className="lv-separator-line-bar" />}
+                          </div>
+                        );
+                      }
+                      return (
+                        <pre
+                          className="lv-message"
+                          dangerouslySetInnerHTML={{ __html: html }}
+                        />
+                      );
+                    })()}
                   </div>
                 </div>
                 {(entry.ato_traceback || entry.python_traceback) && (() => {

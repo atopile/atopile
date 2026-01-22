@@ -688,6 +688,51 @@
   padding: 0 1px;
 }
 
+/* Separator lines (detected from messages with >5 '-' or '=' chars) */
+.lv-separator-line {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-xs) 0;
+}
+
+.lv-separator-line-bar {
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+  min-width: 20px;
+}
+
+.lv-separator-single .lv-separator-line-bar {
+  background: var(--text-muted);
+  opacity: 0.4;
+}
+
+.lv-separator-double .lv-separator-line-bar {
+  height: 2px;
+  background: linear-gradient(
+    to bottom,
+    var(--text-muted) 0%,
+    var(--text-muted) 40%,
+    transparent 40%,
+    transparent 60%,
+    var(--text-muted) 60%,
+    var(--text-muted) 100%
+  );
+  opacity: 0.5;
+}
+
+.lv-separator-line-label {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  padding: 0 var(--spacing-xs);
+}
+
 /* Tracebacks */
 .lv-tracebacks {
   display: flex;
