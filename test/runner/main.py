@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from pathlib import Path
 from typing import Any, Optional, cast
+from urllib.parse import quote as url_quote
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -2099,11 +2100,21 @@ class TestAggregator:
                         "LIVE OUTPUT", ansi_to_html(output["live"]), "live"
                     )
 
+            # Always show stream link to database logs
+            safe_nodeid = html.escape(t["nodeid"])
+            url_nodeid = url_quote(t["nodeid"], safe="")
+            test_run_id = self._test_run_id or ""
+            stream_link = (
+                f'<a href="/logs?test_run_id={test_run_id}&test_name={url_nodeid}" '
+                f'target="_blank" class="stream-link" title="Stream logs">&#128203;</a>'
+            )
+            log_button = stream_link
+
+            # Add modal button and content only if there's embedded output
             if log_content:
-                safe_nodeid = html.escape(t["nodeid"])
                 modal_id = f"modal_{safe_nodeid}"
-                log_button = (
-                    f"<button onclick=\"openModal('{modal_id}')\">View Logs</button>"
+                log_button += (
+                    f"<button onclick=\"openModal('{modal_id}')\">View</button>"
                 )
                 log_modal = f"""
                 <div id="{modal_id}" class="modal">
