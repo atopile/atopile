@@ -329,6 +329,84 @@
   font-size: var(--font-size-sm);
 }
 
+/* Column Headers - CSS Grid for static positioning */
+.lv-column-headers {
+  display: grid;
+  grid-template-columns: 58px 55px 110px 1fr;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  align-items: center;
+}
+
+/* Compact modes for column headers */
+.lv-column-headers.lv-time-compact {
+  grid-template-columns: 48px 55px 110px 1fr;
+}
+
+.lv-column-headers.lv-level-compact {
+  grid-template-columns: 58px 24px 110px 1fr;
+}
+
+.lv-column-headers.lv-time-compact.lv-level-compact {
+  grid-template-columns: 48px 24px 110px 1fr;
+}
+
+.lv-col-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lv-col-btn {
+  padding: 2px var(--spacing-xs);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.lv-col-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.lv-col-search {
+  padding: 2px var(--spacing-xs);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  flex: 1;
+  min-width: 0;
+  transition: border-color var(--transition-fast);
+}
+
+.lv-col-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.lv-col-search::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.lv-col-search-message {
+  width: 100%;
+}
+
 /* Scrollable log content */
 .lv-content {
   flex: 1;
@@ -372,17 +450,38 @@
 }
 
 .lv-entry-row {
-  display: flex;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: 58px 55px 110px 1fr;
   gap: var(--spacing-sm);
+  align-items: flex-start;
+}
+
+/* Compact modes for entry rows - must match header */
+.lv-entry-row.lv-time-compact {
+  grid-template-columns: 48px 55px 110px 1fr;
+}
+
+.lv-entry-row.lv-level-compact {
+  grid-template-columns: 58px 24px 110px 1fr;
+}
+
+.lv-entry-row.lv-time-compact.lv-level-compact {
+  grid-template-columns: 48px 24px 110px 1fr;
 }
 
 .lv-ts {
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
   padding-top: 1px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lv-ts:hover {
+  color: var(--text-secondary);
 }
 
 /* Level Badge */
@@ -392,9 +491,20 @@
   font-size: var(--font-size-xs);
   font-weight: 600;
   text-transform: uppercase;
-  flex-shrink: 0;
-  min-width: 48px;
   text-align: center;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lv-level-badge:hover {
+  opacity: 0.8;
+}
+
+.lv-level-badge.short {
+  padding: 0 3px;
 }
 
 .lv-level-badge.debug {
@@ -422,6 +532,27 @@
   color: var(--ctp-peach);
 }
 
+/* Source Badge - color set dynamically per file */
+.lv-source-badge {
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid currentColor;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.lv-source-badge:hover {
+  opacity: 1;
+}
+
 /* Stage Badge */
 .lv-stage-badge {
   padding: 1px 5px;
@@ -431,10 +562,12 @@
   background: rgba(166, 173, 200, 0.15);
   color: var(--text-muted);
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
-/* Test Badge */
+/* Test Badge - truncates from front, shows popup on hover */
 .lv-test-badge {
+  position: relative;
   padding: 1px 5px;
   border-radius: var(--radius-sm);
   font-size: var(--font-size-xs);
@@ -442,18 +575,58 @@
   background: rgba(137, 180, 250, 0.15);
   color: var(--info);
   flex-shrink: 0;
-  max-width: 250px;
-  word-break: break-all;
-  white-space: normal;
-  line-height: 1.3;
+  max-width: 180px;
+  cursor: default;
+}
+
+.lv-test-badge-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+/* Popup on hover */
+.lv-test-badge-popup {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: 4px;
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  color: var(--text-primary);
+  white-space: nowrap;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  direction: ltr;
+}
+
+.lv-test-badge:hover .lv-test-badge-popup {
+  display: block;
+}
+
+/* Message cell - contains optional stage/test badges + message */
+.lv-message-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--spacing-xs);
+  min-width: 0;
 }
 
 .lv-message {
   color: var(--text-primary);
   white-space: pre-wrap;
   word-break: break-word;
-  flex: 1;
   min-width: 0;
+  flex: 1 1 auto;
   margin: 0;
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);

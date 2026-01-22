@@ -6,6 +6,7 @@ and send JSON events for test start/finish.
 """
 
 import io
+import json
 import logging
 import os
 import sys
@@ -20,6 +21,7 @@ import pytest
 from rich.console import Console
 from rich.traceback import Traceback
 
+from atopile.logging import _extract_traceback_frames
 from test.runner.common import ORCHESTRATOR_URL_ENV, EventRequest, EventType, Outcome
 
 # Use atopile prefix so logs pass through the _atopile_log_filter
@@ -223,6 +225,15 @@ def pytest_runtest_logreport(report: pytest.TestReport):
             exc_type, exc_value, exc_tb = _captured_exc_info.pop(report.nodeid)
             if exc_type and exc_value:
                 output["error"] = _format_rich_traceback(exc_type, exc_value, exc_tb)
+                # Extract structured traceback with local variables for IDE-like inspector
+                # Serialize to JSON string since output dict expects str values
+                structured_tb = _extract_traceback_frames(
+                    exc_type,
+                    exc_value,
+                    exc_tb,
+                    suppress_paths=["pluggy", "_pytest", "pytest", "test/runner"],
+                )
+                output["traceback_structured"] = json.dumps(structured_tb)
                 # Extract error message from the exception directly
                 error_message = f"{exc_type.__name__}: {exc_value}"
                 # Log the exception so it gets captured in the test_logs database

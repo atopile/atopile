@@ -24,9 +24,7 @@ import traceback
 from collections.abc import Iterable
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum, StrEnum
 from pathlib import Path
 from types import ModuleType, TracebackType
 from typing import TYPE_CHECKING, Any
@@ -48,6 +46,138 @@ from atopile.logging_utils import (
 )
 
 # =============================================================================
+# Structured Traceback Extraction
+# =============================================================================
+
+
+def _serialize_local_var(value: object, max_repr_len: int = 200) -> dict:
+    """Safely serialize a local variable for JSON storage."""
+    type_name = type(value).__name__
+
+    # Try JSON-native serialization for simple types
+    if isinstance(value, (bool, int, float, str, type(None))):
+        return {"type": type_name, "value": value, "repr": repr(value)[:max_repr_len]}
+
+    # Handle small lists/tuples that might be JSON-serializable
+    if isinstance(value, (list, tuple)) and len(value) <= 10:
+        try:
+            json.dumps(value)
+            return {
+                "type": type_name,
+                "value": list(value) if isinstance(value, tuple) else value,
+                "repr": repr(value)[:max_repr_len],
+            }
+        except (TypeError, ValueError):
+            pass
+
+    # Try __rich_repr__ if available (Rich library protocol)
+    if hasattr(value, "__rich_repr__"):
+        try:
+            rich_repr_parts = []
+            for item in value.__rich_repr__():
+                if isinstance(item, tuple):
+                    if len(item) == 2:
+                        key, val = item
+                        if key is None:
+                            rich_repr_parts.append(repr(val))
+                        else:
+                            rich_repr_parts.append(f"{key}={val!r}")
+                    elif len(item) == 1:
+                        rich_repr_parts.append(repr(item[0]))
+                else:
+                    rich_repr_parts.append(repr(item))
+            rich_str = f"{type_name}({', '.join(rich_repr_parts)})"
+            if len(rich_str) > max_repr_len:
+                rich_str = rich_str[:max_repr_len] + "..."
+            return {"type": type_name, "repr": rich_str, "rich": True}
+        except Exception:
+            pass  # Fall through to regular repr
+
+    # Fall back to repr for everything else
+    try:
+        repr_str = repr(value)
+        if len(repr_str) > max_repr_len:
+            repr_str = repr_str[:max_repr_len] + "..."
+        return {"type": type_name, "repr": repr_str}
+    except Exception:
+        return {"type": type_name, "repr": "<unable to represent>"}
+
+
+def _extract_traceback_frames(
+    exc_type: type[BaseException] | None,
+    exc_value: BaseException | None,
+    exc_tb: TracebackType | None,
+    max_frames: int = 50,
+    max_locals: int = 20,
+    max_repr_len: int = 200,
+    suppress_paths: list[str] | None = None,
+) -> dict:
+    """
+    Extract structured traceback with local variables.
+
+    Returns a dict with:
+    - exc_type: Exception type name
+    - exc_message: Exception message
+    - frames: List of stack frame dicts, each containing:
+      - filename: Source file path
+      - lineno: Line number
+      - function: Function name
+      - code_line: Source code line if available
+      - locals: Dict of local variables
+    """
+    frames = []
+    tb = exc_tb
+    frame_count = 0
+
+    while tb is not None and frame_count < max_frames:
+        frame = tb.tb_frame
+        filename = frame.f_code.co_filename
+
+        # Skip suppressed modules (pytest internals, etc.)
+        if suppress_paths and any(p in filename for p in suppress_paths):
+            tb = tb.tb_next
+            continue
+
+        # Capture locals safely
+        locals_dict = {}
+        try:
+            for name, value in list(frame.f_locals.items())[:max_locals]:
+                if name.startswith("__"):
+                    continue
+                locals_dict[name] = _serialize_local_var(value, max_repr_len)
+        except Exception:
+            pass  # Skip locals if we can't access them
+
+        # Get source line
+        code_line = None
+        try:
+            import linecache
+
+            code_line = linecache.getline(filename, tb.tb_lineno).strip()
+        except Exception:
+            pass
+
+        frames.append(
+            {
+                "filename": filename,
+                "lineno": tb.tb_lineno,
+                "function": frame.f_code.co_name,
+                "code_line": code_line,
+                "locals": locals_dict,
+            }
+        )
+
+        tb = tb.tb_next
+        frame_count += 1
+
+    return {
+        "exc_type": exc_type.__name__ if exc_type else "Unknown",
+        "exc_message": str(exc_value) if exc_value else "",
+        "frames": frames,
+    }
+
+
+# =============================================================================
 # Context Variables
 # =============================================================================
 
@@ -57,7 +187,7 @@ _log_sink_var = ContextVar[io.StringIO | None]("log_sink", default=None)
 # Build Status and Events
 # =============================================================================
 
-from atopile.dataclasses import (
+from atopile.dataclasses import (  # noqa: E402
     BuildStatus,
     Log,
     ProjectState,
@@ -114,6 +244,8 @@ CREATE TABLE IF NOT EXISTS logs (
     logger_name TEXT NOT NULL DEFAULT '',
     audience TEXT NOT NULL DEFAULT 'developer',
     message TEXT NOT NULL,
+    source_file TEXT,
+    source_line INTEGER,
     ato_traceback TEXT,
     python_traceback TEXT,
     objects TEXT,
@@ -124,6 +256,16 @@ CREATE INDEX IF NOT EXISTS idx_logs_build_id ON logs(build_id);
 CREATE INDEX IF NOT EXISTS idx_logs_stage ON logs(stage);
 CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level);
 CREATE INDEX IF NOT EXISTS idx_logs_audience ON logs(audience);
+
+-- Migration: add source_file and source_line columns if they don't exist
+-- SQLite doesn't have IF NOT EXISTS for ALTER TABLE, so we use a trick
+-- These will fail silently if columns already exist
+"""
+
+# Migration SQL to add new columns (run separately with error handling)
+SCHEMA_MIGRATION_SQL = """
+ALTER TABLE logs ADD COLUMN source_file TEXT;
+ALTER TABLE logs ADD COLUMN source_line INTEGER;
 """
 
 # Schema for the test logs table (different from build logs)
@@ -144,6 +286,8 @@ CREATE TABLE IF NOT EXISTS test_logs (
     logger_name TEXT NOT NULL DEFAULT '',
     audience TEXT NOT NULL DEFAULT 'developer',
     message TEXT NOT NULL,
+    source_file TEXT,
+    source_line INTEGER,
     ato_traceback TEXT,
     python_traceback TEXT,
     objects TEXT,
@@ -154,6 +298,12 @@ CREATE INDEX IF NOT EXISTS idx_test_logs_test_run_id ON test_logs(test_run_id);
 CREATE INDEX IF NOT EXISTS idx_test_logs_test_name ON test_logs(test_name);
 CREATE INDEX IF NOT EXISTS idx_test_logs_level ON test_logs(level);
 CREATE INDEX IF NOT EXISTS idx_test_logs_audience ON test_logs(audience);
+"""
+
+# Migration SQL to add new columns to test logs
+TEST_SCHEMA_MIGRATION_SQL = """
+ALTER TABLE test_logs ADD COLUMN source_file TEXT;
+ALTER TABLE test_logs ADD COLUMN source_line INTEGER;
 """
 
 
@@ -248,6 +398,8 @@ class BaseLogger:
         *,
         logger_name: str = "",
         audience: Log.Audience = Log.Audience.DEVELOPER,
+        source_file: str | None = None,
+        source_line: int | None = None,
         ato_traceback: str | None = None,
         python_traceback: str | None = None,
         objects: dict | None = None,
@@ -261,6 +413,8 @@ class BaseLogger:
             message=message,
             logger_name=logger_name,
             audience=audience,
+            source_file=source_file,
+            source_line=source_line,
             ato_traceback=ato_traceback,
             python_traceback=python_traceback,
             objects=objects,
@@ -348,7 +502,6 @@ class BaseLogger:
         if self._writer is not None:
             self._writer.flush()
 
-
     def _build_entry(
         self,
         *,
@@ -356,6 +509,8 @@ class BaseLogger:
         message: str,
         logger_name: str,
         audience: Log.Audience,
+        source_file: str | None,
+        source_line: int | None,
         ato_traceback: str | None,
         python_traceback: str | None,
         objects: dict | None,
@@ -388,8 +543,8 @@ class SQLiteLogWriter:
                     """
                     INSERT INTO logs (
                         build_id, timestamp, stage, level, logger_name, audience,
-                        message, ato_traceback, python_traceback, objects
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        message, source_file, source_line, ato_traceback, python_traceback, objects
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     lambda e: (
                         e.build_id,
@@ -399,9 +554,12 @@ class SQLiteLogWriter:
                         e.logger_name,
                         e.audience,
                         e.message,
+                        e.source_file,
+                        e.source_line,
                         e.ato_traceback,
                         e.python_traceback,
                     ),
+                    migration_sql=SCHEMA_MIGRATION_SQL,
                 )
             return cls._build_instance
 
@@ -416,8 +574,8 @@ class SQLiteLogWriter:
                     """
                     INSERT INTO test_logs (
                         test_run_id, timestamp, test_name, level, logger_name, audience,
-                        message, ato_traceback, python_traceback, objects
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        message, source_file, source_line, ato_traceback, python_traceback, objects
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     lambda e: (
                         e.test_run_id,
@@ -427,9 +585,12 @@ class SQLiteLogWriter:
                         e.logger_name,
                         e.audience,
                         e.message,
+                        e.source_file,
+                        e.source_line,
                         e.ato_traceback,
                         e.python_traceback,
                     ),
+                    migration_sql=TEST_SCHEMA_MIGRATION_SQL,
                 )
             return cls._test_instance
 
@@ -455,11 +616,13 @@ class SQLiteLogWriter:
         schema_sql: str,
         insert_sql: str,
         entry_to_tuple: Any,
+        migration_sql: str | None = None,
     ):
         self._db_path = db_path
         self._schema_sql = schema_sql
         self._insert_sql = insert_sql
         self._entry_to_tuple = entry_to_tuple
+        self._migration_sql = migration_sql
         self._local = threading.local()
         self._buffer: list[Any] = []
         self._buffer_lock = threading.Lock()
@@ -488,6 +651,17 @@ class SQLiteLogWriter:
         conn = self._get_connection()
         conn.executescript(self._schema_sql)
         conn.commit()
+
+        # Run migrations to add new columns (ignore errors if columns exist)
+        if self._migration_sql:
+            for statement in self._migration_sql.strip().split(";"):
+                statement = statement.strip()
+                if statement:
+                    try:
+                        conn.execute(statement)
+                        conn.commit()
+                    except sqlite3.OperationalError:
+                        pass  # Column already exists
 
     def register_build(self, project_path: str, target: str, timestamp: str) -> str:
         """
@@ -703,6 +877,8 @@ class TestLogger(BaseLogger):
         message: str,
         logger_name: str,
         audience: Log.Audience,
+        source_file: str | None,
+        source_line: int | None,
         ato_traceback: str | None,
         python_traceback: str | None,
         objects: dict | None,
@@ -715,6 +891,8 @@ class TestLogger(BaseLogger):
             logger_name=logger_name,
             message=message,
             audience=audience,
+            source_file=source_file,
+            source_line=source_line,
             ato_traceback=ato_traceback,
             python_traceback=python_traceback,
             objects=objects,
@@ -737,9 +915,7 @@ class BuildLogger(BaseLogger):
         return get_log_dir() / "build_logs.db"
 
     @staticmethod
-    def _emit_event(
-        fd: int, event: "StageStatusEvent | StageCompleteEvent"
-    ) -> None:
+    def _emit_event(fd: int, event: "StageStatusEvent | StageCompleteEvent") -> None:
         payload = pickle.dumps(event, protocol=pickle.HIGHEST_PROTOCOL)
         header = struct.pack(">I", len(payload))
         data = header + payload
@@ -922,6 +1098,8 @@ class BuildLogger(BaseLogger):
         message: str,
         logger_name: str,
         audience: Log.Audience,
+        source_file: str | None,
+        source_line: int | None,
         ato_traceback: str | None,
         python_traceback: str | None,
         objects: dict | None,
@@ -934,6 +1112,8 @@ class BuildLogger(BaseLogger):
             logger_name=logger_name,
             message=message,
             audience=audience,
+            source_file=source_file,
+            source_line=source_line,
             ato_traceback=ato_traceback,
             python_traceback=python_traceback,
             objects=objects,
@@ -1150,21 +1330,25 @@ class LogHandler(RichHandler):
             return None
 
         # Use console width or None (unlimited) for traceback width to prevent truncation
-        width = getattr(self, 'tracebacks_width', None) or getattr(self.console, 'width', None)
+        width = getattr(self, "tracebacks_width", None) or getattr(
+            self.console, "width", None
+        )
         # If width is None, Rich will use full available width
-        
+
         return Traceback.from_exception(
             exc_type,
             exc_value,
             exc_traceback,
             width=width,
-            extra_lines=getattr(self, 'tracebacks_extra_lines', 3),
-            theme=getattr(self, 'tracebacks_theme', None),
-            word_wrap=getattr(self, 'tracebacks_word_wrap', True),
-            show_locals=getattr(self, 'tracebacks_show_locals', False),
-            locals_max_length=getattr(self, 'locals_max_length', 10),
-            locals_max_string=getattr(self, 'locals_max_string', 80),
-            max_frames=getattr(self, 'tracebacks_max_frames', 1000),  # Increased from default 100 to show full tracebacks
+            extra_lines=getattr(self, "tracebacks_extra_lines", 3),
+            theme=getattr(self, "tracebacks_theme", None),
+            word_wrap=getattr(self, "tracebacks_word_wrap", True),
+            show_locals=getattr(self, "tracebacks_show_locals", False),
+            locals_max_length=getattr(self, "locals_max_length", 10),
+            locals_max_string=getattr(self, "locals_max_string", 80),
+            max_frames=getattr(
+                self, "tracebacks_max_frames", 1000
+            ),  # Increased from default 100 to show full tracebacks
             suppress=suppress,
         )
 
@@ -1292,6 +1476,10 @@ class LogHandler(RichHandler):
         try:
             level = self._level_to_enum(record.levelno)
 
+            # Extract source location from log record
+            source_file = record.pathname if record.pathname else None
+            source_line = record.lineno if record.lineno else None
+
             # Handle user exceptions specially
             exc_value = None
             if record.exc_info and record.exc_info[1] is not None:
@@ -1304,17 +1492,23 @@ class LogHandler(RichHandler):
                 # Extract ato-specific context
                 ato_tb = self._extract_ato_traceback(exc_value)
 
-                # Get Python traceback
+                # Get structured Python traceback with local variables
                 exc_type, exc_val, exc_tb = record.exc_info  # type: ignore[misc]
-                python_tb = "".join(
-                    traceback.format_exception(exc_type, exc_val, exc_tb)
+                structured_tb = _extract_traceback_frames(
+                    exc_type,
+                    exc_val,
+                    exc_tb,
+                    suppress_paths=["pluggy", "_pytest", "pytest", "test/runner"],
                 )
+                python_tb = json.dumps(structured_tb)
 
                 self._build_logger.log(
                     level,
                     message,
                     logger_name=record.name,
                     audience=Log.Audience.DEVELOPER,
+                    source_file=source_file,
+                    source_line=source_line,
                     ato_traceback=ato_tb,
                     python_traceback=python_tb,
                 )
@@ -1322,18 +1516,24 @@ class LogHandler(RichHandler):
                 # Regular log message
                 message = record.getMessage()
 
-                # Add Python traceback if present
+                # Add structured Python traceback if present
                 python_tb = None
                 if record.exc_info and record.exc_info[1] is not None:
                     exc_type, exc_val, exc_tb = record.exc_info
-                    python_tb = "".join(
-                        traceback.format_exception(exc_type, exc_val, exc_tb)
+                    structured_tb = _extract_traceback_frames(
+                        exc_type,
+                        exc_val,
+                        exc_tb,
+                        suppress_paths=["pluggy", "_pytest", "pytest", "test/runner"],
                     )
+                    python_tb = json.dumps(structured_tb)
 
                 self._build_logger.log(
                     level,
                     message,
                     logger_name=record.name,
+                    source_file=source_file,
+                    source_line=source_line,
                     python_traceback=python_tb,
                 )
         except Exception:
@@ -1347,6 +1547,10 @@ class LogHandler(RichHandler):
         try:
             level = self._level_to_enum(record.levelno)
 
+            # Extract source location from log record
+            source_file = record.pathname if record.pathname else None
+            source_line = record.lineno if record.lineno else None
+
             # Handle user exceptions specially
             exc_value = None
             if record.exc_info and record.exc_info[1] is not None:
@@ -1359,17 +1563,23 @@ class LogHandler(RichHandler):
                 # Extract ato-specific context (same as build logger)
                 ato_tb = self._extract_ato_traceback(exc_value)
 
-                # Get Python traceback
+                # Get structured Python traceback with local variables
                 exc_type, exc_val, exc_tb = record.exc_info  # type: ignore[misc]
-                python_tb = "".join(
-                    traceback.format_exception(exc_type, exc_val, exc_tb)
+                structured_tb = _extract_traceback_frames(
+                    exc_type,
+                    exc_val,
+                    exc_tb,
+                    suppress_paths=["pluggy", "_pytest", "pytest", "test/runner"],
                 )
+                python_tb = json.dumps(structured_tb)
 
                 self._test_logger.log(
                     level,
                     message,
                     logger_name=record.name,
                     audience=Log.Audience.DEVELOPER,
+                    source_file=source_file,
+                    source_line=source_line,
                     ato_traceback=ato_tb,
                     python_traceback=python_tb,
                 )
@@ -1377,18 +1587,24 @@ class LogHandler(RichHandler):
                 # Regular log message
                 message = record.getMessage()
 
-                # Add Python traceback if present
+                # Add structured Python traceback if present
                 python_tb = None
                 if record.exc_info and record.exc_info[1] is not None:
                     exc_type, exc_val, exc_tb = record.exc_info
-                    python_tb = "".join(
-                        traceback.format_exception(exc_type, exc_val, exc_tb)
+                    structured_tb = _extract_traceback_frames(
+                        exc_type,
+                        exc_val,
+                        exc_tb,
+                        suppress_paths=["pluggy", "_pytest", "pytest", "test/runner"],
                     )
+                    python_tb = json.dumps(structured_tb)
 
                 self._test_logger.log(
                     level,
                     message,
                     logger_name=record.name,
+                    source_file=source_file,
+                    source_line=source_line,
                     python_traceback=python_tb,
                 )
         except Exception:
@@ -1428,7 +1644,7 @@ class LogHandler(RichHandler):
                     # Print to stderr as well to avoid being overwritten by Live displays
                     stderr_console = Console(file=sys.stderr, width=self.console.width)
                     stderr_console.print(log_renderable, crop=False, overflow="ignore")
-                
+
                 # Print without height limit to show full tracebacks
                 # Use crop=False to prevent truncation, and ensure full output
                 self.console.print(log_renderable, crop=False, overflow="ignore")
@@ -1505,8 +1721,8 @@ def load_build_logs(
     where_sql = " AND ".join(where_clauses)
     query = f"""
         SELECT logs.timestamp, logs.level, logs.audience, logs.logger_name,
-               logs.message, logs.stage, logs.ato_traceback, logs.python_traceback,
-               logs.objects
+               logs.message, logs.stage, logs.source_file, logs.source_line,
+               logs.ato_traceback, logs.python_traceback, logs.objects
         FROM logs
         WHERE {where_sql}
         ORDER BY logs.id DESC
@@ -1533,6 +1749,8 @@ def load_build_logs(
                 "logger_name": row["logger_name"],
                 "message": row["message"],
                 "stage": row["stage"],
+                "source_file": row["source_file"],
+                "source_line": row["source_line"],
                 "ato_traceback": row["ato_traceback"],
                 "python_traceback": row["python_traceback"],
                 "objects": objects,
@@ -1578,7 +1796,8 @@ def load_test_logs(
     where_sql = " AND ".join(where_clauses)
     query = f"""
         SELECT test_logs.timestamp, test_logs.level, test_logs.audience,
-               test_logs.logger_name, test_logs.message, test_logs.ato_traceback,
+               test_logs.logger_name, test_logs.message, test_logs.source_file,
+               test_logs.source_line, test_logs.ato_traceback,
                test_logs.python_traceback, test_logs.objects, test_logs.test_name
         FROM test_logs
         WHERE {where_sql}
@@ -1605,6 +1824,8 @@ def load_test_logs(
                 "audience": row["audience"],
                 "logger_name": row["logger_name"],
                 "message": row["message"],
+                "source_file": row["source_file"],
+                "source_line": row["source_line"],
                 "ato_traceback": row["ato_traceback"],
                 "python_traceback": row["python_traceback"],
                 "objects": objects,
@@ -1658,8 +1879,8 @@ def load_build_logs_stream(
     # ORDER BY id ASC for streaming (oldest first, append to end)
     query = f"""
         SELECT logs.id, logs.timestamp, logs.level, logs.audience, logs.logger_name,
-               logs.message, logs.stage, logs.ato_traceback, logs.python_traceback,
-               logs.objects
+               logs.message, logs.stage, logs.source_file, logs.source_line,
+               logs.ato_traceback, logs.python_traceback, logs.objects
         FROM logs
         WHERE {where_sql}
         ORDER BY logs.id ASC
@@ -1690,6 +1911,8 @@ def load_build_logs_stream(
                 "logger_name": row["logger_name"],
                 "message": row["message"],
                 "stage": row["stage"],
+                "source_file": row["source_file"],
+                "source_line": row["source_line"],
                 "ato_traceback": row["ato_traceback"],
                 "python_traceback": row["python_traceback"],
                 "objects": objects,
@@ -1741,7 +1964,8 @@ def load_test_logs_stream(
     where_sql = " AND ".join(where_clauses)
     query = f"""
         SELECT test_logs.id, test_logs.timestamp, test_logs.level, test_logs.audience,
-               test_logs.logger_name, test_logs.message, test_logs.ato_traceback,
+               test_logs.logger_name, test_logs.message, test_logs.source_file,
+               test_logs.source_line, test_logs.ato_traceback,
                test_logs.python_traceback, test_logs.objects, test_logs.test_name
         FROM test_logs
         WHERE {where_sql}
@@ -1772,6 +1996,8 @@ def load_test_logs_stream(
                 "audience": row["audience"],
                 "logger_name": row["logger_name"],
                 "message": row["message"],
+                "source_file": row["source_file"],
+                "source_line": row["source_line"],
                 "ato_traceback": row["ato_traceback"],
                 "python_traceback": row["python_traceback"],
                 "objects": objects,

@@ -7,6 +7,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import AnsiToHtml from 'ansi-to-html';
 import { useStore } from '../store';
+import { StackInspector, StructuredTraceback } from './StackInspector';
 import './LogViewer.css';
 
 const LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'ALERT'] as const;
@@ -23,6 +24,8 @@ interface BuildLogEntry {
   logger_name: string;
   message: string;
   stage?: string | null;
+  source_file?: string | null;
+  source_line?: number | null;
   ato_traceback?: string | null;
   python_traceback?: string | null;
   objects?: unknown;
@@ -31,6 +34,28 @@ interface BuildLogEntry {
 interface TestLogEntry extends BuildLogEntry {
   test_name?: string | null;
 }
+
+// Short level names for compact display
+const LEVEL_SHORT: Record<LogLevel, string> = {
+  DEBUG: 'D',
+  INFO: 'I',
+  WARNING: 'W',
+  ERROR: 'E',
+  ALERT: 'A',
+};
+
+// Tooltips for UI elements
+const TOOLTIPS = {
+  timestamp: 'Click: toggle format',
+  level: 'Click: toggle short/full',
+  source: 'Source location',
+  logger: 'Logger module',
+  stage: 'Build stage',
+  test: 'Test name',
+  message: 'Log message',
+  search: 'Filter messages',
+  autoScroll: 'Auto-scroll logs',
+};
 
 // Streaming entries include id for cursor tracking
 interface StreamLogEntry extends BuildLogEntry {
@@ -82,12 +107,64 @@ const ansiConverter = new AnsiToHtml({
   escapeXML: true,
 });
 
+// Catppuccin-inspired colors for source files
+const SOURCE_COLORS = [
+  '#cba6f7', // mauve
+  '#f38ba8', // red
+  '#fab387', // peach
+  '#f9e2af', // yellow
+  '#a6e3a1', // green
+  '#94e2d5', // teal
+  '#89dceb', // sky
+  '#74c7ec', // sapphire
+  '#89b4fa', // blue
+  '#b4befe', // lavender
+  '#f5c2e7', // pink
+  '#eba0ac', // maroon
+];
+
+// Hash string to consistent color index
+function hashStringToColor(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return SOURCE_COLORS[Math.abs(hash) % SOURCE_COLORS.length];
+}
+
 // Highlight search matches in text
 function highlightText(text: string, search: string): string {
   if (!search.trim()) return text;
   const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const regex = new RegExp(`(${escaped})`, 'gi');
   return text.replace(regex, '<mark class="lv-highlight">$1</mark>');
+}
+
+/**
+ * Try to parse python_traceback as structured JSON.
+ * Returns null if not valid structured traceback.
+ */
+function tryParseStructuredTraceback(pythonTraceback: string | null | undefined): StructuredTraceback | null {
+  if (!pythonTraceback) return null;
+
+  try {
+    const parsed = JSON.parse(pythonTraceback);
+    // Validate it has the expected structure
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      typeof parsed.exc_type === 'string' &&
+      typeof parsed.exc_message === 'string' &&
+      Array.isArray(parsed.frames)
+    ) {
+      return parsed as StructuredTraceback;
+    }
+  } catch {
+    // Not JSON, it's plain text traceback
+  }
+
+  return null;
 }
 
 // Get initial values from URL query params
@@ -188,6 +265,37 @@ export function LogViewer() {
   const [levelDropdownOpen, setLevelDropdownOpen] = useState(false);
   const levelDropdownRef = useRef<HTMLDivElement>(null);
 
+  // Display toggle states - persisted in sessionStorage
+  const [levelFull, setLevelFull] = useState(() => {
+    const stored = sessionStorage.getItem('lv-levelFull');
+    return stored !== null ? stored === 'true' : true;
+  });
+  const [timeMode, setTimeMode] = useState<'delta' | 'wall'>(() => {
+    const stored = sessionStorage.getItem('lv-timeMode');
+    return (stored === 'wall' || stored === 'delta') ? stored : 'delta';
+  });
+  const [sourceMode, setSourceMode] = useState<'source' | 'logger'>(() => {
+    const stored = sessionStorage.getItem('lv-sourceMode');
+    return (stored === 'source' || stored === 'logger') ? stored : 'source';
+  });
+
+  // Persist display states to sessionStorage
+  useEffect(() => {
+    sessionStorage.setItem('lv-levelFull', String(levelFull));
+  }, [levelFull]);
+  useEffect(() => {
+    sessionStorage.setItem('lv-timeMode', timeMode);
+  }, [timeMode]);
+  useEffect(() => {
+    sessionStorage.setItem('lv-sourceMode', sourceMode);
+  }, [sourceMode]);
+
+  // Column search filters
+  const [sourceFilter, setSourceFilter] = useState('');
+
+  // First timestamp for delta calculation
+  const firstTimestamp = logs.length > 0 ? new Date(logs[0].timestamp).getTime() : 0;
+
   // Keep ref in sync with state
   useEffect(() => {
     autoScrollRef.current = autoScroll;
@@ -204,10 +312,57 @@ export function LogViewer() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Filter logs by search
-  const filteredLogs = search.trim()
-    ? logs.filter(log => log.message.toLowerCase().includes(search.toLowerCase()))
-    : logs;
+  // Filter logs by search and column filters
+  const filteredLogs = logs.filter(log => {
+    // Message search
+    if (search.trim() && !log.message.toLowerCase().includes(search.toLowerCase())) {
+      return false;
+    }
+    // Source/Logger filter - searches both regardless of display mode
+    if (sourceFilter.trim()) {
+      const sourceStr = log.source_file ? `${log.source_file}:${log.source_line || ''}` : '';
+      const loggerStr = log.logger_name || '';
+      const combined = `${sourceStr} ${loggerStr}`.toLowerCase();
+      if (!combined.includes(sourceFilter.toLowerCase())) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  // Compute unique test names from filtered logs to auto-hide column if only one
+  const uniqueTestNames = [...new Set(
+    filteredLogs
+      .map(l => (l as TestLogEntry).test_name)
+      .filter(Boolean)
+  )];
+  const shouldShowTestName = mode === 'test' && uniqueTestNames.length > 1;
+
+  // Format timestamp based on mode
+  const formatTimestamp = (ts: string, mode: 'delta' | 'wall'): string => {
+    if (mode === 'wall') {
+      // hh:mm:ss format (no milliseconds)
+      const timePart = ts.split('T')[1];
+      if (!timePart) return ts;
+      const hms = timePart.split('.')[0];
+      return hms;
+    } else {
+      // Delta ms since first log
+      const logTime = new Date(ts).getTime();
+      const delta = logTime - firstTimestamp;
+      if (delta < 1000) return `+${delta}ms`;
+      if (delta < 60000) return `+${(delta / 1000).toFixed(1)}s`;
+      return `+${(delta / 60000).toFixed(1)}m`;
+    }
+  };
+
+  // Format source location
+  const formatSource = (file: string | null | undefined, line: number | null | undefined): string | null => {
+    if (!file) return null;
+    // Get just the filename from the path
+    const filename = file.split('/').pop() || file;
+    return line ? `${filename}:${line}` : filename;
+  };
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
@@ -522,7 +677,7 @@ export function LogViewer() {
 
           {/* Right section: Filters */}
           <div className="lv-controls-right">
-            {/* Stage/Test name filter + Search grouped together */}
+            {/* Stage/Test name filter */}
             {mode === 'build' ? (
               <input
                 type="text"
@@ -531,6 +686,7 @@ export function LogViewer() {
                 placeholder="Stage"
                 className="lv-input lv-input-search"
                 disabled={streaming}
+                title="Filter by build stage"
               />
             ) : (
               <input
@@ -540,16 +696,9 @@ export function LogViewer() {
                 placeholder="Test Name"
                 className="lv-input lv-input-search"
                 disabled={streaming}
+                title="Filter by test name"
               />
             )}
-
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search..."
-              className="lv-input lv-input-search"
-            />
 
             <span className="lv-separator" />
 
@@ -617,6 +766,50 @@ export function LogViewer() {
         )}
       </div>
 
+      {/* Column Headers with Search */}
+      <div className={`lv-column-headers ${!levelFull ? 'lv-level-compact' : ''} ${timeMode === 'delta' ? 'lv-time-compact' : ''}`}>
+        <div className="lv-col-header lv-col-ts" title={TOOLTIPS.timestamp}>
+          <button
+            className="lv-col-btn"
+            onClick={() => setTimeMode(m => m === 'wall' ? 'delta' : 'wall')}
+          >
+            {timeMode === 'wall' ? 'Time' : 'Δ'}
+          </button>
+        </div>
+        <div className="lv-col-header lv-col-level" title={TOOLTIPS.level}>
+          <button
+            className="lv-col-btn"
+            onClick={() => setLevelFull(f => !f)}
+          >
+            {levelFull ? 'Level' : 'Lv'}
+          </button>
+        </div>
+        <div className="lv-col-header lv-col-source" title="Click label to toggle source/logger">
+          <button
+            className="lv-col-btn"
+            onClick={() => setSourceMode(m => m === 'source' ? 'logger' : 'source')}
+          >
+            {sourceMode === 'source' ? 'Src' : 'Log'}
+          </button>
+          <input
+            type="text"
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+            placeholder={sourceMode === 'source' ? 'file:line' : 'logger'}
+            className="lv-col-search"
+          />
+        </div>
+        <div className="lv-col-header lv-col-message" title={TOOLTIPS.message}>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Message"
+            className="lv-col-search lv-col-search-message"
+          />
+        </div>
+      </div>
+
       {/* Scrollable Log Content */}
       <div
         className="lv-content"
@@ -629,55 +822,92 @@ export function LogViewer() {
           </div>
         ) : (
           filteredLogs.map((entry, idx) => {
-            // Format timestamp to HH:MM:SS
-            const ts = entry.timestamp.split('T')[1]?.split('.')[0] || entry.timestamp;
+            // Format timestamp based on mode
+            const ts = formatTimestamp(entry.timestamp, timeMode);
             // Convert ANSI then highlight search matches
             const html = highlightText(ansiConverter.toHtml(entry.message), search);
             // Get test name if in test mode
             const testEntry = entry as TestLogEntry;
-            const testLabel = mode === 'test' && testEntry.test_name ? testEntry.test_name : null;
+            const testLabel = shouldShowTestName && testEntry.test_name ? testEntry.test_name : null;
             // Get stage if available
             const stageLabel = (entry as BuildLogEntry).stage || null;
+            // Format source location
+            const sourceLabel = formatSource(entry.source_file, entry.source_line);
+            // Get source file color (used for both source and logger)
+            const sourceColor = sourceMode === 'source'
+              ? (entry.source_file ? hashStringToColor(entry.source_file) : undefined)
+              : (entry.logger_name ? hashStringToColor(entry.logger_name) : undefined);
+            // Get short logger name (last part)
+            const loggerShort = entry.logger_name?.split('.').pop() || '';
+            // Display value based on sourceMode
+            const sourceDisplayValue = sourceMode === 'source' ? (sourceLabel || '—') : (loggerShort || '—');
+            const sourceTooltip = sourceMode === 'source' ? (entry.source_file || '') : (entry.logger_name || '');
             return (
               <div key={idx} className={`lv-entry ${entry.level.toLowerCase()}`}>
-                <div className="lv-entry-row">
-                  <span className="lv-ts">{ts}</span>
-                  <span className={`lv-level-badge ${entry.level.toLowerCase()}`}>
-                    {entry.level}
+                <div className={`lv-entry-row ${!levelFull ? 'lv-level-compact' : ''} ${timeMode === 'delta' ? 'lv-time-compact' : ''}`}>
+                  <span
+                    className="lv-ts"
+                    title={TOOLTIPS.timestamp}
+                    onClick={() => setTimeMode(m => m === 'wall' ? 'delta' : 'wall')}
+                  >
+                    {ts}
                   </span>
-                  {stageLabel && (
-                    <span className="lv-stage-badge">
-                      {stageLabel}
-                    </span>
-                  )}
-                  {testLabel && (
-                    <span className="lv-test-badge">
-                      {testLabel}
-                    </span>
-                  )}
-                  <pre
-                    className="lv-message"
-                    dangerouslySetInnerHTML={{ __html: html }}
-                  />
-                </div>
-                {(entry.ato_traceback || entry.python_traceback) && (
-                  <div className="lv-tracebacks">
-                    {entry.ato_traceback && (
-                      <TraceDetails
-                        label="ato traceback"
-                        content={entry.ato_traceback}
-                        className="lv-trace-ato"
-                      />
+                  <span
+                    className={`lv-level-badge ${entry.level.toLowerCase()} ${levelFull ? '' : 'short'}`}
+                    title={TOOLTIPS.level}
+                    onClick={() => setLevelFull(f => !f)}
+                  >
+                    {levelFull ? entry.level : LEVEL_SHORT[entry.level]}
+                  </span>
+                  <span
+                    className="lv-source-badge"
+                    title={sourceTooltip}
+                    style={sourceColor ? { color: sourceColor, borderColor: sourceColor } : undefined}
+                    onClick={() => setSourceMode(m => m === 'source' ? 'logger' : 'source')}
+                  >
+                    {sourceDisplayValue}
+                  </span>
+                  <div className="lv-message-cell">
+                    {stageLabel && (
+                      <span className="lv-stage-badge" title={TOOLTIPS.stage}>
+                        {stageLabel}
+                      </span>
                     )}
-                    {entry.python_traceback && (
-                      <TraceDetails
-                        label="python traceback"
-                        content={entry.python_traceback}
-                        className="lv-trace-python"
-                      />
+                    {testLabel && (
+                      <span className="lv-test-badge" data-full-name={testLabel}>
+                        <span className="lv-test-badge-text">{testLabel}</span>
+                        <span className="lv-test-badge-popup">{testLabel}</span>
+                      </span>
                     )}
+                    <pre
+                      className="lv-message"
+                      dangerouslySetInnerHTML={{ __html: html }}
+                    />
                   </div>
-                )}
+                </div>
+                {(entry.ato_traceback || entry.python_traceback) && (() => {
+                  const structuredTb = tryParseStructuredTraceback(entry.python_traceback);
+                  return (
+                    <div className="lv-tracebacks">
+                      {entry.ato_traceback && (
+                        <TraceDetails
+                          label="ato traceback"
+                          content={entry.ato_traceback}
+                          className="lv-trace-ato"
+                        />
+                      )}
+                      {structuredTb && structuredTb.frames.length > 0 ? (
+                        <StackInspector traceback={structuredTb} />
+                      ) : entry.python_traceback ? (
+                        <TraceDetails
+                          label="python traceback"
+                          content={entry.python_traceback}
+                          className="lv-trace-python"
+                        />
+                      ) : null}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })
