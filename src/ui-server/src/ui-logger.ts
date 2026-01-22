@@ -1,3 +1,5 @@
+import { sendAction } from './api/websocket';
+
 type UILogEntry = {
   ts: string;
   level: 'error' | 'warn';
@@ -7,6 +9,8 @@ type UILogEntry = {
 
 const MAX_LOGS = 200;
 let initialized = false;
+// Guard against infinite recursion when console methods call sendAction
+let isRecording = false;
 
 function pushLog(entry: UILogEntry) {
   if (typeof window === 'undefined') return;
@@ -19,27 +23,31 @@ function pushLog(entry: UILogEntry) {
   (window as any).__ATOPILE_UI_LOGS__ = logs;
 }
 
-async function postLog(entry: UILogEntry) {
-  try {
-    await fetch('/api/ui-logs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(entry),
-    });
-  } catch {
-    // Best-effort only.
-  }
+function postLog(entry: UILogEntry) {
+  sendAction('uiLog', {
+    level: entry.level,
+    message: entry.message,
+    stack: entry.stack,
+    ts: entry.ts,
+  });
 }
 
 function record(level: UILogEntry['level'], message: string, stack?: string) {
-  const entry: UILogEntry = {
-    ts: new Date().toISOString(),
-    level,
-    message,
-    stack,
-  };
-  pushLog(entry);
-  void postLog(entry);
+  // Prevent infinite recursion: sendAction may call console.warn when not connected
+  if (isRecording) return;
+  isRecording = true;
+  try {
+    const entry: UILogEntry = {
+      ts: new Date().toISOString(),
+      level,
+      message,
+      stack,
+    };
+    pushLog(entry);
+    void postLog(entry);
+  } finally {
+    isRecording = false;
+  }
 }
 
 export function initUILogger(): void {

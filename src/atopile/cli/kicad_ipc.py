@@ -8,9 +8,11 @@ from typing import Annotated, Optional
 
 import typer
 
+from atopile.logging import get_logger
+
 kicad_ipc_app = typer.Typer(rich_markup_mode="rich")
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _setup_logger():

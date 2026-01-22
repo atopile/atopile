@@ -1,5 +1,4 @@
 import itertools
-import logging
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -46,13 +45,14 @@ from atopile.compiler.gentypegraph import (
 )
 from atopile.compiler.overrides import ReferenceOverrideRegistry, TraitOverrideRegistry
 from atopile.exceptions import DeprecatedException, downgrade
+from atopile.logging import get_logger
 from faebryk.core.faebrykpy import EdgeTraversal
 from faebryk.library.Units import UnitsNotCommensurableError
 from faebryk.libs.util import cast_assert, groupby, import_from_path, not_none
 
 _Quantity = tuple[float, fabll._ChildField]
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # FIXME: needs expanding
@@ -1989,9 +1989,7 @@ class ASTVisitor:
                 return False
             return full_path[: len(prefix)] == prefix
 
-        import logging
-
-        _logger = logging.getLogger(__name__)
+        _logger = get_logger(__name__)
 
         for ancestor in reversed(common_ancestors):
             source_path = source_py.get_path_from_ancestor(ancestor)

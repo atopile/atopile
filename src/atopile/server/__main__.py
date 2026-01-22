@@ -13,7 +13,23 @@ import sys
 import time
 from pathlib import Path
 
-from atopile.server.server import DASHBOARD_PORT, DashboardServer
+import requests
+
+from atopile.server.server import (
+    DASHBOARD_PORT,
+    DashboardServer,
+    is_port_in_use,
+    kill_process_on_port,
+)
+
+
+def is_atopile_server_running(port: int) -> bool:
+    """Check if an atopile server is already running on the given port."""
+    try:
+        response = requests.get(f"http://127.0.0.1:{port}/health", timeout=2)
+        return response.status_code == 200 and response.json().get("status") == "ok"
+    except (requests.RequestException, ValueError):
+        return False
 
 
 def main():
@@ -37,7 +53,12 @@ def main():
         default=None,
         help="Directory for build logs (default: current directory)",
     )
-
+    parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Kill existing server on the port and start fresh",
+    )
     args = parser.parse_args()
 
     # Determine logs directory
@@ -61,15 +82,41 @@ def main():
         [Path(p) for p in args.workspace] if args.workspace else [Path.cwd()]
     )
 
+    # Check if port is already in use
+    port = args.port
+    if is_port_in_use(port):
+        if args.force:
+            print(f"Stopping existing server on port {port}...")
+            if kill_process_on_port(port):
+                print("Existing server stopped")
+            else:
+                print(f"Failed to stop process on port {port}")
+                sys.exit(1)
+        elif is_atopile_server_running(port):
+            print(f"Atopile server already running on port {port}")
+            print(f"Dashboard available at http://localhost:{port}")
+            print("Use --force to restart, or --port to use a different port")
+            sys.exit(0)
+        else:
+            print(f"Port {port} is already in use by another application")
+            print("Options:")
+            print("  1. Use --force to kill the process: ato serve backend --force")
+            print("  2. Use a specific port: ato serve backend --port <PORT>")
+            sys.exit(1)
+
+    # Output port early for programmatic discovery (before logging starts)
+    # This line is parsed by the VS Code extension and other tools
+    print(f"ATOPILE_SERVER_PORT={port}", flush=True)
+
     # Create and start server
     server = DashboardServer(
         summary_file=summary_file,
         logs_base=logs_base,
-        port=args.port,
+        port=port,
         workspace_paths=workspace_paths,
     )
 
-    print(f"Starting dashboard server on http://localhost:{args.port}")
+    print(f"Starting dashboard server on http://localhost:{port}")
     print(f"Logs directory: {logs_base}")
     print(f"Workspace paths: {', '.join(str(p) for p in workspace_paths)}")
     print("Press Ctrl+C to stop")

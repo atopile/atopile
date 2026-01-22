@@ -2972,8 +2972,22 @@ class ReportTimer:
 
 def get_free_port(start_port: int = 50000, max_attempts: int = 100) -> int:
     """
-    Find a free port starting from start_port, incrementing until one is available.
+    Find a free port starting from start_port.
+
+    First tries to kill any stale process on the preferred port to ensure
+    consistent port usage across test runs. This prevents issues where old
+    browser tabs connect to stale servers on different ports.
     """
+    from atopile.server.server import is_port_in_use, kill_process_on_port
+
+    # Try to claim the preferred port first, killing any stale process
+    if is_port_in_use(start_port):
+        _print(f"Port {start_port} in use, killing stale process...")
+        if kill_process_on_port(start_port):
+            _print(f"Killed stale process on port {start_port}")
+        else:
+            _print(f"Could not kill process on port {start_port}, will try next port")
+
     for port in range(start_port, start_port + max_attempts):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

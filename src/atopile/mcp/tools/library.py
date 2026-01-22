@@ -1,9 +1,9 @@
-import logging
 from pathlib import Path
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from atopile.logging import get_logger
 from atopile.mcp.util import (
     Language,
     MCPTools,
@@ -12,7 +12,7 @@ from atopile.mcp.util import (
     NodeType,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 library_tools = MCPTools()
 

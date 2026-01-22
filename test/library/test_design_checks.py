@@ -4,7 +4,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.app.checks import check_design
-from faebryk.libs.exceptions import UserDesignCheckException
+from atopile.exceptions import UserDesignCheckException
 from faebryk.libs.smd import SMDSize
 
 

@@ -54,6 +54,55 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   height: 24px;
+  position: relative;
+  cursor: default;
+}
+
+/* Status tooltip */
+.lv-status-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm);
+  z-index: 100;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: tooltip-fade-in 0.1s ease-out;
+}
+
+@keyframes tooltip-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.lv-status-tooltip-row {
+  display: flex;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+}
+
+.lv-status-tooltip-row + .lv-status-tooltip-row {
+  margin-top: 2px;
+}
+
+.lv-status-tooltip-label {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.lv-status-tooltip-value {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
 }
 
 .lv-status.connected {
@@ -412,7 +461,7 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  background: var(--ctp-crust);
+  background: var(--bg-primary);
 }
 
 .lv-empty {
@@ -430,11 +479,11 @@
   padding: 2px var(--spacing-sm);
   font-size: var(--font-size-sm);
   line-height: 1.4;
-  border-bottom: 1px solid var(--ctp-mantle);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .lv-entry:hover {
-  background: var(--ctp-mantle);
+  background: var(--bg-secondary);
 }
 
 .lv-entry:last-child {

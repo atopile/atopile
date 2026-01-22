@@ -9,7 +9,6 @@ such as `reference_shim` which resolves to the ElectricPower `reference` from
 has_single_electric_reference.
 """
 
-import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -28,10 +27,11 @@ from atopile.compiler.gentypegraph import (
     NoOpAction,
 )
 from atopile.exceptions import DeprecatedException, downgrade
+from atopile.logging import get_logger
 from faebryk.core.faebrykpy import EdgeComposition, EdgeTrait
 from faebryk.libs.smd import SMDSize
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _deprecated_warning(input: str, replacement: str) -> None:

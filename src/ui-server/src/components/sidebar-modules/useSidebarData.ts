@@ -10,12 +10,16 @@ import { type Selection, type StageFilter } from './sidebarUtils';
 function findBuildForTarget(
   builds: any[] | undefined | null,
   projectName: string,
-  targetName: string
+  targetName: string,
+  projectRoot?: string
 ): any | undefined {
   if (!builds || !Array.isArray(builds)) return undefined;
 
   let build = builds.find(b => {
     if (b.status !== 'building' && b.status !== 'queued') return false;
+    if (projectRoot && b.projectRoot && b.projectRoot === projectRoot) {
+      return true;
+    }
     const buildProjectName = b.projectName || (b.projectRoot ? b.projectRoot.split('/').pop() : null);
     if (buildProjectName !== projectName) return false;
     const targets = b.targets || [];
@@ -30,7 +34,8 @@ function findBuildForTarget(
     build = builds.find(b =>
       (b.status === 'building' || b.status === 'queued') &&
       b.name === targetName &&
-      (b.projectName === projectName || b.projectName === null)
+      (b.projectName === projectName || b.projectName === null) &&
+      (!projectRoot || !b.projectRoot || b.projectRoot === projectRoot)
     );
   }
 
@@ -87,11 +92,16 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
   const transformedProjects = useMemo((): any[] => {
     if (!state?.projects?.length) return [];
 
+    const activeBuilds = [
+      ...(state?.queuedBuilds || []),
+      ...(state?.builds || []),
+    ];
+
     return state.projects.map((p: any) => {
       const projectModules = state.projectModules?.[p.root] || [];
 
       const builds = p.targets.map((t: any) => {
-        const build = findBuildForTarget(state.builds, p.name, t.name);
+        const build = findBuildForTarget(activeBuilds, p.name, t.name, p.root);
         const rootSymbol = parseEntryToSymbol(t.entry, projectModules);
         const activeStages = build?.stages && build.stages.length > 0 ? build.stages : null;
         const historicalStages = t.lastBuild?.stages;
@@ -165,13 +175,18 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
   const transformedPackages = useMemo((): any[] => {
     if (!state?.packages?.length) return [];
 
+    const activeBuilds = [
+      ...(state?.queuedBuilds || []),
+      ...(state?.builds || []),
+    ];
+
     return state.packages
       .filter((pkg: any) => pkg && pkg.identifier && pkg.name)
       .map((pkg: any) => {
         const targetNames = ['default', 'usage'];
 
         const packageBuilds = targetNames.map(targetName => {
-          const build = findBuildForTarget(state.builds, pkg.name, targetName);
+          const build = findBuildForTarget(activeBuilds, pkg.name, targetName);
 
           return {
             id: targetName,

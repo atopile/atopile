@@ -1,9 +1,9 @@
 /* ============================================
    _variables.css
    CSS Custom Properties and Root Variables
+   - VS Code Theme Integration (primary)
+   - Catppuccin Mocha/Latte (fallbacks)
    - Atopile Brand Colors
-   - Theme System (Dark/Light/System)
-   - Catppuccin Mocha (Dark) & Latte (Light)
    - Semantic Colors
    - Spacing, Border Radius, Fonts, Transitions
    ============================================ */
@@ -91,19 +91,19 @@
   --ctp-mantle: #181825;
   --ctp-crust: #11111b;
 
-  /* Semantic colors */
-  --bg-primary: var(--ctp-base);
-  --bg-secondary: var(--ctp-mantle);
-  --bg-tertiary: var(--ctp-surface0);
-  --bg-hover: var(--ctp-surface1);
-  --bg-active: var(--ctp-surface2);
+  /* Semantic colors - VS Code theme vars with Catppuccin fallbacks */
+  --bg-primary: var(--vscode-sideBar-background, var(--ctp-base));
+  --bg-secondary: var(--vscode-sideBarSectionHeader-background, var(--ctp-mantle));
+  --bg-tertiary: var(--vscode-input-background, var(--ctp-surface0));
+  --bg-hover: var(--vscode-list-hoverBackground, var(--ctp-surface1));
+  --bg-active: var(--vscode-list-activeSelectionBackground, var(--ctp-surface2));
 
-  --text-primary: var(--ctp-text);
-  --text-secondary: var(--ctp-subtext1);
-  --text-muted: var(--ctp-overlay1);
+  --text-primary: var(--vscode-foreground, var(--ctp-text));
+  --text-secondary: var(--vscode-descriptionForeground, var(--ctp-subtext1));
+  --text-muted: var(--vscode-disabledForeground, var(--ctp-overlay1));
 
-  --border-color: var(--ctp-surface1);
-  --border-subtle: var(--ctp-surface0);
+  --border-color: var(--vscode-panel-border, var(--ctp-surface1));
+  --border-subtle: var(--vscode-widget-border, var(--ctp-surface0));
 
   /* Primary accent is atopile orange */
   --accent: var(--ato-orange);
@@ -115,11 +115,11 @@
   --accent-secondary: var(--ctp-mauve);
   --accent-secondary-hover: var(--ctp-lavender);
 
-  /* Status colors */
-  --success: var(--ctp-green);
-  --warning: var(--ctp-yellow);
-  --error: var(--ctp-red);
-  --info: var(--ctp-blue);
+  /* Status colors - VS Code theme vars with Catppuccin fallbacks */
+  --success: var(--vscode-testing-iconPassed, var(--ctp-green));
+  --warning: var(--vscode-notificationsWarningIcon-foreground, var(--ctp-yellow));
+  --error: var(--vscode-notificationsErrorIcon-foreground, var(--ctp-red));
+  --info: var(--vscode-editorInfo-foreground, var(--ctp-blue));
   --debug: var(--ctp-overlay1);
 
   /* Card backgrounds */
@@ -127,21 +127,21 @@
   --bg-card-hover: var(--bg-hover);
 
   /* Interactive States */
-  --hover: rgba(255, 255, 255, 0.04);
-  --active: rgba(255, 255, 255, 0.08);
+  --hover: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+  --active: var(--vscode-list-activeSelectionBackground, rgba(255, 255, 255, 0.08));
   --selected: var(--ato-orange-subtle);
 
   /* Dark mode specific */
   --shadow-color: rgba(0, 0, 0, 0.3);
-  --scrollbar-thumb: var(--ctp-surface2);
-  --scrollbar-track: var(--ctp-mantle);
+  --scrollbar-thumb: var(--vscode-scrollbarSlider-background, var(--ctp-surface2));
+  --scrollbar-track: var(--vscode-scrollbarSlider-background, var(--ctp-mantle));
 }
 
 /* ============================================
    Light Theme - Catppuccin Latte
    ============================================ */
 [data-theme="light"] {
-  /* Catppuccin Latte palette */
+  /* Catppuccin Latte palette (fallback values) */
   --ctp-rosewater: #dc8a78;
   --ctp-flamingo: #dd7878;
   --ctp-pink: #ea76cb;
@@ -169,19 +169,19 @@
   --ctp-mantle: #e6e9ef;
   --ctp-crust: #dce0e8;
 
-  /* Semantic colors */
-  --bg-primary: var(--ctp-base);
-  --bg-secondary: var(--ctp-mantle);
-  --bg-tertiary: var(--ctp-surface0);
-  --bg-hover: var(--ctp-surface1);
-  --bg-active: var(--ctp-surface2);
+  /* Semantic colors - VS Code theme vars with Catppuccin fallbacks */
+  --bg-primary: var(--vscode-sideBar-background, var(--ctp-base));
+  --bg-secondary: var(--vscode-sideBarSectionHeader-background, var(--ctp-mantle));
+  --bg-tertiary: var(--vscode-input-background, var(--ctp-surface0));
+  --bg-hover: var(--vscode-list-hoverBackground, var(--ctp-surface1));
+  --bg-active: var(--vscode-list-activeSelectionBackground, var(--ctp-surface2));
 
-  --text-primary: var(--ctp-text);
-  --text-secondary: var(--ctp-subtext1);
-  --text-muted: var(--ctp-overlay1);
+  --text-primary: var(--vscode-foreground, var(--ctp-text));
+  --text-secondary: var(--vscode-descriptionForeground, var(--ctp-subtext1));
+  --text-muted: var(--vscode-disabledForeground, var(--ctp-overlay1));
 
-  --border-color: var(--ctp-surface1);
-  --border-subtle: var(--ctp-surface0);
+  --border-color: var(--vscode-panel-border, var(--ctp-surface1));
+  --border-subtle: var(--vscode-widget-border, var(--ctp-surface0));
 
   /* Primary accent - slightly darker orange for light bg */
   --accent: var(--ato-orange-dark);
@@ -193,26 +193,26 @@
   --accent-secondary: var(--ctp-mauve);
   --accent-secondary-hover: var(--ctp-lavender);
 
-  /* Status colors */
-  --success: var(--ctp-green);
-  --warning: var(--ctp-yellow);
-  --error: var(--ctp-red);
-  --info: var(--ctp-blue);
+  /* Status colors - VS Code theme vars with Catppuccin fallbacks */
+  --success: var(--vscode-testing-iconPassed, var(--ctp-green));
+  --warning: var(--vscode-notificationsWarningIcon-foreground, var(--ctp-yellow));
+  --error: var(--vscode-notificationsErrorIcon-foreground, var(--ctp-red));
+  --info: var(--vscode-editorInfo-foreground, var(--ctp-blue));
   --debug: var(--ctp-overlay1);
 
   /* Card backgrounds */
   --bg-card: var(--bg-tertiary);
   --bg-card-hover: var(--bg-hover);
 
-  /* Interactive States - inverted for light mode */
-  --hover: rgba(0, 0, 0, 0.04);
-  --active: rgba(0, 0, 0, 0.08);
+  /* Interactive States - VS Code theme vars with fallbacks */
+  --hover: var(--vscode-list-hoverBackground, rgba(0, 0, 0, 0.04));
+  --active: var(--vscode-list-activeSelectionBackground, rgba(0, 0, 0, 0.08));
   --selected: var(--accent-subtle);
 
   /* Light mode specific */
   --shadow-color: rgba(0, 0, 0, 0.1);
-  --scrollbar-thumb: var(--ctp-surface2);
-  --scrollbar-track: var(--ctp-mantle);
+  --scrollbar-thumb: var(--vscode-scrollbarSlider-background, var(--ctp-surface2));
+  --scrollbar-track: var(--vscode-scrollbarSlider-background, var(--ctp-mantle));
 }
 
 /* ============================================
@@ -221,7 +221,7 @@
    ============================================ */
 @media (prefers-color-scheme: light) {
   [data-theme="system"] {
-    /* Catppuccin Latte palette */
+    /* Catppuccin Latte palette (fallback values) */
     --ctp-rosewater: #dc8a78;
     --ctp-flamingo: #dd7878;
     --ctp-pink: #ea76cb;
@@ -249,19 +249,19 @@
     --ctp-mantle: #e6e9ef;
     --ctp-crust: #dce0e8;
 
-    /* Semantic colors */
-    --bg-primary: var(--ctp-base);
-    --bg-secondary: var(--ctp-mantle);
-    --bg-tertiary: var(--ctp-surface0);
-    --bg-hover: var(--ctp-surface1);
-    --bg-active: var(--ctp-surface2);
+    /* Semantic colors - VS Code theme vars with Catppuccin fallbacks */
+    --bg-primary: var(--vscode-sideBar-background, var(--ctp-base));
+    --bg-secondary: var(--vscode-sideBarSectionHeader-background, var(--ctp-mantle));
+    --bg-tertiary: var(--vscode-input-background, var(--ctp-surface0));
+    --bg-hover: var(--vscode-list-hoverBackground, var(--ctp-surface1));
+    --bg-active: var(--vscode-list-activeSelectionBackground, var(--ctp-surface2));
 
-    --text-primary: var(--ctp-text);
-    --text-secondary: var(--ctp-subtext1);
-    --text-muted: var(--ctp-overlay1);
+    --text-primary: var(--vscode-foreground, var(--ctp-text));
+    --text-secondary: var(--vscode-descriptionForeground, var(--ctp-subtext1));
+    --text-muted: var(--vscode-disabledForeground, var(--ctp-overlay1));
 
-    --border-color: var(--ctp-surface1);
-    --border-subtle: var(--ctp-surface0);
+    --border-color: var(--vscode-panel-border, var(--ctp-surface1));
+    --border-subtle: var(--vscode-widget-border, var(--ctp-surface0));
 
     /* Primary accent - slightly darker orange for light bg */
     --accent: var(--ato-orange-dark);
@@ -273,31 +273,31 @@
     --accent-secondary: var(--ctp-mauve);
     --accent-secondary-hover: var(--ctp-lavender);
 
-    /* Status colors */
-    --success: var(--ctp-green);
-    --warning: var(--ctp-yellow);
-    --error: var(--ctp-red);
-    --info: var(--ctp-blue);
+    /* Status colors - VS Code theme vars with Catppuccin fallbacks */
+    --success: var(--vscode-testing-iconPassed, var(--ctp-green));
+    --warning: var(--vscode-notificationsWarningIcon-foreground, var(--ctp-yellow));
+    --error: var(--vscode-notificationsErrorIcon-foreground, var(--ctp-red));
+    --info: var(--vscode-editorInfo-foreground, var(--ctp-blue));
     --debug: var(--ctp-overlay1);
 
     /* Card backgrounds */
     --bg-card: var(--bg-tertiary);
     --bg-card-hover: var(--bg-hover);
 
-    /* Interactive States - inverted for light mode */
-    --hover: rgba(0, 0, 0, 0.04);
-    --active: rgba(0, 0, 0, 0.08);
+    /* Interactive States - VS Code theme vars with fallbacks */
+    --hover: var(--vscode-list-hoverBackground, rgba(0, 0, 0, 0.04));
+    --active: var(--vscode-list-activeSelectionBackground, rgba(0, 0, 0, 0.08));
     --selected: var(--accent-subtle);
 
     /* Light mode specific */
     --shadow-color: rgba(0, 0, 0, 0.1);
-    --scrollbar-thumb: var(--ctp-surface2);
-    --scrollbar-track: var(--ctp-mantle);
+    --scrollbar-thumb: var(--vscode-scrollbarSlider-background, var(--ctp-surface2));
+    --scrollbar-track: var(--vscode-scrollbarSlider-background, var(--ctp-mantle));
   }
 }
 
 @media (prefers-color-scheme: dark) {
   [data-theme="system"] {
-    /* Uses dark theme (default) - inherit from :root */
+    /* Uses dark theme (default) - inherits VS Code vars from :root */
   }
 }

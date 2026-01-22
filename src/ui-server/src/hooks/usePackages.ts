@@ -4,7 +4,7 @@
 
 import { useCallback, useState } from 'react';
 import { useStore } from '../store';
-import { api } from '../api/client';
+import { sendAction, sendActionWithResponse } from '../api/websocket';
 
 export function usePackages() {
   const packages = useStore((state) => state.packages);
@@ -22,18 +22,7 @@ export function usePackages() {
   const [isSearching, setIsSearching] = useState(false);
 
   const refresh = useCallback(async () => {
-    useStore.getState().setLoadingPackages(true);
-    try {
-      const response = await api.packages.summary();
-      useStore.getState().setPackages(response.packages);
-    } catch (error) {
-      console.error('Failed to refresh packages:', error);
-      useStore
-        .getState()
-        .setPackagesError(
-          error instanceof Error ? error.message : 'Failed to load packages'
-        );
-    }
+    sendAction('refreshPackages');
   }, []);
 
   const search = useCallback(async (query: string) => {
@@ -45,8 +34,12 @@ export function usePackages() {
 
     setIsSearching(true);
     try {
-      const response = await api.packages.search(query);
-      setSearchResults(response.packages);
+      const response = await sendActionWithResponse('searchPackages', { query });
+      const result = response.result ?? {};
+      const searchPackages = Array.isArray((result as { packages?: unknown }).packages)
+        ? (result as { packages: unknown[] }).packages
+        : [];
+      setSearchResults(searchPackages as typeof packages);
     } catch (error) {
       console.error('Failed to search packages:', error);
       setSearchResults([]);
@@ -56,53 +49,30 @@ export function usePackages() {
   }, []);
 
   const fetchDetails = useCallback(async (identifier: string) => {
-    useStore.getState().setLoadingPackageDetails(true);
-    try {
-      const details = await api.packages.details(identifier);
-      useStore.getState().setPackageDetails(details);
-      return details;
-    } catch (error) {
-      console.error('Failed to fetch package details:', error);
-      useStore.getState().setPackageDetails(null);
-      throw error;
-    }
+    const response = await sendActionWithResponse('getPackageDetails', {
+      packageId: identifier,
+    });
+    const result = response.result ?? {};
+    return (result as { details?: unknown }).details as unknown;
   }, []);
 
   const install = useCallback(
     async (identifier: string, projectRoot: string, version?: string) => {
-      try {
-        await api.packages.install(identifier, projectRoot, version);
-        // Backend will broadcast state update via WebSocket
-      } catch (error) {
-        console.error('Failed to install package:', error);
-        throw error;
-      }
+      sendAction('installPackage', { packageId: identifier, projectRoot, version });
     },
     []
   );
 
   const uninstall = useCallback(
     async (identifier: string, projectRoot: string) => {
-      try {
-        await api.packages.remove(identifier, projectRoot);
-        // Backend will broadcast state update via WebSocket
-      } catch (error) {
-        console.error('Failed to uninstall package:', error);
-        throw error;
-      }
+      sendAction('removePackage', { packageId: identifier, projectRoot });
     },
     []
   );
 
   const update = useCallback(
     async (identifier: string, projectRoot: string, version?: string) => {
-      try {
-        await api.packages.install(identifier, projectRoot, version);
-        // Backend will broadcast state update via WebSocket
-      } catch (error) {
-        console.error('Failed to update package:', error);
-        throw error;
-      }
+      sendAction('installPackage', { packageId: identifier, projectRoot, version });
     },
     []
   );

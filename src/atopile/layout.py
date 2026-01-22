@@ -1,4 +1,3 @@
-import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,9 +10,10 @@ import faebryk.library._F as F
 from atopile.address import AddrStr
 from atopile.compiler.ast_visitor import is_ato_module
 from atopile.config import ProjectConfig, config
+from atopile.logging import get_logger
 from faebryk.libs.util import KeyErrorNotFound, find, not_none
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SubPCB(fabll.Node):

@@ -1,4 +1,3 @@
-import logging
 from pathlib import Path
 
 from atopile import buildutil
@@ -12,12 +11,12 @@ from atopile.dataclasses import (
     PackageVerifyResult,
     Result,
 )
-from atopile.logging import BaseLogger
+from atopile.logging import BaseLogger, get_logger
 from atopile.mcp.util import MCPTools
 
 cli_tools = MCPTools()
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @cli_tools.register()

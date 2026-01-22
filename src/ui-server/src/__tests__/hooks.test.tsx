@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { useStore } from '../store';
 import { useProjects } from '../hooks/useProjects';
 import { useBuilds } from '../hooks/useBuilds';
@@ -20,28 +20,7 @@ vi.mock('../api/websocket', () => ({
   isConnected: vi.fn(() => true),
 }));
 
-// Mock the API client
-vi.mock('../api/client', () => ({
-  api: {
-    projects: {
-      list: vi.fn(),
-    },
-    builds: {
-      start: vi.fn(),
-      cancel: vi.fn(),
-      history: vi.fn(),
-      active: vi.fn(),
-      queue: vi.fn(),
-      status: vi.fn(),
-    },
-    problems: {
-      list: vi.fn(),
-    },
-  },
-}));
-
 import { sendAction } from '../api/websocket';
-import { api } from '../api/client';
 
 // Helper to reset store state
 const resetStore = () => {
@@ -110,52 +89,44 @@ describe('useProjects hook', () => {
     expect(result.current.selectedProject?.name).toBe('test');
   });
 
-  it('selectProject updates store and sends action', () => {
+  it('selectProject sends action', () => {
     const { result } = renderHook(() => useProjects());
 
     act(() => {
       result.current.selectProject('/projects/test');
     });
 
-    expect(useStore.getState().selectedProjectRoot).toBe('/projects/test');
     expect(sendAction).toHaveBeenCalledWith('selectProject', { projectRoot: '/projects/test' });
   });
 
-  it('toggleTarget updates store and sends action', () => {
+  it('toggleTarget sends action', () => {
     const { result } = renderHook(() => useProjects());
 
     act(() => {
       result.current.toggleTarget('default');
     });
 
-    expect(useStore.getState().selectedTargetNames).toContain('default');
     expect(sendAction).toHaveBeenCalledWith('toggleTarget', { targetName: 'default' });
   });
 
-  it('toggleTargetExpanded updates store and sends action', () => {
+  it('toggleTargetExpanded sends action', () => {
     const { result } = renderHook(() => useProjects());
 
     act(() => {
       result.current.toggleTargetExpanded('default');
     });
 
-    expect(useStore.getState().expandedTargets).toContain('default');
     expect(sendAction).toHaveBeenCalledWith('toggleTargetExpanded', { targetName: 'default' });
   });
 
-  it('refresh calls API and updates store', async () => {
-    (api.projects.list as ReturnType<typeof vi.fn>).mockResolvedValue({
-      projects: sampleProjects,
-    });
-
+  it('refresh sends action', async () => {
     const { result } = renderHook(() => useProjects());
 
     await act(async () => {
       await result.current.refresh();
     });
 
-    expect(api.projects.list).toHaveBeenCalled();
-    expect(useStore.getState().projects).toEqual(sampleProjects);
+    expect(sendAction).toHaveBeenCalledWith('refreshProjects');
   });
 });
 
@@ -185,39 +156,37 @@ describe('useBuilds hook', () => {
     expect(result.current.allBuilds).toHaveLength(2);
   });
 
-  it('selectBuild updates store and sends action', () => {
+  it('selectBuild sends action', () => {
     const { result } = renderHook(() => useBuilds());
 
     act(() => {
       result.current.selectBuild('default');
     });
 
-    expect(useStore.getState().selectedBuildName).toBe('default');
     expect(sendAction).toHaveBeenCalledWith('selectBuild', { buildName: 'default' });
   });
 
-  it('startBuild calls API', async () => {
-    (api.builds.start as ReturnType<typeof vi.fn>).mockResolvedValue(sampleBuilds[0]);
-
+  it('startBuild sends action', async () => {
     const { result } = renderHook(() => useBuilds());
 
     await act(async () => {
       await result.current.startBuild('/projects/test', ['default']);
     });
 
-    expect(api.builds.start).toHaveBeenCalledWith('/projects/test', ['default']);
+    expect(sendAction).toHaveBeenCalledWith('build', {
+      projectRoot: '/projects/test',
+      targets: ['default'],
+    });
   });
 
-  it('cancelBuild calls API', async () => {
-    (api.builds.cancel as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-
+  it('cancelBuild sends action', async () => {
     const { result } = renderHook(() => useBuilds());
 
     await act(async () => {
       await result.current.cancelBuild('build-123');
     });
 
-    expect(api.builds.cancel).toHaveBeenCalledWith('build-123');
+    expect(sendAction).toHaveBeenCalledWith('cancelBuild', { buildId: 'build-123' });
   });
 
 });
@@ -256,19 +225,14 @@ describe('useProblems hook', () => {
     expect(result.current.warningCount).toBe(1);
   });
 
-  it('refresh calls API and updates store', async () => {
-    (api.problems.list as ReturnType<typeof vi.fn>).mockResolvedValue({
-      problems: sampleProblems,
-    });
-
+  it('refresh sends action', async () => {
     const { result } = renderHook(() => useProblems());
 
     await act(async () => {
       await result.current.refresh();
     });
 
-    expect(api.problems.list).toHaveBeenCalled();
-    expect(useStore.getState().problems).toEqual(sampleProblems);
+    expect(sendAction).toHaveBeenCalledWith('refreshProblems');
   });
 });
 

@@ -1,5 +1,4 @@
 import itertools
-import logging
 from collections.abc import Iterable, Sequence
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -17,8 +16,9 @@ from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
 from atopile.exceptions import DeprecatedException, downgrade
+from atopile.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ANTLRVisitor(AtoParserVisitor):

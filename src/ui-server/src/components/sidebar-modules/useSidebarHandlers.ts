@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useRef } from 'react';
-import { api } from '../../api/client';
+import { sendActionWithResponse } from '../../api/websocket';
 import { useStore } from '../../store';
 import type { Selection, SelectedPackage, StageFilter } from './sidebarUtils';
 
@@ -113,9 +113,8 @@ export function useSidebarHandlers({
     action('getPackageDetails', { packageId: pkg.fullName });
   };
 
-  const handlePackageInstall = (packageId: string, projectRoot: string) => {
-    useStore.getState().addInstallingPackage(packageId);
-    action('installPackage', { packageId, projectRoot });
+  const handlePackageInstall = (packageId: string, projectRoot: string, version?: string) => {
+    action('installPackage', { packageId, projectRoot, version });
   };
 
   const handleCreateProject = (parentDirectory?: string, name?: string) => {
@@ -169,11 +168,15 @@ export function useSidebarHandlers({
     }
 
     try {
-      const result = await api.buildTargets.add(projectId, newName, defaultEntry);
-      if (result.success) {
+      const response = await sendActionWithResponse('addBuildTarget', {
+        project_root: projectId,
+        name: newName,
+        entry: defaultEntry,
+      });
+      if (response.result?.success) {
         action('refreshProjects');
       } else {
-        console.error('Failed to add build target:', result.message);
+        console.error('Failed to add build target:', response.result?.message);
       }
     } catch (error) {
       console.error('Failed to add build target:', error);
@@ -190,11 +193,16 @@ export function useSidebarHandlers({
     const newEntry = updates.entry;
 
     try {
-      const result = await api.buildTargets.update(projectId, oldName, newName, newEntry);
-      if (result.success) {
+      const response = await sendActionWithResponse('updateBuildTarget', {
+        project_root: projectId,
+        old_name: oldName,
+        new_name: newName,
+        new_entry: newEntry,
+      });
+      if (response.result?.success) {
         action('refreshProjects');
       } else {
-        console.error('Failed to update build target:', result.message);
+        console.error('Failed to update build target:', response.result?.message);
       }
     } catch (error) {
       console.error('Failed to update build target:', error);
@@ -203,11 +211,14 @@ export function useSidebarHandlers({
 
   const handleDeleteBuild = async (projectId: string, buildId: string) => {
     try {
-      const result = await api.buildTargets.delete(projectId, buildId);
-      if (result.success) {
+      const response = await sendActionWithResponse('deleteBuildTarget', {
+        project_root: projectId,
+        name: buildId,
+      });
+      if (response.result?.success) {
         action('refreshProjects');
       } else {
-        console.error('Failed to delete build target:', result.message);
+        console.error('Failed to delete build target:', response.result?.message);
       }
     } catch (error) {
       console.error('Failed to delete build target:', error);
@@ -221,11 +232,15 @@ export function useSidebarHandlers({
     newVersion: string
   ) => {
     try {
-      const result = await api.dependencies.updateVersion(projectId, identifier, newVersion);
-      if (result.success) {
+      const response = await sendActionWithResponse('updateDependencyVersion', {
+        project_root: projectId,
+        identifier,
+        new_version: newVersion,
+      });
+      if (response.result?.success) {
         action('fetchDependencies', { projectRoot: projectId });
       } else {
-        console.error('Failed to update dependency version:', result.message);
+        console.error('Failed to update dependency version:', response.result?.message);
       }
     } catch (error) {
       console.error('Failed to update dependency version:', error);

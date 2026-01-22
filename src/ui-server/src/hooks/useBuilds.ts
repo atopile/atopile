@@ -4,7 +4,6 @@
 
 import { useCallback } from 'react';
 import { useStore, useSelectedBuild } from '../store';
-import { api } from '../api/client';
 import { sendAction } from '../api/websocket';
 
 export function useBuilds() {
@@ -15,34 +14,18 @@ export function useBuilds() {
   const selectedBuild = useSelectedBuild();
 
   const selectBuild = useCallback((buildName: string | null) => {
-    // Optimistic update
-    useStore.getState().selectBuild(buildName);
-    // Notify backend
     sendAction('selectBuild', { buildName });
   }, []);
 
   const startBuild = useCallback(
     async (projectRoot: string, targetNames: string[]) => {
-      try {
-        const build = await api.builds.start(projectRoot, targetNames);
-        // Backend will broadcast state update via WebSocket
-        return build;
-      } catch (error) {
-        console.error('Failed to start build:', error);
-        throw error;
-      }
+      sendAction('build', { projectRoot, targets: targetNames });
     },
     []
   );
 
   const cancelBuild = useCallback(async (buildId: string) => {
-    try {
-      await api.builds.cancel(buildId);
-      // Backend will broadcast state update via WebSocket
-    } catch (error) {
-      console.error('Failed to cancel build:', error);
-      throw error;
-    }
+    sendAction('cancelBuild', { buildId });
   }, []);
 
   // Combined list for UI (active + completed)

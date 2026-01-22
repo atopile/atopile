@@ -16,7 +16,7 @@ import { SymbolNode } from './SymbolNode';
 import { ModuleTree } from './ModuleTreeNode';
 import { NameValidationDropdown } from './NameValidationDropdown';
 import { validateName } from '../utils/nameValidation';
-import api from '../api/client';
+import { sendActionWithResponse } from '../api/websocket';
 import './BuildNode.css';
 
 // Timer component for running stages - isolated to prevent parent re-renders
@@ -292,9 +292,16 @@ export const BuildNode = memo(function BuildNode({
     setIsLoadingChildren(true);
     setChildrenError(null);
 
-    api.modules.getChildren(projectRoot, build.entry, 3)
-      .then((children) => {
-        // Store raw ModuleChild[] for rendering with ModuleTree
+    sendActionWithResponse('getModuleChildren', {
+      projectRoot,
+      entryPoint: build.entry,
+      maxDepth: 3,
+    })
+      .then((response) => {
+        const result = response.result ?? {};
+        const children = Array.isArray((result as { children?: unknown }).children)
+          ? (result as { children: ModuleChild[] }).children
+          : [];
         setModuleChildren(children);
         setIsLoadingChildren(false);
       })
@@ -450,8 +457,8 @@ export const BuildNode = memo(function BuildNode({
             </span>
           )}
 
-          {/* Current stage shown inline during building - hide in readOnly */}
-          {!readOnly && isBuilding && currentStage && (
+          {/* Current stage shown inline during building */}
+          {isBuilding && currentStage && (
             <span className={`build-inline-stage ${stageAnimating ? 'animating' : ''}`}>
               {currentStage}
             </span>

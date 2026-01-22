@@ -182,6 +182,9 @@ artifacts
 dist/
 node_modules/
 
+# VS Code extension webview build outputs (CI builds these)
+src/vscode-atopile/resources/webviews/**
+
 _local
 .local
 
@@ -195,6 +198,7 @@ antlr.lock
 
 # Stray atopile artifacts
 standalone/
+.atopile/.server_port
 
 # need to ignore because absolute paths
 .cursor/mcp.json

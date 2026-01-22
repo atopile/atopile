@@ -162,6 +162,13 @@ export interface AppState {
     currentVariablesData: any;
     isLoadingVariables: boolean;
     variablesError: string | null;
+    // Open signals (one-shot signals from backend)
+    openFile: string | null;
+    openFileLine: number | null;
+    openFileColumn: number | null;
+    openLayout: string | null;
+    openKicad: string | null;
+    open3d: string | null;
 }
 
 const DEFAULT_STATE: AppState = {
@@ -220,10 +227,40 @@ const DEFAULT_STATE: AppState = {
     currentVariablesData: null,
     isLoadingVariables: false,
     variablesError: null,
+    openFile: null,
+    openFileLine: null,
+    openFileColumn: null,
+    openLayout: null,
+    openKicad: null,
+    open3d: null,
 };
 
-const WS_URL = 'ws://localhost:8501/ws/state';
+const DEFAULT_PORT = 8501;
+const DEFAULT_API_URL = `http://localhost:${DEFAULT_PORT}`;
 const RECONNECT_INTERVAL = 3000;
+
+function getApiUrl(): string {
+    const config = vscode.workspace.getConfiguration('atopile');
+    return config.get<string>('dashboardApiUrl', DEFAULT_API_URL);
+}
+
+function buildWsUrlFromApiUrl(apiUrl: string): string | undefined {
+    try {
+        const url = new URL(apiUrl);
+        const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+        const port = url.port ? `:${url.port}` : '';
+        return `${wsProtocol}//${url.hostname}${port}/ws/state`;
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * Get the WebSocket URL from configuration.
+ */
+function getWsUrl(): string {
+    return buildWsUrlFromApiUrl(getApiUrl()) || `ws://localhost:${DEFAULT_PORT}/ws/state`;
+}
 
 type StateChangeListener = (state: AppState) => void;
 
@@ -233,9 +270,24 @@ class WebSocketAppStateManager {
     private _ws: any = null;
     private _reconnectTimer: NodeJS.Timeout | null = null;
     private _listeners: StateChangeListener[] = [];
+    private _disposables: vscode.Disposable[] = [];
     private _isConnecting = false;
+    private _requestCounter = 0;
+    private _pendingRequests = new Map<string, {
+        resolve: (message: any) => void;
+        reject: (error: Error) => void;
+        timeoutId: NodeJS.Timeout;
+    }>();
 
     constructor() {
+        this._disposables.push(
+            vscode.workspace.onDidChangeConfiguration((event) => {
+                if (event.affectsConfiguration('atopile.dashboardApiUrl')) {
+                    traceInfo('AppState: dashboardApiUrl changed, reconnecting');
+                    this.reconnect();
+                }
+            })
+        );
         this.connect();
     }
 
@@ -261,16 +313,134 @@ class WebSocketAppStateManager {
         }
     }
 
+    private _handleOpenSignals(state: AppState): void {
+        // Handle open file signal
+        if (state.openFile) {
+            const filePath = state.openFile;
+            const line = state.openFileLine;
+            const column = state.openFileColumn;
+            traceInfo(`Open file signal: ${filePath}${line ? `:${line}` : ''}`);
+
+            const uri = vscode.Uri.file(filePath);
+            vscode.workspace.openTextDocument(uri).then(
+                (doc) => {
+                    const options: vscode.TextDocumentShowOptions = {};
+                    if (line !== null && line !== undefined) {
+                        const position = new vscode.Position(Math.max(0, line - 1), column ?? 0);
+                        options.selection = new vscode.Range(position, position);
+                    }
+                    vscode.window.showTextDocument(doc, options);
+                },
+                (err) => {
+                    traceError(`Failed to open file ${filePath}: ${err}`);
+                }
+            );
+        }
+
+        // Handle open layout signal
+        if (state.openLayout) {
+            const layoutPath = state.openLayout;
+            traceInfo(`Open layout signal: ${layoutPath}`);
+
+            // Open the layout file in VS Code
+            const uri = vscode.Uri.file(layoutPath);
+            vscode.commands.executeCommand('vscode.open', uri);
+        }
+
+        // Handle open KiCad signal
+        if (state.openKicad) {
+            const kicadPath = state.openKicad;
+            traceInfo(`Open KiCad signal: ${kicadPath}`);
+
+            // Use the system command to open KiCad
+            const { exec } = require('child_process');
+            const platform = process.platform;
+
+            if (platform === 'darwin') {
+                exec(`open "${kicadPath}"`, (err: Error | null) => {
+                    if (err) {
+                        traceError(`Failed to open KiCad: ${err}`);
+                        vscode.window.showErrorMessage(`Failed to open KiCad: ${err.message}`);
+                    }
+                });
+            } else if (platform === 'win32') {
+                exec(`start "" "${kicadPath}"`, (err: Error | null) => {
+                    if (err) {
+                        traceError(`Failed to open KiCad: ${err}`);
+                        vscode.window.showErrorMessage(`Failed to open KiCad: ${err.message}`);
+                    }
+                });
+            } else {
+                exec(`xdg-open "${kicadPath}"`, (err: Error | null) => {
+                    if (err) {
+                        traceError(`Failed to open KiCad: ${err}`);
+                        vscode.window.showErrorMessage(`Failed to open KiCad: ${err.message}`);
+                    }
+                });
+            }
+        }
+
+        // Handle open 3D signal
+        if (state.open3d) {
+            const modelPath = state.open3d;
+            traceInfo(`Open 3D signal: ${modelPath}`);
+
+            // Open the 3D model file with the system default viewer
+            const { exec } = require('child_process');
+            const platform = process.platform;
+
+            if (platform === 'darwin') {
+                exec(`open "${modelPath}"`, (err: Error | null) => {
+                    if (err) {
+                        traceError(`Failed to open 3D model: ${err}`);
+                        vscode.window.showErrorMessage(`Failed to open 3D model: ${err.message}`);
+                    }
+                });
+            } else if (platform === 'win32') {
+                exec(`start "" "${modelPath}"`, (err: Error | null) => {
+                    if (err) {
+                        traceError(`Failed to open 3D model: ${err}`);
+                        vscode.window.showErrorMessage(`Failed to open 3D model: ${err.message}`);
+                    }
+                });
+            } else {
+                exec(`xdg-open "${modelPath}"`, (err: Error | null) => {
+                    if (err) {
+                        traceError(`Failed to open 3D model: ${err}`);
+                        vscode.window.showErrorMessage(`Failed to open 3D model: ${err.message}`);
+                    }
+                });
+            }
+        }
+    }
+
+    /**
+     * Reconnect to the server (e.g., after port change).
+     */
+    reconnect(): void {
+        if (this._ws) {
+            this._ws.close();
+            this._ws = null;
+        }
+        if (this._reconnectTimer) {
+            clearTimeout(this._reconnectTimer);
+            this._reconnectTimer = null;
+        }
+        this._isConnecting = false;
+        this.connect();
+    }
+
     connect(): void {
         if (this._isConnecting || (this._ws && this._ws.readyState === WebSocket.OPEN)) {
             return;
         }
 
         this._isConnecting = true;
-        traceInfo(`Connecting to Python backend: ${WS_URL}`);
+        const wsUrl = getWsUrl();
+        traceInfo(`Connecting to Python backend: ${wsUrl}`);
 
         try {
-            this._ws = new WebSocket(WS_URL);
+            this._ws = new WebSocket(wsUrl);
 
             this._ws.on('open', () => {
                 this._isConnecting = false;
@@ -283,9 +453,28 @@ class WebSocketAppStateManager {
                 try {
                     const message = JSON.parse(data.toString());
                     if (message.type === 'state') {
-                        this._state = { ...message.data, isConnected: true };
+                        const newState = { ...message.data, isConnected: true };
+
+                        // Handle open signals before updating state
+                        this._handleOpenSignals(newState);
+
+                        this._state = newState;
                         this._notifyListeners();
                     } else if (message.type === 'action_result') {
+                        const requestId = typeof message.payload?.requestId === 'string'
+                            ? message.payload.requestId
+                            : null;
+                        if (requestId && this._pendingRequests.has(requestId)) {
+                            const pending = this._pendingRequests.get(requestId)!;
+                            clearTimeout(pending.timeoutId);
+                            this._pendingRequests.delete(requestId);
+                            const result = message.result || message;
+                            if (result.success) {
+                                pending.resolve(message);
+                            } else {
+                                pending.reject(new Error(String(result.error || 'Action failed')));
+                            }
+                        }
                         traceVerbose(`Action result: ${JSON.stringify(message)}`);
                     }
                 } catch (e) {
@@ -327,6 +516,13 @@ class WebSocketAppStateManager {
             clearTimeout(this._reconnectTimer);
             this._reconnectTimer = null;
         }
+        if (this._pendingRequests.size > 0) {
+            for (const [requestId, pending] of this._pendingRequests.entries()) {
+                clearTimeout(pending.timeoutId);
+                pending.reject(new Error('WebSocket disconnected'));
+                this._pendingRequests.delete(requestId);
+            }
+        }
         if (this._ws) {
             this._ws.close();
             this._ws = null;
@@ -342,6 +538,31 @@ class WebSocketAppStateManager {
         const message = { type: 'action', action, payload };
         this._ws.send(JSON.stringify(message));
         traceVerbose(`Sent action: ${action}`);
+    }
+
+    // Send an action and await a response
+    sendActionWithResponse(
+        action: string,
+        payload: Record<string, any> = {},
+        options?: { timeoutMs?: number },
+    ): Promise<any> {
+        if (!this._ws || this._ws.readyState !== WebSocket.OPEN) {
+            return Promise.reject(new Error(`Cannot send action ${action}: not connected`));
+        }
+
+        this._requestCounter += 1;
+        const requestId = `${Date.now()}-${this._requestCounter}`;
+        const timeoutMs = options?.timeoutMs ?? 10000;
+
+        return new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+                this._pendingRequests.delete(requestId);
+                reject(new Error(`Action timeout: ${action}`));
+            }, timeoutMs);
+
+            this._pendingRequests.set(requestId, { resolve, reject, timeoutId });
+            this.sendAction(action, { ...payload, requestId });
+        });
     }
 
     // Action helpers - forward to Python
@@ -451,6 +672,10 @@ class WebSocketAppStateManager {
     dispose(): void {
         this.disconnect();
         this._listeners = [];
+        for (const disposable of this._disposables) {
+            disposable.dispose();
+        }
+        this._disposables = [];
     }
 }
 
@@ -522,8 +747,7 @@ export function initAtopileSettingsSync(_context: vscode.ExtensionContext): vsco
                     await config.update('ato', undefined, target);
                 }
                 traceInfo('Atopile settings updated successfully');
-                // The configuration change will trigger findbin's onDidChangeConfiguration listener
-                // which will fire onDidChangeAtoBinInfoEvent and trigger a server restart
+                // Manual restart required to apply new binary/version settings
             } catch (error) {
                 traceError(`Failed to update atopile settings: ${error}`);
             }

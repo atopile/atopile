@@ -270,7 +270,13 @@ class has_part_picked(fabll.Node):
     picked_attributes_ = F.Collections.PointerSet.MakeChild()
 
     def get_part(self) -> "PickedPart":
-        return not_none(self.try_get_part())
+        part = self.try_get_part()
+        if part is None:
+            raise ValueError(
+                f"No part found for {self.get_full_name()}, maybe you "
+                "forgot to add the trait `has_part_removed`"
+            )
+        return part
 
     def try_get_part(self) -> "PickedPart | None":
         from faebryk.libs.picker.lcsc import PickedPartLCSC

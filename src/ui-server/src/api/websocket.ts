@@ -7,50 +7,7 @@
 
 import { useStore } from '../store';
 import type { AppState } from '../types/build';
-
-// Extended Window type for atopile globals injected by VS Code extension
-interface AtopileWindow extends Window {
-  __ATOPILE_API_URL__?: string;
-  __ATOPILE_WS_URL__?: string;
-  __ATOPILE_WORKSPACE_FOLDERS__?: string[];
-}
-
-const win = (typeof window !== 'undefined' ? window : {}) as AtopileWindow;
-
-// WebSocket URL - configurable for development or injected by extension
-const WS_URL =
-  win.__ATOPILE_WS_URL__ ||
-  import.meta.env.VITE_WS_URL ||
-  'ws://localhost:8501/ws/state';
-
-// Workspace folders - check multiple sources:
-// 1. Injected by VS Code extension (production mode)
-// 2. URL query param (dev mode with iframe)
-// 3. Empty array (standalone browser)
-const getWorkspaceFolders = (): string[] => {
-  if (typeof window === 'undefined') return [];
-
-  // Check window variable first (production VS Code)
-  if (win.__ATOPILE_WORKSPACE_FOLDERS__) {
-    return win.__ATOPILE_WORKSPACE_FOLDERS__;
-  }
-
-  // Check URL query param (dev mode iframe)
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const workspaceParam = params.get('workspace');
-    if (workspaceParam) {
-      const folders = JSON.parse(decodeURIComponent(workspaceParam));
-      if (Array.isArray(folders)) {
-        return folders;
-      }
-    }
-  } catch (e) {
-    console.warn('[WS] Failed to parse workspace folders from URL:', e);
-  }
-
-  return [];
-};
+import { WS_STATE_URL, getWorkspaceFolders } from './index';
 
 // Reconnection settings
 const RECONNECT_DELAY_MS = 1000;
@@ -86,6 +43,12 @@ let reconnectAttempts = 0;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 let connectionTimeout: ReturnType<typeof setTimeout> | null = null;
 let isIntentionallyClosed = false;
+let requestCounter = 0;
+const pendingRequests = new Map<string, {
+  resolve: (message: ActionResultMessage) => void;
+  reject: (error: Error) => void;
+  timeoutId: ReturnType<typeof setTimeout>;
+}>();
 
 /**
  * Clean up any pending timeouts and close the current WebSocket.
@@ -94,6 +57,13 @@ function cleanup(): void {
   if (connectionTimeout) {
     clearTimeout(connectionTimeout);
     connectionTimeout = null;
+  }
+  if (pendingRequests.size > 0) {
+    for (const [requestId, pending] of pendingRequests.entries()) {
+      clearTimeout(pending.timeoutId);
+      pending.reject(new Error('WebSocket disconnected'));
+      pendingRequests.delete(requestId);
+    }
   }
   if (ws) {
     // Remove handlers to prevent callbacks during cleanup
@@ -125,10 +95,10 @@ export function connect(): void {
   }
 
   isIntentionallyClosed = false;
-  console.log(`[WS] Connecting to ${WS_URL}`);
+  console.log(`[WS] Connecting to ${WS_STATE_URL}`);
 
   try {
-    ws = new WebSocket(WS_URL);
+    ws = new WebSocket(WS_STATE_URL);
 
     ws.onopen = handleOpen;
     ws.onmessage = handleMessage;
@@ -185,6 +155,33 @@ export function sendAction(action: string, payload?: Record<string, unknown>): v
 }
 
 /**
+ * Send an action and await the corresponding action_result.
+ */
+export function sendActionWithResponse(
+  action: string,
+  payload: Record<string, unknown> = {},
+  options?: { timeoutMs?: number }
+): Promise<ActionResultMessage> {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    return Promise.reject(new Error('WebSocket not connected'));
+  }
+
+  requestCounter += 1;
+  const requestId = `${Date.now()}-${requestCounter}`;
+  const timeoutMs = options?.timeoutMs ?? 10000;
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      pendingRequests.delete(requestId);
+      reject(new Error(`Action timeout: ${action}`));
+    }, timeoutMs);
+
+    pendingRequests.set(requestId, { resolve, reject, timeoutId });
+    sendAction(action, { ...payload, requestId });
+  });
+}
+
+/**
  * Check if WebSocket is connected.
  */
 export function isConnected(): boolean {
@@ -218,13 +215,47 @@ function handleMessage(event: MessageEvent): void {
     switch (message.type) {
       case 'state':
         // Full state replacement from backend
-        useStore.getState().replaceState(message.data);
+        {
+          const rawState = message.data as unknown as Record<string, unknown>;
+          const {
+            installing_package_ids,
+            install_error,
+            ...rest
+          } = rawState as Record<string, unknown>;
+
+          const restState = rest as unknown as AppState;
+
+          useStore.getState().replaceState({
+            ...restState,
+            installingPackageIds:
+              (installing_package_ids as string[] | undefined) ??
+              restState.installingPackageIds ??
+              [],
+            installError:
+              (install_error as string | null | undefined) ??
+              restState.installError ??
+              null,
+          });
+        }
         break;
 
       case 'action_result':
         // Action response (success/failure)
         // Result is nested in message.result from backend
         const result = message.result || message;
+        const requestId = typeof message.payload?.requestId === 'string'
+          ? message.payload.requestId
+          : null;
+        if (requestId && pendingRequests.has(requestId)) {
+          const pending = pendingRequests.get(requestId)!;
+          clearTimeout(pending.timeoutId);
+          pendingRequests.delete(requestId);
+          if (result.success) {
+            pending.resolve(message);
+          } else {
+            pending.reject(new Error(String(result.error || 'Action failed')));
+          }
+        }
         if (!result.success) {
           console.error(`[WS] Action failed: ${message.action}`, result.error);
         }
