@@ -1684,6 +1684,10 @@ class Mutator:
         assert_ = bool(expr.try_get_sibling_trait(F.Expressions.is_predicate))
         terminate = self.is_terminated(expr)
 
+        # aliases should be copied manually
+        if expression_factory is F.Expressions.Is and assert_:
+            return self.make_singleton(True).can_be_operand.get()
+
         expr_obj = fabll.Traits(expr).get_obj_raw()
         copy_only = (
             expr_obj.isinstance(expression_factory) and operands == expr.get_operands()
@@ -1762,10 +1766,6 @@ class Mutator:
             self.tg_out
             return obj_lit.copy_into(self.G_out).as_operand.get()
         if obj_po := obj.as_parameter_operatable.try_get():
-            if obj_e := obj_po.as_expression.try_get():
-                assert False, f"Expressions should never be operands in solver {obj_e}"
-            obj_p = obj_po.as_parameter.force_get()
-
             if m := self.try_get_mutated(obj_po):
                 return m.as_operand.get()
 
@@ -1773,6 +1773,13 @@ class Mutator:
             assert not self.is_removed(obj_po), (
                 f"Cannot copy removed operand: {obj_po.compact_repr(self.print_ctx)}"
             )
+
+            if obj_e := obj_po.as_expression.try_get():
+                # TODO not sure about this
+                # only alias is allowed exprs, but alias should get manual copy
+                assert False, f"Expressions should never be operands in solver {obj_e}"
+                return self.mutate_expression(obj_e)
+            obj_p = obj_po.as_parameter.force_get()
 
             return self.mutate_parameter(obj_p).as_operand.get()
 

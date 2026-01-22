@@ -412,6 +412,9 @@ def flatten_expressions(mutator: Mutator):
     #  - if subsumed/subsuming, no alias for predicates
     #  - if copy/adjusted, copy alias over
 
+    # We never auto-copy an Is!, its never nested, so not triggered outside of copy_unmutated
+    # - all is! have to be manually copied
+
     exprs = F.Expressions.is_expression.sort_by_depth_expr(mutator.get_expressions())
 
     exprs = _remove_unit_expressions(mutator, exprs)

@@ -223,8 +223,8 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
                 n.as_operand.get(),
                 m.can_be_operand.get(),
                 from_ops=[expr.is_parameter_operatable.get()],
-            ).out_operand
-        )
+            ).out
+        ).as_operand.get()
         for n, m in new_factors.items()
     ]
 
@@ -301,7 +301,7 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
                     n.as_operand.get(),
                     m.can_be_operand.get(),
                     from_ops=[e_po],
-                ).out_operand
+                ).out.as_operand.get()
             )
         ]
 

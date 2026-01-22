@@ -221,9 +221,9 @@ def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
             from_ops=from_ops,
             allow_uncorrelated_congruence_match=True,
         )
-        if res.out_operand is None:
+        if res.out is None:
             continue
-        expr_superset = res.out_operand
+        expr_superset = res.out.as_operand.get()
 
         # Subset old expr to subset estimated one
         mutator.create_check_and_insert_expression(
@@ -332,9 +332,9 @@ def lower_estimation_of_expressions_with_subsets(mutator: Mutator):
             from_ops=from_ops,
             allow_uncorrelated_congruence_match=True,
         )
-        if res.out_operand is None:
+        if res.out is None:
             continue
-        expr_subset = res.out_operand
+        expr_subset = res.out.as_operand.get()
 
         # Step 6: Superset old expr to subset estimated one
         # new_expr ⊆ original_expr (inverse of upper estimation)

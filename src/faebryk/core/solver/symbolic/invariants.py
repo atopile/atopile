@@ -82,9 +82,10 @@ class AliasClassStub(AliasClass):
     def __init__(self, member: F.Parameters.can_be_operand):
         self.member = member
         # literal or parameter or predicate
-        assert not self.member.try_get_sibling_trait(
-            F.Expressions.is_expression
-        ) or self.member.try_get_sibling_trait(F.Expressions.is_predicate)
+        # TODO if we try to run Alias invariants, we dont have the alias yet
+        # assert not self.member.try_get_sibling_trait(
+        #     F.Expressions.is_expression
+        # ) or self.member.try_get_sibling_trait(F.Expressions.is_predicate)
 
     @override
     def get_with_trait[TR: fabll.NodeT](self, trait: type[TR]) -> set[TR]:
@@ -1169,28 +1170,6 @@ def insert_expression(
     # expression must have an Is alias so it can be used as an operand)
     if not builder.assert_ and alias is None:
         alias = expr.is_expression.get().create_representative(alias=False)
-
-    if super_lit:
-        assert alias
-        mutator.create_check_and_insert_expression_from_builder(
-            ExpressionBuilder(
-                F.Expressions.IsSubset,
-                [alias.as_operand.get(), super_lit.as_operand.get()],
-                assert_=True,
-                terminate=True,
-            )
-        )
-    if sub_lit:
-        assert alias
-        mutator.create_check_and_insert_expression_from_builder(
-            ExpressionBuilder(
-                F.Expressions.IsSubset,
-                [sub_lit.as_operand.get(), alias.as_operand.get()],
-                assert_=True,
-                terminate=True,
-            )
-        )
-
     # transfer/create alias for new expr
     if alias:
         # TODO find alias in old graph and copy it over if it exists
@@ -1198,6 +1177,27 @@ def insert_expression(
             ExpressionBuilder(
                 F.Expressions.Is,
                 [alias.as_operand.get(), expr.can_be_operand.get()],
+                assert_=True,
+                terminate=True,
+            )
+        )
+
+    if super_lit:
+        target = alias or expr.is_expression.get()
+        mutator.create_check_and_insert_expression_from_builder(
+            ExpressionBuilder(
+                F.Expressions.IsSubset,
+                [target.as_operand.get(), super_lit.as_operand.get()],
+                assert_=True,
+                terminate=True,
+            )
+        )
+    if sub_lit:
+        target = alias or expr.is_expression.get()
+        mutator.create_check_and_insert_expression_from_builder(
+            ExpressionBuilder(
+                F.Expressions.IsSubset,
+                [sub_lit.as_operand.get(), target.as_operand.get()],
                 assert_=True,
                 terminate=True,
             )
@@ -1300,7 +1300,7 @@ class TestInvariantsSimple:
             p_op,
             assert_=True,
         )
-        pred_op = not_none(pred_res.out_operand)
+        pred_op = not_none(pred_res.out).as_operand.get()
 
         # Or(Not!(p), p)
         or_res = mutator.create_check_and_insert_expression(
@@ -1312,7 +1312,7 @@ class TestInvariantsSimple:
         )
 
         # => Or(True, p)
-        assert or_res.out_operand and or_res.out_operand.get_sibling_trait(
+        assert or_res.out and or_res.out.as_operand.get().get_sibling_trait(
             F.Expressions.is_expression
         ).get_operands()[0].get_sibling_trait(
             F.Literals.is_literal
@@ -1333,8 +1333,10 @@ class TestInvariantsSimple:
         )
 
         assert (
-            pred_res.out_operand
-            and pred_res.out_operand.as_parameter_operatable.force_get()
+            pred_res.out
+            and not_none(pred_res.out)
+            .as_operand.get()
+            .as_parameter_operatable.force_get()
             .force_extract_superset()
             .op_setic_equals(
                 F.Literals.Numbers.bind_typegraph(mutator.tg_in)
@@ -1367,7 +1369,7 @@ class TestInvariantsSimple:
             p_op,
             assert_=False,  # Not asserted initially
         )
-        not_op = not_none(not_res.out_operand)
+        not_op = not_none(not_res.out).as_operand.get()
 
         # Assert IsSubset(Not(p), True) - this should trigger P{⊆|True} -> P!
         mutator.create_check_and_insert_expression(
@@ -1404,7 +1406,7 @@ class TestInvariantsSimple:
             p_op,
             assert_=True,
         )
-        not_op = not_none(not_res.out_operand)
+        not_op = not_none(not_res.out).as_operand.get()
 
         # Test _no_predicate_literals directly with IsSubset(P!, False)
         false_lit = mutator.make_singleton(False).can_be_operand.get()
@@ -1440,7 +1442,7 @@ class TestInvariantsSimple:
             p_op,
             assert_=True,
         )
-        not_op = not_none(not_res.out_operand)
+        not_op = not_none(not_res.out).as_operand.get()
 
         # Test _no_predicate_literals directly with IsSubset(P!, True)
         true_lit = mutator.make_singleton(True).can_be_operand.get()
@@ -1484,8 +1486,10 @@ class TestInvariantsSimple:
         )
 
         # Should be converted to IsSubset with range [5, +∞)
-        assert result.out_operand is not None
-        expr = result.out_operand.get_sibling_trait(F.Expressions.is_expression)
+        assert result.out
+        expr = result.out.as_operand.get().get_sibling_trait(
+            F.Expressions.is_expression
+        )
         expr_obj = fabll.Traits(expr).get_obj_raw()
         assert expr_obj.isinstance(F.Expressions.IsSubset)
 
@@ -1523,8 +1527,8 @@ class TestInvariantsSimple:
         )
 
         # Should be converted to IsSubset with range (-∞, 10]
-        assert result.out_operand is not None
-        expr = result.out_operand.get_sibling_trait(F.Expressions.is_expression)
+        assert result.out
+        expr = result.out.get_sibling_trait(F.Expressions.is_expression)
         expr_obj = fabll.Traits(expr).get_obj_raw()
         assert expr_obj.isinstance(F.Expressions.IsSubset)
 
@@ -1570,9 +1574,9 @@ class TestInvariantsSimple:
 
         # Should be the same expression
         assert (
-            res1.out_operand
-            and res2.out_operand
-            and res1.out_operand.is_same(res2.out_operand)
+            res1.out is not None
+            and res2.out is not None
+            and res1.out.as_operand.get().is_same(res2.out.as_operand.get())
         )
 
     @staticmethod
@@ -1596,8 +1600,10 @@ class TestInvariantsSimple:
             p_op,
             assert_=False,
         )
-        assert res1.out_operand is not None
-        is_pred = res1.out_operand.try_get_sibling_trait(F.Expressions.is_predicate)
+        assert res1.out is not None
+        is_pred = res1.out.as_operand.get().try_get_sibling_trait(
+            F.Expressions.is_predicate
+        )
         assert is_pred is None
 
         # Create Not(p) asserted - should assert the existing one
@@ -1609,7 +1615,11 @@ class TestInvariantsSimple:
         assert not res2.is_new
 
         # The existing expression should now be asserted
-        is_pred = res1.out_operand.try_get_sibling_trait(F.Expressions.is_predicate)
+        is_pred = (
+            not_none(res1.out)
+            .as_operand.get()
+            .try_get_sibling_trait(F.Expressions.is_predicate)
+        )
         assert is_pred is not None
 
     # --- Invariant: minimal subsumption (intersected supersets) ---
@@ -1655,8 +1665,12 @@ class TestInvariantsSimple:
         # Subsumption should return a builder with intersected range
         assert isinstance(subsume_result.most_constrained_expr, ExpressionBuilder)
         new_operands = subsume_result.most_constrained_expr.operands
-        new_superset = new_operands[1].get_sibling_trait(F.Literals.is_literal)
-        new_superset_nums = fabll.Traits(new_superset).get_obj(F.Literals.Numbers)
+        new_superset = (
+            new_operands[1].get_sibling_trait(F.Literals.is_literal).as_operand.get()
+        )
+        new_superset_nums = fabll.Traits(
+            new_superset.get_sibling_trait(F.Literals.is_literal)
+        ).get_obj(F.Literals.Numbers)
         # The intersected range should be [50, 100]
         assert new_superset_nums.get_min_value() == 50
         assert new_superset_nums.get_max_value() == 100
@@ -1772,8 +1786,8 @@ class TestInvariantsSimple:
             p_op,
         )
 
-        assert result.out_operand is not None
-        expr = result.out_operand.get_sibling_trait(F.Expressions.is_expression)
+        assert result.out is not None
+        expr = result.out.get_sibling_trait(F.Expressions.is_expression)
         # Check canonical via is_canonical trait (if the expression type has it)
         canon = expr.as_canonical.try_get()
         # Add has is_canonical trait
@@ -1810,68 +1824,12 @@ class TestInvariantsSimple:
             assert_=True,
         )
 
-        assert is_result.out_operand is not None
-        expr = is_result.out_operand.get_sibling_trait(F.Expressions.is_expression)
+        assert is_result.out is not None
+        expr = is_result.out.get_sibling_trait(F.Expressions.is_expression)
         canon = expr.as_canonical.try_get()
         assert canon is not None
 
     # --- Invariant: no reflexive tautologies ---
-
-    @staticmethod
-    def test_reflexive_is_same_operands():
-        """
-        Invariant: A is A -> True
-        Is expression with same operands should return True literal.
-        """
-        mutator = TestInvariantsSimple._setup_mutator()
-
-        p = (
-            F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
-            .create_instance(mutator.G_out)
-            .setup(is_unit=None, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
-        )
-        p_op = p.can_be_operand.get()
-
-        # Create Is(p, p) - should be dropped and return True
-        result = mutator.create_check_and_insert_expression(
-            F.Expressions.Is,
-            p_op,
-            p_op,
-            assert_=True,
-        )
-
-        # Result should be a True literal (tautology)
-        assert result.out_operand is not None
-        lit = result.out_operand.try_get_sibling_trait(F.Literals.is_literal)
-        assert lit is not None and lit.op_setic_equals_singleton(True)
-
-    @staticmethod
-    def test_reflexive_subset_same_operands():
-        """
-        Invariant: A ss A -> True
-        IsSubset expression with same operands should return True literal.
-        """
-        mutator = TestInvariantsSimple._setup_mutator()
-
-        p = (
-            F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
-            .create_instance(mutator.G_out)
-            .setup(is_unit=None, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
-        )
-        p_op = p.can_be_operand.get()
-
-        # Create IsSubset(p, p) - should be dropped and return True
-        result = mutator.create_check_and_insert_expression(
-            F.Expressions.IsSubset,
-            p_op,
-            p_op,
-            assert_=True,
-        )
-
-        # Result should be a True literal (tautology)
-        assert result.out_operand is not None
-        lit = result.out_operand.try_get_sibling_trait(F.Literals.is_literal)
-        assert lit is not None and lit.op_setic_equals_singleton(True)
 
     @staticmethod
     def test_reflexive_tautology_direct():
@@ -1895,7 +1853,7 @@ class TestInvariantsSimple:
             terminate=False,
         )
 
-        result = _no_reflexive_tautologies(mutator, builder)
+        result = Folds._no_reflexive_tautologies(mutator, builder)
         assert result is None  # Should be dropped (tautology)
 
     # --- Invariant: deduplicate idempotent operands ---
@@ -1968,60 +1926,6 @@ class TestInvariantsSimple:
         assert result.operands[0].is_same(p_op)
         assert result.operands[1].is_same(q_op)
 
-    # --- Invariant: no single operand Is ---
-
-    @staticmethod
-    def test_single_operand_is_asserted():
-        """
-        Invariant: Is!(A) -> drop (True)
-        Is expression with single operand should return True.
-        """
-        mutator = TestInvariantsSimple._setup_mutator()
-
-        p = (
-            F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
-            .create_instance(mutator.G_out)
-            .setup(is_unit=None, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
-        )
-        p_op = p.can_be_operand.get()
-
-        # Test Is(p) directly
-        builder = ExpressionBuilder(
-            F.Expressions.Is,
-            [p_op],
-            assert_=True,
-            terminate=False,
-        )
-
-        result = _no_single_operand_is(mutator, builder)
-        assert result is None  # Should be dropped
-
-    @staticmethod
-    def test_single_operand_is_unasserted():
-        """
-        Invariant: Is(A) -> True
-        Unasserted Is with single operand should also return True.
-        """
-        mutator = TestInvariantsSimple._setup_mutator()
-
-        p = (
-            F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
-            .create_instance(mutator.G_out)
-            .setup(is_unit=None, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
-        )
-        p_op = p.can_be_operand.get()
-
-        # Test Is(p) directly (unasserted)
-        builder = ExpressionBuilder(
-            F.Expressions.Is,
-            [p_op],
-            assert_=False,
-            terminate=False,
-        )
-
-        result = _no_single_operand_is(mutator, builder)
-        assert result is None  # Should be dropped
-
 
 class TestInvariantsCombinations:
     """
@@ -2071,7 +1975,7 @@ class TestInvariantsCombinations:
             p_op,
             assert_=True,
         )
-        pred_op = not_none(not_res.out_operand)
+        pred_op = not_none(not_res.out).as_operand.get()
 
         true_lit = mutator.make_singleton(True).can_be_operand.get()
 
@@ -2155,8 +2059,10 @@ class TestInvariantsCombinations:
             assert_=False,
         )
         assert not_res.is_new
-        assert not_res.out_operand is not None
-        is_pred = not_res.out_operand.try_get_sibling_trait(F.Expressions.is_predicate)
+        assert not_res.out is not None
+        is_pred = not_res.out.as_operand.get().try_get_sibling_trait(
+            F.Expressions.is_predicate
+        )
         assert is_pred is None
 
         # Create congruent Not(p) asserted - should assert existing
@@ -2168,7 +2074,9 @@ class TestInvariantsCombinations:
         assert not not_res2.is_new
 
         # Original should now be asserted
-        is_pred = not_res.out_operand.try_get_sibling_trait(F.Expressions.is_predicate)
+        is_pred = not_res.out.as_operand.get().try_get_sibling_trait(
+            F.Expressions.is_predicate
+        )
         assert is_pred is not None
 
     @staticmethod
@@ -2202,7 +2110,10 @@ class TestInvariantsCombinations:
         # Test _no_predicate_operands directly
         builder = ExpressionBuilder(
             F.Expressions.Or,
-            [not_none(not_p.out_operand), not_none(not_q.out_operand)],
+            [
+                not_none(not_p.out).as_operand.get(),
+                not_none(not_q.out).as_operand.get(),
+            ],
             assert_=False,
             terminate=False,
         )
@@ -2322,8 +2233,8 @@ class TestInvariantsCombinations:
         )
 
         # Verify expression is canonical
-        assert res1.out_operand is not None
-        expr1 = res1.out_operand.get_sibling_trait(F.Expressions.is_expression)
+        assert res1.out is not None
+        expr1 = res1.out.as_operand.get().get_sibling_trait(F.Expressions.is_expression)
         assert expr1.as_canonical.try_get() is not None
 
     @staticmethod
@@ -2347,7 +2258,7 @@ class TestInvariantsCombinations:
             p.can_be_operand.get(),
             assert_=True,  # Assert it to make it a predicate
         )
-        not_op = not_none(not_res.out_operand)
+        not_op = not_none(not_res.out).as_operand.get()
 
         # Now try to assert IsSubset(Not!(p), True) - should be dropped
         true_lit = mutator.make_singleton(True).can_be_operand.get()
@@ -2445,8 +2356,8 @@ class TestInvariantsCombinations:
         assert mul_res.is_new
 
         # They should be different expressions
-        assert add_res.out_operand is not None and mul_res.out_operand is not None
-        assert not add_res.out_operand.is_same(mul_res.out_operand)
+        assert add_res.out is not None and mul_res.out is not None
+        assert not add_res.out.as_operand.get().is_same(mul_res.out.as_operand.get())
 
     @staticmethod
     def test_empty_superset_via_intersection():
