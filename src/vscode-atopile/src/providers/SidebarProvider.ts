@@ -11,6 +11,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { backendServer } from '../common/backendServer';
 
 /**
  * Check if we're running in development mode.
@@ -86,8 +87,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
    */
   private _getDevHtml(): string {
     const viteDevServer = 'http://localhost:5173';
-    const backendUrl = 'http://localhost:8501';
-    const wsUrl = 'ws://localhost:8501/ws/state';
+    const backendUrl = backendServer.apiUrl;
+    const wsUrl = backendServer.wsUrl;
     const workspaceFolders = this._getWorkspaceFolders();
 
     // Pass workspace folders as URL query param (base64 encoded to handle special chars)
@@ -168,10 +169,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       ? webview.asWebviewUri(vscode.Uri.file(baseCssPath))
       : null;
 
-    // Get backend URLs from configuration
-    const config = vscode.workspace.getConfiguration('atopile');
-    const backendUrl = config.get<string>('dashboardApiUrl', 'http://localhost:8501');
-    const wsUrl = backendUrl.replace('http', 'ws') + '/ws/state';
+    // Get backend URLs from backendServer (uses discovered port or config)
+    const apiUrl = backendServer.apiUrl;
+    const wsUrl = backendServer.wsUrl;
     const workspaceFolders = this._getWorkspaceFolders();
 
     return `<!DOCTYPE html>
@@ -185,14 +185,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     script-src ${webview.cspSource} 'nonce-${nonce}';
     font-src ${webview.cspSource};
     img-src ${webview.cspSource} data:;
-    connect-src ${backendUrl} ${wsUrl};
+    connect-src ${apiUrl} ${wsUrl};
   ">
   <title>atopile</title>
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
   ${cssUri ? `<link rel="stylesheet" href="${cssUri}">` : ''}
   <script nonce="${nonce}">
     // Inject backend URLs for the React app
-    window.__ATOPILE_API_URL__ = '${backendUrl}';
+    window.__ATOPILE_API_URL__ = '${apiUrl}';
     window.__ATOPILE_WS_URL__ = '${wsUrl}';
     // Inject workspace folders for the React app
     window.__ATOPILE_WORKSPACE_FOLDERS__ = ${JSON.stringify(workspaceFolders)};

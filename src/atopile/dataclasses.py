@@ -208,13 +208,13 @@ class Log:
         """Response containing build log entries."""
 
         type: Literal["logs_result"] = "logs_result"
-        logs: list["BuildEntryPydantic"]
+        logs: list["Log.BuildEntryPydantic"]
 
     class TestResult(BaseModel):
         """Response containing test log entries."""
 
         type: Literal["test_logs_result"] = "test_logs_result"
-        logs: list["TestEntryPydantic"]
+        logs: list["Log.TestEntryPydantic"]
 
     class Error(BaseModel):
         """Error response for log queries."""
@@ -263,14 +263,14 @@ class Log:
         """Streaming response with cursor."""
 
         type: Literal["logs_stream"] = "logs_stream"
-        logs: list["BuildStreamEntryPydantic"]
+        logs: list["Log.BuildStreamEntryPydantic"]
         last_id: int  # Highest id returned - client sends this back as after_id
 
     class TestStreamResult(BaseModel):
         """Streaming response for test logs."""
 
         type: Literal["test_logs_stream"] = "test_logs_stream"
-        logs: list["TestStreamEntryPydantic"]
+        logs: list["Log.TestStreamEntryPydantic"]
         last_id: int
 
 

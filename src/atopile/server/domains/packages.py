@@ -27,10 +27,10 @@ from atopile.dataclasses import (
     RegistryStatus,
 )
 from atopile.server import package_manager
-from faebryk.libs.backend.packages.api import PackagesAPIClient
 from atopile.server.app_context import AppContext
 from atopile.server.core import packages as core_packages
 from atopile.server.state import server_state
+from faebryk.libs.backend.packages.api import PackagesAPIClient
 
 log = logging.getLogger(__name__)
 

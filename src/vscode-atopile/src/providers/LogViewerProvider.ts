@@ -11,6 +11,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { backendServer } from '../common/backendServer';
 
 /**
  * Check if we're running in development mode.
@@ -71,8 +72,8 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
    */
   private _getDevHtml(): string {
     const viteDevServer = 'http://localhost:5173';
-    const backendUrl = 'http://localhost:8501';
-    const wsUrl = 'ws://localhost:8501/ws/state';
+    const apiUrl = backendServer.apiUrl;
+    const wsUrl = backendServer.wsUrl;
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -84,7 +85,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     frame-src ${viteDevServer};
     style-src 'unsafe-inline';
     script-src 'unsafe-inline';
-    connect-src ${viteDevServer} ${backendUrl} ${wsUrl};
+    connect-src ${viteDevServer} ${apiUrl} ${wsUrl};
   ">
   <title>atopile Logs</title>
   <style>
@@ -145,9 +146,9 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
       ? webview.asWebviewUri(vscode.Uri.file(baseCssPath))
       : null;
 
-    const config = vscode.workspace.getConfiguration('atopile');
-    const backendUrl = config.get<string>('dashboardApiUrl', 'http://localhost:8501');
-    const wsUrl = backendUrl.replace('http', 'ws') + '/ws/state';
+    // Get backend URLs from backendServer (uses discovered port or config)
+    const apiUrl = backendServer.apiUrl;
+    const wsUrl = backendServer.wsUrl;
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -160,13 +161,13 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     script-src ${webview.cspSource} 'nonce-${nonce}';
     font-src ${webview.cspSource};
     img-src ${webview.cspSource} data:;
-    connect-src ${backendUrl} ${wsUrl};
+    connect-src ${apiUrl} ${wsUrl};
   ">
   <title>atopile Logs</title>
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
   ${cssUri ? `<link rel="stylesheet" href="${cssUri}">` : ''}
   <script nonce="${nonce}">
-    window.__ATOPILE_API_URL__ = '${backendUrl}';
+    window.__ATOPILE_API_URL__ = '${apiUrl}';
     window.__ATOPILE_WS_URL__ = '${wsUrl}';
   </script>
 </head>

@@ -258,7 +258,7 @@ def _get_project_roots() -> list[Path]:
 
 
 def _affected_project_roots(
-    result: "FileChangedWatcher.Result",
+    result: "PollingFileWatcher.Result",
 ) -> list[Path]:
     roots = _get_project_roots()
     if not roots:
@@ -285,9 +285,7 @@ async def _refresh_project_files_for_roots(roots: list[Path]) -> None:
     from atopile.server.domains import projects as projects_domain
 
     for root in roots:
-        response = await asyncio.to_thread(
-            projects_domain.handle_get_files, str(root)
-        )
+        response = await asyncio.to_thread(projects_domain.handle_get_files, str(root))
         if response:
             await server_state.set_project_files(str(root), response.files)
 
@@ -364,7 +362,7 @@ async def _watch_project_dependencies_background() -> None:
 
 
 async def _handle_project_sources_change(
-    result: "FileChangedWatcher.Result",
+    result: "PollingFileWatcher.Result",
 ) -> None:
     roots = _affected_project_roots(result)
     if not roots:
@@ -383,7 +381,7 @@ async def _handle_project_sources_change(
 
 
 async def _handle_project_python_change(
-    result: "FileChangedWatcher.Result",
+    result: "PollingFileWatcher.Result",
 ) -> None:
     roots = _affected_project_roots(result)
     if not roots:
@@ -397,7 +395,7 @@ async def _handle_project_python_change(
 
 
 async def _handle_project_dependencies_change(
-    result: "FileChangedWatcher.Result",
+    result: "PollingFileWatcher.Result",
 ) -> None:
     roots = _affected_project_roots(result)
     if not roots:

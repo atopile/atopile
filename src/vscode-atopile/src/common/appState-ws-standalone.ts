@@ -235,8 +235,31 @@ const DEFAULT_STATE: AppState = {
     open3d: null,
 };
 
-const WS_URL = 'ws://localhost:8501/ws/state';
+const DEFAULT_PORT = 8501;
 const RECONNECT_INTERVAL = 3000;
+
+// Dynamic port - can be updated by backendServer when port is discovered
+let _currentPort = DEFAULT_PORT;
+
+/**
+ * Get the WebSocket URL using the current port.
+ */
+function getWsUrl(): string {
+    return `ws://localhost:${_currentPort}/ws/state`;
+}
+
+/**
+ * Update the port used for WebSocket connections.
+ * Called by backendServer when port is discovered.
+ */
+export function setServerPort(port: number): void {
+    if (port !== _currentPort) {
+        traceInfo(`AppState: Server port updated to ${port}`);
+        _currentPort = port;
+        // Reconnect with new port
+        appStateManager.reconnect();
+    }
+}
 
 type StateChangeListener = (state: AppState) => void;
 
@@ -381,16 +404,33 @@ class WebSocketAppStateManager {
         }
     }
 
+    /**
+     * Reconnect to the server (e.g., after port change).
+     */
+    reconnect(): void {
+        if (this._ws) {
+            this._ws.close();
+            this._ws = null;
+        }
+        if (this._reconnectTimer) {
+            clearTimeout(this._reconnectTimer);
+            this._reconnectTimer = null;
+        }
+        this._isConnecting = false;
+        this.connect();
+    }
+
     connect(): void {
         if (this._isConnecting || (this._ws && this._ws.readyState === WebSocket.OPEN)) {
             return;
         }
 
         this._isConnecting = true;
-        traceInfo(`Connecting to Python backend: ${WS_URL}`);
+        const wsUrl = getWsUrl();
+        traceInfo(`Connecting to Python backend: ${wsUrl}`);
 
         try {
-            this._ws = new WebSocket(WS_URL);
+            this._ws = new WebSocket(wsUrl);
 
             this._ws.on('open', () => {
                 this._isConnecting = false;

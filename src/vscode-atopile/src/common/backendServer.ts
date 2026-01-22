@@ -6,16 +6,21 @@
  * - Restarting the server when atopile version changes
  * - Graceful shutdown when extension deactivates
  * - Connection status tracking via WebSocket
+ * - Port discovery via port file (.atopile/.server_port)
  */
 
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { traceInfo, traceError, traceVerbose } from './log/logging';
 import { getAtoBin, getAtoCommand } from './findbin';
-import { appStateManager } from './appState';
+import { appStateManager, setServerPort } from './appState';
 
-const DEFAULT_API_URL = 'http://localhost:8501';
+const DEFAULT_PORT = 8501;
+const DEFAULT_API_URL = `http://localhost:${DEFAULT_PORT}`;
 const SERVER_STARTUP_TIMEOUT_MS = 30000; // 30 seconds to wait for server startup
 const SERVER_HEALTH_CHECK_INTERVAL_MS = 1000; // Check every second during startup
+const PORT_FILE_CHECK_INTERVAL_MS = 200; // Check for port file every 200ms
 
 interface BuildResponse {
     success: boolean;
@@ -31,6 +36,77 @@ function getApiUrl(): string {
 }
 
 /**
+ * Get the workspace root path (first workspace folder).
+ */
+function getWorkspaceRoot(): string | undefined {
+    const folders = vscode.workspace.workspaceFolders;
+    return folders && folders.length > 0 ? folders[0].uri.fsPath : undefined;
+}
+
+/**
+ * Read the server port from the port file.
+ * Returns the port number if found, undefined otherwise.
+ */
+function readPortFile(workspaceRoot?: string): number | undefined {
+    const searchPaths: string[] = [];
+
+    if (workspaceRoot) {
+        searchPaths.push(path.join(workspaceRoot, '.atopile', '.server_port'));
+    }
+
+    // Also check current working directory as fallback
+    const cwd = process.cwd();
+    if (cwd && cwd !== workspaceRoot) {
+        searchPaths.push(path.join(cwd, '.atopile', '.server_port'));
+    }
+
+    for (const portFilePath of searchPaths) {
+        try {
+            if (fs.existsSync(portFilePath)) {
+                const content = fs.readFileSync(portFilePath, 'utf-8').trim();
+                const port = parseInt(content, 10);
+                if (!isNaN(port) && port > 0 && port < 65536) {
+                    traceVerbose(`BackendServer: Read port ${port} from ${portFilePath}`);
+                    return port;
+                }
+            }
+        } catch (error) {
+            // Ignore read errors, try next path
+        }
+    }
+    return undefined;
+}
+
+/**
+ * Wait for the port file to appear and return the port.
+ */
+async function waitForPortFile(workspaceRoot: string | undefined, timeoutMs: number): Promise<number | undefined> {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeoutMs) {
+        const port = readPortFile(workspaceRoot);
+        if (port !== undefined) {
+            return port;
+        }
+        await new Promise(resolve => setTimeout(resolve, PORT_FILE_CHECK_INTERVAL_MS));
+    }
+    return undefined;
+}
+
+/**
+ * Build the API URL from a port number.
+ */
+function buildApiUrl(port: number): string {
+    return `http://localhost:${port}`;
+}
+
+/**
+ * Build the WebSocket URL from a port number.
+ */
+function buildWsUrl(port: number): string {
+    return `ws://localhost:${port}/ws/state`;
+}
+
+/**
  * Manages the backend server lifecycle.
  */
 class BackendServerManager implements vscode.Disposable {
@@ -39,9 +115,13 @@ class BackendServerManager implements vscode.Disposable {
     private _isConnected: boolean = false;
     private _startupPromise: Promise<boolean> | null = null;
     private _disposables: vscode.Disposable[] = [];
+    private _discoveredPort: number | undefined;
 
     private readonly _onStatusChange = new vscode.EventEmitter<boolean>();
     public readonly onStatusChange = this._onStatusChange.event;
+
+    private readonly _onPortDiscovered = new vscode.EventEmitter<number>();
+    public readonly onPortDiscovered = this._onPortDiscovered.event;
 
     constructor() {
         // Listen for terminal close events to clean up our reference
@@ -50,6 +130,7 @@ class BackendServerManager implements vscode.Disposable {
                 if (terminal === this._terminal) {
                     traceInfo('BackendServer: Terminal was closed');
                     this._terminal = undefined;
+                    this._discoveredPort = undefined;
                 }
             })
         );
@@ -63,8 +144,19 @@ class BackendServerManager implements vscode.Disposable {
         return this._isStarting;
     }
 
+    get port(): number {
+        return this._discoveredPort || DEFAULT_PORT;
+    }
+
     get apiUrl(): string {
+        if (this._discoveredPort) {
+            return buildApiUrl(this._discoveredPort);
+        }
         return getApiUrl();
+    }
+
+    get wsUrl(): string {
+        return buildWsUrl(this.port);
     }
 
     /**
@@ -99,11 +191,33 @@ class BackendServerManager implements vscode.Disposable {
             return true;
         }
 
-        // Check if server is already running externally
+        // Try to discover port from existing port file
+        const workspaceRoot = getWorkspaceRoot();
+        const existingPort = readPortFile(workspaceRoot);
+        if (existingPort) {
+            this._discoveredPort = existingPort;
+            setServerPort(existingPort);
+            traceInfo(`BackendServer: Found existing port file with port ${existingPort}`);
+
+            // Check if server is actually running on that port
+            if (await this._checkServerHealth()) {
+                traceInfo('BackendServer: Server already running on discovered port');
+                this._onPortDiscovered.fire(existingPort);
+                return true;
+            } else {
+                traceVerbose('BackendServer: Port file exists but server not responding, will start new server');
+                this._discoveredPort = undefined;
+            }
+        }
+
+        // Check if server is running on default port
+        this._discoveredPort = DEFAULT_PORT;
+        setServerPort(DEFAULT_PORT);
         if (await this._checkServerHealth()) {
-            traceInfo('BackendServer: Server already running externally');
+            traceInfo('BackendServer: Server already running on default port');
             return true;
         }
+        this._discoveredPort = undefined;
 
         this._startupPromise = this._doStartServer();
         try {
@@ -117,7 +231,15 @@ class BackendServerManager implements vscode.Disposable {
         this._isStarting = true;
 
         try {
-            const command = await getAtoCommand(undefined, ['serve', 'backend']);
+            const workspaceRoot = getWorkspaceRoot();
+
+            // Build command with --auto-port to avoid conflicts and --workspace for port file location
+            const args = ['serve', 'backend', '--auto-port'];
+            if (workspaceRoot) {
+                args.push('--workspace', workspaceRoot);
+            }
+
+            const command = await getAtoCommand(undefined, args);
             if (!command) {
                 traceError('BackendServer: Cannot start server - ato binary not found');
                 return false;
@@ -132,10 +254,25 @@ class BackendServerManager implements vscode.Disposable {
             });
             this._terminal.sendText(command);
 
+            // Wait for port file to appear (server writes it on startup)
+            traceVerbose('BackendServer: Waiting for port file...');
+            const discoveredPort = await waitForPortFile(workspaceRoot, SERVER_STARTUP_TIMEOUT_MS / 2);
+            if (discoveredPort) {
+                this._discoveredPort = discoveredPort;
+                setServerPort(discoveredPort);
+                traceInfo(`BackendServer: Discovered port ${discoveredPort} from port file`);
+                this._onPortDiscovered.fire(discoveredPort);
+            } else {
+                // Fall back to default port if port file not found
+                traceVerbose('BackendServer: Port file not found, using default port');
+                this._discoveredPort = DEFAULT_PORT;
+                setServerPort(DEFAULT_PORT);
+            }
+
             // Wait for server to be ready
             const ready = await this._waitForServerReady();
             if (ready) {
-                traceInfo('BackendServer: Server started successfully');
+                traceInfo(`BackendServer: Server started successfully on port ${this._discoveredPort}`);
             } else {
                 traceError('BackendServer: Server failed to start within timeout');
                 // Show terminal so user can see what went wrong
@@ -294,7 +431,9 @@ class BackendServerManager implements vscode.Disposable {
             this._terminal = undefined;
         }
 
+        this._discoveredPort = undefined;
         this._onStatusChange.dispose();
+        this._onPortDiscovered.dispose();
 
         for (const disposable of this._disposables) {
             disposable.dispose();

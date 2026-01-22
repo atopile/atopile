@@ -9,6 +9,8 @@ type UILogEntry = {
 
 const MAX_LOGS = 200;
 let initialized = false;
+// Guard against infinite recursion when console methods call sendAction
+let isRecording = false;
 
 function pushLog(entry: UILogEntry) {
   if (typeof window === 'undefined') return;
@@ -31,14 +33,21 @@ function postLog(entry: UILogEntry) {
 }
 
 function record(level: UILogEntry['level'], message: string, stack?: string) {
-  const entry: UILogEntry = {
-    ts: new Date().toISOString(),
-    level,
-    message,
-    stack,
-  };
-  pushLog(entry);
-  void postLog(entry);
+  // Prevent infinite recursion: sendAction may call console.warn when not connected
+  if (isRecording) return;
+  isRecording = true;
+  try {
+    const entry: UILogEntry = {
+      ts: new Date().toISOString(),
+      level,
+      message,
+      stack,
+    };
+    pushLog(entry);
+    void postLog(entry);
+  } finally {
+    isRecording = false;
+  }
 }
 
 export function initUILogger(): void {

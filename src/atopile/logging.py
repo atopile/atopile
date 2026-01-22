@@ -10,12 +10,12 @@ This module provides:
 
 from __future__ import annotations
 
+import atexit
 import io
 import json
 import logging
 import os
 import pickle
-import re
 import sqlite3
 import struct
 import sys
@@ -24,9 +24,7 @@ import traceback
 from collections.abc import Iterable
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum, StrEnum
 from pathlib import Path
 from types import ModuleType, TracebackType
 from typing import TYPE_CHECKING, Any
@@ -41,6 +39,11 @@ from rich.traceback import Traceback
 import atopile
 import faebryk
 from atopile.buildutil import generate_build_id
+from atopile.dataclasses import (
+    Log,
+    StageCompleteEvent,
+    StageStatusEvent,
+)
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 from atopile.logging_utils import (
     PLOG,
@@ -52,18 +55,6 @@ from atopile.logging_utils import (
 # =============================================================================
 
 _log_sink_var = ContextVar[io.StringIO | None]("log_sink", default=None)
-
-# =============================================================================
-# Build Status and Events
-# =============================================================================
-
-from atopile.dataclasses import (
-    BuildStatus,
-    Log,
-    ProjectState,
-    StageCompleteEvent,
-    StageStatusEvent,
-)
 
 # =============================================================================
 # Rich Console Configuration (formerly cli/console.py)
@@ -169,8 +160,12 @@ class BaseLogger:
 
     @staticmethod
     def _atopile_log_filter(record: logging.LogRecord) -> bool:
-        """Filter to only include atopile and faebryk logs, excluding server/http logs unless running 'ato serve'."""
-        # Check if we're running the server (either via 'ato serve' or 'python -m atopile.server')
+        """Filter to only include atopile and faebryk logs.
+
+        Excludes server/http logs unless running 'ato serve'.
+        """
+        # Check if we're running the server
+        # (either via 'ato serve' or 'python -m atopile.server')
         main_module = sys.modules.get("__main__")
         is_serving = (
             "serve" in sys.argv
@@ -196,8 +191,8 @@ class BaseLogger:
         """
         Get a unified display message for any exception.
 
-        For UserException types, returns the message attribute (the detailed description).
-        Falls back to str(exc) for other exceptions.
+        For UserException types, returns the message attribute
+        (the detailed description). Falls back to str(exc) for other exceptions.
         """
         if isinstance(exc, _BaseBaseUserException):
             # Use message for the detailed error description
@@ -346,7 +341,6 @@ class BaseLogger:
         """Flush any buffered log entries."""
         if self._writer is not None:
             self._writer.flush()
-
 
     def _build_entry(
         self,
@@ -736,9 +730,7 @@ class BuildLogger(BaseLogger):
         return get_log_dir() / "build_logs.db"
 
     @staticmethod
-    def _emit_event(
-        fd: int, event: "StageStatusEvent | StageCompleteEvent"
-    ) -> None:
+    def _emit_event(fd: int, event: "StageStatusEvent | StageCompleteEvent") -> None:
         payload = pickle.dumps(event, protocol=pickle.HIGHEST_PROTOCOL)
         header = struct.pack(">I", len(payload))
         data = header + payload
@@ -757,8 +749,10 @@ class BuildLogger(BaseLogger):
         """
         Get or create a build logger for a project/target/timestamp combination.
 
-        All logs go to the central database at ~/.local/share/atopile/build_logs.db.
-        Each build is identified by a unique build_id generated from project+target+timestamp.
+        All logs go to the central database at
+        ~/.local/share/atopile/build_logs.db.
+        Each build is identified by a unique build_id generated from
+        project+target+timestamp.
         """
         if timestamp is None:
             timestamp = NOW
@@ -1118,22 +1112,26 @@ class LogHandler(RichHandler):
         if hide_traceback or exc_type is None or exc_value is None:
             return None
 
-        # Use console width or None (unlimited) for traceback width to prevent truncation
-        width = getattr(self, 'tracebacks_width', None) or getattr(self.console, 'width', None)
+        # Use console width or None (unlimited) for traceback width
+        # to prevent truncation
+        width = getattr(self, "tracebacks_width", None) or getattr(
+            self.console, "width", None
+        )
         # If width is None, Rich will use full available width
-        
+
         return Traceback.from_exception(
             exc_type,
             exc_value,
             exc_traceback,
             width=width,
-            extra_lines=getattr(self, 'tracebacks_extra_lines', 3),
-            theme=getattr(self, 'tracebacks_theme', None),
-            word_wrap=getattr(self, 'tracebacks_word_wrap', True),
-            show_locals=getattr(self, 'tracebacks_show_locals', False),
-            locals_max_length=getattr(self, 'locals_max_length', 10),
-            locals_max_string=getattr(self, 'locals_max_string', 80),
-            max_frames=getattr(self, 'tracebacks_max_frames', 1000),  # Increased from default 100 to show full tracebacks
+            extra_lines=getattr(self, "tracebacks_extra_lines", 3),
+            theme=getattr(self, "tracebacks_theme", None),
+            word_wrap=getattr(self, "tracebacks_word_wrap", True),
+            show_locals=getattr(self, "tracebacks_show_locals", False),
+            locals_max_length=getattr(self, "locals_max_length", 10),
+            locals_max_string=getattr(self, "locals_max_string", 80),
+            # Increased from default 100 to show full tracebacks
+            max_frames=getattr(self, "tracebacks_max_frames", 1000),
             suppress=suppress,
         )
 
@@ -1224,7 +1222,8 @@ class LogHandler(RichHandler):
 
     def _write_to_sqlite(self, record: logging.LogRecord) -> None:
         """Write log record to SQLite via BuildLogger or TestLogger if available."""
-        # Check if we're running the server (either via 'ato serve' or 'python -m atopile.server')
+        # Check if we're running the server
+        # (either via 'ato serve' or 'python -m atopile.server')
         main_module = sys.modules.get("__main__")
         is_serving = (
             "serve" in sys.argv
@@ -1379,10 +1378,10 @@ class LogHandler(RichHandler):
                 # For errors/exceptions, also print to stderr to ensure visibility
                 # even if stdout is being overwritten by Live displays
                 if record.levelno >= logging.ERROR and record.exc_info:
-                    # Print to stderr as well to avoid being overwritten by Live displays
+                    # Print to stderr to avoid being overwritten by Live displays
                     stderr_console = Console(file=sys.stderr, width=self.console.width)
                     stderr_console.print(log_renderable, crop=False, overflow="ignore")
-                
+
                 # Print without height limit to show full tracebacks
                 # Use crop=False to prevent truncation, and ensure full output
                 self.console.print(log_renderable, crop=False, overflow="ignore")
@@ -1748,8 +1747,6 @@ handler.setFormatter(_DEFAULT_FORMATTER)
 logging.basicConfig(level=logging.DEBUG, handlers=[handler])
 
 # Ensure logs flush on process exit.
-import atexit
-
 atexit.register(BuildLogger.close_all)
 atexit.register(TestLogger.close_all)
 

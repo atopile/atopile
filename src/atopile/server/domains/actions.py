@@ -31,11 +31,11 @@ from atopile.server.build_queue import (
     cancel_build,
 )
 from atopile.server.core import projects as core_projects
-from atopile.server.domains import packages as packages_domain
-from atopile.server.domains import projects as projects_domain
 from atopile.server.domains import artifacts as artifacts_domain
-from atopile.server.domains import parts as parts_domain
 from atopile.server.domains import builds as builds_domain
+from atopile.server.domains import packages as packages_domain
+from atopile.server.domains import parts as parts_domain
+from atopile.server.domains import projects as projects_domain
 from atopile.server.state import server_state
 from atopile.server.stdlib import get_standard_library
 
@@ -390,15 +390,11 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Project not found: {project_root}",
                 }
 
-            from atopile.server.domains import projects as projects_domain
-
             response = await asyncio.to_thread(
                 projects_domain.handle_get_modules, project_root
             )
             if response:
-                await server_state.set_project_modules(
-                    project_root, response.modules
-                )
+                await server_state.set_project_modules(project_root, response.modules)
             return {"success": True}
 
         if action == "getPackageDetails":
@@ -861,7 +857,6 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             max_depth = int(payload.get("maxDepth", 2))
             if not project_root or not entry_point:
                 return {"success": False, "error": "Missing projectRoot or entryPoint"}
-            from pathlib import Path
             from atopile.server.module_introspection import introspect_module
 
             max_depth = max(0, min(5, max_depth))
