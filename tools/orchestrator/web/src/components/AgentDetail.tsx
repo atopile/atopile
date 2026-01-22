@@ -567,13 +567,14 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
               value={inputValue}
               onChange={setInputValue}
               onSubmit={handleSendInput}
-              placeholder="Send input..."
+              placeholder="Type @ to mention files..."
               disabled={sending}
               vimMode={vimMode}
               onVimModeToggle={setVimMode}
               className="flex-1"
               completion={completionConfig}
               compact={isMobile}
+              pathAutocomplete={{ enabled: true }}
             />
             <button
               className="rounded-full w-9 h-9 mb-0.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center text-white shadow-lg flex-shrink-0"
@@ -595,13 +596,14 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
               value={resumePrompt}
               onChange={setResumePrompt}
               onSubmit={handleResume}
-              placeholder="Continue conversation..."
+              placeholder="Type @ to mention files..."
               disabled={loadingResume}
               vimMode={vimMode}
               onVimModeToggle={setVimMode}
               className="flex-1"
               completion={completionConfig}
               compact={isMobile}
+              pathAutocomplete={{ enabled: true }}
             />
             <button
               className="rounded-full w-9 h-9 mb-0.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center text-white shadow-lg flex-shrink-0"

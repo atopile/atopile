@@ -19,7 +19,7 @@ from ..exceptions import (
     SessionNotFoundError,
 )
 from .dependencies import ConnectionManager, get_orchestrator_state
-from .routes import agents_router, bridge_router, pipelines_router, sessions_router, websocket_router
+from .routes import agents_router, bridge_router, filesystem_router, pipelines_router, sessions_router, websocket_router
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +75,7 @@ def create_app() -> FastAPI:
     # Register routers
     app.include_router(agents_router)
     app.include_router(bridge_router)
+    app.include_router(filesystem_router)
     app.include_router(sessions_router)
     app.include_router(pipelines_router)
     app.include_router(websocket_router)
@@ -213,7 +214,7 @@ def create_app() -> FastAPI:
 sleep 1
 # Kill existing servers
 pkill -f "uvicorn orchestrator" 2>/dev/null || true
-pkill -f "vite.*5173" 2>/dev/null || true
+pkill -f "vite.*5174" 2>/dev/null || true
 sleep 1
 # Restart backend
 cd "{os.path.dirname(orchestrator_dir)}" && uv run uvicorn orchestrator.server.app:app --host 0.0.0.0 --port 8765 &

@@ -97,7 +97,7 @@ echo -e "${GREEN}Backend started (PID: $BACKEND_PID)${NC}"
 
 # Start frontend dev server
 echo ""
-echo -e "${BLUE}Starting frontend dev server on http://localhost:5173${NC}"
+echo -e "${BLUE}Starting frontend dev server on http://localhost:5174${NC}"
 cd "$WEB_DIR"
 npm run dev &
 FRONTEND_PID=$!
@@ -119,7 +119,7 @@ echo -e "${GREEN}======================================${NC}"
 echo -e "${GREEN}   Orchestrator is running!${NC}"
 echo -e "${GREEN}======================================${NC}"
 echo ""
-echo -e "  ${BLUE}Dashboard:${NC}  http://localhost:5173"
+echo -e "  ${BLUE}Dashboard:${NC}  http://localhost:5174"
 echo -e "  ${BLUE}API Docs:${NC}   http://localhost:8765/docs"
 echo -e "  ${BLUE}Health:${NC}     http://localhost:8765/health"
 echo ""

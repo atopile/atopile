@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Play, Download, RefreshCw } from 'lucide-react';
 import type { AgentBackendType, BackendInfo, AgentState } from '@/logic/api/types';
 import { useDispatch, useLoading, useLogic } from '@/hooks';
+import { VimTextarea } from './VimTextarea';
 
 type DialogTab = 'spawn' | 'import';
 
@@ -285,12 +286,14 @@ export function SpawnAgentDialog({ open, onClose }: SpawnAgentDialogProps) {
             <label className="block text-sm font-medium text-gray-300 mb-1">
               Prompt <span className="text-red-400">*</span>
             </label>
-            <textarea
-              className="input min-h-[100px]"
-              placeholder="Enter your prompt for the agent..."
+            <VimTextarea
               value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              required
+              onChange={setPrompt}
+              placeholder="Enter your prompt... (type @ to mention files)"
+              vimMode={false}
+              onVimModeToggle={() => {}}
+              className="min-h-[100px]"
+              pathAutocomplete={{ enabled: true }}
             />
           </div>
 

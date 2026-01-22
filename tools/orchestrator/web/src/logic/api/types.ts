@@ -377,3 +377,16 @@ export interface GlobalEvent {
   pipeline_id?: string;
   node_id?: string;
 }
+
+// Filesystem types
+export interface PathSuggestion {
+  path: string;
+  name: string;
+  is_directory: boolean;
+}
+
+export interface PathCompletionResponse {
+  suggestions: PathSuggestion[];
+  base_path: string;
+  query: string;
+}

@@ -161,14 +161,14 @@ def main():
         frontend_port = 4173
     else:
         # Use vite dev for development
-        print(f"{Colors.BLUE}Starting frontend dev server on http://localhost:5173{Colors.NC}")
+        print(f"{Colors.BLUE}Starting frontend dev server on http://localhost:5174{Colors.NC}")
         frontend_process = subprocess.Popen(
             [npm_cmd, "run", "dev"],
             cwd=web_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
-        frontend_port = 5173
+        frontend_port = 5174
 
     # Wait for frontend to start
     time.sleep(3)

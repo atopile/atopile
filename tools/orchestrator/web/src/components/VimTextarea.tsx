@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, KeyboardEvent, memo } from 'react';
+import { PathAutocomplete } from './PathAutocomplete';
 
 type VimMode = 'normal' | 'insert' | 'visual-char' | 'visual-line';
 type CompletionMode = 'code' | 'prompt';
@@ -12,6 +13,12 @@ interface CompletionConfig {
   maxTokens?: number;
 }
 
+interface PathAutocompleteConfig {
+  enabled: boolean;
+  basePath?: string;
+  directoriesOnly?: boolean;
+}
+
 interface VimTextareaProps {
   value: string;
   onChange: (value: string) => void;
@@ -23,6 +30,7 @@ interface VimTextareaProps {
   className?: string;
   completion?: CompletionConfig;
   compact?: boolean; // Hide vim toggle and toolbar, simpler mobile UI
+  pathAutocomplete?: PathAutocompleteConfig; // Enable @path autocomplete
 }
 
 interface CompletionResponse {
@@ -170,6 +178,7 @@ export const VimTextarea = memo(function VimTextarea({
   className = '',
   completion,
   compact = false,
+  pathAutocomplete,
 }: VimTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -191,8 +200,76 @@ export const VimTextarea = memo(function VimTextarea({
   const [completionError, setCompletionError] = useState<string | null>(null);
   const completionAbortRef = useRef<AbortController | null>(null);
 
+  // Path autocomplete state
+  const [pathAutocompleteVisible, setPathAutocompleteVisible] = useState(false);
+  const [pathAutocompleteQuery, setPathAutocompleteQuery] = useState('');
+  const [pathAutocompletePosition, setPathAutocompletePosition] = useState({ top: 0, left: 0 });
+  const [pathMentionStart, setPathMentionStart] = useState(-1); // Position of @ in the text
+
   // Detect mobile for performance tuning
   const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
+
+  // Helper to find the @ mention at the cursor position
+  const findAtMention = useCallback((text: string, cursorPosition: number): { start: number; query: string } | null => {
+    // Look backwards from cursor to find @
+    let start = cursorPosition - 1;
+    while (start >= 0) {
+      const char = text[start];
+      if (char === '@') {
+        // Found @, extract the query (everything between @ and cursor)
+        const query = text.slice(start + 1, cursorPosition);
+        // Check if this looks like a path (no spaces in the query)
+        if (!query.includes(' ') || query.length === 0) {
+          return { start, query };
+        }
+        return null;
+      }
+      // Stop if we hit a space (not part of a path) or newline
+      if (char === ' ' || char === '\n') {
+        return null;
+      }
+      start--;
+    }
+    return null;
+  }, []);
+
+  // Helper to calculate dropdown position based on cursor
+  const calculateDropdownPosition = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return { top: 0, left: 0 };
+
+    // Create a temporary element to measure text position
+    const rect = textarea.getBoundingClientRect();
+    const style = window.getComputedStyle(textarea);
+    const lineHeight = parseInt(style.lineHeight) || 20;
+    const paddingTop = parseInt(style.paddingTop) || 0;
+    const paddingLeft = parseInt(style.paddingLeft) || 0;
+
+    // Get cursor position in text
+    const cursorPosition = textarea.selectionStart;
+    const textBeforeCursor = localValue.slice(0, cursorPosition);
+
+    // Count lines
+    const lines = textBeforeCursor.split('\n');
+    const currentLineIndex = lines.length - 1;
+    const currentLineText = lines[currentLineIndex];
+
+    // Approximate character width (monospace assumption)
+    const charWidth = 8; // Approximate for monospace font
+
+    // Calculate position - position below the cursor line
+    const top = rect.top + paddingTop + (currentLineIndex + 1) * lineHeight + textarea.scrollTop * -1 + 4;
+    const left = rect.left + paddingLeft + currentLineText.length * charWidth;
+
+    // Clamp to viewport
+    const maxLeft = window.innerWidth - 320; // Leave room for dropdown
+    const maxTop = window.innerHeight - 280; // Leave room for dropdown
+
+    return {
+      top: Math.min(top, maxTop),
+      left: Math.min(Math.max(left, rect.left), maxLeft),
+    };
+  }, [localValue]);
 
   // Sync local value to parent (debounced for performance)
   const syncToParent = useCallback((newValue: string) => {
@@ -756,6 +833,15 @@ export const VimTextarea = memo(function VimTextarea({
   }, [moveCursor, cursorPos, onSubmit, suggestion, acceptSuggestion]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Path autocomplete handles its own keyboard events via global listener
+    // We just need to skip our own handling for keys it uses
+    if (pathAutocompleteVisible) {
+      if (['ArrowUp', 'ArrowDown', 'Tab', 'Enter', 'Escape'].includes(e.key)) {
+        // PathAutocomplete's global listener will handle these
+        return;
+      }
+    }
+
     if (!vimMode) {
       // Non-vim mode: Tab accepts suggestion
       if (e.key === 'Tab' && suggestion) {
@@ -781,19 +867,88 @@ export const VimTextarea = memo(function VimTextarea({
     } else if (mode === 'visual-char' || mode === 'visual-line') {
       handleVisualModeKey(e);
     }
-  }, [vimMode, mode, handleNormalModeKey, handleInsertModeKey, handleVisualModeKey, onSubmit, suggestion, acceptSuggestion]);
+  }, [vimMode, mode, handleNormalModeKey, handleInsertModeKey, handleVisualModeKey, onSubmit, suggestion, acceptSuggestion, pathAutocompleteVisible]);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    syncToParent(e.target.value);
+    const newValue = e.target.value;
+    const newCursorPos = e.target.selectionStart;
+    syncToParent(newValue);
+
     if (vimMode && mode === 'insert') {
-      setCursorPos(e.target.selectionStart);
+      setCursorPos(newCursorPos);
     }
-  }, [syncToParent, vimMode, mode]);
+
+    // Check for @ mention if path autocomplete is enabled
+    if (pathAutocomplete?.enabled) {
+      const mention = findAtMention(newValue, newCursorPos);
+      console.log('[VimTextarea] @ mention check:', mention, 'cursorPos:', newCursorPos);
+      if (mention) {
+        setPathMentionStart(mention.start);
+        setPathAutocompleteQuery(mention.query);
+        setPathAutocompletePosition(calculateDropdownPosition());
+        setPathAutocompleteVisible(true);
+      } else {
+        setPathAutocompleteVisible(false);
+        setPathMentionStart(-1);
+      }
+    }
+  }, [syncToParent, vimMode, mode, pathAutocomplete?.enabled, findAtMention, calculateDropdownPosition]);
 
   const handleClick = useCallback(() => {
     if (textareaRef.current) {
       setCursorPos(textareaRef.current.selectionStart);
     }
+    // Dismiss path autocomplete on click elsewhere
+    if (pathAutocompleteVisible) {
+      setPathAutocompleteVisible(false);
+    }
+  }, [pathAutocompleteVisible]);
+
+  // Handle path selection from autocomplete
+  const handlePathSelect = useCallback((selectedPath: string) => {
+    if (pathMentionStart < 0) return;
+
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const cursorPosition = textarea.selectionStart;
+
+    // Replace @query with the selected path (keep the @)
+    const newValue = localValue.slice(0, pathMentionStart + 1) + selectedPath + localValue.slice(cursorPosition);
+    syncToParent(newValue);
+
+    // If path ends with /, keep autocomplete open for further navigation
+    if (selectedPath.endsWith('/')) {
+      setPathAutocompleteQuery(selectedPath);
+      // Keep autocomplete visible
+      setTimeout(() => {
+        if (textareaRef.current) {
+          const newCursorPos = pathMentionStart + 1 + selectedPath.length;
+          textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+          textareaRef.current.focus();
+          setPathAutocompletePosition(calculateDropdownPosition());
+        }
+      }, 0);
+    } else {
+      // Close autocomplete and add a space after the path
+      setPathAutocompleteVisible(false);
+      setPathMentionStart(-1);
+
+      setTimeout(() => {
+        if (textareaRef.current) {
+          const newCursorPos = pathMentionStart + 1 + selectedPath.length;
+          textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+          textareaRef.current.focus();
+        }
+      }, 0);
+    }
+  }, [pathMentionStart, localValue, syncToParent, calculateDropdownPosition]);
+
+  // Handle path autocomplete dismissal
+  const handlePathDismiss = useCallback(() => {
+    setPathAutocompleteVisible(false);
+    setPathMentionStart(-1);
+    textareaRef.current?.focus();
   }, []);
 
   const handleScroll = useCallback(() => {
@@ -944,6 +1099,19 @@ export const VimTextarea = memo(function VimTextarea({
         <div className="text-[10px] text-gray-600 mt-1 px-1 hidden sm:block">
           hjkl: move | w/b/e: word | 0/$: line | i/a/o: insert | v/V: visual | d/y: del/yank | p: paste | ⌘+Enter: send
         </div>
+      )}
+
+      {/* Path autocomplete dropdown */}
+      {pathAutocomplete?.enabled && (
+        <PathAutocomplete
+          query={pathAutocompleteQuery}
+          position={pathAutocompletePosition}
+          onSelect={handlePathSelect}
+          onDismiss={handlePathDismiss}
+          basePath={pathAutocomplete.basePath}
+          directoriesOnly={pathAutocomplete.directoriesOnly}
+          visible={pathAutocompleteVisible}
+        />
       )}
     </div>
   );

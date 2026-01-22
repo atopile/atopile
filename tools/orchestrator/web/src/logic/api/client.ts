@@ -13,6 +13,7 @@ import type {
   CreatePipelineRequest,
   HealthResponse,
   ImportSessionRequest,
+  PathCompletionResponse,
   Pipeline,
   PipelineListResponse,
   PipelineSession,
@@ -269,6 +270,23 @@ export class APIClient {
         `/pipelines/${pipelineId}/sessions/${sessionId}?force=${force}`,
         { method: 'DELETE' }
       );
+    },
+  };
+
+  // Filesystem
+  filesystem = {
+    completePath: (params: {
+      query: string;
+      basePath?: string;
+      directoriesOnly?: boolean;
+      limit?: number;
+    }): Promise<PathCompletionResponse> => {
+      const searchParams = new URLSearchParams();
+      searchParams.set('query', params.query);
+      if (params.basePath) searchParams.set('base_path', params.basePath);
+      if (params.directoriesOnly) searchParams.set('directories_only', 'true');
+      if (params.limit) searchParams.set('limit', String(params.limit));
+      return this.fetchJson(`/filesystem/complete?${searchParams}`);
     },
   };
 }
