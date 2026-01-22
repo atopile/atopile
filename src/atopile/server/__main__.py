@@ -17,7 +17,7 @@ from pathlib import Path
 
 import requests
 
-from atopile.server.server import DASHBOARD_PORT, DashboardServer, find_free_port
+from atopile.server.server import DASHBOARD_PORT, DashboardServer
 
 
 def is_port_in_use(port: int) -> bool:
@@ -114,12 +114,6 @@ def main():
         action="store_true",
         help="Kill existing server on the port and start fresh",
     )
-    parser.add_argument(
-        "--auto-port",
-        action="store_true",
-        help="Automatically find a free port if the default is in use",
-    )
-
     args = parser.parse_args()
 
     # Determine logs directory
@@ -153,23 +147,16 @@ def main():
             else:
                 print(f"Failed to stop process on port {port}")
                 sys.exit(1)
-        elif args.auto_port:
-            old_port = port  # noqa: F841
-            port = find_free_port()
-            print(f"Port {old_port} in use, using port {port} instead")
         elif is_atopile_server_running(port):
-            print(f"atopile server already running on port {port}")
+            print(f"Atopile server already running on port {port}")
             print(f"Dashboard available at http://localhost:{port}")
-            print("Use --force to restart, or --auto-port to use a different port")
+            print("Use --force to restart, or --port to use a different port")
             sys.exit(0)
         else:
             print(f"Port {port} is already in use by another application")
             print("Options:")
             print("  1. Use --force to kill the process: ato serve backend --force")
-            print(
-                "  2. Use --auto-port to find a free port: ato serve backend --auto-port"  # noqa: E501
-            )
-            print("  3. Use a specific port: ato serve backend --port <PORT>")
+            print("  2. Use a specific port: ato serve backend --port <PORT>")
             sys.exit(1)
 
     # Output port early for programmatic discovery (before logging starts)

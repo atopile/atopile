@@ -236,29 +236,30 @@ const DEFAULT_STATE: AppState = {
 };
 
 const DEFAULT_PORT = 8501;
+const DEFAULT_API_URL = `http://localhost:${DEFAULT_PORT}`;
 const RECONNECT_INTERVAL = 3000;
 
-// Dynamic port - can be updated by backendServer when port is discovered
-let _currentPort = DEFAULT_PORT;
+function getApiUrl(): string {
+    const config = vscode.workspace.getConfiguration('atopile');
+    return config.get<string>('dashboardApiUrl', DEFAULT_API_URL);
+}
 
-/**
- * Get the WebSocket URL using the current port.
- */
-function getWsUrl(): string {
-    return `ws://localhost:${_currentPort}/ws/state`;
+function buildWsUrlFromApiUrl(apiUrl: string): string | undefined {
+    try {
+        const url = new URL(apiUrl);
+        const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+        const port = url.port ? `:${url.port}` : '';
+        return `${wsProtocol}//${url.hostname}${port}/ws/state`;
+    } catch {
+        return undefined;
+    }
 }
 
 /**
- * Update the port used for WebSocket connections.
- * Called by backendServer when port is discovered.
+ * Get the WebSocket URL from configuration.
  */
-export function setServerPort(port: number): void {
-    if (port !== _currentPort) {
-        traceInfo(`AppState: Server port updated to ${port}`);
-        _currentPort = port;
-        // Reconnect with new port
-        appStateManager.reconnect();
-    }
+function getWsUrl(): string {
+    return buildWsUrlFromApiUrl(getApiUrl()) || `ws://localhost:${DEFAULT_PORT}/ws/state`;
 }
 
 type StateChangeListener = (state: AppState) => void;
@@ -269,6 +270,7 @@ class WebSocketAppStateManager {
     private _ws: any = null;
     private _reconnectTimer: NodeJS.Timeout | null = null;
     private _listeners: StateChangeListener[] = [];
+    private _disposables: vscode.Disposable[] = [];
     private _isConnecting = false;
     private _requestCounter = 0;
     private _pendingRequests = new Map<string, {
@@ -278,6 +280,14 @@ class WebSocketAppStateManager {
     }>();
 
     constructor() {
+        this._disposables.push(
+            vscode.workspace.onDidChangeConfiguration((event) => {
+                if (event.affectsConfiguration('atopile.dashboardApiUrl')) {
+                    traceInfo('AppState: dashboardApiUrl changed, reconnecting');
+                    this.reconnect();
+                }
+            })
+        );
         this.connect();
     }
 
@@ -662,6 +672,10 @@ class WebSocketAppStateManager {
     dispose(): void {
         this.disconnect();
         this._listeners = [];
+        for (const disposable of this._disposables) {
+            disposable.dispose();
+        }
+        this._disposables = [];
     }
 }
 
@@ -733,8 +747,7 @@ export function initAtopileSettingsSync(_context: vscode.ExtensionContext): vsco
                     await config.update('ato', undefined, target);
                 }
                 traceInfo('Atopile settings updated successfully');
-                // The configuration change will trigger findbin's onDidChangeConfiguration listener
-                // which will fire onDidChangeAtoBinInfoEvent and trigger a server restart
+                // Manual restart required to apply new binary/version settings
             } catch (error) {
                 traceError(`Failed to update atopile settings: ${error}`);
             }

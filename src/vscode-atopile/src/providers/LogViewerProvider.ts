@@ -21,6 +21,11 @@ function isDevelopmentMode(extensionPath: string): boolean {
   return !fs.existsSync(prodPath);
 }
 
+function getUiMode(): 'auto' | 'dev' | 'prod' {
+  const config = vscode.workspace.getConfiguration('atopile');
+  return config.get<'auto' | 'dev' | 'prod'>('uiMode', 'auto');
+}
+
 /**
  * Generate a nonce for Content Security Policy.
  */
@@ -37,8 +42,48 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'atopile.logViewer';
 
   private _view?: vscode.WebviewView;
+  private _disposables: vscode.Disposable[] = [];
 
-  constructor(private readonly _extensionUri: vscode.Uri) {}
+  constructor(private readonly _extensionUri: vscode.Uri) {
+    this._disposables.push(
+      backendServer.onStatusChange((connected) => {
+        if (connected) {
+          this._refreshWebview();
+        }
+      })
+    );
+  }
+
+  dispose(): void {
+    for (const d of this._disposables) {
+      d.dispose();
+    }
+    this._disposables = [];
+  }
+
+  private _refreshWebview(): void {
+    if (!this._view) {
+      console.log('[LogViewerProvider] _refreshWebview called but no view');
+      return;
+    }
+
+    console.log('[LogViewerProvider] Refreshing webview with URLs:', {
+      apiUrl: backendServer.apiUrl,
+      wsUrl: backendServer.wsUrl,
+      port: backendServer.port,
+      isConnected: backendServer.isConnected,
+    });
+
+    const extensionPath = this._extensionUri.fsPath;
+    const uiMode = getUiMode();
+    const isDev = uiMode === 'dev' ? true : uiMode === 'prod' ? false : isDevelopmentMode(extensionPath);
+
+    if (isDev) {
+      this._view.webview.html = this._getDevHtml();
+    } else {
+      this._view.webview.html = this._getProdHtml(this._view.webview);
+    }
+  }
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
@@ -48,7 +93,8 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     this._view = webviewView;
 
     const extensionPath = this._extensionUri.fsPath;
-    const isDev = isDevelopmentMode(extensionPath);
+    const uiMode = getUiMode();
+    const isDev = uiMode === 'dev' ? true : uiMode === 'prod' ? false : isDevelopmentMode(extensionPath);
 
     webviewView.webview.options = {
       enableScripts: true,
@@ -74,6 +120,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     const viteDevServer = 'http://localhost:5173';
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
+    const uiMode = getUiMode();
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -149,6 +196,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     // Get backend URLs from backendServer (uses discovered port or config)
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
+    const uiMode = getUiMode();
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -161,7 +209,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     script-src ${webview.cspSource} 'nonce-${nonce}';
     font-src ${webview.cspSource};
     img-src ${webview.cspSource} data:;
-    connect-src ${apiUrl} ${wsUrl};
+    connect-src ${apiUrl} ${wsUrl} ws://localhost:* http://localhost:*;
   ">
   <title>atopile Logs</title>
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
@@ -169,6 +217,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
   <script nonce="${nonce}">
     window.__ATOPILE_API_URL__ = '${apiUrl}';
     window.__ATOPILE_WS_URL__ = '${wsUrl}';
+    window.__ATOPILE_UI_MODE__ = '${uiMode}';
   </script>
 </head>
 <body>

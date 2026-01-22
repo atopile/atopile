@@ -12,6 +12,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
+import { traceInfo, traceError } from '../common/log/logging';
 
 /**
  * Check if we're running in development mode.
@@ -22,6 +23,11 @@ function isDevelopmentMode(extensionPath: string): boolean {
   // In development, we use the Vite dev server
   const prodPath = path.join(extensionPath, 'resources', 'webviews', 'sidebar.js');
   return !fs.existsSync(prodPath);
+}
+
+function getUiMode(): 'auto' | 'dev' | 'prod' {
+  const config = vscode.workspace.getConfiguration('atopile');
+  return config.get<'auto' | 'dev' | 'prod'>('uiMode', 'auto');
 }
 
 /**
@@ -41,8 +47,48 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'atopile.project';
 
   private _view?: vscode.WebviewView;
+  private _disposables: vscode.Disposable[] = [];
 
-  constructor(private readonly _extensionUri: vscode.Uri) {}
+  constructor(private readonly _extensionUri: vscode.Uri) {
+    this._disposables.push(
+      backendServer.onStatusChange((connected) => {
+        if (connected) {
+          this._refreshWebview();
+        }
+      })
+    );
+  }
+
+  dispose(): void {
+    for (const d of this._disposables) {
+      d.dispose();
+    }
+    this._disposables = [];
+  }
+
+  private _refreshWebview(): void {
+    if (!this._view) {
+      traceInfo('[SidebarProvider] _refreshWebview called but no view');
+      return;
+    }
+
+    traceInfo('[SidebarProvider] Refreshing webview with URLs:', {
+      apiUrl: backendServer.apiUrl,
+      wsUrl: backendServer.wsUrl,
+      port: backendServer.port,
+      isConnected: backendServer.isConnected,
+    });
+
+    const extensionPath = this._extensionUri.fsPath;
+    const uiMode = getUiMode();
+    const isDev = uiMode === 'dev' ? true : uiMode === 'prod' ? false : isDevelopmentMode(extensionPath);
+
+    if (isDev) {
+      this._view.webview.html = this._getDevHtml();
+    } else {
+      this._view.webview.html = this._getProdHtml(this._view.webview);
+    }
+  }
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
@@ -52,7 +98,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._view = webviewView;
 
     const extensionPath = this._extensionUri.fsPath;
-    const isDev = isDevelopmentMode(extensionPath);
+    const uiMode = getUiMode();
+    const isDev = uiMode === 'dev' ? true : uiMode === 'prod' ? false : isDevelopmentMode(extensionPath);
+
+    traceInfo('[SidebarProvider] resolveWebviewView called', {
+      extensionPath,
+      isDev,
+      uiMode,
+      apiUrl: backendServer.apiUrl,
+      wsUrl: backendServer.wsUrl,
+    });
 
     webviewView.webview.options = {
       enableScripts: true,
@@ -65,9 +120,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     };
 
     if (isDev) {
+      traceInfo('[SidebarProvider] Using dev HTML');
       webviewView.webview.html = this._getDevHtml();
     } else {
-      webviewView.webview.html = this._getProdHtml(webviewView.webview);
+      traceInfo('[SidebarProvider] Using prod HTML');
+      const html = this._getProdHtml(webviewView.webview);
+      traceInfo('[SidebarProvider] Generated HTML length:', html.length);
+      webviewView.webview.html = html;
     }
   }
 
@@ -157,7 +216,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const cssPath = path.join(webviewsDir, 'sidebar.css');
     const baseCssPath = path.join(webviewsDir, 'index.css');
 
+    traceInfo('[SidebarProvider] _getProdHtml paths:', {
+      webviewsDir,
+      jsPath,
+      jsExists: fs.existsSync(jsPath),
+      cssExists: fs.existsSync(cssPath),
+      baseCssExists: fs.existsSync(baseCssPath),
+    });
+
     if (!fs.existsSync(jsPath)) {
+      traceInfo('[SidebarProvider] JS file not found, returning not built HTML');
       return this._getNotBuiltHtml();
     }
 
@@ -173,6 +241,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
     const workspaceFolders = this._getWorkspaceFolders();
+    const uiMode = getUiMode();
+
+    // Debug: log URLs being used
+    traceInfo('SidebarProvider: Generating HTML with apiUrl:', apiUrl, 'wsUrl:', wsUrl);
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -185,22 +257,55 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     script-src ${webview.cspSource} 'nonce-${nonce}';
     font-src ${webview.cspSource};
     img-src ${webview.cspSource} data:;
-    connect-src ${apiUrl} ${wsUrl};
+    connect-src ${apiUrl} ${wsUrl} ws://localhost:* http://localhost:*;
   ">
   <title>atopile</title>
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
   ${cssUri ? `<link rel="stylesheet" href="${cssUri}">` : ''}
   <script nonce="${nonce}">
+    // Debug info
+    console.log('[atopile webview] Initializing...');
+    console.log('[atopile webview] API URL:', '${apiUrl}');
+    console.log('[atopile webview] WS URL:', '${wsUrl}');
+
     // Inject backend URLs for the React app
     window.__ATOPILE_API_URL__ = '${apiUrl}';
     window.__ATOPILE_WS_URL__ = '${wsUrl}';
+    window.__ATOPILE_UI_MODE__ = '${uiMode}';
     // Inject workspace folders for the React app
     window.__ATOPILE_WORKSPACE_FOLDERS__ = ${JSON.stringify(workspaceFolders)};
   </script>
+  <style>
+    /* Debug: loading indicator */
+    #debug-loading {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 8px;
+      background: #1a1a2e;
+      color: #fff;
+      font-family: monospace;
+      font-size: 11px;
+      z-index: 9999;
+    }
+  </style>
 </head>
 <body>
+  <div id="debug-loading">Loading atopile... API: ${apiUrl}</div>
   <div id="root"></div>
   <script nonce="${nonce}" type="module" src="${jsUri}"></script>
+  <script nonce="${nonce}">
+    // Remove debug loading indicator once React renders
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        const debug = document.getElementById('debug-loading');
+        if (debug && document.getElementById('root').children.length > 0) {
+          debug.remove();
+        }
+      }, 2000);
+    });
+  </script>
 </body>
 </html>`;
   }

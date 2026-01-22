@@ -43,6 +43,9 @@ async def websocket_state(websocket: WebSocket):
         while True:
             data = await websocket.receive_json()
 
+            if data.get("type") == "ping":
+                await websocket.send_json({"type": "pong"})
+                continue
             if data.get("type") == "action":
                 # Handle action from client
                 action = data.get("action", "")

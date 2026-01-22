@@ -97,6 +97,23 @@
                     "scope": "resource",
                     "type": "string",
                     "default": "http://localhost:8501"
+                },
+                "atopile.backendAutoStart": {
+                    "description": "Automatically start the atopile backend server when the extension activates",
+                    "scope": "resource",
+                    "type": "boolean",
+                    "default": true
+                },
+                "atopile.uiMode": {
+                    "description": "UI mode selection for the sidebar/log viewer webviews",
+                    "scope": "resource",
+                    "type": "string",
+                    "enum": [
+                        "auto",
+                        "dev",
+                        "prod"
+                    ],
+                    "default": "auto"
                 }
             }
         },
@@ -231,6 +248,11 @@
             {
                 "command": "atopile.showBuildLogs",
                 "title": "Show Build Logs",
+                "category": "atopile"
+            },
+            {
+                "command": "atopile.backendStatus",
+                "title": "Backend Connection Status",
                 "category": "atopile"
             }
         ],

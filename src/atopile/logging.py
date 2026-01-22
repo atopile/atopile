@@ -33,7 +33,13 @@ from rich.traceback import Traceback
 
 import atopile
 import faebryk
-from atopile.dataclasses import Log
+from atopile.buildutil import generate_build_id
+from atopile.dataclasses import (
+    Log,
+    ProjectState,
+    StageCompleteEvent,
+    StageStatusEvent,
+)
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 from atopile.logging_utils import PLOG, error_console
 

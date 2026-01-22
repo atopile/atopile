@@ -3,24 +3,21 @@
  *
  * This module manages:
  * - Auto-starting the backend server when extension activates
- * - Restarting the server when atopile version changes
+ * - Restarting the server on user request
  * - Graceful shutdown when extension deactivates
  * - Connection status tracking via WebSocket
- * - Port discovery via port file (.atopile/.server_port)
+ * - Fixed port based on configuration
  */
 
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
 import { traceInfo, traceError, traceVerbose } from './log/logging';
 import { getAtoBin, getAtoCommand } from './findbin';
-import { appStateManager, setServerPort } from './appState';
+import { appStateManager } from './appState';
 
 const DEFAULT_PORT = 8501;
 const DEFAULT_API_URL = `http://localhost:${DEFAULT_PORT}`;
 const SERVER_STARTUP_TIMEOUT_MS = 30000; // 30 seconds to wait for server startup
 const SERVER_HEALTH_CHECK_INTERVAL_MS = 1000; // Check every second during startup
-const PORT_FILE_CHECK_INTERVAL_MS = 200; // Check for port file every 200ms
 
 interface BuildResponse {
     success: boolean;
@@ -35,68 +32,36 @@ function getApiUrl(): string {
     return config.get<string>('dashboardApiUrl', DEFAULT_API_URL);
 }
 
+function getConfiguredPort(): number | undefined {
+    try {
+        const url = new URL(getApiUrl());
+        const port = url.port ? parseInt(url.port, 10) : undefined;
+        if (port && !isNaN(port) && port > 0 && port < 65536) {
+            return port;
+        }
+        return undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+function buildWsUrlFromApiUrl(apiUrl: string): string | undefined {
+    try {
+        const url = new URL(apiUrl);
+        const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+        const port = url.port ? `:${url.port}` : '';
+        return `${wsProtocol}//${url.hostname}${port}/ws/state`;
+    } catch {
+        return undefined;
+    }
+}
+
 /**
  * Get the workspace root path (first workspace folder).
  */
 function getWorkspaceRoot(): string | undefined {
     const folders = vscode.workspace.workspaceFolders;
     return folders && folders.length > 0 ? folders[0].uri.fsPath : undefined;
-}
-
-/**
- * Read the server port from the port file.
- * Returns the port number if found, undefined otherwise.
- */
-function readPortFile(workspaceRoot?: string): number | undefined {
-    const searchPaths: string[] = [];
-
-    if (workspaceRoot) {
-        searchPaths.push(path.join(workspaceRoot, '.atopile', '.server_port'));
-    }
-
-    // Also check current working directory as fallback
-    const cwd = process.cwd();
-    if (cwd && cwd !== workspaceRoot) {
-        searchPaths.push(path.join(cwd, '.atopile', '.server_port'));
-    }
-
-    for (const portFilePath of searchPaths) {
-        try {
-            if (fs.existsSync(portFilePath)) {
-                const content = fs.readFileSync(portFilePath, 'utf-8').trim();
-                const port = parseInt(content, 10);
-                if (!isNaN(port) && port > 0 && port < 65536) {
-                    traceVerbose(`BackendServer: Read port ${port} from ${portFilePath}`);
-                    return port;
-                }
-            }
-        } catch (error) {
-            // Ignore read errors, try next path
-        }
-    }
-    return undefined;
-}
-
-/**
- * Wait for the port file to appear and return the port.
- */
-async function waitForPortFile(workspaceRoot: string | undefined, timeoutMs: number): Promise<number | undefined> {
-    const startTime = Date.now();
-    while (Date.now() - startTime < timeoutMs) {
-        const port = readPortFile(workspaceRoot);
-        if (port !== undefined) {
-            return port;
-        }
-        await new Promise(resolve => setTimeout(resolve, PORT_FILE_CHECK_INTERVAL_MS));
-    }
-    return undefined;
-}
-
-/**
- * Build the API URL from a port number.
- */
-function buildApiUrl(port: number): string {
-    return `http://localhost:${port}`;
 }
 
 /**
@@ -115,25 +80,150 @@ class BackendServerManager implements vscode.Disposable {
     private _isConnected: boolean = false;
     private _startupPromise: Promise<boolean> | null = null;
     private _disposables: vscode.Disposable[] = [];
-    private _discoveredPort: number | undefined;
+    private _statusBarItem: vscode.StatusBarItem | undefined;
 
     private readonly _onStatusChange = new vscode.EventEmitter<boolean>();
     public readonly onStatusChange = this._onStatusChange.event;
 
-    private readonly _onPortDiscovered = new vscode.EventEmitter<number>();
-    public readonly onPortDiscovered = this._onPortDiscovered.event;
-
     constructor() {
+        // Create status bar item
+        this._statusBarItem = vscode.window.createStatusBarItem(
+            vscode.StatusBarAlignment.Right,
+            100
+        );
+        this._statusBarItem.command = 'atopile.backendStatus';
+        this._statusBarItem.tooltip = 'Click to configure atopile backend';
+        this._updateStatusBar();
+        this._statusBarItem.show();
+
+        const configuredPort = getConfiguredPort();
+        traceInfo(`BackendServer: Init - configuredPort=${configuredPort}, apiUrl=${getApiUrl()}`);
+
         // Listen for terminal close events to clean up our reference
         this._disposables.push(
             vscode.window.onDidCloseTerminal((terminal) => {
                 if (terminal === this._terminal) {
                     traceInfo('BackendServer: Terminal was closed');
                     this._terminal = undefined;
-                    this._discoveredPort = undefined;
+                    this._updateStatusBar();
                 }
             })
         );
+
+        // Register the backend status command
+        this._disposables.push(
+            vscode.commands.registerCommand('atopile.backendStatus', () => {
+                this._showBackendStatusMenu();
+            })
+        );
+
+        this._disposables.push(
+            vscode.workspace.onDidChangeConfiguration((event) => {
+                if (event.affectsConfiguration('atopile.dashboardApiUrl')) {
+                    this._updateStatusBar();
+                }
+            })
+        );
+
+        // Listen to appStateManager for connection state changes
+        this._disposables.push(
+            appStateManager.onStateChange((state) => {
+                this.setConnected(state.isConnected);
+            })
+        );
+    }
+
+    /**
+     * Update the status bar item to reflect current connection state.
+     */
+    private _updateStatusBar(): void {
+        if (!this._statusBarItem) return;
+
+        if (this._isStarting) {
+            this._statusBarItem.text = '$(sync~spin) ato: Starting...';
+            this._statusBarItem.backgroundColor = undefined;
+        } else if (this._isConnected) {
+            this._statusBarItem.text = `$(check) ato: ${this.port}`;
+            this._statusBarItem.backgroundColor = undefined;
+        } else {
+            this._statusBarItem.text = '$(warning) ato: Disconnected';
+            this._statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+        }
+    }
+
+    /**
+     * Show the backend status quick pick menu.
+     */
+    private async _showBackendStatusMenu(): Promise<void> {
+        const statusText = this._isConnected
+            ? `Connected to port ${this.port}`
+            : this._isStarting
+                ? 'Starting...'
+                : 'Disconnected';
+
+        interface BackendMenuItem extends vscode.QuickPickItem {
+            action: string;
+        }
+
+        const items: BackendMenuItem[] = [
+            {
+                label: `$(info) Status: ${statusText}`,
+                description: this._isConnected ? this.apiUrl : undefined,
+                action: 'none',
+            },
+            { label: '', kind: vscode.QuickPickItemKind.Separator, action: 'none' },
+            {
+                label: '$(settings) Configure Backend URL',
+                description: 'Open settings for atopile.dashboardApiUrl',
+                action: 'open_settings',
+            },
+            { label: '', kind: vscode.QuickPickItemKind.Separator, action: 'none' },
+        ];
+
+        if (this._isConnected) {
+            items.push({
+                label: '$(debug-restart) Restart Backend Server',
+                description: 'Stop and restart the backend server',
+                action: 'restart',
+            });
+        } else {
+            items.push({
+                label: '$(play) Start Backend Server',
+                description: 'Start the backend server in a terminal',
+                action: 'start',
+            });
+        }
+
+        items.push({
+            label: '$(terminal) Show Server Terminal',
+            description: 'Show the backend server terminal',
+            action: 'show_terminal',
+        });
+
+        const selected = await vscode.window.showQuickPick(items, {
+            placeHolder: 'Backend Server Configuration',
+            title: 'atopile Backend',
+        });
+
+        if (!selected || selected.action === 'none') return;
+
+        switch (selected.action) {
+            case 'open_settings':
+                await vscode.commands.executeCommand(
+                    'workbench.action.openSettings',
+                    'atopile.dashboardApiUrl'
+                );
+                break;
+            case 'restart':
+                await this.restartServer();
+                break;
+            case 'start':
+                await this.startServer();
+                break;
+            case 'show_terminal':
+                await this.showTerminal();
+                break;
+        }
     }
 
     get isConnected(): boolean {
@@ -145,28 +235,27 @@ class BackendServerManager implements vscode.Disposable {
     }
 
     get port(): number {
-        return this._discoveredPort || DEFAULT_PORT;
+        return getConfiguredPort() || DEFAULT_PORT;
     }
 
     get apiUrl(): string {
-        if (this._discoveredPort) {
-            return buildApiUrl(this._discoveredPort);
-        }
         return getApiUrl();
     }
 
     get wsUrl(): string {
-        return buildWsUrl(this.port);
+        return buildWsUrlFromApiUrl(this.apiUrl) || buildWsUrl(this.port);
     }
 
     /**
      * Update connection status (called from appStateManager when WebSocket connects/disconnects).
      */
     setConnected(connected: boolean): void {
+        traceInfo(`BackendServer: setConnected(${connected}) called, current: ${this._isConnected}`);
         if (this._isConnected !== connected) {
             this._isConnected = connected;
-            traceInfo(`BackendServer: ${connected ? 'Connected' : 'Disconnected'}`);
+            traceInfo(`BackendServer: ${connected ? 'Connected' : 'Disconnected'}, firing onStatusChange`);
             this._onStatusChange.fire(connected);
+            this._updateStatusBar();
 
             // Configure ato binary path on first connection
             if (connected) {
@@ -191,33 +280,11 @@ class BackendServerManager implements vscode.Disposable {
             return true;
         }
 
-        // Try to discover port from existing port file
-        const workspaceRoot = getWorkspaceRoot();
-        const existingPort = readPortFile(workspaceRoot);
-        if (existingPort) {
-            this._discoveredPort = existingPort;
-            setServerPort(existingPort);
-            traceInfo(`BackendServer: Found existing port file with port ${existingPort}`);
-
-            // Check if server is actually running on that port
-            if (await this._checkServerHealth()) {
-                traceInfo('BackendServer: Server already running on discovered port');
-                this._onPortDiscovered.fire(existingPort);
-                return true;
-            } else {
-                traceVerbose('BackendServer: Port file exists but server not responding, will start new server');
-                this._discoveredPort = undefined;
-            }
-        }
-
-        // Check if server is running on default port
-        this._discoveredPort = DEFAULT_PORT;
-        setServerPort(DEFAULT_PORT);
+        // Check if server is already running on configured URL
         if (await this._checkServerHealth()) {
-            traceInfo('BackendServer: Server already running on default port');
+            traceInfo('BackendServer: Server already running on configured URL');
             return true;
         }
-        this._discoveredPort = undefined;
 
         this._startupPromise = this._doStartServer();
         try {
@@ -229,12 +296,11 @@ class BackendServerManager implements vscode.Disposable {
 
     private async _doStartServer(): Promise<boolean> {
         this._isStarting = true;
+        this._updateStatusBar();
 
         try {
             const workspaceRoot = getWorkspaceRoot();
-
-            // Build command with --auto-port to avoid conflicts and --workspace for port file location
-            const args = ['serve', 'backend', '--auto-port'];
+            const args = ['serve', 'backend', '--port', String(this.port)];
             if (workspaceRoot) {
                 args.push('--workspace', workspaceRoot);
             }
@@ -254,25 +320,10 @@ class BackendServerManager implements vscode.Disposable {
             });
             this._terminal.sendText(command);
 
-            // Wait for port file to appear (server writes it on startup)
-            traceVerbose('BackendServer: Waiting for port file...');
-            const discoveredPort = await waitForPortFile(workspaceRoot, SERVER_STARTUP_TIMEOUT_MS / 2);
-            if (discoveredPort) {
-                this._discoveredPort = discoveredPort;
-                setServerPort(discoveredPort);
-                traceInfo(`BackendServer: Discovered port ${discoveredPort} from port file`);
-                this._onPortDiscovered.fire(discoveredPort);
-            } else {
-                // Fall back to default port if port file not found
-                traceVerbose('BackendServer: Port file not found, using default port');
-                this._discoveredPort = DEFAULT_PORT;
-                setServerPort(DEFAULT_PORT);
-            }
-
             // Wait for server to be ready
             const ready = await this._waitForServerReady();
             if (ready) {
-                traceInfo(`BackendServer: Server started successfully on port ${this._discoveredPort}`);
+                traceInfo(`BackendServer: Server started successfully on port ${this.port}`);
             } else {
                 traceError('BackendServer: Server failed to start within timeout');
                 // Show terminal so user can see what went wrong
@@ -285,6 +336,7 @@ class BackendServerManager implements vscode.Disposable {
             return false;
         } finally {
             this._isStarting = false;
+            this._updateStatusBar();
         }
     }
 
@@ -431,9 +483,13 @@ class BackendServerManager implements vscode.Disposable {
             this._terminal = undefined;
         }
 
-        this._discoveredPort = undefined;
+        // Dispose status bar item
+        if (this._statusBarItem) {
+            this._statusBarItem.dispose();
+            this._statusBarItem = undefined;
+        }
+
         this._onStatusChange.dispose();
-        this._onPortDiscovered.dispose();
 
         for (const disposable of this._disposables) {
             disposable.dispose();

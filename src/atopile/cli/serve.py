@@ -18,22 +18,6 @@ from atopile.server.server import DASHBOARD_PORT
 serve_app = typer.Typer(no_args_is_help=True)
 
 
-def read_port_file(workspace: Path | None = None) -> int | None:
-    """Read the backend port from the port file if it exists."""
-    search_paths = []
-    if workspace:
-        search_paths.append(workspace / ".atopile" / ".server_port")
-    search_paths.append(Path.cwd() / ".atopile" / ".server_port")
-
-    for port_file in search_paths:
-        if port_file.exists():
-            try:
-                return int(port_file.read_text().strip())
-            except (ValueError, OSError):
-                continue
-    return None
-
-
 def _install_nodejs() -> Optional[int]:
     if sys.platform == "darwin":
         if shutil.which("brew"):
@@ -86,11 +70,6 @@ def backend(
         "-f",
         help="Kill existing server on the port and start fresh",
     ),
-    auto_port: bool = typer.Option(
-        False,
-        "--auto-port",
-        help="Automatically find a free port if the default is in use",
-    ),
 ) -> None:
     """Start the backend server in the current terminal."""
     cmd = [sys.executable, "-m", "atopile.server", "--port", str(port)]
@@ -100,9 +79,6 @@ def backend(
         cmd.extend(["--logs-dir", str(logs_dir)])
     if force:
         cmd.append("--force")
-    if auto_port:
-        cmd.append("--auto-port")
-
     raise typer.Exit(subprocess.run(cmd).returncode)
 
 
@@ -114,7 +90,7 @@ def frontend(
         None,
         "--backend",
         "-b",
-        help="Backend host:port (e.g. localhost:{DASHBOARD_PORT}). Auto-detected from port file if not specified.",  # noqa: E501
+        help="Backend host:port (e.g. localhost:{DASHBOARD_PORT}).",
     ),
 ) -> None:
     """Start the UI server (Vite) in the current terminal."""
@@ -156,18 +132,10 @@ def frontend(
         if result.returncode != 0:
             raise typer.Exit(result.returncode)
 
-    # Auto-detect backend port from port file if not specified
-    backend_port = DASHBOARD_PORT
     if backend:
-        # Use explicitly specified backend
         backend_host = backend if "://" in backend else f"http://{backend}"
     else:
-        # Try to read port from port file
-        discovered_port = read_port_file()
-        if discovered_port:
-            backend_port = discovered_port
-            print(f"Auto-detected backend on port {backend_port} from port file")
-        backend_host = f"http://localhost:{backend_port}"
+        backend_host = f"http://localhost:{DASHBOARD_PORT}"
 
     ws_host = backend_host.replace("http://", "ws://").replace("https://", "wss://")
     env = os.environ.copy()
