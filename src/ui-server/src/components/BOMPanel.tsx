@@ -518,11 +518,11 @@ export function BOMPanel({
       .then((result) => {
         const build = Array.isArray(result.builds) ? result.builds[0] : null
         setLatestBuildInfo(build ? {
-          build_id: build.build_id,
-          started_at: build.started_at,
-          completed_at: build.completed_at ?? (
-            build.started_at && build.duration ? build.started_at + build.duration : undefined
-          ),
+          build_id: build.buildId,
+          started_at: build.startedAt,
+          completed_at: build.startedAt && build.elapsedSeconds
+            ? build.startedAt + build.elapsedSeconds
+            : undefined,
         } : null)
       })
       .catch((error) => {
