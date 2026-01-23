@@ -419,6 +419,15 @@ export interface AppState {
   currentVariablesData: VariablesData | null;
   isLoadingVariables: boolean;
   variablesError: string | null;
+
+  // One-shot open signals (cleared after broadcast)
+  // These are set by the backend to trigger file/app opening in VS Code
+  openFile?: string | null;
+  openFileLine?: number | null;
+  openFileColumn?: number | null;
+  openLayout?: string | null;
+  openKicad?: string | null;
+  open3D?: string | null;
 }
 
 // --- Problem Types ---

@@ -8,7 +8,7 @@
 import { useStore } from '../store';
 import type { AppState } from '../types/build';
 import { WS_STATE_URL, getWorkspaceFolders } from './config';
-import { postMessage, onExtensionMessage, initExtensionMessageListener } from './vscodeApi';
+import { postMessage } from './vscodeApi';
 
 // Reconnection settings
 const RECONNECT_DELAY_MS = 1000;
@@ -219,63 +219,38 @@ function handleMessage(event: MessageEvent): void {
     switch (message.type) {
       case 'state':
         // Full state replacement from backend
+        // Note: Backend's to_frontend_dict() converts all keys to camelCase
         {
-          const rawState = message.data as unknown as Record<string, unknown>;
-          const {
-            installing_package_ids,
-            install_error,
-            // Extract open signals (snake_case from Python)
-            open_file,
-            open_file_line,
-            open_file_column,
-            open_layout,
-            open_kicad,
-            open_3d,
-            ...rest
-          } = rawState as Record<string, unknown>;
+          const state = message.data as AppState;
 
-          const restState = rest as unknown as AppState;
+          // Extract one-shot open signals before replacing state
+          const { openFile, openFileLine, openFileColumn, openLayout, openKicad, open3D, ...stateWithoutSignals } = state;
 
-          useStore.getState().replaceState({
-            ...restState,
-            installingPackageIds:
-              (installing_package_ids as string[] | undefined) ??
-              restState.installingPackageIds ??
-              [],
-            installError:
-              (install_error as string | null | undefined) ??
-              restState.installError ??
-              null,
-          });
+          // Update store with state (excluding one-shot signals)
+          useStore.getState().replaceState(stateWithoutSignals);
 
-          // Forward open signals to VS Code extension
-          const openFile = open_file as string | null | undefined;
-          const openLayout = open_layout as string | null | undefined;
-          const openKicad = open_kicad as string | null | undefined;
-          const open3d = open_3d as string | null | undefined;
-
-          if (openFile || openLayout || openKicad || open3d) {
+          // Forward open signals to VS Code extension (one-shot actions)
+          if (openFile || openLayout || openKicad || open3D) {
             postMessage({
               type: 'openSignals',
               openFile: openFile ?? null,
-              openFileLine: (open_file_line as number | null | undefined) ?? null,
-              openFileColumn: (open_file_column as number | null | undefined) ?? null,
+              openFileLine: openFileLine ?? null,
+              openFileColumn: openFileColumn ?? null,
               openLayout: openLayout ?? null,
               openKicad: openKicad ?? null,
-              open3d: open3d ?? null,
+              open3d: open3D ?? null,
             });
           }
 
           // Forward atopile settings changes to VS Code extension
-          const atopile = restState.atopile;
-          if (atopile) {
+          if (state.atopile) {
             postMessage({
               type: 'atopileSettings',
               atopile: {
-                source: atopile.source,
-                currentVersion: atopile.currentVersion,
-                branch: atopile.branch,
-                localPath: atopile.localPath,
+                source: state.atopile.source,
+                currentVersion: state.atopile.currentVersion,
+                branch: state.atopile.branch,
+                localPath: state.atopile.localPath,
               },
             });
           }
@@ -365,54 +340,6 @@ function scheduleReconnect(): void {
     reconnectAttempts++;
     connect();
   }, delay);
-}
-
-// --- React hook for connection lifecycle ---
-
-/**
- * React hook to manage WebSocket connection lifecycle.
- * Call this once at the app root level.
- */
-export function useWebSocketConnection(): void {
-  // Connect on mount, disconnect on unmount
-  // This uses a custom hook pattern that works with React's lifecycle
-  if (typeof window !== 'undefined') {
-    // Only run in browser
-    const { useEffect } = require('react');
-
-    useEffect(() => {
-      connect();
-
-      // Initialize listener for messages from VS Code extension
-      initExtensionMessageListener();
-
-      // Handle messages from extension (build requests, etc.)
-      const unsubscribe = onExtensionMessage((message) => {
-        switch (message.type) {
-          case 'triggerBuild':
-            // Forward build request to backend via WebSocket
-            sendAction('build', {
-              projectRoot: message.projectRoot,
-              targets: message.targets,
-              requestId: message.requestId,
-            });
-            break;
-          case 'setAtopileInstalling':
-            // Forward atopile installing status to backend
-            sendAction('setAtopileInstalling', {
-              installing: message.installing,
-              error: message.error,
-            });
-            break;
-        }
-      });
-
-      return () => {
-        unsubscribe();
-        disconnect();
-      };
-    }, []);
-  }
 }
 
 // Export for use in components

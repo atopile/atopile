@@ -79,8 +79,9 @@ function DependencyItem({
   const [isExpanded, setIsExpanded] = useState(false);
   const isDirect = dependency.isDirect !== false;
   const canEdit = !readOnly && isDirect;
-  const hasUpdate = canEdit && (dependency.hasUpdate ||
-    (dependency.latestVersion && dependency.version !== dependency.latestVersion));
+  const hasUpdate = canEdit &&
+    !!dependency.latestVersion &&
+    dependency.version !== dependency.latestVersion;
   // Check if the dependency is up-to-date (installed version matches latest or no latest known)
   const isUpToDate = !hasUpdate && (!dependency.latestVersion || dependency.version === dependency.latestVersion);
   const viaLabel = !isDirect && dependency.via && dependency.via.length > 0

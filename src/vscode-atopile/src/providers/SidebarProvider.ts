@@ -11,7 +11,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { exec } from 'child_process';
 import { backendServer } from '../common/backendServer';
 import { traceInfo, traceError } from '../common/log/logging';
 
@@ -311,20 +310,23 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   /**
    * Open a file with the system default application (for KiCad, 3D files).
+   * Uses VS Code's openExternal API which is safe and cross-platform.
    */
   private _openWithSystem(filePath: string): void {
     traceInfo(`[SidebarProvider] Opening with system: ${filePath}`);
-    const platform = process.platform;
-    const cmd = platform === 'darwin' ? 'open'
-              : platform === 'win32' ? 'start ""'
-              : 'xdg-open';
-
-    exec(`${cmd} "${filePath}"`, (err: Error | null) => {
-      if (err) {
+    const uri = vscode.Uri.file(filePath);
+    vscode.env.openExternal(uri).then(
+      (success) => {
+        if (!success) {
+          traceError(`[SidebarProvider] Failed to open: ${filePath}`);
+          vscode.window.showErrorMessage(`Failed to open file with system application`);
+        }
+      },
+      (err) => {
         traceError(`[SidebarProvider] Failed to open: ${err}`);
         vscode.window.showErrorMessage(`Failed to open: ${err.message}`);
       }
-    });
+    );
   }
 
   /**
