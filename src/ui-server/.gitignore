@@ -1,0 +1,11 @@
+# Build outputs
+dist/
+
+# Vite cache
+.vite/
+
+# Test coverage
+coverage/
+
+# TypeScript cache
+*.tsbuildinfo
