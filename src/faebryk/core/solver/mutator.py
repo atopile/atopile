@@ -1412,6 +1412,11 @@ class AlgoResult:
     dirty: bool
 
 
+_EXPRESSION_BUILDER_TRAIT_ALLOWLIST: list[type[fabll.NodeT]] = [
+    F.has_name_override,
+]
+
+
 class ExpressionBuilder[
     T: F.Expressions.ExpressionNodes = F.Expressions.ExpressionNodes
 ](NamedTuple):
@@ -1419,6 +1424,7 @@ class ExpressionBuilder[
     operands: list[F.Parameters.can_be_operand]
     assert_: bool
     terminate: bool
+    traits: list[fabll.NodeT | None]
 
     @classmethod
     def from_e(cls, e: F.Expressions.is_expression) -> "ExpressionBuilder[T]":
@@ -1427,6 +1433,12 @@ class ExpressionBuilder[
             operands=e.get_operands(),
             assert_=bool(e.try_get_sibling_trait(F.Expressions.is_predicate)),
             terminate=bool(e.try_get_sibling_trait(is_terminated)),
+            traits=[
+                t
+                for trait_t in _EXPRESSION_BUILDER_TRAIT_ALLOWLIST
+                if trait_t is not None
+                and (t := e.try_get_sibling_trait(trait_t)) is not None
+            ],
         )
 
     def indexed_ops(self) -> dict[int, F.Parameters.can_be_operand]:
@@ -1449,9 +1461,12 @@ class ExpressionBuilder[
         return pretty_expr(self)
 
     def __str__(self) -> str:
+        traits = ", ".join(
+            [str(t.get_type_name()) for t in self.traits if t is not None]
+        )
         return (
             f"ExpressionBuilder({self.factory.__name__}, {self.operands},"
-            f" {self.assert_}, {self.terminate})"
+            f" {self.assert_}, {self.terminate}, traits=[{traits}])"
         )
 
     def matches(self, other: F.Expressions.is_expression) -> bool:
@@ -1473,12 +1488,14 @@ class ExpressionBuilder[
         operands: list[F.Parameters.can_be_operand] | None = None,
         assert_: bool | None = None,
         terminate: bool | None = None,
+        traits: list[fabll.NodeT | None] | None = None,
     ) -> "ExpressionBuilder[T]":
         return ExpressionBuilder(
             factory or self.factory,
             operands if operands is not None else self.operands,
             assert_ if assert_ is not None else self.assert_,
             terminate if terminate is not None else self.terminate,
+            traits if traits is not None else self.traits,
         )
 
 
@@ -1577,7 +1594,7 @@ class Mutator:
         - check graph consistency
         => create expression in new graph
         """
-        expr_factory, operands, assert_, terminate = builder
+        expr_factory, operands, assert_, terminate, traits = builder
 
         # check canonical
         # only after canonicalize has run
@@ -1599,6 +1616,10 @@ class Mutator:
         if assert_:
             ce = new_expr.get_trait(F.Expressions.is_assertable)
             self.assert_(ce, terminate=terminate, track=False)
+
+        for trait in traits:
+            if trait is not None:
+                new_expr.add_child(trait)
 
         from faebryk.core.solver.symbolic.invariants import I_LOG
 
@@ -1657,6 +1678,7 @@ class Mutator:
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
         assert_: bool = False,
         terminate: bool = False,
+        traits: list[fabll.NodeT | None] | None = None,
         allow_uncorrelated_congruence_match: bool = False,
     ) -> "InsertExpressionResult":
         return self.create_check_and_insert_expression_from_builder(
@@ -1665,6 +1687,7 @@ class Mutator:
                 list(operands),
                 assert_=assert_,
                 terminate=terminate,
+                traits=traits if traits is not None else [],
             ),
             from_ops=from_ops,
             allow_uncorrelated_congruence_match=allow_uncorrelated_congruence_match,
@@ -1675,6 +1698,7 @@ class Mutator:
         expr: F.Expressions.is_expression,
         operands: Iterable[F.Parameters.can_be_operand] | None = None,
         expression_factory: type[F.Expressions.ExpressionNodes] | None = None,
+        traits: list[fabll.NodeT | None] | None = None,
     ) -> F.Parameters.can_be_operand:
         import faebryk.core.solver.symbolic.invariants as invariants
 
@@ -1683,23 +1707,29 @@ class Mutator:
         if expr_po in self.transformations.mutated:
             return self.get_mutated(expr_po).as_operand.get()
 
-        if expression_factory is None:
-            expression_factory = self.utils.hack_get_expr_type(expr)
-
-        e_operands = expr.get_operands()
-        if operands is None:
-            operands = e_operands
-
         assert_ = bool(expr.try_get_sibling_trait(F.Expressions.is_predicate))
-        terminate = self.is_terminated(expr)
-
         # aliases should be copied manually
         if expression_factory is F.Expressions.Is and assert_:
             return self.make_singleton(True).can_be_operand.get()
 
+        e_operands = expr.get_operands()
+        operands = operands or e_operands
+
+        builder = ExpressionBuilder.from_e(expr).with_(
+            factory=expression_factory if expression_factory is not None else None,
+            # TODO automatically flatten exprs if algo layer wants the comfort
+            # enforce lit or param
+            operands=[self.get_operand_copy(op) for op in operands]
+            if operands is not None
+            else None,
+            assert_=assert_,
+            terminate=self.is_terminated(expr),
+            traits=traits if traits is not None else [],
+        )
+
         expr_obj = fabll.Traits(expr).get_obj_raw()
         copy_only = (
-            expr_obj.isinstance(expression_factory) and operands == expr.get_operands()
+            expr_obj.isinstance(builder.factory) and operands == expr.get_operands()
         )
 
         # predicates don't have aliases
@@ -1714,13 +1744,6 @@ class Mutator:
                 .as_parameter_operatable.force_get()
                 .as_parameter.force_get()
             )
-
-        builder = invariants.ExpressionBuilder(
-            factory=expression_factory,
-            operands=list(operands),
-            assert_=assert_,
-            terminate=terminate,
-        )
 
         s = scope()
         if S_LOG:
@@ -1743,6 +1766,7 @@ class Mutator:
             if S_LOG:
                 s.__exit__(None, None, None)
                 logger.debug("Dropped and replaced with True")
+        if (new_expr_e := res.out) is None:
             return self.make_singleton(True).can_be_operand.get()
 
         assert not self.has_been_mutated(expr_po), (

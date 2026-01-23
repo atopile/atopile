@@ -461,6 +461,7 @@ def _create_alias_parameter_for_expression(
             [expr_copy.as_operand.get(), p.as_operand.get()],
             assert_=True,
             terminate=True,
+            traits=[],
         )
     )
     mutator.transformations.created[is_expr.is_parameter_operatable.get()] = [expr_po]

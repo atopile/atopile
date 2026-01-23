@@ -239,6 +239,7 @@ class SubsumptionCheck:
                     [subset_op.as_operand.get(), merged_superset.as_operand.get()],
                     assert_=True,
                     terminate=False,
+                    traits=[],
                 ),
                 subsumed=[superset_ss.is_expression.get()],
             )
@@ -277,6 +278,7 @@ class SubsumptionCheck:
                     [merged_subset.as_operand.get(), superset_op.as_operand.get()],
                     assert_=True,
                     terminate=False,
+                    traits=[],
                 ),
                 subsumed=[subset_ss.is_expression.get()],
             )
@@ -414,6 +416,7 @@ class SubsumptionCheck:
             list(ops),
             assert_=True,
             terminate=False,
+            traits=[],
         )
         debug(f"New alias: {builder}")
         return SubsumptionCheck.Result(
@@ -514,7 +517,7 @@ def _no_empty_superset(
     """
     A ss! {} => Contradiction.
     """
-    factory, operands, assert_, _ = builder
+    factory, operands, assert_, _, _ = builder
     if (
         factory is IsSubset
         and assert_
@@ -544,7 +547,7 @@ def _no_predicate_literals(
     P! ss! True / True ss! P! -> Drop (carries no information)
     """
 
-    factory, operands, assert_, _ = builder
+    factory, operands, assert_, _, _ = builder
     if not (factory is F.Expressions.IsSubset and assert_):
         return builder
 
@@ -598,7 +601,7 @@ def _no_literal_inequalities(
     """
     import math
 
-    factory, operands, assert_, terminate = builder
+    factory, operands, assert_, terminate, _ = builder
 
     if factory is not F.Expressions.GreaterOrEqual or not assert_:
         return builder
@@ -626,7 +629,8 @@ def _no_literal_inequalities(
 
     new_operands = [po_operand, new_superset.can_be_operand.get()]
     new_builder = cast(
-        ExpressionBuilder, ExpressionBuilder(IsSubset, new_operands, assert_, terminate)
+        ExpressionBuilder,
+        ExpressionBuilder(IsSubset, new_operands, assert_, terminate, []),
     )  # TODO fuck you pyright
 
     if I_LOG:
@@ -872,6 +876,7 @@ def _no_literal_aliases(
         [non_lit_op, lit.as_operand.get()],
         builder.assert_,
         builder.terminate,
+        builder.traits,
     )
 
     return builder
@@ -1094,6 +1099,7 @@ def insert_expression(
                     [alias.as_operand.get(), congruent_op],
                     assert_=True,
                     terminate=True,
+                    traits=[],
                 )
             )
         # unflag dirty
@@ -1211,6 +1217,7 @@ def insert_expression(
                 [alias.as_operand.get(), expr.can_be_operand.get()],
                 assert_=True,
                 terminate=True,
+                traits=[],
             )
         )
 
@@ -1222,6 +1229,7 @@ def insert_expression(
                 [target.as_operand.get(), super_lit.as_operand.get()],
                 assert_=True,
                 terminate=True,
+                traits=[],
             )
         )
     if sub_lit:
@@ -1232,6 +1240,7 @@ def insert_expression(
                 [sub_lit.as_operand.get(), target.as_operand.get()],
                 assert_=True,
                 terminate=True,
+                traits=[],
             )
         )
 
@@ -1448,6 +1457,7 @@ class TestInvariantsSimple:
             [not_op, false_lit],
             assert_=True,
             terminate=False,
+            traits=[],
         )
 
         with pytest.raises(Contradiction):
@@ -1484,6 +1494,7 @@ class TestInvariantsSimple:
             [not_op, true_lit],
             assert_=True,
             terminate=False,
+            traits=[],
         )
 
         # Should return None (expression dropped - no information added)
@@ -1692,6 +1703,7 @@ class TestInvariantsSimple:
                 [p_op, lit2.can_be_operand.get()],
                 assert_=True,
                 terminate=False,
+                traits=[],
             ),
         )
 
@@ -1743,6 +1755,7 @@ class TestInvariantsSimple:
             [p_op, empty_lit.can_be_operand.get()],
             assert_=True,
             terminate=False,
+            traits=[],
         )
 
         with pytest.raises(Contradiction):
@@ -1884,6 +1897,7 @@ class TestInvariantsSimple:
             [p_op, p_op],
             assert_=True,
             terminate=False,
+            traits=[],
         )
 
         result = Folds._no_reflexive_tautologies(mutator, builder)
@@ -1918,6 +1932,7 @@ class TestInvariantsSimple:
             [p_op, p_op, q_op],
             assert_=False,
             terminate=False,
+            traits=[],
         )
 
         result = _deduplicate_idempotent_operands(mutator, builder)
@@ -1951,6 +1966,7 @@ class TestInvariantsSimple:
             [p_op, q_op, p_op],
             assert_=False,
             terminate=False,
+            traits=[],
         )
 
         result = _deduplicate_idempotent_operands(mutator, builder)
@@ -2018,6 +2034,7 @@ class TestInvariantsCombinations:
             [pred_op, true_lit],
             assert_=False,
             terminate=False,
+            traits=[],
         )
 
         result = _no_predicate_operands(mutator, builder)
@@ -2149,6 +2166,7 @@ class TestInvariantsCombinations:
             ],
             assert_=False,
             terminate=False,
+            traits=[],
         )
 
         result = _no_predicate_operands(mutator, builder)
@@ -2194,6 +2212,7 @@ class TestInvariantsCombinations:
                 [p_op, lit2.can_be_operand.get()],
                 assert_=True,
                 terminate=False,
+                traits=[],
             ),
         )
 
@@ -2230,6 +2249,7 @@ class TestInvariantsCombinations:
             [p_op, lit5.can_be_operand.get()],
             assert_=True,
             terminate=False,
+            traits=[],
         )
 
         result = _no_literal_inequalities(mutator, builder)
@@ -2300,6 +2320,7 @@ class TestInvariantsCombinations:
             [not_op, true_lit],
             assert_=True,
             terminate=False,
+            traits=[],
         )
 
         # _no_predicate_literals should return None (drop the expression)
@@ -2330,6 +2351,7 @@ class TestInvariantsCombinations:
             [p_op, lit20.can_be_operand.get()],
             assert_=True,
             terminate=False,
+            traits=[],
         )
         result1 = _no_literal_inequalities(mutator, builder1)
         assert result1.factory is F.Expressions.IsSubset
@@ -2345,6 +2367,7 @@ class TestInvariantsCombinations:
             [lit50.can_be_operand.get(), p_op],
             assert_=True,
             terminate=False,
+            traits=[],
         )
         result2 = _no_literal_inequalities(mutator, builder2)
         assert result2.factory is F.Expressions.IsSubset
@@ -2564,6 +2587,7 @@ class TestSubsumptionDetection:
                 ],
                 assert_=True,
                 terminate=False,
+                traits=[],
             )
             return find_subsuming_expression(m, builder)
 
@@ -2639,6 +2663,7 @@ class TestSubsumptionDetection:
                 ],
                 assert_=True,
                 terminate=False,
+                traits=[],
             )
             return find_subsuming_expression(m, builder)
 
@@ -2684,6 +2709,7 @@ class TestSubsumptionDetection:
                 ],
                 assert_=True,
                 terminate=False,
+                traits=[],
             )
             return find_subsuming_expression(m, builder)
 
@@ -2717,6 +2743,7 @@ class TestSubsumptionDetection:
                 ],
                 assert_=True,
                 terminate=False,
+                traits=[],
             )
             return find_subsuming_expression(m, builder)
 
@@ -2751,7 +2778,7 @@ class TestSubsumptionDetection:
             # Build new Or(A, B, C)
             new_operands = [not_none(m.get_copy(op)) for op in [pred_a, pred_b, pred_c]]
             builder = ExpressionBuilder(
-                F.Expressions.Or, new_operands, assert_=True, terminate=False
+                F.Expressions.Or, new_operands, assert_=True, terminate=False, traits=[]
             )
             return find_subsuming_expression(m, builder)
 
@@ -2781,7 +2808,7 @@ class TestSubsumptionDetection:
 
             new_operands = [not_none(m.get_copy(op)) for op in [pred_a, pred_b]]
             builder = ExpressionBuilder(
-                F.Expressions.Or, new_operands, assert_=True, terminate=False
+                F.Expressions.Or, new_operands, assert_=True, terminate=False, traits=[]
             )
             return find_subsuming_expression(m, builder)
 
@@ -2814,7 +2841,7 @@ class TestSubsumptionDetection:
             # Try to find subsumption for Or(A, B)
             new_operands = [not_none(m.get_copy(op)) for op in [pred_a, pred_b]]
             builder = ExpressionBuilder(
-                F.Expressions.Or, new_operands, assert_=True, terminate=False
+                F.Expressions.Or, new_operands, assert_=True, terminate=False, traits=[]
             )
             return find_subsuming_expression(m, builder)
 
@@ -2846,7 +2873,7 @@ class TestSubsumptionDetection:
 
             new_operands = [not_none(m.get_copy(op)) for op in [pred_a, pred_c]]
             builder = ExpressionBuilder(
-                F.Expressions.Or, new_operands, assert_=True, terminate=False
+                F.Expressions.Or, new_operands, assert_=True, terminate=False, traits=[]
             )
             return find_subsuming_expression(m, builder)
 
@@ -2934,6 +2961,7 @@ class TestSubsumptionDetection:
                 ],
                 assert_=True,
                 terminate=False,
+                traits=[],
             )
             return find_subsuming_expression(m, builder)
 
@@ -2998,6 +3026,7 @@ class TestSubsumptionDetection:
                 ],
                 assert_=True,
                 terminate=False,
+                traits=[],
             )
             return find_subsuming_expression(m, builder)
 
@@ -3060,6 +3089,7 @@ class TestSubsumptionDetection:
                 ],
                 assert_=True,
                 terminate=False,
+                traits=[],
             )
             result = find_subsuming_expression(m, builder)
 
