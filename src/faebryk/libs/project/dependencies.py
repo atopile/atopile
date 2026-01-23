@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import cast
 
 import atopile.config as config
-from atopile import errors
+from atopile import errors, version
 from faebryk.libs.backend.packages.api import Errors as ApiErrors
 from faebryk.libs.backend.packages.api import PackagesAPIClient
 from faebryk.libs.package.dist import Dist, DistValidationError
@@ -40,6 +40,76 @@ def _log_pin_package(identifier: str, version: str):
 def _log_remove_package(identifier: str, version: str | None):
     dep_str = f"{identifier}@{version}" if version else identifier
     logger.info(f"[red]-[/] {dep_str}", extra={"markup": True})
+
+
+def _select_compatible_registry_release(
+    api: PackagesAPIClient, identifier: str, requested_release: str | None
+) -> str:
+    """
+    Select a compatible release for a package based on the installed atopile version.
+
+    The API returns releases in descending order (newest first), which is part of the
+    API contract. If the user has specified a version, we check that specific version
+    for compatibility and raise an error if it's incompatible. If no version is
+    specified, we fall back to older versions if the latest is incompatible.
+    """
+    releases = api.get_package_releases(identifier)
+    if not releases:
+        raise errors.UserException(f"No releases found for {identifier}")
+
+    # API returns releases in descending order (newest first) by contract
+    installed_version = version.get_installed_atopile_version()
+
+    if requested_release is not None:
+        # User specified a version - find it and check compatibility
+        requested = next(
+            (release for release in releases if release.version == requested_release),
+            None,
+        )
+        if requested is None:
+            raise errors.UserException(
+                f"Release not found: {identifier}@{requested_release}"
+            )
+
+        # If user explicitly specified a version, it must be compatible - no fallback
+        if not version.match(requested.requires_atopile, installed_version):
+            raise errors.UserException(
+                f"Package {identifier}@{requested_release} requires atopile "
+                f"{requested.requires_atopile}, but you have "
+                f"{version.clean_version(installed_version)} installed."
+            )
+
+        return requested.version
+
+    # No version specified - find the first compatible release (fallback behavior)
+    latest_release = releases[0]
+    compatible_release = next(
+        (
+            release
+            for release in releases
+            if version.match(release.requires_atopile, installed_version)
+        ),
+        None,
+    )
+    if compatible_release is None:
+        raise errors.UserException(
+            f"No compatible versions were found of package {identifier} "
+            f"for atopile version {version.clean_version(installed_version)}"
+        )
+
+    if compatible_release.version != latest_release.version:
+        logger.warning(
+            "Package %s@%s requires atopile %s which is incompatible with %s; "
+            "using %s@%s instead.",
+            identifier,
+            latest_release.version,
+            latest_release.requires_atopile,
+            version.clean_version(installed_version),
+            identifier,
+            compatible_release.version,
+        )
+
+    return compatible_release.version
 
 
 class BrokenDependencyError(Exception):
@@ -146,15 +216,19 @@ class ProjectDependency:
 
         elif isinstance(self.spec, config.RegistryDependencySpec):
             api = PackagesAPIClient()
+            requested_release = self.spec.release
             try:
+                selected_release = _select_compatible_registry_release(
+                    api, self.spec.identifier, requested_release
+                )
                 dist = api.get_release_dist(
                     self.spec.identifier,
                     Path(temp_dir),
-                    version=self.spec.release,
+                    version=selected_release,
                 )
             except ApiErrors.ReleaseNotFoundError as e:
                 raise errors.UserException(
-                    f"Release not found: {self.spec.identifier}@{self.spec.release}"
+                    f"Release not found: {self.spec.identifier}@{selected_release}"
                 ) from e
             self.spec.release = dist.version
         else:
@@ -194,6 +268,7 @@ class ProjectDependencies:
         install_missing: bool = False,
         clean_unmanaged_dirs: bool = False,
         pin_versions: bool = False,
+        update_versions: bool = False,
     ):
         if pcfg is None:
             if self.gcfg is None:
@@ -209,6 +284,8 @@ class ProjectDependencies:
         }
         self.dag = self.resolve_dependencies()
 
+        if update_versions:
+            self.update_versions()
         if sync_versions:
             self.sync_versions()
         if install_missing:
@@ -535,3 +612,28 @@ class ProjectDependencies:
                 dep.spec.release = dep.cfg.package.version
                 dep.add_to_manifest()
                 _log_pin_package(dep.identifier, dep.cfg.package.version)
+
+    def update_versions(self):
+        """
+        Update registry dependencies to their latest compatible versions.
+        """
+        api = PackagesAPIClient()
+        dirty = False
+        for dep in self.direct_deps:
+            if not isinstance(dep.spec, config.RegistryDependencySpec):
+                continue
+            # Pass None to get the latest compatible release (fallback behavior)
+            latest_version = _select_compatible_registry_release(
+                api, dep.spec.identifier, None
+            )
+            if dep.spec.release != latest_version:
+                logger.info(
+                    f"Updating {dep.spec.identifier}: "
+                    f"{dep.spec.release or '<unpinned>'} -> {latest_version}"
+                )
+                dep.spec.release = latest_version
+                dep.add_to_manifest()
+                dirty = True
+
+        if dirty:
+            self.reload()
