@@ -55,9 +55,20 @@ vi.mock('../api/websocket', () => ({
   isConnected: vi.fn(() => true),
 }));
 
+const mockApi = {
+  projects: { list: vi.fn() },
+  builds: { history: vi.fn(), active: vi.fn() },
+  packages: { summary: vi.fn() },
+  problems: { list: vi.fn() },
+  stdlib: { list: vi.fn() },
+};
+
+vi.mock('../api/client', () => ({
+  api: mockApi,
+}));
+
 // Import after mocks
 import { Sidebar } from '../components/Sidebar';
-import { sendAction } from '../api/websocket';
 
 // Mock state data - minimal state needed for Sidebar to render
 const mockState = {
@@ -101,8 +112,6 @@ const mockState = {
   packagesError: null,
   isLoadingProblems: false,
   expandedTargets: [],
-  version: '1.0.0',
-  logoUri: '',
   atopile: {
     currentVersion: '0.14.0',
     source: 'release' as const,
@@ -230,15 +239,24 @@ describe('Sidebar', () => {
     });
   });
 
-  describe('WebSocket action dispatch', () => {
-    it('sends refresh actions on mount', async () => {
+  describe('initial refresh', () => {
+    it('fetches initial data on mount', async () => {
+      mockApi.projects.list.mockResolvedValueOnce({ projects: [] });
+      mockApi.builds.history.mockResolvedValueOnce({ builds: [] });
+      mockApi.builds.active.mockResolvedValueOnce({ builds: [] });
+      mockApi.packages.summary.mockResolvedValueOnce({ packages: [] });
+      mockApi.problems.list.mockResolvedValueOnce({ problems: [] });
+      mockApi.stdlib.list.mockResolvedValueOnce({ items: [] });
+
       render(<Sidebar />);
 
-      // Actions are dispatched in useSidebarEffects after a 100ms delay
       await waitFor(() => {
-        expect(sendAction).toHaveBeenCalledWith('refreshProblems', undefined);
-        expect(sendAction).toHaveBeenCalledWith('refreshPackages', undefined);
-        expect(sendAction).toHaveBeenCalledWith('refreshStdlib', undefined);
+        expect(mockApi.projects.list).toHaveBeenCalled();
+        expect(mockApi.builds.history).toHaveBeenCalled();
+        expect(mockApi.builds.active).toHaveBeenCalled();
+        expect(mockApi.packages.summary).toHaveBeenCalled();
+        expect(mockApi.problems.list).toHaveBeenCalled();
+        expect(mockApi.stdlib.list).toHaveBeenCalled();
       }, { timeout: 200 });
     });
   });

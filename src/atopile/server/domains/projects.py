@@ -31,8 +31,6 @@ from atopile.dataclasses import (
 from atopile.server.app_context import AppContext
 from atopile.server.core import projects as core_projects
 from atopile.server.domains import packages as packages_domain
-from atopile.server.state import server_state
-
 log = logging.getLogger(__name__)
 
 
@@ -163,6 +161,12 @@ def _build_dependencies(project_path: Path) -> list[DependencyInfo]:
 
     dependencies: list[DependencyInfo] = []
 
+    try:
+        registry_packages = packages_domain.get_all_registry_packages()
+    except Exception:
+        registry_packages = []
+    registry_by_id = {pkg.identifier: pkg for pkg in registry_packages}
+
     for dep in direct_specs:
         identifier = dep.identifier
         if not identifier:
@@ -179,7 +183,7 @@ def _build_dependencies(project_path: Path) -> list[DependencyInfo]:
         has_update = False
         repository = None
 
-        cached_pkg = server_state.packages_by_id.get(identifier)
+        cached_pkg = registry_by_id.get(identifier)
         if cached_pkg:
             latest_version = cached_pkg.latest_version
             has_update = packages_domain.version_is_newer(version, latest_version)
@@ -214,7 +218,7 @@ def _build_dependencies(project_path: Path) -> list[DependencyInfo]:
         has_update = False
         repository = repo_from_pkg
 
-        cached_pkg = server_state.packages_by_id.get(identifier)
+        cached_pkg = registry_by_id.get(identifier)
         if cached_pkg:
             latest_version = cached_pkg.latest_version
             has_update = packages_domain.version_is_newer(version, latest_version)

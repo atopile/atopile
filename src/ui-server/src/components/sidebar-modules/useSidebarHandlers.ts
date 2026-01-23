@@ -4,6 +4,7 @@
  */
 
 import { sendActionWithResponse } from '../../api/websocket';
+import { api } from '../../api/client';
 import { useStore } from '../../store';
 import type { Selection, SelectedPackage, StageFilter } from './sidebarUtils';
 import type { PanelId } from '../../utils/panelConfig';
@@ -42,8 +43,7 @@ export function useSidebarHandlers({
       const projectRoot = project?.root || project?.path;
       if (projectRoot) {
         useStore.getState().setSelectedTargets([]);
-        action('setSelectedTargets', { targetNames: [] });
-        action('selectProject', { projectRoot });
+        useStore.getState().selectProject(projectRoot);
       }
     }
   };
@@ -51,15 +51,11 @@ export function useSidebarHandlers({
   const handleSelectProject = (projectRoot: string | null) => {
     useStore.getState().selectProject(projectRoot);
     useStore.getState().setSelectedTargets([]);
-    action('selectProject', { projectRoot });
-    action('setSelectedTargets', { targetNames: [] });
   };
 
   const handleSelectTarget = (projectRoot: string, targetName: string) => {
     useStore.getState().selectProject(projectRoot);
     useStore.getState().setSelectedTargets([targetName]);
-    action('selectProject', { projectRoot });
-    action('setSelectedTargets', { targetNames: [targetName] });
   };
 
   const handleBuild = (level: 'project' | 'build' | 'symbol', id: string, label: string) => {
@@ -91,10 +87,19 @@ export function useSidebarHandlers({
 
   const handleOpenPackageDetail = (pkg: SelectedPackage) => {
     setSelectedPackage(pkg);
-    action('getPackageDetails', { packageId: pkg.fullName });
+    useStore.getState().setLoadingPackageDetails(true);
+    api.packages
+      .details(pkg.fullName)
+      .then((details) => useStore.getState().setPackageDetails(details))
+      .catch((error) => {
+        useStore.getState().setPackageDetailsError(
+          error instanceof Error ? error.message : String(error)
+        );
+      });
   };
 
   const handlePackageInstall = (packageId: string, projectRoot: string, version?: string) => {
+    useStore.getState().addInstallingPackage(packageId);
     action('installPackage', { packageId, projectRoot, version });
   };
 
@@ -105,15 +110,36 @@ export function useSidebarHandlers({
   const handleProjectExpand = (projectRoot: string) => {
     const modules = state?.projectModules?.[projectRoot];
     if (projectRoot && (!modules || modules.length === 0)) {
-      action('fetchModules', { projectRoot });
+      useStore.getState().setLoadingModules(true);
+      api.modules
+        .list(projectRoot)
+        .then((result) => useStore.getState().setProjectModules(projectRoot, result.modules))
+        .catch((error) => {
+          console.error('Failed to fetch modules:', error);
+          useStore.getState().setLoadingModules(false);
+        });
     }
     const files = state?.projectFiles?.[projectRoot];
     if (projectRoot && (!files || files.length === 0)) {
-      action('fetchFiles', { projectRoot });
+      useStore.getState().setLoadingFiles(true);
+      api.files
+        .list(projectRoot)
+        .then((result) => useStore.getState().setProjectFiles(projectRoot, result.files))
+        .catch((error) => {
+          console.error('Failed to fetch files:', error);
+          useStore.getState().setLoadingFiles(false);
+        });
     }
     const deps = state?.projectDependencies?.[projectRoot];
     if (projectRoot && (!deps || deps.length === 0)) {
-      action('fetchDependencies', { projectRoot });
+      useStore.getState().setLoadingDependencies(true);
+      api.dependencies
+        .list(projectRoot)
+        .then((result) => useStore.getState().setProjectDependencies(projectRoot, result.dependencies))
+        .catch((error) => {
+          console.error('Failed to fetch dependencies:', error);
+          useStore.getState().setLoadingDependencies(false);
+        });
     }
   };
 
@@ -234,7 +260,12 @@ export function useSidebarHandlers({
         });
 
         // Refresh dependencies after install completes
-        action('fetchDependencies', { projectRoot: projectId });
+        try {
+          const result = await api.dependencies.list(projectId);
+          useStore.getState().setProjectDependencies(projectId, result.dependencies);
+        } catch (error) {
+          console.error('Failed to refresh dependencies:', error);
+        }
       } else {
         console.error('Failed to update dependency version:', response.result?.message);
       }

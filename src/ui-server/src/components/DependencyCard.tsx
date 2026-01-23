@@ -8,7 +8,7 @@
 import { useState, useEffect } from 'react'
 import { Package, ChevronDown, ChevronRight, X, Loader2 } from 'lucide-react'
 import { ProjectCard } from './ProjectCard'
-import { sendActionWithResponse } from '../api/websocket'
+import { api } from '../api/client'
 import { compareVersionsDesc } from '../utils/packageUtils'
 import type { FileTreeNode } from './FileExplorer'
 import type { Project, Selection } from './projectsTypes'
@@ -280,9 +280,7 @@ export function DependencyCard({
         setLoadingVersions(prev => new Set(prev).add(dep.identifier));
 
         try {
-          const response = await sendActionWithResponse('getPackageDetails', { packageId: dep.identifier });
-          const result = response.result ?? {};
-          const details = (result as { details?: { versions?: { version: string }[] } }).details;
+          const details = await api.packages.details(dep.identifier);
 
           if (details?.versions && details.versions.length > 0) {
             const versions = details.versions

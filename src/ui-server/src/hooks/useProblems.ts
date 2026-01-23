@@ -4,7 +4,7 @@
 
 import { useCallback } from 'react';
 import { useStore, useFilteredProblems } from '../store';
-import { sendAction } from '../api/websocket';
+import { api } from '../api/client';
 
 export function useProblems() {
   const problems = useStore((state) => state.problems);
@@ -14,7 +14,17 @@ export function useProblems() {
   const filteredProblems = useFilteredProblems();
 
   const refresh = useCallback(async (_options?: { projectRoot?: string; buildName?: string; level?: string }) => {
-    sendAction('refreshProblems');
+    const store = useStore.getState();
+    store.setLoadingProblems(true);
+    try {
+      const result = await api.problems.list({
+        developerMode: store.developerMode,
+      });
+      store.setProblems(result.problems);
+    } catch (error) {
+      console.error('Failed to fetch problems:', error);
+      store.setLoadingProblems(false);
+    }
   }, []);
 
   // Counts by level
