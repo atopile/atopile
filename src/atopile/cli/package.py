@@ -481,6 +481,41 @@ class _PackageValidators:
                 )
             )
 
+    @staticmethod
+    def verify_unused_and_duplicate_imports(config: "Config"):
+        import re
+
+        _import_name_regex = r"(import ([^,\n]+))"
+
+        ato_files = config.project.paths.root.rglob("*.ato")
+        for ato_file in ato_files:
+            import_statements: list[re.Match[str]] = []
+            content = ato_file.read_text(encoding="utf-8")
+            for import_name in re.finditer(_import_name_regex, content):
+                import_statements.append(import_name)
+
+            # check if the name is at lease twice in the file
+            unused_imports: list[str] = []
+            duplicates: list[str] = []
+            for import_match in import_statements:
+                if content.count(import_match.group(2)) < 2:
+                    unused_imports.append(import_match.group(2))
+                if content.count(import_match.group(1)) > 1:
+                    duplicates.append(import_match.group(1))
+
+            file_path = ato_file.relative_to(config.project.paths.root)
+            message = ""
+            if unused_imports:
+                message = (
+                    f"Unused imports: [{', '.join(unused_imports)}] in {file_path}"
+                )
+            if duplicates:
+                message += (
+                    f"\nDuplicate imports: [{', '.join(duplicates)}] in {file_path}"
+                )
+            if message:
+                raise UserBadParameterError(message)
+
 
 _DEFAULT_VALIDATORS = [
     _PackageValidators.verify_manifest,
@@ -497,6 +532,7 @@ _STRICT_VALIDATORS = [
     _PackageValidators.verify_usage_import,
     _PackageValidators.verify_usage_in_readme,
     _PackageValidators.verify_build_artifacts,
+    _PackageValidators.verify_unused_and_duplicate_imports,
 ]
 
 
