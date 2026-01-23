@@ -2,7 +2,7 @@
 WebSocket routes for real-time updates.
 
 Endpoints:
-- WS /ws/state - Full state synchronization
+- WS /ws/state - Event notifications and actions
 """
 
 import logging
@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
 from ..domains.actions import handle_data_action
-from ..state import ServerState, get_server_state
+from ..connections import ServerConnections, get_server_state
 
 log = logging.getLogger(__name__)
 
@@ -35,16 +35,10 @@ async def _safe_send_json(websocket: WebSocket, payload: dict) -> bool:
 @router.websocket("/ws/state")
 async def websocket_state(
     websocket: WebSocket,
-    server_state: ServerState = Depends(get_server_state),
+    server_state: ServerConnections = Depends(get_server_state),
 ):
     """
-    WebSocket endpoint for full state synchronization.
-
-    The Python backend pushes the full AppState to clients on:
-    1. Initial connection
-    2. Any state change
-
-    Clients can send actions which modify state and trigger broadcasts.
+    WebSocket endpoint for event notifications and actions.
     """
 
     client_id = await server_state.connect_client(websocket)

@@ -22,6 +22,16 @@ vi.mock('../api/websocket', () => ({
 
 import { sendAction } from '../api/websocket';
 
+const mockProjectsList = vi.fn();
+const mockProblemsList = vi.fn();
+
+vi.mock('../api/client', () => ({
+  api: {
+    projects: { list: mockProjectsList },
+    problems: { list: mockProblemsList },
+  },
+}));
+
 // Helper to reset store state
 const resetStore = () => {
   useStore.setState({
@@ -96,37 +106,39 @@ describe('useProjects hook', () => {
       result.current.selectProject('/projects/test');
     });
 
-    expect(sendAction).toHaveBeenCalledWith('selectProject', { projectRoot: '/projects/test' });
+    expect(useStore.getState().selectedProjectRoot).toBe('/projects/test');
   });
 
-  it('toggleTarget sends action', () => {
+  it('toggleTarget updates selection', () => {
     const { result } = renderHook(() => useProjects());
 
     act(() => {
       result.current.toggleTarget('default');
     });
 
-    expect(sendAction).toHaveBeenCalledWith('toggleTarget', { targetName: 'default' });
+    expect(useStore.getState().selectedTargetNames).toContain('default');
   });
 
-  it('toggleTargetExpanded sends action', () => {
+  it('toggleTargetExpanded updates UI', () => {
     const { result } = renderHook(() => useProjects());
 
     act(() => {
       result.current.toggleTargetExpanded('default');
     });
 
-    expect(sendAction).toHaveBeenCalledWith('toggleTargetExpanded', { targetName: 'default' });
+    expect(useStore.getState().expandedTargets).toContain('default');
   });
 
   it('refresh sends action', async () => {
     const { result } = renderHook(() => useProjects());
 
+    mockProjectsList.mockResolvedValueOnce({ projects: sampleProjects });
     await act(async () => {
       await result.current.refresh();
     });
 
-    expect(sendAction).toHaveBeenCalledWith('refreshProjects');
+    expect(mockProjectsList).toHaveBeenCalled();
+    expect(useStore.getState().projects).toEqual(sampleProjects);
   });
 });
 
@@ -156,14 +168,14 @@ describe('useBuilds hook', () => {
     expect(result.current.allBuilds).toHaveLength(2);
   });
 
-  it('selectBuild sends action', () => {
+  it('selectBuild updates store', () => {
     const { result } = renderHook(() => useBuilds());
 
     act(() => {
       result.current.selectBuild('default');
     });
 
-    expect(sendAction).toHaveBeenCalledWith('selectBuild', { buildName: 'default' });
+    expect(useStore.getState().selectedBuildName).toBe('default');
   });
 
   it('startBuild sends action', async () => {
@@ -225,14 +237,16 @@ describe('useProblems hook', () => {
     expect(result.current.warningCount).toBe(1);
   });
 
-  it('refresh sends action', async () => {
+  it('refresh fetches problems', async () => {
     const { result } = renderHook(() => useProblems());
 
+    mockProblemsList.mockResolvedValueOnce({ problems: sampleProblems });
     await act(async () => {
       await result.current.refresh();
     });
 
-    expect(sendAction).toHaveBeenCalledWith('refreshProblems');
+    expect(mockProblemsList).toHaveBeenCalled();
+    expect(useStore.getState().problems).toEqual(sampleProblems);
   });
 });
 

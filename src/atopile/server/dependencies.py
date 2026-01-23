@@ -67,9 +67,9 @@ class AppDependencies:
 
     @property
     def server_state(self):
-        """Get the server state singleton."""
+        """Get the server connections singleton."""
         if self._server_state is None:
-            from .state import server_state
+            from .connections import server_state
 
             self._server_state = server_state
         return self._server_state

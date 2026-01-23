@@ -20,10 +20,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from atopile.server import build_history, project_discovery
 from atopile.server.app_context import AppContext
-from atopile.server.domains import artifacts as artifacts_domain
 from atopile.server.domains import packages as packages_domain
 from atopile.server.file_watcher import FileChangeResult, FileWatcher
-from atopile.server.state import server_state
+from atopile.server.connections import server_state
 
 log = logging.getLogger(__name__)
 
@@ -40,143 +39,55 @@ init_build_history_db = build_history.init_build_history_db
 
 async def _load_projects_background(ctx: AppContext) -> None:
     """Background task to load projects without blocking startup."""
-    from atopile.dataclasses import BuildTarget as StateBuildTarget
-    from atopile.dataclasses import Project as StateProject
-
     try:
         log.info(f"[background] Loading projects from {len(ctx.workspace_paths)} paths")
-        # Run blocking discovery in thread pool
-        projects = await asyncio.to_thread(
+        await asyncio.to_thread(
             project_discovery.discover_projects_in_paths, ctx.workspace_paths
         )
-        state_projects = [
-            StateProject(
-                root=project.root,
-                name=project.name,
-                targets=[
-                    StateBuildTarget(
-                        name=t.name,
-                        entry=t.entry,
-                        root=t.root,
-                        last_build=t.last_build,
-                    )
-                    for t in project.targets
-                ],
-            )
-            for project in projects
-        ]
-        await server_state.set_projects(state_projects)
-        log.info(f"[background] Loaded {len(state_projects)} projects")
+        await server_state.emit_event("projects_changed")
+        log.info("[background] Project discovery complete")
     except Exception as exc:
         log.error(f"[background] Failed to load projects: {exc}")
-        await server_state.set_projects([], error=str(exc))
+        await server_state.emit_event("projects_changed", {"error": str(exc)})
 
 
 async def _refresh_projects_state() -> None:
-    from atopile.dataclasses import BuildTarget as StateBuildTarget
-    from atopile.dataclasses import Project as StateProject
-
-    workspace_paths = server_state._workspace_paths or []
+    workspace_paths = server_state.workspace_paths or []
     if not workspace_paths:
-        await server_state.set_projects([], error=None)
+        await server_state.emit_event("projects_changed")
         return
 
     try:
-        projects = await asyncio.to_thread(
+        await asyncio.to_thread(
             project_discovery.discover_projects_in_paths, workspace_paths
         )
-        state_projects = [
-            StateProject(
-                root=p.root,
-                name=p.name,
-                targets=[
-                    StateBuildTarget(
-                        name=t.name,
-                        entry=t.entry,
-                        root=t.root,
-                        last_build=t.last_build,
-                    )
-                    for t in p.targets
-                ],
-            )
-            for p in projects
-        ]
-        await server_state.set_projects(state_projects)
+        await server_state.emit_event("projects_changed")
     except Exception as exc:
         log.error(f"[background] Failed to refresh projects: {exc}")
-        await server_state.set_projects([], error=str(exc))
+        await server_state.emit_event("projects_changed", {"error": str(exc)})
 
 
 async def _load_packages_background(ctx: AppContext) -> None:
     """Background task to load packages without blocking startup."""
     try:
         log.info("[background] Loading packages from registry")
-        # Use refresh_packages_state which properly loads installed + registry packages
         await packages_domain.refresh_packages_state(scan_paths=ctx.workspace_paths)
-        log.info(f"[background] Loaded {len(server_state.state.packages)} packages")
+        log.info("[background] Packages refresh complete")
     except Exception as exc:
         log.error(f"[background] Failed to load packages: {exc}")
-        await server_state.set_packages([], error=str(exc))
+        await server_state.emit_event("packages_changed", {"error": str(exc)})
 
 
 async def _refresh_stdlib_state() -> None:
-    from atopile.dataclasses import StdLibItem as StateStdLibItem
-    from atopile.server import stdlib as stdlib_domain
-
-    # Run blocking stdlib refresh in thread pool
-    items = await asyncio.to_thread(stdlib_domain.refresh_standard_library)
-    state_items = [StateStdLibItem.model_validate(item.model_dump()) for item in items]
-    await server_state.set_stdlib_items(state_items)
+    await server_state.emit_event("stdlib_changed")
 
 
 async def _refresh_bom_state() -> None:
-    selected = server_state._state.selected_project_root
-    if not selected:
-        return
-
-    target_names = server_state._state.selected_target_names or []
-    target = target_names[0] if target_names else "default"
-
-    try:
-        # Run blocking BOM fetch in thread pool
-        bom_json = await asyncio.to_thread(
-            artifacts_domain.handle_get_bom, selected, target
-        )
-    except Exception as exc:
-        await server_state.set_bom_data(None, str(exc))
-        return
-
-    if bom_json is None:
-        await server_state.set_bom_data(None, "BOM not found. Run build first.")
-        return
-
-    await server_state.set_bom_data(bom_json)
+    await server_state.emit_event("bom_changed")
 
 
 async def _refresh_variables_state() -> None:
-    selected = server_state._state.selected_project_root
-    if not selected:
-        return
-
-    target_names = server_state._state.selected_target_names or []
-    target = target_names[0] if target_names else "default"
-
-    try:
-        # Run blocking variables fetch in thread pool
-        variables_json = await asyncio.to_thread(
-            artifacts_domain.handle_get_variables, selected, target
-        )
-    except Exception as exc:
-        await server_state.set_variables_data(None, str(exc))
-        return
-
-    if variables_json is None:
-        await server_state.set_variables_data(
-            None, "Variables not found. Run build first."
-        )
-        return
-
-    await server_state.set_variables_data(variables_json)
+    await server_state.emit_event("variables_changed")
 
 
 async def _watch_stdlib_background() -> None:
@@ -243,11 +154,7 @@ def _debounce(key: str, delay_s: float, coro_factory) -> None:
 
 
 def _get_project_roots() -> list[Path]:
-    return [
-        Path(project.root)
-        for project in server_state._state.projects or []
-        if project.root
-    ]
+    return server_state.workspace_paths or []
 
 
 def _get_workspace_roots() -> list[Path]:
@@ -256,7 +163,7 @@ def _get_workspace_roots() -> list[Path]:
     Watching workspace roots instead of individual project roots reduces
     the number of FSEvents streams on macOS, avoiding stream exhaustion.
     """
-    return server_state._workspace_paths or []
+    return server_state.workspace_paths or []
 
 
 def _affected_project_roots(
@@ -284,36 +191,24 @@ def _affected_project_roots(
 
 
 async def _refresh_project_files_for_roots(roots: list[Path]) -> None:
-    from atopile.server.domains import projects as projects_domain
-
     for root in roots:
-        response = await asyncio.to_thread(projects_domain.handle_get_files, str(root))
-        if response:
-            await server_state.set_project_files(str(root), response.files)
+        await server_state.emit_event(
+            "project_files_changed", {"project_root": str(root)}
+        )
 
 
 async def _refresh_project_modules_for_roots(roots: list[Path]) -> None:
-    from atopile.server.domains import projects as projects_domain
-
     for root in roots:
-        response = await asyncio.to_thread(
-            projects_domain.handle_get_modules, str(root)
+        await server_state.emit_event(
+            "project_modules_changed", {"project_root": str(root)}
         )
-        if response:
-            await server_state.set_project_modules(str(root), response.modules)
 
 
 async def _refresh_project_dependencies_for_roots(roots: list[Path]) -> None:
-    from atopile.server.domains import projects as projects_domain
-
     for root in roots:
-        response = await asyncio.to_thread(
-            projects_domain.handle_get_dependencies, str(root)
+        await server_state.emit_event(
+            "project_dependencies_changed", {"project_root": str(root)}
         )
-        if response:
-            await server_state.set_project_dependencies(
-                str(root), response.dependencies
-            )
 
 
 async def _watch_projects_background() -> None:
@@ -429,19 +324,25 @@ async def _load_atopile_install_options() -> None:
 
         # Fetch available versions from PyPI
         versions = await atopile_install.fetch_available_versions()
-        await server_state.set_atopile_available_versions(versions)
+        await server_state.emit_event(
+            "atopile_config_changed", {"available_versions": versions}
+        )
         log.info(f"[background] Loaded {len(versions)} PyPI versions")
 
         # Fetch available branches from GitHub
         branches = await atopile_install.fetch_available_branches()
-        await server_state.set_atopile_available_branches(branches)
+        await server_state.emit_event(
+            "atopile_config_changed", {"available_branches": branches}
+        )
         log.info(f"[background] Loaded {len(branches)} GitHub branches")
 
         # Detect local installations
         installations = await asyncio.to_thread(
             atopile_install.detect_local_installations
         )
-        await server_state.set_atopile_detected_installations(installations)
+        await server_state.emit_event(
+            "atopile_config_changed", {"detected_installations": installations}
+        )
         log.info(f"[background] Detected {len(installations)} local installations")
 
     except Exception as exc:
@@ -514,10 +415,6 @@ def create_app(
         if not ctx.workspace_paths:
             log.info("No workspace paths configured, skipping initial state population")
             return
-
-        # Set loading states immediately so UI shows spinners
-        await server_state.set_loading_projects(True)
-        await server_state.set_loading_packages(True)
 
         # Fire background tasks - don't await, server starts immediately
         asyncio.create_task(_load_projects_background(ctx))

@@ -163,29 +163,6 @@ describe('Zustand Store', () => {
     });
   });
 
-  describe('replaceState', () => {
-    it('replaces state from WebSocket broadcast', () => {
-      useStore.getState().replaceState({
-        projects: sampleProjects,
-        builds: sampleBuilds,
-      });
-
-      const state = useStore.getState();
-      expect(state.projects).toEqual(sampleProjects);
-      expect(state.builds).toEqual(sampleBuilds);
-      expect(state.isConnected).toBe(true); // Always sets connected
-    });
-
-    it('preserves unreplaced state', () => {
-      useStore.setState({ selectedProjectRoot: '/test' });
-      useStore.getState().replaceState({ selectedBuildName: 'release' });
-
-      const state = useStore.getState();
-      expect(state.selectedProjectRoot).toBe('/test');
-      expect(state.selectedBuildName).toBe('release');
-    });
-  });
-
   describe('project actions', () => {
     beforeEach(() => {
       useStore.setState({ projects: sampleProjects });

@@ -29,7 +29,7 @@ from atopile.dataclasses import (
 from atopile.server import package_manager
 from atopile.server.app_context import AppContext
 from atopile.server.core import packages as core_packages
-from atopile.server.state import server_state
+from atopile.server.connections import server_state
 from faebryk.libs.backend.packages.api import PackagesAPIClient
 
 log = logging.getLogger(__name__)
@@ -480,7 +480,7 @@ def _fetch_packages_sync(
 async def refresh_packages_state(
     scan_paths: list[Path] | None = None,
 ) -> None:
-    """Refresh packages and update server_state. Called after install/remove."""
+    """Refresh packages and emit a packages_changed event."""
     lock = _get_refresh_lock()
 
     # Skip if another refresh is already in progress
@@ -490,15 +490,18 @@ async def refresh_packages_state(
 
     async with lock:
         if scan_paths is None:
-            scan_paths = server_state._workspace_paths
+            scan_paths = server_state.workspace_paths
 
         # Run blocking I/O in thread pool to avoid blocking event loop
         state_packages, registry_error = await asyncio.to_thread(
             _fetch_packages_sync, scan_paths
         )
 
-        await server_state.set_packages(state_packages, registry_error)
-        log.info(f"Refreshed packages: {len(state_packages)} packages")
+        await server_state.emit_event(
+            "packages_changed",
+            {"error": registry_error, "total": len(state_packages)},
+        )
+        log.info("Refreshed packages: %d packages", len(state_packages))
 
 
 async def refresh_installed_packages_state(
@@ -506,40 +509,14 @@ async def refresh_installed_packages_state(
 ) -> None:
     """Refresh installed package flags without hitting the registry."""
     if scan_paths is None:
-        scan_paths = server_state._workspace_paths
+        scan_paths = server_state.workspace_paths
 
     if not scan_paths:
-        await server_state.set_packages([], error=None)
+        await server_state.emit_event("packages_changed")
         return
 
-    installed_map = await asyncio.to_thread(
-        core_packages.get_all_installed_packages, scan_paths
-    )
-
-    existing = list(server_state.state.packages or [])
-    existing_by_id = {pkg.identifier: pkg for pkg in existing}
-    updated: list[PackageInfo] = []
-
-    for pkg in existing:
-        installed = installed_map.get(pkg.identifier)
-        if installed:
-            pkg.installed = True
-            pkg.installed_in = installed.installed_in
-            pkg.version = installed.version
-            if pkg.latest_version:
-                pkg.has_update = version_is_newer(pkg.version, pkg.latest_version)
-        else:
-            pkg.installed = False
-            pkg.installed_in = []
-            pkg.version = None
-            pkg.has_update = False
-        updated.append(pkg)
-
-    for identifier, installed in installed_map.items():
-        if identifier not in existing_by_id:
-            updated.append(installed)
-
-    await server_state.set_packages(updated, server_state.state.packages_error)
+    await asyncio.to_thread(core_packages.get_all_installed_packages, scan_paths)
+    await server_state.emit_event("packages_changed")
 
 
 def handle_search_registry(

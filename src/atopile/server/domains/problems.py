@@ -16,6 +16,7 @@ def handle_get_problems(
     project_root: Optional[str] = None,
     build_name: Optional[str] = None,
     level: Optional[str] = None,
+    developer_mode: Optional[bool] = None,
 ) -> ProblemsResponse:
     """
     Get problems (errors and warnings) from builds.
@@ -28,7 +29,9 @@ def handle_get_problems(
     Returns:
         ProblemsResponse with problems and counts
     """
-    all_problems = problem_parser._load_problems_from_db()
+    all_problems = problem_parser._load_problems_from_db(
+        developer_mode=bool(developer_mode)
+    )
 
     if project_root:
         project_name = Path(project_root).name
