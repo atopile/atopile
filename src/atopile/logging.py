@@ -57,6 +57,7 @@ NOW = os.environ.get("ATO_BUILD_TIMESTAMP") or datetime.now().strftime(
 )
 _DEFAULT_FORMATTER = logging.Formatter("%(message)s", datefmt="[%X]")
 _log_sink_var: ContextVar[io.StringIO | None] = ContextVar("log_sink", default=None)
+_log_scope_level: ContextVar[int] = ContextVar("log_scope_level", default=0)
 
 # Custom log level
 ALERT = logging.INFO + 5
@@ -572,6 +573,40 @@ def log_exceptions(log_sink: io.StringIO):
         logger.removeHandler(exc_handler)
 
 
+@contextmanager
+def scope(msg: str | None = None):
+    """
+    Context manager for hierarchical log scoping.
+
+    Increments the global scope level on entry, decrements on exit.
+    All log messages within the scope will be prefixed with '·' characters
+    indicating their nesting depth, enabling tree visualization in the UI.
+
+    Usage:
+        with logging.scope("Processing items"):
+            log.info("Item 1")  # Will be prefixed with '·'
+            with logging.scope("Sub-processing"):
+                log.info("Detail")  # Will be prefixed with '··'
+    """
+    current = _log_scope_level.get()
+    _log_scope_level.set(current + 1)
+    try:
+        if msg:
+            # Log the scope message at the parent level (before increment takes effect)
+            # We temporarily decrement to log at parent level
+            _log_scope_level.set(current)
+            logger.debug(msg)
+            _log_scope_level.set(current + 1)
+        yield
+    finally:
+        _log_scope_level.set(current)
+
+
+def get_scope_level() -> int:
+    """Get the current log scope nesting level."""
+    return _log_scope_level.get()
+
+
 class BaseLogger:
     """Base for structured database loggers."""
 
@@ -710,7 +745,7 @@ class BaseLogger:
         raise NotImplementedError
 
 
-class TestLogger(BaseLogger):
+class LoggerForTest(BaseLogger):
     """Test log database interface."""
 
     @staticmethod
@@ -724,7 +759,7 @@ class TestLogger(BaseLogger):
         SQLiteLogWriter.close_instance("test")
 
     @classmethod
-    def setup_logging(cls, test_run_id: str, test: str = "") -> "TestLogger | None":
+    def setup_logging(cls, test_run_id: str, test: str = "") -> "LoggerForTest | None":
         try:
             writer = SQLiteLogWriter.get_instance(
                 "test",
@@ -1012,7 +1047,7 @@ class LogHandler(RichHandler):
         self._logged_exceptions: set = set()
         self._is_terminal = force_terminal or console.is_terminal
         self._build_logger = build_logger
-        self._test_logger: TestLogger | None = None
+        self._test_logger: LoggerForTest | None = None
 
     def _get_suppress(
         self, exc_type: type[BaseException] | None
@@ -1101,8 +1136,8 @@ class LogHandler(RichHandler):
             locals_max_length=getattr(self, "locals_max_length", 10),
             locals_max_string=getattr(self, "locals_max_string", 80),
             max_frames=getattr(
-                self, "tracebacks_max_frames", 1000
-            ),  # Increased from default 100 to show full tracebacks
+                self, "tracebacks_max_frames", 100
+            ),  # Reduced from 1000 - syntax highlighting is slow with many frames
             suppress=self._get_suppress(exc_type),
         )
 
@@ -1190,7 +1225,31 @@ class LogHandler(RichHandler):
     def emit(self, record: logging.LogRecord) -> None:
         if not _should_log(record):
             return
+
+        # Get scope level for tree visualization prefix
+        scope_level = _log_scope_level.get()
+        scope_prefix = "·" * scope_level if scope_level > 0 else ""
+
+        # Apply prefix to a copy for DB write (don't mutate original record.msg)
+        if scope_prefix:
+            original_msg = record.msg
+            original_args = record.args
+            # Format the message first, then prefix it
+            formatted = record.getMessage()
+            record.msg = f"{scope_prefix}{formatted}"
+            record.args = None
+
         self._write_to_db(record)
+
+        # Restore original for proper exception handling below
+        if scope_prefix:
+            record.msg = original_msg  # pyright: ignore[reportPossiblyUnboundVariable]
+            record.args = original_args  # pyright: ignore[reportPossiblyUnboundVariable]
+
+        # Test workers: skip expensive Rich traceback rendering for console output
+        # The traceback is already written to DB above, console output goes to log file
+        if os.environ.get("FBRK_TEST_ORCHESTRATOR_URL") and record.exc_info:
+            return
 
         # Workers suppress console except errors
         if (
@@ -1219,6 +1278,10 @@ class LogHandler(RichHandler):
             message = self.formatter.formatMessage(record)
         else:
             message = record.getMessage()
+
+        # Apply scope prefix to rendered message
+        if scope_prefix:
+            message = f"{scope_prefix}{message}"
 
         renderable = self.render(
             record=record,
@@ -1395,7 +1458,7 @@ def load_test_logs(
 ) -> list[dict[str, Any]]:
     max_count = max(1, min(count, LOGS_MAX_COUNT))
     return _query_logs(
-        TestLogger.get_log_db(),
+        LoggerForTest.get_log_db(),
         "test_logs",
         "test_run_id",
         test_run_id,
@@ -1443,7 +1506,7 @@ def load_test_logs_stream(
 ) -> tuple[list[dict[str, Any]], int]:
     max_count = max(1, min(count, 5000))
     return _query_logs(
-        TestLogger.get_log_db(),
+        LoggerForTest.get_log_db(),
         "test_logs",
         "test_run_id",
         test_run_id,
@@ -1466,7 +1529,7 @@ handler.setFormatter(_DEFAULT_FORMATTER)
 logging.basicConfig(level=logging.DEBUG, handlers=[handler])
 
 atexit.register(BuildLogger.close_all)
-atexit.register(TestLogger.close_all)
+atexit.register(LoggerForTest.close_all)
 
 if PLOG:
     from faebryk.libs.picker.picker import logger as plog

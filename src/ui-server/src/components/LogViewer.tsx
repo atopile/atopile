@@ -427,6 +427,30 @@ function TreeNodeRow({
           <pre className="lv-message" dangerouslySetInnerHTML={{ __html: html }} />
         </div>
       </div>
+      {/* Tracebacks */}
+      {(entry.ato_traceback || entry.python_traceback) && (() => {
+        const structuredTb = tryParseStructuredTraceback(entry.python_traceback);
+        return (
+          <div className="lv-tracebacks" style={{ marginLeft: `${indentLevel * 1.2}em` }}>
+            {entry.ato_traceback && (
+              <TraceDetails
+                label="ato traceback"
+                content={entry.ato_traceback}
+                className="lv-trace-ato"
+              />
+            )}
+            {structuredTb && structuredTb.frames.length > 0 ? (
+              <StackInspector traceback={structuredTb} />
+            ) : entry.python_traceback ? (
+              <TraceDetails
+                label="python traceback"
+                content={entry.python_traceback}
+                className="lv-trace-python"
+              />
+            ) : null}
+          </div>
+        );
+      })()}
       {/* Render children recursively */}
       {hasChildren && isExpanded && node.children.map((child, idx) => (
         <TreeNodeRow

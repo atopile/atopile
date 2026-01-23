@@ -5,7 +5,6 @@ Workers use the URL specified by FBRK_TEST_ORCHESTRATOR_URL env var
 and send JSON events for test start/finish.
 """
 
-import io
 import json
 import logging
 import os
@@ -13,13 +12,9 @@ import sys
 import time
 import tracemalloc
 
-import _pytest
 import httpx
-import pluggy
 import psutil
 import pytest
-from rich.console import Console
-from rich.traceback import Traceback
 
 from atopile.logging import _extract_traceback_frames
 from test.runner.common import ORCHESTRATOR_URL_ENV, EventRequest, EventType, Outcome
@@ -39,39 +34,15 @@ def _format_rich_traceback(
     exc_tb,
     width: int = 120,
 ) -> str:
-    """Format an exception using Rich's Traceback and return ANSI string."""
-    try:
-        console = Console(
-            file=io.StringIO(),
-            force_terminal=True,
-            width=width,
-            record=True,
-        )
-        # Import current module for suppression
-        import test.runner.plugin
+    """Format an exception as plain text traceback.
 
-        tb = Traceback.from_exception(
-            exc_type,
-            exc_value,
-            exc_tb,
-            width=width,
-            show_locals=True,
-            max_frames=50,
-            suppress=[
-                pluggy,  # pytest plugin system
-                _pytest,  # pytest internals
-                pytest,  # pytest
-                test.runner.plugin,  # our test runner plugin
-            ],
-        )
-        console.print(tb)
-        return console.export_text(styles=True)
-    except Exception as e:
-        # Fall back to simple traceback format if Rich fails
-        import traceback
-
-        lines = traceback.format_exception(exc_type, exc_value, exc_tb)
-        return "".join(lines)
+    Note: Previously used Rich's Traceback but syntax highlighting was too slow
+    (~1-7 seconds). Plain traceback is ~0.001s. Structured data with locals
+    is captured separately via _extract_traceback_frames.
+    """
+    import traceback
+    lines = traceback.format_exception(exc_type, exc_value, exc_tb)
+    return "".join(lines)
 
 
 def _extract_error_message(longreprtext: str) -> str:
@@ -237,7 +208,7 @@ def pytest_runtest_logreport(report: pytest.TestReport):
                 # Extract error message from the exception directly
                 error_message = f"{exc_type.__name__}: {exc_value}"
                 # Log the exception so it gets captured in the test_logs database
-                # with python_traceback (and ato_traceback for user exceptions)
+                # with python_traceback (structured frames for the UI)
                 logger.error(
                     f"Test failed: {error_message}",
                     exc_info=(exc_type, exc_value, exc_tb),
@@ -286,7 +257,7 @@ def pytest_runtest_logreport(report: pytest.TestReport):
         )
 
 
-class TestTimeout(BaseException): ...
+class ExceptionTestTimeout(BaseException): ...
 
 
 def _get_thread_stack(thread_id: int) -> str:
@@ -353,7 +324,7 @@ if FBRK_TEST_TEST_TIMEOUT > 0:
                 # Inject TestTimeout exception into the main thread
                 ctypes.pythonapi.PyThreadState_SetAsyncExc(
                     ctypes.c_ulong(main_thread_id),
-                    ctypes.py_object(TestTimeout),
+                    ctypes.py_object(ExceptionTestTimeout),
                 )
                 # Retry if the exception doesn't take
                 if stop_watchdog.wait(timeout=wait_time):
@@ -375,7 +346,7 @@ if FBRK_TEST_TEST_TIMEOUT > 0:
         try:
             item.runtest()  # run the actual test function
             stop_watchdog.set()
-        except TestTimeout:
+        except ExceptionTestTimeout:
             stop_watchdog.set()
             pytest.fail(f"Test timed out after {timeout:.2f}s", pytrace=False)
         finally:

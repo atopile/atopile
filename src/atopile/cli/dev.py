@@ -118,9 +118,19 @@ def _find_vscode_cli() -> tuple[str, str] | None:
     # Check common macOS locations
     macos_paths = [
         ("/Applications/Cursor.app/Contents/Resources/app/bin/cursor", "cursor"),
-        ("/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code", "vscode"),
-        (Path.home() / "Applications/Cursor.app/Contents/Resources/app/bin/cursor", "cursor"),
-        (Path.home() / "Applications/Visual Studio Code.app/Contents/Resources/app/bin/code", "vscode"),
+        (
+            "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
+            "vscode",
+        ),
+        (
+            Path.home() / "Applications/Cursor.app/Contents/Resources/app/bin/cursor",
+            "cursor",
+        ),
+        (
+            Path.home()
+            / "Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
+            "vscode",
+        ),
     ]
     for p, scheme in macos_paths:
         path = Path(p)
@@ -868,6 +878,8 @@ def test(
         return
 
     if direct:
+        import logging
+
         from test.runtest import TestNotFound, run
         from test.runtest import logger as runtest_logger
 
