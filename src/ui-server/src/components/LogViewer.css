@@ -733,6 +733,130 @@
   padding: 0 var(--spacing-xs);
 }
 
+/* Tree structure visualization */
+
+/* Tree group container */
+.lv-tree-group {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.lv-tree-group:last-child {
+  border-bottom: none;
+}
+
+/* Tree row - uses same grid as regular entries */
+.lv-tree-row {
+  display: grid;
+  grid-template-columns: 58px 55px 110px 1fr;
+  gap: var(--spacing-sm);
+  padding: 2px var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  align-items: flex-start;
+}
+
+/* Compact modes for tree rows - must match header */
+.lv-tree-row.lv-time-compact {
+  grid-template-columns: 48px 55px 110px 1fr;
+}
+
+.lv-tree-row.lv-level-compact {
+  grid-template-columns: 58px 24px 110px 1fr;
+}
+
+.lv-tree-row.lv-time-compact.lv-level-compact {
+  grid-template-columns: 48px 24px 110px 1fr;
+}
+
+.lv-tree-row:hover {
+  background: var(--bg-secondary);
+}
+
+.lv-tree-row.error {
+  background: rgba(243, 139, 168, 0.08);
+}
+
+.lv-tree-row.error:hover {
+  background: rgba(243, 139, 168, 0.12);
+}
+
+/* Tree root styling */
+.lv-tree-root {
+  background: var(--bg-secondary);
+}
+
+.lv-tree-root:hover {
+  background: var(--bg-tertiary);
+}
+
+/* Tree child styling */
+.lv-tree-child {
+  background: var(--bg-primary);
+}
+
+/* Tree toggle button - inline in message cell */
+.lv-tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: none;
+  border: none;
+  padding: 0 4px 0 0;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  transition: color var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.lv-tree-toggle:hover {
+  color: var(--text-primary);
+}
+
+.lv-tree-toggle-icon {
+  display: inline-block;
+  font-size: 10px;
+  transition: transform 0.15s ease;
+}
+
+.lv-tree-toggle.expanded .lv-tree-toggle-icon {
+  transform: rotate(90deg);
+}
+
+.lv-tree-toggle.collapsed .lv-tree-toggle-icon {
+  transform: rotate(0deg);
+}
+
+/* Child count badge when collapsed */
+.lv-tree-child-count {
+  font-size: 9px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  padding: 0 3px;
+  margin-left: 2px;
+}
+
+/* Simple space indentation for tree children */
+.lv-tree-indent {
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* Tree message cell */
+.lv-tree-message-cell {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  min-width: 0;
+}
+
+.lv-tree-message-cell .lv-message {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* Tracebacks */
 .lv-tracebacks {
   display: flex;

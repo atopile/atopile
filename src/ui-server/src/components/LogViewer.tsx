@@ -164,6 +164,112 @@ function isSeparatorLine(message: string): { isSeparator: boolean; char: '-' | '
   return { isSeparator: true, char, label };
 }
 
+// Detect tree depth from leading dot characters (· or .)
+// Returns depth (0 = root, 1 = one dot, etc.) and the message without dots
+function parseTreeDepth(message: string): { depth: number; content: string } {
+  // Match leading middle dots (·) or regular dots (.)
+  const match = message.match(/^([·.]+)/);
+  if (!match) {
+    return { depth: 0, content: message };
+  }
+  const dots = match[1];
+  const depth = dots.length;
+  const content = message.slice(depth);
+  return { depth, content };
+}
+
+// Hierarchical tree node structure for nested folding
+interface TreeNode {
+  entry: LogEntry;
+  depth: number;
+  content: string;
+  children: TreeNode[];
+}
+
+interface LogTreeGroup {
+  type: 'standalone' | 'tree';
+  root: TreeNode;
+}
+
+// Build hierarchical tree from flat list of entries with depths
+function buildTreeHierarchy(entries: Array<{ entry: LogEntry; depth: number; content: string }>): TreeNode {
+  if (entries.length === 0) {
+    throw new Error('Cannot build tree from empty entries');
+  }
+
+  const root: TreeNode = {
+    entry: entries[0].entry,
+    depth: entries[0].depth,
+    content: entries[0].content,
+    children: []
+  };
+
+  // Stack to track parent nodes at each depth
+  const stack: TreeNode[] = [root];
+
+  for (let i = 1; i < entries.length; i++) {
+    const { entry, depth, content } = entries[i];
+    const node: TreeNode = { entry, depth, content, children: [] };
+
+    // Pop stack until we find the parent (node with depth < current)
+    while (stack.length > 1 && stack[stack.length - 1].depth >= depth) {
+      stack.pop();
+    }
+
+    // Add as child of current top of stack
+    stack[stack.length - 1].children.push(node);
+
+    // Push this node to stack (it might be parent of next entries)
+    stack.push(node);
+  }
+
+  return root;
+}
+
+function groupLogsIntoTrees(logs: LogEntry[]): LogTreeGroup[] {
+  const groups: LogTreeGroup[] = [];
+  let currentEntries: Array<{ entry: LogEntry; depth: number; content: string }> = [];
+
+  for (const entry of logs) {
+    const { depth, content } = parseTreeDepth(entry.message);
+
+    if (depth === 0) {
+      // Depth 0 = potential root or standalone
+      // First, close any existing tree
+      if (currentEntries.length > 0) {
+        const root = buildTreeHierarchy(currentEntries);
+        groups.push({
+          type: currentEntries.length > 1 ? 'tree' : 'standalone',
+          root
+        });
+        currentEntries = [];
+      }
+      // Start a new potential tree
+      currentEntries.push({ entry, depth: 0, content: entry.message });
+    } else {
+      // Depth > 0 = child of current tree
+      if (currentEntries.length > 0) {
+        currentEntries.push({ entry, depth, content });
+      } else {
+        // Orphan child (no root) - treat as standalone
+        const orphanNode: TreeNode = { entry, depth, content, children: [] };
+        groups.push({ type: 'standalone', root: orphanNode });
+      }
+    }
+  }
+
+  // Don't forget the last group
+  if (currentEntries.length > 0) {
+    const root = buildTreeHierarchy(currentEntries);
+    groups.push({
+      type: currentEntries.length > 1 ? 'tree' : 'standalone',
+      root
+    });
+  }
+
+  return groups;
+}
+
 /**
  * Try to parse python_traceback as structured JSON.
  * Returns null if not valid structured traceback.
@@ -244,6 +350,131 @@ function TraceDetails({
           dangerouslySetInnerHTML={{ __html: ansiConverter.toHtml(content) }}
         />
       )}
+    </div>
+  );
+}
+
+// Recursive tree node component for nested folding
+function TreeNodeRow({
+  node,
+  search,
+  levelFull,
+  timeMode,
+  sourceMode,
+  formatTimestamp,
+  formatSource,
+  indentLevel,
+}: {
+  node: TreeNode;
+  search: string;
+  levelFull: boolean;
+  timeMode: 'delta' | 'wall';
+  sourceMode: 'source' | 'logger';
+  formatTimestamp: (ts: string, mode: 'delta' | 'wall') => string;
+  formatSource: (file: string | null | undefined, line: number | null | undefined) => string | null;
+  indentLevel: number;
+}) {
+  const [isExpanded, setIsExpanded] = useState(true);
+  const hasChildren = node.children.length > 0;
+
+  const { entry, content } = node;
+  const ts = formatTimestamp(entry.timestamp, timeMode);
+  const html = highlightText(ansiConverter.toHtml(content), search);
+  const sourceLabel = formatSource(entry.source_file, entry.source_line);
+  const sourceColor = sourceMode === 'source'
+    ? (entry.source_file ? hashStringToColor(entry.source_file) : undefined)
+    : (entry.logger_name ? hashStringToColor(entry.logger_name) : undefined);
+  const loggerShort = entry.logger_name?.split('.').pop() || '';
+  const sourceDisplayValue = sourceMode === 'source' ? (sourceLabel || '—') : (loggerShort || '—');
+  const sourceTooltip = sourceMode === 'source' ? (entry.source_file || '') : (entry.logger_name || '');
+
+  // Count total descendants for collapsed badge
+  const countDescendants = (n: TreeNode): number => {
+    return n.children.length + n.children.reduce((sum, c) => sum + countDescendants(c), 0);
+  };
+  const descendantCount = countDescendants(node);
+
+  return (
+    <>
+      <div className={`lv-tree-row ${entry.level.toLowerCase()} ${indentLevel === 0 ? 'lv-tree-root' : 'lv-tree-child'} ${!levelFull ? 'lv-level-compact' : ''} ${timeMode === 'delta' ? 'lv-time-compact' : ''}`}>
+        <span className="lv-ts">{ts}</span>
+        <span className={`lv-level-badge ${entry.level.toLowerCase()} ${levelFull ? '' : 'short'}`}>
+          {levelFull ? entry.level : LEVEL_SHORT[entry.level]}
+        </span>
+        <span
+          className="lv-source-badge"
+          title={sourceTooltip}
+          style={sourceColor ? { color: sourceColor, borderColor: sourceColor } : undefined}
+        >
+          {sourceDisplayValue}
+        </span>
+        <div className="lv-tree-message-cell">
+          {/* Space indentation for nested levels */}
+          {indentLevel > 0 && (
+            <span className="lv-tree-indent" style={{ width: `${indentLevel * 1.2}em` }} />
+          )}
+          {/* Toggle button if has children */}
+          {hasChildren && (
+            <button
+              className={`lv-tree-toggle ${isExpanded ? 'expanded' : 'collapsed'}`}
+              onClick={() => setIsExpanded(!isExpanded)}
+              title={isExpanded ? 'Collapse' : 'Expand'}
+            >
+              <span className="lv-tree-toggle-icon">▸</span>
+              {!isExpanded && <span className="lv-tree-child-count">{descendantCount}</span>}
+            </button>
+          )}
+          <pre className="lv-message" dangerouslySetInnerHTML={{ __html: html }} />
+        </div>
+      </div>
+      {/* Render children recursively */}
+      {hasChildren && isExpanded && node.children.map((child, idx) => (
+        <TreeNodeRow
+          key={idx}
+          node={child}
+          search={search}
+          levelFull={levelFull}
+          timeMode={timeMode}
+          sourceMode={sourceMode}
+          formatTimestamp={formatTimestamp}
+          formatSource={formatSource}
+          indentLevel={indentLevel + 1}
+        />
+      ))}
+    </>
+  );
+}
+
+// Collapsible tree log group component
+function TreeLogGroup({
+  group,
+  search,
+  levelFull,
+  timeMode,
+  sourceMode,
+  formatTimestamp,
+  formatSource,
+}: {
+  group: LogTreeGroup;
+  search: string;
+  levelFull: boolean;
+  timeMode: 'delta' | 'wall';
+  sourceMode: 'source' | 'logger';
+  formatTimestamp: (ts: string, mode: 'delta' | 'wall') => string;
+  formatSource: (file: string | null | undefined, line: number | null | undefined) => string | null;
+}) {
+  return (
+    <div className="lv-tree-group">
+      <TreeNodeRow
+        node={group.root}
+        search={search}
+        levelFull={levelFull}
+        timeMode={timeMode}
+        sourceMode={sourceMode}
+        formatTimestamp={formatTimestamp}
+        formatSource={formatSource}
+        indentLevel={0}
+      />
     </div>
   );
 }
@@ -370,13 +601,9 @@ export function LogViewer() {
     return true;
   });
 
-  // Compute unique test names from filtered logs to auto-hide column if only one
-  const uniqueTestNames = [...new Set(
-    filteredLogs
-      .map(l => (l as TestLogEntry).test_name)
-      .filter(Boolean)
-  )];
-  const shouldShowTestName = mode === 'test' && uniqueTestNames.length > 1;
+  // Note: Test name badges could be added back to tree entries if needed
+  // const uniqueTestNames = [...new Set(filteredLogs.map(l => (l as TestLogEntry).test_name).filter(Boolean))];
+  // const shouldShowTestName = mode === 'test' && uniqueTestNames.length > 1;
 
   // Format timestamp based on mode
   const formatTimestamp = (ts: string, mode: 'delta' | 'wall'): string => {
@@ -919,110 +1146,93 @@ export function LogViewer() {
             {logs.length === 0 ? (streaming ? 'Waiting for logs...' : 'No logs') : 'No matches'}
           </div>
         ) : (
-          filteredLogs.map((entry, idx) => {
-            // Format timestamp based on mode
-            const ts = formatTimestamp(entry.timestamp, timeMode);
-            // Convert ANSI then highlight search matches
-            const html = highlightText(ansiConverter.toHtml(entry.message), search);
-            // Get test name if in test mode
-            const testEntry = entry as TestLogEntry;
-            const testLabel = shouldShowTestName && testEntry.test_name ? testEntry.test_name : null;
-            // Get stage if available
-            const stageLabel = (entry as BuildLogEntry).stage || null;
-            // Format source location
-            const sourceLabel = formatSource(entry.source_file, entry.source_line);
-            // Get source file color (used for both source and logger)
-            const sourceColor = sourceMode === 'source'
-              ? (entry.source_file ? hashStringToColor(entry.source_file) : undefined)
-              : (entry.logger_name ? hashStringToColor(entry.logger_name) : undefined);
-            // Get short logger name (last part)
-            const loggerShort = entry.logger_name?.split('.').pop() || '';
-            // Display value based on sourceMode
-            const sourceDisplayValue = sourceMode === 'source' ? (sourceLabel || '—') : (loggerShort || '—');
-            const sourceTooltip = sourceMode === 'source' ? (entry.source_file || '') : (entry.logger_name || '');
-            return (
-              <div key={idx} className={`lv-entry ${entry.level.toLowerCase()}`}>
-                <div className={`lv-entry-row ${!levelFull ? 'lv-level-compact' : ''} ${timeMode === 'delta' ? 'lv-time-compact' : ''}`}>
-                  <span
-                    className="lv-ts"
-                    title={TOOLTIPS.timestamp}
-                    onClick={() => setTimeMode(m => m === 'wall' ? 'delta' : 'wall')}
-                  >
-                    {ts}
-                  </span>
-                  <span
-                    className={`lv-level-badge ${entry.level.toLowerCase()} ${levelFull ? '' : 'short'}`}
-                    title={TOOLTIPS.level}
-                    onClick={() => setLevelFull(f => !f)}
-                  >
-                    {levelFull ? entry.level : LEVEL_SHORT[entry.level]}
-                  </span>
-                  <span
-                    className="lv-source-badge"
-                    title={sourceTooltip}
-                    style={sourceColor ? { color: sourceColor, borderColor: sourceColor } : undefined}
-                    onClick={() => setSourceMode(m => m === 'source' ? 'logger' : 'source')}
-                  >
-                    {sourceDisplayValue}
-                  </span>
-                  <div className="lv-message-cell">
-                    {stageLabel && (
-                      <span className="lv-stage-badge" title={TOOLTIPS.stage}>
-                        {stageLabel}
-                      </span>
-                    )}
-                    {testLabel && (
-                      <span className="lv-test-badge" data-full-name={testLabel}>
-                        <span className="lv-test-badge-text">{testLabel}</span>
-                        <span className="lv-test-badge-popup">{testLabel}</span>
-                      </span>
-                    )}
-                    {(() => {
-                      const sepInfo = isSeparatorLine(entry.message);
-                      if (sepInfo.isSeparator) {
-                        return (
-                          <div className={`lv-separator-line lv-separator-${sepInfo.char === '=' ? 'double' : 'single'}`}>
-                            <span className="lv-separator-line-bar" />
-                            {sepInfo.label && <span className="lv-separator-line-label">{sepInfo.label}</span>}
-                            {sepInfo.label && <span className="lv-separator-line-bar" />}
-                          </div>
-                        );
-                      }
-                      return (
-                        <pre
-                          className="lv-message"
-                          dangerouslySetInnerHTML={{ __html: html }}
-                        />
-                      );
-                    })()}
-                  </div>
-                </div>
-                {(entry.ato_traceback || entry.python_traceback) && (() => {
-                  const structuredTb = tryParseStructuredTraceback(entry.python_traceback);
-                  return (
-                    <div className="lv-tracebacks">
-                      {entry.ato_traceback && (
-                        <TraceDetails
-                          label="ato traceback"
-                          content={entry.ato_traceback}
-                          className="lv-trace-ato"
-                        />
+          (() => {
+            const groups = groupLogsIntoTrees(filteredLogs);
+            return groups.map((group, groupIdx) => {
+              // Tree groups with children get the collapsible TreeLogGroup
+              if (group.type === 'tree' && group.root.children.length > 0) {
+                return (
+                  <TreeLogGroup
+                    key={groupIdx}
+                    group={group}
+                    search={search}
+                    levelFull={levelFull}
+                    timeMode={timeMode}
+                    sourceMode={sourceMode}
+                    formatTimestamp={formatTimestamp}
+                    formatSource={formatSource}
+                  />
+                );
+              }
+
+              // Standalone entries render normally
+              const { entry, content } = group.root;
+              const ts = formatTimestamp(entry.timestamp, timeMode);
+              const html = highlightText(ansiConverter.toHtml(content), search);
+              const sourceLabel = formatSource(entry.source_file, entry.source_line);
+              const sourceColor = sourceMode === 'source'
+                ? (entry.source_file ? hashStringToColor(entry.source_file) : undefined)
+                : (entry.logger_name ? hashStringToColor(entry.logger_name) : undefined);
+              const loggerShort = entry.logger_name?.split('.').pop() || '';
+              const sourceDisplayValue = sourceMode === 'source' ? (sourceLabel || '—') : (loggerShort || '—');
+              const sourceTooltip = sourceMode === 'source' ? (entry.source_file || '') : (entry.logger_name || '');
+
+              // Check for separator
+              const sepInfo = isSeparatorLine(entry.message);
+
+              return (
+                <div key={groupIdx} className={`lv-entry lv-entry-standalone ${entry.level.toLowerCase()}`}>
+                  <div className={`lv-entry-row ${!levelFull ? 'lv-level-compact' : ''} ${timeMode === 'delta' ? 'lv-time-compact' : ''}`}>
+                    <span className="lv-ts">{ts}</span>
+                    <span className={`lv-level-badge ${entry.level.toLowerCase()} ${levelFull ? '' : 'short'}`}>
+                      {levelFull ? entry.level : LEVEL_SHORT[entry.level]}
+                    </span>
+                    <span
+                      className="lv-source-badge"
+                      title={sourceTooltip}
+                      style={sourceColor ? { color: sourceColor, borderColor: sourceColor } : undefined}
+                    >
+                      {sourceDisplayValue}
+                    </span>
+                    <div className="lv-message-cell">
+                      {sepInfo.isSeparator ? (
+                        <div className={`lv-separator-line lv-separator-${sepInfo.char === '=' ? 'double' : 'single'}`}>
+                          <span className="lv-separator-line-bar" />
+                          {sepInfo.label && <span className="lv-separator-line-label">{sepInfo.label}</span>}
+                          {sepInfo.label && <span className="lv-separator-line-bar" />}
+                        </div>
+                      ) : (
+                        <pre className="lv-message" dangerouslySetInnerHTML={{ __html: html }} />
                       )}
-                      {structuredTb && structuredTb.frames.length > 0 ? (
-                        <StackInspector traceback={structuredTb} />
-                      ) : entry.python_traceback ? (
-                        <TraceDetails
-                          label="python traceback"
-                          content={entry.python_traceback}
-                          className="lv-trace-python"
-                        />
-                      ) : null}
                     </div>
-                  );
-                })()}
-              </div>
-            );
-          })
+                  </div>
+                  {(entry.ato_traceback || entry.python_traceback) && (() => {
+                    const structuredTb = tryParseStructuredTraceback(entry.python_traceback);
+                    return (
+                      <div className="lv-tracebacks">
+                        {entry.ato_traceback && (
+                          <TraceDetails
+                            label="ato traceback"
+                            content={entry.ato_traceback}
+                            className="lv-trace-ato"
+                          />
+                        )}
+                        {structuredTb && structuredTb.frames.length > 0 ? (
+                          <StackInspector traceback={structuredTb} />
+                        ) : entry.python_traceback ? (
+                          <TraceDetails
+                            label="python traceback"
+                            content={entry.python_traceback}
+                            className="lv-trace-python"
+                          />
+                        ) : null}
+                      </div>
+                    );
+                  })()}
+                </div>
+              );
+            });
+          })()
         )}
       </div>
     </div>
