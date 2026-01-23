@@ -501,6 +501,10 @@ class ProjectDependencies:
                     desired_version = spec.release
 
                     if installed_version != desired_version:
+                        logger.info(
+                            f"Syncing {dep.identifier}: "
+                            f"{installed_version} -> {desired_version}"
+                        )
                         dirty |= _sync_dep(dep, installed_version)
 
                 case "file" | "git":

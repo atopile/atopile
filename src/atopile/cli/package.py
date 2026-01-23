@@ -350,9 +350,7 @@ class _PackageValidators:
     def verify_3d_models(config: "Config"):
         from pathlib import Path
 
-        from faebryk.libs.kicad.fileformats_version import (
-            try_load_kicad_pcb_file,
-        )
+        from faebryk.libs.kicad.fileformats import kicad
 
         layout_path: Path = config.project.paths.layout
         kicad_pcb_paths = list(layout_path.rglob("*.kicad_pcb"))
@@ -369,7 +367,7 @@ class _PackageValidators:
             return pcb_dir / p
 
         for pcb_path in kicad_pcb_paths:
-            pcb_file = try_load_kicad_pcb_file(pcb_path)
+            pcb_file = kicad.loads(kicad.pcb.PcbFile, pcb_path)
             pcb_dir = pcb_path.parent
             for fp in pcb_file.kicad_pcb.footprints:
                 for m in getattr(fp, "models", []):
@@ -493,7 +491,7 @@ _DEFAULT_VALIDATORS = [
 ]
 
 _STRICT_VALIDATORS = [
-    # _PackageValidators.verify_3d_models, # TODO: fixme
+    _PackageValidators.verify_3d_models,
     _PackageValidators.verify_file_structure,
     _PackageValidators.verify_no_warnings,
     _PackageValidators.verify_usage_import,
