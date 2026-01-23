@@ -45,6 +45,11 @@ interface SidebarHeaderProps {
 }
 
 export function SidebarHeader({ version, atopile, developerMode }: SidebarHeaderProps) {
+  const iconUrl =
+    typeof window !== 'undefined'
+      ? (window as Window & { __ATOPILE_ICON_URL__?: string }).__ATOPILE_ICON_URL__
+      : undefined;
+
   // Settings dropdown state
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
@@ -214,6 +219,7 @@ export function SidebarHeader({ version, atopile, developerMode }: SidebarHeader
   return (
     <div className="panel-header">
       <div className="header-title">
+        {iconUrl && <img className="header-logo" src={iconUrl} alt="atopile logo" />}
         <span>atopile</span>
         {version && <span className="version-badge">v{version}</span>}
       </div>

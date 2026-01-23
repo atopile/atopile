@@ -103,6 +103,12 @@ body {
   letter-spacing: 0.5px;
 }
 
+.header-logo {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
 /* Light mode: navy text */
 [data-theme="light"] .header-title {
   color: var(--ato-navy);

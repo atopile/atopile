@@ -141,6 +141,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       localResourceRoots: isDev
         ? [] // No local resources in dev mode
         : [
+            vscode.Uri.file(path.join(extensionPath, 'resources')),
             vscode.Uri.file(path.join(extensionPath, 'resources', 'webviews')),
             vscode.Uri.file(path.join(extensionPath, 'webviews', 'dist')),
           ],
@@ -272,6 +273,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const jsPath = path.join(webviewsDir, 'sidebar.js');
     const cssPath = path.join(webviewsDir, 'sidebar.css');
     const baseCssPath = path.join(webviewsDir, 'index.css');
+    const iconPath = path.join(extensionPath, 'resources', 'atopile-icon.svg');
 
     traceInfo('[SidebarProvider] _getProdHtml paths:', {
       webviewsDir,
@@ -293,6 +295,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const baseCssUri = fs.existsSync(baseCssPath)
       ? webview.asWebviewUri(vscode.Uri.file(baseCssPath))
       : null;
+    const iconUri = fs.existsSync(iconPath)
+      ? webview.asWebviewUri(vscode.Uri.file(iconPath)).toString()
+      : '';
 
     // Get backend URLs from backendServer (uses discovered port or config)
     const apiUrl = backendServer.apiUrl;
@@ -328,6 +333,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // Inject backend URLs for the React app
     window.__ATOPILE_API_URL__ = '${apiUrl}';
     window.__ATOPILE_WS_URL__ = '${wsOrigin}';
+    window.__ATOPILE_ICON_URL__ = '${iconUri}';
     // Inject workspace folders for the React app
     window.__ATOPILE_WORKSPACE_FOLDERS__ = ${JSON.stringify(workspaceFolders)};
   </script>
