@@ -551,8 +551,10 @@ def _no_predicate_literals(
     if not (lits := builder.indexed_lits()):
         return builder
 
+    class_ops = _operands_classes(builder)
+
     # P!{⊆/⊇|False} -> Contradiction
-    if AliasClass.of(operands[0]).get_with_trait(F.Expressions.is_predicate) and any(
+    if class_ops[0].get_with_trait(F.Expressions.is_predicate) and any(
         lit.op_setic_equals_singleton(False) for lit in lits.values()
     ):
         raise Contradiction(
@@ -563,15 +565,12 @@ def _no_predicate_literals(
 
     if any(lit.op_setic_equals_singleton(True) for lit in lits.values()):
         # P!{⊆/⊇|True} -> P!
-        if any(
-            AliasClass.of(op).get_with_trait(F.Expressions.is_predicate)
-            for op in operands
-        ):
+        if any(op.get_with_trait(F.Expressions.is_predicate) for op in class_ops):
             if I_LOG:
                 debug(f"Remove predicate literal {pretty_expr(builder, mutator)}")
             return None
         # P {⊆|True} -> P!
-        a_class = AliasClass.of(operands[0])
+        a_class = class_ops[0]
         for pred in a_class.get_with_trait(F.Expressions.is_assertable):
             if I_LOG:
                 before = pred.as_expression.get().compact_repr(mutator.print_ctx)
@@ -653,11 +652,13 @@ def _no_predicate_operands(
     ).check_if_instance_of_type_has_trait(F.Expressions.is_assertable):
         return builder
 
+    class_ops = _operands_classes(builder)
+
     new_operands = [
         mutator.make_singleton(True).can_be_operand.get()
-        if AliasClass.of(op).get_with_trait(F.Expressions.is_predicate)
-        else op
-        for op in builder.operands
+        if op.get_with_trait(F.Expressions.is_predicate)
+        else op.representative()
+        for op in class_ops
     ]
 
     new_builder = builder.with_(operands=new_operands)
@@ -967,7 +968,7 @@ def _operands_mutated_and_expressions_flat(
 ) -> ExpressionBuilder:
     def _get_representative(
         op: F.Parameters.can_be_operand,
-        allow_non_repr: bool = False,
+        is_alias: bool = False,
     ) -> F.Parameters.can_be_operand:
         if (
             (op_po := op.as_parameter_operatable.try_get())
@@ -977,26 +978,32 @@ def _operands_mutated_and_expressions_flat(
             # Create an alias representative now
             alias_param = op_e.create_representative(alias=True)
             if I_LOG:
-                debug(f"Created alias for expression operand: {op.pretty()}")
+                debug(
+                    f"Created alias for expression operand: "
+                    f"{op.pretty()}: {alias_param.compact_repr(mutator.print_ctx)}"
+                )
             op = alias_param.as_operand.get()
 
         copied = mutator.get_copy(op)
-        representative = AliasClass.of(
-            copied, allow_non_repr=allow_non_repr
-        ).representative()
+        # if builder is alias expr operands might not have a repr yet,
+        # so need to allow stub classes
+        representative = AliasClass.of(copied, allow_non_repr=is_alias).representative()
 
         return representative
-
-    # if builder is alias expr operands might not have a repr yet,
-    # so need to allow stub classes
 
     # mutated/created, thus we can call mutator.get_copy on them
     return builder.with_(
         operands=[
-            _get_representative(op, allow_non_repr=builder.is_alias())
+            _get_representative(op, is_alias=builder.is_alias())
             for op in builder.operands
         ]
     )
+
+
+def _operands_classes(builder: ExpressionBuilder) -> list["AliasClass"]:
+    return [
+        AliasClass.of(op, allow_non_repr=builder.is_alias()) for op in builder.operands
+    ]
 
 
 def insert_expression(
@@ -1190,6 +1197,8 @@ def insert_expression(
 
     # * canonical (covered by create)
     expr = mutator._create_and_insert_expression(builder)
+
+    # FIXME: everything that comes below has to be happen after mutation, or we need to hack the is
 
     # Create alias for non-predicate expressions (invariant: every non-predicate
     # expression must have an Is alias so it can be used as an operand)

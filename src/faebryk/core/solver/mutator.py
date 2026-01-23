@@ -26,6 +26,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from atopile.logging import scope
 from atopile.logging_utils import rich_to_string
 from faebryk.core.solver.algorithm import SolverAlgorithm
 from faebryk.core.solver.utils import (
@@ -1623,6 +1624,12 @@ class Mutator:
         import faebryk.core.solver.symbolic.invariants as invariants
 
         from_ops = list(set(from_ops or []))
+        s = scope()
+        if S_LOG:
+            logger.debug(
+                f"Create expression from builder: {pretty_expr(builder, self)}"
+            )
+            s.__enter__()
 
         res = invariants.wrap_insert_expression(
             self,
@@ -1637,6 +1644,9 @@ class Mutator:
             if S_LOG:
                 logger.error(f"Mark new expr: {res_po.compact_repr(self.print_ctx)}")
             self.transformations.created[res_po] = from_ops
+
+        if S_LOG:
+            s.__exit__(None, None, None)
 
         return res
 
@@ -1711,6 +1721,15 @@ class Mutator:
             assert_=assert_,
             terminate=terminate,
         )
+
+        s = scope()
+        if S_LOG:
+            logger.debug(
+                f"Try mutate `{expr.compact_repr(self.print_ctx)}` with "
+                f" `{pretty_expr(builder, self)}`"
+            )
+            s.__enter__()
+
         res = invariants.wrap_insert_expression(
             self,
             builder,
@@ -1721,6 +1740,9 @@ class Mutator:
 
         new_expr_e = res.out
         if new_expr_e is None:
+            if S_LOG:
+                s.__exit__(None, None, None)
+                logger.debug("Dropped and replaced with True")
             return self.make_singleton(True).can_be_operand.get()
 
         assert not self.has_been_mutated(expr_po), (
@@ -1738,6 +1760,8 @@ class Mutator:
         if operands == e_operands and builder.matches(new_expr_e):
             self.transformations.copied.add(expr_po)
 
+        if S_LOG:
+            s.__exit__(None, None, None)
         return new_expr_e.as_operand.get()
 
     def get_copy(
@@ -2004,7 +2028,7 @@ class Mutator:
         return po in self.transformations.removed
 
     def has_been_mutated(self, po: F.Parameters.is_parameter_operatable) -> bool:
-        return po in self.transformations.mutated
+        return po in self.transformations.mutated or po.is_in_graph(self.G_out)
 
     def get_mutated(
         self, po: F.Parameters.is_parameter_operatable
