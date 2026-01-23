@@ -109,29 +109,17 @@ logging.setLoggerClass(AtoLogger)
 # =============================================================================
 
 
-def _serialize_local_var(value: object, max_repr_len: int = 200) -> dict:
-    """Safely serialize a local variable for JSON storage."""
-    type_name = type(value).__name__
+def _get_pretty_repr(value: object, max_len: int = 200) -> str:
+    """Get pretty repr using __pretty_repr__ or __rich_repr__ or fallback to repr."""
+    try:
+        # Try pretty_repr first (faebryk convention)
+        if hasattr(value, "pretty_repr"):
+            result = str(value.pretty_repr())
+            return result[:max_len] + "..." if len(result) > max_len else result
 
-    # Try JSON-native serialization for simple types
-    if isinstance(value, (bool, int, float, str, type(None))):
-        return {"type": type_name, "value": value, "repr": repr(value)[:max_repr_len]}
-
-    # Handle small lists/tuples that might be JSON-serializable
-    if isinstance(value, (list, tuple)) and len(value) <= 10:
-        try:
-            json.dumps(value)
-            return {
-                "type": type_name,
-                "value": list(value) if isinstance(value, tuple) else value,
-                "repr": repr(value)[:max_repr_len],
-            }
-        except (TypeError, ValueError):
-            pass
-
-    # Try __rich_repr__ if available (Rich library protocol)
-    if hasattr(value, "__rich_repr__"):
-        try:
+        # Try __rich_repr__ (Rich library protocol)
+        if hasattr(value, "__rich_repr__"):
+            type_name = type(value).__name__
             rich_repr_parts = []
             for item in value.__rich_repr__():
                 if isinstance(item, tuple):
@@ -145,21 +133,77 @@ def _serialize_local_var(value: object, max_repr_len: int = 200) -> dict:
                         rich_repr_parts.append(repr(item[0]))
                 else:
                     rich_repr_parts.append(repr(item))
-            rich_str = f"{type_name}({', '.join(rich_repr_parts)})"
-            if len(rich_str) > max_repr_len:
-                rich_str = rich_str[:max_repr_len] + "..."
-            return {"type": type_name, "repr": rich_str, "rich": True}
-        except Exception:
-            pass  # Fall through to regular repr
+            result = f"{type_name}({', '.join(rich_repr_parts)})"
+            return result[:max_len] + "..." if len(result) > max_len else result
 
-    # Fall back to repr for everything else
-    try:
-        repr_str = repr(value)
-        if len(repr_str) > max_repr_len:
-            repr_str = repr_str[:max_repr_len] + "..."
-        return {"type": type_name, "repr": repr_str}
+        # Fallback to repr
+        result = repr(value)
+        return result[:max_len] + "..." if len(result) > max_len else result
     except Exception:
-        return {"type": type_name, "repr": "<unable to represent>"}
+        return "<unable to represent>"
+
+
+def _serialize_local_var(
+    value: object, max_repr_len: int = 200, max_container_items: int = 50, depth: int = 0
+) -> dict:
+    """
+    Safely serialize a local variable for JSON storage.
+
+    Containers (dict, list, set, tuple) are serialized recursively with their
+    structure preserved. Non-container values use pretty_repr/repr for display.
+    """
+    type_name = type(value).__name__
+    max_depth = 5  # Prevent infinite recursion
+
+    # JSON-native primitives
+    if isinstance(value, (bool, int, float, type(None))):
+        return {"type": type_name, "value": value}
+
+    if isinstance(value, str):
+        # Truncate long strings
+        if len(value) > max_repr_len:
+            return {"type": type_name, "value": value[:max_repr_len] + "...", "truncated": True}
+        return {"type": type_name, "value": value}
+
+    # Handle containers recursively (if not too deep)
+    if depth < max_depth:
+        if isinstance(value, dict):
+            items = list(value.items())[:max_container_items]
+            serialized = {}
+            for k, v in items:
+                # Keys must be strings for JSON
+                key_str = str(k) if not isinstance(k, str) else k
+                serialized[key_str] = _serialize_local_var(v, max_repr_len, max_container_items, depth + 1)
+            result: dict[str, Any] = {"type": "dict", "value": serialized, "length": len(value)}
+            if len(value) > max_container_items:
+                result["truncated"] = True
+            return result
+
+        if isinstance(value, (list, tuple)):
+            items = list(value)[:max_container_items]
+            serialized_items = [
+                _serialize_local_var(item, max_repr_len, max_container_items, depth + 1)
+                for item in items
+            ]
+            result = {"type": type_name, "value": serialized_items, "length": len(value)}
+            if len(value) > max_container_items:
+                result["truncated"] = True
+            return result
+
+        if isinstance(value, (set, frozenset)):
+            items = list(value)[:max_container_items]
+            serialized_items = [
+                _serialize_local_var(item, max_repr_len, max_container_items, depth + 1)
+                for item in items
+            ]
+            result = {"type": type_name, "value": serialized_items, "length": len(value)}
+            if len(value) > max_container_items:
+                result["truncated"] = True
+            return result
+
+    # For non-containers or deep nesting, use pretty repr
+    repr_str = _get_pretty_repr(value, max_repr_len)
+    return {"type": type_name, "repr": repr_str}
 
 
 def _extract_traceback_frames(

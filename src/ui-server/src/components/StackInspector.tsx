@@ -10,11 +10,16 @@
 import { useState } from 'react';
 import './StackInspector.css';
 
-interface LocalVar {
+// Recursive type for serialized values
+interface SerializedValue {
   type: string;
-  repr: string;
-  value?: unknown;
+  value?: unknown;  // primitives, or array of SerializedValue, or dict of SerializedValue
+  repr?: string;    // for non-container types
+  length?: number;  // for containers
+  truncated?: boolean;
 }
+
+interface LocalVar extends SerializedValue {}
 
 interface StackFrame {
   filename: string;
@@ -44,16 +49,97 @@ function truncatePath(filename: string, segments: number = 2): string {
 }
 
 /**
- * Format a local variable value for display
+ * Check if a serialized value is a container type
  */
-function formatValue(info: LocalVar): string {
+function isContainer(info: SerializedValue): boolean {
+  return ['dict', 'list', 'tuple', 'set', 'frozenset'].includes(info.type);
+}
+
+/**
+ * ContainerViewer - Recursive collapsible viewer for dicts, lists, sets
+ */
+function ContainerViewer({ value, name, depth = 0 }: { value: SerializedValue; name?: string; depth?: number }) {
+  const [isExpanded, setIsExpanded] = useState(depth < 2);  // Auto-expand first 2 levels
+  const isContainerType = isContainer(value);
+  const maxDepth = 10;
+
+  // For primitives or repr-only values, render inline
+  if (!isContainerType || depth >= maxDepth) {
+    const displayValue = value.repr ?? (
+      value.value === null ? 'None' :
+      typeof value.value === 'string' ? `"${value.value}"` :
+      String(value.value)
+    );
+
+    return (
+      <span className="cv-primitive">
+        {name && <span className="cv-key">{name}: </span>}
+        <span className="cv-type">{value.type}</span>
+        <span className="cv-value">{displayValue}</span>
+        {value.truncated && <span className="cv-truncated">…</span>}
+      </span>
+    );
+  }
+
+  // For containers, render collapsible
+  const items = value.value as SerializedValue[] | Record<string, SerializedValue>;
+  const isDict = value.type === 'dict';
+  const itemCount = value.length ?? (Array.isArray(items) ? items.length : Object.keys(items).length);
+
+  // Collapsed preview
+  const brackets = isDict ? ['{', '}'] :
+    value.type === 'set' || value.type === 'frozenset' ? ['{', '}'] :
+    value.type === 'tuple' ? ['(', ')'] : ['[', ']'];
+
+  const preview = `${brackets[0]}${itemCount} items${value.truncated ? '+' : ''}${brackets[1]}`;
+
+  return (
+    <div className={`cv-container cv-depth-${Math.min(depth, 5)}`}>
+      <button className="cv-toggle" onClick={() => setIsExpanded(!isExpanded)}>
+        {name && <span className="cv-key">{name}</span>}
+        <span className="cv-type">{value.type}</span>
+        <span className="cv-arrow">{isExpanded ? '▼' : '▶'}</span>
+        {!isExpanded && <span className="cv-preview">{preview}</span>}
+      </button>
+      {isExpanded && (
+        <div className="cv-children">
+          {isDict ? (
+            // Dict entries
+            Object.entries(items as Record<string, SerializedValue>).map(([key, val]) => (
+              <div key={key} className="cv-entry">
+                <ContainerViewer value={val} name={key} depth={depth + 1} />
+              </div>
+            ))
+          ) : (
+            // Array/set entries
+            (items as SerializedValue[]).map((item, idx) => (
+              <div key={idx} className="cv-entry">
+                <span className="cv-index">[{idx}]</span>
+                <ContainerViewer value={item} depth={depth + 1} />
+              </div>
+            ))
+          )}
+          {value.truncated && (
+            <div className="cv-truncated-notice">... {itemCount - (Array.isArray(items) ? items.length : Object.keys(items).length)} more items</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Format a local variable value for display (simple inline version)
+ */
+function formatValueSimple(info: LocalVar): string {
+  if (info.repr) return info.repr;
   if (info.value !== undefined) {
     if (typeof info.value === 'string') {
       return `"${info.value}"`;
     }
     return String(info.value);
   }
-  return info.repr;
+  return '<unknown>';
 }
 
 export function StackInspector({ traceback }: StackInspectorProps) {
@@ -144,17 +230,21 @@ export function StackInspector({ traceback }: StackInspectorProps) {
                   {localCount > 0 && (
                     <div className="si-locals">
                       <div className="si-locals-header">Local Variables</div>
-                      <table className="si-locals-table">
-                        <tbody>
-                          {Object.entries(frame.locals).map(([name, info]) => (
-                            <tr key={name}>
-                              <td className="si-var-name">{name}</td>
-                              <td className="si-var-type">{info.type}</td>
-                              <td className="si-var-value">{formatValue(info)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <div className="si-locals-list">
+                        {Object.entries(frame.locals).map(([name, info]) => (
+                          <div key={name} className="si-local-item">
+                            {isContainer(info) ? (
+                              <ContainerViewer value={info} name={name} depth={0} />
+                            ) : (
+                              <div className="si-local-simple">
+                                <span className="si-var-name">{name}</span>
+                                <span className="si-var-type">{info.type}</span>
+                                <span className="si-var-value">{formatValueSimple(info)}</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                   {localCount === 0 && !frame.code_line && (
