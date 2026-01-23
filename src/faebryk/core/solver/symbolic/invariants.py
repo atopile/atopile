@@ -54,14 +54,16 @@ def warning(msg: str):
 class AliasClass:
     @classmethod
     def of(
-        cls, is_or_member: F.Expressions.Is | F.Parameters.can_be_operand
+        cls,
+        is_or_member: F.Expressions.Is | F.Parameters.can_be_operand,
+        allow_non_repr: bool = False,
     ) -> "AliasClass":
         if isinstance(is_or_member, F.Expressions.Is):
             return AliasClassIs(is_or_member)
         aliases = is_or_member.get_operations(F.Expressions.Is, predicates_only=True)
 
         if not aliases:
-            return AliasClassStub(is_or_member)
+            return AliasClassStub(is_or_member, allow_non_repr=allow_non_repr)
 
         if len(aliases) == 1:
             return AliasClassIs(next(iter(aliases)))
@@ -79,13 +81,17 @@ class AliasClass:
 
 
 class AliasClassStub(AliasClass):
-    def __init__(self, member: F.Parameters.can_be_operand):
+    def __init__(
+        self, member: F.Parameters.can_be_operand, allow_non_repr: bool = False
+    ):
         self.member = member
         # literal or parameter or predicate
-        # TODO if we try to run Alias invariants, we dont have the alias yet
-        # assert not self.member.try_get_sibling_trait(
-        #     F.Expressions.is_expression
-        # ) or self.member.try_get_sibling_trait(F.Expressions.is_predicate)
+        # if we try to run Alias invariants, we dont have the alias yet
+        assert (
+            allow_non_repr
+            or not self.member.try_get_sibling_trait(F.Expressions.is_expression)
+            or self.member.try_get_sibling_trait(F.Expressions.is_predicate)
+        )
 
     @override
     def get_with_trait[TR: fabll.NodeT](self, trait: type[TR]) -> set[TR]:
@@ -935,27 +941,6 @@ def _deduplicate_idempotent_operands(
     return out
 
 
-def _flat_expressions(
-    mutator: Mutator, builder: ExpressionBuilder
-) -> ExpressionBuilder:
-    """
-    Flatten nested expressions: f(g(A)) -> f(B), B is! g(A)
-    """
-    if builder.factory is F.Expressions.Is and builder.assert_:
-        return builder
-
-    # invariant guarantees expr has repr in new graph
-    replaced_operands = [AliasClass.of(op).representative() for op in builder.operands]
-
-    out = builder.with_(operands=replaced_operands)
-    if I_LOG and replaced_operands != builder.operands:
-        debug(
-            f"Flattened expression: {pretty_expr(builder, mutator)} "
-            f"-> {pretty_expr(out, mutator)}"
-        )
-    return out
-
-
 def _ss_lits_available(mutator: Mutator):
     if getattr(mutator, "_ss_lits_available", False):
         return
@@ -974,6 +959,43 @@ def _ss_lits_available(mutator: Mutator):
         if S_LOG:
             debug(f"Copying ss lit: {pretty_expr(ss_t_e, mutator)}")
         mutator.get_copy(ss_t.can_be_operand.get())
+
+
+def _operands_mutated_and_expressions_flat(
+    mutator: Mutator, builder: ExpressionBuilder
+) -> ExpressionBuilder:
+    def _get_representative(
+        op: F.Parameters.can_be_operand,
+        allow_non_repr: bool = False,
+    ) -> F.Parameters.can_be_operand:
+        if (
+            (op_po := op.as_parameter_operatable.try_get())
+            and (op_e := op_po.as_expression.try_get())
+            and not op_e.try_get_sibling_trait(F.Expressions.is_predicate)
+        ) and not mutator.has_been_mutated(op_po):
+            # Create an alias representative now
+            alias_param = op_e.create_representative(alias=True)
+            if I_LOG:
+                debug(f"Created alias for expression operand: {op.pretty()}")
+            op = alias_param.as_operand.get()
+
+        copied = mutator.get_copy(op)
+        representative = AliasClass.of(
+            copied, allow_non_repr=allow_non_repr
+        ).representative()
+
+        return representative
+
+    # if builder is alias expr operands might not have a repr yet,
+    # so need to allow stub classes
+
+    # mutated/created, thus we can call mutator.get_copy on them
+    return builder.with_(
+        operands=[
+            _get_representative(op, allow_non_repr=builder.is_alias())
+            for op in builder.operands
+        ]
+    )
 
 
 def insert_expression(
@@ -1024,7 +1046,7 @@ def insert_expression(
 
     _ss_lits_available(mutator)
 
-    builder = _flat_expressions(mutator, builder)
+    builder = _operands_mutated_and_expressions_flat(mutator, builder)
 
     # * Op(P!, ...) -> Op(True, ...)
     builder = _no_predicate_operands(mutator, builder)

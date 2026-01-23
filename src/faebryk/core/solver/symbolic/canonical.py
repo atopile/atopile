@@ -1,6 +1,134 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+"""
+Solver Invariants & Dataflow
+============================
+
+This module documents the solver's invariants and how they are maintained.
+
+INVARIANTS
+----------
+The solver maintains these invariants on the expression graph:
+
+1. **Alias Invariant** (critical):
+   Every non-predicate expression must have an Is alias with exactly one parameter
+   representative. Expressions cannot be direct operands; only their alias
+   representatives (parameters) can be operands.
+
+   ```
+   E(A, B) -> Is!(P, E), where P is parameter representative
+   operand references: P, not E
+   ```
+
+2. **No Expression Operands**:
+   Expression operands in the graph must be alias representatives (parameters),
+   not the expressions themselves. Algorithms must use AliasClass.of(expr).representative()
+   when passing expressions as operands.
+
+3. **No Congruence**:
+   Structurally identical expressions are merged. Creating an existing expression
+   returns the existing one.
+
+4. **Pure Literal Fold**:
+   Expressions with all literal operands are evaluated and bound as superset
+   constraints: E(X, Y) -> E{⊆|result}(X, Y)
+
+5. **Predicate Literal Semantics**:
+   - P{⊆|True} -> P! (unasserted predicate with True subset becomes asserted)
+   - P!{⊆|False} -> Contradiction
+
+6. **Comparison Canonicalization**:
+   - A >= X (X literal) -> A ⊆ [X.max(), +∞)
+   - X >= A (X literal) -> A ⊆ (-∞, X.min()]
+   - No A >! X or X >! A predicates remain
+
+7. **Minimal Subsumption**:
+   - A ⊆! X, A ⊆! Y -> A ⊆! (X ∩ Y)
+   - X ⊆! A, Y ⊆! A -> (X ∪ Y) ⊆! A
+
+8. **No Empty Supersets**:
+   A ⊆! {} => Contradiction
+
+9. **No Reflexive Tautologies**:
+   A ⊆! A is dropped (no information)
+
+10. **Idempotent Deduplication**:
+    Or(A, A, B) -> Or(A, B)
+
+11. **Canonical Form**:
+    Expressions are created in canonical form (see convert_to_canonical_operations).
+
+
+INVARIANT-BREAKING BEHAVIORS & RECOVERY
+---------------------------------------
+Some algorithms temporarily break invariants. Here's how they're handled:
+
+### Expression Operands in Builders
+**Problem**: Algorithms may construct ExpressionBuilder with expression operands
+(e.g., upper/lower_estimation passing expr_e.as_operand.get()).
+
+**How it breaks invariant**: Violates "No Expression Operands" - expressions
+should not be direct operands.
+
+**Recovery path** (automatic):
+`_flat_expressions()` in insert_expression handles this automatically:
+1. For each operand, calls `AliasClass.of(op).representative()`
+2. If the operand is a non-predicate expression without a visible alias,
+   creates an alias on-the-fly via `create_representative(alias=True)`
+3. Returns the alias representative instead of the expression
+
+Algorithms do NOT need explicit AliasClass handling - the invariant system
+handles expression operands transparently.
+
+### Nested Mutation During Expression Copy
+**Problem**: mutate_expression calls wrap_insert_expression, which may trigger
+_ss_lits_available -> get_copy -> nested mutate_expression on the same expr.
+
+**How it breaks invariant**: Outer call tries to mutate an already-mutated expr.
+
+**Recovery path**:
+After wrap_insert_expression returns, re-check if expr was already mutated:
+```python
+if self.has_been_mutated(expr_po):
+    return self.get_mutated(expr_po).as_operand.get()
+```
+
+### Finding Inner Expressions After Flattening
+**Problem**: After alias flattening, expression operands are alias representatives
+(parameters), so expr.get_operands()[0].as_expression fails.
+
+**How it breaks invariant**: Code expects expression operands but finds parameters.
+
+**Recovery path**:
+Use AliasClass to find the aliased expression:
+```python
+inner_exprs = AliasClass.of(inner_expr_rep).get_with_trait(is_expression)
+# Filter by type for involutory operations
+expr_type = fabll.Traits(expr).get_type_node()
+inner_expr = next(e for e in inner_exprs if same_type(e, expr_type))
+```
+
+
+DATAFLOW THROUGH wrap_insert_expression
+---------------------------------------
+All expression creation flows through wrap_insert_expression() which enforces
+invariants in order:
+
+1. Reflexive tautology check (drop A ⊆ A)
+2. Congruence check (return existing if identical)
+3. Subsumption check (merge/replace if subsumed)
+4. Empty superset check (raise Contradiction)
+5. Literal alias elimination (no A is! X)
+6. Literal fold (compute pure literal expressions)
+7. Termination marking (for completed constraints)
+8. Expression creation with canonical form
+9. Alias creation (for non-predicates)
+10. Superset/subset constraint creation (from literal fold)
+
+This ensures invariants are restored regardless of what the algorithm passes in.
+"""
+
 import logging
 from cmath import pi
 from typing import Callable, Iterable, cast
@@ -432,7 +560,7 @@ def flatten_expressions(mutator: Mutator):
             return mutator.get_mutated(
                 o_p.as_parameter_operatable.get()
             ).as_operand.get()
-        return o
+        return mutator.get_copy(o)
 
     for e in exprs:
         e_po = e.as_parameter_operatable.get()

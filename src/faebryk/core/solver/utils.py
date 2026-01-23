@@ -635,18 +635,31 @@ class MutatorUtils:
         op!(op_inv(A), ...) -> A!
         '''
         """
+        from faebryk.core.solver.symbolic.invariants import AliasClass
+
         inner_expr_rep = expr.get_operands()[0]
-        if not (
-            (inner_expr_po := inner_expr_rep.as_parameter_operatable.try_get())
-            and (inner_expr_e := inner_expr_po.as_expression.try_get())
-        ):
-            raise ValueError("Inner operand must be an expression")
+        # After flattening, operands are alias representatives (parameters),
+        # so we need to find the aliased expression via AliasClass
+        inner_exprs = AliasClass.of(inner_expr_rep).get_with_trait(
+            F.Expressions.is_expression
+        )
+        if not inner_exprs:
+            raise ValueError("Inner operand must alias an expression")
+        # Find the inner expression with matching type (for involutory ops like Not(Not(...)))
+        expr_type = fabll.Traits(expr).get_obj_raw().get_type_node()
+        inner_expr_e = None
+        for candidate in inner_exprs:
+            if fabll.Traits(candidate).get_obj_raw().get_type_node() == expr_type:
+                inner_expr_e = candidate
+                break
+        if inner_expr_e is None:
+            raise ValueError("No matching inner expression found")
         inner_operand = inner_expr_e.get_operands()[0]
-        if not (inner_operand_po := inner_operand.as_parameter_operatable.try_get()):
+        if not inner_operand.as_parameter_operatable.try_get():
             raise ValueError("Unpacked operand can't be a literal")
         out = self.mutator._mutate(
             expr.as_parameter_operatable.get(),
-            self.mutator.get_copy_po(inner_operand_po),
+            self.mutator.get_copy(inner_operand).as_parameter_operatable.force_get(),
         )
         if expr.try_get_sibling_trait(F.Expressions.is_predicate) and (
             out_assertable := out.try_get_sibling_trait(F.Expressions.is_assertable)
@@ -675,7 +688,9 @@ class MutatorUtils:
             raise ValueError("Unpacked operand can't be a literal")
         out = self.mutator._mutate(
             expr.as_parameter_operatable.get(),
-            self.mutator.get_copy_po(unpacked),
+            self.mutator.get_copy(
+                unpacked.as_operand.get()
+            ).as_parameter_operatable.force_get(),
         )
         if expr.try_get_sibling_trait(F.Expressions.is_predicate):
             if (expression := out.as_expression.try_get()) and (

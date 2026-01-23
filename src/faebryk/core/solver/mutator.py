@@ -1462,6 +1462,9 @@ class ExpressionBuilder[
             == bool(other.try_get_sibling_trait(F.Expressions.is_predicate))
         )
 
+    def is_alias(self) -> bool:
+        return self.factory is F.Expressions.Is and self.assert_
+
     # TODO use this more
     def with_(
         self,
@@ -1584,12 +1587,12 @@ class Mutator:
             )
 
         # map operands to mutated
-        new_operands = [self.get_operand_copy(op) for op in operands]
+        assert all(op.is_in_graph(self.G_out) for op in operands)
 
         new_expr = (
             expr_factory.bind_typegraph(self.tg_out)
             .create_instance(self.G_out)
-            .setup(*new_operands)  # type: ignore # TODO stupid pyright
+            .setup(*operands)  # type: ignore # TODO stupid pyright
         )
 
         if assert_:
@@ -1604,9 +1607,7 @@ class Mutator:
                 f"{new_expr.is_expression.get().compact_repr(self.print_ctx)}"
             )
 
-        op_graphs = {
-            op.g.get_self_node().node().get_uuid(): op.g for op in new_operands
-        }
+        op_graphs = {op.g.get_self_node().node().get_uuid(): op.g for op in operands}
         assert not op_graphs or set(op_graphs.keys()) == {
             self.G_out.get_self_node().node().get_uuid()
         }, f"Graph mismatch: {op_graphs} != {self.G_out}"
@@ -1622,12 +1623,10 @@ class Mutator:
         import faebryk.core.solver.symbolic.invariants as invariants
 
         from_ops = list(set(from_ops or []))
-        c_operands = [self.get_operand_copy(op) for op in builder.operands]
-        builder_new = builder.with_(operands=c_operands)
 
         res = invariants.wrap_insert_expression(
             self,
-            builder_new,
+            builder,
             alias=None,
             allow_uncorrelated_congruence_match=allow_uncorrelated_congruence_match,
             expr_already_exists_in_old_graph=False,
@@ -1706,13 +1705,9 @@ class Mutator:
                 .as_parameter.force_get()
             )
 
-        # TODO automatically flatten exprs if algo layer wants the comfort
-        # enforce lit or param
-        c_operands = [self.get_operand_copy(op) for op in operands]
-
         builder = invariants.ExpressionBuilder(
             factory=expression_factory,
-            operands=c_operands,
+            operands=list(operands),
             assert_=assert_,
             terminate=terminate,
         )
@@ -1727,6 +1722,14 @@ class Mutator:
         new_expr_e = res.out
         if new_expr_e is None:
             return self.make_singleton(True).can_be_operand.get()
+
+        assert not self.has_been_mutated(expr_po), (
+            "Expression was mutated during wrap_insert_expression"
+        )
+        # TODO i dont see why this would happen
+        # Re-check if mutated during wrap_insert_expression (via _ss_lits_available)
+        # if self.has_been_mutated(expr_po):
+        #     return self.get_mutated(expr_po).as_operand.get()
 
         new_expr_po = new_expr_e.as_parameter_operatable.get()
         self._mutate(expr_po, new_expr_po)

@@ -4703,7 +4703,7 @@ class Numbers(fabll.Node):
 
             if max_val == math.inf:
                 if min_val == -math.inf:
-                    return "any"
+                    return "ℝ"
                 if min_val == 0:
                     return "ℝ+"
                 return f"≥{f(min_val, scale)}"
