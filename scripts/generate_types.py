@@ -8,7 +8,7 @@ and converts them to TypeScript using quicktype.
 Usage:
     python scripts/generate_types.py
 
-The generated types are written to src/ui-server/src/types/generated.ts
+The generated types are written to src/ui-server/src/types/gen/generated.ts
 """
 
 import json
@@ -19,7 +19,6 @@ from pathlib import Path
 
 # Models to export (the main ones used by the frontend)
 MODELS_TO_EXPORT = [
-    "AppState",
     "Project",
     "BuildTarget",
     "Build",
@@ -186,14 +185,18 @@ def add_header(output_path: Path) -> None:
 def main():
     """Main entry point."""
     repo_root = Path(__file__).parent.parent
-    output_path = repo_root / "src" / "ui-server" / "src" / "types" / "generated.ts"
+    output_path = (
+        repo_root / "src" / "ui-server" / "src" / "types" / "gen" / "generated.ts"
+    )
 
     print("Generating JSON schemas from Pydantic models...")
     schemas = get_all_schemas()
     print(f"Generated schemas for {len(schemas)} models")
 
     # Save combined schema for debugging
-    schema_output = repo_root / "src" / "ui-server" / "src" / "types" / "schema.json"
+    schema_output = (
+        repo_root / "src" / "ui-server" / "src" / "types" / "gen" / "schema.json"
+    )
     schema_output.write_text(json.dumps(schemas, indent=2))
     print(f"Schemas written to {schema_output}")
 
