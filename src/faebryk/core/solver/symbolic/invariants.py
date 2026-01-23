@@ -1198,8 +1198,6 @@ def insert_expression(
     # * canonical (covered by create)
     expr = mutator._create_and_insert_expression(builder)
 
-    # FIXME: everything that comes below has to be happen after mutation, or we need to hack the is
-
     # Create alias for non-predicate expressions (invariant: every non-predicate
     # expression must have an Is alias so it can be used as an operand)
     if not builder.assert_ and alias is None:
