@@ -143,7 +143,7 @@ describe('API Client', () => {
       const mockResponse = {
         success: true,
         message: 'Build started',
-        build_targets: [{ target: 'default', build_id: 'build-123' }],
+        buildTargets: [{ target: 'default', buildId: 'build-123' }],
       };
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -157,19 +157,19 @@ describe('API Client', () => {
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({
-            project_root: '/project',
+            projectRoot: '/project',
             targets: ['default', 'debug'],
           }),
         })
       );
       expect(result.success).toBe(true);
-      expect(result.build_targets).toEqual([{ target: 'default', build_id: 'build-123' }]);
+      expect(result.buildTargets).toEqual([{ target: 'default', buildId: 'build-123' }]);
     });
 
     it('starts standalone build with entry', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        text: () => Promise.resolve(JSON.stringify({ success: true, build_targets: [{ target: 'default', build_id: 'build-456' }] })),
+        text: () => Promise.resolve(JSON.stringify({ success: true, buildTargets: [{ target: 'default', buildId: 'build-456' }] })),
       });
 
       await api.builds.start('/project', [], { entry: 'main.ato:App', standalone: true });
@@ -178,7 +178,7 @@ describe('API Client', () => {
         expect.stringContaining('/api/build'),
         expect.objectContaining({
           body: JSON.stringify({
-            project_root: '/project',
+            projectRoot: '/project',
             targets: [],
             entry: 'main.ato:App',
             standalone: true,

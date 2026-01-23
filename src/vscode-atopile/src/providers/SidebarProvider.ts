@@ -81,7 +81,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _disposables: vscode.Disposable[] = [];
   private _lastMode: 'dev' | 'prod' | null = null;
   private _hasHtml: boolean = false;
-  private _lastWorkspaceFoldersJson: string | null = null;
+  private _lastWorkspaceRoot: string | null = null;
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;
 
@@ -98,7 +98,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     );
     this._disposables.push(
       vscode.workspace.onDidChangeWorkspaceFolders(() => {
-        this._postWorkspaceFolders();
+        this._postWorkspaceRoot();
       })
     );
     // Forward messages from backendServer to webview
@@ -198,7 +198,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._lastMode = mode;
     this._lastApiUrl = backendServer.apiUrl;
     this._lastWsUrl = backendServer.wsUrl;
-    this._postWorkspaceFolders();
+    this._postWorkspaceRoot();
 
     // Listen for messages from webview
     this._disposables.push(
@@ -212,23 +212,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   /**
    * Get workspace folder paths from VS Code.
    */
-  private _getWorkspaceFolders(): string[] {
+  private _getWorkspaceRoot(): string | null {
     const folders = vscode.workspace.workspaceFolders;
-    if (!folders) return [];
-    return folders.map(f => f.uri.fsPath);
+    if (!folders || folders.length === 0) return null;
+    return folders[0].uri.fsPath;
   }
 
-  private _postWorkspaceFolders(): void {
+  private _postWorkspaceRoot(): void {
     if (!this._view) {
       return;
     }
-    const folders = this._getWorkspaceFolders();
-    const foldersJson = JSON.stringify(folders);
-    if (this._lastWorkspaceFoldersJson === foldersJson) {
+    const root = this._getWorkspaceRoot();
+    if (this._lastWorkspaceRoot === root) {
       return;
     }
-    this._lastWorkspaceFoldersJson = foldersJson;
-    this._view.webview.postMessage({ type: 'workspace-folders', folders });
+    this._lastWorkspaceRoot = root;
+    this._view.webview.postMessage({ type: 'workspace-root', root });
   }
 
   /**
@@ -399,10 +398,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const backendUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
     const wsOrigin = getWsOrigin(wsUrl);
-    const workspaceFolders = this._getWorkspaceFolders();
+    const workspaceRoot = this._getWorkspaceRoot();
 
-    const workspaceParam = workspaceFolders.length > 0
-      ? `?workspace=${encodeURIComponent(JSON.stringify(workspaceFolders))}`
+    const workspaceParam = workspaceRoot
+      ? `?workspace=${encodeURIComponent(workspaceRoot)}`
       : '';
 
     return `<!DOCTYPE html>
@@ -451,7 +450,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   <script>
     window.addEventListener('message', (event) => {
       const data = event && event.data;
-      if (!data || data.type !== 'workspace-folders') return;
+      if (!data || data.type !== 'workspace-root') return;
       const iframe = document.querySelector('iframe');
       if (iframe && iframe.contentWindow) {
         iframe.contentWindow.postMessage(data, '*');
@@ -505,7 +504,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
     const wsOrigin = getWsOrigin(wsUrl);
-    const workspaceFolders = this._getWorkspaceFolders();
+    const workspaceRoot = this._getWorkspaceRoot();
 
     // Debug: log URLs being used
     traceInfo('SidebarProvider: Generating HTML with apiUrl:', apiUrl, 'wsUrl:', wsUrl);
@@ -537,8 +536,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     window.__ATOPILE_WS_URL__ = '${wsOrigin}';
     window.__ATOPILE_ICON_URL__ = '${iconUri}';
     window.__ATOPILE_EXTENSION_VERSION__ = '${this._extensionVersion}';
-    // Inject workspace folders for the React app
-    window.__ATOPILE_WORKSPACE_FOLDERS__ = ${JSON.stringify(workspaceFolders)};
+    // Inject workspace root for the React app
+    window.__ATOPILE_WORKSPACE_ROOT__ = ${JSON.stringify(workspaceRoot || '')};
   </script>
   <style>
     /* Debug: loading indicator */

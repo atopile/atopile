@@ -359,19 +359,13 @@ def create_app(
     """
     app = FastAPI(title="atopile Build Server")
 
-    # CORS configuration - restrict to known origins.
-    # The server binds to 127.0.0.1 only, but we still restrict CORS for defense
-    # in depth.
+    # CORS configuration - allow all origins for local tooling/webviews.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
-            "vscode-webview://*",  # VS Code webview
-            "http://localhost:5173",  # Vite dev server
-            "http://127.0.0.1:5173",  # Vite dev server (alt)
+            "*",
         ],
-        allow_origin_regex=r"^https?://localhost:\d+$",  # Any localhost port for dev
-        # flexibility.
-        allow_credentials=True,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )

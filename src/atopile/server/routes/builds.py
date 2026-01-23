@@ -8,7 +8,13 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from atopile.dataclasses import BuildRequest, BuildResponse, BuildTargetResponse
+from atopile.dataclasses import (
+    Build,
+    BuildRequest,
+    BuildResponse,
+    BuildsResponse,
+    BuildTargetResponse,
+)
 from atopile.server.app_context import AppContext
 from atopile.server.domains import builds as builds_domain
 from atopile.server.domains.deps import get_ctx
@@ -53,7 +59,7 @@ async def cancel_build(build_id: str):
     return result
 
 
-@router.get("/api/builds/active")
+@router.get("/api/builds/active", response_model=BuildsResponse)
 async def get_active_builds():
     """Get all active (running or queued) builds."""
     log.info("[DEBUG] /api/builds/active route called, dispatching to thread pool")
@@ -82,7 +88,7 @@ async def set_max_concurrent_setting(request: builds_domain.MaxConcurrentRequest
     )
 
 
-@router.get("/api/builds/history")
+@router.get("/api/builds/history", response_model=BuildsResponse)
 async def get_build_history(
     project_root: Optional[str] = Query(None, description="Filter by project root"),
     status: Optional[str] = Query(
@@ -97,7 +103,7 @@ async def get_build_history(
     )
 
 
-@router.get("/api/build/{build_id}/info")
+@router.get("/api/build/{build_id}/info", response_model=Build)
 async def get_build_info(build_id: str):
     """
     Get build info by build_id.
@@ -111,7 +117,7 @@ async def get_build_info(build_id: str):
     return result
 
 
-@router.get("/api/builds")
+@router.get("/api/builds", response_model=BuildsResponse)
 async def get_builds_by_project(
     project_root: Optional[str] = Query(None, description="Filter by project root"),
     target: Optional[str] = Query(None, description="Filter by target name"),

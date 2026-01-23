@@ -30,13 +30,15 @@ export function AppProvider({ children }: AppProviderProps) {
   }, []);
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
-      const data = event?.data as { type?: string; folders?: unknown };
-      if (data?.type !== 'workspace-folders') return;
-      if (!Array.isArray(data.folders)) return;
-      // Update injected workspace folders for future reads
-      (window as { __ATOPILE_WORKSPACE_FOLDERS__?: string[] }).__ATOPILE_WORKSPACE_FOLDERS__ =
-        data.folders as string[];
-      sendAction('setWorkspaceFolders', { folders: data.folders as string[] });
+      const data = event?.data as { type?: string; root?: unknown };
+      if (data?.type === 'workspace-root') {
+        const root = typeof data.root === 'string' && data.root.length > 0 ? data.root : null;
+        (window as { __ATOPILE_WORKSPACE_ROOT__?: string }).__ATOPILE_WORKSPACE_ROOT__ =
+          root || undefined;
+        const folders = root ? [root] : [];
+        sendAction('setWorkspaceFolders', { folders });
+        return;
+      }
     }
 
     window.addEventListener('message', handleMessage);

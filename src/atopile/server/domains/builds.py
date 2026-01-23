@@ -306,7 +306,6 @@ def handle_get_active_builds() -> dict:
                 start_time = build.get("started_at", time.time())
             elapsed = time.time() - start_time
 
-            project_name = Path(build["project_root"]).name
             target = build.get("target", "default")
 
             builds.append(
@@ -316,13 +315,14 @@ def handle_get_active_builds() -> dict:
                     "project_root": build["project_root"],
                     "target": target,
                     "entry": build.get("entry"),
-                    "project_name": project_name,
-                    "display_name": f"{project_name}:{target}",
                     "started_at": build.get("building_started_at")
                     or build.get("started_at"),
                     "elapsed_seconds": elapsed,
                     "stages": build.get("stages", []),
                     "queue_position": build.get("queue_position"),
+                    "warnings": build.get("warnings", 0),
+                    "errors": build.get("errors", 0),
+                    "return_code": build.get("return_code"),
                     "error": build.get("error"),
                 }
             )
@@ -422,6 +422,7 @@ def handle_get_build_info(build_id: str) -> dict | None:
                 "warnings": build_info.get("warnings", 0),
                 "errors": build_info.get("errors", 0),
                 "stages": build_info.get("stages", []),
+                "return_code": build_info.get("return_code"),
             }
 
     # Fall back to build history database

@@ -137,7 +137,7 @@ export const api = {
     queue: () => fetchJSON<{ queue: Build[] }>('/api/builds/queue'),
 
     status: (buildId: string) =>
-      fetchJSON<{ build_id: string; target: string; status: string; project_root: string; return_code: number | null; error: string | null }>(
+      fetchJSON<{ buildId: string; target: string; status: string; projectRoot: string; returnCode: number | null; error: string | null }>(
         `/api/build/${buildId}/status`
       ),
 
@@ -145,11 +145,11 @@ export const api = {
       fetchJSON<{
         success: boolean;
         message: string;
-        build_targets: { target: string; build_id: string }[];
+        buildTargets: { target: string; buildId: string }[];
       }>('/api/build', {
         method: 'POST',
         body: JSON.stringify({
-          project_root: projectRoot,
+          projectRoot,
           targets,
           ...options,
         }),
@@ -160,17 +160,7 @@ export const api = {
 
     // Build-ID based lookups
     info: (buildId: string) =>
-      fetchJSON<{
-        build_id: string;
-        project_root: string;
-        target: string;
-        started_at: number;
-        completed_at: number | null;
-        status: string;
-        duration: number | null;
-        warnings: number;
-        errors: number;
-      }>(`/api/build/${buildId}/info`),
+      fetchJSON<Build>(`/api/build/${buildId}/info`),
 
     byProject: (projectRoot?: string, target?: string, limit: number = 50) => {
       const params = new URLSearchParams();

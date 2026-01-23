@@ -440,9 +440,9 @@ export function BOMPanel({
   const [lcscParts, setLcscParts] = useState<Record<string, LcscPartData | null>>({})
   const [lcscLoadingIds, setLcscLoadingIds] = useState<Set<string>>(new Set())
   const [latestBuildInfo, setLatestBuildInfo] = useState<{
-    build_id?: string
-    started_at?: number
-    completed_at?: number
+    buildId?: string
+    startedAt?: number
+    completedAt?: number
   } | null>(null)
   const [forceRefreshBuildId, setForceRefreshBuildId] = useState<string | null>(null)
   const lcscRequestIdRef = useRef(0)
@@ -518,9 +518,9 @@ export function BOMPanel({
       .then((result) => {
         const build = Array.isArray(result.builds) ? result.builds[0] : null
         setLatestBuildInfo(build ? {
-          build_id: build.buildId,
-          started_at: build.startedAt,
-          completed_at: build.startedAt && build.elapsedSeconds
+          buildId: build.buildId,
+          startedAt: build.startedAt,
+          completedAt: build.startedAt && build.elapsedSeconds
             ? build.startedAt + build.elapsedSeconds
             : undefined,
         } : null)
@@ -533,14 +533,14 @@ export function BOMPanel({
 
   // Check if build is stale (older than 24 hours) to trigger LCSC refresh
   useEffect(() => {
-    if (!latestBuildInfo?.build_id) return
-    const timestamp = latestBuildInfo.completed_at ?? latestBuildInfo.started_at
+    if (!latestBuildInfo?.buildId) return
+    const timestamp = latestBuildInfo.completedAt ?? latestBuildInfo.startedAt
     if (!timestamp) return
     const ageSeconds = Date.now() / 1000 - timestamp
     const isBuildStale = ageSeconds > 24 * 60 * 60
     if (!isBuildStale) return
-    if (lastLcscRefreshBuildIdRef.current === latestBuildInfo.build_id) return
-    setForceRefreshBuildId(latestBuildInfo.build_id)
+    if (lastLcscRefreshBuildIdRef.current === latestBuildInfo.buildId) return
+    setForceRefreshBuildId(latestBuildInfo.buildId)
   }, [latestBuildInfo])
 
   const lcscIds = useMemo(() => {
@@ -599,8 +599,8 @@ export function BOMPanel({
           for (const id of missing) next.delete(id)
           return next
         })
-        if (forceRefresh && latestBuildInfo?.build_id) {
-          lastLcscRefreshBuildIdRef.current = latestBuildInfo.build_id
+        if (forceRefresh && latestBuildInfo?.buildId) {
+          lastLcscRefreshBuildIdRef.current = latestBuildInfo.buildId
           setForceRefreshBuildId(null)
         }
       })

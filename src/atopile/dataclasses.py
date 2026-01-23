@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Literal, Optional
 
 from fastapi import WebSocket
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # =============================================================================
 # Enums and Type Aliases
@@ -280,16 +280,29 @@ Log.Entry.__dataclass_fields__["audience"].default = Log.Audience.DEVELOPER
 Log.TestEntry.__dataclass_fields__["audience"].default = Log.Audience.DEVELOPER
 
 
+def _to_camel(s: str) -> str:
+    """Convert snake_case to camelCase."""
+    components = s.split("_")
+    return components[0] + "".join(x.title() for x in components[1:])
+
+
+class CamelModel(BaseModel):
+    model_config = ConfigDict(
+        alias_generator=_to_camel,
+        populate_by_name=True,
+    )
+
+
 # =============================================================================
 # Build-related Pydantic Models
 # =============================================================================
 
 
-class BuildStage(BaseModel):
+class BuildStage(CamelModel):
     """A stage within a build."""
 
     name: str
-    stage_id: str
+    stage_id: str = ""
     display_name: Optional[str] = None
     elapsed_seconds: float = 0.0
     status: StageStatus = StageStatus.PENDING
@@ -299,7 +312,7 @@ class BuildStage(BaseModel):
     alerts: int = 0
 
 
-class Build(BaseModel):
+class Build(CamelModel):
     """A build (active, queued, or completed)."""
 
     # Core identification
@@ -307,6 +320,7 @@ class Build(BaseModel):
     display_name: str
     project_name: Optional[str] = None
     build_id: Optional[str] = None
+    build_key: Optional[str] = None
 
     # Status
     status: BuildStatus = BuildStatus.QUEUED
@@ -321,6 +335,8 @@ class Build(BaseModel):
     target: Optional[str] = None
     entry: Optional[str] = None
     started_at: Optional[float] = None
+    completed_at: Optional[float] = None
+    duration: Optional[float] = None
 
     # Stages and logs
     stages: Optional[list[BuildStage]] = None
@@ -333,8 +349,25 @@ class Build(BaseModel):
     # Queue info
     queue_position: Optional[int] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _fill_display_fields(cls, values: Any) -> Any:
+        if not isinstance(values, dict):
+            return values
+        target = values.get("target") or values.get("name") or "default"
+        values.setdefault("name", target)
+        project_root = values.get("project_root")
+        if project_root and not values.get("project_name"):
+            values["project_name"] = Path(project_root).name
+        if not values.get("display_name"):
+            if values.get("project_name"):
+                values["display_name"] = f"{values['project_name']}:{values['name']}"
+            else:
+                values["display_name"] = values["name"]
+        return values
 
-class BuildRequest(BaseModel):
+
+class BuildRequest(CamelModel):
     """Request to start a build."""
 
     project_root: str
@@ -345,14 +378,14 @@ class BuildRequest(BaseModel):
     standalone: bool = False  # Whether to use standalone mode
 
 
-class BuildTargetInfo(BaseModel):
+class BuildTargetInfo(CamelModel):
     """Build target queued by a build request."""
 
     target: str
     build_id: str
 
 
-class BuildResponse(BaseModel):
+class BuildResponse(CamelModel):
     """Response from build request."""
 
     success: bool
@@ -360,7 +393,7 @@ class BuildResponse(BaseModel):
     build_targets: list[BuildTargetInfo] = Field(default_factory=list)
 
 
-class BuildTargetResponse(BaseModel):
+class BuildTargetResponse(CamelModel):
     """Response for build target status (one build_id = one target)."""
 
     build_id: str
@@ -371,7 +404,7 @@ class BuildTargetResponse(BaseModel):
     error: Optional[str] = None
 
 
-class BuildTargetStatus(BaseModel):
+class BuildTargetStatus(CamelModel):
     """Persisted status from last build of a target."""
 
     status: BuildStatus
@@ -383,13 +416,20 @@ class BuildTargetStatus(BaseModel):
     build_id: Optional[str] = None  # Build ID hash for reference
 
 
-class BuildTarget(BaseModel):
+class BuildTarget(CamelModel):
     """A build target from ato.yaml."""
 
     name: str
     entry: str
     root: str
     last_build: Optional[BuildTargetStatus] = None
+
+
+class BuildsResponse(CamelModel):
+    """Response for /api/builds endpoints."""
+
+    builds: list[Build]
+    total: Optional[int] = None
 
 
 class MaxConcurrentRequest(BaseModel):
@@ -410,18 +450,11 @@ class Project(BaseModel):
     targets: list[BuildTarget]
 
 
-class ProjectsResponse(BaseModel):
+class ProjectsResponse(CamelModel):
     """Response for /api/projects endpoint."""
 
     projects: list[Project]
     total: int
-
-
-def _to_camel(s: str) -> str:
-    """Convert snake_case to camelCase."""
-    components = s.split("_")
-    return components[0] + "".join(x.title() for x in components[1:])
-
 
 class ModuleChild(BaseModel):
     """A child field within a module (interface, parameter, nested module, etc.)."""
