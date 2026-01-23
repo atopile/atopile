@@ -4,7 +4,7 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { registerLogger, traceInfo, traceLog, traceVerbose } from './common/log/logging';
-import { startOrRestartServer, initServer, onNeedsRestart } from './common/server';
+import { startOrRestartServer, initServer, onNeedsRestart } from './common/lspServer';
 import { getLSClientTraceLevel } from './common/utilities';
 import { createOutputChannel, get_ide_type } from './common/vscodeapi';
 import * as ui from './ui/ui';

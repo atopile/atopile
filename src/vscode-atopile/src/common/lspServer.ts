@@ -11,11 +11,11 @@ import {
     ServerOptions,
 } from 'vscode-languageclient/node';
 import { traceError, traceInfo, traceVerbose } from './log/logging';
-import { getWorkspaceSettings, ISettings } from './settings';
-import { getLSClientTraceLevel, getProjectRoot } from './utilities';
+import { ISettings } from './settings';
+import { getLSClientTraceLevel } from './utilities';
 import { isVirtualWorkspace, onDidChangeConfiguration, registerCommand } from './vscodeapi';
 import { SERVER_ID } from './constants';
-import { getAtoBin, initAtoBin } from './findbin';
+import { initAtoBin, resolveAtoBinForWorkspace } from './findbin';
 import * as fs from 'fs/promises';
 import * as cp from 'child_process';
 import { constants as fsc } from 'fs';
@@ -128,16 +128,14 @@ export async function startOrRestartServer(
         _disposables.forEach((d) => d.dispose());
         _disposables = [];
     }
-    const projectRoot = await getProjectRoot();
-    const workspaceSetting = await getWorkspaceSettings(projectRoot);
-
-    const ato_path = await getAtoBin(workspaceSetting);
-    if (!ato_path) {
+    const resolved = await resolveAtoBinForWorkspace();
+    if (!resolved) {
         traceError(`Server: ato not found. Make sure the extension is properly installed.`);
         return undefined;
     }
-    traceInfo(`Server: Requesting start with ato from ${ato_path.source}.`);
-    const newLSClient = await _runServer(ato_path.command, workspaceSetting, serverId, serverName, outputChannel);
+    const { settings: workspaceSetting, atoBin } = resolved;
+    traceInfo(`Server: Requesting start with ato from ${atoBin.source}.`);
+    const newLSClient = await _runServer(atoBin.command, workspaceSetting, serverId, serverName, outputChannel);
     if (!newLSClient) {
         traceError(`Server: Could not start server.`);
         return undefined;

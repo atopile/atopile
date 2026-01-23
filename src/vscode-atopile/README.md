@@ -222,7 +222,7 @@ src/vscode-atopile/
 │   ├── extension.ts        # Main extension entry point
 │   ├── common/             # Shared utilities
 │   │   ├── findbin.ts      # Binary detection & UV management
-│   │   ├── server.ts       # LSP client lifecycle
+│   │   ├── lspServer.ts    # LSP client lifecycle
 │   │   ├── appState-ws-standalone.ts  # WebSocket state sync
 │   │   └── settings.ts     # VS Code settings
 │   └── ui/                 # VS Code webview integration

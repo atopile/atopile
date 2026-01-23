@@ -14,7 +14,7 @@ import * as cp from 'child_process';
 import axios from 'axios';
 import * as net from 'net';
 import { traceInfo, traceError, traceVerbose } from './log/logging';
-import { getAtoBin } from './findbin';
+import { resolveAtoBinForWorkspace } from './findbin';
 import { appStateManager } from './appState';
 
 const BACKEND_HOST = '127.0.0.1';
@@ -430,15 +430,15 @@ class BackendServerManager implements vscode.Disposable {
 
         try {
             const workspaceRoot = getWorkspaceRoot();
-            const atoBin = await getAtoBin();
-
-            if (!atoBin) {
+            const resolved = await resolveAtoBinForWorkspace();
+            if (!resolved) {
                 this._lastError = 'ato binary not found';
                 traceError(`BackendServer: Cannot start server - ${this._lastError}`);
                 this._serverState = 'error';
                 this._updateStatusBar();
                 return false;
             }
+            const { atoBin } = resolved;
 
             if (this._process) {
                 await this.stopServer();

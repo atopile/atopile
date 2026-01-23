@@ -174,6 +174,19 @@ export async function getAtoBin(settings?: ISettings, timeout_ms?: number): Prom
     return atoBin;
 }
 
+export async function resolveAtoBinForWorkspace(): Promise<{
+    settings: ISettings;
+    atoBin: AtoBinLocator;
+} | null> {
+    const projectRoot = await getProjectRoot();
+    const settings = await getWorkspaceSettings(projectRoot);
+    const atoBin = await getAtoBin(settings);
+    if (!atoBin) {
+        return null;
+    }
+    return { settings, atoBin };
+}
+
 
 /**
  * Check if a terminal is still valid (not disposed).

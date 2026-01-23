@@ -10,7 +10,7 @@ The extension consists of several interconnected components:
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        VS Code Extension                             │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────────┐ │
-│  │ extension  │  │  findbin   │  │  server    │  │ appState-ws    │ │
+│  │ extension  │  │  findbin   │  │ lspServer  │  │ appState-ws    │ │
 │  │    .ts     │──│    .ts     │──│    .ts     │  │ standalone.ts  │ │
 │  │ (entry)    │  │(bin detect)│  │(LSP client)│  │(WebSocket sync)│ │
 │  └────────────┘  └────────────┘  └────────────┘  └────────────────┘ │
@@ -31,7 +31,7 @@ The extension consists of several interconnected components:
 |------|---------|
 | `src/extension.ts` | Extension entry point, activates all components |
 | `src/common/findbin.ts` | Detects ato binary location, manages UV |
-| `src/common/server.ts` | LSP client lifecycle management |
+| `src/common/lspServer.ts` | LSP client lifecycle management |
 | `src/common/backendServer.ts` | Backend server lifecycle (auto-start, restart, stop) |
 | `src/common/appState-ws-standalone.ts` | WebSocket state sync with Python backend |
 | `src/common/settings.ts` | VS Code settings management |
@@ -85,7 +85,7 @@ If no ato binary found and `atopile.autoInstall` is true:
 
 ## Server Management
 
-### LSP Server (server.ts)
+### LSP Server (lspServer.ts)
 
 The Language Server provides:
 - Syntax highlighting
@@ -233,7 +233,7 @@ interface AtopileConfig {
 | Event | Source | Triggers |
 |-------|--------|----------|
 | `onDidChangeAtoBinInfoEvent` | findbin.ts | Server restart |
-| `onNeedsRestart` | server.ts | LSP server restart |
+| `onNeedsRestart` | lspServer.ts | LSP server restart |
 | `onBuildTargetChanged` | target.ts | LSP notification |
 | `onDidChangeConfiguration` | VS Code | Settings sync |
 
