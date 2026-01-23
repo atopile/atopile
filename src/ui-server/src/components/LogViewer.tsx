@@ -364,6 +364,8 @@ function TreeNodeRow({
   formatTimestamp,
   formatSource,
   indentLevel,
+  setLevelFull,
+  setTimeMode,
 }: {
   node: TreeNode;
   search: string;
@@ -373,6 +375,8 @@ function TreeNodeRow({
   formatTimestamp: (ts: string, mode: 'delta' | 'wall') => string;
   formatSource: (file: string | null | undefined, line: number | null | undefined) => string | null;
   indentLevel: number;
+  setLevelFull: (value: boolean) => void;
+  setTimeMode: (value: 'delta' | 'wall') => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(true);
   const hasChildren = node.children.length > 0;
@@ -397,8 +401,8 @@ function TreeNodeRow({
   return (
     <>
       <div className={`lv-tree-row ${entry.level.toLowerCase()} ${indentLevel === 0 ? 'lv-tree-root' : 'lv-tree-child'} ${!levelFull ? 'lv-level-compact' : ''} ${timeMode === 'delta' ? 'lv-time-compact' : ''}`}>
-        <span className="lv-ts">{ts}</span>
-        <span className={`lv-level-badge ${entry.level.toLowerCase()} ${levelFull ? '' : 'short'}`}>
+        <span className="lv-ts" onClick={() => setTimeMode(timeMode === 'delta' ? 'wall' : 'delta')} title={TOOLTIPS.timestamp}>{ts}</span>
+        <span className={`lv-level-badge ${entry.level.toLowerCase()} ${levelFull ? '' : 'short'}`} onClick={() => setLevelFull(!levelFull)} title={TOOLTIPS.level}>
           {levelFull ? entry.level : LEVEL_SHORT[entry.level]}
         </span>
         <span
@@ -463,6 +467,8 @@ function TreeNodeRow({
           formatTimestamp={formatTimestamp}
           formatSource={formatSource}
           indentLevel={indentLevel + 1}
+          setLevelFull={setLevelFull}
+          setTimeMode={setTimeMode}
         />
       ))}
     </>
@@ -478,6 +484,8 @@ function TreeLogGroup({
   sourceMode,
   formatTimestamp,
   formatSource,
+  setLevelFull,
+  setTimeMode,
 }: {
   group: LogTreeGroup;
   search: string;
@@ -486,6 +494,8 @@ function TreeLogGroup({
   sourceMode: 'source' | 'logger';
   formatTimestamp: (ts: string, mode: 'delta' | 'wall') => string;
   formatSource: (file: string | null | undefined, line: number | null | undefined) => string | null;
+  setLevelFull: (value: boolean) => void;
+  setTimeMode: (value: 'delta' | 'wall') => void;
 }) {
   return (
     <div className="lv-tree-group">
@@ -498,6 +508,8 @@ function TreeLogGroup({
         formatTimestamp={formatTimestamp}
         formatSource={formatSource}
         indentLevel={0}
+        setLevelFull={setLevelFull}
+        setTimeMode={setTimeMode}
       />
     </div>
   );
@@ -1185,6 +1197,8 @@ export function LogViewer() {
                     sourceMode={sourceMode}
                     formatTimestamp={formatTimestamp}
                     formatSource={formatSource}
+                    setLevelFull={setLevelFull}
+                    setTimeMode={setTimeMode}
                   />
                 );
               }
@@ -1207,8 +1221,8 @@ export function LogViewer() {
               return (
                 <div key={groupIdx} className={`lv-entry lv-entry-standalone ${entry.level.toLowerCase()}`}>
                   <div className={`lv-entry-row ${!levelFull ? 'lv-level-compact' : ''} ${timeMode === 'delta' ? 'lv-time-compact' : ''}`}>
-                    <span className="lv-ts">{ts}</span>
-                    <span className={`lv-level-badge ${entry.level.toLowerCase()} ${levelFull ? '' : 'short'}`}>
+                    <span className="lv-ts" onClick={() => setTimeMode(timeMode === 'delta' ? 'wall' : 'delta')} title={TOOLTIPS.timestamp}>{ts}</span>
+                    <span className={`lv-level-badge ${entry.level.toLowerCase()} ${levelFull ? '' : 'short'}`} onClick={() => setLevelFull(!levelFull)} title={TOOLTIPS.level}>
                       {levelFull ? entry.level : LEVEL_SHORT[entry.level]}
                     </span>
                     <span
