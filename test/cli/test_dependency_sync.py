@@ -7,9 +7,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 from semver import Version
 
+import atopile.config as config
 from atopile import errors
 from faebryk.libs.backend.packages.api import _Schemas
-from faebryk.libs.project.dependencies import _select_compatible_registry_release
+from faebryk.libs.project.dependencies import (
+    ProjectDependencies,
+    ProjectDependency,
+    _select_compatible_registry_release,
+)
 
 
 def _make_release_info(
@@ -277,3 +282,62 @@ class TestSelectCompatibleRegistryRelease:
         # Verify the pinned version would be rejected if requested directly
         with pytest.raises(errors.UserException, match="requires atopile"):
             _select_compatible_registry_release(api, "test/package", "3.0.0")
+
+
+class TestBuildDepChain:
+    """Tests for ProjectDependencies._build_dep_chain."""
+
+    def _make_dep(self, identifier: str, release: str | None = None):
+        spec = config.RegistryDependencySpec(identifier=identifier, release=release)
+        return ProjectDependency(spec)
+
+    def test_direct_dep_no_parent(self):
+        """A direct dependency with no parent shows just its identifier."""
+        parent_map: dict[str, ProjectDependency] = {}
+        result = ProjectDependencies._build_dep_chain(
+            "atopile/indicator-leds", parent_map
+        )
+        assert result == "atopile/indicator-leds"
+
+    def test_direct_dep_with_version(self):
+        """A direct dependency with a version shows identifier@version."""
+        parent_map: dict[str, ProjectDependency] = {}
+        result = ProjectDependencies._build_dep_chain(
+            "atopile/indicator-leds", parent_map, release="0.1.5"
+        )
+        assert result == "atopile/indicator-leds@0.1.5"
+
+    def test_single_parent(self):
+        """A dep with one parent shows parent → child with versions."""
+        parent_dep = self._make_dep("atopile/realtek-package", "0.5.0")
+        parent_map = {"atopile/indicator-leds": parent_dep}
+        result = ProjectDependencies._build_dep_chain(
+            "atopile/indicator-leds", parent_map, release="0.1.5"
+        )
+        assert result == "atopile/realtek-package@0.5.0 → atopile/indicator-leds@0.1.5"
+
+    def test_multi_level_chain(self):
+        """A dep with multiple ancestor levels shows the full chain."""
+        root_dep = self._make_dep("my-project/dsp", "1.0.0")
+        mid_dep = self._make_dep("atopile/realtek-package", "0.5.0")
+        parent_map = {
+            "atopile/realtek-package": root_dep,
+            "atopile/indicator-leds": mid_dep,
+        }
+        result = ProjectDependencies._build_dep_chain(
+            "atopile/indicator-leds", parent_map, release="0.1.5"
+        )
+        assert result == (
+            "my-project/dsp@1.0.0 → "
+            "atopile/realtek-package@0.5.0 → "
+            "atopile/indicator-leds@0.1.5"
+        )
+
+    def test_parent_without_release(self):
+        """A parent without a pinned release shows just the identifier."""
+        parent_dep = self._make_dep("atopile/realtek-package", None)
+        parent_map = {"atopile/indicator-leds": parent_dep}
+        result = ProjectDependencies._build_dep_chain(
+            "atopile/indicator-leds", parent_map, release="0.1.5"
+        )
+        assert result == "atopile/realtek-package → atopile/indicator-leds@0.1.5"

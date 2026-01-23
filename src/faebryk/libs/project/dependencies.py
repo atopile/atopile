@@ -113,9 +113,17 @@ def _select_compatible_registry_release(
 
 
 class BrokenDependencyError(Exception):
-    def __init__(self, identifier: str, error: Exception):
+    def __init__(
+        self,
+        identifier: str,
+        error: Exception,
+        parent: "ProjectDependency | None" = None,
+        release: str | None = None,
+    ):
         self.identifier = identifier
         self.error = error
+        self.parent = parent
+        self.release = release
 
 
 class ProjectDependency:
@@ -282,10 +290,23 @@ class ProjectDependencies:
         self.direct_deps = {
             ProjectDependency(spec, pcfg=pcfg) for spec in pcfg.dependencies or []
         }
-        self.dag = self.resolve_dependencies()
 
         if update_versions:
-            self.update_versions()
+            # Update manifest specs BEFORE resolving dependencies.
+            # This avoids loading/validating old installed packages that may have
+            # config errors in their ato.yaml (which would fail resolution).
+            if self._update_manifest_versions():
+                if self.gcfg is not None:
+                    self.gcfg.reload()
+                    self.pcfg = self.gcfg.project
+                    pcfg = self.pcfg
+                self.direct_deps = {
+                    ProjectDependency(spec, pcfg=pcfg)
+                    for spec in pcfg.dependencies or []
+                }
+
+        self.dag = self.resolve_dependencies()
+
         if sync_versions:
             self.sync_versions()
         if install_missing:
@@ -348,10 +369,38 @@ class ProjectDependencies:
 
             robustly_rm_dir(module_dir / unmanaged_dir)
 
+    @staticmethod
+    def _build_dep_chain(
+        identifier: str,
+        parent_map: dict[str, ProjectDependency],
+        release: str | None = None,
+    ) -> str:
+        """Build a dependency chain string like 'root@1.0 → parent@2.0 → child@3.0'."""
+        chain: list[str] = []
+        current_id: str | None = identifier
+        while current_id is not None:
+            parent = parent_map.get(current_id)
+            if parent is not None:
+                spec = parent.spec
+                if isinstance(spec, config.RegistryDependencySpec) and spec.release:
+                    chain.append(f"{parent.identifier}@{spec.release}")
+                else:
+                    chain.append(parent.identifier)
+                current_id = parent.identifier
+            else:
+                current_id = None
+        chain.reverse()
+        leaf = f"{identifier}@{release}" if release else identifier
+        chain.append(leaf)
+        return " → ".join(chain)
+
     def resolve_dependencies(self):
         dag = DAG[ProjectDependency]()
         # TODO: can be replaced with dag.values
         all_deps: set[ProjectDependency] = set()
+
+        # Track parent relationships for error reporting
+        parent_map: dict[str, ProjectDependency] = {}
 
         # Good old BFS for dependency resolution
         deps_to_process: list[tuple[ProjectDependency | None, ProjectDependency]] = [
@@ -363,6 +412,10 @@ class ProjectDependencies:
             to_add = []
             for parent, dep in deps_to_process:
                 try:
+                    # Record parent for chain reporting (first parent wins)
+                    if parent is not None and dep.identifier not in parent_map:
+                        parent_map[dep.identifier] = parent
+
                     dups = all_deps.intersection({dep})
                     assert len(dups) <= 1
                     dup = dups.pop() if dups else None
@@ -386,12 +439,24 @@ class ProjectDependencies:
                     else:
                         dag.add_or_get(dep)
                 except Exception as e:
-                    acc_errors.append(BrokenDependencyError(dep.identifier, e))
+                    release = (
+                        dep.spec.release
+                        if isinstance(dep.spec, config.RegistryDependencySpec)
+                        else None
+                    )
+                    acc_errors.append(
+                        BrokenDependencyError(
+                            dep.identifier, e, parent=parent, release=release
+                        )
+                    )
 
             deps_to_process.clear()
             deps_to_process.extend(to_add)
         if acc_errors:
-            error_list = [f"{e.identifier}: {e.error}" for e in acc_errors]
+            error_list = []
+            for e in acc_errors:
+                chain = self._build_dep_chain(e.identifier, parent_map, e.release)
+                error_list.append(f"{chain}: {e.error}")
             raise errors.UserException(f"Broken dependencies:\n {md_list(error_list)}")
 
         if dag.contains_cycles:
@@ -613,15 +678,24 @@ class ProjectDependencies:
                 dep.add_to_manifest()
                 _log_pin_package(dep.identifier, dep.cfg.package.version)
 
-    def update_versions(self):
+    def _update_manifest_versions(self) -> bool:
         """
-        Update registry dependencies to their latest compatible versions.
+        Update registry dependency specs in the manifest to their latest
+        compatible versions. Returns True if any specs were changed.
+
+        Removes all installed registry dep directories so that
+        resolve_dependencies() downloads fresh copies instead of loading
+        potentially broken old configs.
         """
         api = PackagesAPIClient()
         dirty = False
         for dep in self.direct_deps:
             if not isinstance(dep.spec, config.RegistryDependencySpec):
                 continue
+            # Remove old installed directory unconditionally — the installed
+            # copy may have a broken config even if the version hasn't changed.
+            if dep.target_path.exists():
+                robustly_rm_dir(dep.target_path)
             # Pass None to get the latest compatible release (fallback behavior)
             latest_version = _select_compatible_registry_release(
                 api, dep.spec.identifier, None
@@ -635,5 +709,4 @@ class ProjectDependencies:
                 dep.add_to_manifest()
                 dirty = True
 
-        if dirty:
-            self.reload()
+        return dirty
