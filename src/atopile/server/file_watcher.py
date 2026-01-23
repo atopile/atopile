@@ -11,7 +11,8 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
-from watchdog.events import FileSystemEvent, FileSystemEventHandler
+from watchdog.events import FileSystemEvent, PatternMatchingEventHandler
+from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
 
 log = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ def _configure_watchdog_logging() -> None:
         logger.disabled = True
 
 
-_IGNORED_DIR_NAMES = {
+_IGNORED_DIR_NAMES = frozenset({
     ".git",
     ".hg",
     ".svn",
@@ -47,22 +48,29 @@ _IGNORED_DIR_NAMES = {
     "__pycache__",
     "node_modules",
     "dist",
-    "build",
-    "out",
     "zig-out",
-}
-_ALLOWED_EXTENSIONS = {
-    ".ato",
-    ".py",
-    ".json",
-    ".yaml",
-    ".yml",
-    ".kicad_pcb",
-    ".kicad_pro",
-    ".kicad_sch",
-    ".kicad_mod",
-    ".kicad_sym",
-}
+})
+
+# Patterns for watchdog's built-in filtering (applied early, before events reach handlers)
+_WATCH_PATTERNS = [
+    "*.ato",
+    "*.py",
+    "*.json",
+    "*.yaml",
+    "*.yml",
+    "*.kicad_pcb",
+    "*.kicad_pro",
+    "*.kicad_sch",
+    "*.kicad_mod",
+    "*.kicad_sym",
+]
+
+# Ignore patterns for watchdog (applied early, skips entire directories)
+_IGNORE_PATTERNS = [
+    f"*/{name}/*" for name in _IGNORED_DIR_NAMES
+] + [
+    f"*/{name}" for name in _IGNORED_DIR_NAMES
+]
 
 
 @dataclass
@@ -82,15 +90,23 @@ _HandlerInfo = tuple[
 ]
 
 
-class _EventDispatcher(FileSystemEventHandler):
+class _EventDispatcher(PatternMatchingEventHandler):
     """
     Dispatches filesystem events to glob-filtered handlers with debouncing.
+
+    Uses PatternMatchingEventHandler for early filtering - watchdog skips
+    non-matching files before events even reach our handlers, reducing CPU usage.
 
     Single instance shared by all watchers to avoid FSEvents conflicts on macOS.
     """
 
     def __init__(self) -> None:
-        super().__init__()
+        super().__init__(
+            patterns=_WATCH_PATTERNS,
+            ignore_patterns=_IGNORE_PATTERNS,
+            ignore_directories=True,
+            case_sensitive=False,
+        )
         self._lock = Lock()
         self._handlers: dict[int, _HandlerInfo] = {}
         self._pending: dict[int, FileChangeResult] = {}
@@ -193,12 +209,12 @@ class _EventDispatcher(FileSystemEventHandler):
 
     @staticmethod
     def _is_ignored(path: Path) -> bool:
+        """Secondary filter for paths that slip through watchdog's pattern matching."""
+        # Check if any path component is in ignored directories
+        # This catches edge cases the glob patterns might miss
         for part in path.parts:
-            if part.startswith(".") or part in _IGNORED_DIR_NAMES:
+            if part in _IGNORED_DIR_NAMES:
                 return True
-        suffix = path.suffix.lower()
-        if suffix and suffix not in _ALLOWED_EXTENSIONS:
-            return True
         return False
 
 
@@ -211,16 +227,28 @@ _watch_lock = Lock()
 
 
 def _get_observer() -> tuple[Any, _EventDispatcher]:
-    """Get or create the shared observer singleton."""
+    """Get or create the shared observer singleton.
+
+    Tries native OS observer first (FSEvents/inotify/ReadDirectoryChangesW),
+    falls back to polling if native fails (e.g., FSEvents stream limits).
+    """
     global _observer, _dispatcher
     with _watch_lock:
         if _observer is None:
             _configure_watchdog_logging()
-            obs = PollingObserver(timeout=1.0)
-            obs.start()
+            try:
+                obs = Observer()
+                obs.start()
+                log.info("Using native file observer")
+            except Exception as e:
+                log.warning(
+                    "Native observer failed (%s), falling back to polling", e
+                )
+                obs = PollingObserver(timeout=2.0)
+                obs.start()
+                log.info("Using polling file observer")
             _observer = obs
             _dispatcher = _EventDispatcher()
-            log.info("Shared file observer started")
         assert _dispatcher is not None
         return _observer, _dispatcher
 
