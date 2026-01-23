@@ -357,7 +357,6 @@ export interface AppState {
 
   // Extension info
   version: string;
-  logoUri: string;
 
   // Atopile configuration
   atopile: {

@@ -5,7 +5,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Settings, ChevronDown, FolderOpen, Loader2, AlertCircle, Check, GitBranch, Package, Search, X } from 'lucide-react';
 import { sendAction } from '../../api/websocket';
-import { DEFAULT_LOGO } from './sidebarUtils';
 
 // Send action to backend via WebSocket
 const action = (name: string, data?: Record<string, unknown>) => {
@@ -40,13 +39,12 @@ interface AtopileState {
 }
 
 interface SidebarHeaderProps {
-  logoUri?: string;
   version?: string;
   atopile?: AtopileState;
   developerMode?: boolean;
 }
 
-export function SidebarHeader({ logoUri, version, atopile, developerMode }: SidebarHeaderProps) {
+export function SidebarHeader({ version, atopile, developerMode }: SidebarHeaderProps) {
   // Settings dropdown state
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
@@ -216,11 +214,6 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
   return (
     <div className="panel-header">
       <div className="header-title">
-        <img
-          className="logo"
-          src={logoUri || DEFAULT_LOGO}
-          alt="atopile"
-        />
         <span>atopile</span>
         {version && <span className="version-badge">v{version}</span>}
       </div>

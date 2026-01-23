@@ -993,7 +993,6 @@ class AppState(BaseModel):
 
     # Extension info
     version: str = "dev"
-    logo_uri: str = ""
 
     # Atopile configuration
     atopile: AtopileConfig = Field(default_factory=AtopileConfig)

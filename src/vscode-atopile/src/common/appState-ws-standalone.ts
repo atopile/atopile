@@ -150,7 +150,6 @@ export interface AppState {
     logHasMore?: boolean;
     expandedTargets: string[];
     version: string;
-    logoUri: string;
     atopile: any;
     problems: Problem[];
     isLoadingProblems: boolean;
@@ -204,7 +203,6 @@ const DEFAULT_STATE: AppState = {
     logHasMore: false,
     expandedTargets: [],
     version: '',
-    logoUri: '',
     atopile: {
         currentVersion: '',
         source: 'release',
@@ -652,9 +650,8 @@ class WebSocketAppStateManager {
     }
 
     // Extension info
-    setExtensionInfo(version: string, logoUri: string): void {
+    setExtensionVersion(version: string): void {
         this._state.version = version;
-        this._state.logoUri = logoUri;
         this._notifyListeners();
     }
 

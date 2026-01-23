@@ -43,7 +43,6 @@ const resetStore = () => {
     logHasMore: undefined,
     expandedTargets: [],
     version: 'dev',
-    logoUri: '',
     atopile: {
       currentVersion: '',
       source: 'release',

@@ -69,7 +69,6 @@ const initialState: AppState = {
 
   // Extension info
   version: 'dev',
-  logoUri: '',
 
   // Atopile configuration
   atopile: {

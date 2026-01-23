@@ -115,9 +115,8 @@ export function Sidebar() {
 
   return (
     <div className={`unified-layout ${selectedPackage ? 'package-detail-open' : ''}`}>
-      {/* Header with logo and settings */}
+      {/* Header with settings */}
       <SidebarHeader
-        logoUri={state?.logoUri}
         version={state?.version}
         atopile={state?.atopile}
         developerMode={state?.developerMode}

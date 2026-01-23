@@ -181,34 +181,6 @@ The file tree in the projects tab is not rendering .ato or .py files.
 
 ---
 
-## Task 4: Replace Placeholder Logo
-**Priority:** Low | **Complexity:** Low
-
-### Problem
-The webview uses a placeholder SVG logo instead of the actual atopile logo.
-
-### Implementation
-1. The actual logo is at `ato_logo_256x256.png` in the extension root
-2. Need to pass the logo URI from extension to webview
-3. Or embed the logo directly in the webview
-
-### Files to Modify
-- `src/vscode-atopile/src/common/logo.ts` - Already has `getLogoUri()` function
-- `src/ui/vscode-panels.ts` - Pass logo URI to webview HTML
-- `src/components/Sidebar.tsx` - Use passed logo URI instead of DEFAULT_LOGO
-
-### Current Placeholder (Sidebar.tsx line ~70)
-```typescript
-const DEFAULT_LOGO = `data:image/svg+xml,...`;
-```
-
-### Testing
-1. Reload webview
-2. Verify atopile logo appears correctly in header
-3. Check logo renders in both light and dark themes
-
----
-
 ## Task 5: Packages Not Showing Blurb/Description
 **Priority:** Medium | **Complexity:** Medium
 
@@ -362,7 +334,6 @@ BOM needs a build selector and search bar, standardized with other panels.
 ### Phase 1: Quick Wins (Low complexity)
 1. Task 2: Default Collapsed State
 2. Task 1: Build Queue Auto-Hide
-3. Task 4: Replace Placeholder Logo
 
 ### Phase 2: Data/Display Fixes
 4. Task 7: Problems Not Displaying (HIGH PRIORITY)
@@ -390,7 +361,6 @@ BOM needs a build selector and search bar, standardized with other panels.
 - [x] Project-level build queues ALL targets (DONE - uses ProjectConfig from atopile.config)
 - [x] All sections collapse/expand correctly (DONE - default collapsed state set)
 - [x] Build queue auto-hides when empty (DONE)
-- [x] Logo displays correctly (DONE - embedded as base64 data URI)
 - [x] Files render in project tree (DONE - fixed fetchFiles handler)
 - [x] Package descriptions show (DONE - implementation verified)
 - [x] Problems display from builds (DONE - auto-refresh after build completion)
