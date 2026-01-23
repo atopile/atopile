@@ -186,42 +186,27 @@ async def _watch_stdlib_background() -> None:
         "stdlib",
         paths=stdlib_domain.get_stdlib_watch_paths(),
         on_change=lambda _result: _refresh_stdlib_state(),
+        glob="**/*.{py,ato}",
     )
     await watcher.run()
 
 
 async def _watch_bom_background() -> None:
-    def _paths() -> list[Path]:
-        projects = server_state._state.projects or []
-        return [
-            Path(project.root) / "build" / "builds"
-            for project in projects
-            if project.root
-        ]
-
     watcher = FileWatcher(
         "bom",
-        paths_provider=_paths,
+        paths_provider=_get_workspace_roots,
         on_change=lambda _result: _refresh_bom_state(),
-        glob="**/*.bom.json",
+        glob="**/build/builds/*.bom.json",
     )
     await watcher.run()
 
 
 async def _watch_variables_background() -> None:
-    def _paths() -> list[Path]:
-        projects = server_state._state.projects or []
-        return [
-            Path(project.root) / "build" / "builds"
-            for project in projects
-            if project.root
-        ]
-
     watcher = FileWatcher(
         "variables",
-        paths_provider=_paths,
+        paths_provider=_get_workspace_roots,
         on_change=lambda _result: _refresh_variables_state(),
-        glob="**/*.variables.json",
+        glob="**/build/builds/*.variables.json",
     )
     await watcher.run()
 
@@ -251,6 +236,15 @@ def _get_project_roots() -> list[Path]:
         for project in server_state._state.projects or []
         if project.root
     ]
+
+
+def _get_workspace_roots() -> list[Path]:
+    """Get workspace roots for file watching.
+
+    Watching workspace roots instead of individual project roots reduces
+    the number of FSEvents streams on macOS, avoiding stream exhaustion.
+    """
+    return server_state._workspace_paths or []
 
 
 def _affected_project_roots(
@@ -311,12 +305,9 @@ async def _refresh_project_dependencies_for_roots(roots: list[Path]) -> None:
 
 
 async def _watch_projects_background() -> None:
-    def _paths() -> list[Path]:
-        return server_state._workspace_paths or []
-
     watcher = FileWatcher(
         "projects",
-        paths_provider=_paths,
+        paths_provider=_get_workspace_roots,
         on_change=lambda _result: _refresh_projects_state(),
         glob="**/ato.yaml",
     )
@@ -326,7 +317,7 @@ async def _watch_projects_background() -> None:
 async def _watch_project_sources_background() -> None:
     watcher = FileWatcher(
         "project-sources",
-        paths_provider=_get_project_roots,
+        paths_provider=_get_workspace_roots,
         on_change=lambda result: _handle_project_sources_change(result),
         glob="**/*.ato",
     )
@@ -336,7 +327,7 @@ async def _watch_project_sources_background() -> None:
 async def _watch_project_python_background() -> None:
     watcher = FileWatcher(
         "project-python",
-        paths_provider=_get_project_roots,
+        paths_provider=_get_workspace_roots,
         on_change=lambda result: _handle_project_python_change(result),
         glob="**/*.py",
     )
@@ -346,7 +337,7 @@ async def _watch_project_python_background() -> None:
 async def _watch_project_dependencies_background() -> None:
     watcher = FileWatcher(
         "project-deps",
-        paths_provider=_get_project_roots,
+        paths_provider=_get_workspace_roots,
         on_change=lambda result: _handle_project_dependencies_change(result),
         glob="**/ato.yaml",
     )
