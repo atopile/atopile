@@ -161,8 +161,9 @@ export function LogViewer() {
   const [audience, setAudience] = useState<Audience>('developer');
   const [search, setSearch] = useState('');
 
-  // Build log specific parameters
-  const [buildId, setBuildId] = useState(initialParams.buildId);
+  // Build log specific parameters - buildId is in store for cross-component access
+  const buildId = useStore((state) => state.logViewerBuildId) ?? '';
+  const setBuildId = (id: string) => useStore.getState().setLogViewerBuildId(id || null);
   const [stage, setStage] = useState('');
 
   // Test log specific parameters
@@ -455,6 +456,13 @@ export function LogViewer() {
     lastAutoBuildIdRef.current = latestBuildId;
     setBuildId(latestBuildId);
   }, [queuedBuilds, builds, mode, buildId, streaming]);
+
+  // Initialize buildId from URL params on mount
+  useEffect(() => {
+    if (initialParams.buildId && !buildId) {
+      setBuildId(initialParams.buildId);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Get display label for level dropdown
   const getLevelLabel = () => {

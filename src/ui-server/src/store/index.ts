@@ -22,7 +22,7 @@ import type {
   VariablesData,
 } from '../types/build';
 
-// Initial state matching the backend AppState
+// Initial state for the store
 const initialState: AppState = {
   // Connection
   isConnected: false,
@@ -64,6 +64,9 @@ const initialState: AppState = {
   selectedBuildId: null,
   selectedBuildName: null,
   selectedProjectName: null,
+
+  // Log viewer
+  logViewerBuildId: null as string | null,
 
   // Sidebar UI
   expandedTargets: [],
@@ -132,6 +135,9 @@ interface StoreActions {
   setQueuedBuilds: (builds: Build[]) => void;
   selectBuild: (buildName: string | null) => void;
   selectBuildById: (buildId: string | null, buildName?: string | null) => void;
+
+  // Log viewer
+  setLogViewerBuildId: (buildId: string | null) => void;
 
   // Packages
   setPackages: (packages: PackageInfo[]) => void;
@@ -233,6 +239,9 @@ export const useStore = create<Store>()(
 
       selectBuildById: (buildId, buildName = null) =>
         set({ selectedBuildId: buildId, selectedBuildName: buildName }),
+
+      // Log viewer
+      setLogViewerBuildId: (buildId) => set({ logViewerBuildId: buildId }),
 
       // Packages
       setPackages: (packages) => set({ packages, isLoadingPackages: false }),

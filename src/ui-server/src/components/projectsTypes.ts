@@ -30,6 +30,7 @@ export interface LastBuildStatus {
   warnings: number;
   errors: number;
   stages?: BuildStage[];
+  buildId?: string;  // Build ID hash for reference
 }
 
 // Build target

@@ -363,6 +363,9 @@ export interface AppState {
   selectedBuildName: string | null;  // For display/backwards compatibility
   selectedProjectName: string | null;
 
+  // Log viewer
+  logViewerBuildId: string | null;  // Build ID currently shown in log viewer
+
   // Sidebar UI
   expandedTargets: string[];
 

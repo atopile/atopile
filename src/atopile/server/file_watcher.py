@@ -12,7 +12,7 @@ from threading import Lock
 from typing import Any
 
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
-from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver
 
 log = logging.getLogger(__name__)
 
@@ -216,7 +216,7 @@ def _get_observer() -> tuple[Any, _EventDispatcher]:
     with _watch_lock:
         if _observer is None:
             _configure_watchdog_logging()
-            obs = Observer()
+            obs = PollingObserver(timeout=1.0)
             obs.start()
             _observer = obs
             _dispatcher = _EventDispatcher()

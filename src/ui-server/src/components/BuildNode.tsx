@@ -13,6 +13,7 @@ import {
 import type { Selection, BuildTarget, BuildStage, ModuleDefinition } from './projectsTypes';
 import { NameValidationDropdown } from './NameValidationDropdown';
 import { validateName } from '../utils/nameValidation';
+import { useStore } from '../store';
 import './BuildNode.css';
 
 // Timer component for running stages - isolated to prevent parent re-renders
@@ -649,6 +650,42 @@ export const BuildNode = memo(function BuildNode({
               </span>
             )}
           </div>
+
+          {/* Build ID row */}
+          {(build.buildId || build.lastBuild?.buildId) && (
+            <div
+              className="build-id-row"
+              onClick={(e) => {
+                e.stopPropagation();
+                const id = build.buildId || build.lastBuild?.buildId;
+                if (id) {
+                  useStore.getState().setLogViewerBuildId(id);
+                }
+              }}
+              title="Click to view logs for this build"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 8px 4px 24px',
+                fontSize: '10px',
+                color: '#6c7086',
+                cursor: 'pointer',
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: 'monospace',
+                  background: 'rgba(108, 112, 134, 0.2)',
+                  padding: '1px 6px',
+                  borderRadius: '4px',
+                }}
+              >
+                {(build.buildId || build.lastBuild?.buildId)?.slice(0, 8)}
+              </span>
+              <span style={{ opacity: 0.7 }}>View logs</span>
+            </div>
+          )}
 
           {/* Build stages */}
           {hasStages && (

@@ -61,6 +61,7 @@ def _load_last_build_for_target(
             warnings=data.get("warnings", 0),
             errors=data.get("errors", 0),
             stages=data.get("stages"),  # May be None if not present
+            build_id=data.get("build_id"),  # Build ID hash
         )
     except Exception as e:
         log.debug(f"Failed to load build summary for {target_name}: {e}")

@@ -380,6 +380,7 @@ class BuildTargetStatus(BaseModel):
     warnings: int = 0
     errors: int = 0
     stages: Optional[list[dict]] = None
+    build_id: Optional[str] = None  # Build ID hash for reference
 
 
 class BuildTarget(BaseModel):
