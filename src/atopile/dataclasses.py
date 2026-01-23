@@ -318,7 +318,7 @@ class Build(BaseModel):
 
     # Context
     project_root: Optional[str] = None
-    targets: Optional[list[str]] = None
+    target: Optional[str] = None
     entry: Optional[str] = None
     started_at: Optional[float] = None
 
@@ -357,18 +357,16 @@ class BuildResponse(BaseModel):
 
     success: bool
     message: str
-    build_id: Optional[str] = None
-    targets: list[str] = Field(default_factory=list)
     build_targets: list[BuildTargetInfo] = Field(default_factory=list)
 
 
-class BuildStatusResponse(BaseModel):
-    """Response for build status."""
+class BuildTargetResponse(BaseModel):
+    """Response for build target status (one build_id = one target)."""
 
     build_id: str
-    status: BuildStatus  # Use BuildStatus enum
+    target: str
+    status: BuildStatus
     project_root: str
-    targets: list[str]
     return_code: Optional[int] = None
     error: Optional[str] = None
 

@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from atopile.dataclasses import BuildRequest, BuildResponse, BuildStatusResponse
+from atopile.dataclasses import BuildRequest, BuildResponse, BuildTargetResponse
 from atopile.server.app_context import AppContext
 from atopile.server.domains import builds as builds_domain
 from atopile.server.domains.deps import get_ctx
@@ -30,12 +30,12 @@ async def start_build(request: BuildRequest):
     """Start a new build."""
     # Run in thread pool to avoid blocking the event loop
     response = await asyncio.to_thread(builds_domain.handle_start_build, request)
-    if not response.success and response.build_id is None:
+    if not response.success and not response.build_targets:
         raise HTTPException(status_code=400, detail=response.message)
     return response
 
 
-@router.get("/api/build/{build_id}/status", response_model=BuildStatusResponse)
+@router.get("/api/build/{build_id}/status", response_model=BuildTargetResponse)
 async def get_build_status(build_id: str):
     """Get the status of a specific build."""
     result = await asyncio.to_thread(builds_domain.handle_get_build_status, build_id)

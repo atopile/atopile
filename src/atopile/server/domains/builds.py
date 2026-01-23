@@ -14,8 +14,8 @@ from atopile.dataclasses import (
     BuildRequest,
     BuildResponse,
     BuildStatus,
-    BuildStatusResponse,
     BuildTargetInfo,
+    BuildTargetResponse,
     MaxConcurrentRequest,
 )
 from atopile.server import build_history, project_discovery
@@ -96,19 +96,12 @@ def handle_get_summary(ctx: AppContext) -> dict:
             elapsed = time.time() - start_time
 
             project_name = Path(build_info["project_root"]).name
-            targets = build_info.get("targets", [])
-            target_name = (
-                targets[0]
-                if len(targets) == 1
-                else ", ".join(targets)
-                if targets
-                else "default"
-            )
+            target = build_info.get("target", "default")
 
             tracked_build = {
                 "build_id": build_id,
-                "name": target_name,
-                "display_name": f"{project_name}:{target_name}",
+                "name": target,
+                "display_name": f"{project_name}:{target}",
                 "project_name": project_name,
                 "status": status,
                 "elapsed_seconds": elapsed,
@@ -118,7 +111,7 @@ def handle_get_summary(ctx: AppContext) -> dict:
                 "errors": build_info.get("errors", 0),
                 "return_code": build_info.get("return_code"),
                 "project_root": build_info["project_root"],
-                "targets": targets,
+                "target": target,
                 "entry": build_info.get("entry"),
                 "stages": build_info.get("stages", []),
                 "queue_position": build_info.get("queue_position"),
@@ -184,7 +177,7 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
     """Start a new build."""
     error = validate_build_request(request)
     if error:
-        return BuildResponse(success=False, message=error, build_id=None)
+        return BuildResponse(success=False, message=error)
 
     targets = _resolve_request_targets(request)
     if request.standalone and len(targets) > 1:
@@ -201,7 +194,7 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
 
     for target in targets:
         existing_build_id = _is_duplicate_build(
-            request.project_root, [target], request.entry
+            request.project_root, target, request.entry
         )
         if existing_build_id:
             build_id = existing_build_id
@@ -211,7 +204,7 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
                 _active_builds[build_id] = {
                     "status": BuildStatus.QUEUED.value,
                     "project_root": request.project_root,
-                    "targets": [target],
+                    "target": target,
                     "entry": request.entry,
                     "standalone": request.standalone,
                     "frozen": request.frozen,
@@ -235,7 +228,6 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
         return BuildResponse(
             success=False,
             message="No build targets resolved",
-            build_id=None,
         )
 
     if not new_build_ids:
@@ -252,23 +244,21 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
     return BuildResponse(
         success=True,
         message=message,
-        build_id=build_targets[0].build_id,
-        targets=targets,
         build_targets=build_targets,
     )
 
 
-def handle_get_build_status(build_id: str) -> BuildStatusResponse | None:
-    """Get status of a specific build. Returns None if not found."""
+def handle_get_build_status(build_id: str) -> BuildTargetResponse | None:
+    """Get status of a specific build target. Returns None if not found."""
     if build_id not in _active_builds:
         return None
 
     build = _active_builds[build_id]
-    return BuildStatusResponse(
+    return BuildTargetResponse(
         build_id=build_id,
-        status=BuildStatus(build["status"]),  # Convert string to BuildStatus enum
+        target=build.get("target", "default"),
+        status=BuildStatus(build["status"]),
         project_root=build["project_root"],
-        targets=build["targets"],
         return_code=build["return_code"],
         error=build["error"],
     )
@@ -317,24 +307,17 @@ def handle_get_active_builds() -> dict:
             elapsed = time.time() - start_time
 
             project_name = Path(build["project_root"]).name
-            targets = build.get("targets", [])
-            target_name = (
-                targets[0]
-                if len(targets) == 1
-                else ", ".join(targets)
-                if targets
-                else "default"
-            )
+            target = build.get("target", "default")
 
             builds.append(
                 {
                     "build_id": bid,
                     "status": status,
                     "project_root": build["project_root"],
-                    "targets": targets,
+                    "target": target,
                     "entry": build.get("entry"),
                     "project_name": project_name,
-                    "display_name": f"{project_name}:{target_name}",
+                    "display_name": f"{project_name}:{target}",
                     "started_at": build.get("building_started_at")
                     or build.get("started_at"),
                     "elapsed_seconds": elapsed,
@@ -430,7 +413,7 @@ def handle_get_build_info(build_id: str) -> dict | None:
             return {
                 "build_id": build_id,
                 "project_root": build_info.get("project_root"),
-                "targets": build_info.get("targets", []),
+                "target": build_info.get("target", "default"),
                 "entry": build_info.get("entry"),
                 "status": build_info.get("status"),
                 "started_at": started_at,

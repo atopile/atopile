@@ -57,14 +57,13 @@ MAX_CONCURRENT_BUILDS = 4
 
 
 def _is_duplicate_build(
-    project_root: str, targets: list[str], entry: str | None
+    project_root: str, target: str, entry: str | None
 ) -> str | None:
     """
     Check if a build with the same config is already running or queued.
 
     Returns the existing build_id if duplicate, None otherwise.
     """
-    sorted_targets = sorted(targets) if targets else []
     with _build_lock:
         for build_id, build in _active_builds.items():
             if build["status"] not in (
@@ -74,8 +73,7 @@ def _is_duplicate_build(
                 continue
             if build.get("project_root") != project_root:
                 continue
-            build_targets = build.get("targets") or []
-            if sorted(build_targets) != sorted_targets:
+            if build.get("target") != target:
                 continue
             if build.get("entry") != entry:
                 continue
@@ -127,7 +125,7 @@ def _read_target_summary(project_root: str, target: str) -> dict | None:
 def _run_build_subprocess(
     build_id: str,
     project_root: str,
-    targets: list[str],
+    target: str,
     frozen: bool,
     entry: str | None,
     standalone: bool,
@@ -147,7 +145,7 @@ def _run_build_subprocess(
             "type": "started",
             "build_id": build_id,
             "project_root": project_root,
-            "targets": targets,
+            "target": target,
         }
     )
 
@@ -165,10 +163,10 @@ def _run_build_subprocess(
         else:
             cmd = [sys.executable, "-m", "atopile", "build", "--verbose"]
 
-        # Determine which targets to monitor for stage updates
+        # Determine which target to monitor for stage updates
         # For standalone builds, we use the entry point name
-        # For regular builds, we use the target names
-        monitor_targets: list[str] = []
+        # For regular builds, we use the target name
+        monitor_target: str
         standalone_project_root = project_root
 
         if standalone and entry:
@@ -180,11 +178,10 @@ def _run_build_subprocess(
                 Path(project_root) / f"standalone_{entry_stem}"
             )
             # For standalone builds, the target name is "default"
-            monitor_targets = ["default"]
+            monitor_target = "default"
         else:
-            for target in targets:
-                cmd.extend(["--build", target])
-            monitor_targets = targets if targets else ["default"]
+            cmd.extend(["--build", target])
+            monitor_target = target or "default"
 
         if frozen:
             cmd.append("--frozen")
@@ -203,7 +200,7 @@ def _run_build_subprocess(
 
         log.info(
             f"Build {build_id}: starting subprocess - cmd={' '.join(cmd)}, "
-            f"cwd={project_root}, monitor_targets={monitor_targets}"
+            f"cwd={project_root}, monitor_target={monitor_target}"
         )
 
         process = subprocess.Popen(
@@ -215,8 +212,8 @@ def _run_build_subprocess(
             env=env,
         )
 
-        # Poll for completion while monitoring per-target build_summary.json files
-        last_stages: dict[str, list[dict]] = {}  # target -> stages
+        # Poll for completion while monitoring build_summary.json file
+        last_stages: list[dict] = []
         poll_interval = 0.5
         stderr_output = ""
 
@@ -236,36 +233,23 @@ def _run_build_subprocess(
                 )
                 return  # Exit the function after cancellation
 
-            # Read per-target build_summary.json files for stage updates
-            all_current_stages: list[dict] = []
-            for target in monitor_targets:
-                target_summary = _read_target_summary(effective_root, target)
-                if target_summary:
-                    target_stages = target_summary.get("stages", [])
-                    all_current_stages.extend(target_stages)
+            # Read build_summary.json for stage updates
+            target_summary = _read_target_summary(effective_root, monitor_target)
+            current_stages = target_summary.get("stages", []) if target_summary else []
 
             # Check if stages changed
-            flat_last = [s for stages in last_stages.values() for s in stages]
-            if all_current_stages != flat_last:
+            if current_stages != last_stages:
                 log.debug(
-                    f"Build {build_id}: stage update - {len(all_current_stages)} stages"
+                    f"Build {build_id}: stage update - {len(current_stages)} stages"
                 )
                 result_q.put(
                     {
                         "type": "stage",
                         "build_id": build_id,
-                        "stages": all_current_stages,
+                        "stages": current_stages,
                     }
                 )
-                # Update last_stages
-                last_stages = {
-                    target: _read_target_summary(effective_root, target).get(
-                        "stages", []
-                    )
-                    if _read_target_summary(effective_root, target)
-                    else []
-                    for target in monitor_targets
-                }
+                last_stages = current_stages
 
             time.sleep(poll_interval)
 
@@ -273,12 +257,10 @@ def _run_build_subprocess(
         return_code = process.returncode
         stderr_output = process.stderr.read() if process.stderr else ""
 
-        # Get final stages from per-target summaries
-        for target in monitor_targets:
-            target_summary = _read_target_summary(effective_root, target)
-            if target_summary:
-                target_stages = target_summary.get("stages", [])
-                final_stages.extend(target_stages)
+        # Get final stages from summary
+        target_summary = _read_target_summary(effective_root, monitor_target)
+        if target_summary:
+            final_stages = target_summary.get("stages", [])
 
         if return_code != 0:
             error_msg = (
@@ -702,7 +684,7 @@ class BuildQueue:
             _run_build_subprocess,
             build_id,
             build_info["project_root"],
-            build_info["targets"],
+            build_info["target"],
             build_info.get("frozen", False),
             build_info.get("entry"),
             build_info.get("standalone", False),
@@ -869,16 +851,13 @@ def _get_state_builds():
             # Determine display name and build name
             # name is used by frontend to match builds to targets
             entry = build_info.get("entry")
-            targets = build_info.get("targets", [])
+            target = build_info.get("target", "default")
             if entry:
                 display_name = entry.split(":")[-1] if ":" in entry else entry
                 build_name = display_name
-            elif targets:
-                display_name = ", ".join(targets)
-                build_name = targets[0] if len(targets) == 1 else display_name
             else:
-                display_name = "Build"
-                build_name = build_id
+                display_name = target
+                build_name = target
 
             state_builds.append(
                 StateBuild(
@@ -895,7 +874,7 @@ def _get_state_builds():
                     return_code=build_info.get("return_code"),
                     error=build_info.get("error"),  # Include error message
                     project_root=build_info.get("project_root"),
-                    targets=targets,
+                    target=target,
                     entry=entry,
                     started_at=build_info.get("started_at"),
                     stages=stages,
@@ -987,19 +966,17 @@ def _refresh_bom_for_selected(build_info: dict[str, Any]) -> None:
         return
 
     selected_targets = server_state._state.selected_target_names
-    targets = build_info.get("targets", []) or []
+    build_target = build_info.get("target")
 
+    # Use build target if it matches a selected target, otherwise use first selected
     target = None
     if selected_targets:
-        if targets:
-            for candidate in selected_targets:
-                if candidate in targets:
-                    target = candidate
-                    break
+        if build_target and build_target in selected_targets:
+            target = build_target
         else:
             target = selected_targets[0]
-    elif targets:
-        target = targets[0]
+    else:
+        target = build_target
 
     if not target:
         return

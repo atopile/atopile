@@ -137,7 +137,7 @@ export const api = {
     queue: () => fetchJSON<{ queue: Build[] }>('/api/builds/queue'),
 
     status: (buildId: string) =>
-      fetchJSON<{ status: string; project_root: string; targets: string[]; return_code: number | null; error: string | null; stages: unknown[] }>(
+      fetchJSON<{ build_id: string; target: string; status: string; project_root: string; return_code: number | null; error: string | null }>(
         `/api/build/${buildId}/status`
       ),
 
@@ -145,9 +145,7 @@ export const api = {
       fetchJSON<{
         success: boolean;
         message: string;
-        build_id?: string;
-        targets?: string[];
-        build_targets?: { target: string; build_id: string }[];
+        build_targets: { target: string; build_id: string }[];
       }>('/api/build', {
         method: 'POST',
         body: JSON.stringify({
@@ -165,7 +163,7 @@ export const api = {
       fetchJSON<{
         build_id: string;
         project_root: string;
-        targets: string[];
+        target: string;
         started_at: number;
         completed_at: number | null;
         status: string;

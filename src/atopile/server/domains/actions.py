@@ -153,7 +153,7 @@ def _handle_build_sync(payload: dict) -> dict:
                     build_ids = []
                     for target_name in all_targets:
                         existing_id = _is_duplicate_build(
-                            project_root, [target_name], entry
+                            project_root, target_name, entry
                         )
                         if existing_id:
                             build_ids.append(existing_id)
@@ -167,7 +167,7 @@ def _handle_build_sync(payload: dict) -> dict:
                             _active_builds[build_id] = {
                                 "status": "queued",
                                 "project_root": project_root,
-                                "targets": [target_name],
+                                "target": target_name,
                                 "entry": entry,
                                 "standalone": standalone,
                                 "frozen": frozen,
@@ -199,46 +199,55 @@ def _handle_build_sync(payload: dict) -> dict:
                 )
                 targets = ["default"]
 
-    existing_build_id = _is_duplicate_build(project_root, targets, entry)
-    if existing_build_id:
+    # Create one build per target
+    build_ids = []
+    build_label = entry if standalone else "project"
+    timestamp = generate_build_timestamp()
+
+    for target_name in targets:
+        existing_build_id = _is_duplicate_build(project_root, target_name, entry)
+        if existing_build_id:
+            build_ids.append(existing_build_id)
+            continue
+
+        log.info(f"Creating build for target={target_name}, entry={entry}")
+        with _build_lock:
+            build_id = generate_build_id(project_root, target_name, timestamp)
+            log.info(f"Allocated build_id={build_id}")
+            _active_builds[build_id] = {
+                "status": "queued",
+                "project_root": project_root,
+                "target": target_name,
+                "entry": entry,
+                "standalone": standalone,
+                "frozen": frozen,
+                "return_code": None,
+                "error": None,
+                "started_at": time.time(),
+                "timestamp": timestamp,
+                "stages": [],
+            }
+
+        log.info(f"Enqueueing build {build_id}")
+        _build_queue.enqueue(build_id)
+        build_ids.append(build_id)
+
+    log.info(f"All {len(build_ids)} builds enqueued successfully")
+
+    if len(build_ids) == 1:
         return {
             "success": True,
-            "message": "Build already in progress",
-            "build_id": existing_build_id,
-            "needs_state_sync": False,
+            "message": f"Build queued for {build_label}",
+            "build_id": build_ids[0],
+            "needs_state_sync": True,
         }
-
-    build_label = entry if standalone else "project"
-    log.info(f"Creating single build for targets={targets}, entry={entry}")
-    with _build_lock:
-        timestamp = generate_build_timestamp()
-        # Use first target for build_id, or "default" if none
-        target_for_id = targets[0] if targets else "default"
-        build_id = generate_build_id(project_root, target_for_id, timestamp)
-        log.info(f"Allocated build_id={build_id}")
-        _active_builds[build_id] = {
-            "status": "queued",
-            "project_root": project_root,
-            "targets": targets,
-            "entry": entry,
-            "standalone": standalone,
-            "frozen": frozen,
-            "return_code": None,
-            "error": None,
-            "started_at": time.time(),
-            "timestamp": timestamp,
-            "stages": [],
+    else:
+        return {
+            "success": True,
+            "message": f"Queued {len(build_ids)} builds for {build_label}",
+            "build_ids": build_ids,
+            "needs_state_sync": True,
         }
-
-    log.info(f"Enqueueing single build {build_id}")
-    _build_queue.enqueue(build_id)
-    log.info(f"Build {build_id} enqueued successfully")
-    return {
-        "success": True,
-        "message": f"Build queued for {build_label}",
-        "build_id": build_id,
-        "needs_state_sync": True,
-    }
 
 
 async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dict:

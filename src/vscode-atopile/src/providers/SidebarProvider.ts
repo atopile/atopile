@@ -76,7 +76,7 @@ function getWsOrigin(wsUrl: string): string {
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
-  public static readonly viewType = 'atopile.project';
+  public static readonly viewType = 'atopile.sidebar';
 
   private _view?: vscode.WebviewView;
   private _disposables: vscode.Disposable[] = [];

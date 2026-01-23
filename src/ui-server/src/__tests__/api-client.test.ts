@@ -143,7 +143,7 @@ describe('API Client', () => {
       const mockResponse = {
         success: true,
         message: 'Build started',
-        build_id: 'build-123',
+        build_targets: [{ target: 'default', build_id: 'build-123' }],
       };
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -163,13 +163,13 @@ describe('API Client', () => {
         })
       );
       expect(result.success).toBe(true);
-      expect(result.build_id).toBe('build-123');
+      expect(result.build_targets).toEqual([{ target: 'default', build_id: 'build-123' }]);
     });
 
     it('starts standalone build with entry', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        text: () => Promise.resolve(JSON.stringify({ success: true, build_id: 'build-456' })),
+        text: () => Promise.resolve(JSON.stringify({ success: true, build_targets: [{ target: 'default', build_id: 'build-456' }] })),
       });
 
       await api.builds.start('/project', [], { entry: 'main.ato:App', standalone: true });

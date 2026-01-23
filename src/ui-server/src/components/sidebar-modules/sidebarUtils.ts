@@ -139,13 +139,12 @@ export function findBuildForTarget(
     const buildProjectName = b.projectName || (b.projectRoot ? b.projectRoot.split('/').pop() : null);
     if (buildProjectName !== projectName) return false;
 
-    // Match by target - use targets[] array (backend provides this)
-    const targets = b.targets || [];
-    if (targets.length > 0) {
-      return targets.includes(targetName);
+    // Match by target (backend provides single target per build)
+    if (b.target) {
+      return b.target === targetName;
     }
 
-    // If no targets specified (standalone build), match by name
+    // If no target specified (standalone build), match by name
     return b.name === targetName;
   });
 

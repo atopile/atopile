@@ -22,8 +22,6 @@ const SERVER_STARTUP_TIMEOUT_MS = 30000; // 30 seconds to wait for server startu
 interface BuildResponse {
     success: boolean;
     message: string;
-    build_id?: string;
-    targets?: string[];
     build_targets?: { target: string; build_id: string }[];
 }
 
@@ -665,7 +663,7 @@ class BackendServerManager implements vscode.Disposable {
         return {
             success: true,
             message: 'Build triggered',
-            targets,
+            build_targets: [],
         };
     }
 

@@ -46,7 +46,7 @@ export interface Build {
 
   // Context (present for active builds)
   projectRoot?: string;
-  targets?: string[];
+  target?: string;
   entry?: string;
   startedAt?: number;  // Unix timestamp
 
