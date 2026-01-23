@@ -149,7 +149,7 @@ class Dist:
             with (cfg.paths.root / atopile.config.PROJECT_CONFIG_FILENAME).open(
                 "r", encoding="utf-8"
             ) as file:
-                config_data: dict = yaml.load(file) or {}
+                config_data = yaml.load(file) or {}
 
             config_data["package"]["identifier"] = str(cfg.package.identifier)
             config_data["package"]["repository"] = str(cfg.package.repository)

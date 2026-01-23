@@ -32,7 +32,7 @@ def _log_add_package(identifier: str, version: str):
 
 def _log_pin_package(identifier: str, version: str):
     logger.info(
-        f"[yellow]Pinned[/] {identifier}@{version}",
+        f"📌 {identifier}@{version}",
         extra={"markup": True},
     )
 
