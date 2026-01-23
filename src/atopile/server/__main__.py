@@ -2,7 +2,7 @@
 CLI entry point for the dashboard server.
 
 Usage:
-    python -m atopile.server [--port PORT] [--workspace PATH]
+    python -m atopile.server --port PORT [--workspace PATH]
 
 Starts the dashboard server for the atopile extension.
 """
@@ -15,12 +15,7 @@ from pathlib import Path
 
 import requests
 
-from atopile.server.server import (
-    DASHBOARD_PORT,
-    DashboardServer,
-    is_port_in_use,
-    kill_process_on_port,
-)
+from atopile.server.server import DashboardServer, is_port_in_use, kill_process_on_port
 
 
 def is_atopile_server_running(port: int) -> bool:
@@ -37,8 +32,8 @@ def main():
     parser.add_argument(
         "--port",
         type=int,
-        default=DASHBOARD_PORT,
-        help=f"Port to run the server on (default: {DASHBOARD_PORT})",
+        required=True,
+        help="Port to run the server on (required)",
     )
     parser.add_argument(
         "--workspace",

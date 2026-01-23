@@ -31,6 +31,8 @@ declare global {
             getState: typeof mockGetState;
             setState: typeof mockSetState;
         };
+        __ATOPILE_API_URL__?: string;
+        __ATOPILE_WS_URL__?: string;
     }
 }
 
@@ -40,6 +42,9 @@ window.acquireVsCodeApi = () => ({
     getState: mockGetState,
     setState: mockSetState,
 });
+
+window.__ATOPILE_API_URL__ = window.__ATOPILE_API_URL__ || 'http://127.0.0.1';
+window.__ATOPILE_WS_URL__ = window.__ATOPILE_WS_URL__ || 'ws://127.0.0.1';
 
 // Export mocks for test access
 export const vscodeApiMocks = {

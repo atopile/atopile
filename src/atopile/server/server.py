@@ -28,7 +28,6 @@ from atopile.server.state import server_state
 log = logging.getLogger(__name__)
 
 # Fixed port for the dashboard server - extension opens this directly
-DASHBOARD_PORT = 8501
 UI_DEBOUNCE_S = float(os.getenv("ATOPILE_UI_DEBOUNCE_S", "0.5"))
 PACKAGES_REFRESH_MIN_INTERVAL_S = float(
     os.getenv("ATOPILE_PACKAGES_REFRESH_MIN_INTERVAL_S", "30")

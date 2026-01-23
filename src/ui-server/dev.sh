@@ -6,7 +6,7 @@
 #   Browser <--WS--> Python Backend
 #
 # Starts all required servers in order:
-#   1. Python backend (http://localhost:8501) - owns ALL state
+#   1. Python backend (started via CLI; port from DASHBOARD_PORT) - owns ALL state
 #   2. Vite dev server (http://localhost:5173) - serves React UI
 #
 # Usage:
@@ -28,7 +28,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Ports used by our services
-DASHBOARD_PORT=8501
+DASHBOARD_PORT="${DASHBOARD_PORT:-}"
 VITE_PORT=5173
 
 # PIDs of processes we start (for cleanup)
@@ -100,7 +100,11 @@ wait_for_port() {
     return 0
 }
 
-# Step 1: Clean up any existing processes
+# Step 1: Validate ports and clean up any existing processes
+if [ -z "$DASHBOARD_PORT" ]; then
+    echo -e "${RED}DASHBOARD_PORT is not set. Start the backend with 'ato serve backend' and export DASHBOARD_PORT.${NC}"
+    exit 1
+fi
 echo -e "${YELLOW}[1/4] Cleaning up existing processes...${NC}"
 kill_port $DASHBOARD_PORT
 kill_port $VITE_PORT
@@ -128,7 +132,7 @@ from atopile.server.server import create_app, find_free_port
 import uvicorn
 
 workspace_paths = [Path(p) for p in sys.argv[1:] if p]
-port = int(os.environ.get('DASHBOARD_PORT', 8501))
+port = int(os.environ['DASHBOARD_PORT'])
 
 # Create a dummy summary file path (builds will create the real one)
 summary_file = Path('/tmp/ato-build-summary.json')

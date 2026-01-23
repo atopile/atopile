@@ -21,7 +21,7 @@ The extension consists of several interconnected components:
     ┌──────────┐    ┌──────────┐    ┌───────────┐   ┌───────────┐
     │ ui/setup │    │   UV     │    │ ato lsp   │   │ ato serve │
     │   .ts    │    │ (binary) │    │  start    │   │  (Python) │
-    │(uv setup)│    │          │    │  (stdio)  │   │ :8501     │
+    │(uv setup)│    │          │    │  (stdio)  │   │ :<ephemeral> │
     └──────────┘    └──────────┘    └───────────┘   └───────────┘
 ```
 
@@ -125,7 +125,7 @@ The Python backend (`ato serve`) provides:
 - Restarted when atopile version changes
 - Gracefully stopped when extension deactivates
 
-**Connection:** WebSocket at `ws://localhost:8501/ws/state`
+**Connection:** WebSocket at `ws://127.0.0.1:<ephemeral>/ws/state`
 
 **Health Check:** The extension polls `GET /health` during startup to verify server is ready.
 

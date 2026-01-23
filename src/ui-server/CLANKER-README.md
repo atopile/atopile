@@ -59,7 +59,7 @@ backend. This lets you select projects/targets before capturing screenshots.
 Open the browser devtools console and run:
 
 ```js
-const ws = new WebSocket(window.__ATOPILE_WS_URL__ || 'ws://localhost:8501/ws/state');
+const ws = new WebSocket(window.__ATOPILE_WS_URL__ || import.meta.env.VITE_WS_URL);
 ws.onopen = () => {
   ws.send(JSON.stringify({ type: 'action', action: 'selectProject', root: '/path/to/project' }));
   ws.send(JSON.stringify({ type: 'action', action: 'toggleTarget', targetName: 'default' }));
@@ -206,10 +206,10 @@ result = handle_query_logs({
 **Via API:**
 ```bash
 # Query logs with filters
-curl "http://localhost:8501/api/logs/query?level=ERROR&audience=user"
+curl "$VITE_API_URL/api/logs/query?level=ERROR&audience=user"
 
 # Get log counts by level
-curl "http://localhost:8501/api/logs/counts?build_id=abc123"
+curl "$VITE_API_URL/api/logs/counts?build_id=abc123"
 ```
 
 ### Stage Naming Conventions

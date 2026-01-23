@@ -13,7 +13,7 @@ const win = (typeof window !== 'undefined' ? window : {}) as AtopileWindow;
 
 /**
  * Derive WebSocket URL from HTTP URL.
- * e.g., http://localhost:8501 -> ws://localhost:8501
+ * e.g., http://127.0.0.1:12345 -> ws://127.0.0.1:12345
  */
 function httpToWsUrl(httpUrl: string): string {
   try {
@@ -29,20 +29,24 @@ function httpToWsUrl(httpUrl: string): string {
 
 /**
  * Get the base backend API URL (HTTP).
- * e.g., http://localhost:8501
+ * e.g., http://127.0.0.1:12345
  */
-export const API_URL =
-  win.__ATOPILE_API_URL__ ||
-  import.meta.env.VITE_API_URL ||
-  'http://localhost:8501';
+export const API_URL = win.__ATOPILE_API_URL__ || import.meta.env.VITE_API_URL;
+if (!API_URL) {
+  throw new Error(
+    'Backend API URL not configured. Use the extension webview or run `ato serve frontend` to set VITE_API_URL.'
+  );
+}
 
 /**
  * Get the base WebSocket URL (without path).
- * e.g., ws://localhost:8501
+ * e.g., ws://127.0.0.1:12345
  */
 const WS_BASE_URL = win.__ATOPILE_WS_URL__
   ? new URL(win.__ATOPILE_WS_URL__).origin.replace(/^http/, 'ws')
-  : httpToWsUrl(API_URL);
+  : (import.meta.env.VITE_WS_URL
+      ? new URL(import.meta.env.VITE_WS_URL).origin.replace(/^http/, 'ws')
+      : httpToWsUrl(API_URL));
 
 /**
  * WebSocket URL for state updates (/ws/state).

@@ -167,12 +167,12 @@ If you encounter problems with syntax highlighting or IntelliSense:
 
 The extension UI is built with React and requires two servers running together:
 
-1. **Python Backend** (port 8501) - FastAPI server for project/build data
+1. **Python Backend** (port assigned by `ato serve backend`) - FastAPI server for project/build data
 2. **Vite Dev Server** (port 5173) - React hot-reload development server
 
 #### Quick Start (Recommended)
 
-Use the provided startup script that handles everything:
+Use the provided startup script that handles everything (requires `DASHBOARD_PORT` set):
 
 ```bash
 cd src/ui-server
@@ -203,18 +203,7 @@ If you need to run servers individually:
 
 ```bash
 # Terminal 1: Python backend
-cd src/ui-server
-python -c "
-from atopile.server.server import create_app
-import uvicorn
-from pathlib import Path
-app = create_app(
-    summary_file=Path('/tmp/ato-build-summary.json'),
-    logs_base=Path('/tmp'),
-    workspace_paths=[Path('../../..')],
-)
-uvicorn.run(app, host='127.0.0.1', port=8501)
-"
+ato serve backend --workspace "$(pwd)"
 
 # Terminal 2: Vite
 cd src/ui-server

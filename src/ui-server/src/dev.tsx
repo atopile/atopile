@@ -9,6 +9,7 @@ import { AppProvider } from './AppProvider';
 import { Sidebar } from './components/Sidebar';
 import { LogViewer } from './components/LogViewer';
 import { initializeTheme } from './hooks/useTheme';
+import { WS_STATE_URL } from './api/config';
 import './index.css';
 
 // Initialize theme before React renders
@@ -17,7 +18,7 @@ initializeTheme();
 function DevLayout() {
   return (
     <>
-      <div className="dev-banner">Dev Mode - ws://localhost:8501/ws/state</div>
+      <div className="dev-banner">Dev Mode - {WS_STATE_URL}</div>
       <div className="main-content">
         <div className="panel sidebar-panel">
           <Sidebar />

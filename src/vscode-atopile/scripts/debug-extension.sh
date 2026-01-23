@@ -31,16 +31,15 @@ status() {
     if [ -f "$PORT_FILE" ]; then
         PORT=$(cat "$PORT_FILE")
         echo -e "Port file: ${GREEN}$PORT_FILE${NC} (port: $PORT)"
-    else
-        PORT=8501
-        echo -e "Port file: ${YELLOW}not found${NC} (using default: $PORT)"
-    fi
 
-    # Check health
-    if curl -s "http://localhost:$PORT/health" | grep -q "ok"; then
-        echo -e "Health check: ${GREEN}OK${NC} (http://localhost:$PORT)"
+        # Check health
+        if curl -s "http://localhost:$PORT/health" | grep -q "ok"; then
+            echo -e "Health check: ${GREEN}OK${NC} (http://localhost:$PORT)"
+        else
+            echo -e "Health check: ${RED}FAILED${NC}"
+        fi
     else
-        echo -e "Health check: ${RED}FAILED${NC}"
+        echo -e "Port file: ${YELLOW}not found${NC} (set by the extension at runtime)"
     fi
 
     # Check processes
@@ -82,7 +81,7 @@ backend() {
 
     # Start with debug output
     cd "$REPO_ROOT"
-    python -m atopile.server --workspace "$REPO_ROOT" 2>&1 | tee /tmp/atopile-backend.log
+    ato serve backend --workspace "$REPO_ROOT" 2>&1 | tee /tmp/atopile-backend.log
 }
 
 rebuild() {
