@@ -1071,16 +1071,16 @@ class MutationMap:
                 continue
 
             if (p_new_p := p_new.as_parameter.try_get()) is not None:
-                if (
-                    owner := fbrk.EdgeTrait.get_owner_node_of(  # type: ignore
-                        bound_node=fabll.Traits(p_old).node.instance
-                    )
-                ) is not None:
-                    p_new_p.set_name(
-                        fabll.Node.bind_instance(instance=owner).get_full_name(
-                            include_uuid=False
+                p_new_obj = fabll.Traits(p_new_p).get_obj_raw()
+                if not p_new_obj.has_trait(F.has_name_override):
+                    p_old_obj = fabll.Traits(p_old).get_obj_raw()
+                    if has_name := p_old_obj.try_get_trait(F.has_name_override):
+                        fabll.Traits.add_instance_to(
+                            node=p_new_obj, trait_instance=has_name.copy_into(g_out)
                         )
-                    )
+                    else:
+                        # Preserve the location-based name before it's lost
+                        p_new_p.set_name(p_old_obj.get_name())
 
         nodes_uuids = {p.instance.node().get_uuid() for p in relevant}
 
@@ -1520,8 +1520,16 @@ class Mutator:
                 F.Parameters.is_parameter_operatable
             )
 
-        # needed for non-copy transfer
-        new_param.as_parameter.force_get().set_name(param_obj.get_name())
+        new_param_p = new_param.as_parameter.force_get()
+        new_param_obj = fabll.Traits(new_param_p).get_obj_raw()
+        if not new_param_obj.has_trait(F.has_name_override):
+            if has_name := param_obj.try_get_trait(F.has_name_override):
+                fabll.Traits.add_instance_to(
+                    node=new_param_obj, trait_instance=has_name.copy_into(self.G_out)
+                )
+            else:
+                # Preserve the location-based name before it's lost
+                new_param_p.set_name(param_obj.get_name())
 
         return self._mutate(
             p_po,
@@ -1568,7 +1576,9 @@ class Mutator:
 
         for trait in traits:
             if trait is not None:
-                new_expr.add_child(trait)
+                fabll.Traits.add_instance_to(
+                    node=new_expr, trait_instance=trait.copy_into(self.G_out)
+                )
 
         from faebryk.core.solver.symbolic.invariants import I_LOG
 
