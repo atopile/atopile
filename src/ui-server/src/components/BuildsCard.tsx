@@ -48,7 +48,7 @@ export function BuildsCard({
   onAddBuild,
   availableModules = [],
   readOnly = false,
-  defaultExpanded = true
+  defaultExpanded = false
 }: BuildsCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
 

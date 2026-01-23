@@ -44,6 +44,7 @@ const initialState: AppState = {
   packagesError: null,
   installingPackageIds: [],
   installError: null,
+  updatingDependencyIds: [],
 
   // Standard Library
   stdlibItems: [],
@@ -141,6 +142,8 @@ interface StoreActions {
   addInstallingPackage: (packageId: string) => void;
   removeInstallingPackage: (packageId: string) => void;
   setInstallError: (packageId: string, error: string | null) => void;
+  addUpdatingDependency: (projectRoot: string, dependencyId: string) => void;
+  removeUpdatingDependency: (projectRoot: string, dependencyId: string) => void;
 
   // Problems
   setProblems: (problems: Problem[]) => void;
@@ -266,6 +269,24 @@ export const useStore = create<Store>()(
           installError: error,
           installingPackageIds: state.installingPackageIds.filter((id) => id !== packageId),
         })),
+
+      addUpdatingDependency: (projectRoot, dependencyId) =>
+        set((state) => {
+          const key = `${projectRoot}:${dependencyId}`;
+          return {
+            updatingDependencyIds: state.updatingDependencyIds.includes(key)
+              ? state.updatingDependencyIds
+              : [...state.updatingDependencyIds, key],
+          };
+        }),
+
+      removeUpdatingDependency: (projectRoot, dependencyId) =>
+        set((state) => {
+          const key = `${projectRoot}:${dependencyId}`;
+          return {
+            updatingDependencyIds: state.updatingDependencyIds.filter((id) => id !== key),
+          };
+        }),
 
       // Problems
       setProblems: (problems) => set({ problems, isLoadingProblems: false }),

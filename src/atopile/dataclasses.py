@@ -485,6 +485,8 @@ class DependencyInfo(BaseModel):
     publisher: str  # e.g., "atopile"
     repository: Optional[str] = None
     has_update: bool = False
+    is_direct: bool = False
+    via: Optional[list[str]] = None
 
 
 class DependenciesResponse(BaseModel):

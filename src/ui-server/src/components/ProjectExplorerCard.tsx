@@ -25,7 +25,7 @@ type TargetState =
 
 const getTargetKey = (build: BuildTarget) => `${build.id}:${build.entry ?? ''}`;
 
-export function ProjectExplorerCard({ builds, projectRoot, defaultExpanded = true }: ProjectExplorerCardProps) {
+export function ProjectExplorerCard({ builds, projectRoot, defaultExpanded = false }: ProjectExplorerCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [expandedTargets, setExpandedTargets] = useState<Set<string>>(new Set());
   const [targetStates, setTargetStates] = useState<Record<string, TargetState>>({});

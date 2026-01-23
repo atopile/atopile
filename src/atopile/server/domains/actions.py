@@ -746,31 +746,17 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             async def refresh_deps_after_remove():
                 """Refresh project dependencies after package removal."""
-                from atopile.dataclasses import DependencyInfo
+                from atopile.server.domains.projects import _build_dependencies
                 from atopile.server.module_introspection import clear_module_cache
 
                 # Clear module introspection cache since packages changed
                 clear_module_cache()
                 log.info(f"Refreshing dependencies for project: {project_root}")
 
-                installed = await asyncio.to_thread(
-                    packages_domain.get_installed_packages_for_project, project_path
+                dependencies = await asyncio.to_thread(
+                    _build_dependencies, project_path
                 )
-                log.info(f"Found {len(installed)} installed packages after removal")
-
-                dependencies: list[DependencyInfo] = []
-                for pkg in installed:
-                    parts = pkg.identifier.split("/")
-                    publisher = parts[0] if len(parts) > 1 else "unknown"
-                    name = parts[-1]
-                    dependencies.append(
-                        DependencyInfo(
-                            identifier=pkg.identifier,
-                            version=pkg.version,
-                            name=name,
-                            publisher=publisher,
-                        )
-                    )
+                log.info(f"Found {len(dependencies)} installed packages after removal")
 
                 await server_state.set_project_dependencies(project_root, dependencies)
                 log.info(f"Updated project dependencies state for {project_root}")
@@ -865,43 +851,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Project not found: {project_root}",
                 }
 
-            from atopile.server.state import DependencyInfo
+            from atopile.server.domains.projects import _build_dependencies
 
-            # Run blocking package fetch in thread pool
-            installed = await asyncio.to_thread(
-                packages_domain.get_installed_packages_for_project, project_path
-            )
-
-            dependencies: list[DependencyInfo] = []
-            for pkg in installed:
-                parts = pkg.identifier.split("/")
-                publisher = parts[0] if len(parts) > 1 else "unknown"
-                name = parts[-1]
-
-                latest_version = None
-                has_update = False
-                repository = None
-
-                cached_pkg = server_state.packages_by_id.get(pkg.identifier)
-                if cached_pkg:
-                    latest_version = cached_pkg.latest_version
-                    has_update = packages_domain.version_is_newer(
-                        pkg.version, latest_version
-                    )
-                    repository = cached_pkg.repository
-
-                dependencies.append(
-                    DependencyInfo(
-                        identifier=pkg.identifier,
-                        version=pkg.version,
-                        latest_version=latest_version,
-                        name=name,
-                        publisher=publisher,
-                        repository=repository,
-                        has_update=has_update,
-                    )
-                )
-
+            dependencies = await asyncio.to_thread(_build_dependencies, project_path)
             await server_state.set_project_dependencies(project_root, dependencies)
             return {"success": True}
 

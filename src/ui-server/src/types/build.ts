@@ -94,6 +94,8 @@ export interface ProjectDependency {
   publisher: string;   // e.g., "atopile"
   repository?: string;
   hasUpdate?: boolean;
+  isDirect?: boolean;
+  via?: string[];
 }
 
 export interface Project {
@@ -339,6 +341,7 @@ export interface AppState {
   packagesError: string | null;  // Registry error visibility
   installingPackageIds: string[];  // Packages currently being installed
   installError: string | null;  // Error from last install attempt
+  updatingDependencyIds: string[];  // Dependencies currently being updated (format: projectRoot:dependencyId)
 
   // Standard Library (from dashboard API)
   stdlibItems: StdLibItem[];

@@ -20,7 +20,8 @@ import { ProjectExplorerCard } from './ProjectExplorerCard'
 import { FileExplorer, type FileTreeNode } from './FileExplorer'
 import { DependencyCard, type ProjectDependency } from './DependencyCard'
 import { NameValidationDropdown } from './NameValidationDropdown'
-import { CopyableCodeBlock, MetadataBar } from './shared'
+import { MetadataBar } from './shared'
+import { UsageCard } from './UsageCard'
 import { validateName } from '../utils/nameValidation'
 import { compareVersionsDesc, isInstalledInProject } from '../utils/packageUtils'
 import { generateImportStatement, generateUsageExample } from '../utils/codeHighlight'
@@ -253,8 +254,8 @@ const PRESET_FLAGS: Record<ProjectCardPreset, PresetFlags> = {
     showBuildControls: false,
     showUsageExamples: true,
     showMetadata: true,
-    showModuleExplorer: false,  // TODO: Enable when backend populates builds in PackageDetails
-    showFileExplorer: false,
+    showModuleExplorer: true,
+    showFileExplorer: true,
   },
 };
 
@@ -291,6 +292,8 @@ interface ProjectCardProps {
   availableModules?: ModuleDefinition[]
   projectFiles?: FileTreeNode[]
   projectDependencies?: ProjectDependency[]
+  projectFilesByRoot?: Record<string, FileTreeNode[]>
+  updatingDependencyIds?: string[]  // IDs of dependencies being updated (format: projectRoot:dependencyId)
 
   // Package mode props (can override preset or use directly)
   readOnly?: boolean  // If true, show as package (no editing)
@@ -324,6 +327,8 @@ export const ProjectCard = memo(function ProjectCard({
   availableModules = [],
   projectFiles = [],
   projectDependencies = [],
+  projectFilesByRoot = {},
+  updatingDependencyIds = [],
   readOnly: readOnlyProp,
   availableProjects = [],
   onInstall,
@@ -771,19 +776,11 @@ export const ProjectCard = memo(function ProjectCard({
 
           {/* Import and Usage examples */}
           {showUsageExamples && packageDetails && !detailsLoading && (
-            <div className="package-usage-section">
-              <CopyableCodeBlock
-                code={generateImportStatement(project.id, project.name)}
-                label="Import"
-                highlightAto={true}
-              />
-              <CopyableCodeBlock
-                code={generateUsageExample(project.name)}
-                label="Usage"
-                highlightAto={true}
-                onOpen={() => onOpenSource?.(project.id, `${project.name}.ato`)}
-              />
-            </div>
+            <UsageCard
+              importCode={generateImportStatement(project.id, project.name)}
+              usageCode={generateUsageExample(project.name)}
+              onOpenUsage={() => onOpenSource?.(project.id, `${project.name}.ato`)}
+            />
           )}
 
           {/* Module Explorer - only show if we have a valid filesystem path */}
@@ -792,7 +789,7 @@ export const ProjectCard = memo(function ProjectCard({
             <ProjectExplorerCard
               builds={builds}
               projectRoot={packagePath}
-              defaultExpanded={!readOnly}
+              defaultExpanded={false}
             />
           )}
 
@@ -814,7 +811,7 @@ export const ProjectCard = memo(function ProjectCard({
             onAddBuild={onAddBuild}
             availableModules={availableModules}
             readOnly={readOnly}
-            defaultExpanded={!readOnly}
+            defaultExpanded={false}
           />
 
           {/* File Explorer */}
@@ -833,6 +830,10 @@ export const ProjectCard = memo(function ProjectCard({
             onVersionChange={onDependencyVersionChange}
             onRemove={onRemoveDependency}
             readOnly={readOnly}
+            onProjectExpand={onProjectExpand}
+            projectFilesByRoot={projectFilesByRoot}
+            updatingDependencyIds={updatingDependencyIds}
+            onFileClick={onFileClick}
           />
         </div>
       )}

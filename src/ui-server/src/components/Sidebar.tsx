@@ -136,8 +136,9 @@ export function Sidebar() {
             onOpen3D={handlers.handleOpen3D}
             onFileClick={(projectId, filePath) => {
               const project = projects.find(p => p.id === projectId);
-              if (project) {
-                const fullPath = `${project.root}/${filePath}`;
+              const projectRoot = project?.root || (projectId.startsWith('/') ? projectId : null);
+              if (projectRoot) {
+                const fullPath = `${projectRoot}/${filePath}`;
                 action('openFile', { file: fullPath });
               }
             }}
@@ -153,6 +154,7 @@ export function Sidebar() {
             onRemoveDependency={(projectId, identifier) => {
               action('removePackage', { projectRoot: projectId, packageId: identifier });
             }}
+            updatingDependencyIds={state?.updatingDependencyIds || []}
           />
         </CollapsibleSection>
 

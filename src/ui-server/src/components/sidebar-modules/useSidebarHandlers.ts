@@ -212,19 +212,37 @@ export function useSidebarHandlers({
     identifier: string,
     newVersion: string
   ) => {
+    const store = useStore.getState();
+
+    // Mark as updating
+    store.addUpdatingDependency(projectId, identifier);
+
     try {
+      // First update the config file
       const response = await sendActionWithResponse('updateDependencyVersion', {
         project_root: projectId,
         identifier,
         new_version: newVersion,
       });
+
       if (response.result?.success) {
+        // Then install the updated version
+        await sendActionWithResponse('installPackage', {
+          packageId: identifier,
+          projectRoot: projectId,
+          version: newVersion,
+        });
+
+        // Refresh dependencies after install completes
         action('fetchDependencies', { projectRoot: projectId });
       } else {
         console.error('Failed to update dependency version:', response.result?.message);
       }
     } catch (error) {
       console.error('Failed to update dependency version:', error);
+    } finally {
+      // Mark as done
+      store.removeUpdatingDependency(projectId, identifier);
     }
   };
 

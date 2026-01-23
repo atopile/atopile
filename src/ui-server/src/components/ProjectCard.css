@@ -60,8 +60,9 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
+  /* Removed flex: 1 so clickable edit area only covers the text, not empty space */
   min-width: 0;
+  max-width: 200px;  /* Prevent very long names from pushing actions off screen */
 }
 
 .project-card-name.editable {
@@ -610,13 +611,6 @@
   opacity: 0.6;
 }
 
-/* Usage section */
-.package-usage-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
-  margin-bottom: var(--spacing-sm);
-}
 
 /* Copyable code block */
 .copyable-code {

@@ -75,6 +75,31 @@
   border-top: 1px solid var(--border-subtle);
 }
 
+/* Section headers (transitive deps) */
+.dependency-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm) 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dependency-section-title {
+  flex: 1;
+}
+
+.dependency-section-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
 /* Individual dependency item */
 .dependency-item {
   display: flex;
@@ -94,6 +119,14 @@
 
 .dependency-item.has-update {
   border-left: 2px solid var(--ctp-peach);
+}
+
+.dependency-item.up-to-date {
+  border-left: 2px solid var(--ctp-green);
+}
+
+.dependency-item.transitive {
+  background: var(--bg-secondary);
 }
 
 .dependency-info {
@@ -118,6 +151,15 @@
   text-overflow: ellipsis;
 }
 
+.dependency-via {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
 .dependency-publisher {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
@@ -139,7 +181,10 @@
   background: var(--bg-secondary);
   color: var(--text-secondary);
   cursor: pointer;
-  max-width: 80px;
+  width: 70px;
+  min-width: 70px;
+  max-width: 70px;
+  text-overflow: ellipsis;
 }
 
 .dependency-version-select:hover {
@@ -157,6 +202,32 @@
   color: var(--ctp-peach);
 }
 
+.dependency-version-select.up-to-date {
+  border-color: var(--ctp-green);
+  color: var(--ctp-green);
+}
+
+/* Updating state - shows spinner */
+.dependency-version-updating {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  padding: 2px 6px;
+  border: 1px solid var(--ctp-blue);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--ctp-blue);
+  width: 70px;
+  min-width: 70px;
+  max-width: 70px;
+}
+
+.dependency-version-updating .spin {
+  animation: spin 1s linear infinite;
+}
+
 /* Read-only version display */
 .dependency-version-display {
   font-size: var(--font-size-xs);
@@ -164,6 +235,10 @@
   color: var(--text-muted);
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);
+}
+
+.dependency-version-display.transitive {
+  opacity: 0.7;
 }
 
 .dependency-remove-btn {

@@ -43,9 +43,10 @@ interface ProjectsPanelProps {
   projectFiles?: Record<string, FileTreeNode[]>  // File tree for each project root
   projectDependencies?: Record<string, ProjectDependency[]>  // Dependencies for each project root
   installingPackageIds?: string[]  // IDs of packages currently being installed
+  updatingDependencyIds?: string[]  // IDs of dependencies currently being updated (format: projectRoot:dependencyId)
 }
 
-export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail: _onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, onDependencyVersionChange, onRemoveDependency, onAddBuild, onUpdateBuild, onDeleteBuild, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {}, projectDependencies = {}, installingPackageIds = [] }: ProjectsPanelProps) {
+export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail: _onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, onDependencyVersionChange, onRemoveDependency, onAddBuild, onUpdateBuild, onDeleteBuild, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {}, projectDependencies = {}, installingPackageIds = [], updatingDependencyIds = [] }: ProjectsPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
   const projects = externalProjects && externalProjects.length > 0 ? externalProjects : []
@@ -239,7 +240,9 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
                 // Data props
                 availableModules={projectModules[project.root] || []}
                 projectFiles={projectFiles[project.root] || []}
+                projectFilesByRoot={projectFiles}
                 projectDependencies={projectDependencies[project.root] || []}
+                updatingDependencyIds={updatingDependencyIds}
                 // Package mode props
                 availableProjects={availableProjects}
                 onInstall={handleInstall}

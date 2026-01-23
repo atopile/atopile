@@ -5,9 +5,12 @@
  * See COMPONENT_ARCHITECTURE.md for the editability matrix.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Package, ChevronDown, ChevronRight, X, Loader2 } from 'lucide-react'
 import { ProjectCard } from './ProjectCard'
+import { sendActionWithResponse } from '../api/websocket'
+import { compareVersionsDesc } from '../utils/packageUtils'
+import type { FileTreeNode } from './FileExplorer'
 import type { Project, Selection } from './projectsTypes'
 import './DependencyCard.css'
 
@@ -19,6 +22,8 @@ export interface ProjectDependency {
   publisher: string;   // e.g., "atopile"
   repository?: string;
   hasUpdate?: boolean;
+  isDirect?: boolean;
+  via?: string[];
 }
 
 // Convert a ProjectDependency to a Project for use with ProjectCard
@@ -45,27 +50,42 @@ function dependencyToProject(dependency: ProjectDependency, parentProjectRoot?: 
 interface DependencyItemProps {
   dependency: ProjectDependency;
   parentProjectRoot?: string;  // Root path of parent project (for computing dependency path)
+  projectFilesByRoot?: Record<string, FileTreeNode[]>;
   availableVersions?: string[];
   onVersionChange?: (identifier: string, newVersion: string) => void;
   onRemove?: (identifier: string) => void;
+  onProjectExpand?: (projectRoot: string) => void;
+  onFileClick?: (projectId: string, filePath: string) => void;
   readOnly?: boolean;
   allowExpand?: boolean;
+  isUpdating?: boolean;  // True when this dependency is being updated/installed
 }
 
 function DependencyItem({
   dependency,
   parentProjectRoot,
+  projectFilesByRoot,
   availableVersions = [],
   onVersionChange,
   onRemove,
+  onProjectExpand,
+  onFileClick,
   readOnly = false,
-  allowExpand = true
+  allowExpand = true,
+  isUpdating = false
 }: DependencyItemProps) {
   const [selectedVersion, setSelectedVersion] = useState(dependency.version);
   const [isRemoving, setIsRemoving] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const hasUpdate = !readOnly && (dependency.hasUpdate ||
+  const isDirect = dependency.isDirect !== false;
+  const canEdit = !readOnly && isDirect;
+  const hasUpdate = canEdit && (dependency.hasUpdate ||
     (dependency.latestVersion && dependency.version !== dependency.latestVersion));
+  // Check if the dependency is up-to-date (installed version matches latest or no latest known)
+  const isUpToDate = !hasUpdate && (!dependency.latestVersion || dependency.version === dependency.latestVersion);
+  const viaLabel = !isDirect && dependency.via && dependency.via.length > 0
+    ? dependency.via.map((id) => id.split('/').pop() || id).join(', ')
+    : null;
 
   // Build versions list
   const versions = availableVersions.length > 0
@@ -79,15 +99,19 @@ function DependencyItem({
     onVersionChange?.(dependency.identifier, newVersion);
   };
 
+  // Convert dependency to Project for ProjectCard
+  const dependencyAsProject = dependencyToProject(dependency, parentProjectRoot);
+
   const handleClick = (e: React.MouseEvent) => {
     if (allowExpand) {
       e.stopPropagation();
-      setIsExpanded(!isExpanded);
+      const nextExpanded = !isExpanded;
+      setIsExpanded(nextExpanded);
+      if (nextExpanded) {
+        onProjectExpand?.(dependencyAsProject.root);
+      }
     }
   };
-
-  // Convert dependency to Project for ProjectCard
-  const dependencyAsProject = dependencyToProject(dependency, parentProjectRoot);
 
   // Dummy handlers for ProjectCard (read-only mode)
   const noopSelection: Selection = { type: 'none' };
@@ -97,7 +121,7 @@ function DependencyItem({
   return (
     <div className={`dependency-item-container ${isExpanded ? 'expanded' : ''}`}>
       <div
-        className={`dependency-item ${hasUpdate ? 'has-update' : ''} ${allowExpand ? 'expandable' : ''}`}
+        className={`dependency-item ${!isDirect ? 'transitive' : ''} ${hasUpdate ? 'has-update' : ''} ${isUpToDate && canEdit ? 'up-to-date' : ''} ${allowExpand ? 'expandable' : ''}`}
         onClick={handleClick}
       >
         <div className="dependency-info">
@@ -113,17 +137,33 @@ function DependencyItem({
           {dependency.publisher && dependency.publisher !== 'atopile' && (
             <span className="dependency-publisher">by {dependency.publisher}</span>
           )}
+          {!isDirect && viaLabel && (
+            <span
+              className="dependency-via"
+              title={`via ${dependency.via?.join(', ')}`}
+            >
+              via {viaLabel}
+            </span>
+          )}
         </div>
 
         <div className="dependency-actions">
           {/* Version display/selector */}
-          {readOnly ? (
-            <span className="dependency-version-display" title={`Version ${dependency.version}`}>
+          {!canEdit ? (
+            <span
+              className={`dependency-version-display ${!isDirect ? 'transitive' : ''}`}
+              title={isDirect ? `Version ${dependency.version}` : 'Transitive dependency'}
+            >
               {dependency.version}
+            </span>
+          ) : isUpdating ? (
+            <span className="dependency-version-updating" title="Updating...">
+              <Loader2 size={12} className="spin" />
+              <span>{selectedVersion}</span>
             </span>
           ) : (
             <select
-              className={`dependency-version-select ${hasUpdate ? 'update-available' : ''}`}
+              className={`dependency-version-select ${hasUpdate ? 'update-available' : ''} ${isUpToDate ? 'up-to-date' : ''}`}
               value={selectedVersion}
               onChange={(e) => {
                 e.stopPropagation();
@@ -131,17 +171,18 @@ function DependencyItem({
               }}
               onClick={(e) => e.stopPropagation()}
               title={hasUpdate ? `Update available: ${dependency.latestVersion}` : `Version ${dependency.version}`}
+              disabled={isUpdating}
             >
-              {versions.map((v, idx) => (
+              {versions.map((v) => (
                 <option key={v} value={v}>
-                  {v}{idx === 0 && hasUpdate && v === dependency.latestVersion ? ' (latest)' : ''}
+                  {v}
                 </option>
               ))}
             </select>
           )}
 
           {/* Remove button - only in edit mode */}
-          {!readOnly && (
+          {canEdit && (
             <button
               className={`dependency-remove-btn ${isRemoving ? 'removing' : ''}`}
               onClick={(e) => {
@@ -171,6 +212,8 @@ function DependencyItem({
             onBuild={noopBuild}
             isExpanded={true}
             onExpandChange={() => {}}
+            projectFiles={projectFilesByRoot?.[dependencyAsProject.root] || []}
+            onFileClick={onFileClick ? (_projectId, filePath) => onFileClick(dependencyAsProject.root, filePath) : undefined}
           />
         </div>
       )}
@@ -182,24 +225,76 @@ interface DependencyCardProps {
   dependencies: ProjectDependency[];
   projectId: string;
   projectRoot?: string;  // Root path of project (for computing dependency paths)
+  projectFilesByRoot?: Record<string, FileTreeNode[]>;
   onVersionChange?: (projectId: string, identifier: string, newVersion: string) => void;
   onRemove?: (projectId: string, identifier: string) => void;
   // Read-only mode for packages: hides version selector and remove button
   readOnly?: boolean;
   // Whether to allow expanding dependencies to show their content
   allowExpand?: boolean;
+  onProjectExpand?: (projectRoot: string) => void;
+  onFileClick?: (projectId: string, filePath: string) => void;
+  // IDs of dependencies currently being updated (format: projectRoot:dependencyId)
+  updatingDependencyIds?: string[];
 }
 
 export function DependencyCard({
   dependencies,
   projectId,
   projectRoot,
+  projectFilesByRoot,
   onVersionChange,
   onRemove,
   readOnly = false,
-  allowExpand = true
+  allowExpand = true,
+  onProjectExpand,
+  onFileClick,
+  updatingDependencyIds = []
 }: DependencyCardProps) {
   const [expanded, setExpanded] = useState(false);
+  // Store fetched versions for each dependency identifier
+  const [dependencyVersions, setDependencyVersions] = useState<Record<string, string[]>>({});
+  const [loadingVersions, setLoadingVersions] = useState<Set<string>>(new Set());
+  const directDeps = dependencies.filter(dep => dep.isDirect !== false);
+  const transitiveDeps = dependencies.filter(dep => dep.isDirect === false);
+
+  // Fetch available versions for all dependencies when card expands
+  useEffect(() => {
+    if (!expanded || readOnly) return;
+
+    // Fetch versions for each dependency that we haven't loaded yet
+    directDeps.forEach(async (dep) => {
+      if (dependencyVersions[dep.identifier] || loadingVersions.has(dep.identifier)) return;
+
+      setLoadingVersions(prev => new Set(prev).add(dep.identifier));
+
+      try {
+        const response = await sendActionWithResponse('getPackageDetails', { packageId: dep.identifier });
+        const result = response.result ?? {};
+        const details = (result as { details?: { versions?: { version: string }[] } }).details;
+
+        if (details?.versions) {
+          const versions = details.versions
+            .map(v => v.version)
+            .filter(v => v && v !== 'unknown')
+            .sort(compareVersionsDesc);
+
+          setDependencyVersions(prev => ({
+            ...prev,
+            [dep.identifier]: versions
+          }));
+        }
+      } catch (error) {
+        console.error(`Failed to fetch versions for ${dep.identifier}:`, error);
+      } finally {
+        setLoadingVersions(prev => {
+          const next = new Set(prev);
+          next.delete(dep.identifier);
+          return next;
+        });
+      }
+    });
+  }, [expanded, directDeps, readOnly, dependencyVersions, loadingVersions]);
 
   if (!dependencies || dependencies.length === 0) {
     return null;
@@ -229,17 +324,51 @@ export function DependencyCard({
 
       {expanded && (
         <div className="dependency-card-content">
-          {dependencies.map((dep) => (
-            <DependencyItem
-              key={dep.identifier}
-              dependency={dep}
-              parentProjectRoot={projectRoot}
-              onVersionChange={(id, v) => onVersionChange?.(projectId, id, v)}
-              onRemove={(id) => onRemove?.(projectId, id)}
-              readOnly={readOnly}
-              allowExpand={allowExpand}
-            />
-          ))}
+          {directDeps.map((dep) => {
+            // Check if this dependency is currently being updated
+            // The key format is projectId:dependencyId (must match handler which receives projectId)
+            const isUpdating = updatingDependencyIds.includes(`${projectId}:${dep.identifier}`);
+            // Get fetched versions for this dependency (if available)
+            const fetchedVersions = dependencyVersions[dep.identifier] || [];
+            return (
+              <DependencyItem
+                key={dep.identifier}
+                dependency={dep}
+                parentProjectRoot={projectRoot}
+                projectFilesByRoot={projectFilesByRoot}
+                availableVersions={fetchedVersions}
+                onVersionChange={(id, v) => onVersionChange?.(projectId, id, v)}
+                onRemove={(id) => onRemove?.(projectId, id)}
+                readOnly={readOnly}
+                allowExpand={allowExpand}
+                onProjectExpand={onProjectExpand}
+                onFileClick={onFileClick}
+                isUpdating={isUpdating}
+              />
+            );
+          })}
+
+          {transitiveDeps.length > 0 && (
+            <>
+              <div className="dependency-section-header">
+                <span className="dependency-section-title">Transitive</span>
+                <span className="dependency-section-count">{transitiveDeps.length}</span>
+              </div>
+              {transitiveDeps.map((dep) => (
+                <DependencyItem
+                  key={dep.identifier}
+                  dependency={dep}
+                  parentProjectRoot={projectRoot}
+                  projectFilesByRoot={projectFilesByRoot}
+                  readOnly={true}
+                  allowExpand={allowExpand}
+                  onProjectExpand={onProjectExpand}
+                  onFileClick={onFileClick}
+                  isUpdating={false}
+                />
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>
