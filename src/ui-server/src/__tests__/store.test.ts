@@ -42,7 +42,6 @@ const resetStore = () => {
     logTotalCount: undefined,
     logHasMore: undefined,
     expandedTargets: [],
-    version: 'dev',
     atopile: {
       currentVersion: '',
       source: 'release',
@@ -168,23 +167,21 @@ describe('Zustand Store', () => {
       useStore.getState().replaceState({
         projects: sampleProjects,
         builds: sampleBuilds,
-        version: '1.0.0',
       });
 
       const state = useStore.getState();
       expect(state.projects).toEqual(sampleProjects);
       expect(state.builds).toEqual(sampleBuilds);
-      expect(state.version).toBe('1.0.0');
       expect(state.isConnected).toBe(true); // Always sets connected
     });
 
     it('preserves unreplaced state', () => {
       useStore.setState({ selectedProjectRoot: '/test' });
-      useStore.getState().replaceState({ version: '2.0.0' });
+      useStore.getState().replaceState({ selectedBuildName: 'release' });
 
       const state = useStore.getState();
       expect(state.selectedProjectRoot).toBe('/test');
-      expect(state.version).toBe('2.0.0');
+      expect(state.selectedBuildName).toBe('release');
     });
   });
 

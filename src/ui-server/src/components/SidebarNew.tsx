@@ -13,7 +13,6 @@
 import { useState } from 'react';
 import { Settings, AlertCircle } from 'lucide-react';
 import { useProjects, useBuilds, useProblems, useConnection } from '../hooks';
-import { useStore } from '../store';
 import { CollapsibleSection } from './CollapsibleSection';
 import { ProjectsPanelConnected } from './ProjectsPanelConnected';
 import { ProblemsPanelConnected } from './ProblemsPanelConnected';
@@ -36,8 +35,11 @@ export function SidebarNew() {
   );
   const buildQueueMaxHeight = Math.min(240, buildQueueDesiredHeight);
 
-  // Get version from store
-  const version = useStore((state) => state.version);
+  const extensionVersion =
+    typeof window !== 'undefined'
+      ? (window as Window & { __ATOPILE_EXTENSION_VERSION__?: string })
+          .__ATOPILE_EXTENSION_VERSION__
+      : undefined;
 
   // Local UI state for section collapse
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
@@ -63,7 +65,7 @@ export function SidebarNew() {
       <div className="sidebar-header">
         <span className="sidebar-title">atopile</span>
         <div className="sidebar-header-right">
-          <span className="sidebar-version">{version}</span>
+          {extensionVersion && <span className="sidebar-version">{extensionVersion}</span>}
           <button className="icon-button" title="Settings">
             <Settings size={16} />
           </button>

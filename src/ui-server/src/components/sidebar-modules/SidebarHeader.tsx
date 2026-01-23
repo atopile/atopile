@@ -39,15 +39,19 @@ interface AtopileState {
 }
 
 interface SidebarHeaderProps {
-  version?: string;
   atopile?: AtopileState;
   developerMode?: boolean;
 }
 
-export function SidebarHeader({ version, atopile, developerMode }: SidebarHeaderProps) {
+export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
   const iconUrl =
     typeof window !== 'undefined'
       ? (window as Window & { __ATOPILE_ICON_URL__?: string }).__ATOPILE_ICON_URL__
+      : undefined;
+  const extensionVersion =
+    typeof window !== 'undefined'
+      ? (window as Window & { __ATOPILE_EXTENSION_VERSION__?: string })
+          .__ATOPILE_EXTENSION_VERSION__
       : undefined;
 
   // Settings dropdown state
@@ -221,7 +225,7 @@ export function SidebarHeader({ version, atopile, developerMode }: SidebarHeader
       <div className="header-title">
         {iconUrl && <img className="header-logo" src={iconUrl} alt="atopile logo" />}
         <span>atopile</span>
-        {version && <span className="version-badge">v{version}</span>}
+        {extensionVersion && <span className="version-badge">v{extensionVersion}</span>}
       </div>
       <div className="header-actions">
         <div className="settings-dropdown-container" ref={settingsRef}>

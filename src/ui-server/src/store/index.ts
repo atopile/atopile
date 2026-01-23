@@ -67,9 +67,6 @@ const initialState: AppState = {
   // Sidebar UI
   expandedTargets: [],
 
-  // Extension info
-  version: 'dev',
-
   // Atopile configuration
   atopile: {
     currentVersion: '',

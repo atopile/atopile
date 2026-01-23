@@ -21,7 +21,9 @@ export async function activate(context: vscode.ExtensionContext) {
     traceInfo('UI: Using stateless webview providers');
 
     // Register stateless sidebar provider
-    const sidebarProvider = new SidebarProvider(context.extensionUri);
+    const extensionId = 'atopile.atopile';
+    const extensionVersion = vscode.extensions.getExtension(extensionId)!.packageJSON.version;
+    const sidebarProvider = new SidebarProvider(context.extensionUri, extensionVersion);
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
             SidebarProvider.viewType,

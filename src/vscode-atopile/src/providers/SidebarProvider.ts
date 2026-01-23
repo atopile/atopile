@@ -57,7 +57,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;
 
-  constructor(private readonly _extensionUri: vscode.Uri) {
+  constructor(
+    private readonly _extensionUri: vscode.Uri,
+    private readonly _extensionVersion: string
+  ) {
     this._disposables.push(
       backendServer.onStatusChange((connected) => {
         if (connected) {
@@ -198,7 +201,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const wsOrigin = getWsOrigin(wsUrl);
     const workspaceFolders = this._getWorkspaceFolders();
 
-    // Pass workspace folders as URL query param (base64 encoded to handle special chars)
     const workspaceParam = workspaceFolders.length > 0
       ? `?workspace=${encodeURIComponent(JSON.stringify(workspaceFolders))}`
       : '';
@@ -334,6 +336,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     window.__ATOPILE_API_URL__ = '${apiUrl}';
     window.__ATOPILE_WS_URL__ = '${wsOrigin}';
     window.__ATOPILE_ICON_URL__ = '${iconUri}';
+    window.__ATOPILE_EXTENSION_VERSION__ = '${this._extensionVersion}';
     // Inject workspace folders for the React app
     window.__ATOPILE_WORKSPACE_FOLDERS__ = ${JSON.stringify(workspaceFolders)};
   </script>

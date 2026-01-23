@@ -117,7 +117,6 @@ export function Sidebar() {
     <div className={`unified-layout ${selectedPackage ? 'package-detail-open' : ''}`}>
       {/* Header with settings */}
       <SidebarHeader
-        version={state?.version}
         atopile={state?.atopile}
         developerMode={state?.developerMode}
       />

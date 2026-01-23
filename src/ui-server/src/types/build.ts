@@ -355,9 +355,6 @@ export interface AppState {
   // Sidebar UI
   expandedTargets: string[];
 
-  // Extension info
-  version: string;
-
   // Atopile configuration
   atopile: {
     currentVersion: string;           // Currently active version (e.g., "0.14.0")
