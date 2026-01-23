@@ -13,6 +13,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from atopile.logging import scope
 from faebryk.core.solver.algorithm import SolverAlgorithm
 from faebryk.core.solver.mutator import ExpressionBuilder, MutationMap, Mutator
 from faebryk.core.solver.utils import (
@@ -1237,13 +1238,14 @@ def wrap_insert_expression(
     expr_already_exists_in_old_graph: bool = False,
     allow_uncorrelated_congruence_match: bool = False,
 ) -> InsertExpressionResult:
-    global DEPTH
+    s = scope()
     if I_LOG:
         warning(
             f"Processing: {pretty_expr(builder, mutator)},"
             f" alias: {alias.compact_repr(mutator.print_ctx) if alias else None}"
         )
-    DEPTH += 1
+        s.__enter__()
+
     res = insert_expression(
         mutator,
         builder,
@@ -1251,7 +1253,6 @@ def wrap_insert_expression(
         expr_already_exists_in_old_graph=expr_already_exists_in_old_graph,
         allow_uncorrelated_congruence_match=allow_uncorrelated_congruence_match,
     )
-    DEPTH -= 1
     if not I_LOG:
         return res
 
@@ -1283,6 +1284,7 @@ def wrap_insert_expression(
     # if target_dbg not in {"COPY", "MERGED"}:
     warning(f"{src_dbg} -> {target_dbg}")
 
+    s.__exit__(None, None, None)
     return res
 
 
