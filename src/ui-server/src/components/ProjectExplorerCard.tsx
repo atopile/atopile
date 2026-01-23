@@ -8,7 +8,7 @@ import { ChevronDown, ChevronRight, GitBranch, Circle } from 'lucide-react';
 import type { BuildTarget } from './projectsTypes';
 import type { ModuleChild } from '../types/build';
 import { ModuleTree } from './ModuleTreeNode';
-import { sendActionWithResponse } from '../api/websocket';
+import { api } from '../api/client';
 import './ProjectExplorerCard.css';
 
 interface ProjectExplorerCardProps {
@@ -47,20 +47,9 @@ export function ProjectExplorerCard({ builds, projectRoot, defaultExpanded = fal
       [key]: { status: 'loading' }
     }));
 
-    sendActionWithResponse(
-      'getModuleChildren',
-      {
-        projectRoot,
-        entryPoint: build.entry,
-        maxDepth: 5,
-      },
-      { timeoutMs: 30000 }
-    )
-      .then((response) => {
-        const result = response.result ?? {};
-        const children = Array.isArray((result as { children?: unknown }).children)
-          ? (result as { children: ModuleChild[] }).children
-          : [];
+    api.modules
+      .getChildren(projectRoot, build.entry, 5)
+      .then((children) => {
         setTargetStates(prev => ({
           ...prev,
           [key]: { status: 'ready', children }

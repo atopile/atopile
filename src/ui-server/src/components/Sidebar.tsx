@@ -137,7 +137,6 @@ export function Sidebar() {
     selectedProjectRoot,
     selectedTargetName,
     panels,
-    action,
   });
 
   // Use handlers hook for event handlers

@@ -27,6 +27,9 @@ async def get_problems(
     level: Optional[str] = Query(
         None, description="Filter by level: 'error' or 'warning'"
     ),
+    developer_mode: Optional[bool] = Query(
+        None, description="Include developer log audiences"
+    ),
 ):
     """Get problems (errors/warnings) from builds."""
     return await asyncio.to_thread(
@@ -34,4 +37,5 @@ async def get_problems(
         project_root=project_root,
         build_name=build_name,
         level=level,
+        developer_mode=developer_mode,
     )

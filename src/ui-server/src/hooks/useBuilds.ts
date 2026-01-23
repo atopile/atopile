@@ -14,7 +14,7 @@ export function useBuilds() {
   const selectedBuild = useSelectedBuild();
 
   const selectBuild = useCallback((buildName: string | null) => {
-    sendAction('selectBuild', { buildName });
+    useStore.getState().selectBuild(buildName);
   }, []);
 
   const startBuild = useCallback(

@@ -20,8 +20,7 @@ from typing import Any
 
 from atopile.dataclasses import BuildStatus, StageStatus
 from atopile.server import build_history, problem_parser
-from atopile.server.domains import artifacts as artifacts_domain
-from atopile.server.state import server_state
+from atopile.server.connections import server_state
 
 log = logging.getLogger(__name__)
 
@@ -544,7 +543,7 @@ class BuildQueue:
                             building_started_at
                         )
 
-                # Sync to server_state for /ws/state clients
+                # Emit build change event for /ws/state clients
                 _sync_builds_to_state()
 
             elif msg_type == "stage":
@@ -553,7 +552,7 @@ class BuildQueue:
                     if build_id in _active_builds:
                         _active_builds[build_id]["stages"] = stages
 
-                # Sync to server_state for /ws/state clients
+                # Emit build change event for /ws/state clients
                 _sync_builds_to_state()
 
             elif msg_type == "completed":
@@ -600,7 +599,7 @@ class BuildQueue:
                 with self._cancel_lock:
                     self._cancel_flags.pop(build_id, None)
 
-                # Sync to server_state for /ws/state clients
+                # Emit build change event for /ws/state clients
                 _sync_builds_to_state()
 
                 # Refresh problems from logs after build completes
@@ -639,7 +638,7 @@ class BuildQueue:
                 with self._cancel_lock:
                     self._cancel_flags.pop(build_id, None)
 
-                # Sync to server_state for /ws/state clients
+                # Emit build change event for /ws/state clients
                 _sync_builds_to_state()
 
     def _dispatch_next(self) -> None:
@@ -929,7 +928,7 @@ def _cleanup_completed_builds():
 
 def _sync_builds_to_state():
     """
-    Sync _active_builds to server_state for WebSocket broadcast.
+    Emit build change events for WebSocket clients.
 
     Called when build status changes (from background thread).
     Uses asyncio.run_coroutine_threadsafe to schedule on main event loop.
@@ -937,64 +936,32 @@ def _sync_builds_to_state():
     # Clean up old completed builds first
     _cleanup_completed_builds()
 
-    state_builds = _get_state_builds()
-    queued_builds = [
-        b
-        for b in state_builds
-        if b.status in (BuildStatus.QUEUED, BuildStatus.BUILDING)
-    ]
-
     # Schedule async state update on main event loop
     loop = server_state._event_loop
     if loop is not None and loop.is_running():
-        asyncio.run_coroutine_threadsafe(server_state.set_builds(state_builds), loop)
         asyncio.run_coroutine_threadsafe(
-            server_state.set_queued_builds(queued_builds), loop
+            server_state.emit_event("builds_changed"), loop
         )
     else:
         log.warning("Cannot sync builds to state: event loop not available")
 
 
 def _refresh_bom_for_selected(build_info: dict[str, Any]) -> None:
-    """Refresh BOM data for the currently selected project after a build completes."""
-    selected_project = server_state._state.selected_project_root
-    if not selected_project:
-        return
-
+    """Emit BOM changed event after a build completes."""
     project_root = build_info.get("project_root")
-    if not project_root or project_root != selected_project:
+    if not project_root:
         return
 
-    selected_targets = server_state._state.selected_target_names
-    build_target = build_info.get("target")
-
-    # Use build target if it matches a selected target, otherwise use first selected
-    target = None
-    if selected_targets:
-        if build_target and build_target in selected_targets:
-            target = build_target
-        else:
-            target = selected_targets[0]
-    else:
-        target = build_target
-
-    if not target:
-        return
-
-    try:
-        bom_json = artifacts_domain.handle_get_bom(project_root, target)
-        if bom_json is None:
-            coroutine = server_state.set_bom_data(
-                None, "BOM not found. Run build first."
-            )
-        else:
-            coroutine = server_state.set_bom_data(bom_json)
-    except Exception as exc:
-        coroutine = server_state.set_bom_data(None, str(exc))
+    target = build_info.get("target")
+    payload = {"project_root": project_root}
+    if target:
+        payload["target"] = target
 
     loop = server_state._event_loop
     if loop is not None and loop.is_running():
-        asyncio.run_coroutine_threadsafe(coroutine, loop)
+        asyncio.run_coroutine_threadsafe(
+            server_state.emit_event("bom_changed", payload), loop
+        )
     else:
         log.warning("Cannot refresh BOM: event loop not available")
 
@@ -1004,65 +971,22 @@ def _refresh_project_last_build(build_info: dict[str, Any]) -> None:
     Refresh project target lastBuild data after a build completes.
 
     This reloads the build_summary.json for each target in the project and
-    updates the server state so the frontend shows updated timestamps.
+    notifies clients so they can refresh project data.
     """
-    from atopile.dataclasses import BuildTarget as StateBuildTarget
-    from atopile.server.core import projects as core_projects
-
     project_root = build_info.get("project_root")
     if not project_root:
         return
 
-    try:
-        project_path = Path(project_root)
-
-        # Find and update the matching project in server state
-        current_projects = list(server_state._state.projects)
-        updated = False
-
-        for i, proj in enumerate(current_projects):
-            if proj.root == project_root:
-                # Reload last_build for each target
-                new_targets = []
-                for t in proj.targets:
-                    last_build = core_projects._load_last_build_for_target(
-                        project_path, t.name
-                    )
-                    new_targets.append(
-                        StateBuildTarget(
-                            name=t.name,
-                            entry=t.entry,
-                            root=t.root,
-                            last_build=last_build,
-                        )
-                    )
-
-                # Create updated project with new targets
-                from atopile.dataclasses import Project as StateProject
-
-                current_projects[i] = StateProject(
-                    root=proj.root,
-                    name=proj.name,
-                    targets=new_targets,
-                )
-                updated = True
-                break
-
-        if updated:
-            # Schedule the state update on the event loop
-            async def update_projects():
-                await server_state.set_projects(current_projects)
-
-            loop = server_state._event_loop
-            if loop is not None and loop.is_running():
-                asyncio.run_coroutine_threadsafe(update_projects(), loop)
-            else:
-                log.warning(
-                    "Cannot refresh project last_build: event loop not available"
-                )
-
-    except Exception as exc:
-        log.warning(f"Failed to refresh project last_build data: {exc}")
+    loop = server_state._event_loop
+    if loop is not None and loop.is_running():
+        asyncio.run_coroutine_threadsafe(
+            server_state.emit_event(
+                "projects_changed", {"project_root": project_root}
+            ),
+            loop,
+        )
+    else:
+        log.warning("Cannot refresh project last_build: event loop not available")
 
 
 async def _sync_builds_to_state_async():
@@ -1070,18 +994,9 @@ async def _sync_builds_to_state_async():
     Async version of _sync_builds_to_state.
 
     Called from async contexts (like WebSocket handlers) where we want
-    to await the state update rather than scheduling it.
+    to await the event emit rather than scheduling it.
     """
-    state_builds = _get_state_builds()
-    # Set all builds
-    await server_state.set_builds(state_builds)
-    # Set queued builds (active builds only for queue panel)
-    queued_builds = [
-        b
-        for b in state_builds
-        if b.status in (BuildStatus.QUEUED, BuildStatus.BUILDING)
-    ]
-    await server_state.set_queued_builds(queued_builds)
+    await server_state.emit_event("builds_changed")
 
 
 def cancel_build(build_id: str) -> bool:

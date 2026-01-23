@@ -224,11 +224,19 @@ export const api = {
 
   // Problems
   problems: {
-    list: (options?: { projectRoot?: string; buildName?: string; level?: string }) => {
+    list: (options?: {
+      projectRoot?: string;
+      buildName?: string;
+      level?: string;
+      developerMode?: boolean;
+    }) => {
       const params = new URLSearchParams();
       if (options?.projectRoot) params.set('project_root', options.projectRoot);
       if (options?.buildName) params.set('build_name', options.buildName);
       if (options?.level) params.set('level', options.level);
+      if (typeof options?.developerMode === 'boolean') {
+        params.set('developer_mode', String(options.developerMode));
+      }
       return fetchJSON<ProblemsResponse>(`/api/problems?${params}`);
     },
   },

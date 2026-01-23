@@ -25,7 +25,7 @@ import { UsageCard } from './UsageCard'
 import { validateName } from '../utils/nameValidation'
 import { compareVersionsDesc, isInstalledInProject } from '../utils/packageUtils'
 import { generateImportStatement, generateUsageExample } from '../utils/codeHighlight'
-import { sendActionWithResponse } from '../api/websocket'
+import { api } from '../api/client'
 import type {
   Selection,
   BuildTarget,
@@ -407,10 +407,9 @@ export const ProjectCard = memo(function ProjectCard({
     setDetailsLoading(true)
     setDetailsError(null)
 
-    sendActionWithResponse('getPackageDetails', { packageId: project.id })
-      .then(response => {
-        const result = response.result ?? {}
-        const details = (result as { details?: PackageDetails }).details
+    api.packages
+      .details(project.id)
+      .then((details) => {
         if (details) {
           setPackageDetails(details)
           const sortedDetailVersions = (details.versions || [])
