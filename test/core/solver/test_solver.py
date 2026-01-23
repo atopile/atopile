@@ -34,8 +34,7 @@ dimensionless = F.Units.Dimensionless
 
 def _create_letters(
     E: BoundExpressions, n: int, units: type[fabll.Node] | None = None
-) -> tuple[F.Parameters.ReprContext, list[F.Parameters.is_parameter_operatable]]:
-    context = F.Parameters.ReprContext()
+) -> list[F.Parameters.is_parameter_operatable]:
     if units is None:
         units = E.U.dl
 
@@ -50,7 +49,7 @@ def _create_letters(
     app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
     params = [p.get().is_parameter_operatable.get() for p in app.params]
 
-    return context, params
+    return params
 
 
 def _extract(
@@ -84,11 +83,6 @@ def _extract_and_check(
     domain_default: bool = True,
 ) -> bool:
     extracted = _extract(op, res, domain_default=domain_default)
-    ctx = (
-        res.print_ctx
-        if isinstance(res, MutationMap)
-        else not_none(res.state).data.mutation_map.print_ctx
-    )
     if isinstance(expected, F.Literals.is_literal):
         expected = expected.as_operand.get()
     if isinstance(expected, F.Literals.LiteralNodes):
@@ -99,7 +93,7 @@ def _extract_and_check(
             print(
                 f"Expected {expected}"
                 f" but got {extracted.pretty_str()}"
-                f"\nfor op: {op.as_parameter_operatable.force_get().compact_repr(ctx)}"
+                f"\nfor op: {op.as_parameter_operatable.force_get().compact_repr()}"
             )
         return matches
 
@@ -383,11 +377,10 @@ def test_alias_classes():
     addition2 = E.add(D, C)
     E.is_(H, addition2, assert_=True)
 
-    context = F.Parameters.ReprContext()
     for p in (A, B, C, D, H):
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
     solver = Solver()
-    repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     # A, B, and H are aliased via the Is constraints and commutativity of addition
     # A is! B, B is! (C+D), H is! (D+C) where C+D == D+C
@@ -499,9 +492,8 @@ def test_subset_superset():
     E.is_subset(B, E.lit_op_range((5, 20)), assert_=True)
     E.is_(A, B, assert_=True)
 
-    context = F.Parameters.ReprContext()
     for p in [A, B]:
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     solver = Solver()
     with pytest.raises(Contradiction):
@@ -532,9 +524,8 @@ def test_very_simple_alias_class():
     E.is_(B, C, assert_=True)
     E.is_subset(A, E.lit_op_range(((1, E.U.V), (2, E.U.V))), assert_=True)
 
-    context = F.Parameters.ReprContext()
     for p in params:
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
@@ -577,13 +568,12 @@ def test_less_obvious_contradiction_by_literal():
     E.is_(C, E.add(A, B), assert_=True)
     E.is_subset(E.lit_op_range(((0.0, E.U.V), (15.0, E.U.V))), C, assert_=True)
 
-    print_context = F.Parameters.ReprContext()
     for p in (A, B, C):
-        p.as_parameter_operatable.force_get().compact_repr(print_context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     solver = Solver()
     with pytest.raises(ContradictionByLiteral):
-        solver.simplify(E.tg, E.g, print_context=print_context)
+        solver.simplify(E.tg, E.g)
 
 
 def test_symmetric_inequality_correlated():
@@ -700,14 +690,13 @@ def test_literal_folding_add_multiplicative_1():
     assert rep_A is not None
     assert rep_B is not None
 
-    context = repr_map.print_ctx
     operands = (
         fabll.Traits(rep_add)
         .get_obj(F.Expressions.Add)
         .is_expression.get()
         .get_operands()
     )
-    assert len(operands) == 2, f"{rep_add.compact_repr(context)}"
+    assert len(operands) == 2, f"{rep_add.compact_repr()}"
     mul1, mul2 = operands
 
     mulexp1 = fabll.Traits(mul1).get_obj(F.Expressions.Multiply)
@@ -799,14 +788,13 @@ def test_transitive_subset():
     E.is_subset(A, B, assert_=True)
     E.is_subset(B, C, assert_=True)
 
-    context = F.Parameters.ReprContext()
     for p in (A, B, C):
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     E.is_subset(C, E.lit_op_range((0, 10)), assert_=True)
 
     solver = Solver()
-    repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     assert _extract_and_check(A, repr_map, E.lit_op_range((0, 10)))
 
 
@@ -1365,12 +1353,11 @@ def test_graph_split():
     E.is_(Aop, C, assert_=True)
     E.is_(Bop, D, assert_=True)
 
-    context = F.Parameters.ReprContext()
     for p in (Aop, Bop, C, D):
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     solver = Solver()
-    repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     assert (
         not_none(
@@ -1827,7 +1814,7 @@ def test_simplify_non_terminal_manual_test_2():
     FBRK_LOG_PICK_SOLVE=y FBRK_SLOG=y and read log
     """
     E = BoundExpressions()
-    context, ps = _create_letters(E, 3, units=E.U.V)
+    ps = _create_letters(E, 3, units=E.U.V)
     A, B, C = ps
 
     INCREASE = (20, E.U.dl)
@@ -1862,7 +1849,7 @@ def test_simplify_non_terminal_manual_test_2():
                 E.is_(_inc, E.divide(_inc, increase), assert_=True)
 
         p_lit = solver.extract_superset(p.as_parameter.force_get())
-        print(f"{p.as_parameter.force_get().compact_repr(context)}, lit:", p_lit)
+        print(f"{p.as_parameter.force_get().compact_repr()}, lit:", p_lit)
         print(f"{p_lit.as_operand.get()}, {E.multiply(origin[1], _inc)}")
         assert p_lit.op_setic_is_subset_of(
             E.multiply(origin[1], _inc).as_literal.force_get()
@@ -2031,12 +2018,11 @@ def test_fold_correlated():
     E.is_(B, op[0](A, lit_operand), assert_=True)  # B is A + 5
     E.is_(C, op_inv[0](B, A), assert_=True)  # C is B - A
 
-    context = F.Parameters.ReprContext()
     for p in (A, B, C):
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     solver = Solver()
-    repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     ss_lit = repr_map.try_extract_superset(C.as_parameter_operatable.force_get())
     assert ss_lit is not None
@@ -2557,7 +2543,7 @@ def test_solver_continuation_after_constraint_addition():
     import time
 
     E = BoundExpressions()
-    _, [A, B, C] = _create_letters(E, 3)
+    [A, B, C] = _create_letters(E, 3)
     A_op, B_op, C_op = A.as_operand.get(), B.as_operand.get(), C.as_operand.get()
 
     # Initial design constraint: A in range 1k-10k``
@@ -2616,7 +2602,7 @@ def test_solver_continuation_multi_pick_scenario():
     import time
 
     E = BoundExpressions()
-    _, params = _create_letters(E, 5)
+    params = _create_letters(E, 5)
     params_ops = [p.as_operand.get() for p in params]
 
     # Initial constraint: first param in range 1k-100k

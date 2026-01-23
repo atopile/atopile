@@ -261,11 +261,12 @@ class BoundExpressions:
         within: "F.Literals.Numbers | None" = None,
         domain: "F.NumberDomain.Args | type[F.Parameters.NumericParameter.DOMAIN_SKIP] | None" = None,  # noqa: E501
         attach_to: "tuple[fabll.Node, str] | None" = None,
+        name: "str | None" = None,
     ) -> F.Parameters.can_be_operand:
         is_unit_node = (
             self._resolve_unit(units) if units else self._resolve_unit(self.U.dl)
         )
-        out = (
+        param = (
             F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
             .setup(
@@ -273,8 +274,12 @@ class BoundExpressions:
                 within=within,
                 domain=domain,
             )
-            .can_be_operand.get()
         )
+
+        if name is not None:
+            param.is_parameter.get().set_name(name)
+
+        out = param.can_be_operand.get()
 
         if attach_to:
             parent, p_name = attach_to
@@ -287,19 +292,27 @@ class BoundExpressions:
             )
         return out
 
-    def enum_parameter_op(self, enum_type) -> F.Parameters.can_be_operand:
-        return (
+    def enum_parameter_op(
+        self, enum_type, name: "str | None" = None
+    ) -> F.Parameters.can_be_operand:
+        param = (
             F.Parameters.EnumParameter.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
             .setup(enum=enum_type)
-        ).can_be_operand.get()
+        )
+        if name is not None:
+            param.is_parameter.get().set_name(name)
+        return param.can_be_operand.get()
 
-    def bool_parameter_op(self) -> F.Parameters.can_be_operand:
-        return (
-            F.Parameters.BooleanParameter.bind_typegraph(tg=self.tg).create_instance(
-                g=self.g
-            )
-        ).can_be_operand.get()
+    def bool_parameter_op(
+        self, name: "str | None" = None
+    ) -> F.Parameters.can_be_operand:
+        param = F.Parameters.BooleanParameter.bind_typegraph(
+            tg=self.tg
+        ).create_instance(g=self.g)
+        if name is not None:
+            param.is_parameter.get().set_name(name)
+        return param.can_be_operand.get()
 
     def add(
         self, *operands: F.Parameters.can_be_operand

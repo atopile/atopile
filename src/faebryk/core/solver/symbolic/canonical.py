@@ -382,7 +382,7 @@ def convert_to_canonical_operations(mutator: Mutator):
 
         if e_type_uuid in _UnsupportedOperations:
             replacement = _UnsupportedOperations[e_type_uuid]
-            rep = e.compact_repr(mutator.print_ctx)
+            rep = e.compact_repr()
             if replacement is None:
                 logger.warning(f"{type(e)}({rep}) not supported by solver, skipping")
                 mutator.remove(e.as_parameter_operatable.get())
@@ -423,7 +423,7 @@ def _create_alias_parameter_for_expression(
     """
 
     if S_LOG:
-        expr_repr = expr.compact_repr(mutator.print_ctx)
+        expr_repr = expr.compact_repr()
     expr_po = expr.as_parameter_operatable.get()
 
     mutated = {
@@ -437,14 +437,14 @@ def _create_alias_parameter_for_expression(
         p = next(iter(mutated.values())).as_parameter.force_get()
         if S_LOG:
             logger.debug(
-                f"Using mutated {p.compact_repr(mutator.print_ctx)} for {expr_repr}"  # pyright: ignore[reportPossiblyUnboundVariable]
+                f"Using mutated {p.compact_repr()} for {expr_repr}"  # pyright: ignore[reportPossiblyUnboundVariable]
             )
     elif existing_params:
         p_old = next(iter(existing_params))
         p = mutator.mutate_parameter(p_old)
         if S_LOG:
             logger.debug(
-                f"Using and mutating {p.compact_repr(mutator.print_ctx)} for {expr_repr}"  # pyright: ignore[reportPossiblyUnboundVariable]
+                f"Using and mutating {p.compact_repr()} for {expr_repr}"  # pyright: ignore[reportPossiblyUnboundVariable]
             )
     else:
         p = mutator.register_created_parameter(
@@ -453,7 +453,7 @@ def _create_alias_parameter_for_expression(
         )
         if S_LOG:
             logger.debug(
-                f"Using created {p.compact_repr(mutator.print_ctx)} for {expr_repr}"  # pyright: ignore[reportPossiblyUnboundVariable]
+                f"Using created {p.compact_repr()} for {expr_repr}"  # pyright: ignore[reportPossiblyUnboundVariable]
             )
     is_expr = mutator._create_and_insert_expression(
         ExpressionBuilder(
@@ -589,9 +589,7 @@ def flatten_expressions(mutator: Mutator):
 
         # no aliases for predicates
         if e.try_get_sibling_trait(F.Expressions.is_predicate):
-            logger.debug(
-                f"No aliases for predicate {e.compact_repr(mutator.print_ctx)}"
-            )
+            logger.debug(f"No aliases for predicate {e.compact_repr()}")
             for a in aliases:
                 mutator.remove(a.is_parameter_operatable.get(), no_check_roots=True)
             expr_reprs[e] = mutator.make_singleton(True).can_be_operand.get()

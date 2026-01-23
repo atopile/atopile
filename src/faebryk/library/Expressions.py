@@ -278,13 +278,12 @@ class is_expression(fabll.Node):
 
     @staticmethod
     def _compact_repr(
-        context: F.Parameters.ReprContext,
         style: is_expression_type.ReprStyle,
         symbol: str,
         is_predicate: bool,
         is_terminated: bool,
         lit_suffix: str,
-        use_name: bool,
+        use_full_name: bool,
         expr_name: str,
         operands: Sequence["F.Parameters.can_be_operand"],
         no_lit_suffix: bool,
@@ -306,7 +305,7 @@ class is_expression(fabll.Node):
                 return lit.pretty_str()
             if po := op.as_parameter_operatable.try_get():
                 op_out = po.compact_repr(
-                    context, use_name=use_name, no_lit_suffix=no_lit_suffix
+                    use_full_name=use_full_name, no_lit_suffix=no_lit_suffix
                 )
                 if (op_expr := po.as_expression.try_get()) and len(
                     op_expr.get_operands()
@@ -359,8 +358,7 @@ class is_expression(fabll.Node):
 
     def compact_repr(
         self,
-        context: "F.Parameters.ReprContext | None" = None,
-        use_name: bool = False,
+        use_full_name: bool = False,
         no_lit_suffix: bool = False,
         no_alias_suffix: bool = False,
     ) -> str:
@@ -375,13 +373,14 @@ class is_expression(fabll.Node):
                 F.Parameters.is_parameter
             )
         ]
-        alias_suffix = ",".join([p.compact_repr(context) for p in ps])
+        alias_suffix = ",".join(
+            [p.compact_repr(use_full_name=use_full_name) for p in ps]
+        )
         if alias_suffix:
             alias_suffix = f"[{alias_suffix}]"
 
         style = self.get_repr_style()
         return self._compact_repr(
-            context if context is not None else F.Parameters.ReprContext(),
             style,
             style.symbol if style.symbol is not None else type(self).__name__,
             bool(self.try_get_sibling_trait(is_predicate)),
@@ -394,7 +393,7 @@ class is_expression(fabll.Node):
                     else ""
                 )
             ),
-            use_name=use_name,
+            use_full_name=use_full_name,
             expr_name=not_none(fabll.Traits(self).get_obj_raw().get_type_name()),
             operands=self.get_operands(),
             no_lit_suffix=no_lit_suffix,
@@ -775,6 +774,7 @@ class is_expression(fabll.Node):
             assert False
 
         p = p_instance.is_parameter.get()
+        p.set_name(f"Rep({self.compact_repr(no_lit_suffix=True)})")
         if alias:
             Is.c(self.as_operand.get(), p.as_operand.get(), assert_=True)
         return p
@@ -3177,16 +3177,13 @@ def test_repr_style():
 
 
 def test_compact_repr():
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
+    from faebryk.libs.test.boundexpressions import BoundExpressions
 
-    p1 = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    p2 = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    or_ = Or.c(
-        p1.can_be_operand.get(),
-        p2.can_be_operand.get(),
-        assert_=True,
-    )
+    E = BoundExpressions()
+
+    p1_op = E.bool_parameter_op(name="A")
+    p2_op = E.bool_parameter_op(name="B")
+    or_ = E.or_(p1_op, p2_op, assert_=True)
     or_repr = (
         or_.as_parameter_operatable.force_get().as_expression.force_get().compact_repr()
     )
@@ -3217,8 +3214,6 @@ def test_compact_repr_memory_leak():
     expr = or_.as_parameter_operatable.force_get().as_expression.force_get()
     param = p1.is_parameter.get()
 
-    ctx = F.Parameters.ReprContext()
-
     process = psutil.Process()
 
     def run(n: int):
@@ -3226,8 +3221,8 @@ def test_compact_repr_memory_leak():
         mem_base = process.memory_info().rss
 
         for _ in range(n):
-            expr.compact_repr(context=ctx)
-            param.compact_repr(context=ctx)
+            expr.compact_repr()
+            param.compact_repr()
 
         gc.collect()
 

@@ -46,14 +46,12 @@ def test_mutator_no_graph_merge():
     p2 = E.parameter_op(units=E.U.W)
     alias = E.is_(p2, E.multiply(p0, p1), assert_=True)
 
-    context = F.Parameters.ReprContext()
-
     @algorithm("")
     def algo(mutator: Mutator):
         pass
 
     mutator = Mutator(
-        MutationMap.bootstrap(p0.tg, p0.g, print_context=context),
+        MutationMap.bootstrap(p0.tg, p0.g),
         algo=algo,
         iteration=0,
         terminal=True,
@@ -130,9 +128,9 @@ def test_mutator_no_graph_merge():
 
 def test_mutation_map_compressed_mapping_forwards_identity():
     E = BoundExpressions()
-    context, _ = _create_letters(E, 3)
+    _ = _create_letters(E, 3)
 
-    mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    mapping = MutationMap.bootstrap(E.tg, E.g)
 
     f = mapping.compressed_mapping_forwards
     assert set(f.keys()) == mapping.input_operables
@@ -141,9 +139,9 @@ def test_mutation_map_compressed_mapping_forwards_identity():
 
 def test_mutation_map_compressed_mapping_backwards_identity():
     E = BoundExpressions()
-    context, _ = _create_letters(E, 3)
+    _ = _create_letters(E, 3)
 
-    mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    mapping = MutationMap.bootstrap(E.tg, E.g)
 
     expected = {
         out_op: [in_op]
@@ -154,8 +152,8 @@ def test_mutation_map_compressed_mapping_backwards_identity():
 
 def test_mutation_map_compressed_mapping_backwards_copy():
     E = BoundExpressions()
-    context, _ = _create_letters(E, 3)
-    mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    _ = _create_letters(E, 3)
+    mapping = MutationMap.bootstrap(E.tg, E.g)
     variables_mid = list(mapping.output_operables)
 
     E2 = BoundExpressions()
@@ -170,9 +168,7 @@ def test_mutation_map_compressed_mapping_backwards_copy():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_ctx=mapping.print_ctx,
             transformations=Transformations(
-                print_ctx=mapping.print_ctx,
                 mutated=dict(zip(variables_mid, variables_new)),
                 copied=set(variables_mid),
             ),
@@ -190,8 +186,8 @@ def test_mutation_map_compressed_mapping_backwards_copy():
 
 def test_mutation_map_compressed_mapping_backwards_mutate():
     E = BoundExpressions()
-    context, _ = _create_letters(E, 3)
-    mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    _ = _create_letters(E, 3)
+    mapping = MutationMap.bootstrap(E.tg, E.g)
     variables_mid = list(mapping.output_operables)
 
     E2 = BoundExpressions()
@@ -206,9 +202,7 @@ def test_mutation_map_compressed_mapping_backwards_mutate():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_ctx=mapping.print_ctx,
             transformations=Transformations(
-                print_ctx=mapping.print_ctx,
                 mutated=dict(zip(variables_mid, variables_new)),
             ),
         )
@@ -225,9 +219,9 @@ def test_mutation_map_compressed_mapping_backwards_mutate():
 
 def test_mutation_map_non_copy_mutated_identity():
     E = BoundExpressions()
-    context, _ = _create_letters(E, 3)
+    _ = _create_letters(E, 3)
 
-    mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    mapping = MutationMap.bootstrap(E.tg, E.g)
 
     res = mapping.non_trivial_mutated_expressions
     assert res == set()
@@ -235,10 +229,10 @@ def test_mutation_map_non_copy_mutated_identity():
 
 def test_mutation_map_non_copy_mutated_mutate():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 3)
+    variables = _create_letters(E, 3)
     variables = [v for v in variables]
 
-    mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    mapping = MutationMap.bootstrap(E.tg, E.g)
 
     E2 = BoundExpressions()
     _, variables_new = _create_letters(E2, 3)
@@ -252,9 +246,7 @@ def test_mutation_map_non_copy_mutated_mutate():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_ctx=mapping.print_ctx,
             transformations=Transformations(
-                print_ctx=mapping.print_ctx,
                 mutated=dict(zip(variables, variables_new)),
             ),
         )
@@ -266,10 +258,10 @@ def test_mutation_map_non_copy_mutated_mutate():
 
 def test_mutation_map_non_copy_mutated_mutate_expression():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 2)
+    variables = _create_letters(E, 2)
     op = E.add(*[v.as_operand.get() for v in variables])
 
-    mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    mapping = MutationMap.bootstrap(E.tg, E.g)
 
     E2 = BoundExpressions()
     _, variables_new = _create_letters(E2, 2)
@@ -283,9 +275,7 @@ def test_mutation_map_non_copy_mutated_mutate_expression():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_ctx=mapping.print_ctx,
             transformations=Transformations(
-                print_ctx=mapping.print_ctx,
                 mutated=dict(zip(variables, variables_new)) | {op: op_new},  # type: ignore
             ),
         )
@@ -297,10 +287,10 @@ def test_mutation_map_non_copy_mutated_mutate_expression():
 
 def test_mutation_map_submap():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 2)
+    variables = _create_letters(E, 2)
     op = E.add(*[v.as_operand.get() for v in variables])
 
-    mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    mapping = MutationMap.bootstrap(E.tg, E.g)
 
     E2 = BoundExpressions()
     _, variables_new = _create_letters(E2, 2)
@@ -314,12 +304,7 @@ def test_mutation_map_submap():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_ctx=mapping.print_ctx,
-            transformations=Transformations.identity(
-                E.tg,
-                E.g,
-                input_print_context=mapping.print_ctx,
-            ),
+            transformations=Transformations.identity(E.tg, E.g),
         )
     )
     mapping_new2 = mapping.extend(  # noqa: F841
@@ -330,9 +315,7 @@ def test_mutation_map_submap():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_ctx=mapping.print_ctx,
             transformations=Transformations(
-                print_ctx=mapping.print_ctx,
                 mutated=dict(zip(variables, variables_new)) | {op: op_new},  # type: ignore
             ),
         )
@@ -343,14 +326,14 @@ def test_mutation_map_submap():
 
 def test_traceback_filtering_chain():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 3)
+    variables = _create_letters(E, 3)
     A, B, C = variables
 
     E1 = E.add(A.as_operand.get(), B.as_operand.get())
     E2 = E.add(E1, A.as_operand.get())
 
     solver = Solver()
-    out = solver.simplify(E.tg, E.g, print_context=context, terminal=False)
+    out = solver.simplify(E.tg, E.g, terminal=False)
 
     E2_new = out.data.mutation_map.map_forward(
         E2.as_parameter_operatable.force_get()
@@ -362,7 +345,7 @@ def test_traceback_filtering_chain():
 
 def test_traceback_filtering_tree():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 3)
+    variables = _create_letters(E, 3)
     A, B, C = variables
 
     E.is_subset(B.as_operand.get(), E.lit_op_range((0, 10)), assert_=True)
@@ -372,7 +355,7 @@ def test_traceback_filtering_tree():
     E.is_subset(A.as_operand.get(), C.as_operand.get(), assert_=True)
 
     solver = Solver()
-    out = solver.simplify(E.tg, E.g, print_context=context, terminal=True)
+    out = solver.simplify(E.tg, E.g, terminal=True)
 
     A_new = out.data.mutation_map.map_forward(A).maps_to
     assert A_new
@@ -387,7 +370,7 @@ def test_traceback_filtering_tree():
 
 def test_contradiction_message_subset():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 1)
+    variables = _create_letters(E, 1)
     (A,) = variables
 
     E.is_subset(A.as_operand.get(), E.lit_op_range((6, 7)), assert_=True)
@@ -396,13 +379,13 @@ def test_contradiction_message_subset():
     solver = Solver()
 
     with pytest.raises(ContradictionByLiteral, match="Empty superset"):
-        solver.simplify(E.tg, E.g, print_context=context, terminal=True)
+        solver.simplify(E.tg, E.g, terminal=True)
 
 
 @pytest.mark.skip(reason="to_fix")  # FIXME
 def test_contradiction_message_superset():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 1)
+    variables = _create_letters(E, 1)
     (A,) = variables
 
     E.is_superset(A.as_operand.get(), E.lit_op_range((0, 10)), assert_=True)
@@ -411,7 +394,7 @@ def test_contradiction_message_superset():
     solver = Solver()
 
     with pytest.raises(ContradictionByLiteral, match=r"P!\{⊆\|False\}"):
-        solver.simplify(E.tg, E.g, print_context=context, terminal=True)
+        solver.simplify(E.tg, E.g, terminal=True)
 
 
 if __name__ == "__main__":

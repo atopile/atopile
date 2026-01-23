@@ -78,7 +78,6 @@ class Contradiction(Exception):
         tracebacks = {
             p: self.mutator.mutation_map.get_traceback(p) for p in self.involved_exprs
         }
-        print_ctx = self.mutator.mutation_map.print_ctx
 
         def _get_origins(
             p: F.Parameters.is_parameter_operatable,
@@ -94,9 +93,9 @@ class Contradiction(Exception):
         origins = {p: _get_origins(p) for p in self.involved_exprs}
         origins_str = "\n".join(
             [
-                f" - {origin.compact_repr(print_ctx, use_name=True)}\n"
+                f" - {origin.compact_repr(use_full_name=True)}\n"
                 + "\n".join(
-                    f"   - {o.compact_repr(print_ctx, use_name=True)}"
+                    f"   - {o.compact_repr(use_full_name=True)}"
                     for o in set(origins[origin])
                 )
                 for origin in origins
@@ -158,7 +157,6 @@ class ContradictionByLiteral(Contradiction):
         parts = [super().__str__()]
 
         if self.constraint_sources:
-            context = self.mutator.mutation_map.print_ctx
 
             def _has_bounded_literal(
                 expr: F.Parameters.is_parameter_operatable,
@@ -192,7 +190,7 @@ class ContradictionByLiteral(Contradiction):
                 expr: F.Parameters.is_parameter_operatable,
             ) -> str:
                 try:
-                    return expr.compact_repr(context, use_name=True)
+                    return expr.compact_repr(use_full_name=True)
                 except Exception as exc:
                     return f"<unprintable constraint {type(exc).__name__}>"
 
@@ -610,10 +608,7 @@ class MutatorUtils:
         else:
             raise TypeError(f"Unknown parameter type: {p_type_repr}")
         new_p = new.is_parameter.get()
-        self.mutator.print_ctx.override_name(
-            new_p,
-            self.mutator.print_ctx.get_or_create_name(params[0]),
-        )
+        new_p.set_name(f"Merge({', '.join([p.get_name() for p in params])})")
         return new_p
 
     @staticmethod
@@ -712,13 +707,10 @@ class MutatorUtils:
 def pretty_expr(
     expr: "F.Expressions.is_expression | ExpressionBuilder",
     mutator: "Mutator | None" = None,
-    context: "F.Parameters.ReprContext | None" = None,
-    use_name: bool = False,
+    use_full_name: bool = False,
     no_lit_suffix: bool = False,
 ) -> str:
     from faebryk.core.solver.mutator import ExpressionBuilder
-
-    context = context or (mutator.print_ctx if mutator else F.Parameters.ReprContext())
 
     match expr:
         case ExpressionBuilder():
@@ -739,7 +731,6 @@ def pretty_expr(
             repr_style = is_expr_type.get_repr_style()
 
             return F.Expressions.is_expression._compact_repr(
-                context,
                 repr_style,
                 repr_style.symbol
                 if repr_style.symbol is not None
@@ -754,8 +745,7 @@ def pretty_expr(
             )
         case F.Expressions.is_expression():
             return expr.compact_repr(
-                context,
-                use_name=use_name,
+                use_full_name=use_full_name,
                 no_lit_suffix=no_lit_suffix,
             )
         case _:

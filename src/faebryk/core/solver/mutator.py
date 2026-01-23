@@ -83,8 +83,6 @@ class is_irrelevant(fabll.Node):
 
 @dataclass
 class Transformations:
-    print_ctx: F.Parameters.ReprContext
-
     mutated: dict[
         F.Parameters.is_parameter_operatable, F.Parameters.is_parameter_operatable
     ] = field(default_factory=dict)
@@ -128,18 +126,14 @@ class Transformations:
             if bool(non_copy):
                 for k, v in non_copy:
                     logger.error(
-                        f"DIRTY: non_copy: "
-                        f"{k.compact_repr(self.print_ctx)} -> "
-                        f"{v.compact_repr(self.print_ctx)}"
+                        f"DIRTY: non_copy: {k.compact_repr()} -> {v.compact_repr()}"
                     )
             if bool(self.removed):
                 logger.error(f"DIRTY: removed={len(self.removed)}")
             # Filter created to only include truly new expressions
             # If a "created" expression existed in G_in (was copied), it's not truly new
             if created_preds:
-                x = indented_container(
-                    k.compact_repr(self.print_ctx) for k in created_preds
-                )
+                x = indented_container(k.compact_repr() for k in created_preds)
                 logger.error(f"DIRTY: new preds={x}")
             if bool(self.terminated):
                 logger.error(f"DIRTY: terminated={len(self.terminated)}")
@@ -164,11 +158,7 @@ class Transformations:
         )
 
     @staticmethod
-    def identity(
-        tg: fbrk.TypeGraph,
-        g: graph.GraphView,
-        input_print_context: F.Parameters.ReprContext,
-    ) -> "Transformations":
+    def identity(tg: fbrk.TypeGraph, g: graph.GraphView) -> "Transformations":
         return Transformations(
             mutated={
                 po: po
@@ -176,8 +166,7 @@ class Transformations:
                     trait=F.Parameters.is_parameter_operatable.bind_typegraph(tg),
                     g=g,
                 )
-            },
-            print_ctx=input_print_context,
+            }
         )
 
     def __str__(self) -> str:
@@ -186,12 +175,9 @@ class Transformations:
             self._no_log = False
             return "Transformations()"
         self._no_log = False
-        assert self.print_ctx
-
-        ctx = self.print_ctx
 
         mutated_transformations = [
-            (k.compact_repr(ctx), v.compact_repr(ctx))
+            (k.compact_repr(), v.compact_repr())
             for k, v in self.mutated.items()
             if k not in self.copied
         ]
@@ -199,8 +185,8 @@ class Transformations:
             [f"{k} -> {v}" for k, v in mutated_transformations if k != v]
             + [f"copy {k}" for k, v in mutated_transformations if k == v]
         )
-        created = indented_container([k.compact_repr(ctx) for k in self.created])
-        removed = indented_container([k.compact_repr(ctx) for k in self.removed])
+        created = indented_container([k.compact_repr() for k in self.created])
+        removed = indented_container([k.compact_repr() for k in self.removed])
         # copied = indented_container(
         #    [k.compact_repr(old_context) for k in self.transformations.copied]
         # )
@@ -253,7 +239,6 @@ class Traceback:
         dst: F.Parameters.is_parameter_operatable
         algo: str
         reason: "Traceback.Type"
-        ctx: F.Parameters.ReprContext
         related: list["Traceback.Stage"]
 
         def __repr__(self) -> str:
@@ -363,7 +348,7 @@ class Traceback:
         if visited is None:
             visited = set()
 
-        dst_text = self.stage.dst.compact_repr(self.stage.ctx)
+        dst_text = self.stage.dst.compact_repr()
         tree = Tree(Text(dst_text, style="bold blue"))
 
         if self.stage.dst in visited:
@@ -396,7 +381,7 @@ class Traceback:
                 reason_branch.add(back_node.as_rich_tree(visited))
         elif self.stage.srcs:
             for src in self.stage.srcs:
-                src_text = src.compact_repr(self.stage.ctx, use_name=True)
+                src_text = src.compact_repr(use_full_name=True)
                 reason_branch.add(Text(src_text, style="green"))
         else:
             reason_branch.add(Text("...no sources...", style="bold red"))
@@ -411,7 +396,6 @@ class MutationStage:
         tg_out: fbrk.TypeGraph,
         algorithm: SolverAlgorithm | str,
         iteration: int,
-        print_ctx: F.Parameters.ReprContext,
         transformations: Transformations,
         G_in: graph.GraphView,
         G_out: graph.GraphView,
@@ -420,7 +404,6 @@ class MutationStage:
         self.algorithm = algorithm
         self.iteration = iteration
         self.transformations = transformations
-        self.print_ctx = print_ctx
         self.tg_in = tg_in
         self.tg_out = tg_out
         self.G_in = G_in
@@ -449,7 +432,6 @@ class MutationStage:
     def identity(
         tg: fbrk.TypeGraph,
         g: graph.GraphView,
-        print_context: F.Parameters.ReprContext,
         iteration: int = 0,
         algorithm: str = "identity",
     ) -> "MutationStage":
@@ -460,10 +442,7 @@ class MutationStage:
             G_out=g,
             algorithm=algorithm,
             iteration=iteration,
-            print_ctx=print_context,
-            transformations=Transformations.identity(
-                tg, g, input_print_context=print_context
-            ),
+            transformations=Transformations.identity(tg, g),
         )
 
     @property
@@ -479,12 +458,7 @@ class MutationStage:
             G_out=self.G_out,
             algorithm="identity",
             iteration=iteration,
-            print_ctx=self.print_ctx,
-            transformations=Transformations.identity(
-                self.tg_out,
-                self.G_out,
-                input_print_context=self.print_ctx,
-            ),
+            transformations=Transformations.identity(self.tg_out, self.G_out),
         )
 
     def print_graph_contents(
@@ -493,18 +467,13 @@ class MutationStage:
         log: Callable[[str], None] = logger.debug,
     ):
         MutationStage.print_graph_contents_static(
-            self.tg_out,
-            self.G_out,
-            self.print_ctx,
-            trait_filter=trait_filter,
-            log=log,
+            self.tg_out, self.G_out, trait_filter=trait_filter, log=log
         )
 
     @staticmethod
     def print_graph_contents_static(
         tg: fbrk.TypeGraph,
         g: graph.GraphView,
-        ctx: F.Parameters.ReprContext,
         trait_filter: type[fabll.Node] = F.Parameters.is_parameter_operatable,
         log: Callable[[str], None] = logger.debug,
     ):
@@ -547,7 +516,7 @@ class MutationStage:
             for n in dnodes:
                 compact_repr = n.get_trait(
                     F.Parameters.is_parameter_operatable
-                ).compact_repr(ctx)
+                ).compact_repr()
                 out += f"\n      {compact_repr}"
                 if VERBOSE_TABLE:
                     out += f" {repr(n)}"
@@ -615,7 +584,7 @@ class MutationStage:
 
         def ___repr_op(op: F.Parameters.is_parameter_operatable) -> str:
             try:
-                return op.compact_repr(self.print_ctx)
+                return op.compact_repr()
             except AssertionError:
                 # Node may have been removed/orphaned and lost its trait linkages
                 obj = op.get_obj()
@@ -785,12 +754,7 @@ class MutationStage:
                 reason = Traceback.Type.MERGED
 
         return Traceback.Stage(
-            srcs=srcs,
-            dst=dst,
-            reason=reason,
-            related=related,
-            algo=algo,
-            ctx=self.print_ctx,
+            srcs=srcs, dst=dst, reason=reason, related=related, algo=algo
         )
 
 
@@ -999,13 +963,8 @@ class MutationMap:
         tg: fbrk.TypeGraph,
         g: graph.GraphView,
         iteration: int = 0,
-        print_context: F.Parameters.ReprContext | None = None,
     ) -> "MutationMap":
-        return cls(
-            MutationStage.identity(
-                tg, g, print_context or F.Parameters.ReprContext(), iteration
-            )
-        )
+        return cls(MutationStage.identity(tg, g, iteration))
 
     @classmethod
     def _with_relevance_set(
@@ -1014,7 +973,6 @@ class MutationMap:
         tg: fbrk.TypeGraph,
         relevant: list[F.Parameters.can_be_operand],
         iteration: int = 0,
-        print_context: F.Parameters.ReprContext | None = None,
         initial_state: "MutationMap | None" = None,
     ) -> "MutationMap":
         if invalid_ops := [
@@ -1028,12 +986,6 @@ class MutationMap:
         ]:
             raise ValueError(f"Invalid relevant operable(s): {invalid_ops}")
 
-        print_context = (
-            print_context or initial_state.print_ctx
-            if initial_state is not None
-            else F.Parameters.ReprContext()
-        )
-
         relevant_root_predicates = MutatorUtils.get_relevant_predicates(*relevant)
         if S_LOG:
             logger.debug(
@@ -1041,9 +993,7 @@ class MutationMap:
                 + indented_container(
                     [
                         p.as_expression.get().compact_repr(
-                            context=print_context,
-                            no_lit_suffix=True,
-                            use_name=True,
+                            no_lit_suffix=True, use_full_name=True
                         )
                         for p in relevant_root_predicates
                     ]
@@ -1126,11 +1076,10 @@ class MutationMap:
                         bound_node=fabll.Traits(p_old).node.instance
                     )
                 ) is not None:
-                    print_context.override_name(
-                        p_new_p,
+                    p_new_p.set_name(
                         fabll.Node.bind_instance(instance=owner).get_full_name(
                             include_uuid=False
-                        ),
+                        )
                     )
 
         nodes_uuids = {p.instance.node().get_uuid() for p in relevant}
@@ -1173,10 +1122,7 @@ class MutationMap:
                 tg_out=tg_out,
                 algorithm="bootstrap_relevant_preds",
                 iteration=iteration,
-                print_ctx=print_context,
-                transformations=Transformations(
-                    print_ctx=print_context, mutated=mapping
-                ),
+                transformations=Transformations(mutated=mapping),
                 G_in=g,
                 G_out=g_out,
                 _processed_predicate_uuids=current_pred_uuids,
@@ -1188,7 +1134,6 @@ class MutationMap:
         tg: fbrk.TypeGraph,
         g: graph.GraphView,
         iteration: int = 0,
-        print_context: F.Parameters.ReprContext | None = None,
         relevant: list[F.Parameters.can_be_operand] | None = None,
         initial_state: "MutationMap | None" = None,
     ) -> "MutationMap":
@@ -1203,11 +1148,10 @@ class MutationMap:
                 tg,
                 relevant,
                 iteration,
-                print_context,
                 initial_state,
             )
             if relevant
-            else MutationMap._identity(tg, g, iteration, print_context)
+            else MutationMap._identity(tg, g, iteration)
         )
 
         if S_LOG:
@@ -1258,10 +1202,6 @@ class MutationMap:
     @property
     def input_operables(self) -> OrderedSet[F.Parameters.is_parameter_operatable]:
         return self.first_stage.input_operables
-
-    @property
-    def print_ctx(self) -> F.Parameters.ReprContext:
-        return self.first_stage.print_ctx
 
     @property
     def processed_predicate_uuids(self) -> set[int]:
@@ -1394,9 +1334,7 @@ class MutationMap:
                 G_out=self.G_out,
                 algorithm="compressed",
                 iteration=0,
-                print_ctx=self.print_ctx,
                 transformations=Transformations(
-                    print_ctx=self.print_ctx,
                     mutated=forwards_mapping,
                     removed=OrderedSet(removed),
                     created=created,
@@ -1574,9 +1512,7 @@ class Mutator:
             )
 
         # needed for non-copy transfer
-        self.print_ctx.override_name(
-            new_param.as_parameter.force_get(), self.print_ctx.get_or_create_name(param)
-        )
+        new_param.as_parameter.force_get().set_name(param_obj.get_name())
 
         return self._mutate(
             p_po,
@@ -1625,8 +1561,7 @@ class Mutator:
 
         if I_LOG:
             logger.debug(
-                f"Inserted expression: "
-                f"{new_expr.is_expression.get().compact_repr(self.print_ctx)}"
+                f"Inserted expression: {new_expr.is_expression.get().compact_repr()}"
             )
 
         op_graphs = {op.g.get_self_node().node().get_uuid(): op.g for op in operands}
@@ -1663,7 +1598,7 @@ class Mutator:
         if res.is_new and res.out is not None:
             res_po = res.out.as_parameter_operatable.get()
             if S_LOG:
-                logger.error(f"Mark new expr: {res_po.compact_repr(self.print_ctx)}")
+                logger.error(f"Mark new expr: {res_po.compact_repr()}")
             self.transformations.created[res_po] = from_ops
 
         if S_LOG:
@@ -1822,7 +1757,7 @@ class Mutator:
 
             # If the expression was removed, we can't copy it
             assert not self.is_removed(obj_po), (
-                f"Cannot copy removed operand: {obj_po.compact_repr(self.print_ctx)}"
+                f"Cannot copy removed operand: {obj_po.compact_repr()}"
             )
 
             if obj_e := obj_po.as_expression.try_get():
@@ -2100,14 +2035,13 @@ class Mutator:
         self.G_transient: graph.GraphView = graph.GraphView.create()
         self.tg_in: fbrk.TypeGraph = mutation_map.tg_out
 
-        self.print_ctx = mutation_map.last_stage.print_ctx
         self._mutations_since_last_iteration = mutation_map.get_iteration_mutation(algo)
 
         self._starting_operables = OrderedSet(
             self.get_parameter_operatables(include_terminated=True)
         )
 
-        self.transformations = Transformations(print_ctx=self.print_ctx)
+        self.transformations = Transformations()
 
     @property
     @once
@@ -2139,8 +2073,8 @@ class Mutator:
         added = post_mut_nodes.difference(
             self._starting_operables, self.transformations.created
         )
-        removed_compact = (op.compact_repr(self.print_ctx) for op in removed)
-        added_compact = (op.compact_repr(self.print_ctx) for op in added)
+        removed_compact = (op.compact_repr() for op in removed)
+        added_compact = (op.compact_repr() for op in added)
         assert not removed, (
             f"{self.__repr__(exclude_transformations=True)} untracked removed "
             f"{indented_container(removed_compact)}"
@@ -2159,10 +2093,7 @@ class Mutator:
             self.G_out.destroy()
             return AlgoResult(
                 mutation_stage=MutationStage.identity(
-                    self.tg_in,
-                    self.mutation_map.G_out,
-                    self.print_ctx,
-                    self.iteration,
+                    self.tg_in, self.mutation_map.G_out, self.iteration
                 ),
                 dirty=False,
             )
@@ -2184,7 +2115,6 @@ class Mutator:
                     self.mutation_map.G_out,
                     algorithm=self.algo.name,
                     iteration=self.iteration,
-                    print_context=self.print_ctx,
                 ),
                 dirty=False,
             )
@@ -2197,7 +2127,6 @@ class Mutator:
             algorithm=self.algo,
             iteration=self.iteration,
             transformations=self.transformations,
-            print_ctx=self.print_ctx,
         )
 
         if S_LOG:

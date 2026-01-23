@@ -124,11 +124,11 @@ class Solver:
                 logger.error(f"Error running algorithm {algo.name}")
                 logger.error("G_in")
                 MutationStage.print_graph_contents_static(
-                    mutator.tg_in, mutator.G_in, mutator.print_ctx, log=logger.error
+                    mutator.tg_in, mutator.G_in, log=logger.error
                 )
                 logger.error("G_out")
                 MutationStage.print_graph_contents_static(
-                    mutator.tg_in, mutator.G_out, mutator.print_ctx, log=logger.error
+                    mutator.tg_in, mutator.G_out, log=logger.error
                 )
                 raise
 
@@ -148,7 +148,6 @@ class Solver:
 
     def _create_or_resume_state(
         self,
-        print_context: F.Parameters.ReprContext | None,
         g: graph.GraphView,
         tg: fbrk.TypeGraph,
         relevant: list[F.Parameters.can_be_operand] | None = None,
@@ -159,11 +158,7 @@ class Solver:
         return Solver.SolverState(
             data=Solver.IterationData(
                 mutation_map=MutationMap.bootstrap(
-                    tg=tg,
-                    g=g,
-                    print_context=print_context,
-                    relevant=relevant,
-                    initial_state=initial_state,
+                    tg=tg, g=g, relevant=relevant, initial_state=initial_state
                 )
             )
         )
@@ -173,7 +168,6 @@ class Solver:
         self,
         g: graph.GraphView | fbrk.TypeGraph,
         tg: fbrk.TypeGraph | graph.GraphView,
-        print_context: F.Parameters.ReprContext | None = None,
         terminal: bool = True,
         relevant: list[F.Parameters.can_be_operand] | None = None,
     ) -> SolverState:
@@ -193,7 +187,7 @@ class Solver:
         logger.info("Symbolic Solving ".ljust(NET_LINE_WIDTH, "="))
         timings = Times(name="Symbolic Solving")
 
-        self.state = self._create_or_resume_state(print_context, g, tg, relevant)
+        self.state = self._create_or_resume_state(g, tg, relevant)
         assert not self._terminal, "Terminal algorithms already run"
         self._terminal = terminal
 

@@ -576,9 +576,9 @@ def _no_predicate_literals(
         a_class = class_ops[0]
         for pred in a_class.get_with_trait(F.Expressions.is_assertable):
             if I_LOG:
-                before = pred.as_expression.get().compact_repr(mutator.print_ctx)
+                before = pred.as_expression.get().compact_repr()
                 mutator.assert_(pred)
-                after = pred.as_expression.get().compact_repr(mutator.print_ctx)
+                after = pred.as_expression.get().compact_repr()
                 debug(f"Assert implicit predicate `{before}` -> `{after}`")
             else:
                 mutator.assert_(pred)
@@ -1131,8 +1131,7 @@ def insert_expression(
     ).check_if_instance_of_type_has_trait(F.Expressions.is_assertable):
         subsume_res = find_subsuming_expression(mutator, builder)
         if subsume_res.subsumed and I_LOG:
-            ctx = mutator.mutation_map.print_ctx
-            reprs = [s.compact_repr(ctx) for s in subsume_res.subsumed]
+            reprs = [s.compact_repr() for s in subsume_res.subsumed]
             debug(f"Subsumed: {indented_container(reprs)}")
         for subsumed in subsume_res.subsumed or []:
             subsumed_po = subsumed.as_parameter_operatable.get()
@@ -1258,7 +1257,7 @@ def wrap_insert_expression(
     if I_LOG:
         warning(
             f"Processing: {pretty_expr(builder, mutator)},"
-            f" alias: {alias.compact_repr(mutator.print_ctx) if alias else None}"
+            f" alias: {alias.compact_repr() if alias else None}"
         )
         s.__enter__()
 
@@ -1282,8 +1281,7 @@ def wrap_insert_expression(
         ) and builder.matches(op_e):
             target_dbg = "COPY"
         else:
-            ctx = mutator.mutation_map.print_ctx
-            target_dbg = f"`{op.pretty(context=ctx)}`"
+            target_dbg = f"`{op.pretty()}`"
 
         if target_dbg == src_dbg and not res.is_new:
             target_dbg = "MERGED"

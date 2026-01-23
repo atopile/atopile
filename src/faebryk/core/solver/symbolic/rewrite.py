@@ -931,16 +931,13 @@ class TestRewriteEquation:
 
         E = BoundExpressions()
         is_expr, target_var, params = case.setup(E)
-        ctx = F.Parameters.ReprContext()
 
         # Print test info
         print(f"\n{'=' * 60}")
         print(f"Test: {case.name}")
-        is_expr_str = is_expr.is_expression.get().compact_repr(
-            context=ctx, no_lit_suffix=True
-        )
+        is_expr_str = is_expr.is_expression.get().compact_repr(no_lit_suffix=True)
         print(f"Original: {is_expr_str}")
-        print(f"Isolating: {target_var.compact_repr(context=ctx, no_lit_suffix=True)}")
+        print(f"Isolating: {target_var.compact_repr(no_lit_suffix=True)}")
 
         # Verify input assertion state
         input_expr = is_expr.is_expression.get()
@@ -958,7 +955,7 @@ class TestRewriteEquation:
             pass
 
         param = E.parameter_op()
-        mut_map = MutationMap.bootstrap(param.tg, param.g, print_context=ctx)
+        mut_map = MutationMap.bootstrap(param.tg, param.g)
         mutator = Mutator(
             mut_map,
             algo=test_algo,
@@ -968,9 +965,7 @@ class TestRewriteEquation:
         canon_expr = not_none(
             mut_map.map_forward(is_expr.is_parameter_operatable.get()).maps_to
         ).as_expression.force_get()
-        print(
-            f"Canonicalized: {canon_expr.compact_repr(context=ctx, no_lit_suffix=True)}"
-        )
+        print(f"Canonicalized: {canon_expr.compact_repr(no_lit_suffix=True)}")
         target_var = not_none(mut_map.map_forward(target_var).maps_to)
 
         # Run the rewrite
@@ -990,9 +985,7 @@ class TestRewriteEquation:
         else:
             # Success case - expected an Is expression
             assert isinstance(result, Is), f"Expected Is expression, got {result}"
-            result_str = result.is_expression.get().compact_repr(
-                context=ctx, no_lit_suffix=True
-            )
+            result_str = result.is_expression.get().compact_repr(no_lit_suffix=True)
             print(f"Result:   {result_str}")
 
             # Find the isolated variable and other side
@@ -1020,8 +1013,8 @@ class TestRewriteEquation:
             expected = case.expected_builder(mutator, params)
             assert other_side.is_same(expected), (
                 f"Result structure mismatch:\n"
-                f"  Got:      {other_side.pretty(context=ctx)}\n"
-                f"  Expected: {expected.pretty(context=ctx)}"
+                f"  Got:      {other_side.pretty()}\n"
+                f"  Expected: {expected.pretty()}"
             )
 
             # Verify assertion propagation
