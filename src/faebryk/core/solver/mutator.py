@@ -18,7 +18,7 @@ from typing import (
     overload,
 )
 
-from more_itertools import first
+from more_itertools import first, zip_equal
 from rich.table import Table
 from rich.tree import Tree
 
@@ -1407,14 +1407,23 @@ class ExpressionBuilder[
             f" {self.assert_}, {self.terminate}, traits=[{traits}])"
         )
 
-    def matches(self, other: F.Expressions.is_expression) -> bool:
-        return (
-            fabll.Traits(other).get_obj_raw().isinstance(self.factory)
-            and other.get_operands() == self.operands
-            and self.terminate == bool(other.try_get_sibling_trait(is_terminated))
-            and self.assert_
-            == bool(other.try_get_sibling_trait(F.Expressions.is_predicate))
+    def matches(
+        self, other: F.Expressions.is_expression, allow_different_graph: bool
+    ) -> bool:
+        same_type = fabll.Traits(other).get_obj_raw().isinstance(self.factory)
+        same_operands = len(self.operands) == len(
+            other_ops := other.get_operands()
+        ) and all(
+            x1.is_same(x2, allow_different_graph=allow_different_graph)
+            for x1, x2 in zip_equal(self.operands, other_ops)
         )
+        same_terminate = self.terminate == bool(
+            other.try_get_sibling_trait(is_terminated)
+        )
+        same_assert = self.assert_ == bool(
+            other.try_get_sibling_trait(F.Expressions.is_predicate)
+        )
+        return same_type and same_operands and same_terminate and same_assert
 
     def is_alias(self) -> bool:
         return self.factory is F.Expressions.Is and self.assert_
@@ -1548,10 +1557,14 @@ class Mutator:
             .create_instance(self.G_out)
             .setup(*operands)  # type: ignore # TODO stupid pyright
         )
+        new_expr_e = new_expr.is_expression.get()
 
         if assert_:
             ce = new_expr.get_trait(F.Expressions.is_assertable)
-            self.assert_(ce, terminate=terminate, track=False)
+            self.assert_(ce, terminate=False, track=False)
+
+        if terminate:
+            self.terminate(new_expr_e)
 
         for trait in traits:
             if trait is not None:
@@ -1560,9 +1573,7 @@ class Mutator:
         from faebryk.core.solver.symbolic.invariants import I_LOG
 
         if I_LOG:
-            logger.debug(
-                f"Inserted expression: {new_expr.is_expression.get().compact_repr()}"
-            )
+            logger.debug(f"Inserted expression: {new_expr_e.compact_repr()}")
 
         op_graphs = {op.g.get_self_node().node().get_uuid(): op.g for op in operands}
         assert not op_graphs or set(op_graphs.keys()) == {
@@ -1683,7 +1694,7 @@ class Mutator:
         s = scope()
         if S_LOG:
             logger.debug(
-                f"Try mutate `{expr.compact_repr(self.print_ctx)}` with "
+                f"Try mutate `{expr.compact_repr()}` with builder"
                 f" `{pretty_expr(builder, self)}`"
             )
             s.__enter__()
@@ -1716,7 +1727,9 @@ class Mutator:
         self._mutate(expr_po, new_expr_po)
 
         # copy detection
-        if operands == e_operands and builder.matches(new_expr_e):
+        if operands == e_operands and builder.matches(
+            new_expr_e, allow_different_graph=True
+        ):
             self.transformations.copied.add(expr_po)
 
         if S_LOG:

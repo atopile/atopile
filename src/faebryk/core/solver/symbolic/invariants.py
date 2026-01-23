@@ -37,19 +37,22 @@ INVARIANT_LOG = ConfigFlag(
 
 I_LOG = S_LOG and INVARIANT_LOG
 
-DEPTH = 0
 
-
+# TODO get rid of those functions
 def debug(msg: str):
-    _logger.debug(f"{'·' * DEPTH}{msg}")
+    _logger.debug(msg)
 
 
 def info(msg: str):
-    _logger.info(f"{'·' * DEPTH}{msg}")
+    _logger.info(msg)
 
 
 def warning(msg: str):
-    _logger.warning(f"{'·' * DEPTH}{msg}")
+    _logger.warning(msg)
+
+
+def error(msg: str):
+    _logger.error(msg)
 
 
 class AliasClass:
@@ -823,8 +826,8 @@ def _fold(
 
     if I_LOG:
         debug(
-            f"Folded ({pretty_expr(builder, mutator)}) "
-            f"to literal {lit_fold.pretty_str()}"
+            f"Folded `{pretty_expr(builder, mutator)}` "
+            f"to literal `{lit_fold.pretty_str()}`"
         )
     if force_replacable_by_literal or lit_fold.op_setic_is_singleton():
         return lit_fold, True
@@ -892,9 +895,9 @@ def _no_singleton_supersets(
     not on
     - A{⊆|{X]} ss! X
     - X ss! A{⊆|{X]}
+    in general not terminated
     """
-    lits = builder.indexed_lits()
-    if builder.factory is F.Expressions.IsSubset and builder.assert_ and lits:
+    if builder.terminate:
         return builder
 
     mapped_operands = [
@@ -979,13 +982,14 @@ def _operands_mutated_and_expressions_flat(
             (op_po := op.as_parameter_operatable.try_get())
             and (op_e := op_po.as_expression.try_get())
             and not op_e.try_get_sibling_trait(F.Expressions.is_predicate)
+            and not op.get_operations(F.Expressions.Is, predicates_only=True)
         ) and not mutator.has_been_mutated(op_po):
             # Create an alias representative now
             alias_param = op_e.create_representative(alias=True)
             if I_LOG:
                 debug(
                     f"Created alias for expression operand: "
-                    f"{op.pretty()}: {alias_param.compact_repr(mutator.print_ctx)}"
+                    f"{op.pretty()}: {alias_param.compact_repr()}"
                 )
             op = alias_param.as_operand.get()
 
@@ -1093,6 +1097,11 @@ def insert_expression(
             mutator.terminate(congruent_expr)
         # merge alias
         if alias:
+            if I_LOG:
+                debug(
+                    f"Merge alias: {alias.compact_repr()}"
+                    f" with congruent {congruent_op.pretty()}"
+                )
             mutator.create_check_and_insert_expression_from_builder(
                 ExpressionBuilder(
                     F.Expressions.Is,
@@ -1275,10 +1284,9 @@ def wrap_insert_expression(
     if res.out is None:
         target_dbg = "Dropped"
     else:
-        op = res.out.as_operand.get()
-        if (
-            op_e := op.try_get_sibling_trait(F.Expressions.is_expression)
-        ) and builder.matches(op_e):
+        op_e = res.out
+        op = op_e.as_operand.get()
+        if builder.matches(op_e, allow_different_graph=True):
             target_dbg = "COPY"
         else:
             target_dbg = f"`{op.pretty()}`"
@@ -1287,12 +1295,13 @@ def wrap_insert_expression(
             target_dbg = "MERGED"
 
         elif target_dbg == src_dbg:
-            print(repr(builder))
-            print(builder)
-            print(fabll.Traits(op).get_obj_raw())
+            error(f"Builder pretty: {builder!r}")
+            error(f"Builder: {builder.terminate=} {builder.assert_=}")
+            error(f"Builder operands {indented_container(builder.operands)}")
+            error(f"Expr: {fabll.Traits(op).get_obj_raw()}")
             if op_e:
-                print(op_e.get_operands())
-            assert False
+                error(f"Operands: {indented_container(op_e.get_operands())}")
+            assert False, "NOOP copy"
 
     # TODO debug
     # if target_dbg not in {"COPY", "MERGED"}:

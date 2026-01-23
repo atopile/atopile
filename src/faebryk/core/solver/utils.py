@@ -638,8 +638,6 @@ class MutatorUtils:
         inner_exprs = AliasClass.of(inner_expr_rep).get_with_trait(
             F.Expressions.is_expression
         )
-        if not inner_exprs:
-            raise ValueError("Inner operand must alias an expression")
         # Find the inner expression with matching type (for involutory ops like Not(Not(...)))
         expr_type = fabll.Traits(expr).get_obj_raw().get_type_node()
         inner_expr_e = None
@@ -709,6 +707,7 @@ def pretty_expr(
     mutator: "Mutator | None" = None,
     use_full_name: bool = False,
     no_lit_suffix: bool = False,
+    no_class_suffix: bool = False,
 ) -> str:
     from faebryk.core.solver.mutator import ExpressionBuilder
 
@@ -731,17 +730,19 @@ def pretty_expr(
             repr_style = is_expr_type.get_repr_style()
 
             return F.Expressions.is_expression._compact_repr(
-                repr_style,
-                repr_style.symbol
+                style=repr_style,
+                symbol=repr_style.symbol
                 if repr_style.symbol is not None
                 else expr.factory.__name__,
-                bool(expr.assert_),
-                bool(expr.terminate),
-                "",
-                False,
-                factory_type.get_type_name(),
-                expr.operands or [],
+                is_predicate=bool(expr.assert_),
+                is_terminated=bool(expr.terminate),
+                lit_suffix="",
+                class_suffix="",
+                use_full_name=use_full_name,
+                expr_name=expr.factory.__name__,
+                operands=expr.operands or [],
                 no_lit_suffix=no_lit_suffix,
+                no_class_suffix=no_class_suffix,
             )
         case F.Expressions.is_expression():
             return expr.compact_repr(

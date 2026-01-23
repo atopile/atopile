@@ -198,15 +198,19 @@ class is_parameter_operatable(fabll.Node):
         self,
         use_full_name: bool = False,
         no_lit_suffix: bool = False,
+        no_class_suffix: bool = False,
     ) -> str:
         """Return compact math representation (delegates to parameter or expression)."""
         if p := self.as_parameter.try_get():
             return p.compact_repr(
-                use_full_name=use_full_name, no_lit_suffix=no_lit_suffix
+                use_full_name=use_full_name,
+                no_lit_suffix=no_lit_suffix,
             )
         if e := self.as_expression.try_get():
             return e.compact_repr(
-                use_full_name=use_full_name, no_lit_suffix=no_lit_suffix
+                use_full_name=use_full_name,
+                no_lit_suffix=no_lit_suffix,
+                no_class_suffix=no_class_suffix,
             )
 
         assert False
@@ -1384,7 +1388,7 @@ def test_new_definitions():
     )
 
 
-def test_compact_repr():
+def test_compact_repr_param():
     """
     Test compact_repr for parameters and expressions.
 

@@ -284,21 +284,27 @@ class is_expression(fabll.Node):
         is_terminated: bool,
         lit_suffix: str,
         use_full_name: bool,
+        class_suffix: str,
         expr_name: str,
         operands: Sequence["F.Parameters.can_be_operand"],
         no_lit_suffix: bool,
+        no_class_suffix: bool,
     ):
         """Return compact math repr with symbols (+, *, ≥, ¬, ∧) and precedence."""
         symbol_suffix = ""
         if is_predicate:
-            # symbol = f"\033[4m{symbol}!\033[0m"
             symbol_suffix += "!"
 
-            if is_terminated:
-                symbol_suffix += "$"
+        if is_terminated:
+            symbol_suffix += "$"
+
+        if not no_lit_suffix:
+            symbol_suffix += lit_suffix
+
+        if not no_class_suffix:
+            symbol_suffix += class_suffix
 
         symbol += symbol_suffix
-        symbol += lit_suffix
 
         def format_operand(op: "F.Parameters.can_be_operand"):
             if lit := op.as_literal.try_get():
@@ -333,10 +339,7 @@ class is_expression(fabll.Node):
         elif len(formatted_operands) == 1:
             out = f"{expr_name}{symbol_suffix}({formatted_operands[0]})"
         elif lit_suffix and len(formatted_operands) > 2:
-            out = (
-                f"{expr_name}{symbol_suffix}{lit_suffix}"
-                f"({', '.join(formatted_operands)})"
-            )
+            out = f"{expr_name}{symbol_suffix}({', '.join(formatted_operands)})"
         elif style.placement == is_expression_type.ReprStyle.Placement.INFIX:
             symbol = f" {symbol} "
             out = f"{symbol.join(formatted_operands)}"
@@ -360,7 +363,7 @@ class is_expression(fabll.Node):
         self,
         use_full_name: bool = False,
         no_lit_suffix: bool = False,
-        no_alias_suffix: bool = False,
+        no_class_suffix: bool = False,
     ) -> str:
         """Return compact math repr with symbols (+, *, ≥, ¬, ∧) and precedence."""
         from faebryk.core.solver.mutator import is_terminated
@@ -381,22 +384,21 @@ class is_expression(fabll.Node):
 
         style = self.get_repr_style()
         return self._compact_repr(
-            style,
-            style.symbol if style.symbol is not None else type(self).__name__,
-            bool(self.try_get_sibling_trait(is_predicate)),
-            bool(self.try_get_sibling_trait(is_terminated)),
+            style=style,
+            symbol=style.symbol if style.symbol is not None else type(self).__name__,
+            is_predicate=bool(self.try_get_sibling_trait(is_predicate)),
+            is_terminated=bool(self.try_get_sibling_trait(is_terminated)),
             lit_suffix=(
-                (alias_suffix if not no_alias_suffix else "")
-                + (
-                    self.as_parameter_operatable.get()._get_lit_suffix()
-                    if not no_lit_suffix
-                    else ""
-                )
+                self.as_parameter_operatable.get()._get_lit_suffix()
+                if not no_lit_suffix
+                else ""
             ),
             use_full_name=use_full_name,
+            class_suffix=alias_suffix,
             expr_name=not_none(fabll.Traits(self).get_obj_raw().get_type_name()),
             operands=self.get_operands(),
             no_lit_suffix=no_lit_suffix,
+            no_class_suffix=no_class_suffix,
         )
 
     def is_congruent_to_factory(
