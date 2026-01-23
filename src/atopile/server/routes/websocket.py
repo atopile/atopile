@@ -7,21 +7,15 @@ Endpoints:
 
 import logging
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
 from ..domains.actions import handle_data_action
+from ..state import ServerState, get_server_state
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["websocket"])
-
-
-def _get_server_state():
-    """Get the server state singleton."""
-    from ..state import server_state
-
-    return server_state
 
 
 async def _safe_send_json(websocket: WebSocket, payload: dict) -> bool:
@@ -39,7 +33,10 @@ async def _safe_send_json(websocket: WebSocket, payload: dict) -> bool:
 
 
 @router.websocket("/ws/state")
-async def websocket_state(websocket: WebSocket):
+async def websocket_state(
+    websocket: WebSocket,
+    server_state: ServerState = Depends(get_server_state),
+):
     """
     WebSocket endpoint for full state synchronization.
 
@@ -49,7 +46,6 @@ async def websocket_state(websocket: WebSocket):
 
     Clients can send actions which modify state and trigger broadcasts.
     """
-    server_state = _get_server_state()
 
     client_id = await server_state.connect_client(websocket)
     log.info(f"State WebSocket client connected: {client_id}")

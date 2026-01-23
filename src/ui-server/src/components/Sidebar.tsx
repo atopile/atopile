@@ -3,7 +3,7 @@
  * Uses unified panel sizing system for consistent expand/collapse behavior.
  */
 
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useCallback } from 'react';
 import { CollapsibleSection } from './CollapsibleSection';
 import { ProjectsPanel } from './ProjectsPanel';
 import { ProblemsPanel } from './ProblemsPanel';
@@ -26,6 +26,7 @@ import {
 } from './sidebar-modules';
 import './Sidebar.css';
 import '../styles.css';
+import type { VariableNode, Problem } from '../types/build';
 
 // Send action to backend via WebSocket (no VS Code dependency)
 const action = (name: string, data?: Record<string, unknown>) => {
@@ -39,18 +40,55 @@ const action = (name: string, data?: Record<string, unknown>) => {
   sendAction(name, data);
 };
 
+// Helper to count variables recursively (defined outside component to avoid recreation)
+function countVariables(nodes: VariableNode[] | undefined): number {
+  if (!nodes) return 0;
+  let count = 0;
+  for (const n of nodes) {
+    count += n.variables?.length || 0;
+    if (n.children) count += countVariables(n.children);
+  }
+  return count;
+}
+
 export function Sidebar() {
-  // State from UI store (synced from backend)
+  // Granular selectors - only re-render when specific state changes
+  const projects = useStore((s) => s.projects);
+  const selectedProjectRoot = useStore((s) => s.selectedProjectRoot) ?? null;
+  const selectedTargetNames = useStore((s) => s.selectedTargetNames) ?? [];
+  const isLoadingProjects = useStore((s) => s.isLoadingProjects);
+  const isLoadingPackages = useStore((s) => s.isLoadingPackages);
+  const packagesError = useStore((s) => s.packagesError);
+  const installingPackageIds = useStore((s) => s.installingPackageIds);
+  const installError = useStore((s) => s.installError);
+  const stdlibItems = useStore((s) => s.stdlibItems);
+  const isLoadingStdlib = useStore((s) => s.isLoadingStdlib);
+  const currentVariablesData = useStore((s) => s.currentVariablesData);
+  const isLoadingVariables = useStore((s) => s.isLoadingVariables);
+  const variablesError = useStore((s) => s.variablesError);
+  const bomData = useStore((s) => s.bomData);
+  const isLoadingBom = useStore((s) => s.isLoadingBom);
+  const bomError = useStore((s) => s.bomError);
+  const selectedPackageDetails = useStore((s) => s.selectedPackageDetails);
+  const isLoadingPackageDetails = useStore((s) => s.isLoadingPackageDetails);
+  const packageDetailsError = useStore((s) => s.packageDetailsError);
+  const projectModules = useStore((s) => s.projectModules);
+  const projectFiles = useStore((s) => s.projectFiles);
+  const projectDependencies = useStore((s) => s.projectDependencies);
+  const updatingDependencyIds = useStore((s) => s.updatingDependencyIds);
+  const atopile = useStore((s) => s.atopile);
+  const developerMode = useStore((s) => s.developerMode);
+
+  // Reconstruct state object for hooks that still need it
+  // TODO: Refactor useSidebarData/useSidebarHandlers to use granular selectors
   const state = useStore((s) => s);
 
-  const selectedProjectRoot = state?.selectedProjectRoot ?? null;
-  const selectedTargetNames = state?.selectedTargetNames ?? [];
   const selectedTargetName = useMemo(() => {
     if (!selectedProjectRoot) return null;
     if (selectedTargetNames.length > 0) return selectedTargetNames[0];
-    const project = state?.projects?.find((p) => p.root === selectedProjectRoot);
+    const project = projects?.find((p) => p.root === selectedProjectRoot);
     return project?.targets?.[0]?.name ?? null;
-  }, [selectedProjectRoot, selectedTargetNames, state?.projects]);
+  }, [selectedProjectRoot, selectedTargetNames, projects]);
 
   // Local UI state
   const [selection, setSelection] = useState<Selection>({ type: 'none' });
@@ -60,9 +98,25 @@ export function Sidebar() {
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Memoized computed values (previously inline in JSX)
+  const variableCount = useMemo(
+    () => countVariables(currentVariablesData?.nodes),
+    [currentVariablesData]
+  );
+
+  const bomWarningCount = useMemo(() => {
+    if (!bomData?.components) return 0;
+    return bomData.components.filter(c => c.stock !== null && c.stock === 0).length;
+  }, [bomData]);
+
+  const projectsForProblems = useMemo(
+    () => projects?.map(p => ({ id: p.root, name: p.name, root: p.root })) || [],
+    [projects]
+  );
+
   // Use data transformation hook
   const {
-    projects,
+    projects: sidebarProjects,
     projectCount,
     packageCount,
     queuedBuilds,
@@ -88,7 +142,7 @@ export function Sidebar() {
 
   // Use handlers hook for event handlers
   const handlers = useSidebarHandlers({
-    projects,
+    projects: sidebarProjects,
     state,
     panels,
     setSelection,
@@ -96,6 +150,63 @@ export function Sidebar() {
     setActiveStageFilter,
     action,
   });
+
+  // Memoized callbacks for event handlers (avoid new function references each render)
+  const handleFileClick = useCallback((projectId: string, filePath: string) => {
+    const project = sidebarProjects?.find(p => p.id === projectId);
+    const projectRoot = project?.root || (projectId.startsWith('/') ? projectId : null);
+    if (projectRoot) {
+      const fullPath = `${projectRoot}/${filePath}`;
+      action('openFile', { file: fullPath });
+    }
+  }, [sidebarProjects]);
+
+  const handleRemoveDependency = useCallback((projectId: string, identifier: string) => {
+    action('removePackage', { projectRoot: projectId, packageId: identifier });
+  }, []);
+
+  const handleProblemClick = useCallback((problem: Problem) => {
+    if (problem.file) {
+      action('openFile', { file: problem.file, line: problem.line, column: problem.column });
+    }
+  }, []);
+
+  const handleRefreshStdlib = useCallback(() => {
+    action('refreshStdlib');
+  }, []);
+
+  const handleGoToSource = useCallback((path: string, line?: number) => {
+    action('openFile', { file: path, line });
+  }, []);
+
+  const handlePackageClose = useCallback(() => {
+    setSelectedPackage(null);
+    action('clearPackageDetails');
+  }, []);
+
+  const handlePackageInstall = useCallback((version?: string) => {
+    if (!selectedPackage) return;
+    const projectRoot = selectedProjectRoot || sidebarProjects?.[0]?.root;
+    if (projectRoot) {
+      action('installPackage', {
+        packageId: selectedPackage.fullName,
+        projectRoot,
+        version
+      });
+    }
+  }, [selectedPackage, selectedProjectRoot, sidebarProjects]);
+
+  const handlePackageBuild = useCallback((entry?: string) => {
+    if (!selectedPackage) return;
+    const projectRoot = selectedProjectRoot || sidebarProjects?.[0]?.root;
+    if (projectRoot) {
+      action('buildPackage', {
+        packageId: selectedPackage.fullName,
+        projectRoot,
+        entry
+      });
+    }
+  }, [selectedPackage, selectedProjectRoot, sidebarProjects]);
 
   // Loading state
   if (!state) {
@@ -106,8 +217,8 @@ export function Sidebar() {
     <div className={`unified-layout ${selectedPackage ? 'package-detail-open' : ''}`}>
       {/* Header with settings */}
       <SidebarHeader
-        atopile={state?.atopile}
-        developerMode={state?.developerMode}
+        atopile={atopile}
+        developerMode={developerMode}
       />
 
       <div className="panel-sections" ref={containerRef}>
@@ -116,7 +227,7 @@ export function Sidebar() {
           id="projects"
           title="Projects"
           badge={projectCount}
-          loading={state?.isLoadingProjects}
+          loading={isLoadingProjects}
           collapsed={panels.isCollapsed('projects')}
           onToggle={() => panels.togglePanel('projects')}
           height={panels.calculatedHeights['projects']}
@@ -134,27 +245,18 @@ export function Sidebar() {
             onOpenKiCad={handlers.handleOpenKiCad}
             onOpenLayout={handlers.handleOpenLayout}
             onOpen3D={handlers.handleOpen3D}
-            onFileClick={(projectId, filePath) => {
-              const project = projects.find(p => p.id === projectId);
-              const projectRoot = project?.root || (projectId.startsWith('/') ? projectId : null);
-              if (projectRoot) {
-                const fullPath = `${projectRoot}/${filePath}`;
-                action('openFile', { file: fullPath });
-              }
-            }}
+            onFileClick={handleFileClick}
             onAddBuild={handlers.handleAddBuild}
             onUpdateBuild={handlers.handleUpdateBuild}
             onDeleteBuild={handlers.handleDeleteBuild}
             filterType="projects"
-            projects={projects}
-            projectModules={state?.projectModules || {}}
-            projectFiles={state?.projectFiles || {}}
-            projectDependencies={state?.projectDependencies || {}}
+            projects={sidebarProjects}
+            projectModules={projectModules || {}}
+            projectFiles={projectFiles || {}}
+            projectDependencies={projectDependencies || {}}
             onDependencyVersionChange={handlers.handleDependencyVersionChange}
-            onRemoveDependency={(projectId, identifier) => {
-              action('removePackage', { projectRoot: projectId, packageId: identifier });
-            }}
-            updatingDependencyIds={state?.updatingDependencyIds || []}
+            onRemoveDependency={handleRemoveDependency}
+            updatingDependencyIds={updatingDependencyIds || []}
           />
         </CollapsibleSection>
 
@@ -180,8 +282,8 @@ export function Sidebar() {
           id="packages"
           title="Packages"
           badge={packageCount}
-          loading={state?.isLoadingPackages}
-          warningMessage={state?.packagesError || null}
+          loading={isLoadingPackages}
+          warningMessage={packagesError || null}
           collapsed={panels.isCollapsed('packages')}
           onToggle={() => panels.togglePanel('packages')}
           height={panels.calculatedHeights['packages']}
@@ -200,8 +302,8 @@ export function Sidebar() {
             onOpenLayout={handlers.handleOpenLayout}
             onOpen3D={handlers.handleOpen3D}
             filterType="packages"
-            projects={projects}
-            installingPackageIds={state?.installingPackageIds}
+            projects={sidebarProjects}
+            installingPackageIds={installingPackageIds}
           />
         </CollapsibleSection>
 
@@ -221,12 +323,10 @@ export function Sidebar() {
         >
           <ProblemsPanel
             problems={filteredProblems}
-            projects={state?.projects?.map(p => ({ id: p.root, name: p.name, root: p.root })) || []}
+            projects={projectsForProblems}
             selectedProjectRoot={selectedProjectRoot}
             onSelectProject={handlers.handleSelectProject}
-            onProblemClick={(problem) => {
-              action('openFile', { file: problem.file, line: problem.line, column: problem.column });
-            }}
+            onProblemClick={handleProblemClick}
           />
         </CollapsibleSection>
 
@@ -234,16 +334,16 @@ export function Sidebar() {
         <CollapsibleSection
           id="stdlib"
           title="Standard Library"
-          badge={state?.stdlibItems?.length || 0}
+          badge={stdlibItems?.length || 0}
           collapsed={panels.isCollapsed('stdlib')}
           onToggle={() => panels.togglePanel('stdlib')}
           height={panels.calculatedHeights['stdlib']}
           onResizeStart={(e) => panels.handleResizeStart('stdlib', e)}
         >
           <StandardLibraryPanel
-            items={state?.stdlibItems}
-            isLoading={state?.isLoadingStdlib}
-            onRefresh={() => action('refreshStdlib')}
+            items={stdlibItems}
+            isLoading={isLoadingStdlib}
+            onRefresh={handleRefreshStdlib}
           />
         </CollapsibleSection>
 
@@ -251,31 +351,19 @@ export function Sidebar() {
         <CollapsibleSection
           id="variables"
           title="Variables"
-          badge={(() => {
-            const varData = state?.currentVariablesData;
-            if (!varData?.nodes) return 0;
-            const countVars = (nodes: typeof varData.nodes): number => {
-              let count = 0;
-              for (const n of nodes) {
-                count += n.variables?.length || 0;
-                if (n.children) count += countVars(n.children);
-              }
-              return count;
-            };
-            return countVars(varData.nodes);
-          })()}
+          badge={variableCount}
           collapsed={panels.isCollapsed('variables')}
           onToggle={() => panels.togglePanel('variables')}
           height={panels.calculatedHeights['variables']}
           onResizeStart={(e) => panels.handleResizeStart('variables', e)}
         >
           <VariablesPanel
-            variablesData={state?.currentVariablesData}
-            isLoading={state?.isLoadingVariables}
-            error={state?.variablesError}
-            projects={state?.projects}
-            selectedProjectRoot={state?.selectedProjectRoot}
-            selectedTargetNames={state?.selectedTargetNames}
+            variablesData={currentVariablesData}
+            isLoading={isLoadingVariables}
+            error={variablesError}
+            projects={projects}
+            selectedProjectRoot={selectedProjectRoot}
+            selectedTargetNames={selectedTargetNames}
             onSelectProject={handlers.handleSelectProject}
             onSelectTarget={handlers.handleSelectTarget}
           />
@@ -285,29 +373,23 @@ export function Sidebar() {
         <CollapsibleSection
           id="bom"
           title="BOM"
-          badge={state?.bomData?.components?.length ?? 0}
-          warningCount={
-            state?.bomData?.components
-              ? state.bomData.components.filter(c => c.stock !== null && c.stock === 0).length
-              : 0
-          }
+          badge={bomData?.components?.length ?? 0}
+          warningCount={bomWarningCount}
           collapsed={panels.isCollapsed('bom')}
           onToggle={() => panels.togglePanel('bom')}
           height={panels.calculatedHeights['bom']}
           onResizeStart={(e) => panels.handleResizeStart('bom', e)}
         >
           <BOMPanel
-            bomData={state?.bomData}
-            isLoading={state?.isLoadingBom}
-            error={state?.bomError}
-            projects={state?.projects}
-            selectedProjectRoot={state?.selectedProjectRoot}
-            selectedTargetNames={state?.selectedTargetNames}
+            bomData={bomData}
+            isLoading={isLoadingBom}
+            error={bomError}
+            projects={projects}
+            selectedProjectRoot={selectedProjectRoot}
+            selectedTargetNames={selectedTargetNames}
             onSelectProject={handlers.handleSelectProject}
             onSelectTarget={handlers.handleSelectTarget}
-            onGoToSource={(path, line) => {
-              action('openFile', { file: path, line });
-            }}
+            onGoToSource={handleGoToSource}
           />
         </CollapsibleSection>
       </div>
@@ -317,35 +399,14 @@ export function Sidebar() {
         <div className="detail-panel-container">
           <PackageDetailPanel
             package={selectedPackage}
-            packageDetails={state?.selectedPackageDetails || null}
-            isLoading={state?.isLoadingPackageDetails || false}
-            isInstalling={state?.installingPackageIds?.includes(selectedPackage.fullName) || false}
-            installError={state?.installError || null}
-            error={state?.packageDetailsError || null}
-            onClose={() => {
-              setSelectedPackage(null);
-              action('clearPackageDetails');
-            }}
-            onInstall={(version) => {
-              const projectRoot = state?.selectedProjectRoot || (state?.projects?.[0]?.root);
-              if (projectRoot) {
-                action('installPackage', {
-                  packageId: selectedPackage.fullName,
-                  projectRoot,
-                  version
-                });
-              }
-            }}
-            onBuild={(entry?: string) => {
-              const projectRoot = state?.selectedProjectRoot || (state?.projects?.[0]?.root);
-              if (projectRoot) {
-                action('buildPackage', {
-                  packageId: selectedPackage.fullName,
-                  projectRoot,
-                  entry
-                });
-              }
-            }}
+            packageDetails={selectedPackageDetails || null}
+            isLoading={isLoadingPackageDetails || false}
+            isInstalling={installingPackageIds?.includes(selectedPackage.fullName) || false}
+            installError={installError || null}
+            error={packageDetailsError || null}
+            onClose={handlePackageClose}
+            onInstall={handlePackageInstall}
+            onBuild={handlePackageBuild}
           />
         </div>
       )}

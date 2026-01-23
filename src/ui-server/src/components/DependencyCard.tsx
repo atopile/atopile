@@ -260,41 +260,57 @@ export function DependencyCard({
   const transitiveDeps = dependencies.filter(dep => dep.isDirect === false);
 
   // Fetch available versions for all dependencies when card expands
+  // Use sequential fetching to avoid overwhelming the server
   useEffect(() => {
     if (!expanded || readOnly) return;
 
-    // Fetch versions for each dependency that we haven't loaded yet
-    directDeps.forEach(async (dep) => {
-      if (dependencyVersions[dep.identifier] || loadingVersions.has(dep.identifier)) return;
+    // Find deps that need fetching
+    const depsToFetch = directDeps.filter(
+      dep => !dependencyVersions[dep.identifier] && !loadingVersions.has(dep.identifier)
+    );
 
-      setLoadingVersions(prev => new Set(prev).add(dep.identifier));
+    if (depsToFetch.length === 0) return;
 
-      try {
-        const response = await sendActionWithResponse('getPackageDetails', { packageId: dep.identifier });
-        const result = response.result ?? {};
-        const details = (result as { details?: { versions?: { version: string }[] } }).details;
+    // Fetch versions sequentially with a small delay between requests
+    const fetchSequentially = async () => {
+      for (const dep of depsToFetch) {
+        // Check again in case state changed
+        if (dependencyVersions[dep.identifier]) continue;
 
-        if (details?.versions) {
-          const versions = details.versions
-            .map(v => v.version)
-            .filter(v => v && v !== 'unknown')
-            .sort(compareVersionsDesc);
+        setLoadingVersions(prev => new Set(prev).add(dep.identifier));
 
-          setDependencyVersions(prev => ({
-            ...prev,
-            [dep.identifier]: versions
-          }));
+        try {
+          const response = await sendActionWithResponse('getPackageDetails', { packageId: dep.identifier });
+          const result = response.result ?? {};
+          const details = (result as { details?: { versions?: { version: string }[] } }).details;
+
+          if (details?.versions && details.versions.length > 0) {
+            const versions = details.versions
+              .map(v => v.version)
+              .filter(v => v && v !== 'unknown')
+              .sort(compareVersionsDesc);
+
+            setDependencyVersions(prev => ({
+              ...prev,
+              [dep.identifier]: versions
+            }));
+          }
+        } catch (error) {
+          console.error(`Failed to fetch versions for ${dep.identifier}:`, error);
+        } finally {
+          setLoadingVersions(prev => {
+            const next = new Set(prev);
+            next.delete(dep.identifier);
+            return next;
+          });
         }
-      } catch (error) {
-        console.error(`Failed to fetch versions for ${dep.identifier}:`, error);
-      } finally {
-        setLoadingVersions(prev => {
-          const next = new Set(prev);
-          next.delete(dep.identifier);
-          return next;
-        });
+
+        // Small delay between requests to avoid overwhelming the server
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
-    });
+    };
+
+    fetchSequentially();
   }, [expanded, directDeps, readOnly, dependencyVersions, loadingVersions]);
 
   if (!dependencies || dependencies.length === 0) {

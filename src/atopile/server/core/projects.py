@@ -510,7 +510,8 @@ def update_dependency_version(
 
     deps = data["dependencies"]
 
-    # Handle list format: ["atopile/resistors@^1.0.0", ...]
+    # Handle list format: ["atopile/resistors@^1.0.0", ...] or
+    # [{type: registry, identifier: ..., release: ...}, ...]
     if isinstance(deps, list):
         found = False
         new_deps = []
@@ -527,6 +528,14 @@ def update_dependency_version(
                     found = True
                 else:
                     new_deps.append(dep)
+            elif isinstance(dep, dict):
+                # Handle registry format:
+                # {type: registry, identifier: ..., release: ...}
+                dep_id = dep.get("identifier")
+                if dep_id == identifier:
+                    dep["release"] = new_version
+                    found = True
+                new_deps.append(dep)
             else:
                 new_deps.append(dep)
 

@@ -47,11 +47,15 @@ export function ProjectExplorerCard({ builds, projectRoot, defaultExpanded = fal
       [key]: { status: 'loading' }
     }));
 
-    sendActionWithResponse('getModuleChildren', {
-      projectRoot,
-      entryPoint: build.entry,
-      maxDepth: 5,
-    })
+    sendActionWithResponse(
+      'getModuleChildren',
+      {
+        projectRoot,
+        entryPoint: build.entry,
+        maxDepth: 5,
+      },
+      { timeoutMs: 30000 }
+    )
       .then((response) => {
         const result = response.result ?? {};
         const children = Array.isArray((result as { children?: unknown }).children)

@@ -101,9 +101,10 @@ def _dependency_display_parts(identifier: str) -> tuple[str, str]:
 def _read_project_config_dependencies(
     project_path: Path,
 ) -> list[config.DependencySpec]:
-    from atopile.config import ProjectConfig
-
-    config_obj = ProjectConfig.from_path(project_path)
+    try:
+        config_obj = config.ProjectConfig.from_path(project_path, validate_builds=False)
+    except Exception:
+        return []
     if not config_obj or not config_obj.dependencies:
         return []
     return [dep for dep in config_obj.dependencies if dep.identifier]
@@ -112,10 +113,11 @@ def _read_project_config_dependencies(
 def _read_module_package_info(
     modules_root: Path, identifier: str
 ) -> tuple[str | None, str | None]:
-    from atopile.config import ProjectConfig
-
     module_path = modules_root / identifier
-    config_obj = ProjectConfig.from_path(module_path)
+    try:
+        config_obj = config.ProjectConfig.from_path(module_path, validate_builds=False)
+    except Exception:
+        return None, None
     if not config_obj or not config_obj.package:
         return None, None
     return config_obj.package.version, (

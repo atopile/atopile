@@ -212,6 +212,18 @@ async def _watch_variables_background() -> None:
 
 
 def _debounce(key: str, delay_s: float, coro_factory) -> None:
+    """
+    Debounce a coroutine - cancel any pending task for this key and schedule a new one.
+
+    The task will run after delay_s seconds. If called again with the same key
+    before the delay expires, the previous task is cancelled and a new one is scheduled.
+    """
+    # Clean up any completed tasks to prevent unbounded growth
+    # This is O(n) but n is small (typically < 20 keys) and runs infrequently
+    done_keys = [k for k, t in _debounce_tasks.items() if t.done()]
+    for k in done_keys:
+        _debounce_tasks.pop(k, None)
+
     existing = _debounce_tasks.get(key)
     if existing and not existing.done():
         existing.cancel()
@@ -446,9 +458,18 @@ def create_app(
     """
     app = FastAPI(title="atopile Build Server")
 
+    # CORS configuration - restrict to known origins.
+    # The server binds to 127.0.0.1 only, but we still restrict CORS for defense
+    # in depth.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=[
+            "vscode-webview://*",  # VS Code webview
+            "http://localhost:5173",  # Vite dev server
+            "http://127.0.0.1:5173",  # Vite dev server (alt)
+        ],
+        allow_origin_regex=r"^https?://localhost:\d+$",  # Any localhost port for dev
+        # flexibility.
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -631,9 +652,7 @@ class DashboardServer:
             host="127.0.0.1",
             port=self.port,
             log_level="warning",
-            # Increase WebSocket max message size to 10MB (default is 1MB)
-            # Needed because state (especially stdlibItems) can be large
-            ws_max_size=10 * 1024 * 1024,
+            ws_max_size=2 * 1024 * 1024,
         )
         self._server = uvicorn.Server(config)
 

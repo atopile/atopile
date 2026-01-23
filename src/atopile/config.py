@@ -941,7 +941,9 @@ class ProjectConfig(BaseConfigModel):
     """Skip SSL verification for all API requests."""
 
     @classmethod
-    def from_path(cls, path: Path | None) -> "ProjectConfig | None":
+    def from_path(
+        cls, path: Path | None, *, validate_builds: bool = True
+    ) -> "ProjectConfig | None":
         if path is None:
             return None
 
@@ -956,6 +958,10 @@ class ProjectConfig(BaseConfigModel):
             raise UserFileNotFoundError(f"Failed to load project config: {e}") from e
         except Exception as e:
             raise UserConfigurationError(f"Failed to load project config: {e}") from e
+
+        if not validate_builds and isinstance(file_contents, dict):
+            file_contents = dict(file_contents)
+            file_contents["builds"] = {}
 
         file_contents.setdefault("paths", {}).setdefault("root", path)
         return _try_construct_config(
