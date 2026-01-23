@@ -205,3 +205,216 @@
     transform: rotate(360deg);
   }
 }
+
+/* Expandable dependency item container */
+.dependency-item-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.dependency-item-container.expanded {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.dependency-item.expandable {
+  cursor: pointer;
+}
+
+.dependency-expand-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* Expanded dependency content - wrapper for ProjectCard */
+.dependency-expanded-wrapper {
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Remove the outer card styling when ProjectCard is nested in dependency */
+.dependency-expanded-wrapper .project-card {
+  border: none;
+  border-radius: 0;
+  margin: 0;
+  background: transparent;
+}
+
+/* Hide the header and description in expanded dependencies (we already show it in DependencyItem) */
+.dependency-expanded-wrapper .project-card-name-row,
+.dependency-expanded-wrapper .project-card-description,
+.dependency-expanded-wrapper .package-install-bar {
+  display: none;
+}
+
+/* Header row with publisher and external link */
+.dependency-expanded-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.dependency-external-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.dependency-external-link:hover {
+  color: var(--ctp-blue);
+  background: var(--bg-hover);
+}
+
+.dependency-expanded-loading,
+.dependency-expanded-error {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.dependency-expanded-error {
+  color: var(--ctp-red);
+}
+
+.dependency-expanded-description {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.dependency-expanded-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.dependency-expanded-meta .meta-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.dependency-expanded-meta .meta-item.link {
+  color: var(--ctp-blue);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.dependency-expanded-meta .meta-item.link:hover {
+  text-decoration: underline;
+}
+
+/* Syntax highlighting for ato code */
+.copyable-code-content .ato-keyword {
+  color: var(--ctp-mauve);
+}
+
+.copyable-code-content .ato-type {
+  color: var(--ctp-yellow);
+}
+
+.copyable-code-content .ato-string {
+  color: var(--ctp-green);
+}
+
+.copyable-code-content .ato-operator {
+  color: var(--ctp-sky);
+}
+
+/* Open button for usage examples */
+.copyable-code-header .open-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  margin-left: var(--spacing-xs);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.copyable-code-header .open-btn:hover {
+  color: var(--ctp-blue);
+  background: var(--bg-hover);
+}
+
+.copyable-code-header .actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Usage section */
+.dependency-usage-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+/* Copyable code block */
+.copyable-code {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.copyable-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.copyable-code-header .copy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.copyable-code-header .copy-btn:hover {
+  color: var(--ctp-blue);
+  background: var(--bg-hover);
+}
+
+.copyable-code-header .copy-btn.copied {
+  color: var(--ctp-green);
+}
+
+.copyable-code-content {
+  margin: 0;
+  padding: var(--spacing-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.4;
+}

@@ -436,6 +436,9 @@ class ModuleChild(BaseModel):
     type_name: str  # The type name (e.g., "Electrical", "Resistor", "V")
     item_type: Literal["interface", "module", "component", "parameter", "trait"]
     children: list["ModuleChild"] = Field(default_factory=list)
+    # For parameters: user-specified constraint (e.g., "50 kΩ ±10%", "0402")
+    # None means no constraint was specified
+    spec: Optional[str] = None
 
 
 class ModuleDefinition(BaseModel):

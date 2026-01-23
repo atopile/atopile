@@ -264,7 +264,7 @@ describe('API Client', () => {
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({
-            identifier: 'atopile/resistors',
+            package_identifier: 'atopile/resistors',
             project_root: '/project',
             version: '1.0.0',
           }),
@@ -284,58 +284,11 @@ describe('API Client', () => {
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({
-            identifier: 'atopile/resistors',
+            package_identifier: 'atopile/resistors',
             project_root: '/project',
           }),
         })
       );
-    });
-  });
-
-  describe('logs API', () => {
-    it('queries logs with filters', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: () => Promise.resolve(JSON.stringify({ logs: [], total: 0, max_id: 0, has_more: false })),
-      });
-
-      await api.logs.query({
-        buildName: 'build-1',
-        projectName: 'project-1',
-        levels: ['ERROR', 'WARNING'],
-        limit: 100,
-      });
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringMatching(/build_name=build-1.*project_name=project-1.*levels=ERROR%2CWARNING.*limit=100/),
-        expect.any(Object)
-      );
-    });
-
-    it('queries logs with search', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: () => Promise.resolve(JSON.stringify({ logs: [], total: 0, max_id: 0, has_more: false })),
-      });
-
-      await api.logs.query({ search: 'error' });
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('search=error'),
-        expect.any(Object)
-      );
-    });
-
-    it('gets log counts', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: () => Promise.resolve(JSON.stringify({
-          counts: { DEBUG: 10, INFO: 50, WARNING: 5, ERROR: 2, ALERT: 0 },
-          total: 67,
-          has_more: false,
-        })),
-      });
-
-      const result = await api.logs.counts();
-      expect(result.counts.INFO).toBe(50);
     });
   });
 

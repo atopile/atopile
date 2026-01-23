@@ -15,7 +15,6 @@ import axios from 'axios';
 import * as net from 'net';
 import { traceInfo, traceError, traceVerbose } from './log/logging';
 import { resolveAtoBinForWorkspace } from './findbin';
-import { appStateManager } from './appState';
 
 const BACKEND_HOST = '127.0.0.1';
 const SERVER_STARTUP_TIMEOUT_MS = 30000; // 30 seconds to wait for server startup
@@ -108,6 +107,10 @@ class BackendServerManager implements vscode.Disposable {
     private readonly _onStatusChange = new vscode.EventEmitter<boolean>();
     public readonly onStatusChange = this._onStatusChange.event;
 
+    // Event emitter for messages to be sent to the webview
+    private readonly _onWebviewMessage = new vscode.EventEmitter<Record<string, unknown>>();
+    public readonly onWebviewMessage = this._onWebviewMessage.event;
+
     constructor() {
         // Create output channel for server logs (log channel when available)
         this._outputChannel = vscode.window.createOutputChannel('atopile Server', { log: true });
@@ -129,12 +132,8 @@ class BackendServerManager implements vscode.Disposable {
             })
         );
 
-        // Listen to appStateManager for connection state changes
-        this._disposables.push(
-            appStateManager.onStateChange((state) => {
-                this.setConnected(state.isConnected);
-            })
-        );
+        // Note: Connection state is now updated via postMessage from the webview
+        // (see SidebarProvider._handleWebviewMessage)
     }
 
     /**
@@ -372,7 +371,7 @@ class BackendServerManager implements vscode.Disposable {
     }
 
     /**
-     * Update connection status (called from appStateManager when WebSocket connects/disconnects).
+     * Update connection status (called from SidebarProvider when WebSocket connects/disconnects).
      */
     setConnected(connected: boolean): void {
         traceInfo(`BackendServer: setConnected(${connected}) called, current: ${this._isConnected}`);
@@ -529,7 +528,8 @@ class BackendServerManager implements vscode.Disposable {
                 this._log('info', `server: Started successfully on port ${this.port}`);
                 this._serverState = 'running';
                 this._updateStatusBar();
-                appStateManager.setBackendWsUrl(this.wsUrl);
+                // Note: WebSocket connection is now managed by ui-server,
+                // which connects when the webview loads
             } else {
                 if (!this._lastError) {
                     this._lastError = 'Server startup timeout';
@@ -538,7 +538,6 @@ class BackendServerManager implements vscode.Disposable {
                 this._log('error', `server: Failed to start: ${this._lastError}`);
                 this._serverState = 'error';
                 this._updateStatusBar();
-                appStateManager.setBackendWsUrl(null);
                 await this.stopServer();
             }
 
@@ -550,7 +549,6 @@ class BackendServerManager implements vscode.Disposable {
             this._log('error', `server: Failed to start: ${errorMsg}`);
             this._serverState = 'error';
             this._updateStatusBar();
-            appStateManager.setBackendWsUrl(null);
             return false;
         }
     }
@@ -622,7 +620,7 @@ class BackendServerManager implements vscode.Disposable {
             traceInfo('BackendServer: Server stopped');
             this._log('info', 'server: Stopped');
         }
-        appStateManager.setBackendWsUrl(null);
+        // Note: WebSocket disconnection is handled by ui-server when the webview unloads
     }
 
     /**
@@ -643,23 +641,39 @@ class BackendServerManager implements vscode.Disposable {
     /**
      * Trigger a build via the API.
      */
+    /**
+     * Trigger a build via the webview's WebSocket connection.
+     * The build is fire-and-forget - status updates come via WebSocket state broadcasts.
+     */
     async build(projectPath: string, targets: string[]): Promise<BuildResponse> {
         if (!this._isConnected) {
             throw new Error('Backend server is not connected. Run "ato serve" to start it.');
         }
 
-        try {
-            const response = await appStateManager.sendActionWithResponse(
-                'build',
-                { projectRoot: projectPath, targets },
-                { timeoutMs: 10000 }
-            );
-            const result = response.result || {};
-            traceInfo(`Build started: ${result.build_id || 'unknown'}`);
-            return result as BuildResponse;
-        } catch (error) {
-            throw error;
-        }
+        const requestId = `build-${Date.now()}`;
+        traceInfo(`Build requested: ${projectPath} targets=${targets.join(',')} requestId=${requestId}`);
+
+        // Send message to webview to trigger build via WebSocket
+        this._onWebviewMessage.fire({
+            type: 'triggerBuild',
+            projectRoot: projectPath,
+            targets,
+            requestId,
+        });
+
+        // Return immediately - build status comes via WebSocket state updates
+        return {
+            success: true,
+            message: 'Build triggered',
+            targets,
+        };
+    }
+
+    /**
+     * Send a message to the webview (for forwarding to backend via WebSocket).
+     */
+    sendToWebview(message: Record<string, unknown>): void {
+        this._onWebviewMessage.fire(message);
     }
 
     dispose(): void {
@@ -685,6 +699,7 @@ class BackendServerManager implements vscode.Disposable {
         }
 
         this._onStatusChange.dispose();
+        this._onWebviewMessage.dispose();
 
         for (const disposable of this._disposables) {
             disposable.dispose();

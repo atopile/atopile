@@ -84,6 +84,24 @@
   white-space: nowrap;
 }
 
+.module-tree-type.unconstrained {
+  opacity: 0.4;
+  font-style: italic;
+}
+
+/* Truncated indicator - subtle underline on hover to show full value available */
+.module-tree-name.truncated,
+.module-tree-type.truncated {
+  cursor: help;
+}
+
+.module-tree-name.truncated:hover,
+.module-tree-type.truncated:hover {
+  text-decoration: underline dotted;
+  text-decoration-color: var(--text-muted);
+  text-underline-offset: 2px;
+}
+
 .module-tree-count {
   margin-left: auto;
   font-size: 10px;
@@ -91,6 +109,34 @@
   background: var(--bg-tertiary);
   padding: 0 6px;
   border-radius: var(--radius-sm);
+}
+
+/* Type group header styling */
+.module-tree-type-group {
+  /* Container for a type group */
+}
+
+.module-tree-group-header {
+  font-weight: 500;
+}
+
+.module-tree-group-header:hover {
+  background: var(--bg-hover);
+}
+
+.module-tree-group-label {
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.module-tree-group-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.module-tree-group-items {
+  /* Items within a group */
 }
 
 .module-tree-children {
@@ -105,7 +151,7 @@
 .module-tree-node .module-tree-children::before {
   content: '';
   position: absolute;
-  left: 11px;
+  left: 8px;
   top: 0;
   bottom: 8px;
   width: 1px;
@@ -113,15 +159,19 @@
   opacity: 0.5;
 }
 
-/* Depth-based line positioning */
+/* Depth-based line positioning (6px per level) */
 .module-tree-children .module-tree-children::before {
-  left: 23px;
+  left: 14px;
 }
 
 .module-tree-children .module-tree-children .module-tree-children::before {
-  left: 35px;
+  left: 20px;
 }
 
 .module-tree-children .module-tree-children .module-tree-children .module-tree-children::before {
-  left: 47px;
+  left: 26px;
+}
+
+.module-tree-children .module-tree-children .module-tree-children .module-tree-children .module-tree-children::before {
+  left: 32px;
 }

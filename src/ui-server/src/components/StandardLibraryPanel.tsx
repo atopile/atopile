@@ -148,9 +148,8 @@ function StdLibCard({
                 <button className="copy-btn" onClick={(e) => {
                   e.stopPropagation()
                   handleCopy(item.usage || '')
-                }}>
+                }} title="Copy to clipboard">
                   <Copy size={12} />
-                  Copy
                 </button>
               </div>
               <pre className="usage-code">{item.usage}</pre>

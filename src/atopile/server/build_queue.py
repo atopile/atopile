@@ -624,6 +624,11 @@ class BuildQueue:
                 # Refresh problems from logs after build completes
                 problem_parser.sync_problems_to_state()
 
+                # Clear module introspection cache (build may have run ato sync)
+                from atopile.server.module_introspection import clear_module_cache
+
+                clear_module_cache()
+
                 # Save to history
                 with _build_lock:
                     if build_id in _active_builds:

@@ -1016,6 +1016,7 @@ class ProjectConfig(BaseConfigModel):
         }
 
         if duplicates:
+            # return self
             config_path = self.paths.root / PROJECT_CONFIG_FILENAME
             error_lines = [
                 f"Multiple build targets share the same entry point in {config_path}:",

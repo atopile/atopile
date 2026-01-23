@@ -14,7 +14,6 @@ import { onBuildTargetChanged } from './common/target';
 import { Build } from './common/manifest';
 import { openPackageExplorer } from './ui/packagexplorer';
 import * as llm from './common/llm';
-import { appStateManager, initAtopileSettingsSync } from './common/appState';
 import { backendServer } from './common/backendServer';
 
 export let g_lsClient: LanguageClient | undefined;
@@ -108,11 +107,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             }
         }
 
-        // Notify backend that installation/restart completed
+        // Notify backend that installation/restart completed (via webview WebSocket)
         if (newClient) {
-            appStateManager.sendAction('setAtopileInstalling', { installing: false });
+            backendServer.sendToWebview({
+                type: 'setAtopileInstalling',
+                installing: false
+            });
         } else {
-            appStateManager.sendAction('setAtopileInstalling', {
+            backendServer.sendToWebview({
+                type: 'setAtopileInstalling',
                 installing: false,
                 error: 'Failed to start language server'
             });
@@ -140,8 +143,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await ui.activate(context);
     await llm.activate(context);
 
-    // Sync atopile settings from UI to extension (manual restart required to apply)
-    context.subscriptions.push(initAtopileSettingsSync(context));
+    // Note: Atopile settings sync is now handled by SidebarProvider via postMessage
 
     context.subscriptions.push(vscode.window.registerUriHandler(new atopileUriHandler()));
 

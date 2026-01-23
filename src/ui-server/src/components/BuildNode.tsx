@@ -11,12 +11,8 @@ import {
   FileCode, Search, Grid3X3, Layout, Cuboid, Box, Square, Trash2
 } from 'lucide-react';
 import type { Selection, BuildTarget, BuildStage, ModuleDefinition } from './projectsTypes';
-import type { ModuleChild } from '../types/build';
-import { SymbolNode } from './SymbolNode';
-import { ModuleTree } from './ModuleTreeNode';
 import { NameValidationDropdown } from './NameValidationDropdown';
 import { validateName } from '../utils/nameValidation';
-import { sendActionWithResponse } from '../api/websocket';
 import './BuildNode.css';
 
 // Timer component for running stages - isolated to prevent parent re-renders
@@ -130,7 +126,6 @@ export function getLastBuildStatusIcon(status: string, size: number = 12) {
 interface BuildNodeProps {
   build: BuildTarget;
   projectId: string;
-  projectRoot: string;  // Path to project root for module introspection
   selection: Selection;
   onSelect: (selection: Selection) => void;
   onBuild: (level: 'project' | 'build' | 'symbol', id: string, label: string) => void;
@@ -152,7 +147,6 @@ interface BuildNodeProps {
 export const BuildNode = memo(function BuildNode({
   build,
   projectId,
-  projectRoot,
   selection,
   onSelect,
   onBuild,
@@ -177,11 +171,6 @@ export const BuildNode = memo(function BuildNode({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [duplicateWarning, setDuplicateWarning] = useState<{ entry: string; usedBy: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-
-  // Lazy-loaded module children from TypeGraph introspection
-  const [moduleChildren, setModuleChildren] = useState<ModuleChild[] | null>(null);
-  const [isLoadingChildren, setIsLoadingChildren] = useState(false);
-  const [childrenError, setChildrenError] = useState<string | null>(null);
 
   // Timer state for live build time display
   const [elapsedTime, setElapsedTime] = useState(build.elapsedSeconds || 0);
@@ -275,43 +264,6 @@ export const BuildNode = memo(function BuildNode({
     }
   }, [isEditingEntry]);
 
-  // Fetch module children when build is selected (lazy loading)
-  const isSelected = selection.type === 'build' && selection.buildId === `${projectId}:${build.id}`;
-
-  useEffect(() => {
-    // Only fetch when selected and we don't already have children
-    if (!isSelected || moduleChildren !== null || isLoadingChildren) {
-      return;
-    }
-
-    // Need both projectRoot and entry point to fetch
-    if (!projectRoot || !build.entry) {
-      return;
-    }
-
-    setIsLoadingChildren(true);
-    setChildrenError(null);
-
-    sendActionWithResponse('getModuleChildren', {
-      projectRoot,
-      entryPoint: build.entry,
-      maxDepth: 3,
-    })
-      .then((response) => {
-        const result = response.result ?? {};
-        const children = Array.isArray((result as { children?: unknown }).children)
-          ? (result as { children: ModuleChild[] }).children
-          : [];
-        setModuleChildren(children);
-        setIsLoadingChildren(false);
-      })
-      .catch((err) => {
-        console.warn('Failed to fetch module children:', err);
-        setChildrenError(err.message || 'Failed to load module structure');
-        setIsLoadingChildren(false);
-      });
-  }, [isSelected, moduleChildren, isLoadingChildren, projectRoot, build.entry, build.name]);
-
   // Validate build name as user types
   const nameValidation = useMemo(() => validateName(buildName), [buildName]);
 
@@ -372,13 +324,8 @@ export const BuildNode = memo(function BuildNode({
     setDuplicateWarning(null);
   };
 
-  // Check if we have module children (lazy-loaded) or legacy symbols
-  const hasModuleChildren = moduleChildren && moduleChildren.length > 0;
-  const hasLegacySymbols = build.symbols && build.symbols.length > 0;
+  const isSelected = selection.type === 'build' && selection.buildId === `${projectId}:${build.id}`;
   const hasStages = build.stages && build.stages.length > 0;
-
-  // Get module name from entry point for tree display
-  const moduleName = build.entry?.split(':').pop() || build.name;
 
   return (
     <div
@@ -625,7 +572,7 @@ export const BuildNode = memo(function BuildNode({
           {/* Entry point */}
           <div className="build-card-entry-row">
             <FileCode size={12} />
-            {isEditingEntry ? (
+            {isEditingEntry && !readOnly ? (
               <div className="entry-picker" onClick={(e) => e.stopPropagation()}>
                 <div className="entry-search-box">
                   <Search size={10} />
@@ -684,13 +631,13 @@ export const BuildNode = memo(function BuildNode({
               </div>
             ) : (
               <span
-                className="entry-path editable"
-                onClick={(e) => {
+                className={`entry-path ${!readOnly ? 'editable' : ''}`}
+                onClick={!readOnly ? (e) => {
                   e.stopPropagation();
                   setIsEditingEntry(true);
                   setSearchQuery('');
-                }}
-                title="Click to change entry point"
+                } : undefined}
+                title={!readOnly ? "Click to change entry point" : undefined}
               >
                 {entryPoint}
               </span>
@@ -757,99 +704,67 @@ export const BuildNode = memo(function BuildNode({
             </div>
           )}
 
-          {/* Action buttons */}
-          <div className="build-card-actions">
-            <button
-              className="build-action-btn primary"
-              onClick={(e) => {
-                e.stopPropagation();
-                onBuild('build', `${projectId}:${build.id}`, build.name);
-              }}
-              title={`Build ${build.name}`}
-            >
-              <Play size={12} />
-              <span>Build</span>
-            </button>
-            <button
-              className="build-action-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenSource?.(projectId, build.entry);
-              }}
-              title="Open Source Code"
-            >
-              <FileCode size={12} />
-              <span>ato</span>
-            </button>
-            <button
-              className="build-action-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenKiCad?.(projectId, build.id);
-              }}
-              title="Open in KiCad"
-            >
-              <Grid3X3 size={12} />
-              <span>KiCad</span>
-            </button>
-            <button
-              className="build-action-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenLayout?.(projectId, build.id);
-              }}
-              title="Edit Layout"
-            >
-              <Layout size={12} />
-              <span>Layout</span>
-            </button>
-            <button
-              className="build-action-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpen3D?.(projectId, build.id);
-              }}
-              title="3D Preview"
-            >
-              <Cuboid size={12} />
-              <span>3D</span>
-            </button>
-          </div>
+          {/* Action buttons - hide in readOnly mode */}
+          {!readOnly && (
+            <div className="build-card-actions">
+              <button
+                className="build-action-btn primary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onBuild('build', `${projectId}:${build.id}`, build.name);
+                }}
+                title={`Build ${build.name}`}
+              >
+                <Play size={12} />
+                <span>Build</span>
+              </button>
+              <button
+                className="build-action-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenSource?.(projectId, build.entry);
+                }}
+                title="Open Source Code"
+              >
+                <FileCode size={12} />
+                <span>ato</span>
+              </button>
+              <button
+                className="build-action-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenKiCad?.(projectId, build.id);
+                }}
+                title="Open in KiCad"
+              >
+                <Grid3X3 size={12} />
+                <span>KiCad</span>
+              </button>
+              <button
+                className="build-action-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenLayout?.(projectId, build.id);
+                }}
+                title="Edit Layout"
+              >
+                <Layout size={12} />
+                <span>Layout</span>
+              </button>
+              <button
+                className="build-action-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpen3D?.(projectId, build.id);
+                }}
+                title="3D Preview"
+              >
+                <Cuboid size={12} />
+                <span>3D</span>
+              </button>
+            </div>
+          )}
 
-          {/* Entry point symbol tree - lazy loaded from TypeGraph */}
-          {isLoadingChildren && (
-            <div className="build-card-symbols loading">
-              <Circle size={12} className="spinner" />
-              <span className="loading-text">Loading module structure...</span>
-            </div>
-          )}
-          {childrenError && (
-            <div className="build-card-symbols error">
-              <span className="error-text">Failed to load: {childrenError}</span>
-            </div>
-          )}
-          {!isLoadingChildren && !childrenError && hasModuleChildren && (
-            <div className="build-card-symbols">
-              <ModuleTree
-                children={moduleChildren!}
-                rootName={moduleName}
-              />
-            </div>
-          )}
-          {/* Fallback to legacy SymbolNode if no lazy-loaded children */}
-          {!isLoadingChildren && !childrenError && !hasModuleChildren && hasLegacySymbols && build.symbols![0] && (
-            <div className="build-card-symbols">
-              <SymbolNode
-                key={build.symbols![0].path}
-                symbol={build.symbols![0]}
-                depth={0}
-                projectId={projectId}
-                selection={selection}
-                onSelect={onSelect}
-                onBuild={onBuild}
-              />
-            </div>
-          )}
         </>
       )}
     </div>

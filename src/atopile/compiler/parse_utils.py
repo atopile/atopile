@@ -4,14 +4,28 @@ Utils related to handling the parse tree
 
 from io import StringIO
 from pathlib import Path
-from typing import Generator
+from typing import TYPE_CHECKING, Generator
 
 import pygments.lexer
 from antlr4 import CommonTokenStream, InputStream, ParserRuleContext, Token
 from antlr4.TokenStreamRewriter import TokenStreamRewriter
 from pygments import token as pygments_token
 
-from atopile.compiler.parser.AtoLexer import AtoLexer
+if TYPE_CHECKING:
+    from atopile.compiler.parser.AtoLexer import AtoLexer as AtoLexerType
+
+# Lazy-loaded AtoLexer to avoid import issues during exception handling
+_AtoLexer: "type[AtoLexerType] | None" = None
+
+
+def _get_ato_lexer() -> "type[AtoLexerType]":
+    """Get the AtoLexer class, importing it lazily on first use."""
+    global _AtoLexer
+    if _AtoLexer is None:
+        from atopile.compiler.parser.AtoLexer import AtoLexer
+
+        _AtoLexer = AtoLexer
+    return _AtoLexer
 
 
 def get_src_info_from_token(token: Token) -> tuple[str, int, int]:
@@ -50,7 +64,7 @@ def expand(
     i = beginning
     newlines_to_find = count
     while 0 <= i < len(stream):
-        if stream[i].type == AtoLexer.NEWLINE:
+        if stream[i].type == _get_ato_lexer().NEWLINE:
             if newlines_to_find == 0:
                 return i - step
             newlines_to_find -= 1
@@ -95,15 +109,22 @@ class IterableRewriter(TokenStreamRewriter):
 
 
 class AtoRewriter(IterableRewriter):
-    DROP_TOKENS = {AtoLexer.INDENT, AtoLexer.DEDENT}
+    _drop_tokens: set[int] | None = None
+
+    @classmethod
+    def _get_drop_tokens(cls) -> set[int]:
+        if cls._drop_tokens is None:
+            lexer = _get_ato_lexer()
+            cls._drop_tokens = {lexer.INDENT, lexer.DEDENT}
+        return cls._drop_tokens
 
     def iter_tokens_and_text(
         self, program_name, start: int | None = None, stop: int | None = None
     ) -> Generator[tuple[Token | None, str], None, None]:
         for token, text in super().iter_tokens_and_text(program_name, start, stop):
-            if token and token.type in self.DROP_TOKENS:
+            if token and token.type in self._get_drop_tokens():
                 continue
-            elif token and token.type == AtoLexer.NEWLINE:
+            elif token and token.type == _get_ato_lexer().NEWLINE:
                 # FIXME: feels like we shouldn't have this
                 yield token, "\n"
             else:
@@ -119,81 +140,93 @@ class AtoRewriter(IterableRewriter):
 
 
 class PygmentsLexer(pygments.lexer.Lexer):
-    TOKEN_TYPE_MAP = {
-        AtoLexer.INDENT: pygments_token.Token,
-        AtoLexer.DEDENT: pygments_token.Token,
-        AtoLexer.STRING: pygments_token.String,
-        AtoLexer.NUMBER: pygments_token.Number,
-        AtoLexer.INTEGER: pygments_token.Number,
-        AtoLexer.COMPONENT: pygments_token.Keyword,
-        AtoLexer.MODULE: pygments_token.Keyword,
-        AtoLexer.INTERFACE: pygments_token.Keyword,
-        AtoLexer.PIN: pygments_token.Keyword,
-        AtoLexer.SIGNAL: pygments_token.Keyword,
-        AtoLexer.NEW: pygments_token.Keyword,
-        AtoLexer.FROM: pygments_token.Keyword,
-        AtoLexer.IMPORT: pygments_token.Keyword,
-        AtoLexer.ASSERT: pygments_token.Keyword,
-        AtoLexer.TO: pygments_token.Keyword,
-        AtoLexer.TRUE: pygments_token.Name,
-        AtoLexer.FALSE: pygments_token.Name,
-        AtoLexer.WITHIN: pygments_token.Name,
-        AtoLexer.PASS: pygments_token.Keyword,
-        AtoLexer.NAME: pygments_token.Name,
-        AtoLexer.STRING_LITERAL: pygments_token.String,
-        AtoLexer.BYTES_LITERAL: pygments_token.String,
-        AtoLexer.DECIMAL_INTEGER: pygments_token.Number,
-        AtoLexer.OCT_INTEGER: pygments_token.Number,
-        AtoLexer.HEX_INTEGER: pygments_token.Number,
-        AtoLexer.BIN_INTEGER: pygments_token.Number,
-        AtoLexer.FLOAT_NUMBER: pygments_token.Number,
-        AtoLexer.IMAG_NUMBER: pygments_token.Number,
-        AtoLexer.PLUS_OR_MINUS: pygments_token.Operator,
-        AtoLexer.PLUS_SLASH_MINUS: pygments_token.Operator,
-        AtoLexer.PLUS_MINUS_SIGN: pygments_token.Operator,
-        AtoLexer.PERCENT: pygments_token.Operator,
-        AtoLexer.DOT: pygments_token.Token,
-        AtoLexer.ELLIPSIS: pygments_token.Token,
-        AtoLexer.STAR: pygments_token.Token,
-        AtoLexer.OPEN_PAREN: pygments_token.Token,
-        AtoLexer.CLOSE_PAREN: pygments_token.Token,
-        AtoLexer.COMMA: pygments_token.Token,
-        AtoLexer.COLON: pygments_token.Token,
-        AtoLexer.SEMI_COLON: pygments_token.Token,
-        AtoLexer.POWER: pygments_token.Token,
-        AtoLexer.ASSIGN: pygments_token.Operator,
-        AtoLexer.OPEN_BRACK: pygments_token.Token,
-        AtoLexer.CLOSE_BRACK: pygments_token.Token,
-        AtoLexer.OR_OP: pygments_token.Token,
-        AtoLexer.XOR: pygments_token.Token,
-        AtoLexer.AND_OP: pygments_token.Token,
-        AtoLexer.LEFT_SHIFT: pygments_token.Token,
-        AtoLexer.RIGHT_SHIFT: pygments_token.Token,
-        AtoLexer.PLUS: pygments_token.Token,
-        AtoLexer.MINUS: pygments_token.Token,
-        AtoLexer.DIV: pygments_token.Token,
-        AtoLexer.IDIV: pygments_token.Token,
-        AtoLexer.SPERM: pygments_token.Token,
-        AtoLexer.WIRE: pygments_token.Token,
-        AtoLexer.OPEN_BRACE: pygments_token.Token,
-        AtoLexer.CLOSE_BRACE: pygments_token.Token,
-        AtoLexer.LESS_THAN: pygments_token.Operator,
-        AtoLexer.GREATER_THAN: pygments_token.Operator,
-        AtoLexer.EQUALS: pygments_token.Operator,
-        AtoLexer.GT_EQ: pygments_token.Operator,
-        AtoLexer.LT_EQ: pygments_token.Operator,
-        AtoLexer.NOT_EQ_1: pygments_token.Operator,
-        AtoLexer.NOT_EQ_2: pygments_token.Operator,
-        AtoLexer.AT: pygments_token.Token,
-        AtoLexer.ARROW: pygments_token.Token,
-        AtoLexer.NEWLINE: pygments_token.Whitespace,
-        AtoLexer.COMMENT: pygments_token.Comment,
-        AtoLexer.WS: pygments_token.Whitespace,
-        AtoLexer.EXPLICIT_LINE_JOINING: pygments_token.Token,
-        AtoLexer.ERRORTOKEN: pygments_token.Error,
-        AtoLexer.FOR: pygments_token.Keyword,
-        AtoLexer.IN: pygments_token.Keyword,
-    }
+    _token_type_map: dict[int, "pygments_token._TokenType"] | None = None
+
+    @classmethod
+    def _get_token_type_map(cls) -> dict[int, "pygments_token._TokenType"]:
+        if cls._token_type_map is None:
+            lexer = _get_ato_lexer()
+            cls._token_type_map = {
+                lexer.INDENT: pygments_token.Token,
+                lexer.DEDENT: pygments_token.Token,
+                lexer.STRING: pygments_token.String,
+                lexer.NUMBER: pygments_token.Number,
+                lexer.INTEGER: pygments_token.Number,
+                lexer.COMPONENT: pygments_token.Keyword,
+                lexer.MODULE: pygments_token.Keyword,
+                lexer.INTERFACE: pygments_token.Keyword,
+                lexer.PIN: pygments_token.Keyword,
+                lexer.SIGNAL: pygments_token.Keyword,
+                lexer.NEW: pygments_token.Keyword,
+                lexer.FROM: pygments_token.Keyword,
+                lexer.IMPORT: pygments_token.Keyword,
+                lexer.ASSERT: pygments_token.Keyword,
+                lexer.TO: pygments_token.Keyword,
+                lexer.TRUE: pygments_token.Name,
+                lexer.FALSE: pygments_token.Name,
+                lexer.WITHIN: pygments_token.Name,
+                lexer.PASS: pygments_token.Keyword,
+                lexer.NAME: pygments_token.Name,
+                lexer.STRING_LITERAL: pygments_token.String,
+                lexer.BYTES_LITERAL: pygments_token.String,
+                lexer.DECIMAL_INTEGER: pygments_token.Number,
+                lexer.OCT_INTEGER: pygments_token.Number,
+                lexer.HEX_INTEGER: pygments_token.Number,
+                lexer.BIN_INTEGER: pygments_token.Number,
+                lexer.FLOAT_NUMBER: pygments_token.Number,
+                lexer.IMAG_NUMBER: pygments_token.Number,
+                lexer.PLUS_OR_MINUS: pygments_token.Operator,
+                lexer.PLUS_SLASH_MINUS: pygments_token.Operator,
+                lexer.PLUS_MINUS_SIGN: pygments_token.Operator,
+                lexer.PERCENT: pygments_token.Operator,
+                lexer.DOT: pygments_token.Token,
+                lexer.ELLIPSIS: pygments_token.Token,
+                lexer.STAR: pygments_token.Token,
+                lexer.OPEN_PAREN: pygments_token.Token,
+                lexer.CLOSE_PAREN: pygments_token.Token,
+                lexer.COMMA: pygments_token.Token,
+                lexer.COLON: pygments_token.Token,
+                lexer.SEMI_COLON: pygments_token.Token,
+                lexer.POWER: pygments_token.Token,
+                lexer.ASSIGN: pygments_token.Operator,
+                lexer.OPEN_BRACK: pygments_token.Token,
+                lexer.CLOSE_BRACK: pygments_token.Token,
+                lexer.OR_OP: pygments_token.Token,
+                lexer.XOR: pygments_token.Token,
+                lexer.AND_OP: pygments_token.Token,
+                lexer.LEFT_SHIFT: pygments_token.Token,
+                lexer.RIGHT_SHIFT: pygments_token.Token,
+                lexer.PLUS: pygments_token.Token,
+                lexer.MINUS: pygments_token.Token,
+                lexer.DIV: pygments_token.Token,
+                lexer.IDIV: pygments_token.Token,
+                lexer.SPERM: pygments_token.Token,
+                lexer.WIRE: pygments_token.Token,
+                lexer.OPEN_BRACE: pygments_token.Token,
+                lexer.CLOSE_BRACE: pygments_token.Token,
+                lexer.LESS_THAN: pygments_token.Operator,
+                lexer.GREATER_THAN: pygments_token.Operator,
+                lexer.EQUALS: pygments_token.Operator,
+                lexer.GT_EQ: pygments_token.Operator,
+                lexer.LT_EQ: pygments_token.Operator,
+                lexer.NOT_EQ_1: pygments_token.Operator,
+                lexer.NOT_EQ_2: pygments_token.Operator,
+                lexer.AT: pygments_token.Token,
+                lexer.ARROW: pygments_token.Token,
+                lexer.NEWLINE: pygments_token.Whitespace,
+                lexer.COMMENT: pygments_token.Comment,
+                lexer.WS: pygments_token.Whitespace,
+                lexer.EXPLICIT_LINE_JOINING: pygments_token.Token,
+                lexer.ERRORTOKEN: pygments_token.Error,
+                lexer.FOR: pygments_token.Keyword,
+                lexer.IN: pygments_token.Keyword,
+            }
+        return cls._token_type_map
+
+    # Keep TOKEN_TYPE_MAP as a property for backward compatibility
+    @property
+    def TOKEN_TYPE_MAP(self) -> dict[int, "pygments_token._TokenType"]:
+        return self._get_token_type_map()
 
     name = "atopile"
 
@@ -203,7 +236,7 @@ class PygmentsLexer(pygments.lexer.Lexer):
 
     def get_tokens_unprocessed(self, text: str):
         text_stream = InputStream(text)
-        lexer = AtoLexer(text_stream)
+        lexer = _get_ato_lexer()(text_stream)
         token_stream = CommonTokenStream(lexer)
         token_stream.fill()
         rewriter = AtoRewriter(token_stream)
@@ -214,7 +247,9 @@ class PygmentsLexer(pygments.lexer.Lexer):
             if token is not None:
                 yield (
                     token.start,
-                    PygmentsLexer.TOKEN_TYPE_MAP.get(token.type, pygments_token.Token),  # type: ignore  # obviously random other shit is why I'm using .get
+                    PygmentsLexer._get_token_type_map().get(
+                        token.type, pygments_token.Token
+                    ),  # type: ignore  # obviously random other shit is why I'm using .get
                     text,
                 )
 
@@ -244,7 +279,9 @@ class PygmentsLexerReconstructor(pygments.lexer.Lexer):
             TokenStreamRewriter.DEFAULT_PROGRAM_NAME, self.start, self.stop
         ):
             yield (
-                PygmentsLexer.TOKEN_TYPE_MAP.get(token.type, pygments_token.Token),  # type: ignore  # obviously random other shit is why I'm using .get
+                PygmentsLexer._get_token_type_map().get(
+                    token.type, pygments_token.Token
+                ),  # type: ignore  # obviously random other shit is why I'm using .get
                 text,
             )
 

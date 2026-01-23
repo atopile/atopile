@@ -36,6 +36,11 @@ def _get_item_type(
     """Determine the item type from the TypeGraph. Returns None for types we don't want to show."""  # noqa: E501
     import faebryk.core.node as fabll
     import faebryk.library._F as F
+    from faebryk.library.Pickable import (
+        is_pickable_by_part_number,
+        is_pickable_by_supplier_id,
+        is_pickable_by_type,
+    )
 
     if type_node is not None:
         try:
@@ -44,6 +49,23 @@ def _get_item_type(
                 type_node, fabll.ImplementsTrait
             ):
                 return "trait"
+
+            # Check if module is pickable (will appear in BOM) - mark as "component"
+            # This includes Resistor, Capacitor, Inductor, and parts with LCSC IDs
+            is_pickable = (
+                fabll.TypeNodeBoundTG.has_instance_of_type_has_trait(
+                    type_node, is_pickable_by_type
+                )
+                or fabll.TypeNodeBoundTG.has_instance_of_type_has_trait(
+                    type_node, is_pickable_by_supplier_id
+                )
+                or fabll.TypeNodeBoundTG.has_instance_of_type_has_trait(
+                    type_node, is_pickable_by_part_number
+                )
+            )
+            if is_pickable:
+                return "component"
+
             # Check module BEFORE interface (modules are also interfaces)
             if fabll.TypeNodeBoundTG.has_instance_of_type_has_trait(
                 type_node, fabll.is_module
@@ -135,6 +157,7 @@ def _group_array_children(children: list[ModuleChild]) -> list[ModuleChild]:
                 type_name=child.type_name,
                 item_type=child.item_type,
                 children=child.children,
+                spec=child.spec,  # Preserve spec for array elements
             )
             for idx, child in indexed_children
         ]
@@ -145,6 +168,7 @@ def _group_array_children(children: list[ModuleChild]) -> list[ModuleChild]:
             type_name=f"{element_type}[{len(indexed_children)}]",
             item_type=first_child.item_type,
             children=array_elements,
+            spec=first_child.spec,  # Use first element's spec for parent
         )
         result.append(array_node)
 
@@ -204,9 +228,22 @@ def _extract_children_from_typegraph(
         # Determine item type from the graph
         item_type = _get_item_type(tg, resolved_type, type_name)
 
-        # Skip traits and unknown types (None) - only show modules, interfaces, parameters (None)  # noqa: E501
-        if item_type is None or item_type == "trait":
+        # Skip traits - but keep unresolved types as modules
+        if item_type == "trait":
             continue
+
+        # If type couldn't be determined (unresolved import), treat as module
+        if item_type is None:
+            # Check if it looks like a module/component based on naming convention
+            # (types from imports are usually PascalCase modules/components)
+            if resolved_type is None and type_name and type_name[0].isupper():
+                item_type = "module"
+            else:
+                continue
+
+        # Extract parameter spec if this is a parameter
+        # TODO: Implement spec extraction from TypeGraph operand/constraint nodes
+        spec: str | None = None
 
         # Recursively extract nested children
         nested_children: list[ModuleChild] = []
@@ -224,6 +261,7 @@ def _extract_children_from_typegraph(
                 type_name=type_name,
                 item_type=item_type,
                 children=nested_children,
+                spec=spec,
             )
         )
 
@@ -234,7 +272,7 @@ def _extract_children_from_typegraph(
 def introspect_module(
     project_root: Path,
     entry_point: str,
-    max_depth: int = 2,
+    max_depth: int = 5,
 ) -> list[ModuleChild] | None:
     """
     Introspect a module and extract its children using TypeGraph.
@@ -242,7 +280,7 @@ def introspect_module(
     Args:
         project_root: Path to the project root (containing ato.yaml)
         entry_point: Entry point in format "file.ato:ModuleName"
-        max_depth: Maximum depth for nested children (default: 2)
+        max_depth: Maximum depth for nested children (default: 5)
 
     Returns:
         List of ModuleChild objects, or None if introspection fails.
@@ -308,7 +346,9 @@ def introspect_module(
                 stdlib=stdlib,
                 tg=tg,
             )
-            linker.link_imports(g, result.state)
+            # Use _link_recursive to avoid raising on unresolved refs
+            # (packages may not be installed)
+            linker._link_recursive(g, result.state)
         except Exception as link_exc:
             # Linking is optional - continue without it
             log.debug("Import linking skipped: %s", link_exc)
@@ -333,7 +373,7 @@ def clear_module_cache() -> None:
 def introspect_module_definition(
     project_root: Path,
     module_def: ModuleDefinition,
-    max_depth: int = 2,
+    max_depth: int = 5,
 ) -> ModuleDefinition:
     """
     Enhance a ModuleDefinition with children from TypeGraph introspection.

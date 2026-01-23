@@ -5,7 +5,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useStore, useSelectedProject, useSelectedBuild, useFilteredProblems, useFilteredLogs } from '../store';
+import { useStore, useSelectedProject, useSelectedBuild, useFilteredProblems } from '../store';
 import type { Project, Build, Problem } from '../types/build';
 
 // Helper to reset store state between tests
@@ -142,6 +142,7 @@ const sampleProblems: Problem[] = [
     stage: 'compile',
   },
 ];
+
 
 describe('Zustand Store', () => {
   beforeEach(() => {
@@ -370,36 +371,4 @@ describe('Store Selectors', () => {
     });
   });
 
-  describe('useFilteredLogs', () => {
-    beforeEach(() => {
-      useStore.setState({ logEntries: sampleLogs });
-    });
-
-    it('filters by enabled log levels', () => {
-      useStore.setState({ enabledLogLevels: ['ERROR'] });
-      const { result } = renderHook(() => useFilteredLogs());
-      expect(result.current).toHaveLength(1);
-      expect(result.current[0].level).toBe('ERROR');
-    });
-
-    it('filters by search query', () => {
-      useStore.setState({
-        enabledLogLevels: ['INFO', 'WARNING', 'ERROR', 'DEBUG'],
-        logSearchQuery: 'build',
-      });
-      const { result } = renderHook(() => useFilteredLogs());
-      expect(result.current).toHaveLength(1);
-      expect(result.current[0].message).toContain('build');
-    });
-
-    it('combines level and search filters', () => {
-      useStore.setState({
-        enabledLogLevels: ['INFO', 'WARNING'],
-        logSearchQuery: 'warning',
-      });
-      const { result } = renderHook(() => useFilteredLogs());
-      expect(result.current).toHaveLength(1);
-      expect(result.current[0].level).toBe('WARNING');
-    });
-  });
 });

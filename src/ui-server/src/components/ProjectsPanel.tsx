@@ -2,8 +2,7 @@ import { useState } from 'react'
 import { Search, Plus } from 'lucide-react'
 import { type ProjectDependency } from './DependencyCard'
 import { type FileTreeNode } from './FileExplorer'
-import { PackageCard } from './PackageCard'
-import { ProjectNode } from './ProjectNode'
+import { ProjectCard } from './ProjectCard'
 import type {
   Selection,
   BuildTarget,
@@ -46,7 +45,7 @@ interface ProjectsPanelProps {
   installingPackageIds?: string[]  // IDs of packages currently being installed
 }
 
-export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, onDependencyVersionChange, onRemoveDependency, onAddBuild, onUpdateBuild, onDeleteBuild, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {}, projectDependencies = {}, installingPackageIds = [] }: ProjectsPanelProps) {
+export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail: _onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, onDependencyVersionChange, onRemoveDependency, onAddBuild, onUpdateBuild, onDeleteBuild, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {}, projectDependencies = {}, installingPackageIds = [] }: ProjectsPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
   const projects = externalProjects && externalProjects.length > 0 ? externalProjects : []
@@ -207,57 +206,47 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
             }
             return true
           })
-          .map(project => (
-          project.type === 'package' ? (
-            <PackageCard
-              key={project.id}
-              project={project}
-              selection={selection}
-              onSelect={onSelect}
-              onBuild={onBuild}
-              onCancelBuild={onCancelBuild}
-              onStageFilter={onStageFilter}
-              onOpenPackageDetail={onOpenPackageDetail}
-              onInstall={handleInstall}
-              onOpenSource={onOpenSource}
-              onOpenKiCad={onOpenKiCad}
-              onOpenLayout={onOpenLayout}
-              onOpen3D={onOpen3D}
-              availableProjects={availableProjects}
-              isInstalling={installingPackageIds.includes(project.id)}
-            />
-          ) : (
-            <ProjectNode
-              key={project.id}
-              project={project}
-              selection={selection}
-              onSelect={onSelect}
-              onBuild={onBuild}
-              onCancelBuild={onCancelBuild}
-              onStageFilter={onStageFilter}
-              onOpenPackageDetail={onOpenPackageDetail}
-              isExpanded={expandedProjectId === project.id}
-              onExpandChange={(projectId, expanded) => {
-                setExpandedProjectId(expanded ? projectId : null)
-              }}
-              onUpdateProject={handleUpdateProject}
-              onAddBuild={handleAddBuild}
-              onUpdateBuild={handleUpdateBuild}
-              onDeleteBuild={handleDeleteBuild}
-              onProjectExpand={onProjectExpand}
-              onOpenSource={onOpenSource}
-              onOpenKiCad={onOpenKiCad}
-              onOpenLayout={onOpenLayout}
-              onOpen3D={onOpen3D}
-              onFileClick={onFileClick}
-              onDependencyVersionChange={onDependencyVersionChange}
-              onRemoveDependency={onRemoveDependency}
-              availableModules={projectModules[project.root] || []}
-              projectFiles={projectFiles[project.root] || []}
-              projectDependencies={projectDependencies[project.root] || []}
-            />
-          )
-        ))}
+          .map(project => {
+            const isPackage = project.type === 'package'
+            return (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                preset={isPackage ? 'packageExplorer' : 'localProject'}
+                selection={selection}
+                onSelect={onSelect}
+                onBuild={onBuild}
+                onCancelBuild={onCancelBuild}
+                onStageFilter={onStageFilter}
+                isExpanded={expandedProjectId === project.id}
+                onExpandChange={(projectId, expanded) => {
+                  setExpandedProjectId(expanded ? projectId : null)
+                }}
+                // Edit mode props (for local projects)
+                onUpdateProject={handleUpdateProject}
+                onAddBuild={handleAddBuild}
+                onUpdateBuild={handleUpdateBuild}
+                onDeleteBuild={handleDeleteBuild}
+                onProjectExpand={onProjectExpand}
+                onDependencyVersionChange={onDependencyVersionChange}
+                onRemoveDependency={onRemoveDependency}
+                // Common props
+                onOpenSource={onOpenSource}
+                onOpenKiCad={onOpenKiCad}
+                onOpenLayout={onOpenLayout}
+                onOpen3D={onOpen3D}
+                onFileClick={onFileClick}
+                // Data props
+                availableModules={projectModules[project.root] || []}
+                projectFiles={projectFiles[project.root] || []}
+                projectDependencies={projectDependencies[project.root] || []}
+                // Package mode props
+                availableProjects={availableProjects}
+                onInstall={handleInstall}
+                isInstalling={installingPackageIds.includes(project.id)}
+              />
+            )
+          })}
         
         {filteredProjects.length === 0 && (
           <div className="empty-state">

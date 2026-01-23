@@ -1,6 +1,6 @@
 /**
  * Sidebar component - Main panel with all sections.
- * Refactored to use extracted hooks for better separation of concerns.
+ * Uses unified panel sizing system for consistent expand/collapse behavior.
  */
 
 import { useState, useRef, useMemo } from 'react';
@@ -14,6 +14,7 @@ import { PackageDetailPanel } from './PackageDetailPanel';
 import { BuildQueuePanel } from './BuildQueuePanel';
 import { sendAction } from '../api/websocket';
 import { useStore } from '../store';
+import { usePanelSizing } from '../hooks/usePanelSizing';
 import {
   SidebarHeader,
   useSidebarData,
@@ -53,10 +54,6 @@ export function Sidebar() {
 
   // Local UI state
   const [selection, setSelection] = useState<Selection>({ type: 'none' });
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
-    new Set(['buildQueue', 'problems', 'stdlib', 'variables', 'bom'])
-  );
-  const [sectionHeights, setSectionHeights] = useState<Record<string, number>>({});
   const [selectedPackage, setSelectedPackage] = useState<SelectedPackage | null>(null);
   const [activeStageFilter, setActiveStageFilter] = useState<StageFilter | null>(null);
 
@@ -74,24 +71,18 @@ export function Sidebar() {
     totalWarnings,
   } = useSidebarData({ state, selection, activeStageFilter });
 
-  const buildQueueItemHeight = 34;
-  const buildQueueMinHeight = 40;
-  const buildQueuePadding = 12;
-  const buildQueueDesiredHeight = Math.max(
-    buildQueueMinHeight,
-    Math.max(1, queuedBuilds.length) * buildQueueItemHeight + buildQueuePadding
-  );
-  const buildQueueMaxHeight = Math.min(240, buildQueueDesiredHeight);
+  // Unified panel sizing - all panels start collapsed, auto-expand on events
+  const panels = usePanelSizing({
+    containerRef,
+    hasActiveBuilds: queuedBuilds.length > 0,
+    hasProjectSelected: !!selectedProjectRoot,
+  });
 
-  // Use effects hook for side effects
+  // Use effects hook for side effects (data fetching, etc.)
   useSidebarEffects({
     selectedProjectRoot,
     selectedTargetName,
-    collapsedSections,
-    sectionHeights,
-    setSectionHeights,
-    setCollapsedSections,
-    containerRef,
+    panels,
     action,
   });
 
@@ -99,9 +90,7 @@ export function Sidebar() {
   const handlers = useSidebarHandlers({
     projects,
     state,
-    sectionHeights,
-    setSectionHeights,
-    setCollapsedSections,
+    panels,
     setSelection,
     setSelectedPackage,
     setActiveStageFilter,
@@ -128,11 +117,10 @@ export function Sidebar() {
           title="Projects"
           badge={projectCount}
           loading={state?.isLoadingProjects}
-          collapsed={collapsedSections.has('projects')}
-          onToggle={() => handlers.toggleSection('projects')}
-          height={sectionHeights.projects}
-          maxHeight={sectionHeights.projects ? undefined : 350}
-          onResizeStart={(e) => handlers.handleResizeStart('projects', e)}
+          collapsed={panels.isCollapsed('projects')}
+          onToggle={() => panels.togglePanel('projects')}
+          height={panels.calculatedHeights['projects']}
+          onResizeStart={(e) => panels.handleResizeStart('projects', e)}
         >
           <ProjectsPanel
             selection={selection}
@@ -174,11 +162,10 @@ export function Sidebar() {
           title="Build Queue"
           badge={queuedBuilds.length > 0 ? queuedBuilds.length : undefined}
           badgeType="count"
-          collapsed={collapsedSections.has('buildQueue')}
-          onToggle={() => handlers.toggleSection('buildQueue')}
-          height={collapsedSections.has('buildQueue') ? undefined : sectionHeights.buildQueue}
-          maxHeight={sectionHeights.buildQueue ? undefined : buildQueueMaxHeight}
-          onResizeStart={(e) => handlers.handleResizeStart('buildQueue', e)}
+          collapsed={panels.isCollapsed('buildQueue')}
+          onToggle={() => panels.togglePanel('buildQueue')}
+          height={panels.calculatedHeights['buildQueue']}
+          onResizeStart={(e) => panels.handleResizeStart('buildQueue', e)}
         >
           <BuildQueuePanel
             builds={queuedBuilds}
@@ -193,11 +180,10 @@ export function Sidebar() {
           badge={packageCount}
           loading={state?.isLoadingPackages}
           warningMessage={state?.packagesError || null}
-          collapsed={collapsedSections.has('packages')}
-          onToggle={() => handlers.toggleSection('packages')}
-          height={sectionHeights.packages}
-          maxHeight={sectionHeights.packages ? undefined : 350}
-          onResizeStart={(e) => handlers.handleResizeStart('packages', e)}
+          collapsed={panels.isCollapsed('packages')}
+          onToggle={() => panels.togglePanel('packages')}
+          height={panels.calculatedHeights['packages']}
+          onResizeStart={(e) => panels.handleResizeStart('packages', e)}
         >
           <ProjectsPanel
             selection={selection}
@@ -225,11 +211,11 @@ export function Sidebar() {
           badgeType={activeStageFilter ? 'filter' : 'count'}
           errorCount={activeStageFilter ? undefined : totalErrors}
           warningCount={activeStageFilter ? undefined : totalWarnings}
-          collapsed={collapsedSections.has('problems')}
-          onToggle={() => handlers.toggleSection('problems')}
+          collapsed={panels.isCollapsed('problems')}
+          onToggle={() => panels.togglePanel('problems')}
           onClearFilter={activeStageFilter ? handlers.clearStageFilter : undefined}
-          height={collapsedSections.has('problems') ? undefined : sectionHeights.problems}
-          onResizeStart={(e) => handlers.handleResizeStart('problems', e)}
+          height={panels.calculatedHeights['problems']}
+          onResizeStart={(e) => panels.handleResizeStart('problems', e)}
         >
           <ProblemsPanel
             problems={filteredProblems}
@@ -247,11 +233,10 @@ export function Sidebar() {
           id="stdlib"
           title="Standard Library"
           badge={state?.stdlibItems?.length || 0}
-          collapsed={collapsedSections.has('stdlib')}
-          onToggle={() => handlers.toggleSection('stdlib')}
-          height={collapsedSections.has('stdlib') ? undefined : sectionHeights.stdlib}
-          autoSize
-          onResizeStart={(e) => handlers.handleResizeStart('stdlib', e)}
+          collapsed={panels.isCollapsed('stdlib')}
+          onToggle={() => panels.togglePanel('stdlib')}
+          height={panels.calculatedHeights['stdlib']}
+          onResizeStart={(e) => panels.handleResizeStart('stdlib', e)}
         >
           <StandardLibraryPanel
             items={state?.stdlibItems}
@@ -277,10 +262,10 @@ export function Sidebar() {
             };
             return countVars(varData.nodes);
           })()}
-          collapsed={collapsedSections.has('variables')}
-          onToggle={() => handlers.toggleSection('variables')}
-          height={collapsedSections.has('variables') ? undefined : sectionHeights.variables}
-          onResizeStart={(e) => handlers.handleResizeStart('variables', e)}
+          collapsed={panels.isCollapsed('variables')}
+          onToggle={() => panels.togglePanel('variables')}
+          height={panels.calculatedHeights['variables']}
+          onResizeStart={(e) => panels.handleResizeStart('variables', e)}
         >
           <VariablesPanel
             variablesData={state?.currentVariablesData}
@@ -304,10 +289,10 @@ export function Sidebar() {
               ? state.bomData.components.filter(c => c.stock !== null && c.stock === 0).length
               : 0
           }
-          collapsed={collapsedSections.has('bom')}
-          onToggle={() => handlers.toggleSection('bom')}
-          height={collapsedSections.has('bom') ? undefined : sectionHeights.bom}
-          onResizeStart={(e) => handlers.handleResizeStart('bom', e)}
+          collapsed={panels.isCollapsed('bom')}
+          onToggle={() => panels.togglePanel('bom')}
+          height={panels.calculatedHeights['bom']}
+          onResizeStart={(e) => panels.handleResizeStart('bom', e)}
         >
           <BOMPanel
             bomData={state?.bomData}

@@ -143,6 +143,12 @@ export interface PackageDependency {
   version?: string;
 }
 
+// Package build target info (from ato.yaml)
+export interface PackageBuildTarget {
+  name: string;
+  entry: string;
+}
+
 // Detailed package info from registry (from /api/packages/{id}/details)
 export interface PackageDetails {
   identifier: string;
@@ -167,6 +173,8 @@ export interface PackageDetails {
   installedIn: string[];
   // Dependencies
   dependencies?: PackageDependency[];
+  // Builds (from package's ato.yaml - may not always be available)
+  builds?: PackageBuildTarget[];
 }
 
 // --- Package Summary Types (from /api/packages/summary) ---
@@ -435,6 +443,9 @@ export interface ModuleChild {
   typeName: string;  // The type name (e.g., "Electrical", "Resistor", "V")
   itemType: 'interface' | 'module' | 'component' | 'parameter' | 'trait';
   children: ModuleChild[];  // Nested children (recursive)
+  // For parameters: user-specified constraint (e.g., "50 kΩ ±10%", "0402")
+  // Undefined means no constraint was specified
+  spec?: string;
 }
 
 export interface ModuleDefinition {

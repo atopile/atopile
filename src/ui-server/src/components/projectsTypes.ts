@@ -1,6 +1,6 @@
 /**
  * Shared types for ProjectsPanel components.
- * These types are used across SymbolNode, BuildNode, PackageCard, and ProjectNode.
+ * These types are used across SymbolNode, BuildNode, ProjectCard, and DependencyCard.
  */
 
 // Selection type for tracking what's currently selected in the sidebar
@@ -10,16 +10,6 @@ export interface Selection {
   buildId?: string;
   symbolPath?: string;
   label?: string;
-}
-
-// Symbol in a build tree
-export interface BuildSymbol {
-  name: string;
-  type: 'module' | 'interface' | 'component' | 'parameter';
-  path: string;
-  children?: BuildSymbol[];
-  hasErrors?: boolean;
-  hasWarnings?: boolean;
 }
 
 // Build stage timing
@@ -51,7 +41,6 @@ export interface BuildTarget {
   errors?: number;
   warnings?: number;
   duration?: number;
-  symbols?: BuildSymbol[];
   stages?: BuildStage[];
   // Active build tracking
   buildId?: string;  // Active build ID for cancellation

@@ -3,17 +3,21 @@
  * Event handlers for the Sidebar component
  */
 
-import { useCallback, useRef } from 'react';
 import { sendActionWithResponse } from '../../api/websocket';
 import { useStore } from '../../store';
 import type { Selection, SelectedPackage, StageFilter } from './sidebarUtils';
+import type { PanelId } from '../../utils/panelConfig';
+
+interface PanelControls {
+  expandPanel: (id: PanelId) => void;
+  collapsePanel: (id: PanelId) => void;
+  togglePanel: (id: PanelId) => void;
+}
 
 interface UseSidebarHandlersProps {
   projects: any[];
   state: any;
-  sectionHeights: Record<string, number>;
-  setSectionHeights: React.Dispatch<React.SetStateAction<Record<string, number>>>;
-  setCollapsedSections: React.Dispatch<React.SetStateAction<Set<string>>>;
+  panels: PanelControls;
   setSelection: React.Dispatch<React.SetStateAction<Selection>>;
   setSelectedPackage: React.Dispatch<React.SetStateAction<SelectedPackage | null>>;
   setActiveStageFilter: React.Dispatch<React.SetStateAction<StageFilter | null>>;
@@ -23,32 +27,12 @@ interface UseSidebarHandlersProps {
 export function useSidebarHandlers({
   projects,
   state,
-  sectionHeights,
-  setSectionHeights,
-  setCollapsedSections,
+  panels,
   setSelection,
   setSelectedPackage,
   setActiveStageFilter,
   action,
 }: UseSidebarHandlersProps) {
-  // Resize refs
-  const resizingRef = useRef<string | null>(null);
-  const startYRef = useRef(0);
-  const startHeightRef = useRef(0);
-  const rafRef = useRef<number | null>(null);
-
-  // Simple handlers - no useCallback needed
-  const toggleSection = (sectionId: string) => {
-    setCollapsedSections(prev => {
-      const next = new Set(prev);
-      if (next.has(sectionId)) {
-        next.delete(sectionId);
-      } else {
-        next.add(sectionId);
-      }
-      return next;
-    });
-  };
 
   const handleSelect = (sel: Selection) => {
     setSelection(sel);
@@ -97,11 +81,8 @@ export function useSidebarHandlers({
       projectId
     });
 
-    setCollapsedSections(prev => {
-      const next = new Set(prev);
-      next.delete('problems');
-      return next;
-    });
+    // Expand problems panel when filtering
+    panels.expandPanel('problems');
   };
 
   const clearStageFilter = () => {
@@ -247,50 +228,7 @@ export function useSidebarHandlers({
     }
   };
 
-  // Resize Handlers - KEEP useCallback: added as document event listeners
-  const handleResizeMove = useCallback((e: MouseEvent) => {
-    if (!resizingRef.current) return;
-
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current);
-    }
-
-    rafRef.current = requestAnimationFrame(() => {
-      const delta = e.clientY - startYRef.current;
-      const newHeight = Math.max(100, startHeightRef.current + delta);
-      setSectionHeights(prev => ({ ...prev, [resizingRef.current!]: newHeight }));
-      rafRef.current = null;
-    });
-  }, [setSectionHeights]);
-
-  const handleResizeEnd = useCallback(() => {
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-    resizingRef.current = null;
-    document.removeEventListener('mousemove', handleResizeMove);
-    document.removeEventListener('mouseup', handleResizeEnd);
-  }, [handleResizeMove]);
-
-  const handleResizeStart = useCallback((sectionId: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    resizingRef.current = sectionId;
-    startYRef.current = e.clientY;
-
-    if (sectionHeights[sectionId]) {
-      startHeightRef.current = sectionHeights[sectionId];
-    } else {
-      const section = (e.target as HTMLElement).closest('.collapsible-section');
-      startHeightRef.current = section ? section.getBoundingClientRect().height : 200;
-    }
-
-    document.addEventListener('mousemove', handleResizeMove);
-    document.addEventListener('mouseup', handleResizeEnd);
-  }, [sectionHeights, handleResizeMove, handleResizeEnd]);
-
   return {
-    toggleSection,
     handleSelect,
     handleBuild,
     handleCancelBuild,
@@ -311,6 +249,5 @@ export function useSidebarHandlers({
     handleDependencyVersionChange,
     handleSelectProject,
     handleSelectTarget,
-    handleResizeStart,
   };
 }

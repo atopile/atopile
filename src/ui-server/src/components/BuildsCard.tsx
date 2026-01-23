@@ -12,7 +12,6 @@ import './BuildsCard.css';
 interface BuildsCardProps {
   builds: BuildTarget[];
   projectId: string;
-  projectRoot: string;  // Path to project root for module introspection
   selection: Selection;
   onSelect: (selection: Selection) => void;
   onBuild: (level: 'project' | 'build' | 'symbol', id: string, label: string) => void;
@@ -28,12 +27,13 @@ interface BuildsCardProps {
   availableModules?: ModuleDefinition[];
   // Read-only mode for packages: hides build/delete buttons, status badges, add build
   readOnly?: boolean;
+  // Default expanded state (true for local projects, false for packages)
+  defaultExpanded?: boolean;
 }
 
 export function BuildsCard({
   builds,
   projectId,
-  projectRoot,
   selection,
   onSelect,
   onBuild,
@@ -47,9 +47,10 @@ export function BuildsCard({
   onOpen3D,
   onAddBuild,
   availableModules = [],
-  readOnly = false
+  readOnly = false,
+  defaultExpanded = true
 }: BuildsCardProps) {
-  const [expanded, setExpanded] = useState(true); // Default expanded since builds are primary
+  const [expanded, setExpanded] = useState(defaultExpanded);
 
   const buildingCount = builds.filter(b => b.status === 'building').length;
   const queuedCount = builds.filter(b => b.status === 'queued').length;
@@ -128,7 +129,6 @@ export function BuildsCard({
               key={`${build.id}-${idx}`}
               build={build}
               projectId={projectId}
-              projectRoot={projectRoot}
               selection={selection}
               onSelect={onSelect}
               onBuild={onBuild}

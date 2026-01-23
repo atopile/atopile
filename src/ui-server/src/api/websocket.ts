@@ -8,6 +8,7 @@
 import { useStore } from '../store';
 import type { AppState } from '../types/build';
 import { WS_STATE_URL, getWorkspaceFolders } from './config';
+import { postMessage, onExtensionMessage, initExtensionMessageListener } from './vscodeApi';
 
 // Reconnection settings
 const RECONNECT_DELAY_MS = 1000;
@@ -200,6 +201,9 @@ function handleOpen(): void {
   reconnectAttempts = 0;
   useStore.getState().setConnected(true);
 
+  // Notify VS Code extension of connection status
+  postMessage({ type: 'connectionStatus', isConnected: true });
+
   // Send workspace folders to backend if provided by VS Code extension
   const workspaceFolders = getWorkspaceFolders();
   if (workspaceFolders.length > 0) {
@@ -220,6 +224,13 @@ function handleMessage(event: MessageEvent): void {
           const {
             installing_package_ids,
             install_error,
+            // Extract open signals (snake_case from Python)
+            open_file,
+            open_file_line,
+            open_file_column,
+            open_layout,
+            open_kicad,
+            open_3d,
             ...rest
           } = rawState as Record<string, unknown>;
 
@@ -236,6 +247,38 @@ function handleMessage(event: MessageEvent): void {
               restState.installError ??
               null,
           });
+
+          // Forward open signals to VS Code extension
+          const openFile = open_file as string | null | undefined;
+          const openLayout = open_layout as string | null | undefined;
+          const openKicad = open_kicad as string | null | undefined;
+          const open3d = open_3d as string | null | undefined;
+
+          if (openFile || openLayout || openKicad || open3d) {
+            postMessage({
+              type: 'openSignals',
+              openFile: openFile ?? null,
+              openFileLine: (open_file_line as number | null | undefined) ?? null,
+              openFileColumn: (open_file_column as number | null | undefined) ?? null,
+              openLayout: openLayout ?? null,
+              openKicad: openKicad ?? null,
+              open3d: open3d ?? null,
+            });
+          }
+
+          // Forward atopile settings changes to VS Code extension
+          const atopile = restState.atopile;
+          if (atopile) {
+            postMessage({
+              type: 'atopileSettings',
+              atopile: {
+                source: atopile.source,
+                currentVersion: atopile.currentVersion,
+                branch: atopile.branch,
+                localPath: atopile.localPath,
+              },
+            });
+          }
         }
         break;
 
@@ -283,6 +326,9 @@ function handleClose(event: CloseEvent): void {
   console.log(`[WS] Closed: code=${event.code}, reason=${event.reason}`);
   ws = null;
   useStore.getState().setConnected(false);
+
+  // Notify VS Code extension of connection status
+  postMessage({ type: 'connectionStatus', isConnected: false });
 
   if (!isIntentionallyClosed) {
     scheduleReconnect();
@@ -336,7 +382,35 @@ export function useWebSocketConnection(): void {
 
     useEffect(() => {
       connect();
-      return () => disconnect();
+
+      // Initialize listener for messages from VS Code extension
+      initExtensionMessageListener();
+
+      // Handle messages from extension (build requests, etc.)
+      const unsubscribe = onExtensionMessage((message) => {
+        switch (message.type) {
+          case 'triggerBuild':
+            // Forward build request to backend via WebSocket
+            sendAction('build', {
+              projectRoot: message.projectRoot,
+              targets: message.targets,
+              requestId: message.requestId,
+            });
+            break;
+          case 'setAtopileInstalling':
+            // Forward atopile installing status to backend
+            sendAction('setAtopileInstalling', {
+              installing: message.installing,
+              error: message.error,
+            });
+            break;
+        }
+      });
+
+      return () => {
+        unsubscribe();
+        disconnect();
+      };
     }, []);
   }
 }

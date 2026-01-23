@@ -611,6 +611,12 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                         loop = server_state._event_loop
 
                         async def finalize_install() -> None:
+                            # Clear module introspection cache to pick up new packages
+                            from atopile.server.module_introspection import (
+                                clear_module_cache,
+                            )
+
+                            clear_module_cache()
                             await packages_domain.refresh_packages_state(
                                 scan_paths=[project_path]
                             )
@@ -732,7 +738,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             async def refresh_deps_after_remove():
                 """Refresh project dependencies after package removal."""
                 from atopile.dataclasses import DependencyInfo
+                from atopile.server.module_introspection import clear_module_cache
 
+                # Clear module introspection cache since packages changed
+                clear_module_cache()
                 log.info(f"Refreshing dependencies for project: {project_root}")
 
                 installed = await asyncio.to_thread(

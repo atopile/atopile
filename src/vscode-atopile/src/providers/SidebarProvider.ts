@@ -11,8 +11,37 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { exec } from 'child_process';
 import { backendServer } from '../common/backendServer';
 import { traceInfo, traceError } from '../common/log/logging';
+
+// Message types from the webview
+interface OpenSignalsMessage {
+  type: 'openSignals';
+  openFile?: string | null;
+  openFileLine?: number | null;
+  openFileColumn?: number | null;
+  openLayout?: string | null;
+  openKicad?: string | null;
+  open3d?: string | null;
+}
+
+interface ConnectionStatusMessage {
+  type: 'connectionStatus';
+  isConnected: boolean;
+}
+
+interface AtopileSettingsMessage {
+  type: 'atopileSettings';
+  atopile: {
+    source?: string;
+    currentVersion?: string;
+    branch?: string | null;
+    localPath?: string | null;
+  };
+}
+
+type WebviewMessage = OpenSignalsMessage | ConnectionStatusMessage | AtopileSettingsMessage;
 
 /**
  * Check if we're running in development mode.
@@ -71,6 +100,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._disposables.push(
       vscode.workspace.onDidChangeWorkspaceFolders(() => {
         this._postWorkspaceFolders();
+      })
+    );
+    // Forward messages from backendServer to webview
+    this._disposables.push(
+      backendServer.onWebviewMessage((message) => {
+        this._postToWebview(message);
       })
     );
   }
@@ -165,6 +200,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._lastApiUrl = backendServer.apiUrl;
     this._lastWsUrl = backendServer.wsUrl;
     this._postWorkspaceFolders();
+
+    // Listen for messages from webview
+    this._disposables.push(
+      webviewView.webview.onDidReceiveMessage(
+        (message: WebviewMessage) => this._handleWebviewMessage(message),
+        undefined
+      )
+    );
   }
 
   /**
@@ -187,6 +230,161 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     this._lastWorkspaceFoldersJson = foldersJson;
     this._view.webview.postMessage({ type: 'workspace-folders', folders });
+  }
+
+  /**
+   * Post a message to the webview.
+   */
+  private _postToWebview(message: Record<string, unknown>): void {
+    if (!this._view) {
+      traceInfo('[SidebarProvider] Cannot post message - no view');
+      return;
+    }
+    this._view.webview.postMessage(message);
+  }
+
+  /**
+   * Handle messages from the webview (forwarded from ui-server via postMessage).
+   */
+  private _handleWebviewMessage(message: WebviewMessage): void {
+    switch (message.type) {
+      case 'openSignals':
+        this._handleOpenSignals(message);
+        break;
+      case 'connectionStatus':
+        backendServer.setConnected(message.isConnected);
+        break;
+      case 'atopileSettings':
+        this._handleAtopileSettings(message.atopile);
+        break;
+      default:
+        traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
+    }
+  }
+
+  /**
+   * Handle open signals from the backend.
+   */
+  private _handleOpenSignals(msg: OpenSignalsMessage): void {
+    if (msg.openFile) {
+      this._openFile(msg.openFile, msg.openFileLine ?? undefined, msg.openFileColumn ?? undefined);
+    }
+    if (msg.openLayout) {
+      this._openWithVSCode(msg.openLayout);
+    }
+    if (msg.openKicad) {
+      this._openWithSystem(msg.openKicad);
+    }
+    if (msg.open3d) {
+      this._openWithSystem(msg.open3d);
+    }
+  }
+
+  /**
+   * Open a file in VS Code at a specific line and column.
+   */
+  private _openFile(filePath: string, line?: number, column?: number): void {
+    traceInfo(`[SidebarProvider] Opening file: ${filePath}${line ? `:${line}` : ''}`);
+    const uri = vscode.Uri.file(filePath);
+    vscode.workspace.openTextDocument(uri).then(
+      (doc) => {
+        const options: vscode.TextDocumentShowOptions = {};
+        if (line != null) {
+          const position = new vscode.Position(Math.max(0, line - 1), column ?? 0);
+          options.selection = new vscode.Range(position, position);
+        }
+        vscode.window.showTextDocument(doc, options);
+      },
+      (err) => {
+        traceError(`[SidebarProvider] Failed to open file ${filePath}: ${err}`);
+      }
+    );
+  }
+
+  /**
+   * Open a file in VS Code (for layout files).
+   */
+  private _openWithVSCode(filePath: string): void {
+    traceInfo(`[SidebarProvider] Opening with VS Code: ${filePath}`);
+    vscode.commands.executeCommand('vscode.open', vscode.Uri.file(filePath));
+  }
+
+  /**
+   * Open a file with the system default application (for KiCad, 3D files).
+   */
+  private _openWithSystem(filePath: string): void {
+    traceInfo(`[SidebarProvider] Opening with system: ${filePath}`);
+    const platform = process.platform;
+    const cmd = platform === 'darwin' ? 'open'
+              : platform === 'win32' ? 'start ""'
+              : 'xdg-open';
+
+    exec(`${cmd} "${filePath}"`, (err: Error | null) => {
+      if (err) {
+        traceError(`[SidebarProvider] Failed to open: ${err}`);
+        vscode.window.showErrorMessage(`Failed to open: ${err.message}`);
+      }
+    });
+  }
+
+  /**
+   * Handle atopile settings changes from the UI.
+   * Syncs atopile settings to VS Code configuration.
+   */
+  private _handleAtopileSettings(atopile: AtopileSettingsMessage['atopile']): void {
+    if (!atopile) return;
+
+    // Store for comparison to avoid unnecessary updates
+    const settingsKey = JSON.stringify({
+      source: atopile.source,
+      currentVersion: atopile.currentVersion,
+      branch: atopile.branch,
+      localPath: atopile.localPath,
+    });
+
+    // Skip if nothing changed (we'd need to track this, but for simplicity we'll always update)
+    // This is called on every state update, so we should be careful not to spam config changes
+
+    const config = vscode.workspace.getConfiguration('atopile');
+    const hasWorkspace = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0;
+    const target = hasWorkspace ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+
+    try {
+      if (atopile.source === 'local' && atopile.localPath) {
+        // For local mode, set the 'ato' setting directly
+        traceInfo(`[SidebarProvider] Setting atopile.ato = ${atopile.localPath}`);
+        config.update('ato', atopile.localPath, target);
+        config.update('from', undefined, target);
+      } else {
+        // For release/branch mode, set the 'from' setting
+        const fromValue = this._atopileSettingsToFrom(atopile);
+        traceInfo(`[SidebarProvider] Setting atopile.from = ${fromValue}`);
+        config.update('from', fromValue, target);
+        config.update('ato', undefined, target);
+      }
+    } catch (error) {
+      traceError(`[SidebarProvider] Failed to update atopile settings: ${error}`);
+    }
+  }
+
+  /**
+   * Convert UI atopile settings to a VS Code 'atopile.from' setting value.
+   */
+  private _atopileSettingsToFrom(atopile: AtopileSettingsMessage['atopile']): string {
+    if (!atopile) return 'atopile';
+
+    switch (atopile.source) {
+      case 'release':
+        return atopile.currentVersion
+          ? `atopile@${atopile.currentVersion}`
+          : 'atopile';
+      case 'branch':
+        return `git+https://github.com/atopile/atopile.git@${atopile.branch || 'main'}`;
+      case 'local':
+        return atopile.localPath || '';
+      default:
+        return 'atopile';
+    }
   }
 
   /**

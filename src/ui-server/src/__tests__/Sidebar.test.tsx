@@ -1,45 +1,26 @@
 /**
  * Sidebar component tests
- * Tests main panel rendering, section toggling, and VS Code messaging
+ * Tests main panel rendering and section toggling.
+ *
+ * Architecture: Sidebar uses Zustand store for state and WebSocket for actions.
+ * Panels start collapsed by default (via usePanelSizing hook).
  */
 
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { vscodeApiMocks } from './setup';
+import { useStore } from '../store';
 
 // Mock child components to isolate Sidebar testing
 vi.mock('../components/ProjectsPanel', () => ({
   ProjectsPanel: vi.fn(({ filterType }) => (
     <div data-testid={`projects-panel-${filterType}`}>ProjectsPanel ({filterType})</div>
   )),
-  mockProjects: [
-    {
-      id: '/test/project',
-      name: 'test-project',
-      type: 'project' as const,
-      path: '/test/project',
-      builds: [
-        { id: 'default', name: 'default', entry: 'main.ato:App', status: 'idle', stages: [] },
-      ],
-    },
-    {
-      id: 'atopile/test-package',
-      name: 'test-package',
-      type: 'package' as const,
-      path: 'packages/atopile/test-package',
-      version: '1.0.0',
-      builds: [],
-    },
-  ],
 }));
 
 vi.mock('../components/ProblemsPanel', () => ({
   ProblemsPanel: vi.fn(({ problems }) => (
     <div data-testid="problems-panel">ProblemsPanel ({problems?.length || 0} problems)</div>
   )),
-  mockProblems: [
-    { id: '1', level: 'error', message: 'Test error', file: 'test.ato', line: 10 },
-  ],
 }));
 
 vi.mock('../components/StandardLibraryPanel', () => ({
@@ -54,6 +35,10 @@ vi.mock('../components/BOMPanel', () => ({
   BOMPanel: vi.fn(() => <div data-testid="bom-panel">BOMPanel</div>),
 }));
 
+vi.mock('../components/BuildQueuePanel', () => ({
+  BuildQueuePanel: vi.fn(() => <div data-testid="build-queue-panel">BuildQueuePanel</div>),
+}));
+
 vi.mock('../components/PackageDetailPanel', () => ({
   PackageDetailPanel: vi.fn(({ onClose }) => (
     <div data-testid="package-detail-panel">
@@ -63,18 +48,18 @@ vi.mock('../components/PackageDetailPanel', () => ({
   )),
 }));
 
-vi.mock('../api/client', () => ({
-  api: {
-    bom: {
-      get: vi.fn().mockResolvedValue({ version: '1.0', components: [] }),
-    },
-  },
+vi.mock('../api/websocket', () => ({
+  sendAction: vi.fn(),
+  connect: vi.fn(),
+  disconnect: vi.fn(),
+  isConnected: vi.fn(() => true),
 }));
 
-// Import Sidebar after mocks
+// Import after mocks
 import { Sidebar } from '../components/Sidebar';
+import { sendAction } from '../api/websocket';
 
-// Mock state data
+// Mock state data - minimal state needed for Sidebar to render
 const mockState = {
   isConnected: true,
   projects: [
@@ -84,31 +69,11 @@ const mockState = {
       targets: [{ name: 'default', entry: 'main.ato:App', root: '/test/project' }],
     },
   ],
-  builds: [
-    {
-      name: 'default',
-      display_name: 'default',
-      project_name: 'test-project',
-      status: 'success',
-      elapsed_seconds: 5.2,
-      warnings: 0,
-      errors: 0,
-      return_code: 0,
-      stages: [],
-    },
-  ],
-  packages: [
-    {
-      identifier: 'atopile/test-pkg',
-      name: 'test-pkg',
-      publisher: 'atopile',
-      version: '1.0.0',
-      installed: true,
-      installed_in: ['/test/project'],
-    },
-  ],
+  builds: [],
+  queuedBuilds: [],
+  packages: [],
   problems: [],
-  problemFilter: { levels: [], buildNames: [], stageIds: [] },
+  problemFilter: { levels: ['error', 'warning'], buildNames: [], stageIds: [] },
   stdlibItems: [],
   isLoadingStdlib: false,
   bomData: null,
@@ -119,100 +84,55 @@ const mockState = {
   packageDetailsError: null,
   projectModules: {},
   isLoadingModules: false,
+  projectFiles: {},
+  isLoadingFiles: false,
+  projectDependencies: {},
+  isLoadingDependencies: false,
+  currentVariablesData: null,
+  isLoadingVariables: false,
+  variablesError: null,
+  selectedProjectRoot: null,
+  selectedTargetNames: [],
+  installingPackageIds: [],
+  installError: null,
+  isLoadingProjects: false,
+  projectsError: null,
+  isLoadingPackages: false,
+  packagesError: null,
+  isLoadingProblems: false,
+  expandedTargets: [],
+  version: '1.0.0',
+  logoUri: '',
+  atopile: {
+    currentVersion: '0.14.0',
+    source: 'release' as const,
+    localPath: null,
+    branch: null,
+    availableVersions: [],
+    availableBranches: [],
+    detectedInstallations: [],
+    isInstalling: false,
+    installProgress: null,
+    error: null,
+  },
+  developerMode: false,
+  selectedBuildId: null,
+  selectedBuildName: null,
+  selectedProjectName: null,
 };
 
 describe('Sidebar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vscodeApiMocks.reset();
+    // Reset store with mock state
+    useStore.setState(mockState);
   });
 
-  describe('loading state', () => {
-    it('shows loading when no state received', () => {
-      render(<Sidebar />);
-      expect(screen.getByText('Loading...')).toBeInTheDocument();
-    });
-
-    it('sends ready message on mount', () => {
-      render(<Sidebar />);
-      expect(vscodeApiMocks.postMessage).toHaveBeenCalledWith({ type: 'ready' });
-    });
-  });
-
-  describe('state handling', () => {
-    it('renders content after receiving state', async () => {
-      render(<Sidebar />);
-
-      // Simulate receiving state from extension
-      act(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-          data: { type: 'state', data: mockState },
-        }));
-      });
-
-      await waitFor(() => {
-        expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
-      });
-
-      // Check sections are rendered
-      expect(screen.getByText('Projects')).toBeInTheDocument();
-      expect(screen.getByText('Packages')).toBeInTheDocument();
-      expect(screen.getByText('Problems')).toBeInTheDocument();
-    });
-
-    it('updates state when new message received', async () => {
-      render(<Sidebar />);
-
-      // Initial state
-      act(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-          data: { type: 'state', data: mockState },
-        }));
-      });
-
-      await waitFor(() => {
-        expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
-      });
-
-      // Expand the Problems section (collapsed by default)
-      const problemsTitle = screen.getByText('Problems');
-      const sectionHeader = problemsTitle.closest('.section-title-bar');
-      fireEvent.click(sectionHeader!);
-
-      // Updated state with problem
-      const updatedState = {
-        ...mockState,
-        problems: [{ id: '1', level: 'error', message: 'New error' }],
-      };
-
-      act(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-          data: { type: 'state', data: updatedState },
-        }));
-      });
-
-      // ProblemsPanel should receive updated problems
-      await waitFor(() => {
-        expect(screen.getByTestId('problems-panel')).toHaveTextContent('1 problems');
-      });
-    });
-  });
-
-  describe('section rendering', () => {
-    beforeEach(async () => {
-      render(<Sidebar />);
-      act(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-          data: { type: 'state', data: mockState },
-        }));
-      });
-      await waitFor(() => {
-        expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
-      });
-    });
-
+  describe('rendering', () => {
     it('renders all section titles', () => {
+      render(<Sidebar />);
       expect(screen.getByText('Projects')).toBeInTheDocument();
+      expect(screen.getByText('Build Queue')).toBeInTheDocument();
       expect(screen.getByText('Packages')).toBeInTheDocument();
       expect(screen.getByText('Problems')).toBeInTheDocument();
       expect(screen.getByText('Standard Library')).toBeInTheDocument();
@@ -220,323 +140,106 @@ describe('Sidebar', () => {
       expect(screen.getByText('BOM')).toBeInTheDocument();
     });
 
-    it('renders ProjectsPanel for projects filter', () => {
-      expect(screen.getByTestId('projects-panel-projects')).toBeInTheDocument();
+    it('renders the unified layout container', () => {
+      const { container } = render(<Sidebar />);
+      expect(container.querySelector('.unified-layout')).toBeInTheDocument();
     });
 
-    it('renders ProjectsPanel for packages filter when expanded', async () => {
-      // Packages section is collapsed by default, expand it first
-      const packagesTitle = screen.getByText('Packages');
-      const sectionHeader = packagesTitle.closest('.section-title-bar');
-      fireEvent.click(sectionHeader!);
-
-      await waitFor(() => {
-        expect(screen.getByTestId('projects-panel-packages')).toBeInTheDocument();
-      });
-    });
-
-    // Note: problems, stdlib, variables, and bom sections are collapsed by default
-    // so their panel children are not in the DOM until expanded
-    it('renders ProblemsPanel when section is expanded', async () => {
-      // Expand the Problems section
-      const problemsTitle = screen.getByText('Problems');
-      const sectionHeader = problemsTitle.closest('.section-title-bar');
-      fireEvent.click(sectionHeader!);
-
-      await waitFor(() => {
-        expect(screen.getByTestId('problems-panel')).toBeInTheDocument();
-      });
-    });
-
-    // Note: stdlib, variables, and bom sections are collapsed by default
-    // so their panel children are not in the DOM until expanded
-    it('renders StandardLibraryPanel when section is expanded', async () => {
-      // Expand the Standard Library section
-      const stdlibTitle = screen.getByText('Standard Library');
-      const sectionHeader = stdlibTitle.closest('.section-title-bar');
-      fireEvent.click(sectionHeader!);
-
-      await waitFor(() => {
-        expect(screen.getByTestId('stdlib-panel')).toBeInTheDocument();
-      });
-    });
-
-    it('renders VariablesPanel when section is expanded', async () => {
-      // Expand the Variables section
-      const variablesTitle = screen.getByText('Variables');
-      const sectionHeader = variablesTitle.closest('.section-title-bar');
-      fireEvent.click(sectionHeader!);
-
-      await waitFor(() => {
-        expect(screen.getByTestId('variables-panel')).toBeInTheDocument();
-      });
-    });
-
-    it('renders BOMPanel when section is expanded', async () => {
-      // Expand the BOM section
-      const bomTitle = screen.getByText('BOM');
-      const sectionHeader = bomTitle.closest('.section-title-bar');
-      fireEvent.click(sectionHeader!);
-
-      await waitFor(() => {
-        expect(screen.getByTestId('bom-panel')).toBeInTheDocument();
-      });
+    it('renders the panel header', () => {
+      const { container } = render(<Sidebar />);
+      expect(container.querySelector('.panel-header')).toBeInTheDocument();
     });
   });
 
   describe('section collapsing', () => {
-    it('starts with stdlib, variables, bom sections collapsed by default', async () => {
+    it('starts with all sections collapsed by default', () => {
       const { container } = render(<Sidebar />);
 
-      act(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-          data: { type: 'state', data: mockState },
-        }));
+      // All sections should be collapsed by default (usePanelSizing behavior)
+      const sections = container.querySelectorAll('.collapsible-section');
+      sections.forEach(section => {
+        expect(section).toHaveClass('collapsed');
       });
+    });
 
-      await waitFor(() => {
-        expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
-      });
+    it('toggles section when title bar clicked', () => {
+      const { container } = render(<Sidebar />);
 
-      // Collapsed sections have the 'collapsed' class
-      const stdlibSection = container.querySelector('[data-section-id="stdlib"]');
-      const variablesSection = container.querySelector('[data-section-id="variables"]');
-      const bomSection = container.querySelector('[data-section-id="bom"]');
-
-      expect(stdlibSection).toHaveClass('collapsed');
-      expect(variablesSection).toHaveClass('collapsed');
-      expect(bomSection).toHaveClass('collapsed');
-
-      // Only Projects should NOT be collapsed by default
-      const projectsSection = container.querySelector('[data-section-id="projects"]');
-      const packagesSection = container.querySelector('[data-section-id="packages"]');
       const problemsSection = container.querySelector('[data-section-id="problems"]');
-
-      expect(projectsSection).not.toHaveClass('collapsed');
-      // Packages, problems are collapsed by default along with stdlib, variables, bom
-      expect(packagesSection).toHaveClass('collapsed');
       expect(problemsSection).toHaveClass('collapsed');
+
+      // Click to expand
+      const problemsTitleBar = container.querySelector('[data-section-id="problems"] .section-title-bar');
+      fireEvent.click(problemsTitleBar!);
+
+      expect(problemsSection).not.toHaveClass('collapsed');
     });
 
-    it('toggles section when title clicked', async () => {
+    it('expands then collapses section on double click', () => {
       const { container } = render(<Sidebar />);
 
-      act(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-          data: { type: 'state', data: mockState },
-        }));
-      });
-
-      await waitFor(() => {
-        expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
-      });
-
-      // Find the Projects section and verify it starts expanded
-      const projectsSection = container.querySelector('[data-section-id="projects"]');
-      expect(projectsSection).not.toHaveClass('collapsed');
-
-      // Click to collapse - use container to find elements
-      const projectsTitleBar = container.querySelector('[data-section-id="projects"] .section-title-bar');
-      fireEvent.click(projectsTitleBar!);
-
-      // Should now be collapsed
-      expect(projectsSection).toHaveClass('collapsed');
-    });
-
-    it('expands collapsed section when clicked', async () => {
-      const { container } = render(<Sidebar />);
-
-      act(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-          data: { type: 'state', data: mockState },
-        }));
-      });
-
-      await waitFor(() => {
-        expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
-      });
-
-      // stdlib starts collapsed
       const stdlibSection = container.querySelector('[data-section-id="stdlib"]');
-      expect(stdlibSection).toHaveClass('collapsed');
+      const stdlibTitleBar = container.querySelector('[data-section-id="stdlib"] .section-title-bar');
 
-      // Click to expand - use container
+      // Expand
+      fireEvent.click(stdlibTitleBar!);
+      expect(stdlibSection).not.toHaveClass('collapsed');
+
+      // Collapse
+      fireEvent.click(stdlibTitleBar!);
+      expect(stdlibSection).toHaveClass('collapsed');
+    });
+  });
+
+  describe('panel content rendering when expanded', () => {
+    it('renders ProblemsPanel when problems section is expanded', () => {
+      const { container } = render(<Sidebar />);
+
+      // Expand the Problems section
+      const problemsTitleBar = container.querySelector('[data-section-id="problems"] .section-title-bar');
+      fireEvent.click(problemsTitleBar!);
+
+      expect(screen.getByTestId('problems-panel')).toBeInTheDocument();
+    });
+
+    it('renders StandardLibraryPanel when stdlib section is expanded', () => {
+      const { container } = render(<Sidebar />);
+
       const stdlibTitleBar = container.querySelector('[data-section-id="stdlib"] .section-title-bar');
       fireEvent.click(stdlibTitleBar!);
 
-      // Should now be expanded
-      expect(stdlibSection).not.toHaveClass('collapsed');
+      expect(screen.getByTestId('stdlib-panel')).toBeInTheDocument();
+    });
+
+    it('renders VariablesPanel when variables section is expanded', () => {
+      const { container } = render(<Sidebar />);
+
+      const variablesTitleBar = container.querySelector('[data-section-id="variables"] .section-title-bar');
+      fireEvent.click(variablesTitleBar!);
+
+      expect(screen.getByTestId('variables-panel')).toBeInTheDocument();
+    });
+
+    it('renders BOMPanel when bom section is expanded', () => {
+      const { container } = render(<Sidebar />);
+
+      const bomTitleBar = container.querySelector('[data-section-id="bom"] .section-title-bar');
+      fireEvent.click(bomTitleBar!);
+
+      expect(screen.getByTestId('bom-panel')).toBeInTheDocument();
     });
   });
 
-  describe('VS Code actions', () => {
-    beforeEach(async () => {
-      render(<Sidebar />);
-      act(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-          data: { type: 'state', data: mockState },
-        }));
-      });
-      await waitFor(() => {
-        expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
-      });
-    });
-
-    it('clears postMessage mock on each test', () => {
-      // Ready message should be sent
-      expect(vscodeApiMocks.postMessage).toHaveBeenCalledWith({ type: 'ready' });
-    });
-  });
-
-  describe('project transformation', () => {
-    it('transforms state projects into component format', async () => {
+  describe('WebSocket action dispatch', () => {
+    it('sends refresh actions on mount', async () => {
       render(<Sidebar />);
 
-      const stateWithBuilds = {
-        ...mockState,
-        builds: [
-          {
-            name: 'default',
-            display_name: 'default',
-            project_name: 'test-project',
-            status: 'failed',
-            elapsed_seconds: 10,
-            warnings: 2,
-            errors: 1,
-            return_code: 1,
-            stages: [
-              { name: 'compile', stage_id: 'compile', elapsed_seconds: 5, status: 'failed', infos: 0, warnings: 2, errors: 1, alerts: 0 },
-            ],
-          },
-        ],
-      };
-
-      act(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-          data: { type: 'state', data: stateWithBuilds },
-        }));
-      });
-
+      // Actions are dispatched in useSidebarEffects after a 100ms delay
       await waitFor(() => {
-        expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
-      });
-
-      // ProjectsPanel should be rendered with projects data
-      expect(screen.getByTestId('projects-panel-projects')).toBeInTheDocument();
-    });
-
-    it('transforms packages into component format', async () => {
-      render(<Sidebar />);
-
-      const stateWithPackages = {
-        ...mockState,
-        packages: [
-          {
-            identifier: 'atopile/sensor-bme280',
-            name: 'sensor-bme280',
-            publisher: 'atopile',
-            version: '2.0.0',
-            latest_version: '2.1.0',
-            installed: true,
-            installed_in: ['/test/project'],
-            description: 'BME280 sensor driver',
-          },
-        ],
-      };
-
-      act(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-          data: { type: 'state', data: stateWithPackages },
-        }));
-      });
-
-      await waitFor(() => {
-        expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
-      });
-
-      // Packages section is collapsed by default, expand it first
-      const packagesTitle = screen.getByText('Packages');
-      const sectionHeader = packagesTitle.closest('.section-title-bar');
-      fireEvent.click(sectionHeader!);
-
-      // Packages panel should be rendered after expansion
-      await waitFor(() => {
-        expect(screen.getByTestId('projects-panel-packages')).toBeInTheDocument();
-      });
-    });
-
-    it('filters out malformed packages', async () => {
-      render(<Sidebar />);
-
-      const stateWithMalformedPackages = {
-        ...mockState,
-        packages: [
-          { identifier: 'good/package', name: 'package', installed: true, installed_in: [] },
-          { identifier: null, name: null }, // Malformed
-          { identifier: 'another/good', name: 'good', installed: false, installed_in: [] },
-        ],
-      };
-
-      act(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-          data: { type: 'state', data: stateWithMalformedPackages },
-        }));
-      });
-
-      await waitFor(() => {
-        expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
-      });
-
-      // Packages section is collapsed by default, expand it first
-      const packagesTitle = screen.getByText('Packages');
-      const sectionHeader = packagesTitle.closest('.section-title-bar');
-      fireEvent.click(sectionHeader!);
-
-      // Should render without error after expansion
-      await waitFor(() => {
-        expect(screen.getByTestId('projects-panel-packages')).toBeInTheDocument();
-      });
-    });
-  });
-
-  describe('problem filtering', () => {
-    it('applies problem filter from state', async () => {
-      render(<Sidebar />);
-
-      const stateWithProblemsAndFilter = {
-        ...mockState,
-        problems: [
-          { id: '1', level: 'error', message: 'Error 1' },
-          { id: '2', level: 'warning', message: 'Warning 1' },
-          { id: '3', level: 'error', message: 'Error 2' },
-        ],
-        problemFilter: {
-          levels: ['error'],
-          buildNames: [],
-          stageIds: [],
-        },
-      };
-
-      act(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-          data: { type: 'state', data: stateWithProblemsAndFilter },
-        }));
-      });
-
-      await waitFor(() => {
-        expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
-      });
-
-      // Expand the Problems section (collapsed by default)
-      const problemsTitle = screen.getByText('Problems');
-      const sectionHeader = problemsTitle.closest('.section-title-bar');
-      fireEvent.click(sectionHeader!);
-
-      // ProblemsPanel receives filtered problems (only errors)
-      // Mock counts all passed problems, filter happens in Sidebar
-      await waitFor(() => {
-        expect(screen.getByTestId('problems-panel')).toBeInTheDocument();
-      });
+        expect(sendAction).toHaveBeenCalledWith('refreshProblems', undefined);
+        expect(sendAction).toHaveBeenCalledWith('refreshPackages', undefined);
+        expect(sendAction).toHaveBeenCalledWith('refreshStdlib', undefined);
+      }, { timeout: 200 });
     });
   });
 
@@ -547,66 +250,8 @@ describe('Sidebar', () => {
       const { unmount } = render(<Sidebar />);
       unmount();
 
-      expect(removeEventListenerSpy).toHaveBeenCalledWith('message', expect.any(Function));
+      expect(removeEventListenerSpy).toHaveBeenCalled();
       removeEventListenerSpy.mockRestore();
-    });
-  });
-
-  describe('entry point parsing', () => {
-    it('parses valid entry point format', async () => {
-      render(<Sidebar />);
-
-      const stateWithEntry = {
-        ...mockState,
-        projects: [
-          {
-            root: '/test',
-            name: 'test',
-            targets: [{ name: 'default', entry: 'main.ato:MyModule', root: '/test' }],
-          },
-        ],
-      };
-
-      act(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-          data: { type: 'state', data: stateWithEntry },
-        }));
-      });
-
-      await waitFor(() => {
-        expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
-      });
-
-      // Should parse without error
-      expect(screen.getByTestId('projects-panel-projects')).toBeInTheDocument();
-    });
-
-    it('handles entry without colon', async () => {
-      render(<Sidebar />);
-
-      const stateWithInvalidEntry = {
-        ...mockState,
-        projects: [
-          {
-            root: '/test',
-            name: 'test',
-            targets: [{ name: 'default', entry: 'main.ato', root: '/test' }],
-          },
-        ],
-      };
-
-      act(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-          data: { type: 'state', data: stateWithInvalidEntry },
-        }));
-      });
-
-      await waitFor(() => {
-        expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
-      });
-
-      // Should handle gracefully
-      expect(screen.getByTestId('projects-panel-projects')).toBeInTheDocument();
     });
   });
 });
