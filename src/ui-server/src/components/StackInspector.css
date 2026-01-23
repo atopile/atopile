@@ -76,8 +76,7 @@
 
 /* Frames list */
 .si-frames {
-  max-height: 400px;
-  overflow-y: auto;
+  /* No max-height - let traceback expand fully and use page scroll */
 }
 
 /* Individual frame */
