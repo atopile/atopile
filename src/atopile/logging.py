@@ -1201,11 +1201,12 @@ class LogHandler(RichHandler):
         # ANSI codes start with ESC[ which is \x1b[ or \033[
         has_ansi = "\x1b[" in message or "\033[" in message
 
+        # If message has ANSI codes, parse them to render properly
+        # This handles output from rich_to_string() which includes ANSI styling
+        if has_ansi:
+            return Text.from_ansi(message)
+
         if not self._is_terminal:
-            # For non-terminal output, parse ANSI codes if present to strip them
-            # or preserve the formatted structure
-            if has_ansi:
-                return Text.from_ansi(message)
             return Text(message)
         use_markdown = getattr(record, "markdown", False)
         use_markup = getattr(record, "markup", self.markup)
