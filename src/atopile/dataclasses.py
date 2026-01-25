@@ -88,6 +88,37 @@ class StageCompleteEvent:
     description: str
 
 
+@dataclass
+class ActiveBuild:
+    """Internal state for an active (queued/building/completed) build."""
+
+    # Core identification
+    build_id: str
+    project_root: str
+    target: str
+    timestamp: str
+
+    # Build configuration
+    entry: Optional[str] = None
+    standalone: bool = False
+    frozen: bool = False
+
+    # Status
+    status: BuildStatus = BuildStatus.QUEUED
+    return_code: Optional[int] = None
+    error: Optional[str] = None
+
+    # Timing
+    started_at: float = 0.0
+    building_started_at: Optional[float] = None
+    duration: float = 0.0
+
+    # Progress
+    stages: list[dict[str, Any]] = field(default_factory=list)
+    warnings: int = 0
+    errors: int = 0
+
+
 # =============================================================================
 # Log-related Data Structures
 # =============================================================================

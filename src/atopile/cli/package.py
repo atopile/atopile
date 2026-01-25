@@ -386,55 +386,57 @@ class _PackageValidators:
 
     @staticmethod
     def verify_no_warnings(config: "Config"):
-        import json
+        from atopile.model import build_history
 
-        # Scan for per-target build summaries
-        builds_dir = config.project.paths.build / "builds"
+        project_root = str(config.project.paths.root)
 
-        if not builds_dir.exists():
-            raise UserFileNotFoundError(
-                f"Missing builds directory: {builds_dir}. "
-                "Please run `ato build` to generate build summaries."
-            )
-
-        # Load all per-target summaries
-        builds = []
-        for summary_file in builds_dir.glob("*/build_summary.json"):
-            try:
-                build_data = json.loads(summary_file.read_text())
-                builds.append(build_data)
-            except (json.JSONDecodeError, OSError):
-                continue
+        # Query recent builds for this project from the database
+        builds = build_history.get_builds_by_project_target(
+            project_root=project_root,
+            limit=50,  # Get recent builds
+        )
 
         if not builds:
             raise UserFileNotFoundError(
-                f"No build summaries found in {builds_dir}. "
-                "Please run `ato build` to generate build summaries."
+                f"No build history found for {project_root}. "
+                "Please run `ato build` to generate build records."
             )
 
-        # Check total warnings from all builds
-        total_warnings = sum(b.get("warnings", 0) for b in builds)
+        # Get the latest build for each target
+        latest_by_target: dict[str, dict] = {}
+        for build in builds:
+            target = build.get("target", "default")
+            if target not in latest_by_target:
+                latest_by_target[target] = build
+
+        # Check total warnings from latest builds per target
+        total_warnings = sum(b.get("warnings", 0) for b in latest_by_target.values())
         if total_warnings > 0:
-            # Collect warning details from individual builds/stages
+            # Collect warning details from individual builds
             warning_details: list[str] = []
-            for build in builds:
-                build_name = build.get("display_name") or build.get("name", "unknown")
+            for target, build in latest_by_target.items():
                 build_warnings = build.get("warnings", 0)
                 if build_warnings > 0:
-                    # Check stages for more detail
-                    stages_with_warnings = [
-                        f"  - {stage['name']}: {stage['warnings']} warning(s)"
-                        for stage in build.get("stages", [])
-                        if stage.get("warnings", 0) > 0
-                    ]
-                    if stages_with_warnings:
-                        warning_details.append(
-                            f"{build_name} ({build_warnings} warning(s)):\n"
-                            + "\n".join(stages_with_warnings)
-                        )
+                    # Get full build info for stage details
+                    build_info = build_history.get_build_info_by_id(build["build_id"])
+                    if build_info:
+                        stages_with_warnings = [
+                            f"  - {stage['name']}: {stage['warnings']} warning(s)"
+                            for stage in build_info.get("stages", [])
+                            if stage.get("warnings", 0) > 0
+                        ]
+                        if stages_with_warnings:
+                            warning_details.append(
+                                f"{target} ({build_warnings} warning(s)):\n"
+                                + "\n".join(stages_with_warnings)
+                            )
+                        else:
+                            warning_details.append(
+                                f"{target}: {build_warnings} warning(s)"
+                            )
                     else:
                         warning_details.append(
-                            f"{build_name}: {build_warnings} warning(s)"
+                            f"{target}: {build_warnings} warning(s)"
                         )
 
             raise UserBadParameterError(

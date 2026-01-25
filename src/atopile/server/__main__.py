@@ -64,14 +64,6 @@ def main():
 
     logs_base.mkdir(parents=True, exist_ok=True)
 
-    # Create a default summary file location
-    summary_file = logs_base / "latest" / "summary.json"
-    summary_file.parent.mkdir(parents=True, exist_ok=True)
-
-    # Initialize empty summary if it doesn't exist
-    if not summary_file.exists():
-        summary_file.write_text('{"builds": [], "totals": {}}')
-
     # Convert workspace path (use first provided or cwd)
     workspace_path = Path(args.workspace[0]) if args.workspace else Path.cwd()
 
@@ -103,7 +95,6 @@ def main():
 
     # Create and start server
     server = DashboardServer(
-        summary_file=summary_file,
         logs_base=logs_base,
         port=port,
         workspace_path=workspace_path,

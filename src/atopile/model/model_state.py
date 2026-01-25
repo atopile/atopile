@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
+
+from atopile.dataclasses import ActiveBuild
 
 log = logging.getLogger(__name__)
 
@@ -22,7 +24,7 @@ class ModelState:
 
     def __init__(self) -> None:
         self._workspace_path: Optional[Path] = None
-        self._active_builds: dict[str, dict[str, Any]] = {}
+        self._active_builds: list[ActiveBuild] = []
         self._build_lock = threading.RLock()  # RLock allows reentrant locking
 
     def set_workspace_path(self, path: Optional[Path]) -> None:
@@ -35,9 +37,28 @@ class ModelState:
         return self._workspace_path
 
     @property
-    def active_builds(self) -> dict[str, dict[str, Any]]:
-        """Get the active builds dict. Use build_lock for thread-safe access."""
+    def active_builds(self) -> list[ActiveBuild]:
+        """Get the active builds list. Use build_lock for thread-safe access."""
         return self._active_builds
+
+    def find_build(self, build_id: str) -> ActiveBuild | None:
+        """Find a build by ID. Must be called with build_lock held."""
+        return next((b for b in self._active_builds if b.build_id == build_id), None)
+
+    def add_build(self, build: ActiveBuild) -> None:
+        """Add a build. Must be called with build_lock held."""
+        self._active_builds.append(build)
+
+    def remove_build(self, build_id: str) -> bool:
+        """
+        Remove a build by ID. Returns True if found and removed.
+        Must be called with build_lock held.
+        """
+        for i, build in enumerate(self._active_builds):
+            if build.build_id == build_id:
+                self._active_builds.pop(i)
+                return True
+        return False
 
     @property
     def build_lock(self) -> threading.RLock:

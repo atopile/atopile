@@ -9,6 +9,10 @@ import logging
 import sqlite3
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from atopile.dataclasses import ActiveBuild
 
 log = logging.getLogger(__name__)
 
@@ -53,7 +57,7 @@ def init_build_history_db(db_path: Path) -> None:
         log.error(f"Failed to initialize build history database: {exc}")
 
 
-def save_build_to_history(build_id: str, build_info: dict) -> None:
+def save_build_to_history(build_id: str, build: ActiveBuild) -> None:
     """Save a build record to the history database."""
     if not _build_history_db:
         return
@@ -63,9 +67,15 @@ def save_build_to_history(build_id: str, build_info: dict) -> None:
         cursor = conn.cursor()
 
         # Count warnings/errors from stages
-        stages = build_info.get("stages", [])
+        stages = build.stages or []
         warnings = sum(s.get("warnings", 0) for s in stages)
         errors = sum(s.get("errors", 0) for s in stages)
+
+        # Get status value (enum to string)
+        if hasattr(build.status, "value"):
+            status_value = build.status.value
+        else:
+            status_value = str(build.status)
 
         cursor.execute(
             """
@@ -76,15 +86,15 @@ def save_build_to_history(build_id: str, build_info: dict) -> None:
             """,
             (
                 build_id,
-                build_info.get("build_key", ""),
-                build_info.get("project_root", ""),
+                "",  # build_key not stored in ActiveBuild
+                build.project_root or "",
                 # Store target as single value (column still named "targets" for compat)
-                build_info.get("target", "default"),
-                build_info.get("entry"),
-                build_info.get("status", "unknown"),
-                build_info.get("return_code"),
-                build_info.get("error"),
-                build_info.get("started_at", time.time()),
+                build.target or "default",
+                build.entry,
+                status_value,
+                build.return_code,
+                build.error,
+                build.started_at or time.time(),
                 time.time(),  # completed_at
                 json.dumps(stages),
                 warnings,
@@ -127,7 +137,7 @@ def load_recent_builds_from_history(limit: int = 50) -> list[dict]:
                     "build_id": row["build_id"],
                     "build_key": row["build_key"],
                     "project_root": row["project_root"],
-                    "target": row["targets"],  # Column named "targets" but stores single target
+                    "target": row["targets"],  # Column stores single target
                     "entry": row["entry"],
                     "status": row["status"],
                     "return_code": row["return_code"],
@@ -184,7 +194,7 @@ def get_build_info_by_id(build_id: str) -> dict | None:
             "build_id": row["build_id"],
             "build_key": row["build_key"],
             "project_root": row["project_root"],
-            "target": row["targets"],  # Column named "targets" but stores single target
+            "target": row["targets"],  # Column stores single target
             "entry": row["entry"],
             "status": row["status"],
             "return_code": row["return_code"],
@@ -236,7 +246,7 @@ def get_builds_by_project_target(
             params.append(project_root)
 
         if target:
-            # Column named "targets" but stores single target string
+            # Column stores single target string
             query += " AND targets = ?"
             params.append(target)
 
@@ -260,7 +270,7 @@ def get_builds_by_project_target(
                     else None,
                     "warnings": row["warnings"],
                     "errors": row["errors"],
-                    "target": row["targets"],  # Column named "targets" but stores single target
+                    "target": row["targets"],  # Column stores single target
                     "project_root": row["project_root"],
                 }
             )
@@ -269,3 +279,203 @@ def get_builds_by_project_target(
     except Exception as exc:
         log.error(f"Failed to get builds by project/target: {exc}")
         return []
+
+
+def get_latest_build_for_target(project_root: str, target: str) -> dict | None:
+    """
+    Get the most recent build for a specific project/target.
+
+    Args:
+        project_root: The project root path
+        target: The build target name
+
+    Returns:
+        Build record dict or None if not found
+    """
+    if not _build_history_db or not _build_history_db.exists():
+        return None
+
+    try:
+        conn = sqlite3.connect(str(_build_history_db), timeout=5.0)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT * FROM build_history
+            WHERE project_root = ? AND targets = ?
+            ORDER BY started_at DESC
+            LIMIT 1
+            """,
+            (project_root, target),
+        )
+
+        row = cursor.fetchone()
+        conn.close()
+
+        if row is None:
+            return None
+
+        return {
+            "build_id": row["build_id"],
+            "build_key": row["build_key"],
+            "project_root": row["project_root"],
+            "target": row["targets"],
+            "entry": row["entry"],
+            "status": row["status"],
+            "return_code": row["return_code"],
+            "error": row["error"],
+            "started_at": row["started_at"],
+            "completed_at": row["completed_at"],
+            "stages": json.loads(row["stages"]) if row["stages"] else [],
+            "warnings": row["warnings"],
+            "errors": row["errors"],
+            "duration": (row["completed_at"] - row["started_at"])
+            if row["completed_at"] and row["started_at"]
+            else None,
+        }
+
+    except Exception as exc:
+        log.error(f"Failed to get latest build for target: {exc}")
+        return None
+
+
+def update_build_status(
+    build_id: str,
+    status: str,
+    stages: list | None = None,
+    warnings: int = 0,
+    errors: int = 0,
+    return_code: int | None = None,
+    error: str | None = None,
+) -> bool:
+    """
+    Update an existing build record in the database.
+
+    This is used for live updates during build execution.
+
+    Args:
+        build_id: The build ID to update
+        status: New status value
+        stages: Optional list of stage data
+        warnings: Warning count
+        errors: Error count
+        return_code: Exit code (if build is complete)
+        error: Error message (if build failed)
+
+    Returns:
+        True if update succeeded, False otherwise
+    """
+    if not _build_history_db:
+        return False
+
+    try:
+        conn = sqlite3.connect(str(_build_history_db), timeout=5.0)
+        cursor = conn.cursor()
+
+        # Build dynamic update query
+        updates = ["status = ?", "warnings = ?", "errors = ?"]
+        params: list = [status, warnings, errors]
+
+        if stages is not None:
+            updates.append("stages = ?")
+            params.append(json.dumps(stages))
+
+        if return_code is not None:
+            updates.append("return_code = ?")
+            params.append(return_code)
+
+        if error is not None:
+            updates.append("error = ?")
+            params.append(error)
+
+        # Update completed_at if build is finished
+        finished_statuses = ("success", "failed", "cancelled", "warning")
+        if status in finished_statuses:
+            updates.append("completed_at = ?")
+            params.append(time.time())
+
+        params.append(build_id)
+
+        cursor.execute(
+            f"""
+            UPDATE build_history
+            SET {", ".join(updates)}
+            WHERE build_id = ?
+            """,
+            params,
+        )
+
+        conn.commit()
+        updated = cursor.rowcount > 0
+        conn.close()
+
+        if updated:
+            log.debug(f"Updated build {build_id} status to {status}")
+        return updated
+
+    except Exception as exc:
+        log.error(f"Failed to update build status: {exc}")
+        return False
+
+
+def create_build_record(
+    build_id: str,
+    project_root: str,
+    target: str,
+    entry: str | None = None,
+    status: str = "queued",
+    timestamp: str | None = None,
+) -> bool:
+    """
+    Create a new build record in the database.
+
+    This is called at the start of a build to register it in the DB.
+
+    Args:
+        build_id: Unique build identifier
+        project_root: Path to project root
+        target: Build target name
+        entry: Entry point (optional)
+        status: Initial status (default: "queued")
+        timestamp: Build timestamp string (optional)
+
+    Returns:
+        True if creation succeeded, False otherwise
+    """
+    if not _build_history_db:
+        return False
+
+    try:
+        conn = sqlite3.connect(str(_build_history_db), timeout=5.0)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO build_history
+            (build_id, build_key, project_root, targets, entry,
+             status, started_at, stages, warnings, errors)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                build_id,
+                timestamp or "",
+                project_root,
+                target,
+                entry,
+                status,
+                time.time(),
+                "[]",  # Empty stages
+                0,
+                0,
+            ),
+        )
+
+        conn.commit()
+        conn.close()
+        log.debug(f"Created build record {build_id} with status {status}")
+        return True
+
+    except Exception as exc:
+        log.error(f"Failed to create build record: {exc}")
+        return False
