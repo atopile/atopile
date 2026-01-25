@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from pathlib import Path
@@ -34,67 +33,20 @@ from atopile.model.build_queue import (
     cancel_build,
 )
 from atopile.model.model_state import model_state
-from atopile.server.core import projects as core_projects
 
 log = logging.getLogger(__name__)
 
 
-def handle_get_summary(ctx: AppContext) -> dict:
-    """Get build summary including active builds and build history."""
+def handle_get_summary(_ctx: AppContext) -> dict:
+    """Get build summary including active builds and build history from database."""
     all_builds: list[dict] = []
     totals = {"builds": 0, "successful": 0, "failed": 0, "warnings": 0, "errors": 0}
+    active_build_ids: set[str] = set()
 
-    summary_path = ctx.summary_file
-    if summary_path and summary_path.exists():
-        try:
-            data = json.loads(summary_path.read_text())
-            if "builds" in data:
-                all_builds.extend(data["builds"])
-            if "totals" in data:
-                for key in totals:
-                    totals[key] += data["totals"].get(key, 0)
-        except Exception:
-            pass
-
-    projects = (
-        core_projects.discover_projects_in_path(ctx.workspace_path)
-        if ctx.workspace_path
-        else []
-    )
-
-    for project in projects:
-        project_root = Path(project.root)
-        builds_dir = project_root / "build" / "builds"
-        if not builds_dir.exists():
-            continue
-
-        for summary_file in builds_dir.glob("*/build_summary.json"):
-            try:
-                build = json.loads(summary_file.read_text())
-
-                if build.get("status") in (BuildStatus.BUILDING.value, BuildStatus.QUEUED.value):
-                    build["status"] = BuildStatus.FAILED.value
-                    build["error"] = "Build was interrupted"
-
-                if not build.get("project_name"):
-                    build["project_name"] = project.name
-
-                if (
-                    build.get("display_name")
-                    and project.name not in build["display_name"]
-                ):
-                    build["display_name"] = f"{project.name}:{build['display_name']}"
-                elif build.get("name") and not build.get("display_name"):
-                    build["display_name"] = f"{project.name}:{build['name']}"
-
-                all_builds.append(build)
-                totals["warnings"] += build.get("warnings", 0)
-                totals["errors"] += build.get("errors", 0)
-            except Exception as exc:
-                log.warning(f"Failed to read summary from {summary_file}: {exc}")
-
+    # First, add all active builds (in-memory)
     with _build_lock:
         for build in _active_builds:
+            active_build_ids.add(build.build_id)
             status = build.status
             completed_statuses = (
                 BuildStatus.BUILDING, BuildStatus.SUCCESS,
@@ -126,11 +78,51 @@ def handle_get_summary(ctx: AppContext) -> dict:
                 "target": target,
                 "entry": build.entry,
                 "stages": build.stages,
-                "queue_position": None,  # Not tracked in ActiveBuild
+                "queue_position": None,
                 "error": build.error,
             }
 
-            all_builds.insert(0, tracked_build)
+            all_builds.append(tracked_build)
+
+    # Then add historical builds from database (not currently active)
+    history_builds = build_history.load_recent_builds_from_history(limit=100)
+    for build in history_builds:
+        # Skip if this build is currently active
+        if build["build_id"] in active_build_ids:
+            continue
+
+        project_root = build.get("project_root", "")
+        project_name = Path(project_root).name if project_root else "unknown"
+        target = build.get("target", "default")
+        status = build.get("status", "unknown")
+
+        # Fix interrupted builds (building/queued status from crashed server)
+        if status in (BuildStatus.BUILDING.value, BuildStatus.QUEUED.value):
+            status = BuildStatus.FAILED.value
+            build["error"] = "Build was interrupted"
+
+        historical_build = {
+            "build_id": build["build_id"],
+            "name": target,
+            "display_name": f"{project_name}:{target}",
+            "project_name": project_name,
+            "status": status,
+            "elapsed_seconds": build.get("duration", 0),
+            "started_at": build.get("started_at"),
+            "warnings": build.get("warnings", 0),
+            "errors": build.get("errors", 0),
+            "return_code": build.get("return_code"),
+            "project_root": project_root,
+            "target": target,
+            "entry": build.get("entry"),
+            "stages": build.get("stages", []),
+            "queue_position": None,
+            "error": build.get("error"),
+        }
+
+        all_builds.append(historical_build)
+        totals["warnings"] += build.get("warnings", 0)
+        totals["errors"] += build.get("errors", 0)
 
     def sort_key(build: dict) -> tuple:
         is_active = build.get("return_code") is None

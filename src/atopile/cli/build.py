@@ -62,56 +62,6 @@ def discover_projects(root: Path) -> list[Path]:
     return sorted(projects)
 
 
-def _write_early_build_summaries(
-    build_tasks: list[tuple[str, Path, str | None]],
-) -> None:
-    """
-    Write minimal "queued" build summaries before ParallelBuildManager is created.
-
-    This reduces the delay between when a build is requested via the dashboard
-    and when the UI can show the build status. The summaries will be overwritten
-    with more complete data once the ParallelBuildManager starts.
-    """
-    import json
-
-    from atopile.buildutil import generate_build_id
-
-    now = NOW
-
-    for build_name, project_root, _project_name in build_tasks:
-        # Structure: {project_root}/build/builds/{target_name}/build_summary.json
-        build_output_dir = project_root / "build" / "builds" / build_name
-        summary_file = build_output_dir / "build_summary.json"
-
-        # Create directory if needed
-        try:
-            build_output_dir.mkdir(parents=True, exist_ok=True)
-        except Exception:
-            continue
-
-        # Generate build_id to match what ParallelBuildManager will use
-        project_path = str(project_root.resolve())
-        build_id = generate_build_id(project_path, build_name, now)
-
-        # Write minimal summary with "queued" status
-        summary = {
-            "name": build_name,
-            "display_name": build_name,
-            "build_id": build_id,
-            "status": "queued",
-            "elapsed_seconds": 0,
-            "warnings": 0,
-            "errors": 0,
-            "timestamp": now,
-        }
-
-        try:
-            summary_file.write_text(json.dumps(summary, indent=2))
-            logger.debug(f"Wrote early build summary for {build_name}")
-        except Exception:
-            pass  # Don't fail the build if we can't write summary
-
-
 # Semantic status -> (icon, color)
 _STATUS_STYLE = {
     StageStatus.SUCCESS: ("✓", "green"),
@@ -889,29 +839,38 @@ class ParallelBuildManager:
         )
 
     def _write_live_summary(self) -> None:
-        """Write per-target build summaries to each target's build output directory."""
-        import json
+        """Write per-target build status to the build history database."""
+        from atopile.model import build_history
+
+        # Skip if DB not initialized (should be initialized before manager creation)
+        if not build_history.get_build_history_db():
+            return
 
         for bp in self.processes.values():
-            # Get the build output directory for this target
-            # Structure: {project_root}/build/builds/{target_name}/build_summary.json
-            build_output_dir = bp.project_root / "build" / "builds" / bp.name
-            summary_file = build_output_dir / "build_summary.json"
-
-            # Create directory if needed
-            try:
-                build_output_dir.mkdir(parents=True, exist_ok=True)
-            except Exception:
+            if not bp.build_id:
                 continue
 
-            # Write minimal summary for this target
-            summary = self._get_build_data(bp)
-            summary["timestamp"] = self._now
+            # Get build data
+            data = self._get_build_data(bp)
 
-            try:
-                summary_file.write_text(json.dumps(summary, indent=2))
-            except Exception:
-                pass  # Don't fail the build if we can't write summary
+            # Create or update the build record
+            build_history.create_build_record(
+                build_id=bp.build_id,
+                project_root=str(bp.project_root.resolve()),
+                target=bp.name,
+                entry=None,  # Entry not stored in BuildProcess
+                status=data["status"],
+                timestamp=self._now,
+            )
+
+            # Update with current state
+            build_history.update_build_status(
+                build_id=bp.build_id,
+                status=data["status"],
+                stages=data.get("stages"),
+                warnings=data.get("warnings", 0),
+                errors=data.get("errors", 0),
+            )
 
     def run_until_complete(self) -> dict[str, int]:
         """
@@ -1347,9 +1306,18 @@ def _build_all_projects(
         jobs,
     )
 
-    # Write initial "queued" summaries immediately so UI shows builds right away
-    # This happens before ParallelBuildManager is created to minimize delay
-    _write_early_build_summaries(build_tasks)
+    # Initialize build history database (central location alongside build_logs.db)
+    from atopile.model import build_history
+    from faebryk.libs.paths import get_log_dir
+
+    db_path = os.environ.get("ATO_BUILD_HISTORY_DB")
+    if db_path:
+        build_history.init_build_history_db(Path(db_path))
+    else:
+        # CLI mode: use central log directory
+        default_db_path = get_log_dir() / "build_history.db"
+        default_db_path.parent.mkdir(parents=True, exist_ok=True)
+        build_history.init_build_history_db(default_db_path)
 
     # Create and run parallel build manager
     manager = ParallelBuildManager(
@@ -1555,6 +1523,19 @@ def build(
     build_tasks: list[tuple[str, Path, str | None]] = [
         (name, project_root, None) for name in build_names
     ]
+
+    # Initialize build history database (central location alongside build_logs.db)
+    from atopile.model import build_history
+    from faebryk.libs.paths import get_log_dir
+
+    db_path = os.environ.get("ATO_BUILD_HISTORY_DB")
+    if db_path:
+        build_history.init_build_history_db(Path(db_path))
+    else:
+        # CLI mode: use central log directory
+        default_db_path = get_log_dir() / "build_history.db"
+        default_db_path.parent.mkdir(parents=True, exist_ok=True)
+        build_history.init_build_history_db(default_db_path)
 
     # Create and run parallel build manager
     manager = ParallelBuildManager(

@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 
 from atopile.dataclasses import (
+    AppContext,
     PackageActionRequest,
     PackageActionResponse,
     PackageDetails,
@@ -16,8 +17,6 @@ from atopile.dataclasses import (
     PackagesSummaryResponse,
     RegistrySearchResponse,
 )
-
-from ..app_context import AppContext
 from ..domains import packages as packages_domain
 from ..domains.deps import get_ctx
 

@@ -350,9 +350,12 @@ def create_app(
     )
     app.state.ctx = ctx
 
-    if logs_base:
-        build_history_db_path = logs_base / "build_history.db"
-        init_build_history_db(build_history_db_path)
+    # Initialize build history database in central log directory
+    from faebryk.libs.paths import get_log_dir
+
+    build_history_db_path = get_log_dir() / "build_history.db"
+    build_history_db_path.parent.mkdir(parents=True, exist_ok=True)
+    init_build_history_db(build_history_db_path)
 
     @app.on_event("startup")
     async def on_startup():
@@ -495,16 +498,14 @@ class DashboardServer:
 
     def __init__(
         self,
-        summary_file: Path,
         logs_base: Path,
         port: Optional[int] = None,
         workspace_path: Optional[Path] = None,
     ):
-        self.summary_file = summary_file
         self.logs_base = logs_base
         self.port = port or find_free_port()
         self.workspace_path = workspace_path
-        self.app = create_app(summary_file, logs_base, self.workspace_path)
+        self.app = create_app(logs_base=logs_base, workspace_path=self.workspace_path)
         self._server: Optional[uvicorn.Server] = None
         self._thread: Optional[threading.Thread] = None
 
@@ -545,8 +546,7 @@ class DashboardServer:
 
 
 def start_dashboard_server(
-    summary_file: Path,
-    logs_base: Optional[Path] = None,
+    logs_base: Path,
     port: Optional[int] = None,
     workspace_path: Optional[Path] = None,
 ) -> tuple[DashboardServer, str]:
@@ -554,17 +554,13 @@ def start_dashboard_server(
     Start the dashboard server.
 
     Args:
-        summary_file: Path to the summary.json file
-        logs_base: Base directory for logs (defaults to summary_file's parent)
+        logs_base: Base directory for logs
         port: Port to use (defaults to a free port)
         workspace_path: Workspace path to scan for projects
 
     Returns:
         Tuple of (DashboardServer, url)
     """
-    if logs_base is None:
-        logs_base = summary_file.parent
-
-    server = DashboardServer(summary_file, logs_base, port, workspace_path)
+    server = DashboardServer(logs_base, port, workspace_path)
     server.start()
     return server, server.url

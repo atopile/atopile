@@ -4,7 +4,6 @@ Build queue and active build tracking.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import queue
@@ -65,47 +64,6 @@ def _is_duplicate_build(
     return None
 
 
-def _find_build_in_summary(
-    summary: dict, targets: list[str], entry: str | None = None
-) -> dict | None:
-    """Find the current build in the summary.json data."""
-    builds = summary.get("builds", [])
-    if not builds:
-        return None
-
-    # If we have specific targets, try to match by name
-    if targets:
-        for build in builds:
-            if build.get("name") in targets:
-                return build
-
-    # If we have an entry point, try to match by entry
-    if entry:
-        for build in builds:
-            if entry in build.get("entry", ""):
-                return build
-
-    # Fallback: return the first/most recent build
-    return builds[0] if builds else None
-
-
-def _get_target_summary_path(project_root: str, target: str) -> Path:
-    """Get the path to a target's build_summary.json file."""
-    return Path(project_root) / "build" / "builds" / target / "build_summary.json"
-
-
-def _read_target_summary(project_root: str, target: str) -> dict | None:
-    """Read a target's build_summary.json file."""
-    summary_path = _get_target_summary_path(project_root, target)
-    if not summary_path.exists():
-        return None
-    try:
-        with open(summary_path, "r") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return None
-
-
 def _run_build_subprocess(
     build_id: str,
     project_root: str,
@@ -121,7 +79,7 @@ def _run_build_subprocess(
     Run a single build in a subprocess and report progress.
 
     This function runs in a worker thread. It spawns an `ato build` subprocess
-    and monitors it for completion while polling build_summary.json for stage updates.
+    and monitors it for completion while polling the database for stage updates.
     """
     # Send "started" message
     result_q.put(
@@ -147,20 +105,12 @@ def _run_build_subprocess(
         else:
             cmd = [sys.executable, "-m", "atopile", "build", "--verbose"]
 
-        # Determine which target to monitor for stage updates
-        # For standalone builds, we use the entry point name
-        # For regular builds, we use the target name
+        # Determine target for monitoring
         monitor_target: str
-        standalone_project_root = project_root
 
         if standalone and entry:
             cmd.append(entry)
             cmd.append("--standalone")
-            entry_file = entry.split(":")[0] if ":" in entry else entry
-            entry_stem = Path(entry_file).stem
-            standalone_project_root = str(
-                Path(project_root) / f"standalone_{entry_stem}"
-            )
             # For standalone builds, the target name is "default"
             monitor_target = "default"
         else:
@@ -177,10 +127,10 @@ def _run_build_subprocess(
         if build_timestamp:
             env["ATO_BUILD_TIMESTAMP"] = build_timestamp
 
-        # Determine the root to use for monitoring (different for standalone builds)
-        effective_root = (
-            standalone_project_root if standalone and entry else project_root
-        )
+        # Pass the build history DB path to the subprocess
+        db_path = build_history.get_build_history_db()
+        if db_path:
+            env["ATO_BUILD_HISTORY_DB"] = str(db_path)
 
         log.info(
             f"Build {build_id}: starting subprocess - cmd={' '.join(cmd)}, "
@@ -196,7 +146,7 @@ def _run_build_subprocess(
             env=env,
         )
 
-        # Poll for completion while monitoring build_summary.json file
+        # Poll for completion while monitoring the database for stage updates
         last_stages: list[dict] = []
         poll_interval = 0.5
         stderr_output = ""
@@ -217,9 +167,9 @@ def _run_build_subprocess(
                 )
                 return  # Exit the function after cancellation
 
-            # Read build_summary.json for stage updates
-            target_summary = _read_target_summary(effective_root, monitor_target)
-            current_stages = target_summary.get("stages", []) if target_summary else []
+            # Query the database for stage updates
+            build_info = build_history.get_build_info_by_id(build_id)
+            current_stages = build_info.get("stages", []) if build_info else []
 
             # Check if stages changed
             if current_stages != last_stages:
@@ -241,10 +191,10 @@ def _run_build_subprocess(
         return_code = process.returncode
         stderr_output = process.stderr.read() if process.stderr else ""
 
-        # Get final stages from summary
-        target_summary = _read_target_summary(effective_root, monitor_target)
-        if target_summary:
-            final_stages = target_summary.get("stages", [])
+        # Get final stages from database
+        build_info = build_history.get_build_info_by_id(build_id)
+        if build_info:
+            final_stages = build_info.get("stages", [])
 
         if return_code != 0:
             error_msg = (

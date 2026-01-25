@@ -4,7 +4,6 @@ Project discovery and file scanning logic.
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +18,7 @@ from atopile.dataclasses import (
     ModuleDefinition,
     Project,
 )
+from atopile.model import build_history
 
 log = logging.getLogger(__name__)
 
@@ -26,25 +26,21 @@ log = logging.getLogger(__name__)
 def _load_last_build_for_target(
     project_root: Path, target_name: str
 ) -> Optional[BuildTargetStatus]:
-    """Load the last build status for a target from its build_summary.json."""
-    summary_path = (
-        project_root / "build" / "builds" / target_name / "build_summary.json"
-    )
-    if not summary_path.exists():
-        return None
-
+    """Load the last build status for a target from build history database."""
     try:
-        data = json.loads(summary_path.read_text())
+        data = build_history.get_latest_build_for_target(
+            str(project_root), target_name
+        )
 
-        # Convert timestamp from "2026-01-21_17-33-47" to ISO format
-        timestamp = data.get("timestamp", "")
-        if timestamp:
-            try:
-                dt = datetime.strptime(timestamp, "%Y-%m-%d_%H-%M-%S")
-                timestamp = dt.isoformat()
-            except ValueError:
-                # Keep original if format doesn't match
-                pass
+        if not data:
+            return None
+
+        # Convert started_at timestamp to ISO format
+        started_at = data.get("started_at")
+        if isinstance(started_at, (int, float)):
+            timestamp = datetime.fromtimestamp(started_at).isoformat()
+        else:
+            timestamp = str(started_at) if started_at else ""
 
         status = data.get("status", "unknown")
 
@@ -57,11 +53,11 @@ def _load_last_build_for_target(
         return BuildTargetStatus(
             status=status,
             timestamp=timestamp,
-            elapsed_seconds=data.get("elapsed_seconds"),
+            elapsed_seconds=data.get("duration"),
             warnings=data.get("warnings", 0),
             errors=data.get("errors", 0),
-            stages=data.get("stages"),  # May be None if not present
-            build_id=data.get("build_id"),  # Build ID hash
+            stages=data.get("stages"),
+            build_id=data.get("build_id"),
         )
     except Exception as e:
         log.debug(f"Failed to load build summary for {target_name}: {e}")
