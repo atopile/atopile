@@ -113,8 +113,10 @@ pub const DecodeError = error{
     OutOfMemory,
 };
 
-// Thread-local error context
-threadlocal var current_error_context: ?ErrorContext = null;
+// Error context
+// NOTE: Using non-threadlocal due to Python 3.14 incompatibility with Zig's threadlocal storage
+// This may cause issues in multi-threaded scenarios but the Python GIL typically prevents that
+var current_error_context: ?ErrorContext = null;
 
 pub fn getErrorContext() ?ErrorContext {
     return current_error_context;
@@ -564,6 +566,10 @@ fn finalizeUnsetFields(comptime T: type, allocator: std.mem.Allocator, items: []
                 const sym = ast.getSymbol(nested_items[0]) orelse continue;
                 if (!std.mem.eql(u8, sym, fname)) continue;
                 if (nested_items.len == 1 and field.default_value_ptr != null) {
+                    // Apply the default value when we have a key-only entry like "(stroke)"
+                    const default_ptr = field.default_value_ptr.?;
+                    const default_bytes = @as([*]const u8, @ptrCast(default_ptr))[0..@sizeOf(field.type)];
+                    @memcpy(@as([*]u8, @ptrCast(&@field(result.*, field.name)))[0..@sizeOf(field.type)], default_bytes);
                     fields_set.set(field_idx);
                     found_nested = true;
                     break;
@@ -580,7 +586,10 @@ fn finalizeUnsetFields(comptime T: type, allocator: std.mem.Allocator, items: []
                     const sym = ast.getSymbol(item) orelse continue;
                     if (!std.mem.eql(u8, sym, fname)) continue;
                     if (idx + 1 >= items.len) {
-                        if (field.default_value_ptr != null) {
+                        if (field.default_value_ptr) |default_ptr| {
+                            // Apply the default value when we have a key at end of list
+                            const default_bytes = @as([*]const u8, @ptrCast(default_ptr))[0..@sizeOf(field.type)];
+                            @memcpy(@as([*]u8, @ptrCast(&@field(result.*, field.name)))[0..@sizeOf(field.type)], default_bytes);
                             fields_set.set(field_idx);
                             found_nested = true;
                         }
@@ -601,7 +610,10 @@ fn finalizeUnsetFields(comptime T: type, allocator: std.mem.Allocator, items: []
                         @field(result.*, field.name) = try decodeWithMetadata(field.type, allocator, value_sexp, fm);
                         fields_set.set(field_idx);
                         found_nested = true;
-                    } else if (field.default_value_ptr != null) {
+                    } else if (field.default_value_ptr) |default_ptr| {
+                        // Apply the default value when we have a key that looks like it has no value
+                        const default_bytes = @as([*]const u8, @ptrCast(default_ptr))[0..@sizeOf(field.type)];
+                        @memcpy(@as([*]u8, @ptrCast(&@field(result.*, field.name)))[0..@sizeOf(field.type)], default_bytes);
                         fields_set.set(field_idx);
                         found_nested = true;
                     }
