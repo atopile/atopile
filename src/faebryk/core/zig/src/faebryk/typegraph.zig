@@ -142,13 +142,15 @@ pub const TypeGraph = struct {
         pub fn create_and_insert(tg: *TypeGraph, type_identifier: str) BoundNodeReference {
             const implements_type_type_node = tg.self_node.g.create_and_insert_node();
             TypeNodeAttributes.of(implements_type_type_node.node).set_type_name(type_identifier);
-            _ = EdgeComposition.add_child(tg.self_node, implements_type_type_node.node, type_identifier);
+            // Node just created in same graph, cannot fail
+            _ = EdgeComposition.add_child(tg.self_node, implements_type_type_node.node, type_identifier) catch unreachable;
             return implements_type_type_node;
         }
 
         pub fn spawn_instance(bound_type_node: BoundNodeReference) BoundNodeReference {
             const instance_node = bound_type_node.g.create_and_insert_node();
-            _ = EdgeType.add_instance(bound_type_node, instance_node);
+            // Node just created in same graph, cannot fail
+            _ = EdgeType.add_instance(bound_type_node, instance_node) catch unreachable;
             return instance_node;
         }
     };
@@ -156,8 +158,9 @@ pub const TypeGraph = struct {
     pub const TraitNode = struct {
         pub fn add_trait_as_child_to(target: BoundNodeReference, trait_type: BoundNodeReference) BoundNodeReference {
             const trait_instance = TypeNode.spawn_instance(trait_type);
-            _ = EdgeComposition.add_child(target, trait_instance.node, null);
-            _ = EdgeTrait.add_trait_instance(target, trait_instance.node);
+            // Nodes just created in same graph, cannot fail
+            _ = EdgeComposition.add_child(target, trait_instance.node, null) catch unreachable;
+            _ = EdgeTrait.add_trait_instance(target, trait_instance.node) catch unreachable;
             return trait_instance;
         }
     };
@@ -267,7 +270,8 @@ pub const TypeGraph = struct {
         const type_reference_identifier = "type_ref";
 
         pub fn set_type_reference(mc_node: BoundNodeReference, type_reference: BoundNodeReference) void {
-            _ = EdgeComposition.add_child(mc_node, type_reference.node, type_reference_identifier);
+            // Both nodes should be in the same graph, cannot fail
+            _ = EdgeComposition.add_child(mc_node, type_reference.node, type_reference_identifier) catch unreachable;
         }
 
         pub fn get_type_reference(mc_node: BoundNodeReference) BoundNodeReference {
@@ -387,7 +391,7 @@ pub const TypeGraph = struct {
                     .err => return error.InstantiationFailed,
                 };
                 if (current_node) |_current_node| {
-                    _ = EdgeNext.add_next(_current_node, reference);
+                    _ = try EdgeNext.add_next(_current_node, reference);
                 } else {
                     root = reference;
                 }
@@ -741,8 +745,8 @@ pub const TypeGraph = struct {
             .ok => |n| n,
             .err => return error.InstantiationFailed,
         };
-        _ = EdgeTrait.add_trait_instance(type_node, trait_implements_type_instance.node);
-        _ = EdgeComposition.add_child(type_node, trait_implements_type_instance.node, null);
+        _ = try EdgeTrait.add_trait_instance(type_node, trait_implements_type_instance.node);
+        _ = try EdgeComposition.add_child(type_node, trait_implements_type_instance.node, null);
 
         return type_node;
     }
@@ -804,8 +808,8 @@ pub const TypeGraph = struct {
 
         const type_reference = try TypeReferenceNode.create_and_insert(self, child_type_identifier);
         MakeChildNode.set_type_reference(make_child, type_reference);
-        _ = EdgePointer.point_to(make_child, type_reference.node, identifier, null);
-        _ = EdgeComposition.add_child(target_type, make_child.node, identifier);
+        _ = try EdgePointer.point_to(make_child, type_reference.node, identifier, null);
+        _ = try EdgeComposition.add_child(target_type, make_child.node, identifier);
 
         return make_child;
     }
@@ -825,9 +829,9 @@ pub const TypeGraph = struct {
         };
         MakeLinkNode.Attributes.of(make_link).store_edge_attributes(attrs);
 
-        _ = EdgeComposition.add_child(make_link, lhs_reference.node, "lhs");
-        _ = EdgeComposition.add_child(make_link, rhs_reference.node, "rhs");
-        _ = EdgeComposition.add_child(target_type, make_link.node, null);
+        _ = try EdgeComposition.add_child(make_link, lhs_reference.node, "lhs");
+        _ = try EdgeComposition.add_child(make_link, rhs_reference.node, "rhs");
+        _ = try EdgeComposition.add_child(target_type, make_link.node, null);
 
         return make_link;
     }
@@ -897,7 +901,8 @@ pub const TypeGraph = struct {
                 false,
             ) catch continue;
             if (EdgePointer.get_pointed_node_by_identifier(info.make_child, "source")) |source_chunk| {
-                _ = EdgePointer.point_to(new_make_child, source_chunk.node, "source", null);
+                // Both nodes are in the same graph, cannot fail
+                _ = EdgePointer.point_to(new_make_child, source_chunk.node, "source", null) catch unreachable;
             }
         }
 
@@ -936,7 +941,8 @@ pub const TypeGraph = struct {
                 edge_attrs,
             ) catch continue;
             if (EdgePointer.get_pointed_node_by_identifier(link_info.make_link, "source")) |source_chunk| {
-                _ = EdgePointer.point_to(new_make_link, source_chunk.node, "source", null);
+                // Both nodes are in the same graph, cannot fail
+                _ = EdgePointer.point_to(new_make_link, source_chunk.node, "source", null) catch unreachable;
             }
         }
     }
@@ -1860,7 +1866,8 @@ pub const TypeGraph = struct {
 
         // 1) Create instance and connect it to its type
         const new_instance = type_node.g.create_and_insert_node();
-        _ = EdgeType.add_instance(type_node, new_instance);
+        // Node just created in same graph, cannot fail
+        _ = EdgeType.add_instance(type_node, new_instance) catch unreachable;
 
         // 2) Visit MakeChild nodes of type_node
         const VisitMakeChildren = struct {
@@ -1889,7 +1896,8 @@ pub const TypeGraph = struct {
                 switch (child_result) {
                     .ok => |child| {
                         // 2.3) Attach child instance to parent instance with the reference name
-                        _ = EdgeComposition.add_child(self.parent_instance, child.node, info.identifier);
+                        // Both nodes are in the same graph, cannot fail
+                        _ = EdgeComposition.add_child(self.parent_instance, child.node, info.identifier) catch unreachable;
 
                         // 2.4) Copy node attributes from MakeChild node to child instance
                         MakeChildNode.Attributes.of(info.make_child).load_node_attributes(child.node);
@@ -1901,13 +1909,15 @@ pub const TypeGraph = struct {
                                 switch (self.type_graph.instantiate_node(has_source_chunk_type)) {
                                     .ok => |trait_instance| {
                                         // Attach trait to the child instance
-                                        const trait_edge = EdgeTrait.add_trait_instance(child, trait_instance.node);
+                                        // Both nodes are in the same graph, cannot fail
+                                        const trait_edge = EdgeTrait.add_trait_instance(child, trait_instance.node) catch unreachable;
                                         trait_edge.edge.set_attribute_name("has_source_chunk");
 
                                         // TODO: remove hardcoded source pointer and pointer edge identifiers
                                         // Find the source_ptr child of the trait and point it to the source chunk
                                         if (EdgeComposition.get_child_by_identifier(trait_instance, "source_ptr")) |source_ptr| {
-                                            _ = EdgePointer.point_to(source_ptr, source_chunk.node, "source", null);
+                                            // Both nodes are in the same graph, cannot fail
+                                            _ = EdgePointer.point_to(source_ptr, source_chunk.node, "source", null) catch unreachable;
                                         }
                                     },
                                     .err => {
@@ -2014,7 +2024,15 @@ pub const TypeGraph = struct {
 
                 // 3.3) Create link between resolved nodes
                 const link_edge = MakeLinkNode.Attributes.of(make_link).load_edge_attributes(lhs_resolved.node, rhs_resolved.node);
-                _ = self.parent_instance.g.insert_edge(link_edge);
+                _ = self.parent_instance.g.insert_edge(link_edge) catch |err| {
+                    self.failing_node = make_link;
+                    self.error_kind = .other;
+                    self.error_message = switch (err) {
+                        error.SourceNodeNotInGraph => "Link source node not in graph",
+                        error.TargetNodeNotInGraph => "Link target node not in graph",
+                    };
+                    return visitor.VisitResult(void){ .ERROR = err };
+                };
 
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
@@ -2811,7 +2829,7 @@ test "resolve path through trait and pointer edges" {
         .ok => |n| n,
         .err => return error.InstantiationFailed,
     };
-    _ = EdgeTrait.add_trait_instance(CanBridge, implements_trait_instance.node);
+    _ = try EdgeTrait.add_trait_instance(CanBridge, implements_trait_instance.node);
 
     const Resistor = try tg.add_type("Resistor");
     _ = try tg.add_make_child(Resistor, Electrical, "p1", null, false);
@@ -2834,7 +2852,7 @@ test "resolve path through trait and pointer edges" {
         .ok => |n| n,
         .err => return error.InstantiationFailed,
     };
-    _ = EdgeTrait.add_trait_instance(resistor_instance, can_bridge_instance.node);
+    _ = try EdgeTrait.add_trait_instance(resistor_instance, can_bridge_instance.node);
     // Set edge name so we can find it by identifier
     const trait_edge = EdgeTrait.get_owner_edge(can_bridge_instance).?;
     trait_edge.edge.set_attribute_name("can_bridge");
@@ -2854,12 +2872,12 @@ test "resolve path through trait and pointer edges" {
     };
 
     // Add as composition children of can_bridge (must use add_child to insert into graph index)
-    _ = EdgeComposition.add_child(can_bridge_instance, in_ptr.node, "in_");
-    _ = EdgeComposition.add_child(can_bridge_instance, out_ptr.node, "out_");
+    _ = try EdgeComposition.add_child(can_bridge_instance, in_ptr.node, "in_");
+    _ = try EdgeComposition.add_child(can_bridge_instance, out_ptr.node, "out_");
 
     // Point the Pointer nodes to p1 and p2
-    _ = EdgePointer.point_to(in_ptr, p1_instance.node, null, null);
-    _ = EdgePointer.point_to(out_ptr, p2_instance.node, null, null);
+    _ = try EdgePointer.point_to(in_ptr, p1_instance.node, null, null);
+    _ = try EdgePointer.point_to(out_ptr, p2_instance.node, null, null);
 
     // 5. Create reference path using EdgeTraversal:
     //    can_bridge (Trait edge) -> in_ (Composition) -> dereference (Pointer)
@@ -2925,7 +2943,7 @@ test "resolve path through trait and pointer edges" {
         .ok => |n| n,
         .err => return error.InstantiationFailed,
     };
-    _ = EdgeTrait.add_trait_instance(resistor_child, child_can_bridge.node);
+    _ = try EdgeTrait.add_trait_instance(resistor_child, child_can_bridge.node);
 
     // Add Pointer nodes as composition children of child_can_bridge
     const child_in_ptr = switch (tg.instantiate_node(PointerType)) {
@@ -2936,10 +2954,10 @@ test "resolve path through trait and pointer edges" {
         .ok => |n| n,
         .err => return error.InstantiationFailed,
     };
-    _ = EdgeComposition.add_child(child_can_bridge, child_in_ptr.node, "in_");
-    _ = EdgeComposition.add_child(child_can_bridge, child_out_ptr.node, "out_");
-    _ = EdgePointer.point_to(child_in_ptr, child_p1.node, null, null);
-    _ = EdgePointer.point_to(child_out_ptr, child_p2.node, null, null);
+    _ = try EdgeComposition.add_child(child_can_bridge, child_in_ptr.node, "in_");
+    _ = try EdgeComposition.add_child(child_can_bridge, child_out_ptr.node, "out_");
+    _ = try EdgePointer.point_to(child_in_ptr, child_p1.node, null, null);
+    _ = try EdgePointer.point_to(child_out_ptr, child_p2.node, null, null);
 
     std.debug.print("\nMixed path test:\n", .{});
     std.debug.print("TopModule instance: {d}\n", .{top_instance.node.get_uuid()});

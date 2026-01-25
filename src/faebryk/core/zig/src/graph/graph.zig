@@ -824,7 +824,12 @@ pub const GraphView = struct {
         }
     }
 
-    pub fn insert_edge(g: *@This(), edge: EdgeReference) BoundEdgeReference {
+    pub const InsertEdgeError = error{
+        SourceNodeNotInGraph,
+        TargetNodeNotInGraph,
+    };
+
+    pub fn insert_edge(g: *@This(), edge: EdgeReference) InsertEdgeError!BoundEdgeReference {
         // Fast check using bitset first
         if (g.edge_set.contains(edge.uuid)) {
             return BoundEdgeReference{
@@ -840,8 +845,8 @@ pub const GraphView = struct {
         const target = edge.get_target_node();
 
         // Get node neighbors (must exist)
-        const from_neighbors = g.nodes.getPtr(source) orelse @panic("Edge source not found");
-        const to_neighbors = g.nodes.getPtr(target) orelse @panic("Edge target not found");
+        const from_neighbors = g.nodes.getPtr(source) orelse return error.SourceNodeNotInGraph;
+        const to_neighbors = g.nodes.getPtr(target) orelse return error.TargetNodeNotInGraph;
 
         const edge_type = edge.get_attribute_edge_type();
 
@@ -935,7 +940,8 @@ pub const GraphView = struct {
                     if (!new_g.contains_node(other)) {
                         continue;
                     }
-                    _ = new_g.insert_edge(edge);
+                    // Both source and target are confirmed in new_g, so only OOM can fail
+                    _ = new_g.insert_edge(edge) catch @panic("OOM");
                 }
             }
         }
@@ -1080,7 +1086,7 @@ test "basic" {
     const bn2 = g.create_and_insert_node();
     const e12 = EdgeReference.init(bn1.node, bn2.node, TestLinkType);
 
-    _ = g.insert_edge(e12);
+    _ = try g.insert_edge(e12);
 
     try std.testing.expectEqual(@as(usize, 1), g.get_edge_count());
     try std.testing.expectEqual(@as(usize, 3), g.get_node_count());
@@ -1103,8 +1109,8 @@ test "BFSPath cloneAndExtend preserves start metadata" {
 
     const e12 = EdgeReference.init(bn1.node, bn2.node, TestEdgeType);
     const e23 = EdgeReference.init(bn2.node, bn3.node, TestEdgeType);
-    _ = g.insert_edge(e12);
-    _ = g.insert_edge(e23);
+    _ = try g.insert_edge(e12);
+    _ = try g.insert_edge(e23);
 
     var base = try BFSPath.init(a, bn1);
     defer base.deinit();
@@ -1166,9 +1172,9 @@ test "get_subgraph_from_nodes" {
     const e23 = EdgeReference.init(bn2.node, bn3.node, TestEdgeTypeSubgraph);
     const e13 = EdgeReference.init(bn1.node, bn3.node, TestEdgeTypeSubgraph);
 
-    _ = g.insert_edge(e12);
-    _ = g.insert_edge(e23);
-    _ = g.insert_edge(e13);
+    _ = try g.insert_edge(e12);
+    _ = try g.insert_edge(e23);
+    _ = try g.insert_edge(e13);
 
     var nodes = std.ArrayList(NodeReference).init(a);
     defer nodes.deinit();
@@ -1198,10 +1204,10 @@ test "duplicate edge insertion" {
 
     const e1 = EdgeReference.init(bn1.node, bn2.node, TestLinkType);
 
-    _ = g.insert_edge(e1);
+    _ = try g.insert_edge(e1);
     try std.testing.expectEqual(@as(usize, 1), g.get_edge_count());
 
-    _ = g.insert_edge(e1);
+    _ = try g.insert_edge(e1);
     try std.testing.expectEqual(@as(usize, 1), g.get_edge_count());
 }
 
@@ -1299,7 +1305,7 @@ test "speed_insert_edge_simple" {
     i = 0;
     while (i < count) : (i += 1) {
         const e = EdgeReference.init(n1s[i], n2s[i], 0);
-        _ = g.insert_edge(e);
+        _ = try g.insert_edge(e);
     }
     const duration = timer.read();
     const total_ms = duration / std.time.ns_per_ms;

@@ -82,10 +82,12 @@ def create_method_wrapper(cls, method_name):
 
 def _get_package_module_name(fp: Path) -> str | None:
     """
-    If the file is under src/faebryk or src/atopile, return the proper
+    If the file is under src/faebryk, src/atopile, or test/, return the proper
     package module name. Otherwise return None.
     """
     parts = fp.parts
+
+    # Handle src/faebryk and src/atopile packages
     for pkg_name in ("faebryk", "atopile"):
         if "src" in parts and pkg_name in parts:
             src_idx = parts.index("src")
@@ -97,7 +99,30 @@ def _get_package_module_name(fp: Path) -> str | None:
                 # Remove .py extension from last part
                 module_parts[-1] = fp.stem
                 return ".".join(module_parts)
+
+    # Handle test/ directory - build module name from test/ onwards
+    if "test" in parts:
+        test_idx = parts.index("test")
+        # Build module name from test onwards
+        module_parts = list(parts[test_idx:])
+        # Remove .py extension from last part
+        module_parts[-1] = fp.stem
+        return ".".join(module_parts)
+
     return None
+
+
+def _strip_regex_anchors(pattern: str) -> str:
+    """
+    Strip regex anchors (^ and $) from a pattern.
+
+    Used for preliminary file content search where anchors don't make sense.
+    """
+    # Remove leading ^ (possibly after whitespace or group start)
+    pattern = re.sub(r"^\^", "", pattern)
+    # Remove trailing $ (possibly before whitespace or group end)
+    pattern = re.sub(r"\$$", "", pattern)
+    return pattern
 
 
 def discover_tests(
@@ -109,10 +134,13 @@ def discover_tests(
     """
     from rich import print
 
+    # Strip anchors for file content search (just a quick filter)
+    file_search_pattern = _strip_regex_anchors(test_pattern)
+
     matches = []
     import_errors = {}
     for fp in filepaths:
-        if not re.search(test_pattern, fp.read_text(encoding="utf-8")):
+        if not re.search(file_search_pattern, fp.read_text(encoding="utf-8")):
             continue
         try:
             # Check if file is in src/faebryk or src/atopile - load as package module
@@ -183,11 +211,92 @@ def _fixture_setup_project_config(tmp_path: Path):
     )
 
 
+def _idval_from_value(val: Any) -> str | None:
+    """
+    Generate a pytest-compatible ID string for a parameter value.
+
+    This mimics pytest's _idval_from_value logic for generating test IDs.
+    """
+    if isinstance(val, str | bytes):
+        # For strings/bytes, use ascii_escaped equivalent
+        if isinstance(val, bytes):
+            return val.decode("ascii", "backslashreplace")
+        # For regular strings, escape non-printable chars
+        return val.encode("unicode_escape").decode("ascii")
+    elif val is None or isinstance(val, float | int | bool | complex):
+        return str(val)
+    elif isinstance(val, re.Pattern):
+        return val.pattern.encode("unicode_escape").decode("ascii")
+    elif hasattr(val, "__name__") and isinstance(val.__name__, str):
+        # Name of a class, function, module, etc.
+        return val.__name__
+    # Check for enum after __name__ check (enums have __name__ but we want str())
+    elif isinstance(val, Enum):
+        return str(val)
+    return None
+
+
+def _idval(val: Any, argname: str, idx: int, idfn: Callable | None = None) -> str:
+    """
+    Generate a pytest-compatible ID for a parameter value.
+
+    Falls back to argname+idx if the value type is not supported.
+    """
+    # Try user-provided id function first
+    if idfn is not None:
+        try:
+            id_result = idfn(val)
+            if id_result is not None:
+                id_from_fn = _idval_from_value(id_result)
+                if id_from_fn is not None:
+                    return id_from_fn
+        except Exception:
+            pass
+
+    # Try to get ID from value
+    id_from_value = _idval_from_value(val)
+    if id_from_value is not None:
+        return id_from_value
+
+    # Fallback to argname + index
+    return f"{argname}{idx}"
+
+
+def _make_unique_ids(ids: list[str]) -> list[str]:
+    """
+    Make IDs unique by appending suffixes to duplicates.
+
+    This mimics pytest's duplicate handling logic.
+    """
+    from collections import Counter
+
+    id_counts = Counter(ids)
+    id_suffixes: dict[str, int] = {id_: 0 for id_ in id_counts}
+    resolved_ids = list(ids)
+
+    for index, id_ in enumerate(ids):
+        if id_counts[id_] > 1:
+            suffix = ""
+            if id_ and id_[-1].isdigit():
+                suffix = "_"
+            new_id = f"{id_}{suffix}{id_suffixes[id_]}"
+            # Ensure uniqueness
+            while new_id in set(resolved_ids[:index]):
+                id_suffixes[id_] += 1
+                new_id = f"{id_}{suffix}{id_suffixes[id_]}"
+            resolved_ids[index] = new_id
+            id_suffixes[id_] += 1
+
+    return resolved_ids
+
+
 @dataclass
 class _PytestArgDef:
     names: list[str]
     values: list[tuple[Any, ...]]
     id_fn: Callable[[Any], str] | None
+    # Explicit IDs from pytest.param(..., id="...") or parametrize(..., ids=[...])
+    explicit_ids: list[str | None] | None = None
 
     def __post_init__(self):
         if len(self.names) == 1:
@@ -198,9 +307,56 @@ class _PytestArgDef:
                     f"Expected {len(self.names)} values, got {len(vs)}: in {self}"
                 )
 
+    def get_ids(self) -> list[str]:
+        """
+        Generate pytest-compatible IDs for all parameter sets.
 
-def run_tests(matches: list[tuple[Path, Callable]]) -> None:
-    """Run tests discovered via manual discovery."""
+        Returns a list of unique ID strings matching pytest's behavior.
+        """
+        raw_ids: list[str] = []
+
+        for idx, values in enumerate(self.values):
+            # Check for explicit ID first
+            if self.explicit_ids and idx < len(self.explicit_ids):
+                explicit_id = self.explicit_ids[idx]
+                if explicit_id is not None:
+                    raw_ids.append(explicit_id)
+                    continue
+
+            # Generate ID from values (joined by "-" for multiple params)
+            param_ids = [
+                _idval(val, argname, idx, self.id_fn)
+                for val, argname in zip(values, self.names, strict=True)
+            ]
+            raw_ids.append("-".join(param_ids))
+
+        return _make_unique_ids(raw_ids)
+
+
+def _print_test_header(
+    filepath: Path, test_name: str, args: str | None = None, width: int = 80
+) -> None:
+    """Print a formatted header before running a test."""
+    print()
+    print("=" * width)
+    print(f"File:      {filepath}")
+    print(f"Test:      {test_name}")
+    if args is not None:
+        print(f"Arguments: [{args}]")
+    print("-" * width)
+
+
+def run_tests(
+    matches: list[tuple[Path, Callable]], arg_filter: str | None = None
+) -> None:
+    """
+    Run tests discovered via manual discovery.
+
+    Args:
+        matches: List of (filepath, test_function) tuples
+        arg_filter: Optional argument string filter (e.g., "arg1-arg2" from "test_foo[arg1-arg2]")
+                   If provided, only parametrized variants matching this filter will run.
+    """
     import tempfile
 
     import typer
@@ -223,14 +379,33 @@ def run_tests(matches: list[tuple[Path, Callable]]) -> None:
                     from _pytest.mark import ParameterSet
 
                     raw_values = mark.args[1]
-                    values = [
-                        v.values if isinstance(v, ParameterSet) else v
-                        for v in raw_values
-                    ]
+                    values: list[tuple[Any, ...]] = []
+                    explicit_ids: list[str | None] = []
+
+                    for v in raw_values:
+                        if isinstance(v, ParameterSet):
+                            values.append(v.values)
+                            explicit_ids.append(v.id)
+                        else:
+                            values.append(v)
+                            explicit_ids.append(None)
+
+                    # Also check for ids kwarg (can be list or callable)
+                    ids_kwarg = mark.kwargs.get("ids")
+                    id_fn: Callable | None = None
+                    if callable(ids_kwarg):
+                        id_fn = ids_kwarg
+                    elif isinstance(ids_kwarg, list):
+                        # Merge with explicit_ids (explicit takes precedence)
+                        for i, id_val in enumerate(ids_kwarg):
+                            if i < len(explicit_ids) and explicit_ids[i] is None:
+                                explicit_ids[i] = str(id_val) if id_val is not None else None
+
                     arg_def = _PytestArgDef(
                         names=[name.strip() for name in mark.args[0].split(",")],
                         values=values,
-                        id_fn=mark.kwargs.get("ids"),
+                        id_fn=id_fn,
+                        explicit_ids=explicit_ids if any(x is not None for x in explicit_ids) else None,
                     )
                 if mark.name == "usefixtures":
                     if "setup_project_config" in mark.args:
@@ -262,13 +437,48 @@ def run_tests(matches: list[tuple[Path, Callable]]) -> None:
 
         def fn():
             if not arg_def:
+                if arg_filter is not None:
+                    logger.warning(
+                        f"Test {test_func.__name__} is not parametrized but "
+                        f"arg filter '[{arg_filter}]' was specified"
+                    )
+                _print_test_header(filepath, test_func.__name__)
                 test_func()
                 return
-            for values in arg_def.values:
+
+            # Get pytest-compatible IDs for all parameter sets
+            param_ids = arg_def.get_ids()
+
+            # Compile arg_filter as regex if provided
+            arg_pattern: re.Pattern | None = None
+            if arg_filter is not None:
+                try:
+                    arg_pattern = re.compile(arg_filter)
+                except re.error as e:
+                    raise ValueError(
+                        f"Invalid regex pattern in arg filter '[{arg_filter}]': {e}"
+                    ) from e
+
+            # Filter to matching parameter sets
+            runs_executed = 0
+            for idx, (values, param_id) in enumerate(zip(arg_def.values, param_ids)):
+                # If arg_filter is specified, only run matching variants (regex search)
+                if arg_pattern is not None and not arg_pattern.search(param_id):
+                    continue
+
                 kwargs = dict(zip(arg_def.names, values))
-                # name = arg_def.id_fn(kwargs) if arg_def.id_fn else str(values)
-                print(f"Running {test_func.__name__} with {kwargs}")
+                _print_test_header(filepath, test_func.__name__, param_id)
                 test_func(**kwargs)
+                runs_executed += 1
+
+            if arg_filter is not None and runs_executed == 0:
+                available_ids = ", ".join(param_ids[:5])
+                if len(param_ids) > 5:
+                    available_ids += f", ... ({len(param_ids)} total)"
+                raise TestCaseNotFound(
+                    f"No parametrized variant matching regex '[{arg_filter}]' found for "
+                    f"{test_func.__name__}. Available: {available_ids}"
+                )
 
         try:
             fn()
@@ -296,10 +506,46 @@ class TestCaseNotFound(TestNotFound):
     pass
 
 
+def _parse_test_name_with_args(test_name: str) -> tuple[str, str | None]:
+    """
+    Parse a test name that may include an argument string.
+
+    Formats supported:
+    - "test_foo" -> ("test_foo", None)
+    - "test_foo[arg1-arg2]" -> ("test_foo", "arg1-arg2")
+    - "TestClass::test_method[arg]" -> ("TestClass::test_method", "arg")
+
+    Returns (test_pattern, arg_filter) where arg_filter is None if no brackets present.
+    """
+    # Match pattern: name[args] where args can contain nested brackets
+    # We need to find the outermost [...] at the end
+    if not test_name.endswith("]"):
+        return test_name, None
+
+    # Find matching opening bracket
+    depth = 0
+    for i in range(len(test_name) - 1, -1, -1):
+        if test_name[i] == "]":
+            depth += 1
+        elif test_name[i] == "[":
+            depth -= 1
+            if depth == 0:
+                # Found the matching opening bracket
+                base_name = test_name[:i]
+                arg_string = test_name[i + 1 : -1]  # Extract content between brackets
+                return base_name, arg_string
+
+    # No matching bracket found, treat as regular name
+    return test_name, None
+
+
 def run(
     test_name: str,
     filepaths: list[Path],
 ):
+    # Parse test_name[argstring] format
+    test_pattern, arg_filter = _parse_test_name_with_args(test_name)
+
     test_files: list[Path] = []
     for filepath in filepaths:
         if not filepath.exists():
@@ -309,10 +555,10 @@ def run(
         else:
             test_files.extend(filepath.rglob("*.py"))
 
-    matches = discover_tests(test_files, test_name)
+    matches = discover_tests(test_files, test_pattern)
     if not matches:
-        raise TestCaseNotFound(f"Test function '{test_name}' not found in {filepaths}")
-    run_tests(matches)
+        raise TestCaseNotFound(f"Test function '{test_pattern}' not found in {filepaths}")
+    run_tests(matches, arg_filter=arg_filter)
 
 
 def main(

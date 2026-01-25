@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from pathlib import Path
 from typing import Any, Optional, cast
+from urllib.parse import quote as url_quote
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -2099,11 +2100,21 @@ class TestAggregator:
                         "LIVE OUTPUT", ansi_to_html(output["live"]), "live"
                     )
 
+            # Always show stream link to database logs
+            safe_nodeid = html.escape(t["nodeid"])
+            url_nodeid = url_quote(t["nodeid"], safe="")
+            test_run_id = self._test_run_id or ""
+            stream_link = (
+                f'<a href="/logs?test_run_id={test_run_id}&test_name={url_nodeid}" '
+                f'target="_blank" class="stream-link" title="Stream logs">&#128203;</a>'
+            )
+            log_button = stream_link
+
+            # Add modal button and content only if there's embedded output
             if log_content:
-                safe_nodeid = html.escape(t["nodeid"])
                 modal_id = f"modal_{safe_nodeid}"
-                log_button = (
-                    f"<button onclick=\"openModal('{modal_id}')\">View Logs</button>"
+                log_button += (
+                    f"<button onclick=\"openModal('{modal_id}')\">View</button>"
                 )
                 log_modal = f"""
                 <div id="{modal_id}" class="modal">
@@ -2869,8 +2880,8 @@ LOG_VIEWER_DIST_DIR = (
 
 
 @app.get("/logs")
-async def serve_log_viewer():
-    """Serve the log viewer HTML page."""
+async def serve_log_viewer(request: Request):
+    """Serve the log viewer HTML page with injected API URL."""
     html_path = LOG_VIEWER_DIST_DIR / "log-viewer.html"
     if not html_path.exists():
         return HTMLResponse(
@@ -2881,6 +2892,19 @@ async def serve_log_viewer():
         )
 
     content = html_path.read_text(encoding="utf-8")
+
+    # Inject the API URL so the log viewer can connect to this server's WebSocket
+    # The log viewer JavaScript expects window.__ATOPILE_API_URL__ to be set
+    host = request.headers.get("host", "127.0.0.1")
+    # Ensure we use http (not https) for local server
+    api_url = f"http://{host}"
+    inject_script = f"""<script>
+    window.__ATOPILE_API_URL__ = "{api_url}";
+    </script>
+    """
+    # Insert the script right after <head>
+    content = content.replace("<head>", f"<head>\n    {inject_script}", 1)
+
     return HTMLResponse(content=content)
 
 

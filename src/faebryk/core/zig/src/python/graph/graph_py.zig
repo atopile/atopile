@@ -1204,7 +1204,14 @@ fn wrap_graphview_insert_edge() type {
             const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const bound = wrapper.data.insert_edge(kwarg_obj.edge.*);
+            const bound = wrapper.data.insert_edge(kwarg_obj.edge.*) catch |err| {
+                const msg = switch (err) {
+                    error.SourceNodeNotInGraph => "Edge source node not in graph",
+                    error.TargetNodeNotInGraph => "Edge target node not in graph",
+                };
+                py.PyErr_SetString(py.PyExc_ValueError, msg);
+                return null;
+            };
 
             return makeBoundEdgePyObject(bound);
         }

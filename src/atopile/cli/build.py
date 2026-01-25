@@ -153,6 +153,7 @@ class BuildProcess:
         keep_picked_parts: bool | None = None,
         keep_net_names: bool | None = None,
         keep_designators: bool | None = None,
+        verbose: bool = False,
     ):
         self.name = build_name
         self.project_name = project_name  # For multi-project builds
@@ -167,6 +168,7 @@ class BuildProcess:
         self.keep_picked_parts = keep_picked_parts
         self.keep_net_names = keep_net_names
         self.keep_designators = keep_designators
+        self.verbose = verbose
         self.process: subprocess.Popen | None = None
         self.start_time: float = 0.0
         self.end_time: float = 0.0
@@ -238,7 +240,28 @@ class BuildProcess:
             env["ATO_KEEP_NET_NAMES"] = "1" if self.keep_net_names else "0"
         if self.keep_designators is not None:
             env["ATO_KEEP_DESIGNATORS"] = "1" if self.keep_designators else "0"
+        if self.verbose:
+            env["ATO_VERBOSE"] = "1"
         self.start_time = time.time()
+
+        # Enable faulthandler in workers for crash debugging
+        # ATO_SAFE is set by --safe flag or can be set explicitly
+        preexec_fn = None
+        if os.environ.get("ATO_SAFE"):
+            env["ATO_SAFE"] = "1"
+
+            def enable_core_dumps():
+                import resource
+
+                try:
+                    resource.setrlimit(
+                        resource.RLIMIT_CORE,
+                        (resource.RLIM_INFINITY, resource.RLIM_INFINITY),
+                    )
+                except (ValueError, OSError):
+                    pass
+
+            preexec_fn = enable_core_dumps
 
         # Keep stdout/stderr so worker exceptions are visible immediately.
         self.process = subprocess.Popen(
@@ -246,6 +269,7 @@ class BuildProcess:
             cwd=self.project_root,
             env=env,
             pass_fds=self._get_pass_fds(),
+            preexec_fn=preexec_fn,
         )
         self._close_event_pipe_in_parent()
 
@@ -506,6 +530,7 @@ class ParallelBuildManager:
                 keep_picked_parts=self.keep_picked_parts,
                 keep_net_names=self.keep_net_names,
                 keep_designators=self.keep_designators,
+                verbose=self.verbose,
             )
             # Pre-generate build_id so it's available for display before start()
             project_path = str(project_root.resolve())
@@ -1441,8 +1466,15 @@ def build(
     from faebryk.libs.kicad.ipc import reload_pcb
     from faebryk.libs.project.dependencies import ProjectDependencies
 
-    if verbose:
-        logging.getLogger().setLevel(logging.INFO)
+    # Check for verbose mode from CLI flag or environment variable (for workers)
+    if verbose or os.environ.get("ATO_VERBOSE") == "1":
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    # Enable faulthandler for crash debugging in workers
+    if os.environ.get("ATO_SAFE"):
+        import faulthandler
+
+        faulthandler.enable()
 
     # Worker mode - run single build directly (no config needed yet)
     if os.environ.get("ATO_BUILD_EVENT_FD"):

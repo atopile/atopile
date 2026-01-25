@@ -12,7 +12,7 @@ const EdgePointer = pointer_mod.EdgePointer;
 const EdgeComposition = composition_mod.EdgeComposition;
 const TypeGraph = typegraph_mod.TypeGraph;
 
-const LinkerError = error{ TypeReferenceNotInGraph, TargetTypeNotInGraph };
+const LinkerError = error{ TypeReferenceNotInGraph, TargetTypeNotInGraph, SourceNodeNotInGraph, TargetNodeNotInGraph };
 
 pub const Linker = struct {
     pub const Error = LinkerError;
@@ -28,7 +28,7 @@ pub const Linker = struct {
             return Error.TargetTypeNotInGraph;
         }
 
-        _ = EdgePointer.point_to(type_reference, target_type.node, resolved_identifier, null);
+        _ = try EdgePointer.point_to(type_reference, target_type.node, resolved_identifier, null);
     }
 
     pub fn try_get_resolved_type(type_reference: BoundNodeReference) ?BoundNodeReference {
@@ -48,7 +48,7 @@ pub const Linker = struct {
         if (get_existing_resolved_edge(type_reference)) |existing_edge| {
             existing_edge.edge.set_target_node(target_type.node);
         } else {
-            _ = EdgePointer.point_to(type_reference, target_type.node, resolved_identifier, null);
+            _ = try EdgePointer.point_to(type_reference, target_type.node, resolved_identifier, null);
         }
     }
 

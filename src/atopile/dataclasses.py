@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum, StrEnum
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, TypedDict
 
 from fastapi import WebSocket
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -93,6 +93,37 @@ class StageCompleteEvent:
 # =============================================================================
 
 
+class LocalVar(TypedDict, total=False):
+    """A serialized local variable from a stack frame."""
+
+    type: str  # e.g., "int", "str", "Parameter"
+    repr: str  # Truncated repr() representation
+    value: Any  # JSON-native value if serializable (optional)
+
+
+class StackFrame(TypedDict):
+    """A single stack frame from a structured traceback."""
+
+    filename: str
+    lineno: int
+    function: str
+    code_line: str | None  # Source line if available
+    locals: dict[str, LocalVar]
+
+
+class StructuredTraceback(TypedDict):
+    """
+    Structured traceback with stack frames and local variables.
+
+    Used for IDE-like stack inspector UI where users can expand frames
+    and inspect variables.
+    """
+
+    exc_type: str  # e.g., "AssertionError"
+    exc_message: str  # e.g., "Parameter not constrained"
+    frames: list[StackFrame]  # Bottom-up (most recent last)
+
+
 class Log:
     """Namespace for all log-related data structures."""
 
@@ -134,6 +165,8 @@ class Log:
         audience: Log.Audience | None = field(
             default=None
         )  # Set to Log.Audience.DEVELOPER after class definition
+        source_file: str | None = None
+        source_line: int | None = None
         ato_traceback: str | None = None
         python_traceback: str | None = None
         objects: dict | None = None
@@ -147,6 +180,8 @@ class Log:
         audience: Log.Audience | None = field(
             default=None
         )  # Set to Log.Audience.DEVELOPER after class definition
+        source_file: str | None = None
+        source_line: int | None = None
         ato_traceback: str | None = None
         python_traceback: str | None = None
         objects: dict | None = None
@@ -186,6 +221,8 @@ class Log:
         audience: str
         logger_name: str
         message: str
+        source_file: str | None = None
+        source_line: int | None = None
         ato_traceback: str | None = None
         python_traceback: str | None = None
         objects: Any | None = None

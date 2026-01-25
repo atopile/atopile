@@ -1305,23 +1305,36 @@ class Tree[T](dict[T, "Tree[T]"]):
             # merge lists of parallel subtrees
             yield [n for subtree in level for n in subtree]
 
-    def pretty(self) -> str:
-        # TODO this is def broken for actual trees
+    def pretty(
+        self,
+        node_repr: Callable[[T], str] | None = None,
+        _prefix: str = "",
+        _is_root: bool = True,
+    ) -> str:
+        if node_repr is None:
+            node_repr = repr
 
-        out = ""
-        next_levels = [self]
-        while next_levels:
-            for next_level in next_levels:
-                out += " | ".join(f"{p!r}" for p in next_level.keys())
-            next_levels = [
-                children
-                for next_level in next_levels
-                for _, children in next_level.items()
-            ]
-            if any(next_levels):
-                out += indent("\n↓\n", " " * 12)
+        lines: list[str] = []
+        items = list(self.items())
 
-        return out
+        for i, (key, subtree) in enumerate(items):
+            is_last = i == len(items) - 1
+
+            if _is_root:
+                connector = ""
+                child_prefix = ""
+            else:
+                connector = "└── " if is_last else "├── "
+                child_prefix = _prefix + ("    " if is_last else "│   ")
+
+            lines.append(f"{_prefix}{connector}{node_repr(key)}")
+
+            if subtree:
+                lines.append(
+                    subtree.pretty(node_repr, _prefix=child_prefix, _is_root=False)
+                )
+
+        return "\n".join(lines)
 
     def copy(self) -> "Tree[T]":
         return Tree({k: v.copy() for k, v in self.items()})
@@ -3121,13 +3134,8 @@ def run_processes(cmds: list[list[str]]) -> bool:
     return all(rc == 0 for rc in rcs)
 
 
-def run_gdb(test_bin: Path | None = None) -> None:
-    # TODO move to util.py
-
-    if sys.platform.startswith("win") or sys.platform.startswith("darwin"):
-        print("Debugging with core dumps is not supported on Windows or macOS")
-        return
-
+def _run_gdb_linux(test_bin: Path | None) -> None:
+    """Linux-specific core dump debugging using gdb + coredumpctl."""
     if test_bin is None:
         # run coredumpctl info and look for 'Executable: <test_bin>'
         try:
@@ -3196,6 +3204,199 @@ def run_gdb(test_bin: Path | None = None) -> None:
             subprocess.run(cmd, shell=True, capture_output=False, check=True)
         except subprocess.CalledProcessError:
             print("Failed to run gdb on core dump")
+
+
+def _display_macos_crash_report(crash_file: Path) -> None:
+    """Parse and display a macOS .ips crash report in a readable format."""
+    import json
+
+    try:
+        content = crash_file.read_text()
+        # .ips files have a JSON header line followed by a JSON body
+        lines = content.split("\n", 1)
+        if len(lines) < 2:
+            print(content[:2000])
+            return
+
+        try:
+            report = json.loads(lines[1])
+        except json.JSONDecodeError:
+            # Fall back to showing raw content
+            print(content[:2000])
+            return
+
+        # Extract key information
+        exception = report.get("exception", {})
+        termination = report.get("termination", {})
+        threads = report.get("threads", [])
+        images = report.get("usedImages", [])
+
+        # Build image lookup for symbolication
+        image_lookup = {i: img.get("name", f"image{i}") for i, img in enumerate(images)}
+
+        print("\n--- Crash Report ---")
+        print(f"Exception: {exception.get('type', 'Unknown')}")
+        if "subtype" in exception:
+            print(f"  {exception['subtype']}")
+        print(f"Signal: {exception.get('signal', 'Unknown')}")
+        if termination:
+            print(f"Termination: {termination.get('indicator', '')}")
+
+        # Find and print the faulting thread's backtrace
+        faulting_idx = report.get("faultingThread", 0)
+        if threads and faulting_idx < len(threads):
+            thread = threads[faulting_idx]
+            frames = thread.get("frames", [])
+            print(f"\nBacktrace (Thread {faulting_idx}):")
+            for i, frame in enumerate(frames[:30]):  # Limit to 30 frames
+                symbol = frame.get("symbol", "???")
+                image_idx = frame.get("imageIndex", 0)
+                image_name = image_lookup.get(image_idx, "???")
+                source_file = frame.get("sourceFile", "")
+                source_line = frame.get("sourceLine", "")
+
+                loc = ""
+                if source_file:
+                    loc = f" ({source_file}"
+                    if source_line:
+                        loc += f":{source_line}"
+                    loc += ")"
+
+                print(f"  {i:2d}: {symbol}{loc}")
+                print(f"      [{image_name}]")
+
+            if len(frames) > 30:
+                print(f"  ... ({len(frames) - 30} more frames)")
+
+        print(f"\nFull report: {crash_file}")
+
+    except Exception as e:
+        print(f"Error parsing crash report: {e}")
+        # Fall back to raw content
+        try:
+            print(crash_file.read_text()[:2000])
+        except Exception:
+            pass
+
+
+def _run_lldb_macos(test_bin: Path | None, created_after: float | None) -> None:
+    """macOS-specific core dump debugging using lldb."""
+    cores_dir = Path("/cores")
+    core_file: Path | None = None
+
+    # Check if core dumps directory exists and has core files
+    if cores_dir.exists():
+        try:
+            all_core_files = list(cores_dir.glob("core.*"))
+            if created_after is not None:
+                # Only consider core files created after the specified time
+                core_files = [
+                    p for p in all_core_files if p.stat().st_mtime >= created_after
+                ]
+            else:
+                core_files = all_core_files
+            core_files = sorted(
+                core_files, key=lambda p: p.stat().st_mtime, reverse=True
+            )
+            if core_files:
+                core_file = core_files[0]
+        except PermissionError:
+            print("Cannot read /cores directory - permission denied")
+
+    if core_file is None:
+        # No core dump found - check for crash reports instead
+        diag_dir = Path.home() / "Library/Logs/DiagnosticReports"
+        if diag_dir.exists():
+            import time
+
+            # Wait a moment for macOS to write the crash report
+            time.sleep(0.5)
+
+            try:
+                # Look for .ips crash reports (newer format) or .crash files
+                # Filter by likely process names (python, ato, faebryk, or the test binary)
+                likely_names = ["Python", "python", "ato", "faebryk"]
+                if test_bin:
+                    likely_names.append(test_bin.stem)
+
+                crash_files = list(diag_dir.glob("*.ips")) + list(
+                    diag_dir.glob("*.crash")
+                )
+
+                # First try: filter by name AND time
+                if created_after is not None:
+                    time_filtered = [
+                        p for p in crash_files if p.stat().st_mtime >= created_after
+                    ]
+                    # Filter by process name in filename
+                    matching_crashes = [
+                        p
+                        for p in time_filtered
+                        if any(name in p.name for name in likely_names)
+                    ]
+                    if matching_crashes:
+                        crash_files = matching_crashes
+                    elif time_filtered:
+                        # Fall back to time-filtered only
+                        crash_files = time_filtered
+
+                crash_files = sorted(
+                    crash_files, key=lambda p: p.stat().st_mtime, reverse=True
+                )
+                if crash_files:
+                    crash_file = crash_files[0]
+                    print(f"Found crash report: {crash_file}")
+                    _display_macos_crash_report(crash_file)
+                    return
+            except PermissionError:
+                pass
+
+        print("No core dump files found in /cores")
+        if not cores_dir.exists():
+            print(
+                "Core dumps directory /cores does not exist. "
+                "Create with: sudo mkdir /cores && sudo chmod 1777 /cores"
+            )
+        elif not os.access(cores_dir, os.W_OK):
+            print(
+                "The /cores directory is not writable. Fix with: sudo chmod 1777 /cores"
+            )
+        else:
+            print(
+                "Core dumps may be disabled. Try: sudo sysctl kern.coredump=1\n"
+                "Note: macOS often writes crash reports to ~/Library/Logs/DiagnosticReports/ instead."
+            )
+        return
+
+    print(f"Using core file: {core_file}")
+
+    # Build lldb command with backtrace
+    lldb_cmd = ["lldb", "--batch"]
+    if test_bin:
+        lldb_cmd.append(str(test_bin))
+    lldb_cmd.extend(["-c", str(core_file), "-o", "thread backtrace all", "-o", "quit"])
+
+    print(f"Attach lldb with: lldb {test_bin or ''} -c {core_file}")
+    try:
+        subprocess.run(lldb_cmd, check=True)
+    except FileNotFoundError:
+        print(
+            "lldb not found. Install Xcode Command Line Tools: xcode-select --install"
+        )
+    except subprocess.CalledProcessError:
+        print("Failed to run lldb on core dump")
+
+
+def run_gdb(test_bin: Path | None = None, created_after: float | None = None) -> None:
+    """Debug a crash using platform-appropriate tools (gdb on Linux, lldb on macOS)."""
+    if sys.platform.startswith("win"):
+        print("Debugging with core dumps is not supported on Windows")
+        return
+
+    if sys.platform.startswith("darwin"):
+        _run_lldb_macos(test_bin, created_after)
+    else:
+        _run_gdb_linux(test_bin)
 
 
 class _LazyProxy:
@@ -3295,6 +3496,16 @@ class OrderedSet[T: Hashable](collections.abc.MutableSet[T]):
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({list(self._data)})"
+
+
+def one[T](iterable: Iterable[T]) -> T:
+    it = iter(iterable)
+    out = next(it)
+    try:
+        next(it)
+    except StopIteration:
+        return out
+    raise ValueError("Iterable has more than one element")
 
 
 class TestEnvironmentVariables:

@@ -125,11 +125,10 @@ pub const EdgeComposition = struct {
         return parent_edge.g.bind(EdgeComposition.get_parent_node(parent_edge.edge));
     }
 
-    pub fn add_child(bound_node: graph.BoundNodeReference, child: NodeReference, child_identifier: ?str) graph.BoundEdgeReference {
+    pub fn add_child(bound_node: graph.BoundNodeReference, child: NodeReference, child_identifier: ?str) graph.GraphView.InsertEdgeError!graph.BoundEdgeReference {
         // if child identifier is null, then generate a unique identifier
         const link = EdgeComposition.init(bound_node.node, child, child_identifier orelse "");
-        const bound_edge = bound_node.g.insert_edge(link);
-        return bound_edge;
+        return bound_node.g.insert_edge(link);
     }
 
     pub fn get_name(edge: EdgeReference) !str {
@@ -307,8 +306,8 @@ test "basic" {
     const bn2 = g.create_and_insert_node();
     const bn3 = g.create_and_insert_node();
 
-    _ = EdgeComposition.add_child(bn1, bn2.node, "child1");
-    _ = EdgeComposition.add_child(bn1, bn3.node, "child2");
+    _ = try EdgeComposition.add_child(bn1, bn2.node, "child1");
+    _ = try EdgeComposition.add_child(bn1, bn3.node, "child2");
 
     // has to be deleted first
     defer g.deinit();
@@ -355,7 +354,7 @@ test "add_child with null identifier" {
     const child = g.create_and_insert_node();
 
     // When child_identifier is null, the edge name is empty string
-    const edge = EdgeComposition.add_child(parent, child.node, null);
+    const edge = try EdgeComposition.add_child(parent, child.node, null);
 
     // Verify edge was created
     try std.testing.expect(EdgeComposition.is_instance(edge.edge));
@@ -385,9 +384,9 @@ test "get_children_query direct_only" {
     const child2 = g.create_and_insert_node();
     const grandchild1 = g.create_and_insert_node();
 
-    _ = EdgeComposition.add_child(parent, child1.node, "child1");
-    _ = EdgeComposition.add_child(parent, child2.node, "child2");
-    _ = EdgeComposition.add_child(child1, grandchild1.node, "grandchild1");
+    _ = try EdgeComposition.add_child(parent, child1.node, "child1");
+    _ = try EdgeComposition.add_child(parent, child2.node, "child2");
+    _ = try EdgeComposition.add_child(child1, grandchild1.node, "grandchild1");
 
     // Test direct_only = true: should only return child1 and child2
     const query_direct = ChildQuery{
@@ -424,9 +423,9 @@ test "get_children_query recursive" {
     const child2 = g.create_and_insert_node();
     const grandchild1 = g.create_and_insert_node();
 
-    _ = EdgeComposition.add_child(parent, child1.node, "child1");
-    _ = EdgeComposition.add_child(parent, child2.node, "child2");
-    _ = EdgeComposition.add_child(child1, grandchild1.node, "grandchild1");
+    _ = try EdgeComposition.add_child(parent, child1.node, "child1");
+    _ = try EdgeComposition.add_child(parent, child2.node, "child2");
+    _ = try EdgeComposition.add_child(child1, grandchild1.node, "grandchild1");
 
     // Test direct_only = false: should return child1, child2, and grandchild1
     const query_recursive = ChildQuery{
@@ -462,7 +461,7 @@ test "get_children_query include_root" {
     const parent = g.create_and_insert_node();
     const child1 = g.create_and_insert_node();
 
-    _ = EdgeComposition.add_child(parent, child1.node, "child1");
+    _ = try EdgeComposition.add_child(parent, child1.node, "child1");
 
     // Test include_root = true
     const query_with_root = ChildQuery{
@@ -630,9 +629,9 @@ test "get_children_query sorted" {
     const child3 = g.create_and_insert_node();
 
     // Insert in unsorted order: c, a, b
-    _ = EdgeComposition.add_child(parent, child3.node, "c");
-    _ = EdgeComposition.add_child(parent, child1.node, "a");
-    _ = EdgeComposition.add_child(parent, child2.node, "b");
+    _ = try EdgeComposition.add_child(parent, child3.node, "c");
+    _ = try EdgeComposition.add_child(parent, child1.node, "a");
+    _ = try EdgeComposition.add_child(parent, child2.node, "b");
 
     const query = ChildQuery{
         .direct_only = true,

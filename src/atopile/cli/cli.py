@@ -130,18 +130,44 @@ def cli(
 ):
     if safe_mode:
         import os
+        import resource
+        import signal
         import subprocess
+        import time
+
+        def enable_core_dumps():
+            """Enable core dumps in the child process."""
+            try:
+                resource.setrlimit(
+                    resource.RLIMIT_CORE,
+                    (resource.RLIM_INFINITY, resource.RLIM_INFINITY),
+                )
+            except (ValueError, OSError):
+                pass  # Best effort - may fail if system limit is lower
 
         args = [arg for arg in sys.argv if arg != "--safe"]
         env = os.environ.copy()
-        env[SAFE_MODE_OPTION.name] = "N"
+        env[SAFE_MODE_OPTION.name] = "N"  # Prevent safe wrapper recursion
+        env["ATO_SAFE"] = "1"  # Signal to workers to enable faulthandler
 
-        result = subprocess.run(args, env=env)
-        if result.returncode not in (0, 1):
+        start_time = time.time()
+        result = subprocess.Popen(args, env=env, preexec_fn=enable_core_dumps)
+        pid = result.pid
+        returncode = result.wait()
+        if returncode not in (0, 1):
             from faebryk.libs.util import run_gdb
 
-            run_gdb()
-        sys.exit(result.returncode)
+            print(f"Process exited with code {returncode}, PID was {pid}")
+            # Negative return code means killed by signal
+            if returncode < 0:
+                sig = -returncode
+                try:
+                    sig_name = signal.Signals(sig).name
+                except ValueError:
+                    sig_name = f"signal {sig}"
+                print(f"Killed by {sig_name}")
+            run_gdb(created_after=start_time)
+        sys.exit(returncode)
 
     if debug:
         import debugpy  # pylint: disable=import-outside-toplevel
