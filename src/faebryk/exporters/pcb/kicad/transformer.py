@@ -2026,12 +2026,13 @@ class PCB_Transformer:
             for n in self.pcb.nets
             if (n.number, n.name) not in processed_nets
         }.values():
-            # Net number == 0 and name == "" are the default values
-            # They represent unconnected to nets, so skip them
+            # Net number == 0 is the "unconnected" net in KiCad, skip it
             if pcb_net.number == 0:
-                assert pcb_net.name == "", (
-                    f"Net 0 name is '{pcb_net.name}', should be ''"
-                )
+                if pcb_net.name != "":
+                    logger.warning(
+                        f"Net 0 has unexpected name '{pcb_net.name}'"
+                        " (expected ''), skipping as unconnected net"
+                    )
                 continue
 
             logger.info(
