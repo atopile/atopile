@@ -42,8 +42,8 @@ fn add_module(root: *py.PyObject, comptime name: [:0]const u8, comptime T: type)
 }
 
 export fn PyInit_pyzig() ?*py.PyObject {
-    const root = py.PyModule_Create2(&main_module_def, 1013) orelse return null;
-    const nested = py.PyModule_Create2(&nested_module_def, 1013) orelse return null;
+    const root = py.PyModule_Create2(&main_module_def, py.PYTHON_API_VERSION) orelse return null;
+    const nested = py.PyModule_Create2(&nested_module_def, py.PYTHON_API_VERSION) orelse return null;
     if (py.PyModule_AddObject(root, "gen", nested) < 0) {
         py.PyErr_SetString(py.PyExc_ValueError, "Failed to add gen submodule");
         return null;

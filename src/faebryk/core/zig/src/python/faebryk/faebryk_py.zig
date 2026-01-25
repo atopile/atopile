@@ -5972,7 +5972,7 @@ fn wrap_edge_trait(root: *py.PyObject) void {
 }
 
 fn wrap_composition_file(root: *py.PyObject) ?*py.PyObject {
-    const module = py.PyModule_Create2(&main_module_def, 1013);
+    const module = py.PyModule_Create2(&main_module_def, py.PYTHON_API_VERSION);
     if (module == null) {
         return null;
     }
@@ -5988,7 +5988,7 @@ fn wrap_composition_file(root: *py.PyObject) ?*py.PyObject {
 }
 
 fn wrap_interface_file(root: *py.PyObject) ?*py.PyObject {
-    const module = py.PyModule_Create2(&main_module_def, 1013);
+    const module = py.PyModule_Create2(&main_module_def, py.PYTHON_API_VERSION);
     if (module == null) {
         return null;
     }
@@ -6003,7 +6003,7 @@ fn wrap_interface_file(root: *py.PyObject) ?*py.PyObject {
 }
 
 fn wrap_module_file(root: *py.PyObject) ?*py.PyObject {
-    const module = py.PyModule_Create2(&main_module_def, 1013);
+    const module = py.PyModule_Create2(&main_module_def, py.PYTHON_API_VERSION);
     if (module == null) {
         return null;
     }
@@ -6018,7 +6018,7 @@ fn wrap_module_file(root: *py.PyObject) ?*py.PyObject {
 }
 
 fn wrap_node_type_file(root: *py.PyObject) ?*py.PyObject {
-    const module = py.PyModule_Create2(&main_module_def, 1013);
+    const module = py.PyModule_Create2(&main_module_def, py.PYTHON_API_VERSION);
     if (module == null) {
         return null;
     }
@@ -6033,7 +6033,7 @@ fn wrap_node_type_file(root: *py.PyObject) ?*py.PyObject {
 }
 
 fn wrap_next_file(root: *py.PyObject) ?*py.PyObject {
-    const module = py.PyModule_Create2(&main_module_def, 1013);
+    const module = py.PyModule_Create2(&main_module_def, py.PYTHON_API_VERSION);
     if (module == null) {
         return null;
     }
@@ -6048,7 +6048,7 @@ fn wrap_next_file(root: *py.PyObject) ?*py.PyObject {
 }
 
 fn wrap_pointer_file(root: *py.PyObject) ?*py.PyObject {
-    const module = py.PyModule_Create2(&main_module_def, 1013);
+    const module = py.PyModule_Create2(&main_module_def, py.PYTHON_API_VERSION);
     if (module == null) {
         return null;
     }
@@ -6063,7 +6063,7 @@ fn wrap_pointer_file(root: *py.PyObject) ?*py.PyObject {
 }
 
 fn wrap_typegraph_file(root: *py.PyObject) ?*py.PyObject {
-    const module = py.PyModule_Create2(&main_module_def, 1013);
+    const module = py.PyModule_Create2(&main_module_def, py.PYTHON_API_VERSION);
     if (module == null) {
         return null;
     }
@@ -6078,7 +6078,7 @@ fn wrap_typegraph_file(root: *py.PyObject) ?*py.PyObject {
 }
 
 fn wrap_linker_file(root: *py.PyObject) ?*py.PyObject {
-    const module = py.PyModule_Create2(&main_module_def, 1013);
+    const module = py.PyModule_Create2(&main_module_def, py.PYTHON_API_VERSION);
     if (module == null) {
         return null;
     }
@@ -6093,7 +6093,7 @@ fn wrap_linker_file(root: *py.PyObject) ?*py.PyObject {
 }
 
 fn wrap_trait_file(root: *py.PyObject) ?*py.PyObject {
-    const module = py.PyModule_Create2(&main_module_def, 1013);
+    const module = py.PyModule_Create2(&main_module_def, py.PYTHON_API_VERSION);
     if (module == null) {
         return null;
     }
@@ -6109,7 +6109,7 @@ fn wrap_trait_file(root: *py.PyObject) ?*py.PyObject {
 }
 
 fn wrap_nodebuilder_file(root: *py.PyObject) ?*py.PyObject {
-    const module = py.PyModule_Create2(&main_module_def, 1013);
+    const module = py.PyModule_Create2(&main_module_def, py.PYTHON_API_VERSION);
     if (module == null) {
         return null;
     }
@@ -6124,7 +6124,7 @@ fn wrap_nodebuilder_file(root: *py.PyObject) ?*py.PyObject {
 }
 
 fn wrap_edgebuilder_file(root: *py.PyObject) ?*py.PyObject {
-    const module = py.PyModule_Create2(&main_module_def, 1013);
+    const module = py.PyModule_Create2(&main_module_def, py.PYTHON_API_VERSION);
     if (module == null) {
         return null;
     }
@@ -6139,7 +6139,7 @@ fn wrap_edgebuilder_file(root: *py.PyObject) ?*py.PyObject {
 }
 
 fn wrap_operand_file(root: *py.PyObject) ?*py.PyObject {
-    const module = py.PyModule_Create2(&main_module_def, 1013);
+    const module = py.PyModule_Create2(&main_module_def, py.PYTHON_API_VERSION);
     if (module == null) {
         return null;
     }
@@ -6306,7 +6306,7 @@ var main_module_def = py.PyModuleDef{
 };
 
 pub fn make_python_module() ?*py.PyObject {
-    const module = py.PyModule_Create2(&main_module_def, 1013);
+    const module = py.PyModule_Create2(&main_module_def, py.PYTHON_API_VERSION);
     if (module == null) {
         return null;
     }

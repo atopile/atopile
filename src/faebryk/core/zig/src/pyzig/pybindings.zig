@@ -1,5 +1,12 @@
 pub const std = @import("std");
 
+/// Python API version for module creation
+/// This should match the Python version being compiled against.
+/// 1013 = Python 3.13, 1014 = Python 3.14, etc.
+/// Formula: 1000 + minor_version for Python 3.x
+/// NOTE: Change this when switching Python versions
+pub const PYTHON_API_VERSION: c_int = 1013;
+
 /// Python C API declarations
 pub const PyObject = opaque {};
 

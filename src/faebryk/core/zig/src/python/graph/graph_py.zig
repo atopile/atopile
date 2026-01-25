@@ -1483,7 +1483,7 @@ fn wrap_graphview(root: *py.PyObject) void {
 }
 
 fn wrap_graph_module(root: *py.PyObject) ?*py.PyObject {
-    const module = py.PyModule_Create2(&main_module_def, 1013);
+    const module = py.PyModule_Create2(&main_module_def, py.PYTHON_API_VERSION);
     if (module == null) {
         return null;
     }
@@ -1519,7 +1519,7 @@ var main_module_def = py.PyModuleDef{
 };
 
 pub fn make_python_module() ?*py.PyObject {
-    const module = py.PyModule_Create2(&main_module_def, 1013);
+    const module = py.PyModule_Create2(&main_module_def, py.PYTHON_API_VERSION);
     if (module == null) {
         return null;
     }
