@@ -20,12 +20,12 @@ class ServerConfig:
     def __init__(
         self,
         logs_base: Optional[Path] = None,
-        workspace_paths: Optional[list[Path]] = None,
+        workspace_path: Optional[Path] = None,
         port: Optional[int] = None,
         host: str = "127.0.0.1",
     ):
         self.logs_base = logs_base
-        self.workspace_paths = workspace_paths or []
+        self.workspace_path = workspace_path
         self.port = port
         self.host = host
 

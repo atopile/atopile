@@ -41,10 +41,13 @@ init_build_history_db = build_history.init_build_history_db
 
 async def _load_projects_background(ctx: AppContext) -> None:
     """Background task to load projects without blocking startup."""
+    if not ctx.workspace_path:
+        await server_state.emit_event("projects_changed")
+        return
     try:
-        log.info(f"[background] Loading projects from {len(ctx.workspace_paths)} paths")
+        log.info(f"[background] Loading projects from {ctx.workspace_path}")
         await asyncio.to_thread(
-            project_discovery.discover_projects_in_paths, ctx.workspace_paths
+            project_discovery.discover_projects_in_path, ctx.workspace_path
         )
         await server_state.emit_event("projects_changed")
         log.info("[background] Project discovery complete")
@@ -54,14 +57,14 @@ async def _load_projects_background(ctx: AppContext) -> None:
 
 
 async def _refresh_projects_state() -> None:
-    workspace_paths = model_state.workspace_paths or []
-    if not workspace_paths:
+    workspace_path = model_state.workspace_path
+    if not workspace_path:
         await server_state.emit_event("projects_changed")
         return
 
     try:
         await asyncio.to_thread(
-            project_discovery.discover_projects_in_paths, workspace_paths
+            project_discovery.discover_projects_in_path, workspace_path
         )
         await server_state.emit_event("projects_changed")
     except Exception as exc:
@@ -73,7 +76,7 @@ async def _load_packages_background(ctx: AppContext) -> None:
     """Background task to load packages without blocking startup."""
     try:
         log.info("[background] Loading packages from registry")
-        await packages_domain.refresh_packages_state(scan_paths=ctx.workspace_paths)
+        await packages_domain.refresh_packages_state(scan_path=ctx.workspace_path)
         log.info("[background] Packages refresh complete")
     except Exception as exc:
         log.error(f"[background] Failed to load packages: {exc}")
@@ -107,7 +110,7 @@ async def _watch_stdlib_background() -> None:
 async def _watch_bom_background() -> None:
     watcher = FileWatcher(
         "bom",
-        paths_provider=_get_workspace_roots,
+        paths_provider=_get_workspace_roots_for_watcher,
         on_change=lambda _result: _refresh_bom_state(),
         glob="**/build/builds/*.bom.json",
     )
@@ -117,7 +120,7 @@ async def _watch_bom_background() -> None:
 async def _watch_variables_background() -> None:
     watcher = FileWatcher(
         "variables",
-        paths_provider=_get_workspace_roots,
+        paths_provider=_get_workspace_roots_for_watcher,
         on_change=lambda _result: _refresh_variables_state(),
         glob="**/build/builds/*.variables.json",
     )
@@ -155,59 +158,57 @@ def _debounce(key: str, delay_s: float, coro_factory) -> None:
     _debounce_tasks[key] = asyncio.create_task(_runner())
 
 
-def _get_project_roots() -> list[Path]:
-    return model_state.workspace_paths or []
+def _get_workspace_root() -> Path | None:
+    """Get workspace root for file watching."""
+    return model_state.workspace_path
 
 
-def _get_workspace_roots() -> list[Path]:
-    """Get workspace roots for file watching.
-
-    Watching workspace roots instead of individual project roots reduces
-    the number of FSEvents streams on macOS, avoiding stream exhaustion.
-    """
-    return model_state.workspace_paths or []
+def _get_workspace_roots_for_watcher_for_watcher() -> list[Path]:
+    """Get workspace roots as a list for file watcher compatibility."""
+    root = model_state.workspace_path
+    return [root] if root else []
 
 
-def _affected_project_roots(
-    result: "FileChangeResult",
-) -> list[Path]:
-    roots = _get_project_roots()
-    if not roots:
-        return []
+def _is_path_in_workspace(path: Path) -> bool:
+    """Check if a path is within the workspace root."""
+    root = model_state.workspace_path
+    if not root:
+        return False
+    try:
+        resolved_path = path.resolve()
+        resolved_root = root.resolve()
+        return resolved_path.is_relative_to(resolved_root)
+    except FileNotFoundError:
+        return False
 
+
+def _has_affected_paths(result: "FileChangeResult") -> bool:
+    """Check if any changed paths are within the workspace."""
     changed_paths = result.created + result.changed + result.deleted
     if not changed_paths:
-        return []
-
-    resolved_roots = {root.resolve(): root for root in roots}
-    affected: set[Path] = set()
-    for path in changed_paths:
-        try:
-            resolved_path = path.resolve()
-        except FileNotFoundError:
-            resolved_path = path
-        for resolved_root, root in resolved_roots.items():
-            if resolved_path.is_relative_to(resolved_root):
-                affected.add(root)
-    return list(affected)
+        return False
+    return any(_is_path_in_workspace(p) for p in changed_paths)
 
 
-async def _refresh_project_files_for_roots(roots: list[Path]) -> None:
-    for root in roots:
+async def _emit_project_files_changed() -> None:
+    root = model_state.workspace_path
+    if root:
         await server_state.emit_event(
             "project_files_changed", {"project_root": str(root)}
         )
 
 
-async def _refresh_project_modules_for_roots(roots: list[Path]) -> None:
-    for root in roots:
+async def _emit_project_modules_changed() -> None:
+    root = model_state.workspace_path
+    if root:
         await server_state.emit_event(
             "project_modules_changed", {"project_root": str(root)}
         )
 
 
-async def _refresh_project_dependencies_for_roots(roots: list[Path]) -> None:
-    for root in roots:
+async def _emit_project_dependencies_changed() -> None:
+    root = model_state.workspace_path
+    if root:
         await server_state.emit_event(
             "project_dependencies_changed", {"project_root": str(root)}
         )
@@ -216,7 +217,7 @@ async def _refresh_project_dependencies_for_roots(roots: list[Path]) -> None:
 async def _watch_projects_background() -> None:
     watcher = FileWatcher(
         "projects",
-        paths_provider=_get_workspace_roots,
+        paths_provider=_get_workspace_roots_for_watcher,
         on_change=lambda _result: _refresh_projects_state(),
         glob="**/ato.yaml",
     )
@@ -226,7 +227,7 @@ async def _watch_projects_background() -> None:
 async def _watch_project_sources_background() -> None:
     watcher = FileWatcher(
         "project-sources",
-        paths_provider=_get_workspace_roots,
+        paths_provider=_get_workspace_roots_for_watcher,
         on_change=lambda result: _handle_project_sources_change(result),
         glob="**/*.ato",
     )
@@ -236,7 +237,7 @@ async def _watch_project_sources_background() -> None:
 async def _watch_project_python_background() -> None:
     watcher = FileWatcher(
         "project-python",
-        paths_provider=_get_workspace_roots,
+        paths_provider=_get_workspace_roots_for_watcher,
         on_change=lambda result: _handle_project_python_change(result),
         glob="**/*.py",
     )
@@ -246,7 +247,7 @@ async def _watch_project_python_background() -> None:
 async def _watch_project_dependencies_background() -> None:
     watcher = FileWatcher(
         "project-deps",
-        paths_provider=_get_workspace_roots,
+        paths_provider=_get_workspace_roots_for_watcher,
         on_change=lambda result: _handle_project_dependencies_change(result),
         glob="**/ato.yaml",
     )
@@ -256,53 +257,27 @@ async def _watch_project_dependencies_background() -> None:
 async def _handle_project_sources_change(
     result: "FileChangeResult",
 ) -> None:
-    roots = _affected_project_roots(result)
-    if not roots:
+    if not _has_affected_paths(result):
         return
-    for root in roots:
-        _debounce(
-            f"project-files:{root}",
-            UI_DEBOUNCE_S,
-            lambda r=root: _refresh_project_files_for_roots([r]),
-        )
-        _debounce(
-            f"project-modules:{root}",
-            UI_DEBOUNCE_S,
-            lambda r=root: _refresh_project_modules_for_roots([r]),
-        )
+    _debounce("project-files", UI_DEBOUNCE_S, _emit_project_files_changed)
+    _debounce("project-modules", UI_DEBOUNCE_S, _emit_project_modules_changed)
 
 
 async def _handle_project_python_change(
     result: "FileChangeResult",
 ) -> None:
-    roots = _affected_project_roots(result)
-    if not roots:
+    if not _has_affected_paths(result):
         return
-    for root in roots:
-        _debounce(
-            f"project-files:{root}",
-            UI_DEBOUNCE_S,
-            lambda r=root: _refresh_project_files_for_roots([r]),
-        )
+    _debounce("project-files", UI_DEBOUNCE_S, _emit_project_files_changed)
 
 
 async def _handle_project_dependencies_change(
     result: "FileChangeResult",
 ) -> None:
-    roots = _affected_project_roots(result)
-    if not roots:
+    if not _has_affected_paths(result):
         return
-    for root in roots:
-        _debounce(
-            f"project-deps:{root}",
-            UI_DEBOUNCE_S,
-            lambda r=root: _refresh_project_dependencies_for_roots([r]),
-        )
-    _debounce(
-        "packages-refresh",
-        UI_DEBOUNCE_S,
-        _refresh_packages_for_deps_change,
-    )
+    _debounce("project-deps", UI_DEBOUNCE_S, _emit_project_dependencies_changed)
+    _debounce("packages-refresh", UI_DEBOUNCE_S, _refresh_packages_for_deps_change)
 
 
 async def _refresh_packages_for_deps_change() -> None:
@@ -354,7 +329,7 @@ async def _load_atopile_install_options() -> None:
 def create_app(
     summary_file: Optional[Path] = None,
     logs_base: Optional[Path] = None,
-    workspace_paths: Optional[list[Path]] = None,
+    workspace_path: Optional[Path] = None,
 ) -> FastAPI:
     """
     Create the FastAPI application with API routes for the dashboard.
@@ -375,7 +350,7 @@ def create_app(
     ctx = AppContext(
         summary_file=summary_file,
         logs_base=logs_base,
-        workspace_paths=workspace_paths or [],
+        workspace_path=workspace_path,
     )
     app.state.ctx = ctx
 
@@ -395,9 +370,9 @@ def create_app(
         loop.set_default_executor(executor)
         log.info("Configured thread pool with 64 workers")
 
-        # Configure model_state with event loop and workspace paths
+        # Configure model_state with event loop and workspace path
         model_state.set_event_loop(loop)
-        model_state.set_workspace_paths(ctx.workspace_paths)
+        model_state.set_workspace_path(ctx.workspace_path)
         # Register server_state.emit_event as the event emitter callback
         model_state.register_event_emitter(server_state.emit_event)
 
@@ -411,8 +386,8 @@ def create_app(
         asyncio.create_task(_watch_project_dependencies_background())
         asyncio.create_task(_load_atopile_install_options())
 
-        if not ctx.workspace_paths:
-            log.info("No workspace paths configured, skipping initial state population")
+        if not ctx.workspace_path:
+            log.info("No workspace path configured, skipping initial state population")
             return
 
         # Fire background tasks - don't await, server starts immediately
@@ -526,13 +501,13 @@ class DashboardServer:
         summary_file: Path,
         logs_base: Path,
         port: Optional[int] = None,
-        workspace_paths: Optional[list[Path]] = None,
+        workspace_path: Optional[Path] = None,
     ):
         self.summary_file = summary_file
         self.logs_base = logs_base
         self.port = port or find_free_port()
-        self.workspace_paths = workspace_paths or []
-        self.app = create_app(summary_file, logs_base, self.workspace_paths)
+        self.workspace_path = workspace_path
+        self.app = create_app(summary_file, logs_base, self.workspace_path)
         self._server: Optional[uvicorn.Server] = None
         self._thread: Optional[threading.Thread] = None
 
@@ -576,7 +551,7 @@ def start_dashboard_server(
     summary_file: Path,
     logs_base: Optional[Path] = None,
     port: Optional[int] = None,
-    workspace_paths: Optional[list[Path]] = None,
+    workspace_path: Optional[Path] = None,
 ) -> tuple[DashboardServer, str]:
     """
     Start the dashboard server.
@@ -585,7 +560,7 @@ def start_dashboard_server(
         summary_file: Path to the summary.json file
         logs_base: Base directory for logs (defaults to summary_file's parent)
         port: Port to use (defaults to a free port)
-        workspace_paths: List of workspace paths to scan for projects
+        workspace_path: Workspace path to scan for projects
 
     Returns:
         Tuple of (DashboardServer, url)
@@ -593,6 +568,6 @@ def start_dashboard_server(
     if logs_base is None:
         logs_base = summary_file.parent
 
-    server = DashboardServer(summary_file, logs_base, port, workspace_paths)
+    server = DashboardServer(summary_file, logs_base, port, workspace_path)
     server.start()
     return server, server.url

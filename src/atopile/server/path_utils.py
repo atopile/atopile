@@ -7,7 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def resolve_workspace_file(path_str: str, workspace_paths: list[Path]) -> Path | None:
+def resolve_workspace_file(path_str: str, workspace_path: Path | None) -> Path | None:
     normalized = path_str.split("::", 1)[0].split("|", 1)[0]
     candidate = Path(normalized)
     if candidate.exists():
@@ -16,9 +16,8 @@ def resolve_workspace_file(path_str: str, workspace_paths: list[Path]) -> Path |
     if candidate.is_absolute():
         return None
 
-    for root in workspace_paths:
-        root_path = Path(root)
-        try_path = root_path / candidate
+    if workspace_path:
+        try_path = workspace_path / candidate
         if try_path.exists():
             return try_path
 

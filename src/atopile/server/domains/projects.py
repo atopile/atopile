@@ -35,11 +35,11 @@ log = logging.getLogger(__name__)
 
 
 def handle_get_projects(ctx: AppContext) -> ProjectsResponse:
-    """Get all discovered projects in workspace paths."""
-    if not ctx.workspace_paths:
+    """Get all discovered projects in workspace path."""
+    if not ctx.workspace_path:
         return ProjectsResponse(projects=[], total=0)
 
-    projects = core_projects.discover_projects_in_paths(ctx.workspace_paths)
+    projects = core_projects.discover_projects_in_paths([ctx.workspace_path])
     return ProjectsResponse(projects=projects, total=len(projects))
 
 

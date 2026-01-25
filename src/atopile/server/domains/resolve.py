@@ -63,16 +63,14 @@ def handle_resolve_location(
         if candidate.exists():
             source_file = candidate
 
-    if not source_file and ctx.workspace_paths:
-        for ws_path in ctx.workspace_paths:
-            candidate = ws_path / file_part
-            if candidate.exists():
-                source_file = candidate
-                break
+    if not source_file and ctx.workspace_path:
+        ws_path = ctx.workspace_path
+        candidate = ws_path / file_part
+        if candidate.exists():
+            source_file = candidate
+        else:
             for ato_file in ws_path.rglob(file_part):
                 source_file = ato_file
-                break
-            if source_file:
                 break
 
     if not source_file or not source_file.exists():

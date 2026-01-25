@@ -132,6 +132,17 @@ def get_all_installed_packages(paths: list[Path]):
     return core_packages.get_all_installed_packages(paths)
 
 
+def get_installed_packages_for_workspace(workspace_path: Path | None):
+    """
+    Get all installed packages for the workspace path.
+
+    Returns a dict of package_identifier -> PackageInfo.
+    """
+    if not workspace_path:
+        return {}
+    return core_packages.get_all_installed_packages([workspace_path])
+
+
 def search_registry_packages(query: str) -> list[PackageInfo]:
     """
     Search the package registry for packages matching the query.
@@ -395,7 +406,7 @@ def enrich_packages_with_registry(
 
 
 def _fetch_packages_sync(
-    scan_paths: list[Path] | None,
+    scan_path: Path | None,
 ) -> tuple[list, str | None]:
     """
     Sync helper that fetches installed and registry packages.
@@ -406,8 +417,8 @@ def _fetch_packages_sync(
     packages_map: dict[str, StatePackageInfo] = {}
     registry_error: str | None = None
 
-    if scan_paths:
-        installed = get_all_installed_packages(scan_paths)
+    if scan_path:
+        installed = get_installed_packages_for_workspace(scan_path)
         for pkg in installed.values():
             packages_map[pkg.identifier] = StatePackageInfo(
                 identifier=pkg.identifier,
@@ -479,7 +490,7 @@ def _fetch_packages_sync(
 
 
 async def refresh_packages_state(
-    scan_paths: list[Path] | None = None,
+    scan_path: Path | None = None,
 ) -> None:
     """Refresh packages and emit a packages_changed event."""
     lock = _get_refresh_lock()
@@ -490,12 +501,12 @@ async def refresh_packages_state(
         return
 
     async with lock:
-        if scan_paths is None:
-            scan_paths = model_state.workspace_paths
+        if scan_path is None:
+            scan_path = model_state.workspace_path
 
         # Run blocking I/O in thread pool to avoid blocking event loop
         state_packages, registry_error = await asyncio.to_thread(
-            _fetch_packages_sync, scan_paths
+            _fetch_packages_sync, scan_path
         )
 
         await server_state.emit_event(
@@ -506,28 +517,30 @@ async def refresh_packages_state(
 
 
 async def refresh_installed_packages_state(
-    scan_paths: list[Path] | None = None,
+    scan_path: Path | None = None,
 ) -> None:
     """Refresh installed package flags without hitting the registry."""
-    if scan_paths is None:
-        scan_paths = model_state.workspace_paths
+    if scan_path is None:
+        scan_path = model_state.workspace_path
 
-    if not scan_paths:
+    if not scan_path:
         await server_state.emit_event("packages_changed")
         return
 
-    await asyncio.to_thread(core_packages.get_all_installed_packages, scan_paths)
+    await asyncio.to_thread(
+        core_packages.get_all_installed_packages, [scan_path]
+    )
     await server_state.emit_event("packages_changed")
 
 
 def handle_search_registry(
     query: str,
-    scan_paths: list[Path] | None,
+    scan_path: Path | None,
 ) -> RegistrySearchResponse:
     registry_packages = search_registry_packages(query)
 
-    if scan_paths:
-        installed_map = get_all_installed_packages(scan_paths)
+    if scan_path:
+        installed_map = get_installed_packages_for_workspace(scan_path)
         for pkg in registry_packages:
             if pkg.identifier in installed_map:
                 installed = installed_map[pkg.identifier]
@@ -543,13 +556,13 @@ def handle_search_registry(
 
 
 def handle_packages_summary(
-    scan_paths: list[Path] | None,
+    scan_path: Path | None,
 ) -> PackagesSummaryResponse:
     packages_map: dict[str, PackageSummaryItem] = {}
     installed_count = 0
 
-    if scan_paths:
-        installed = get_all_installed_packages(scan_paths)
+    if scan_path:
+        installed = get_installed_packages_for_workspace(scan_path)
         installed_count = len(installed)
         for identifier, pkg in installed.items():
             packages_map[identifier] = PackageSummaryItem(
@@ -627,14 +640,14 @@ def handle_packages_summary(
 
 
 def handle_get_packages(
-    scan_paths: list[Path] | None,
+    scan_path: Path | None,
     project_root: str | None,
     include_registry: bool,
 ) -> PackagesResponse:
-    if not scan_paths:
+    if not scan_path:
         return PackagesResponse(packages=[], total=0)
 
-    packages_map = get_all_installed_packages(scan_paths)
+    packages_map = get_installed_packages_for_workspace(scan_path)
     if include_registry:
         packages_map = enrich_packages_with_registry(packages_map)
 
@@ -652,7 +665,7 @@ def handle_get_packages(
 
 def handle_get_package_details(
     package_id: str,
-    scan_paths: list[Path] | None,
+    scan_path: Path | None,
     ctx: AppContext,
 ) -> PackageDetails:
     details = get_package_details_from_registry(package_id)
@@ -663,11 +676,11 @@ def handle_get_package_details(
             detail=f"Package not found in registry: {package_id}",
         )
 
-    if scan_paths is None:
-        scan_paths = ctx.workspace_paths
+    if scan_path is None:
+        scan_path = ctx.workspace_path
 
-    if scan_paths:
-        packages_map = get_all_installed_packages(scan_paths)
+    if scan_path:
+        packages_map = get_installed_packages_for_workspace(scan_path)
         if package_id in packages_map:
             installed = packages_map[package_id]
             details.installed = True
@@ -679,13 +692,13 @@ def handle_get_package_details(
 
 def handle_get_package_info(
     package_id: str,
-    scan_paths: list[Path] | None,
+    scan_path: Path | None,
     ctx: AppContext,
 ) -> PackageInfo:
-    if scan_paths is None:
-        scan_paths = ctx.workspace_paths
+    if scan_path is None:
+        scan_path = ctx.workspace_path
 
-    packages_map = get_all_installed_packages(scan_paths)
+    packages_map = get_installed_packages_for_workspace(scan_path)
     if package_id in packages_map:
         return packages_map[package_id]
 
@@ -816,13 +829,13 @@ def handle_remove_package(
     )
 
 
-def resolve_scan_paths(
+def resolve_scan_path(
     ctx: AppContext,
-    paths: Optional[str],
-) -> list[Path] | None:
-    if paths:
-        return [Path(p.strip()) for p in paths.split(",")]
-    return ctx.workspace_paths
+    path: Optional[str],
+) -> Path | None:
+    if path:
+        return Path(path.strip())
+    return ctx.workspace_path
 
 
 __all__ = [
@@ -832,6 +845,7 @@ __all__ = [
     "get_all_installed_packages",
     "get_all_registry_packages",
     "get_installed_packages_for_project",
+    "get_installed_packages_for_workspace",
     "get_package_details_from_registry",
     "handle_get_package_details",
     "handle_get_package_info",
@@ -842,7 +856,7 @@ __all__ = [
     "handle_search_registry",
     "next_package_op_id",
     "refresh_packages_state",
-    "resolve_scan_paths",
+    "resolve_scan_path",
     "search_registry_packages",
     "version_is_newer",
 ]

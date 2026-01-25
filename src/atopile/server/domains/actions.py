@@ -94,8 +94,9 @@ def _handle_build_sync(payload: dict) -> dict:
     if project_root and not project_path.exists():
         if "/" in project_root and not project_root.startswith("/"):
             package_identifier = project_root
+            ws_path = model_state.workspace_path
             packages = packages_domain.get_all_installed_packages(
-                model_state.workspace_paths
+                [ws_path] if ws_path else []
             )
             pkg = packages.get(package_identifier)
             if pkg and pkg.installed_in:
@@ -258,10 +259,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
     try:
         if action == "refreshProjects":
-            scan_paths = ctx.workspace_paths
-            if scan_paths:
+            if ctx.workspace_path:
                 await asyncio.to_thread(
-                    project_discovery.discover_projects_in_paths, scan_paths
+                    project_discovery.discover_projects_in_path, ctx.workspace_path
                 )
                 await server_state.emit_event("projects_changed")
             return {"success": True}
@@ -271,8 +271,8 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             name = payload.get("name")
 
             if not parent_directory:
-                if ctx.workspace_paths:
-                    parent_directory = str(ctx.workspace_paths[0])
+                if ctx.workspace_path:
+                    parent_directory = str(ctx.workspace_path)
                 else:
                     return {"success": False, "error": "Missing parentDirectory"}
 
@@ -292,15 +292,15 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             }
 
         if action == "refreshPackages":
-            await packages_domain.refresh_packages_state(scan_paths=ctx.workspace_paths)
+            await packages_domain.refresh_packages_state(scan_path=ctx.workspace_path)
             return {"success": True}
 
         if action == "searchPackages":
             query = payload.get("query", "")
-            paths = payload.get("paths")
-            scan_paths = packages_domain.resolve_scan_paths(ctx, paths)
+            path = payload.get("path")
+            scan_path = packages_domain.resolve_scan_path(ctx, path)
             result = await asyncio.to_thread(
-                packages_domain.handle_search_registry, query, scan_paths
+                packages_domain.handle_search_registry, query, scan_path
             )
             return {"success": True, **result.model_dump(by_alias=True)}
 
@@ -538,7 +538,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
                             clear_module_cache()
                             await packages_domain.refresh_packages_state(
-                                scan_paths=[project_path]
+                                scan_path=project_path
                             )
                             await server_state.emit_event(
                                 "project_dependencies_changed",
@@ -935,7 +935,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             if not file_path:
                 return {"success": False, "error": "Missing file path"}
 
-            resolved = path_utils.resolve_workspace_file(file_path, ctx.workspace_paths)
+            resolved = path_utils.resolve_workspace_file(file_path, ctx.workspace_path)
             if not resolved:
                 return {
                     "success": False,
@@ -1126,9 +1126,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
         elif action == "setWorkspaceFolders":
             folders = payload.get("folders", [])
-            paths = [Path(p) for p in folders if p]
-            ctx.workspace_paths = paths
-            model_state.set_workspace_paths(paths)
+            # Use first folder as workspace path (VS Code multi-root not supported)
+            workspace_path = Path(folders[0]) if folders else None
+            ctx.workspace_path = workspace_path
+            model_state.set_workspace_path(workspace_path)
             await handle_data_action("refreshProjects", {}, ctx)
             await handle_data_action("refreshPackages", {}, ctx)
             return {"success": True}

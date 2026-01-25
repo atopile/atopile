@@ -1132,7 +1132,7 @@ class BuildReport:
 class AppContext:
     summary_file: Optional[Path] = None
     logs_base: Optional[Path] = None
-    workspace_paths: list[Path] = field(default_factory=list)
+    workspace_path: Optional[Path] = None
 
 
 @dataclass(frozen=True)

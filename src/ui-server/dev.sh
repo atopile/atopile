@@ -10,12 +10,11 @@
 #   2. Vite dev server (http://localhost:5173) - serves React UI
 #
 # Usage:
-#   ./dev.sh [workspace_paths...]
+#   ./dev.sh [workspace_path]
 #
 # Examples:
-#   ./dev.sh                                    # Use default workspaces
+#   ./dev.sh                                    # Use default workspace
 #   ./dev.sh /path/to/workspace                 # Specify workspace
-#   ./dev.sh ~/projects/atopile ~/projects/pkg  # Multiple workspaces
 #
 
 set -e
@@ -39,11 +38,11 @@ VITE_PID=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATOPILE_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
-# Default workspace paths if none provided
+# Default workspace path if none provided
 if [ $# -eq 0 ]; then
-    WORKSPACE_PATHS=("$ATOPILE_ROOT" "$ATOPILE_ROOT/../packages")
+    WORKSPACE_PATH="$ATOPILE_ROOT"
 else
-    WORKSPACE_PATHS=("$@")
+    WORKSPACE_PATH="$1"
 fi
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -113,10 +112,7 @@ echo ""
 
 # Step 2: Start Python dashboard backend
 echo -e "${YELLOW}[2/3] Starting Python backend...${NC}"
-echo -e "  Workspace paths:"
-for path in "${WORKSPACE_PATHS[@]}"; do
-    echo -e "    - $path"
-done
+echo -e "  Workspace path: $WORKSPACE_PATH"
 
 # Create a temporary Python script to start the dashboard
 DASHBOARD_SCRIPT=$(mktemp)
@@ -131,7 +127,7 @@ sys.path.insert(0, os.environ.get('ATOPILE_ROOT', '.') + '/src')
 from atopile.server.server import create_app, find_free_port
 import uvicorn
 
-workspace_paths = [Path(p) for p in sys.argv[1:] if p]
+workspace_path = Path(sys.argv[1]) if len(sys.argv) > 1 else None
 port = int(os.environ['DASHBOARD_PORT'])
 
 # Create a dummy summary file path (builds will create the real one)
@@ -142,7 +138,7 @@ summary_file.write_text('{"builds": [], "totals": {}}')
 app = create_app(
     summary_file=summary_file,
     logs_base=Path('/tmp'),
-    workspace_paths=workspace_paths,
+    workspace_path=workspace_path,
 )
 
 print(f"Dashboard API starting on http://localhost:{port}")
@@ -154,7 +150,7 @@ PYTHON_EOF
 
 # Start the dashboard
 ATOPILE_ROOT="$ATOPILE_ROOT" DASHBOARD_PORT=$DASHBOARD_PORT \
-    python "$DASHBOARD_SCRIPT" "${WORKSPACE_PATHS[@]}" &
+    python "$DASHBOARD_SCRIPT" "$WORKSPACE_PATH" &
 DASHBOARD_PID=$!
 
 # Wait for dashboard to be ready

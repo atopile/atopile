@@ -25,7 +25,7 @@ class ModelState:
 
     def __init__(self) -> None:
         self._event_loop: Optional[asyncio.AbstractEventLoop] = None
-        self._workspace_paths: list[Path] = []
+        self._workspace_path: Optional[Path] = None
         self._event_emitter: Optional[EventEmitter] = None
 
     def set_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
@@ -33,14 +33,14 @@ class ModelState:
         self._event_loop = loop
         log.info("ModelState: Event loop captured")
 
-    def set_workspace_paths(self, paths: list[Path]) -> None:
-        """Set workspace paths for discovery operations."""
-        self._workspace_paths = paths
+    def set_workspace_path(self, path: Optional[Path]) -> None:
+        """Set workspace path for discovery operations."""
+        self._workspace_path = path
 
     @property
-    def workspace_paths(self) -> list[Path]:
-        """Get workspace paths for discovery operations."""
-        return self._workspace_paths
+    def workspace_path(self) -> Optional[Path]:
+        """Get workspace path for discovery operations."""
+        return self._workspace_path
 
     def register_event_emitter(self, emitter: EventEmitter) -> None:
         """Register callback for event emission (called by server)."""

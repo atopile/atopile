@@ -52,7 +52,11 @@ def handle_get_summary(ctx: AppContext) -> dict:
         except Exception:
             pass
 
-    projects = project_discovery.discover_projects_in_paths(ctx.workspace_paths)
+    projects = (
+        project_discovery.discover_projects_in_path(ctx.workspace_path)
+        if ctx.workspace_path
+        else []
+    )
 
     for project in projects:
         project_root = Path(project.root)

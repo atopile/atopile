@@ -72,10 +72,8 @@ def main():
     if not summary_file.exists():
         summary_file.write_text('{"builds": [], "totals": {}}')
 
-    # Convert workspace paths
-    workspace_paths = (
-        [Path(p) for p in args.workspace] if args.workspace else [Path.cwd()]
-    )
+    # Convert workspace path (use first provided or cwd)
+    workspace_path = Path(args.workspace[0]) if args.workspace else Path.cwd()
 
     # Check if port is already in use
     port = args.port
@@ -108,12 +106,12 @@ def main():
         summary_file=summary_file,
         logs_base=logs_base,
         port=port,
-        workspace_paths=workspace_paths,
+        workspace_path=workspace_path,
     )
 
     print(f"Starting dashboard server on http://localhost:{port}")
     print(f"Logs directory: {logs_base}")
-    print(f"Workspace paths: {', '.join(str(p) for p in workspace_paths)}")
+    print(f"Workspace path: {workspace_path}")
     print("Press Ctrl+C to stop")
 
     server.start()
