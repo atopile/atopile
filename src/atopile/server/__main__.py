@@ -9,6 +9,7 @@ Starts the dashboard server for the atopile extension.
 
 import argparse
 import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -55,6 +56,14 @@ def main():
         help="Kill existing server on the port and start fresh",
     )
     args = parser.parse_args()
+
+    repo_root = Path(__file__).resolve().parents[3]
+    gen_script = repo_root / "scripts" / "generate_types.py"
+    ui_server_dir = repo_root / "src" / "ui-server"
+    if gen_script.exists() and ui_server_dir.exists():
+        result = subprocess.run([sys.executable, str(gen_script)], cwd=str(repo_root))
+        if result.returncode != 0:
+            sys.exit(result.returncode)
 
     # Determine logs directory
     if args.logs_dir:

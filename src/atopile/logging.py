@@ -13,15 +13,16 @@ import json
 import logging
 import os
 import pickle
-import sqlite3
 import struct
 import sys
 import threading
+import time
 import traceback
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from types import ModuleType, TracebackType
 from typing import Any
@@ -35,7 +36,13 @@ from rich.traceback import Traceback
 
 import atopile
 import faebryk
-from atopile.dataclasses import Log, StageCompleteEvent, StageStatusEvent
+from atopile.dataclasses import (
+    Log,
+    LogRow,
+    StageCompleteEvent,
+    StageStatusEvent,
+    TestLogRow,
+)
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 from atopile.logging_utils import PLOG, console, error_console
 
@@ -77,9 +84,11 @@ def _is_serving() -> bool:
 
 def _should_log(record: logging.LogRecord) -> bool:
     """Filter for atopile/faebryk logs, excluding server/http unless serving."""
+    name = record.name
+    if name.startswith(("watchdog", "fsevents")):
+        return False
     if _is_serving():
         return True
-    name = record.name
     if name.startswith("httpcore") or name.startswith("atopile.server"):
         return False
     return name.startswith("atopile") or name.startswith("faebryk")
@@ -294,319 +303,22 @@ def _extract_traceback_frames(
 
 
 # =============================================================================
-# SQLite Schemas
+# Log appender singletons
 # =============================================================================
 
-SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS builds (
-    build_id TEXT PRIMARY KEY,
-    project_path TEXT NOT NULL,
-    target TEXT NOT NULL,
-    timestamp TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_builds_project ON builds(project_path);
-CREATE INDEX IF NOT EXISTS idx_builds_timestamp ON builds(timestamp);
-CREATE TABLE IF NOT EXISTS logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    build_id TEXT NOT NULL,
-    timestamp TEXT NOT NULL,
-    stage TEXT NOT NULL,
-    level TEXT NOT NULL,
-    logger_name TEXT NOT NULL DEFAULT '',
-    audience TEXT NOT NULL DEFAULT 'developer',
-    message TEXT NOT NULL,
-    source_file TEXT,
-    source_line INTEGER,
-    ato_traceback TEXT,
-    python_traceback TEXT,
-    objects TEXT,
-    FOREIGN KEY (build_id) REFERENCES builds(build_id)
-);
-CREATE INDEX IF NOT EXISTS idx_logs_build_id ON logs(build_id);
-CREATE INDEX IF NOT EXISTS idx_logs_stage ON logs(stage);
-CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level);
-CREATE INDEX IF NOT EXISTS idx_logs_audience ON logs(audience);
-
--- Migration: add source_file and source_line columns if they don't exist
--- SQLite doesn't have IF NOT EXISTS for ALTER TABLE, so we use a trick
--- These will fail silently if columns already exist
-"""
-
-# Migration SQL to add new columns (run separately with error handling)
-SCHEMA_MIGRATION_SQL = """
-ALTER TABLE logs ADD COLUMN source_file TEXT;
-ALTER TABLE logs ADD COLUMN source_line INTEGER;
-"""
-
-TEST_SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS test_runs (
-    test_run_id TEXT PRIMARY KEY, created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE TABLE IF NOT EXISTS test_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    test_run_id TEXT NOT NULL,
-    timestamp TEXT NOT NULL,
-    test_name TEXT NOT NULL,
-    level TEXT NOT NULL,
-    logger_name TEXT NOT NULL DEFAULT '',
-    audience TEXT NOT NULL DEFAULT 'developer',
-    message TEXT NOT NULL,
-    source_file TEXT,
-    source_line INTEGER,
-    ato_traceback TEXT,
-    python_traceback TEXT,
-    objects TEXT,
-    FOREIGN KEY (test_run_id) REFERENCES test_runs(test_run_id)
-);
-CREATE INDEX IF NOT EXISTS idx_test_logs_test_run_id ON test_logs(test_run_id);
-CREATE INDEX IF NOT EXISTS idx_test_logs_test_name ON test_logs(test_name);
-CREATE INDEX IF NOT EXISTS idx_test_logs_level ON test_logs(level);
-CREATE INDEX IF NOT EXISTS idx_test_logs_audience ON test_logs(audience);
-"""
-
-# Migration SQL to add new columns to test logs
-TEST_SCHEMA_MIGRATION_SQL = """
-ALTER TABLE test_logs ADD COLUMN source_file TEXT;
-ALTER TABLE test_logs ADD COLUMN source_line INTEGER;
-"""
-
-BUILD_LOG_INSERT = (
-    "INSERT INTO logs"
-    " (build_id, timestamp, stage, level, logger_name, audience,"
-    " message, source_file, source_line, ato_traceback, python_traceback, objects)"
-    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-)
-
-TEST_LOG_INSERT = (
-    "INSERT INTO test_logs"
-    " (test_run_id, timestamp, test_name, level, logger_name, audience,"
-    " message, source_file, source_line, ato_traceback, python_traceback, objects)"
-    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-)
+def _normalize_db_value(value: Any) -> Any:
+    if isinstance(value, Enum):
+        return value.value
+    return value
 
 
-def _build_entry_to_tuple(e: Log.Entry) -> tuple[Any, ...]:
-    """Convert a build log entry to a tuple for SQLite insertion."""
-    return (
-        e.build_id,
-        e.timestamp,
-        e.stage,
-        e.level,
-        e.logger_name,
-        e.audience,
-        e.message,
-        e.source_file,
-        e.source_line,
-        e.ato_traceback,
-        e.python_traceback,
-    )
-
-
-def _test_entry_to_tuple(e: Log.TestEntry) -> tuple[Any, ...]:
-    """Convert a test log entry to a tuple for SQLite insertion."""
-    return (
-        e.test_run_id,
-        e.timestamp,
-        e.test_name,
-        e.level,
-        e.logger_name,
-        e.audience,
-        e.message,
-        e.source_file,
-        e.source_line,
-        e.ato_traceback,
-        e.python_traceback,
-    )
-
-
-# =============================================================================
-# SQLite Writer
-# =============================================================================
-
-
-class SQLiteLogWriter:
-    """Thread-safe SQLite log writer with WAL mode and batching."""
-
-    BATCH_SIZE = 300
-    FLUSH_INTERVAL = 0.5
-
-    _instances: dict[str, "SQLiteLogWriter"] = {}
-    _lock = threading.Lock()
-
-    @classmethod
-    def get_instance(
-        cls,
-        key: str,
-        db_path: Path,
-        schema: str,
-        insert_sql: str,
-        entry_to_tuple: Callable[[Any], tuple[Any, ...]],
-        migration_sql: str | None = None,
-    ) -> "SQLiteLogWriter":
-        with cls._lock:
-            if key not in cls._instances:
-                cls._instances[key] = cls(
-                    db_path, schema, insert_sql, entry_to_tuple, migration_sql
-                )
-            return cls._instances[key]
-
-    @classmethod
-    def close_instance(cls, key: str) -> None:
-        with cls._lock:
-            if key in cls._instances:
-                cls._instances.pop(key).close()
-
-    def __init__(
-        self,
-        db_path: Path,
-        schema_sql: str,
-        insert_sql: str,
-        entry_to_tuple: Callable[[Any], tuple[Any, ...]],
-        migration_sql: str | None = None,
-    ):
-        self._db_path = db_path
-        self._schema_sql = schema_sql
-        self._migration_sql = migration_sql
-        self._insert_sql = insert_sql
-        self._entry_to_tuple = entry_to_tuple
-        self._local = threading.local()
-        self._buffer: list[Log.Entry | Log.TestEntry] = []
-        self._buffer_lock = threading.Lock()
-        self._last_flush = datetime.now()
-        self._closed = False
-        self._init_database()
-
-    def _get_connection(self) -> sqlite3.Connection:
-        if not hasattr(self._local, "conn") or self._local.conn is None:
-            self._local.conn = sqlite3.connect(
-                str(self._db_path), check_same_thread=False, timeout=30.0
-            )
-            pragmas = [
-                "journal_mode=WAL",
-                "synchronous=NORMAL",
-                "temp_store=MEMORY",
-                "busy_timeout=30000",
-            ]
-            for pragma in pragmas:
-                self._local.conn.execute(f"PRAGMA {pragma}")
-        return self._local.conn
-
-    def _init_database(self) -> None:
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = self._get_connection()
-        conn.executescript(self._schema_sql)
-        conn.commit()
-
-        # Run migration SQL to add new columns to existing tables
-        # Each ALTER TABLE statement may fail if column already exists - that's OK
-        if self._migration_sql:
-            for statement in self._migration_sql.strip().split(";"):
-                statement = statement.strip()
-                if not statement:
-                    continue
-                try:
-                    conn.execute(statement)
-                    conn.commit()
-                except sqlite3.OperationalError:
-                    # Column likely already exists, ignore
-                    pass
-
-    def register_build(
-        self,
-        project_path: str,
-        target: str,
-        timestamp: str,
-        build_id: str | None = None,
-    ) -> str:
-        if build_id is None:
-            # Lazy import to avoid circular dependency
-            from atopile.buildutil import generate_build_id
-
-            build_id = generate_build_id(project_path, target, timestamp)
-        try:
-            conn = self._get_connection()
-            sql = (
-                "INSERT OR IGNORE INTO builds"
-                " (build_id, project_path, target, timestamp)"
-                " VALUES (?, ?, ?, ?)"
-            )
-            conn.execute(sql, (build_id, project_path, target, timestamp))
-            conn.commit()
-        except sqlite3.Error:
-            pass
-        return build_id
-
-    def register_test_run(self, test_run_id: str) -> None:
-        try:
-            conn = self._get_connection()
-            conn.execute(
-                "INSERT OR IGNORE INTO test_runs (test_run_id) VALUES (?)",
-                (test_run_id,),
-            )
-            conn.commit()
-        except sqlite3.Error:
-            pass
-
-    def write(self, entry: Log.Entry | Log.TestEntry) -> None:
-        if self._closed:
-            return
-        with self._buffer_lock:
-            self._buffer.append(entry)
-            time_since_flush = (datetime.now() - self._last_flush).total_seconds()
-            should_flush = (
-                len(self._buffer) >= self.BATCH_SIZE
-                or time_since_flush > self.FLUSH_INTERVAL
-            )
-        if should_flush:
-            self.flush()
-
-    def flush(self) -> None:
-        with self._buffer_lock:
-            if not self._buffer:
-                return
-            entries, self._buffer = self._buffer, []
-            self._last_flush = datetime.now()
-
-        def serialize(obj: dict | None) -> str | None:
-            if obj is None:
-                return None
-            try:
-                return json.dumps(obj)
-            except (TypeError, ValueError):
-                return None
-
-        data = [(*self._entry_to_tuple(e), serialize(e.objects)) for e in entries]
-        try:
-            conn = self._get_connection()
-            conn.executemany(self._insert_sql, data)
-            conn.commit()
-        except sqlite3.Error as e:
-            # Connection may be stale, retry with fresh connection
-            self._local.conn = None
-            try:
-                conn = self._get_connection()
-                conn.executemany(self._insert_sql, data)
-                conn.commit()
-            except sqlite3.Error as e2:
-                # Log to stderr since we can't use the logging system here
-                import sys
-
-                print(
-                    f"SQLiteLogWriter: Failed to write {len(data)} log entries "
-                    f"to {self._db_path}: {e2} (original: {e})",
-                    file=sys.stderr,
-                )
-
-    def close(self) -> None:
-        self._closed = True
-        self.flush()
-        if hasattr(self._local, "conn") and self._local.conn:
-            try:
-                self._local.conn.close()
-            except sqlite3.Error:
-                pass
-            self._local.conn = None
+def _serialize_objects(objects: dict | None) -> str | None:
+    if objects is None:
+        return None
+    try:
+        return json.dumps(objects)
+    except TypeError:
+        return json.dumps({"repr": _get_pretty_repr(objects)})
 
 
 # =============================================================================
@@ -686,10 +398,17 @@ def get_scope_level() -> int:
 class BaseLogger:
     """Base for structured database loggers."""
 
+    BATCH_SIZE = 300
+    FLUSH_INTERVAL = 0.5
+
     def __init__(self, identifier: str, context: str = ""):
         self._identifier = identifier
         self._context = context
-        self._writer: SQLiteLogWriter | None = None
+        self._append_chunk: Callable[[list[Any]], None] | None = None
+        self._buffer: list[Any] = []
+        self._buffer_lock = threading.Lock()
+        self._last_flush = time.monotonic()
+        self._closed = False
 
     # Static methods for backward compatibility
     capture_logs = staticmethod(capture_logs)
@@ -703,8 +422,8 @@ class BaseLogger:
     def set_context(self, context: str) -> None:
         self._context = context
 
-    def set_writer(self, writer: SQLiteLogWriter) -> None:
-        self._writer = writer
+    def set_writer(self, writer: Callable[[list[Any]], None]) -> None:
+        self._append_chunk = writer
 
     def log(
         self,
@@ -720,7 +439,7 @@ class BaseLogger:
         objects: dict | None = None,
     ) -> None:
         """Log a structured message to the database."""
-        if self._writer is None:
+        if self._append_chunk is None or self._closed:
             return
 
         entry = self._build_entry(
@@ -734,8 +453,17 @@ class BaseLogger:
             python_traceback=python_traceback,
             objects=objects,
         )
-        if self._writer:
-            self._writer.write(entry)
+        self._append(entry)
+
+    def _append(self, entry: Any) -> None:
+        with self._buffer_lock:
+            self._buffer.append(entry)
+            should_flush = (
+                len(self._buffer) >= self.BATCH_SIZE
+                or (time.monotonic() - self._last_flush) > self.FLUSH_INTERVAL
+            )
+        if should_flush:
+            self.flush()
 
     def debug(
         self,
@@ -802,8 +530,21 @@ class BaseLogger:
         )
 
     def flush(self) -> None:
-        if self._writer:
-            self._writer.flush()
+        if self._append_chunk is None:
+            return
+        with self._buffer_lock:
+            if not self._buffer:
+                return
+            entries, self._buffer = self._buffer, []
+            self._last_flush = time.monotonic()
+        try:
+            self._append_chunk(entries)
+        except Exception:
+            pass
+
+    def close(self) -> None:
+        self._closed = True
+        self.flush()
 
     def _build_entry(
         self,
@@ -817,7 +558,7 @@ class BaseLogger:
         ato_traceback: str | None,
         python_traceback: str | None,
         objects: dict | None,
-    ) -> Log.Entry | Log.TestEntry:
+    ) -> LogRow | TestLogRow:
         raise NotImplementedError
 
 
@@ -832,23 +573,20 @@ class LoggerForTest(BaseLogger):
 
     @classmethod
     def close_all(cls) -> None:
-        SQLiteLogWriter.close_instance("test")
+        for h in logging.getLogger().handlers:
+            if isinstance(h, LogHandler) and h._test_logger:
+                h._test_logger.close()
 
     @classmethod
     def setup_logging(cls, test_run_id: str, test: str = "") -> "LoggerForTest | None":
         try:
-            writer = SQLiteLogWriter.get_instance(
-                "test",
-                cls.get_log_db(),
-                TEST_SCHEMA_SQL,
-                TEST_LOG_INSERT,
-                _test_entry_to_tuple,
-                TEST_SCHEMA_MIGRATION_SQL,
-            )
-            writer.register_test_run(test_run_id)
+            from atopile.model.sqlite import TestLogs
+
+            TestLogs.init_db()
+            TestLogs.register_run(test_run_id)
 
             test_logger = cls(test_run_id, test)
-            test_logger.set_writer(writer)
+            test_logger.set_writer(TestLogs.append_chunk)
             for h in logging.getLogger().handlers:
                 if isinstance(h, LogHandler):
                     h._test_logger = test_logger
@@ -882,20 +620,20 @@ class LoggerForTest(BaseLogger):
         ato_traceback: str | None,
         python_traceback: str | None,
         objects: dict | None,
-    ) -> Log.TestEntry:
-        return Log.TestEntry(
+    ) -> TestLogRow:
+        return TestLogRow(
             test_run_id=self._identifier,
             timestamp=datetime.now().isoformat(),
             test_name=self._context,
-            level=level,
+            level=_normalize_db_value(level),
             logger_name=logger_name,
             message=message,
-            audience=audience,
+            audience=_normalize_db_value(audience),
             source_file=source_file,
             source_line=source_line,
             ato_traceback=ato_traceback,
             python_traceback=python_traceback,
-            objects=objects,
+            objects=_serialize_objects(objects),
         )
 
 
@@ -929,19 +667,17 @@ class BuildLogger(BaseLogger):
         build_id: str | None = None,
     ) -> "BuildLogger":
         timestamp = timestamp or NOW
-        writer = SQLiteLogWriter.get_instance(
-            "build",
-            cls.get_log_db(),
-            SCHEMA_SQL,
-            BUILD_LOG_INSERT,
-            _build_entry_to_tuple,
-            SCHEMA_MIGRATION_SQL,
-        )
-        build_id = writer.register_build(project_path, target, timestamp, build_id)
+        from atopile.model.sqlite import Logs
 
+        Logs.init_db()
+
+        if build_id is None:
+            from atopile.buildutil import generate_build_id
+
+            build_id = generate_build_id(project_path, target, timestamp)
         if build_id not in cls._loggers:
             bl = cls(build_id, stage)
-            bl.set_writer(writer)
+            bl.set_writer(Logs.append_chunk)
             cls._loggers[build_id] = bl
         else:
             cls._loggers[build_id].set_context(stage)
@@ -950,13 +686,12 @@ class BuildLogger(BaseLogger):
     @classmethod
     def close(cls, build_id: str) -> None:
         if build_id in cls._loggers:
-            cls._loggers.pop(build_id).flush()
+            cls._loggers.pop(build_id).close()
 
     @classmethod
     def close_all(cls) -> None:
         for bid in list(cls._loggers):
             cls.close(bid)
-        SQLiteLogWriter.close_instance("build")
 
     @classmethod
     def setup_logging(
@@ -1020,20 +755,20 @@ class BuildLogger(BaseLogger):
         ato_traceback: str | None,
         python_traceback: str | None,
         objects: dict | None,
-    ) -> Log.Entry:
-        return Log.Entry(
+    ) -> LogRow:
+        return LogRow(
             build_id=self._identifier,
             timestamp=datetime.now().isoformat(),
             stage=self._context,
-            level=level,
+            level=_normalize_db_value(level),
             logger_name=logger_name,
             message=message,
-            audience=audience,
+            audience=_normalize_db_value(audience),
             source_file=source_file,
             source_line=source_line,
             ato_traceback=ato_traceback,
             python_traceback=python_traceback,
-            objects=objects,
+            objects=_serialize_objects(objects),
         )
 
     def exception(
@@ -1412,99 +1147,10 @@ def normalize_log_audience(value: Any) -> str | None:
     return aud if aud in {m.value for m in Log.Audience} else None
 
 
-def _query_logs(
-    db_path: Path,
-    table: str,
-    id_col: str,
-    id_val: str,
-    ctx_col: str | None,
-    ctx_val: str | None,
-    levels: list[str] | None,
-    audience: str | None,
-    count: int,
-    after_id: int | None = None,
-    streaming: bool = False,
-) -> tuple[list[dict[str, Any]], int]:
-    if not db_path.exists():
-        return [], after_id or 0
-
-    conn = sqlite3.connect(str(db_path), timeout=30.0)
-    conn.row_factory = sqlite3.Row
-    # Match writer pragmas for consistent behavior under concurrent load
-    conn.execute("PRAGMA busy_timeout=30000")
-    conn.execute("PRAGMA journal_mode=WAL")
-
-    where = [f"{table}.{id_col} = ?"]
-    params: list[Any] = [id_val]
-
-    if after_id is not None:
-        where.append(f"{table}.id > ?")
-        params.append(after_id)
-    if ctx_val:
-        op = "LIKE" if ctx_col == "test_name" else "="
-        where.append(f"{table}.{ctx_col} {op} ?")
-        params.append(f"%{ctx_val}%" if ctx_col == "test_name" else ctx_val)
-    if levels:
-        where.append(f"{table}.level IN ({','.join('?' * len(levels))})")
-        params.extend(levels)
-    if audience:
-        where.append(f"{table}.audience = ?")
-        params.append(audience)
-
-    cols = ["id"] if streaming else []
-    cols += [
-        "timestamp",
-        "level",
-        "audience",
-        "logger_name",
-        "message",
-        "source_file",
-        "source_line",
-    ]
-    if ctx_col:
-        cols.append(ctx_col)
-    cols += ["ato_traceback", "python_traceback", "objects"]
-
-    col_list = ", ".join(f"{table}.{c}" for c in cols)
-    where_clause = " AND ".join(where)
-    order_dir = "ASC" if streaming else "DESC"
-    query = (
-        f"SELECT {col_list} FROM {table} WHERE {where_clause}"
-        f" ORDER BY {table}.id {order_dir} LIMIT ?"
-    )
-    params.append(count)
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
-
-    results = []
-    last_id = after_id or 0
-    for row in rows:
-        if streaming:
-            last_id = row["id"]
-        obj = None
-        if row["objects"]:
-            try:
-                obj = json.loads(row["objects"])
-            except json.JSONDecodeError:
-                pass
-        r = {
-            "timestamp": row["timestamp"],
-            "level": row["level"],
-            "audience": row["audience"],
-            "logger_name": row["logger_name"],
-            "message": row["message"],
-            "source_file": row["source_file"],
-            "source_line": row["source_line"],
-            "ato_traceback": row["ato_traceback"],
-            "python_traceback": row["python_traceback"],
-            "objects": obj,
-        }
-        if ctx_col:
-            r[ctx_col] = row[ctx_col]
-        if streaming:
-            r["id"] = row["id"]
-        results.append(r)
-    return results, last_id
+def _strip_stream_id(entry: dict[str, Any]) -> dict[str, Any]:
+    if "id" not in entry:
+        return entry
+    return {k: v for k, v in entry.items() if k != "id"}
 
 
 def load_build_logs(
@@ -1516,17 +1162,18 @@ def load_build_logs(
     count: int,
 ) -> list[dict[str, Any]]:
     max_count = max(1, min(count, LOGS_MAX_COUNT))
-    return _query_logs(
-        BuildLogger.get_log_db(),
-        "logs",
-        "build_id",
+    from atopile.model.sqlite import Logs
+
+    rows, _last_id = Logs.fetch_chunk(
         build_id,
-        "stage",
-        stage,
-        log_levels,
-        audience,
-        max_count,
-    )[0]
+        stage=stage,
+        levels=log_levels,
+        audience=audience,
+        after_id=0,
+        count=max_count,
+        order="DESC",
+    )
+    return [_strip_stream_id(r) for r in rows]
 
 
 def load_test_logs(
@@ -1538,17 +1185,18 @@ def load_test_logs(
     count: int,
 ) -> list[dict[str, Any]]:
     max_count = max(1, min(count, LOGS_MAX_COUNT))
-    return _query_logs(
-        LoggerForTest.get_log_db(),
-        "test_logs",
-        "test_run_id",
+    from atopile.model.sqlite import TestLogs
+
+    rows, _last_id = TestLogs.fetch_chunk(
         test_run_id,
-        "test_name",
-        test_name,
-        log_levels,
-        audience,
-        max_count,
-    )[0]
+        test_name=test_name,
+        levels=log_levels,
+        audience=audience,
+        after_id=0,
+        count=max_count,
+        order="DESC",
+    )
+    return [_strip_stream_id(r) for r in rows]
 
 
 def load_build_logs_stream(
@@ -1561,18 +1209,16 @@ def load_build_logs_stream(
     count: int,
 ) -> tuple[list[dict[str, Any]], int]:
     max_count = max(1, min(count, 5000))
-    return _query_logs(
-        BuildLogger.get_log_db(),
-        "logs",
-        "build_id",
+    from atopile.model.sqlite import Logs
+
+    return Logs.fetch_chunk(
         build_id,
-        "stage",
-        stage,
-        log_levels,
-        audience,
-        max_count,
-        after_id,
-        True,
+        stage=stage,
+        levels=log_levels,
+        audience=audience,
+        after_id=after_id,
+        count=max_count,
+        order="ASC",
     )
 
 
@@ -1586,18 +1232,16 @@ def load_test_logs_stream(
     count: int,
 ) -> tuple[list[dict[str, Any]], int]:
     max_count = max(1, min(count, 5000))
-    return _query_logs(
-        LoggerForTest.get_log_db(),
-        "test_logs",
-        "test_run_id",
+    from atopile.model.sqlite import TestLogs
+
+    return TestLogs.fetch_chunk(
         test_run_id,
-        "test_name",
-        test_name,
-        log_levels,
-        audience,
-        max_count,
-        after_id,
-        True,
+        test_name=test_name,
+        levels=log_levels,
+        audience=audience,
+        after_id=after_id,
+        count=max_count,
+        order="ASC",
     )
 
 
