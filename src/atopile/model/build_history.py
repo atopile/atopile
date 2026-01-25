@@ -9,6 +9,10 @@ import logging
 import sqlite3
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from atopile.dataclasses import ActiveBuild
 
 log = logging.getLogger(__name__)
 
@@ -53,7 +57,7 @@ def init_build_history_db(db_path: Path) -> None:
         log.error(f"Failed to initialize build history database: {exc}")
 
 
-def save_build_to_history(build_id: str, build_info: dict) -> None:
+def save_build_to_history(build_id: str, build: ActiveBuild) -> None:
     """Save a build record to the history database."""
     if not _build_history_db:
         return
@@ -63,9 +67,15 @@ def save_build_to_history(build_id: str, build_info: dict) -> None:
         cursor = conn.cursor()
 
         # Count warnings/errors from stages
-        stages = build_info.get("stages", [])
+        stages = build.stages or []
         warnings = sum(s.get("warnings", 0) for s in stages)
         errors = sum(s.get("errors", 0) for s in stages)
+
+        # Get status value (enum to string)
+        if hasattr(build.status, "value"):
+            status_value = build.status.value
+        else:
+            status_value = str(build.status)
 
         cursor.execute(
             """
@@ -76,15 +86,15 @@ def save_build_to_history(build_id: str, build_info: dict) -> None:
             """,
             (
                 build_id,
-                build_info.get("build_key", ""),
-                build_info.get("project_root", ""),
+                "",  # build_key not stored in ActiveBuild
+                build.project_root or "",
                 # Store target as single value (column still named "targets" for compat)
-                build_info.get("target", "default"),
-                build_info.get("entry"),
-                build_info.get("status", "unknown"),
-                build_info.get("return_code"),
-                build_info.get("error"),
-                build_info.get("started_at", time.time()),
+                build.target or "default",
+                build.entry,
+                status_value,
+                build.return_code,
+                build.error,
+                build.started_at or time.time(),
                 time.time(),  # completed_at
                 json.dumps(stages),
                 warnings,

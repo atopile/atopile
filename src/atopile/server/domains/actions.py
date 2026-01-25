@@ -14,7 +14,7 @@ from pathlib import Path
 
 from atopile.buildutil import generate_build_id, generate_build_timestamp
 from atopile.config import ProjectConfig
-from atopile.dataclasses import Log
+from atopile.dataclasses import ActiveBuild, AppContext, BuildStatus, Log
 from atopile.logging import BuildLogger
 from atopile.model.build_queue import (
     _active_builds,
@@ -24,8 +24,8 @@ from atopile.model.build_queue import (
     _sync_builds_to_state_async,
     cancel_build,
 )
+from atopile.model.model_state import model_state
 from atopile.server import path_utils
-from atopile.dataclasses import AppContext
 from atopile.server.connections import server_state
 from atopile.server.core import projects as core_projects
 from atopile.server.domains import artifacts as artifacts_domain
@@ -164,19 +164,19 @@ def _handle_build_sync(payload: dict) -> dict:
                             build_id = generate_build_id(
                                 project_root, target_name, timestamp
                             )
-                            _active_builds[build_id] = {
-                                "status": "queued",
-                                "project_root": project_root,
-                                "target": target_name,
-                                "entry": entry,
-                                "standalone": standalone,
-                                "frozen": frozen,
-                                "return_code": None,
-                                "error": None,
-                                "started_at": time.time(),
-                                "timestamp": timestamp,
-                                "stages": [],
-                            }
+                            model_state.add_build(
+                                ActiveBuild(
+                                    build_id=build_id,
+                                    project_root=project_root,
+                                    target=target_name,
+                                    timestamp=timestamp,
+                                    entry=entry,
+                                    standalone=standalone,
+                                    frozen=frozen,
+                                    status=BuildStatus.QUEUED,
+                                    started_at=time.time(),
+                                )
+                            )
 
                         log.info(
                             f"Enqueueing build {build_id} for target {target_name}"
@@ -214,19 +214,19 @@ def _handle_build_sync(payload: dict) -> dict:
         with _build_lock:
             build_id = generate_build_id(project_root, target_name, timestamp)
             log.info(f"Allocated build_id={build_id}")
-            _active_builds[build_id] = {
-                "status": "queued",
-                "project_root": project_root,
-                "target": target_name,
-                "entry": entry,
-                "standalone": standalone,
-                "frozen": frozen,
-                "return_code": None,
-                "error": None,
-                "started_at": time.time(),
-                "timestamp": timestamp,
-                "stages": [],
-            }
+            model_state.add_build(
+                ActiveBuild(
+                    build_id=build_id,
+                    project_root=project_root,
+                    target=target_name,
+                    timestamp=timestamp,
+                    entry=entry,
+                    standalone=standalone,
+                    frozen=frozen,
+                    status=BuildStatus.QUEUED,
+                    started_at=time.time(),
+                )
+            )
 
         log.info(f"Enqueueing build {build_id}")
         _build_queue.enqueue(build_id)
