@@ -1038,6 +1038,7 @@ class NumericParameter(fabll.Node):
         from faebryk.library.Expressions import is_expression
         from faebryk.library.Units import (
             UnitsNotCommensurableError,
+            has_unit,
             is_unit,
             resolve_unit_expression,
         )
@@ -1072,10 +1073,9 @@ class NumericParameter(fabll.Node):
                 if isinstance(param_unit, int) and param_unit == -1:
                     param_unit = operand_unit
                     if param_unit is not None:
-                        fabll.Traits.add_instance_to(
-                            node=param,
-                            trait_instance=param_unit,
-                        )
+                        fabll.Traits.create_and_add_instance_to(
+                            node=param, trait=has_unit
+                        ).setup(is_unit=param_unit)
                     param.get_trait(waits_for_unit).resolve()
                 else:
                     if not is_unit.is_commensurable_with(
