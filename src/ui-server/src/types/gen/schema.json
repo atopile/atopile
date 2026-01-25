@@ -386,18 +386,6 @@
         "default": null,
         "title": "Buildid"
       },
-      "buildKey": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Buildkey"
-      },
       "status": {
         "$ref": "#/$defs/BuildStatus",
         "default": "queued"

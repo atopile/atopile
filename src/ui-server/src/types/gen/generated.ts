@@ -89,7 +89,6 @@ export interface BuildTargetBuildTargetStatus {
  */
 export interface Build {
     buildId?:        null | string;
-    buildKey?:       null | string;
     completedAt?:    number | null;
     displayName:     string;
     duration?:       number | null;

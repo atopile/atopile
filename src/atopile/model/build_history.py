@@ -1,5 +1,8 @@
 """
 Build history persistence helpers.
+
+Uses Pydantic models from dataclasses.py for type-safe schema generation
+and row conversion.
 """
 
 from __future__ import annotations
@@ -11,6 +14,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from atopile import sqlite_model
 from atopile.dataclasses import BuildStatus, HistoricalBuild
 
 if TYPE_CHECKING:
@@ -20,34 +24,6 @@ log = logging.getLogger(__name__)
 
 _build_history_db: Path | None = None
 
-
-# Schema matches HistoricalBuild dataclass field order
-BUILD_HISTORY_SCHEMA = """
-CREATE TABLE IF NOT EXISTS build_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    -- BaseBuild fields
-    build_id TEXT UNIQUE NOT NULL,
-    project_root TEXT NOT NULL,
-    target TEXT NOT NULL,
-    entry TEXT,
-    status TEXT NOT NULL DEFAULT 'queued',
-    return_code INTEGER,
-    error TEXT,
-    started_at REAL NOT NULL DEFAULT 0,
-    duration REAL DEFAULT 0,
-    stages TEXT DEFAULT '[]',
-    warnings INTEGER DEFAULT 0,
-    errors INTEGER DEFAULT 0,
-    -- HistoricalBuild fields
-    completed_at REAL,
-    build_key TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS idx_build_history_project ON build_history(project_root);
-CREATE INDEX IF NOT EXISTS idx_build_history_status ON build_history(status);
-CREATE INDEX IF NOT EXISTS idx_build_history_started ON build_history(started_at DESC);
-"""
-
-
 def init_build_history_db(db_path: Path) -> None:
     """Initialize the build history SQLite database."""
     global _build_history_db
@@ -56,7 +32,7 @@ def init_build_history_db(db_path: Path) -> None:
     try:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(db_path))
-        conn.executescript(BUILD_HISTORY_SCHEMA)
+        conn.executescript(sqlite_model.create_table_sql(HistoricalBuild))
         conn.commit()
         conn.close()
         log.info(f"Initialized build history database: {db_path}")
@@ -78,36 +54,32 @@ def save_build_to_history(build_id: str, build: ActiveBuild) -> None:
         warnings = sum(s.get("warnings", 0) for s in stages)
         errors = sum(s.get("errors", 0) for s in stages)
 
-        # Get status value from BuildStatus enum
-        status_value = build.status.value
-
         completed_at = time.time()
         started_at = build.started_at or completed_at
         duration = completed_at - started_at
 
+        # Create a typed model for insertion
+        row = HistoricalBuild(
+            build_id=build_id,
+            project_root=build.project_root or "",
+            target=build.target or "default",
+            entry=build.entry,
+            status=build.status,
+            return_code=build.return_code,
+            error=build.error,
+            started_at=started_at,
+            duration=duration,
+            stages=stages,
+            warnings=warnings,
+            errors=errors,
+            completed_at=completed_at,
+        )
+
+        # Use model's insert method - exclude 'id' for auto-increment
+        columns = sqlite_model.insert_columns(HistoricalBuild, exclude={"id"})
         cursor.execute(
-            """
-            INSERT OR REPLACE INTO build_history
-            (build_id, project_root, target, entry, status, return_code, error,
-             started_at, duration, stages, warnings, errors, completed_at, build_key)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                build_id,
-                build.project_root or "",
-                build.target or "default",
-                build.entry,
-                status_value,
-                build.return_code,
-                build.error,
-                started_at,
-                duration,
-                json.dumps(stages),
-                warnings,
-                errors,
-                completed_at,
-                build.timestamp,
-            ),
+            sqlite_model.insert_or_replace_sql(HistoricalBuild, columns),
+            sqlite_model.to_row_tuple(row, columns),
         )
         conn.commit()
         conn.close()
@@ -138,7 +110,8 @@ def load_recent_builds_from_history(limit: int = 50) -> list[HistoricalBuild]:
         rows = cursor.fetchall()
         conn.close()
 
-        return [HistoricalBuild.from_db_row(row) for row in rows]
+        # Use type-safe Pydantic model for parsing
+        return [sqlite_model.from_row(HistoricalBuild, row) for row in rows]
 
     except Exception as exc:
         log.error(f"Failed to load build history: {exc}")
@@ -179,7 +152,8 @@ def get_build_info_by_id(build_id: str) -> HistoricalBuild | None:
         if row is None:
             return None
 
-        return HistoricalBuild.from_db_row(row)
+        # Use type-safe Pydantic model for parsing
+        return sqlite_model.from_row(HistoricalBuild, row)
 
     except Exception as exc:
         log.error(f"Failed to get build info by id: {exc}")
@@ -229,7 +203,8 @@ def get_builds_by_project_target(
         rows = cursor.fetchall()
         conn.close()
 
-        return [HistoricalBuild.from_db_row(row) for row in rows]
+        # Use type-safe Pydantic model for parsing
+        return [sqlite_model.from_row(HistoricalBuild, row) for row in rows]
 
     except Exception as exc:
         log.error(f"Failed to get builds by project/target: {exc}")
@@ -273,7 +248,8 @@ def get_latest_build_for_target(
         if row is None:
             return None
 
-        return HistoricalBuild.from_db_row(row)
+        # Use type-safe Pydantic model for parsing
+        return sqlite_model.from_row(HistoricalBuild, row)
 
     except Exception as exc:
         log.error(f"Failed to get latest build for target: {exc}")
@@ -373,7 +349,6 @@ def create_build_record(
     target: str,
     entry: str | None = None,
     status: BuildStatus = BuildStatus.QUEUED,
-    timestamp: str | None = None,
 ) -> bool:
     """
     Create a new build record in the database.
@@ -386,8 +361,6 @@ def create_build_record(
         target: Build target name
         entry: Entry point (optional)
         status: Initial status (default: BuildStatus.QUEUED)
-        timestamp: Build timestamp string (optional)
-
     Returns:
         True if creation succeeded, False otherwise
     """
@@ -398,34 +371,30 @@ def create_build_record(
         conn = sqlite3.connect(str(_build_history_db), timeout=5.0)
         cursor = conn.cursor()
 
-        # Get status value string from enum
-        status_value = status.value
+        # Create a typed row model for insertion
+        row = HistoricalBuild(
+            build_id=build_id,
+            project_root=project_root,
+            target=target,
+            entry=entry,
+            status=status,
+            started_at=time.time(),
+            duration=0.0,
+            stages=[],
+            warnings=0,
+            errors=0,
+        )
 
+        # Use model's insert method - exclude 'id' for auto-increment
+        columns = sqlite_model.insert_columns(HistoricalBuild, exclude={"id"})
         cursor.execute(
-            """
-            INSERT OR REPLACE INTO build_history
-            (build_id, project_root, target, entry, status, started_at,
-             duration, stages, warnings, errors, build_key)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                build_id,
-                project_root,
-                target,
-                entry,
-                status_value,
-                time.time(),
-                0.0,
-                "[]",
-                0,
-                0,
-                timestamp or "",
-            ),
+            sqlite_model.insert_or_replace_sql(HistoricalBuild, columns),
+            sqlite_model.to_row_tuple(row, columns),
         )
 
         conn.commit()
         conn.close()
-        log.debug(f"Created build record {build_id} with status {status_value}")
+        log.debug(f"Created build record {build_id} with status {status.value}")
         return True
 
     except Exception as exc:

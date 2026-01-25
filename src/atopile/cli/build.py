@@ -861,7 +861,6 @@ class ParallelBuildManager:
                 target=bp.name,
                 entry=None,  # Entry not stored in BuildProcess
                 status=bp.status,  # Use BuildStatus enum directly
-                timestamp=self._now,
             )
 
             # Update with current state

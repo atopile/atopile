@@ -35,7 +35,16 @@ from rich.traceback import Traceback
 
 import atopile
 import faebryk
-from atopile.dataclasses import Log, StageCompleteEvent, StageStatusEvent
+from atopile.dataclasses import (
+    Log,
+    LogRow,
+    StageCompleteEvent,
+    StageStatusEvent,
+    TestLogRow,
+    generate_logs_schema,
+    generate_test_logs_schema,
+)
+from atopile import sqlite_model
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 from atopile.logging_utils import PLOG, console, error_console
 
@@ -293,131 +302,30 @@ def _extract_traceback_frames(
     }
 
 
-# =============================================================================
-# SQLite Schemas
-# =============================================================================
+# SQLite schemas are auto-generated from the Pydantic models at call sites.
 
-SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS builds (
-    build_id TEXT PRIMARY KEY,
-    project_path TEXT NOT NULL,
-    target TEXT NOT NULL,
-    timestamp TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_builds_project ON builds(project_path);
-CREATE INDEX IF NOT EXISTS idx_builds_timestamp ON builds(timestamp);
-CREATE TABLE IF NOT EXISTS logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    build_id TEXT NOT NULL,
-    timestamp TEXT NOT NULL,
-    stage TEXT NOT NULL,
-    level TEXT NOT NULL,
-    logger_name TEXT NOT NULL DEFAULT '',
-    audience TEXT NOT NULL DEFAULT 'developer',
-    message TEXT NOT NULL,
-    source_file TEXT,
-    source_line INTEGER,
-    ato_traceback TEXT,
-    python_traceback TEXT,
-    objects TEXT,
-    FOREIGN KEY (build_id) REFERENCES builds(build_id)
-);
-CREATE INDEX IF NOT EXISTS idx_logs_build_id ON logs(build_id);
-CREATE INDEX IF NOT EXISTS idx_logs_stage ON logs(stage);
-CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level);
-CREATE INDEX IF NOT EXISTS idx_logs_audience ON logs(audience);
-
--- Migration: add source_file and source_line columns if they don't exist
--- SQLite doesn't have IF NOT EXISTS for ALTER TABLE, so we use a trick
--- These will fail silently if columns already exist
-"""
-
-# Migration SQL to add new columns (run separately with error handling)
-SCHEMA_MIGRATION_SQL = """
-ALTER TABLE logs ADD COLUMN source_file TEXT;
-ALTER TABLE logs ADD COLUMN source_line INTEGER;
-"""
-
-TEST_SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS test_runs (
-    test_run_id TEXT PRIMARY KEY, created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE TABLE IF NOT EXISTS test_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    test_run_id TEXT NOT NULL,
-    timestamp TEXT NOT NULL,
-    test_name TEXT NOT NULL,
-    level TEXT NOT NULL,
-    logger_name TEXT NOT NULL DEFAULT '',
-    audience TEXT NOT NULL DEFAULT 'developer',
-    message TEXT NOT NULL,
-    source_file TEXT,
-    source_line INTEGER,
-    ato_traceback TEXT,
-    python_traceback TEXT,
-    objects TEXT,
-    FOREIGN KEY (test_run_id) REFERENCES test_runs(test_run_id)
-);
-CREATE INDEX IF NOT EXISTS idx_test_logs_test_run_id ON test_logs(test_run_id);
-CREATE INDEX IF NOT EXISTS idx_test_logs_test_name ON test_logs(test_name);
-CREATE INDEX IF NOT EXISTS idx_test_logs_level ON test_logs(level);
-CREATE INDEX IF NOT EXISTS idx_test_logs_audience ON test_logs(audience);
-"""
-
-# Migration SQL to add new columns to test logs
-TEST_SCHEMA_MIGRATION_SQL = """
-ALTER TABLE test_logs ADD COLUMN source_file TEXT;
-ALTER TABLE test_logs ADD COLUMN source_line INTEGER;
-"""
-
-BUILD_LOG_INSERT = (
-    "INSERT INTO logs"
-    " (build_id, timestamp, stage, level, logger_name, audience,"
-    " message, source_file, source_line, ato_traceback, python_traceback, objects)"
-    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-)
-
-TEST_LOG_INSERT = (
-    "INSERT INTO test_logs"
-    " (test_run_id, timestamp, test_name, level, logger_name, audience,"
-    " message, source_file, source_line, ato_traceback, python_traceback, objects)"
-    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-)
+def _serialize_objects(obj: dict | None) -> str | None:
+    if obj is None:
+        return None
+    try:
+        return json.dumps(obj)
+    except (TypeError, ValueError):
+        return None
 
 
-def _build_entry_to_tuple(e: Log.Entry) -> tuple[Any, ...]:
-    """Convert a build log entry to a tuple for SQLite insertion."""
-    return (
-        e.build_id,
-        e.timestamp,
-        e.stage,
-        e.level,
-        e.logger_name,
-        e.audience,
-        e.message,
-        e.source_file,
-        e.source_line,
-        e.ato_traceback,
-        e.python_traceback,
-    )
+def _log_insert_spec(model: type[Any]) -> tuple[str, list[str]]:
+    columns = sqlite_model.insert_columns(model, exclude={"id"})
+    return sqlite_model.insert_sql(model, columns), columns
 
 
-def _test_entry_to_tuple(e: Log.TestEntry) -> tuple[Any, ...]:
-    """Convert a test log entry to a tuple for SQLite insertion."""
-    return (
-        e.test_run_id,
-        e.timestamp,
-        e.test_name,
-        e.level,
-        e.logger_name,
-        e.audience,
-        e.message,
-        e.source_file,
-        e.source_line,
-        e.ato_traceback,
-        e.python_traceback,
-    )
+def _entry_to_tuple(entry: Any, columns: list[str]) -> tuple[Any, ...]:
+    values: list[Any] = []
+    for column in columns:
+        if column == "objects":
+            values.append(_serialize_objects(entry.objects))
+        else:
+            values.append(getattr(entry, column))
+    return tuple(values)
 
 
 # =============================================================================
@@ -442,13 +350,10 @@ class SQLiteLogWriter:
         schema: str,
         insert_sql: str,
         entry_to_tuple: Callable[[Any], tuple[Any, ...]],
-        migration_sql: str | None = None,
     ) -> "SQLiteLogWriter":
         with cls._lock:
             if key not in cls._instances:
-                cls._instances[key] = cls(
-                    db_path, schema, insert_sql, entry_to_tuple, migration_sql
-                )
+                cls._instances[key] = cls(db_path, schema, insert_sql, entry_to_tuple)
             return cls._instances[key]
 
     @classmethod
@@ -463,11 +368,9 @@ class SQLiteLogWriter:
         schema_sql: str,
         insert_sql: str,
         entry_to_tuple: Callable[[Any], tuple[Any, ...]],
-        migration_sql: str | None = None,
     ):
         self._db_path = db_path
         self._schema_sql = schema_sql
-        self._migration_sql = migration_sql
         self._insert_sql = insert_sql
         self._entry_to_tuple = entry_to_tuple
         self._local = threading.local()
@@ -497,20 +400,6 @@ class SQLiteLogWriter:
         conn = self._get_connection()
         conn.executescript(self._schema_sql)
         conn.commit()
-
-        # Run migration SQL to add new columns to existing tables
-        # Each ALTER TABLE statement may fail if column already exists - that's OK
-        if self._migration_sql:
-            for statement in self._migration_sql.strip().split(";"):
-                statement = statement.strip()
-                if not statement:
-                    continue
-                try:
-                    conn.execute(statement)
-                    conn.commit()
-                except sqlite3.OperationalError:
-                    # Column likely already exists, ignore
-                    pass
 
     def register_build(
         self,
@@ -568,15 +457,7 @@ class SQLiteLogWriter:
             entries, self._buffer = self._buffer, []
             self._last_flush = datetime.now()
 
-        def serialize(obj: dict | None) -> str | None:
-            if obj is None:
-                return None
-            try:
-                return json.dumps(obj)
-            except (TypeError, ValueError):
-                return None
-
-        data = [(*self._entry_to_tuple(e), serialize(e.objects)) for e in entries]
+        data = [self._entry_to_tuple(e) for e in entries]
         try:
             conn = self._get_connection()
             conn.executemany(self._insert_sql, data)
@@ -837,13 +718,13 @@ class LoggerForTest(BaseLogger):
     @classmethod
     def setup_logging(cls, test_run_id: str, test: str = "") -> "LoggerForTest | None":
         try:
+            insert_sql, columns = _log_insert_spec(TestLogRow)
             writer = SQLiteLogWriter.get_instance(
                 "test",
                 cls.get_log_db(),
-                TEST_SCHEMA_SQL,
-                TEST_LOG_INSERT,
-                _test_entry_to_tuple,
-                TEST_SCHEMA_MIGRATION_SQL,
+                generate_test_logs_schema(),
+                insert_sql,
+                lambda entry, cols=columns: _entry_to_tuple(entry, cols),
             )
             writer.register_test_run(test_run_id)
 
@@ -929,13 +810,13 @@ class BuildLogger(BaseLogger):
         build_id: str | None = None,
     ) -> "BuildLogger":
         timestamp = timestamp or NOW
+        insert_sql, columns = _log_insert_spec(LogRow)
         writer = SQLiteLogWriter.get_instance(
             "build",
             cls.get_log_db(),
-            SCHEMA_SQL,
-            BUILD_LOG_INSERT,
-            _build_entry_to_tuple,
-            SCHEMA_MIGRATION_SQL,
+            generate_logs_schema(),
+            insert_sql,
+            lambda entry, cols=columns: _entry_to_tuple(entry, cols),
         )
         build_id = writer.register_build(project_path, target, timestamp, build_id)
 

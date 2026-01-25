@@ -13,10 +13,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum, StrEnum
 from pathlib import Path
-from typing import Any, Literal, Optional, TypedDict
+from typing import Any, ClassVar, Literal, Optional, TypedDict
 
 from fastapi import WebSocket
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from atopile import sqlite_model
 
 # =============================================================================
 # Enums and Type Aliases
@@ -132,19 +134,27 @@ class ActiveBuild(BaseBuild):
 
 @dataclass
 class HistoricalBuild(BaseBuild):
-    """Build record loaded from the build history database."""
+    """
+    Build record loaded from the build history database.
 
-    # Additional timing for historical builds
+    Pydantic dataclass used for database persistence.
+    """
+
+    __tablename__: ClassVar[str] = "build_history"
+    __indexes__: ClassVar[list[tuple[str, ...]]] = [
+        ("project_root",),
+        ("status",),
+        ("started_at",),
+    ]
+
+    id: Optional[int] = None
+
+    # Historical build specific
     completed_at: Optional[float] = None
-
-    # Build key (timestamp string for backwards compat)
-    build_key: str = ""
 
     @property
     def display_name(self) -> str:
         """Generate display name from project and target."""
-        from pathlib import Path
-
         project_name = Path(self.project_root).name if self.project_root else "unknown"
         target = self.target or "default"
         return f"{project_name}:{target}"
@@ -152,31 +162,120 @@ class HistoricalBuild(BaseBuild):
     @property
     def project_name(self) -> str:
         """Get project name from project root path."""
-        from pathlib import Path
-
         return Path(self.project_root).name if self.project_root else "unknown"
 
-    @classmethod
-    def from_db_row(cls, row: Any) -> "HistoricalBuild":
-        """Construct from a sqlite3.Row. Only JSON/enum conversion needed."""
-        import json
 
-        return cls(
-            build_id=row["build_id"],
-            project_root=row["project_root"],
-            target=row["target"],
-            entry=row["entry"],
-            status=BuildStatus(row["status"]),
-            return_code=row["return_code"],
-            error=row["error"],
-            started_at=row["started_at"],
-            completed_at=row["completed_at"],
-            duration=row["duration"],
-            stages=json.loads(row["stages"]) if row["stages"] else [],
-            warnings=row["warnings"],
-            errors=row["errors"],
-            build_key=row["build_key"],
-        )
+# =============================================================================
+# Logging DB Models
+# =============================================================================
+
+
+@dataclass
+class BuildRow:
+    """Database model for build metadata in logs database."""
+
+    __tablename__ = "builds"
+    __indexes__ = [
+        ("project_path",),
+        ("timestamp",),
+    ]
+
+    build_id: str
+    project_path: str
+    target: str
+    timestamp: str
+    created_at: str = ""
+
+
+@dataclass
+class LogRow:
+    """Database model for log entries."""
+
+    __tablename__ = "logs"
+    __indexes__ = [
+        ("build_id",),
+        ("stage",),
+        ("level",),
+        ("audience",),
+    ]
+
+    id: int | None = field(default=None, init=False)
+    build_id: str
+    timestamp: str
+    stage: str
+    level: str
+    message: str
+    logger_name: str = ""
+    audience: str = "developer"
+    source_file: str | None = None
+    source_line: int | None = None
+    ato_traceback: str | None = None
+    python_traceback: str | None = None
+    objects: str | None = None
+
+
+@dataclass
+class TestRunRow:
+    """Database model for test run metadata."""
+
+    __tablename__ = "test_runs"
+    __indexes__: ClassVar[list[tuple[str, ...]]] = []
+
+    test_run_id: str
+    created_at: str = ""
+
+
+@dataclass
+class TestLogRow:
+    """Database model for test log entries."""
+
+    __tablename__ = "test_logs"
+    __indexes__ = [
+        ("test_run_id",),
+        ("test_name",),
+        ("level",),
+        ("audience",),
+    ]
+
+    id: int | None = field(default=None, init=False)
+    test_run_id: str
+    timestamp: str
+    test_name: str
+    level: str
+    message: str
+    logger_name: str = ""
+    audience: str = "developer"
+    source_file: str | None = None
+    source_line: int | None = None
+    ato_traceback: str | None = None
+    python_traceback: str | None = None
+    objects: str | None = None
+
+
+def generate_logs_schema() -> str:
+    """Generate the logs database schema (builds + logs tables)."""
+    build_schema = sqlite_model.create_table_sql(BuildRow)
+
+    log_schema = sqlite_model.create_table_sql(LogRow)
+    log_schema = log_schema.replace(
+        "\n);",
+        ",\n    FOREIGN KEY (build_id) REFERENCES builds(build_id)\n);",
+    )
+
+    return build_schema + log_schema
+
+
+def generate_test_logs_schema() -> str:
+    """Generate the test logs database schema."""
+    test_run_schema = sqlite_model.create_table_sql(TestRunRow)
+
+    test_log_schema = sqlite_model.create_table_sql(TestLogRow)
+    test_log_schema = test_log_schema.replace(
+        "\n);",
+        ",\n    FOREIGN KEY (test_run_id) REFERENCES test_runs(test_run_id)\n);",
+    )
+
+    return test_run_schema + test_log_schema
 
 
 # =============================================================================
@@ -448,7 +547,6 @@ class Build(CamelModel):
     display_name: str
     project_name: Optional[str] = None
     build_id: Optional[str] = None
-    build_key: Optional[str] = None
 
     # Status
     status: BuildStatus = BuildStatus.QUEUED
