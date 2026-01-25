@@ -13,7 +13,6 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 from atopile.compiler import (
     DslException,
-    DslImportError,
     DslRichException,
     DslUndefinedSymbolError,
 )
@@ -216,7 +215,7 @@ class SearchPathResolver:
         self._project_root = self._normalize_path_optional(
             getattr(project_paths, "root", None)
         )
-        self._package_identifier = getattr(package_cfg, "identifier", None)
+        self._package_identifier: str | None = getattr(package_cfg, "identifier", None)
 
     @staticmethod
     def _normalize_path(path: Path) -> Path:
@@ -284,7 +283,27 @@ class SearchPathResolver:
             if (candidate := search_dir / raw_path).exists():
                 return self._normalize_path(candidate)
 
-        raise ImportPathNotFoundError(f"Unable to resolve import `{raw_path}`")
+        raise ImportPathNotFoundError(self._make_import_error_message(raw_path))
+
+    def _make_import_error_message(self, raw_path: str) -> str:
+        """Generate an error message with hints for common misconfigurations."""
+        msg = f"Unable to resolve import `{raw_path}`"
+        path_parts = raw_path.split("/")
+        potential_vendor = path_parts[0]
+
+        if package_identifier := self._package_identifier:
+            package_vendor = package_identifier.split("/")[0]
+            if len(path_parts) >= 2:
+                if package_vendor == potential_vendor:
+                    msg += (
+                        "\n\nHint: Your ato.yaml has `package.identifier: "
+                        f"{package_identifier}` but this import starts with "
+                        f"`{'/'.join(path_parts[:2])}`. If this is a self-reference, "
+                        "check that your package.identifier matches the start of the "
+                        "import path."
+                    )
+
+        return msg
 
 
 class Linker:
@@ -379,10 +398,7 @@ class Linker:
                         break
 
             raise DslRichException(
-                f"Unable to resolve import `{import_ref.path}`",
-                original=DslImportError(
-                    f"Unable to resolve import `{import_ref.path}`"
-                ),
+                message=str(e),
                 source_node=source_node,
             ) from e
 
