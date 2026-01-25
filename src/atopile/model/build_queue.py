@@ -169,7 +169,7 @@ def _run_build_subprocess(
 
             # Query the database for stage updates
             build_info = build_history.get_build_info_by_id(build_id)
-            current_stages = build_info.get("stages", []) if build_info else []
+            current_stages = build_info.stages if build_info else []
 
             # Check if stages changed
             if current_stages != last_stages:
@@ -194,7 +194,7 @@ def _run_build_subprocess(
         # Get final stages from database
         build_info = build_history.get_build_info_by_id(build_id)
         if build_info:
-            final_stages = build_info.get("stages", [])
+            final_stages = build_info.stages
 
         if return_code != 0:
             error_msg = (

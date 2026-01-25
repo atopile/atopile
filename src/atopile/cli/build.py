@@ -854,19 +854,20 @@ class ParallelBuildManager:
             data = self._get_build_data(bp)
 
             # Create or update the build record
+            # bp.status is already a BuildStatus enum
             build_history.create_build_record(
                 build_id=bp.build_id,
                 project_root=str(bp.project_root.resolve()),
                 target=bp.name,
                 entry=None,  # Entry not stored in BuildProcess
-                status=data["status"],
+                status=bp.status,  # Use BuildStatus enum directly
                 timestamp=self._now,
             )
 
             # Update with current state
             build_history.update_build_status(
                 build_id=bp.build_id,
-                status=data["status"],
+                status=bp.status,  # Use BuildStatus enum directly
                 stages=data.get("stages"),
                 warnings=data.get("warnings", 0),
                 errors=data.get("errors", 0),
@@ -1148,7 +1149,10 @@ class ParallelBuildManager:
                 {
                     "name": entry.description,
                     "stage_id": entry.log_name,
-                    "status": entry.status,
+                    # Serialize StageStatus enum to string value for JSON
+                    "status": entry.status.value
+                    if hasattr(entry.status, "value")
+                    else str(entry.status),
                     "elapsed_seconds": round(entry.duration, 2),
                     "infos": entry.infos,
                     "warnings": entry.warnings,

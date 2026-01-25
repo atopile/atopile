@@ -89,7 +89,10 @@ export interface BuildTargetBuildTargetStatus {
  */
 export interface Build {
     buildId?:        null | string;
+    buildKey?:       null | string;
+    completedAt?:    number | null;
     displayName:     string;
+    duration?:       number | null;
     elapsedSeconds?: number;
     entry?:          null | string;
     error?:          null | string;
@@ -120,7 +123,7 @@ export interface StageElement {
     errors?:         number;
     infos?:          number;
     name:            string;
-    stageId:         string;
+    stageId?:        string;
     status?:         StageStatus;
     warnings?:       number;
     [property: string]: any;
@@ -149,7 +152,7 @@ export interface BuildStage {
     errors?:         number;
     infos?:          number;
     name:            string;
-    stageId:         string;
+    stageId?:        string;
     status?:         StageStatus;
     warnings?:       number;
     [property: string]: any;

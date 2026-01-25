@@ -69,7 +69,7 @@
               }
             ],
             "default": null,
-            "title": "Elapsed Seconds"
+            "title": "Elapsedseconds"
           },
           "warnings": {
             "default": 0,
@@ -107,7 +107,7 @@
               }
             ],
             "default": null,
-            "title": "Build Id"
+            "title": "Buildid"
           }
         },
         "required": [
@@ -179,7 +179,7 @@
               }
             ],
             "default": null,
-            "title": "Elapsed Seconds"
+            "title": "Elapsedseconds"
           },
           "warnings": {
             "default": 0,
@@ -217,7 +217,7 @@
               }
             ],
             "default": null,
-            "title": "Build Id"
+            "title": "Buildid"
           }
         },
         "required": [
@@ -272,7 +272,8 @@
             "type": "string"
           },
           "stageId": {
-            "title": "Stage Id",
+            "default": "",
+            "title": "Stageid",
             "type": "string"
           },
           "displayName": {
@@ -285,11 +286,11 @@
               }
             ],
             "default": null,
-            "title": "Display Name"
+            "title": "Displayname"
           },
           "elapsedSeconds": {
             "default": 0.0,
-            "title": "Elapsed Seconds",
+            "title": "Elapsedseconds",
             "type": "number"
           },
           "status": {
@@ -318,8 +319,7 @@
           }
         },
         "required": [
-          "name",
-          "stageId"
+          "name"
         ],
         "title": "BuildStage",
         "type": "object"
@@ -359,7 +359,7 @@
         "type": "string"
       },
       "displayName": {
-        "title": "Display Name",
+        "title": "Displayname",
         "type": "string"
       },
       "projectName": {
@@ -372,7 +372,7 @@
           }
         ],
         "default": null,
-        "title": "Project Name"
+        "title": "Projectname"
       },
       "buildId": {
         "anyOf": [
@@ -384,7 +384,19 @@
           }
         ],
         "default": null,
-        "title": "Build Id"
+        "title": "Buildid"
+      },
+      "buildKey": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Buildkey"
       },
       "status": {
         "$ref": "#/$defs/BuildStatus",
@@ -392,7 +404,7 @@
       },
       "elapsedSeconds": {
         "default": 0.0,
-        "title": "Elapsed Seconds",
+        "title": "Elapsedseconds",
         "type": "number"
       },
       "warnings": {
@@ -415,7 +427,7 @@
           }
         ],
         "default": null,
-        "title": "Return Code"
+        "title": "Returncode"
       },
       "error": {
         "anyOf": [
@@ -439,7 +451,7 @@
           }
         ],
         "default": null,
-        "title": "Project Root"
+        "title": "Projectroot"
       },
       "target": {
         "anyOf": [
@@ -475,7 +487,31 @@
           }
         ],
         "default": null,
-        "title": "Started At"
+        "title": "Startedat"
+      },
+      "completedAt": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Completedat"
+      },
+      "duration": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Duration"
       },
       "stages": {
         "anyOf": [
@@ -494,7 +530,7 @@
       },
       "totalStages": {
         "default": 20,
-        "title": "Total Stages",
+        "title": "Totalstages",
         "type": "integer"
       },
       "logDir": {
@@ -507,7 +543,7 @@
           }
         ],
         "default": null,
-        "title": "Log Dir"
+        "title": "Logdir"
       },
       "logFile": {
         "anyOf": [
@@ -519,7 +555,7 @@
           }
         ],
         "default": null,
-        "title": "Log File"
+        "title": "Logfile"
       },
       "queuePosition": {
         "anyOf": [
@@ -531,7 +567,7 @@
           }
         ],
         "default": null,
-        "title": "Queue Position"
+        "title": "Queueposition"
       }
     },
     "required": [
@@ -565,7 +601,8 @@
         "type": "string"
       },
       "stageId": {
-        "title": "Stage Id",
+        "default": "",
+        "title": "Stageid",
         "type": "string"
       },
       "displayName": {
@@ -578,11 +615,11 @@
           }
         ],
         "default": null,
-        "title": "Display Name"
+        "title": "Displayname"
       },
       "elapsedSeconds": {
         "default": 0.0,
-        "title": "Elapsed Seconds",
+        "title": "Elapsedseconds",
         "type": "number"
       },
       "status": {
@@ -611,8 +648,7 @@
       }
     },
     "required": [
-      "name",
-      "stageId"
+      "name"
     ],
     "title": "BuildStage",
     "type": "object"

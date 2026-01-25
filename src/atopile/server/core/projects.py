@@ -12,9 +12,11 @@ from typing import Optional
 import yaml
 
 from atopile.dataclasses import (
+    BuildStatus,
     BuildTarget,
     BuildTargetStatus,
     FileTreeNode,
+    HistoricalBuild,
     ModuleDefinition,
     Project,
 )
@@ -28,36 +30,35 @@ def _load_last_build_for_target(
 ) -> Optional[BuildTargetStatus]:
     """Load the last build status for a target from build history database."""
     try:
-        data = build_history.get_latest_build_for_target(
+        build: Optional[HistoricalBuild] = build_history.get_latest_build_for_target(
             str(project_root), target_name
         )
 
-        if not data:
+        if not build:
             return None
 
         # Convert started_at timestamp to ISO format
-        started_at = data.get("started_at")
-        if isinstance(started_at, (int, float)):
-            timestamp = datetime.fromtimestamp(started_at).isoformat()
+        if build.started_at:
+            timestamp = datetime.fromtimestamp(build.started_at).isoformat()
         else:
-            timestamp = str(started_at) if started_at else ""
+            timestamp = ""
 
-        status = data.get("status", "unknown")
+        status = build.status
 
         # If status is "building" or "queued", the build was interrupted
         # (server crashed/restarted while build was in progress)
-        # Treat as "interrupted" so UI doesn't show stale "building" status
-        if status in ("building", "queued"):
-            status = "interrupted"
+        # Treat as "failed" so UI doesn't show stale "building" status
+        if status in (BuildStatus.BUILDING, BuildStatus.QUEUED):
+            status = BuildStatus.FAILED
 
         return BuildTargetStatus(
             status=status,
             timestamp=timestamp,
-            elapsed_seconds=data.get("duration"),
-            warnings=data.get("warnings", 0),
-            errors=data.get("errors", 0),
-            stages=data.get("stages"),
-            build_id=data.get("build_id"),
+            elapsed_seconds=build.duration,
+            warnings=build.warnings,
+            errors=build.errors,
+            stages=build.stages,
+            build_id=build.build_id,
         )
     except Exception as e:
         log.debug(f"Failed to load build summary for {target_name}: {e}")

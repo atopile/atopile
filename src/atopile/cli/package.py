@@ -386,6 +386,7 @@ class _PackageValidators:
 
     @staticmethod
     def verify_no_warnings(config: "Config"):
+        from atopile.dataclasses import HistoricalBuild
         from atopile.model import build_history
 
         project_root = str(config.project.paths.root)
@@ -403,26 +404,26 @@ class _PackageValidators:
             )
 
         # Get the latest build for each target
-        latest_by_target: dict[str, dict] = {}
+        latest_by_target: dict[str, HistoricalBuild] = {}
         for build in builds:
-            target = build.get("target", "default")
+            target = build.target or "default"
             if target not in latest_by_target:
                 latest_by_target[target] = build
 
         # Check total warnings from latest builds per target
-        total_warnings = sum(b.get("warnings", 0) for b in latest_by_target.values())
+        total_warnings = sum(b.warnings for b in latest_by_target.values())
         if total_warnings > 0:
             # Collect warning details from individual builds
             warning_details: list[str] = []
             for target, build in latest_by_target.items():
-                build_warnings = build.get("warnings", 0)
+                build_warnings = build.warnings
                 if build_warnings > 0:
                     # Get full build info for stage details
-                    build_info = build_history.get_build_info_by_id(build["build_id"])
+                    build_info = build_history.get_build_info_by_id(build.build_id)
                     if build_info:
                         stages_with_warnings = [
                             f"  - {stage['name']}: {stage['warnings']} warning(s)"
-                            for stage in build_info.get("stages", [])
+                            for stage in build_info.stages
                             if stage.get("warnings", 0) > 0
                         ]
                         if stages_with_warnings:

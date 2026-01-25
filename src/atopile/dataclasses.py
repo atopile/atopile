@@ -89,19 +89,16 @@ class StageCompleteEvent:
 
 
 @dataclass
-class ActiveBuild:
-    """Internal state for an active (queued/building/completed) build."""
+class BaseBuild:
+    """Base class for build data structures with common fields."""
 
     # Core identification
     build_id: str
     project_root: str
     target: str
-    timestamp: str
 
     # Build configuration
     entry: Optional[str] = None
-    standalone: bool = False
-    frozen: bool = False
 
     # Status
     status: BuildStatus = BuildStatus.QUEUED
@@ -110,13 +107,76 @@ class ActiveBuild:
 
     # Timing
     started_at: float = 0.0
-    building_started_at: Optional[float] = None
     duration: float = 0.0
 
     # Progress
     stages: list[dict[str, Any]] = field(default_factory=list)
     warnings: int = 0
     errors: int = 0
+
+
+@dataclass
+class ActiveBuild(BaseBuild):
+    """Internal state for an active (queued/building/completed) build."""
+
+    # Additional identification for active builds
+    timestamp: str = ""
+
+    # Build configuration specific to active builds
+    standalone: bool = False
+    frozen: bool = False
+
+    # Additional timing for active builds
+    building_started_at: Optional[float] = None
+
+
+@dataclass
+class HistoricalBuild(BaseBuild):
+    """Build record loaded from the build history database."""
+
+    # Additional timing for historical builds
+    completed_at: Optional[float] = None
+
+    # Build key (timestamp string for backwards compat)
+    build_key: str = ""
+
+    @property
+    def display_name(self) -> str:
+        """Generate display name from project and target."""
+        from pathlib import Path
+
+        project_name = Path(self.project_root).name if self.project_root else "unknown"
+        target = self.target or "default"
+        return f"{project_name}:{target}"
+
+    @property
+    def project_name(self) -> str:
+        """Get project name from project root path."""
+        from pathlib import Path
+
+        return Path(self.project_root).name if self.project_root else "unknown"
+
+    @classmethod
+    def from_db_row(cls, row: Any) -> "HistoricalBuild":
+        """Construct from a sqlite3.Row. Only JSON/enum conversion needed."""
+        import json
+
+        return cls(
+            build_id=row["build_id"],
+            project_root=row["project_root"],
+            target=row["target"],
+            entry=row["entry"],
+            status=BuildStatus(row["status"]),
+            return_code=row["return_code"],
+            error=row["error"],
+            started_at=row["started_at"],
+            completed_at=row["completed_at"],
+            duration=row["duration"],
+            stages=json.loads(row["stages"]) if row["stages"] else [],
+            warnings=row["warnings"],
+            errors=row["errors"],
+            build_key=row["build_key"],
+        )
 
 
 # =============================================================================
