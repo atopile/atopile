@@ -26,12 +26,16 @@ from atopile.dataclasses import (
     RegistrySearchResponse,
     RegistryStatus,
 )
+from atopile.dataclasses import AppContext
 from atopile.model.model_state import model_state
-from atopile.server import package_manager
-from atopile.server.app_context import AppContext
 from atopile.server.connections import server_state
 from atopile.server.core import packages as core_packages
 from faebryk.libs.backend.packages.api import PackagesAPIClient
+
+
+def _get_api() -> PackagesAPIClient:
+    """Get a fresh API client instance."""
+    return PackagesAPIClient()
 
 log = logging.getLogger(__name__)
 
@@ -157,7 +161,7 @@ def search_registry_packages(query: str) -> list[PackageInfo]:
         return cached
 
     try:
-        result = package_manager.query_packages(query)
+        result = _get_api().query_packages(query)
         log.debug(f"[registry] Fetched {len(result.packages)} packages for '{query}'")
 
         packages: list[PackageInfo] = []
@@ -293,10 +297,11 @@ def get_package_details_from_registry(identifier: str) -> PackageDetails | None:
     - Dependencies
     """
     try:
-        pkg_response = package_manager.get_package(identifier)
+        api = _get_api()
+        pkg_response = api.get_package(identifier)
         pkg_info = pkg_response.info
 
-        releases_response = package_manager.get_package_releases(identifier)
+        releases_response = api._get(f"/v1/package/{identifier}/releases").json()
         releases = releases_response.get("releases", [])
 
         parts = identifier.split("/")

@@ -15,7 +15,7 @@ from atopile.dataclasses import (
     ModulesResponse,
     ProjectsResponse,
 )
-from atopile.server.app_context import AppContext
+from atopile.dataclasses import AppContext
 from atopile.server.domains import projects as projects_domain
 from atopile.server.domains.deps import get_ctx
 

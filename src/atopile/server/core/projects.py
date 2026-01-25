@@ -168,6 +168,11 @@ def discover_modules_in_project(project_root: Path) -> list[ModuleDefinition]:
     return all_modules
 
 
+def discover_projects_in_path(path: Path) -> list[Project]:
+    """Discover all ato projects in the given path."""
+    return discover_projects_in_paths([path])
+
+
 def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
     """
     Discover all ato projects in the given paths.

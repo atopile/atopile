@@ -29,8 +29,8 @@ from atopile.model.build_queue import (
     _sync_builds_to_state,
     cancel_build,
 )
-from atopile.server import project_discovery
-from atopile.server.app_context import AppContext
+from atopile.dataclasses import AppContext
+from atopile.server.core import projects as core_projects
 
 log = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ def handle_get_summary(ctx: AppContext) -> dict:
             pass
 
     projects = (
-        project_discovery.discover_projects_in_path(ctx.workspace_path)
+        core_projects.discover_projects_in_path(ctx.workspace_path)
         if ctx.workspace_path
         else []
     )

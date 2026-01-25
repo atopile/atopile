@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from atopile.server.app_context import AppContext
+from atopile.dataclasses import AppContext
 
 
 def handle_resolve_location(

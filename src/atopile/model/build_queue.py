@@ -4,7 +4,6 @@ Build queue and active build tracking.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -21,34 +20,23 @@ from typing import Any
 from atopile.dataclasses import BuildStatus, StageStatus
 from atopile.model import build_history
 from atopile.model.model_state import model_state
+from atopile.server.events import event_bus
 
 log = logging.getLogger(__name__)
 
-# Track active builds
-_active_builds: dict[str, dict[str, Any]] = {}
-_build_lock = threading.RLock()  # Use RLock to allow reentrant locking
+# Convenience aliases for cleaner code
+_active_builds = model_state.active_builds
+_build_lock = model_state.build_lock
 
 
 def _acquire_build_lock(timeout: float = 5.0, context: str = "unknown") -> bool:
-    """
-    Acquire _build_lock with timeout and logging.
-    Returns True if acquired, False if timed out.
-    """
-    log.debug(f"[LOCK] Attempting to acquire _build_lock from {context}")
-    acquired = _build_lock.acquire(timeout=timeout)
-    if acquired:
-        log.debug(f"[LOCK] Acquired _build_lock from {context}")
-    else:
-        log.error(
-            f"[LOCK] TIMEOUT acquiring _build_lock from {context} after {timeout}s"
-        )
-    return acquired
+    """Acquire build lock with timeout. Delegates to model_state."""
+    return model_state.acquire_build_lock(timeout=timeout, context=context)
 
 
 def _release_build_lock(context: str = "unknown") -> None:
-    """Release _build_lock with logging."""
-    log.debug(f"[LOCK] Releasing _build_lock from {context}")
-    _build_lock.release()
+    """Release build lock. Delegates to model_state."""
+    model_state.release_build_lock(context=context)
 
 
 # Build queue configuration
@@ -928,13 +916,13 @@ def _sync_builds_to_state():
     Emit build change events for WebSocket clients.
 
     Called when build status changes (from background thread).
-    Uses model_state.emit_event_sync for thread-safe event emission.
+    Uses event_bus.emit_sync for thread-safe event emission.
     """
     # Clean up old completed builds first
     _cleanup_completed_builds()
 
-    # Emit event via model_state
-    model_state.emit_event_sync("builds_changed")
+    # Emit event via event_bus
+    event_bus.emit_sync("builds_changed")
 
 
 def _refresh_bom_for_selected(build_info: dict[str, Any]) -> None:
@@ -948,7 +936,7 @@ def _refresh_bom_for_selected(build_info: dict[str, Any]) -> None:
     if target:
         payload["target"] = target
 
-    model_state.emit_event_sync("bom_changed", payload)
+    event_bus.emit_sync("bom_changed", payload)
 
 
 def _refresh_project_last_build(build_info: dict[str, Any]) -> None:
@@ -962,7 +950,7 @@ def _refresh_project_last_build(build_info: dict[str, Any]) -> None:
     if not project_root:
         return
 
-    model_state.emit_event_sync("projects_changed", {"project_root": project_root})
+    event_bus.emit_sync("projects_changed", {"project_root": project_root})
 
 
 async def _sync_builds_to_state_async():
@@ -972,7 +960,7 @@ async def _sync_builds_to_state_async():
     Called from async contexts (like WebSocket handlers) where we want
     to await the event emit rather than scheduling it.
     """
-    await model_state.emit_event("builds_changed")
+    await event_bus.emit("builds_changed")
 
 
 def cancel_build(build_id: str) -> bool:

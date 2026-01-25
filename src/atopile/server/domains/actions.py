@@ -24,19 +24,16 @@ from atopile.model.build_queue import (
     _sync_builds_to_state_async,
     cancel_build,
 )
-from atopile.model.model_state import model_state
-from atopile.server import (
-    path_utils,
-    project_discovery,
-)
-from atopile.server.app_context import AppContext
+from atopile.server import path_utils
+from atopile.dataclasses import AppContext
+from atopile.server.connections import server_state
 from atopile.server.core import projects as core_projects
 from atopile.server.domains import artifacts as artifacts_domain
 from atopile.server.domains import builds as builds_domain
 from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import parts as parts_domain
 from atopile.server.domains import projects as projects_domain
-from atopile.server.connections import server_state
+from atopile.server.events import event_bus
 
 log = logging.getLogger(__name__)
 
@@ -261,7 +258,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
         if action == "refreshProjects":
             if ctx.workspace_path:
                 await asyncio.to_thread(
-                    project_discovery.discover_projects_in_path, ctx.workspace_path
+                    core_projects.discover_projects_in_path, ctx.workspace_path
                 )
                 await server_state.emit_event("projects_changed")
             return {"success": True}
@@ -528,7 +525,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                             f"Successfully installed {pkg_spec}",
                             audience=Log.Audience.USER,
                         )
-                        loop = model_state._event_loop
+                        loop = event_bus._event_loop
 
                         async def finalize_install() -> None:
                             # Clear module introspection cache to pick up new packages
@@ -561,7 +558,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                             f"Failed to install {pkg_spec}: {error_msg}",
                             audience=Log.Audience.USER,
                         )
-                        loop = model_state._event_loop
+                        loop = event_bus._event_loop
                         if loop and loop.is_running():
                             asyncio.run_coroutine_threadsafe(
                                 server_state.emit_event(
@@ -578,7 +575,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                         f"Failed to install {pkg_spec}: {exc}",
                         audience=Log.Audience.USER,
                     )
-                    loop = model_state._event_loop
+                    loop = event_bus._event_loop
                     if loop and loop.is_running():
                         asyncio.run_coroutine_threadsafe(
                             server_state.emit_event(
@@ -702,7 +699,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                             packages_domain._active_package_ops[op_id]["status"] = (
                                 "success"
                             )
-                            loop = model_state._event_loop
+                            loop = event_bus._event_loop
                             if loop and loop.is_running():
                                 # Refresh global packages state
                                 asyncio.run_coroutine_threadsafe(
@@ -722,7 +719,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                             packages_domain._active_package_ops[op_id]["error"] = (
                                 result.stderr[:500]
                             )
-                            loop = model_state._event_loop
+                            loop = event_bus._event_loop
                             if loop and loop.is_running():
                                 asyncio.run_coroutine_threadsafe(
                                     server_state.emit_event(
@@ -739,7 +736,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     with packages_domain._package_op_lock:
                         packages_domain._active_package_ops[op_id]["status"] = "failed"
                         packages_domain._active_package_ops[op_id]["error"] = str(exc)
-                    loop = model_state._event_loop
+                    loop = event_bus._event_loop
                     if loop and loop.is_running():
                         asyncio.run_coroutine_threadsafe(
                             server_state.emit_event(

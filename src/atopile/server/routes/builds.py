@@ -15,7 +15,7 @@ from atopile.dataclasses import (
     BuildsResponse,
     BuildTargetResponse,
 )
-from atopile.server.app_context import AppContext
+from atopile.dataclasses import AppContext
 from atopile.server.domains import builds as builds_domain
 from atopile.server.domains.deps import get_ctx
 

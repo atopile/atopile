@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from atopile.server.app_context import AppContext
+from atopile.dataclasses import AppContext
 from atopile.server.domains import artifacts as artifacts_domain
 from atopile.server.domains import resolve as resolve_domain
 from atopile.server.domains import stdlib as stdlib_domain

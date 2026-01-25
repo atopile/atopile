@@ -28,7 +28,7 @@ from atopile.dataclasses import (
     UpdateDependencyVersionRequest,
     UpdateDependencyVersionResponse,
 )
-from atopile.server.app_context import AppContext
+from atopile.dataclasses import AppContext
 from atopile.server.core import projects as core_projects
 from atopile.server.domains import packages as packages_domain
 log = logging.getLogger(__name__)

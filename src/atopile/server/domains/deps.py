@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import Request
 
-from atopile.server.app_context import AppContext
+from atopile.dataclasses import AppContext
 
 
 def get_ctx(request: Request) -> AppContext:

@@ -1,16 +1,13 @@
-"""Model state - event loop, workspace paths, event emission."""
+"""Model state - workspace path, active builds, and build lock."""
 
 from __future__ import annotations
 
-import asyncio
 import logging
+import threading
 from pathlib import Path
-from typing import Any, Callable, Coroutine, Optional
+from typing import Any, Optional
 
 log = logging.getLogger(__name__)
-
-# Callback for emitting events (registered by server at startup)
-EventEmitter = Callable[[str, Optional[dict]], Coroutine[Any, Any, None]]
 
 
 class ModelState:
@@ -18,20 +15,15 @@ class ModelState:
     Shared model state for the application.
 
     This provides:
-    - Event loop reference for background thread event emission
-    - Workspace paths for project discovery
-    - Event emission via a registered callback (from server/connections)
+    - Workspace path for project discovery
+    - Active builds tracking
+    - Build lock for thread-safe access
     """
 
     def __init__(self) -> None:
-        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
         self._workspace_path: Optional[Path] = None
-        self._event_emitter: Optional[EventEmitter] = None
-
-    def set_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Store the event loop for background thread emits."""
-        self._event_loop = loop
-        log.info("ModelState: Event loop captured")
+        self._active_builds: dict[str, dict[str, Any]] = {}
+        self._build_lock = threading.RLock()  # RLock allows reentrant locking
 
     def set_workspace_path(self, path: Optional[Path]) -> None:
         """Set workspace path for discovery operations."""
@@ -42,26 +34,37 @@ class ModelState:
         """Get workspace path for discovery operations."""
         return self._workspace_path
 
-    def register_event_emitter(self, emitter: EventEmitter) -> None:
-        """Register callback for event emission (called by server)."""
-        self._event_emitter = emitter
-        log.info("ModelState: Event emitter registered")
+    @property
+    def active_builds(self) -> dict[str, dict[str, Any]]:
+        """Get the active builds dict. Use build_lock for thread-safe access."""
+        return self._active_builds
 
-    async def emit_event(self, event_type: str, data: Optional[dict] = None) -> None:
-        """Emit an event asynchronously."""
-        if self._event_emitter:
-            await self._event_emitter(event_type, data)
+    @property
+    def build_lock(self) -> threading.RLock:
+        """Get the build lock for thread-safe access to active_builds."""
+        return self._build_lock
 
-    def emit_event_sync(self, event_type: str, data: Optional[dict] = None) -> None:
-        """Emit an event from synchronous code (background thread)."""
-        if self._event_loop and self._event_loop.is_running() and self._event_emitter:
-            asyncio.run_coroutine_threadsafe(
-                self._event_emitter(event_type, data), self._event_loop
-            )
+    def acquire_build_lock(
+        self, timeout: float = 5.0, context: str = "unknown"
+    ) -> bool:
+        """
+        Acquire build_lock with timeout and logging.
+        Returns True if acquired, False if timed out.
+        """
+        log.debug(f"[LOCK] Attempting to acquire build_lock from {context}")
+        acquired = self._build_lock.acquire(timeout=timeout)
+        if acquired:
+            log.debug(f"[LOCK] Acquired build_lock from {context}")
         else:
-            log.warning(
-                f"Cannot emit event '{event_type}': event loop or emitter not available"
+            log.error(
+                f"[LOCK] TIMEOUT acquiring build_lock from {context} after {timeout}s"
             )
+        return acquired
+
+    def release_build_lock(self, context: str = "unknown") -> None:
+        """Release build_lock with logging."""
+        log.debug(f"[LOCK] Releasing build_lock from {context}")
+        self._build_lock.release()
 
 
 # Global singleton instance

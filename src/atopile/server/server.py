@@ -18,12 +18,13 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from atopile.dataclasses import AppContext
 from atopile.model import build_history
 from atopile.model.model_state import model_state
-from atopile.server import project_discovery
-from atopile.server.app_context import AppContext
 from atopile.server.connections import server_state
+from atopile.server.core import projects as core_projects
 from atopile.server.domains import packages as packages_domain
+from atopile.server.events import event_bus
 from atopile.server.file_watcher import FileChangeResult, FileWatcher
 
 log = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ async def _load_projects_background(ctx: AppContext) -> None:
     try:
         log.info(f"[background] Loading projects from {ctx.workspace_path}")
         await asyncio.to_thread(
-            project_discovery.discover_projects_in_path, ctx.workspace_path
+            core_projects.discover_projects_in_path, ctx.workspace_path
         )
         await server_state.emit_event("projects_changed")
         log.info("[background] Project discovery complete")
@@ -64,7 +65,7 @@ async def _refresh_projects_state() -> None:
 
     try:
         await asyncio.to_thread(
-            project_discovery.discover_projects_in_path, workspace_path
+            core_projects.discover_projects_in_path, workspace_path
         )
         await server_state.emit_event("projects_changed")
     except Exception as exc:
@@ -158,12 +159,7 @@ def _debounce(key: str, delay_s: float, coro_factory) -> None:
     _debounce_tasks[key] = asyncio.create_task(_runner())
 
 
-def _get_workspace_root() -> Path | None:
-    """Get workspace root for file watching."""
-    return model_state.workspace_path
-
-
-def _get_workspace_roots_for_watcher_for_watcher() -> list[Path]:
+def _get_workspace_roots_for_watcher() -> list[Path]:
     """Get workspace roots as a list for file watcher compatibility."""
     root = model_state.workspace_path
     return [root] if root else []
@@ -370,11 +366,12 @@ def create_app(
         loop.set_default_executor(executor)
         log.info("Configured thread pool with 64 workers")
 
-        # Configure model_state with event loop and workspace path
-        model_state.set_event_loop(loop)
+        # Configure model_state with workspace path
         model_state.set_workspace_path(ctx.workspace_path)
-        # Register server_state.emit_event as the event emitter callback
-        model_state.register_event_emitter(server_state.emit_event)
+
+        # Configure event_bus with event loop and emitter
+        event_bus.set_event_loop(loop)
+        event_bus.register_emitter(server_state.emit_event)
 
         asyncio.create_task(_refresh_stdlib_state())
         asyncio.create_task(_watch_stdlib_background())
