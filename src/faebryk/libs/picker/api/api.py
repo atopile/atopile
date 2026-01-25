@@ -9,6 +9,7 @@ from importlib.metadata import version as get_package_version
 
 import faebryk.library._F as F
 from atopile.config import config
+from atopile.errors import UserInfraError
 from faebryk.libs.http import HTTPStatusError, Response, http_client
 from faebryk.libs.picker.api.models import (
     BaseParams,
@@ -105,6 +106,11 @@ class ApiClient:
                 response.raise_for_status()
         except HTTPStatusError as e:
             raise ApiHTTPError(e) from e
+        except TimeoutError as e:
+            raise UserInfraError(
+                "Fetching component data failed to complete in time. "
+                "Please try again later."
+            ) from e
 
         if API_LOG:
             logger.debug(
@@ -132,7 +138,7 @@ class ApiClient:
         return [Component.from_dict(part) for part in response.json()["components"]]  # type: ignore
 
     def query_parts(
-        self, method: F.is_pickable_by_type.Endpoint, params: BaseParams
+        self, method: F.Pickable.is_pickable_by_type.Endpoint, params: BaseParams
     ) -> list["Component"]:
         response = self._post(f"/v0/query/{method}", params.serialize())
         return [Component.from_dict(part) for part in response.json()["components"]]  # type: ignore
@@ -143,10 +149,12 @@ class ApiClient:
         return self.query_parts(params.endpoint, params)
 
     def fetch_parts_multiple(
-        self, params: list[BaseParams | LCSCParams | ManufacturerPartParams]
+        self,
+        params: list[BaseParams | LCSCParams | ManufacturerPartParams] | list[dict],
     ) -> list[list["Component"]]:
         # TODO: batch queries
-        response = self._post("/v0/query", {"queries": [p.serialize() for p in params]})
+        query = [p.serialize() if not isinstance(p, dict) else p for p in params]
+        response = self._post("/v0/query", {"queries": query})
         results = [
             [Component.from_dict(part) for part in result["components"]]  # type: ignore
             for result in response.json()["results"]

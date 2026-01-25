@@ -369,7 +369,7 @@ fn generateModule(
 
         pub fn addToModule(root: *py.PyObject) ?*py.PyObject {
             // Create the module
-            const module = py.PyModule_Create2(&module_def, 1013);
+            const module = py.PyModule_Create2(&module_def, py.PYTHON_API_VERSION);
             if (module == null) {
                 py.PyErr_SetString(py.PyExc_ValueError, std.fmt.comptimePrint("Failed to create {s} module", .{name_}));
                 return null;
@@ -420,7 +420,7 @@ var main_module_def = py.PyModuleDef{
 // Module initialization function
 pub fn make_python_module() ?*py.PyObject {
     // Create the main module
-    const module = py.PyModule_Create2(&main_module_def, 1013);
+    const module = py.PyModule_Create2(&main_module_def, py.PYTHON_API_VERSION);
     if (module == null) {
         py.PyErr_SetString(py.PyExc_ValueError, "Failed to create sexp module");
         return null;

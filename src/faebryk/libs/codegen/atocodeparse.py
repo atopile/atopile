@@ -5,7 +5,9 @@ import logging
 import re
 from pathlib import Path
 
-from faebryk.core.trait import Trait
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
+import faebryk.core.node as fabll
 
 logger = logging.getLogger(__name__)
 
@@ -39,18 +41,27 @@ class AtoCodeParse:
     class ComponentFile:
         def __init__(self, content: str | Path):
             if isinstance(content, Path):
+                if not content.exists():
+                    raise FileNotFoundError(
+                        f"File {content} does not exist, You might have an empty folder"
+                        f" in {content.parent.parent}, please delete it."
+                    )
                 self.ato = content.read_text("utf-8")
             else:
                 self.ato = content
 
             self.ato_no_comments = re.sub(r"#.*", "", self.ato)
 
+            # Create graph and typegraph for trait instantiation
+            self.g = graph.GraphView.create()
+            self.tg = fbrk.TypeGraph.create(g=self.g)
+
         def parse_trait(
             self,
             trait: str,
         ) -> tuple[str | None, dict[str, str]]:
             trait_match = re.search(
-                rf"trait {trait}(?P<constructor>::[a-zA-Z0-9_]+)?(?P<args><.+?>)?",
+                rf"trait {trait}(?P<constructor>::[a-zA-Z0-9_]+)?(?P<args><.+?>)?(?=\s|$)",  # noqa: E501
                 self.ato_no_comments,
                 re.DOTALL,
             )
@@ -92,12 +103,19 @@ class AtoCodeParse:
 
             return trait_args
 
-        def get_trait[T: Trait](self, trait: type[T]) -> T:
+        def get_trait[T: fabll.Node](self, trait: type[T]) -> T:
             constructor, args = self.parse_trait(trait.__name__)
-            f = trait if constructor is None else getattr(trait, constructor)
-            return f(**args)
+            trait_instance = trait.bind_typegraph(self.tg).create_instance(g=self.g)
 
-        def try_get_trait[T: Trait](self, trait: type[T]) -> T | None:
+            if constructor is not None:
+                constructor_method = getattr(trait_instance, constructor)
+                trait_instance = constructor_method(**args)
+            elif hasattr(trait_instance, "setup"):
+                trait_instance.setup(**args)
+
+            return trait_instance
+
+        def try_get_trait[T: fabll.Node](self, trait: type[T]) -> T | None:
             try:
                 return self.get_trait(trait)
             except AtoCodeParse.TraitNotFound:

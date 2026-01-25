@@ -4,7 +4,7 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { registerLogger, traceInfo, traceLog, traceVerbose } from './common/log/logging';
-import { startOrRestartServer, initServer, onNeedsRestart } from './common/server';
+import { startOrRestartServer, initServer, onNeedsRestart } from './common/lspServer';
 import { getLSClientTraceLevel } from './common/utilities';
 import { createOutputChannel, get_ide_type } from './common/vscodeapi';
 import * as ui from './ui/ui';
@@ -14,6 +14,7 @@ import { onBuildTargetChanged } from './common/target';
 import { Build } from './common/manifest';
 import { openPackageExplorer } from './ui/packagexplorer';
 import * as llm from './common/llm';
+import { backendServer } from './common/backendServer';
 
 export let g_lsClient: LanguageClient | undefined;
 
@@ -52,6 +53,13 @@ class atopileUriHandler implements vscode.UriHandler {
                 traceInfo(`packageIdentifier: ${packageIdentifier}`);
                 openPackageExplorer('packages/' + packageIdentifier);
             }
+        } else if (path === "/openDashboard") {
+            traceInfo('openDashboard - redirecting to log viewer panel');
+            // Open the log viewer panel instead
+            vscode.commands.executeCommand('atopile.logViewer.focus');
+        } else if (path === "/restartExtensionHost") {
+            traceInfo('restartExtensionHost - restarting extension host');
+            vscode.commands.executeCommand('workbench.action.restartExtensionHost');
         }
     }
 }
@@ -73,13 +81,50 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await initializeTelemetry(context);
     captureEvent('vsce:startup');
 
-    // Setup Language Server
-    const _reStartServer = async () => {
-        g_lsClient = await startOrRestartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient);
+    // Setup Language Server and Backend Server
+    let isInitialStart = true;
+
+    const _reStartServers = async () => {
+        // Restart LSP server
+        const newClient = await startOrRestartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient);
+        g_lsClient = newClient;
+
+        // On initial start, start backend server
+        // On user-initiated restarts, restart backend server if configured
+        if (isInitialStart) {
+            isInitialStart = false;
+            const success = await backendServer.startServer();
+            if (success) {
+                traceInfo('Backend server started successfully');
+            } else {
+                traceInfo('Backend server failed to start');
+            }
+        } else {
+            traceInfo('User requested restart, restarting backend server...');
+            const success = await backendServer.restartServer();
+            if (!success) {
+                traceInfo('Backend server restart failed');
+            }
+        }
+
+        // Notify backend that installation/restart completed (via webview WebSocket)
+        if (newClient) {
+            backendServer.sendToWebview({
+                type: 'setAtopileInstalling',
+                installing: false
+            });
+        } else {
+            backendServer.sendToWebview({
+                type: 'setAtopileInstalling',
+                installing: false,
+                error: 'Failed to start language server'
+            });
+        }
     };
+
     context.subscriptions.push(
         onNeedsRestart(async () => {
-            await _reStartServer();
+            await _reStartServers();
         }),
         onBuildTargetChanged(async (target: Build | undefined) => {
             if (g_lsClient) {
@@ -88,12 +133,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 });
             }
         }),
+        // Register backend server for cleanup on deactivate
+        backendServer,
     );
 
     await initServer(context);
+    await _reStartServers();
 
     await ui.activate(context);
     await llm.activate(context);
+
+    // Note: Atopile settings sync is now handled by SidebarProvider via postMessage
 
     context.subscriptions.push(vscode.window.registerUriHandler(new atopileUriHandler()));
 
@@ -103,9 +153,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export async function deactivate(): Promise<void> {
+    // Stop LSP server
     if (g_lsClient) {
         await g_lsClient.stop();
     }
+
+    // Stop backend server (also handled by dispose, but explicit is clearer)
+    await backendServer.stopServer();
 
     deinitializeTelemetry();
 }

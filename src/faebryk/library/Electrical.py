@@ -1,9 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-# import faebryk.library._F as F
 import faebryk.core.node as fabll
-# from faebryk.libs.library import L
+import faebryk.library._F as F
 
 
 class Electrical(fabll.Node):
@@ -11,68 +10,37 @@ class Electrical(fabll.Node):
     Electrical interface.
     """
 
-    pass
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    # def get_net(self):
-    #     from faebryk.library.Net import Net
+    # points to itself, so can do electrical ~> electrical ~> electrical
+    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(in_=[""], out_=[""]))
 
-    #     nets = {
-    #         net
-    #         for mif in self.get_connected()
-    #         if (net := mif.get_parent_of_type(Net)) is not None
-    #     }
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
+        import Electrical, Resistor, Capacitor
 
-    #     if not nets:
-    #         return None
+        # Basic electrical connection point
+        electrical1 = new Electrical
+        electrical2 = new Electrical
 
-    #     assert len(nets) == 1
-    #     return next(iter(nets))
+        # Connect two electrical interfaces directly
+        electrical1 ~ electrical2
 
-    # def net_crosses_pad_boundary(self) -> bool:
-    #     from faebryk.library.Pad import Pad
+        # Connect through components
+        resistor = new Resistor
+        resistor.resistance = 1kohm +/- 5%
+        electrical1 ~ resistor.unnamed[0]
+        resistor.unnamed[1] ~ electrical2
 
-    #     def _get_pad(n: Node):
-    #         if (parent := n.get_parent()) is None:
-    #             return None
+        # Or using bridge syntax
+        electrical1 ~> resistor ~> electrical2
 
-
-#         parent_node, name_on_parent = parent
-
-#         return (
-#             parent_node
-#             if isinstance(parent_node, Pad) and name_on_parent == "net"
-#             else None
-#         )
-
-#     net = self.get_connected().keys()
-#     pads_on_net = {pad for n in net if (pad := _get_pad(n)) is not None}
-
-#     return len(pads_on_net) > 1
-
-# usage_example = L.f_field(F.has_usage_example)(
-#     example="""
-#     import Electrical, Resistor, Capacitor
-
-#     # Basic electrical connection point
-#     electrical1 = new Electrical
-#     electrical2 = new Electrical
-
-#     # Connect two electrical interfaces directly
-#     electrical1 ~ electrical2
-
-#     # Connect through components
-#     resistor = new Resistor
-#     resistor.resistance = 1kohm +/- 5%
-#     electrical1 ~ resistor.unnamed[0]
-#     resistor.unnamed[1] ~ electrical2
-
-#     # Or using bridge syntax
-#     electrical1 ~> resistor ~> electrical2
-
-#     # Multiple connections to same net
-#     capacitor = new Capacitor
-#     electrical1 ~ capacitor.unnamed[0]
-#     capacitor.unnamed[1] ~ electrical2
-#     """,
-#     language=F.has_usage_example.Language.ato,
-# )
+        # Multiple connections to same net
+        capacitor = new Capacitor
+        electrical1 ~ capacitor.unnamed[0]
+        capacitor.unnamed[1] ~ electrical2
+        """,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

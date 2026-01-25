@@ -1,51 +1,47 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import logging
+
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
+
+logger = logging.getLogger(__name__)
 
 
-class Regulator(Module):
-    power_in: F.ElectricPower
-    power_out: F.ElectricPower
+class Regulator(fabll.Node):
+    """
+    Base voltage regulator module with input and output power interfaces.
 
-    def __preinit__(self):
-        self.power_out.add(F.Power.is_power_source.impl()())
-        self.power_in.add(F.Power.is_power_sink.impl()())
+    This is intended to be extended by specific regulator implementations
+    (LDO, buck, boost, buck-boost, etc.)
+    """
 
-    @L.rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(self.power_in, self.power_out)
+    is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
-        import Regulator, ElectricPower
+    # External interfaces
+    power_in = F.ElectricPower.MakeChild()
+    """Input power interface"""
 
-        regulator = new Regulator
+    power_out = F.ElectricPower.MakeChild()
+    """Regulated output power interface"""
 
-        # Connect input power (unregulated)
-        power_input = new ElectricPower
-        assert power_input.voltage within 7V to 20V  # Wide input range
-        regulator.power_in ~ power_input
-
-        # Connect output power (regulated)
-        power_output = new ElectricPower
-        regulator.power_out ~ power_output
-
-        # Output voltage depends on regulator type:
-        # - LDO: Vout = Vin - Dropout_voltage
-        # - Switching: Vout = Function(Vin, feedback network)
-
-        # Connect to load
-        load_circuit ~ power_output
-
-        # Note: This is a generic regulator interface
-        # Use specific regulator types for actual implementations:
-        # - LDO for low noise, low efficiency
-        # - Buck for high efficiency step-down
-        # - Boost for step-up conversion
-        # - Buck-boost for bidirectional conversion
-        """,
-        language=F.has_usage_example.Language.ato,
+    # Mark as bridgeable between power_in and power_out
+    _can_bridge = fabll.Traits.MakeEdge(
+        F.can_bridge.MakeChild(["power_in"], ["power_out"])
     )
+
+    # Backwards compatibility aliases - v_in and v_out are aliases
+    # to power_in.voltage and power_out.voltage respectively
+    v_in = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    v_out = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+
+    _connections = [
+        fabll.is_interface.MakeConnectionEdge(
+            [v_in], [power_in, F.ElectricPower.voltage]
+        ),
+        fabll.is_interface.MakeConnectionEdge(
+            [v_out], [power_out, F.ElectricPower.voltage]
+        ),
+    ]

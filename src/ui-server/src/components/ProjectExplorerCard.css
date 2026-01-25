@@ -1,0 +1,138 @@
+/**
+ * ProjectExplorerCard styles - module explorer per target
+ * Matches FileExplorer/BuildsCard styling
+ */
+
+.project-explorer-card {
+  margin-top: var(--spacing-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.project-explorer-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+
+.project-explorer-card-header:hover {
+  background: var(--bg-hover);
+}
+
+.project-explorer-card-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.project-explorer-card-expand .expand-icon {
+  transition: transform var(--transition-fast);
+  color: var(--text-muted);
+}
+
+.project-explorer-card-expand .expand-icon.expanded {
+  transform: rotate(0deg);
+}
+
+.project-explorer-card-expand .expand-icon:not(.expanded) {
+  transform: rotate(-90deg);
+}
+
+.project-explorer-card-icon {
+  color: var(--ctp-blue);
+  flex-shrink: 0;
+}
+
+.project-explorer-card-title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.project-explorer-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+.project-explorer-card-content {
+  padding: var(--spacing-xs);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.project-explorer-target {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.project-explorer-target-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+
+.project-explorer-target-header:hover {
+  background: var(--bg-hover);
+}
+
+.project-explorer-target-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.project-explorer-target-name {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.project-explorer-target-entry {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.project-explorer-target-body {
+  padding: var(--spacing-xs);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+
+.project-explorer-loading,
+.project-explorer-error,
+.project-explorer-empty {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.project-explorer-error {
+  color: var(--ctp-red);
+}

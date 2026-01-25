@@ -1,57 +1,64 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from typing import Self
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
-from faebryk.libs.units import P
 
 
-class DifferentialPair(ModuleInterface):
-    p: F.ElectricSignal
-    n: F.ElectricSignal
+class DifferentialPair(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    p = F.ElectricSignal.MakeChild()
+    n = F.ElectricSignal.MakeChild()
 
-    impedance = L.p_field(
-        units=P.Ω,
-        likely_constrained=True,
-        soft_set=L.Range(10 * P.Ω, 100 * P.Ω),
-        tolerance_guess=10 * P.percent,
+    impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
     )
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricSignal.connect_all_module_references(self)
+    net_name_suffixes = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_affix.MakeChild(suffix="_P"),
+            owner=[p, F.ElectricSignal.line],
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_affix.MakeChild(suffix="_N"),
+            owner=[n, F.ElectricSignal.line],
+        ),
+    ]
+
+    def terminated(self) -> "DifferentialPair":
+        terminated_bus = DifferentialPair.bind_typegraph(self.tg).create_instance(
+            g=self.g
         )
+        rs = [
+            F.Resistor.bind_typegraph(self.tg).create_instance(g=self.g)
+            for _ in range(2)
+        ]
 
-    def terminated(self) -> Self:
-        terminated_bus = type(self)()
-        rs = terminated_bus.add_to_container(2, F.Resistor)
         for r in rs:
-            r.resistance.alias_is(self.impedance)
+            F.Expressions.IsSubset.c(
+                subset=r.resistance.get().can_be_operand.get(),
+                superset=self.impedance.get().can_be_operand.get(),
+                assert_=True,
+            )
 
-        terminated_bus.p.line.connect_via(rs[0], self.p.line)
-        terminated_bus.n.line.connect_via(rs[1], self.n.line)
-        self.connect_shallow(terminated_bus)
+        rs[0].can_bridge.get().bridge(terminated_bus.p.get(), self.p.get())
+        rs[1].can_bridge.get().bridge(terminated_bus.n.get(), self.n.get())
+        self._is_interface.get().connect_shallow_to(terminated_bus)
 
         return terminated_bus
 
-    def __postinit__(self, *args, **kwargs):
-        """Attach required net name suffixes for KiCad differential pair detection.
-
-        Ensures nets associated with the positive and negative lines end with
-        `_p` and `_n` respectively. The naming algorithm will append these
-        required affixes while still deconflicting names globally.
-        """
-        super().__postinit__(*args, **kwargs)
-        # Apply suffixes to the electrical lines of the signals
-        self.p.line.add(F.has_net_name_affix.suffix("_P"))
-        self.n.line.add(F.has_net_name_affix.suffix("_N"))
-
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import DifferentialPair, ElectricPower
 
         diff_pair = new DifferentialPair
@@ -75,5 +82,6 @@ class DifferentialPair(ModuleInterface):
         usb_dp_dn = new DifferentialPair
         usb_dp_dn.impedance = 90ohm +/- 10%
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

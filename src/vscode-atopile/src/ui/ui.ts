@@ -4,9 +4,10 @@ import * as buttons from './buttons';
 import * as example from './example';
 import * as kicanvas from './kicanvas';
 import * as modelviewer from './modelviewer';
-import * as projectViewer from './projectview';
 import * as pcb from '../common/pcb';
 import * as threeDModel from '../common/3dmodel';
+import { SidebarProvider, LogViewerProvider } from '../providers';
+import { traceInfo } from '../common/log/logging';
 
 export async function activate(context: vscode.ExtensionContext) {
     await setup.activate(context);
@@ -14,7 +15,40 @@ export async function activate(context: vscode.ExtensionContext) {
     await example.activate(context);
     await kicanvas.activate(context);
     await modelviewer.activate(context);
-    await projectViewer.activate(context);
+
+    // NEW ARCHITECTURE: Stateless providers that load React app
+    // React app talks directly to Python backend (no extension state)
+    traceInfo('UI: Using stateless webview providers');
+
+    // Register stateless sidebar provider
+    const extensionId = 'atopile.atopile';
+    const extensionVersion = vscode.extensions.getExtension(extensionId)!.packageJSON.version;
+    const sidebarProvider = new SidebarProvider(context.extensionUri, extensionVersion);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            SidebarProvider.viewType,
+            sidebarProvider,
+            { webviewOptions: { retainContextWhenHidden: true } }
+        )
+    );
+
+    // Register stateless log viewer provider
+    const logViewerProvider = new LogViewerProvider(context.extensionUri);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            LogViewerProvider.viewType,
+            logViewerProvider,
+            { webviewOptions: { retainContextWhenHidden: true } }
+        )
+    );
+
+    // Register command to focus log viewer
+    context.subscriptions.push(
+        vscode.commands.registerCommand('atopile.showBuildLogs', () => {
+            vscode.commands.executeCommand('atopile.logViewer.focus');
+        })
+    );
+
     await pcb.activate(context);
     await threeDModel.activate(context);
 }
@@ -25,7 +59,6 @@ export function deactivate() {
     example.deactivate();
     kicanvas.deactivate();
     modelviewer.deactivate();
-    projectViewer.deactivate();
     pcb.deactivate();
     threeDModel.deactivate();
 }

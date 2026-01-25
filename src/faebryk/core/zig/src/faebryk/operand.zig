@@ -1,6 +1,9 @@
 const graph_mod = @import("graph");
 const std = @import("std");
 const edgebuilder_mod = @import("edgebuilder.zig");
+const node_type_mod = @import("node_type.zig");
+const composition_mod = @import("composition.zig");
+const typegraph_mod = @import("typegraph.zig");
 
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
@@ -9,61 +12,77 @@ const Node = graph.Node;
 const EdgeReference = graph.EdgeReference;
 const NodeReference = graph.NodeReference;
 const str = graph.str;
-const EdgeType = edgebuilder_mod.EdgeType;
+const EdgeType = node_type_mod.EdgeType;
 const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
+const EdgeComposition = composition_mod.EdgeComposition;
+const TypeGraph = typegraph_mod.TypeGraph;
 
 pub const EdgeOperand = struct {
-    pub const tid: Edge.EdgeType = 1760649153;
+    pub const tid: Edge.EdgeType = graph.Edge.hash_edge_type(1760649153);
+    pub var registered: bool = false;
+
+    /// Create an EdgeTraversal for finding an operand by identifier.
+    pub fn traverse(identifier: str) TypeGraph.ChildReferenceNode.EdgeTraversal {
+        return .{ .identifier = identifier, .edge_type = tid };
+    }
 
     pub fn init(
-        allocator: std.mem.Allocator,
-        expression: NodeReference,
+        operands_set: NodeReference,
         operand: NodeReference,
         operand_identifier: ?str,
     ) EdgeReference {
-        const edge = Edge.init(allocator, expression, operand, tid);
+        const edge = EdgeReference.init(operands_set, operand, tid);
 
         build(operand_identifier).apply_to(edge);
         return edge;
     }
 
     pub fn build(operand_identifier: ?str) EdgeCreationAttributes {
+        if (!registered) {
+            @branchHint(.unlikely);
+            registered = true;
+            Edge.register_type(tid) catch {};
+        }
         return .{
             .edge_type = tid,
             .directional = true,
             .name = operand_identifier,
-            .dynamic = null,
+            .dynamic = graph.DynamicAttributes.init_on_stack(),
         };
     }
 
     pub fn is_instance(E: EdgeReference) bool {
-        return Edge.is_instance(E, tid);
+        return E.is_instance(tid);
     }
 
-    pub fn get_expression_node(E: EdgeReference) NodeReference {
-        return E.source;
+    pub fn get_expression_node(E: graph.BoundEdgeReference) NodeReference {
+        return EdgeComposition.get_parent_node_of(E.g.bind(E.edge.get_source_node())).?.node;
+    }
+
+    pub fn get_operands_set_node(expression_bound_node: graph.BoundNodeReference) ?graph.BoundNodeReference {
+        return EdgeComposition.get_child_by_identifier(expression_bound_node, "operands");
     }
 
     pub fn get_operand_node(E: EdgeReference) NodeReference {
-        return E.target;
+        return E.get_target_node();
     }
 
     pub fn get_operand_of(edge: EdgeReference, node: NodeReference) ?NodeReference {
-        if (Node.is_same(edge.target, node)) {
+        if (edge.get_target_node().is_same(node)) {
             return null;
         }
         return get_operand_node(edge);
     }
 
-    pub fn get_expression_of(edge: EdgeReference, node: NodeReference) ?NodeReference {
-        if (Node.is_same(edge.source, node)) {
+    pub fn get_expression_of(bedge: graph.BoundEdgeReference, node: NodeReference) ?NodeReference {
+        if (bedge.edge.get_source_node().is_same(node)) {
             return null;
         }
-        return get_expression_node(edge);
+        return get_expression_node(bedge);
     }
 
     pub fn visit_operand_edges(
-        bound_node: graph.BoundNodeReference,
+        operand_set_node: graph.BoundNodeReference,
         comptime T: type,
         ctx: *anyopaque,
         f: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
@@ -87,27 +106,59 @@ pub const EdgeOperand = struct {
             }
         };
 
-        var visit = Visit{ .target = bound_node, .cb_ctx = ctx, .cb = f };
-        return bound_node.visit_edges_of_type(tid, T, &visit, Visit.visit);
+        var visit = Visit{ .target = operand_set_node, .cb_ctx = ctx, .cb = f };
+        // directed = true: only edges where bound_node is the source (outgoing edges)
+        return operand_set_node.g.visit_edges_of_type(operand_set_node.node, tid, T, &visit, Visit.visit, true);
     }
 
+    pub fn visit_expression_edges(
+        bound_node: graph.BoundNodeReference,
+        comptime T: type,
+        ctx: *anyopaque,
+        f: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
+    ) visitor.VisitResult(T) {
+        const Visit = struct {
+            target: graph.BoundNodeReference,
+            cb_ctx: *anyopaque,
+            cb: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
+
+            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(T) {
+                const self: *@This() = @ptrCast(@alignCast(self_ptr));
+                // Filter out self-references
+                const expression = EdgeOperand.get_expression_of(bound_edge, self.target.node);
+                if (expression) |_| {
+                    const expression_result = self.cb(self.cb_ctx, bound_edge);
+                    switch (expression_result) {
+                        .CONTINUE => {},
+                        else => return expression_result,
+                    }
+                }
+                return visitor.VisitResult(T){ .CONTINUE = {} };
+            }
+        };
+
+        var visit = Visit{ .target = bound_node, .cb_ctx = ctx, .cb = f };
+        // directed = false: only edges where bound_node is the target (incoming edges)
+        return bound_node.g.visit_edges_of_type(bound_node.node, tid, T, &visit, Visit.visit, false);
+    }
+
+    //TODO not sure we want to advertise this, only in aliases interesting
     pub fn get_expression_edge(bound_node: graph.BoundNodeReference) ?graph.BoundEdgeReference {
-        return Edge.get_single_edge(bound_node, tid, true);
+        return bound_node.get_single_edge(tid, true);
     }
 
     pub fn add_operand(
         bound_node: graph.BoundNodeReference,
         operand: NodeReference,
         operand_identifier: ?str,
-    ) graph.BoundEdgeReference {
+    ) graph.GraphView.InsertEdgeError!graph.BoundEdgeReference {
+        const op_set = get_operands_set_node(bound_node).?;
         const link = EdgeOperand.init(
-            bound_node.g.allocator,
-            bound_node.node,
+            op_set.node,
             operand,
             operand_identifier,
         );
-        const bound_edge = bound_node.g.insert_edge(link);
-        return bound_edge;
+        return bound_node.g.insert_edge(link);
     }
 
     pub fn get_name(edge: EdgeReference) !?str {
@@ -115,7 +166,7 @@ pub const EdgeOperand = struct {
             return error.InvalidEdgeType;
         }
 
-        return edge.attributes.name;
+        return edge.get_attribute_name();
     }
 
     pub fn get_operand_by_identifier(
@@ -127,9 +178,9 @@ pub const EdgeOperand = struct {
 
             pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(graph.BoundNodeReference) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
-                if (bound_edge.edge.attributes.name) |n| {
+                if (bound_edge.edge.get_attribute_name()) |n| {
                     if (std.mem.eql(u8, n, self.identifier)) {
-                        const target = bound_edge.edge.get_target() orelse {
+                        const target = bound_edge.edge.get_directed_target() orelse {
                             return visitor.VisitResult(graph.BoundNodeReference){ .CONTINUE = {} };
                         };
                         return visitor.VisitResult(graph.BoundNodeReference){
@@ -142,8 +193,9 @@ pub const EdgeOperand = struct {
         };
 
         var finder = Finder{ .identifier = operand_identifier };
+        const op_set = get_operands_set_node(bound_expression_node) orelse return null;
         const result = EdgeOperand.visit_operand_edges(
-            bound_expression_node,
+            op_set,
             graph.BoundNodeReference,
             &finder,
             Finder.visit,
@@ -165,7 +217,7 @@ pub const EdgeOperand = struct {
         f: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
     ) visitor.VisitResult(T) {
         const Visit = struct {
-            expression: graph.BoundNodeReference,
+            operands_set: graph.BoundNodeReference,
             operand_type: graph.NodeReference,
             cb_ctx: *anyopaque,
             cb: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
@@ -180,13 +232,48 @@ pub const EdgeOperand = struct {
             }
         };
 
+        const op_set = get_operands_set_node(expression).?;
         var visit = Visit{
-            .expression = expression,
+            .operands_set = op_set,
             .operand_type = operand_type,
             .cb_ctx = ctx,
             .cb = f,
         };
-        return expression.visit_edges_of_type(tid, T, &visit, Visit.visit);
+        // directed = true: operands_set is source, operand is target
+        return op_set.g.visit_edges_of_type(op_set.node, tid, T, &visit, Visit.visit, true);
+    }
+
+    pub fn visit_expression_edges_of_type(
+        operand: graph.BoundNodeReference,
+        expression_type: graph.NodeReference,
+        comptime T: type,
+        ctx: *anyopaque,
+        f: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
+    ) visitor.VisitResult(T) {
+        const Visit = struct {
+            operand: graph.BoundNodeReference,
+            expression_type: graph.NodeReference,
+            cb_ctx: *anyopaque,
+            cb: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
+
+            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(T) {
+                const self: *@This() = @ptrCast(@alignCast(self_ptr));
+                const expression = bound_edge.g.bind(EdgeOperand.get_expression_node(bound_edge));
+                if (!EdgeType.is_node_instance_of(expression, self.expression_type)) {
+                    return visitor.VisitResult(T){ .CONTINUE = {} };
+                }
+                return self.cb(self.cb_ctx, bound_edge);
+            }
+        };
+
+        var visit = Visit{
+            .operand = operand,
+            .expression_type = expression_type,
+            .cb_ctx = ctx,
+            .cb = f,
+        };
+        // directed = false: operand is target, expression is source
+        return operand.g.visit_edges_of_type(operand.node, tid, T, &visit, Visit.visit, false);
     }
 };
 
@@ -195,35 +282,27 @@ test "edge operand basic" {
     var g = graph.GraphView.init(std.testing.allocator);
     defer g.deinit();
 
-    const expression = Node.init(a);
-    const operand_a = Node.init(a);
-    const operand_b = Node.init(a);
-    const operand_c = Node.init(a);
+    const b_expr = g.create_and_insert_node();
+    const expression = b_expr.node;
+    const b_operands = g.create_and_insert_node();
+    const b_operand_a = g.create_and_insert_node();
+    const operand_a = b_operand_a.node;
+    const b_operand_b = g.create_and_insert_node();
+    const operand_b = b_operand_b.node;
+    const b_operand_c = g.create_and_insert_node();
+    const operand_c = b_operand_c.node;
 
-    const b_expr = g.insert_node(expression);
-    const b_operand_a = g.insert_node(operand_a);
-    const b_operand_b = g.insert_node(operand_b);
-    const b_operand_c = g.insert_node(operand_c);
-
-    _ = EdgeOperand.add_operand(b_expr, operand_a, "lhs");
-    _ = EdgeOperand.add_operand(b_expr, operand_b, "rhs");
-    _ = EdgeOperand.add_operand(b_expr, operand_c, null);
+    _ = try EdgeComposition.add_child(b_expr, b_operands.node, "operands");
+    _ = try EdgeOperand.add_operand(b_expr, operand_a, "lhs");
+    _ = try EdgeOperand.add_operand(b_expr, operand_b, "rhs");
+    _ = try EdgeOperand.add_operand(b_expr, operand_c, null);
 
     const expression_edge_a = EdgeOperand.get_expression_edge(b_operand_a);
     const expression_edge_b = EdgeOperand.get_expression_edge(b_operand_b);
     const expression_edge_c = EdgeOperand.get_expression_edge(b_operand_c);
-    try std.testing.expect(Node.is_same(
-        EdgeOperand.get_expression_node(expression_edge_a.?.edge),
-        expression,
-    ));
-    try std.testing.expect(Node.is_same(
-        EdgeOperand.get_expression_node(expression_edge_b.?.edge),
-        expression,
-    ));
-    try std.testing.expect(Node.is_same(
-        EdgeOperand.get_expression_node(expression_edge_c.?.edge),
-        expression,
-    ));
+    try std.testing.expect(EdgeOperand.get_expression_node(expression_edge_a.?).is_same(expression));
+    try std.testing.expect(EdgeOperand.get_expression_node(expression_edge_b.?).is_same(expression));
+    try std.testing.expect(EdgeOperand.get_expression_node(expression_edge_c.?).is_same(expression));
     try std.testing.expect(std.mem.eql(u8, (try EdgeOperand.get_name(expression_edge_a.?.edge)).?, "lhs"));
     try std.testing.expect(std.mem.eql(u8, (try EdgeOperand.get_name(expression_edge_b.?.edge)).?, "rhs"));
     try std.testing.expect((try EdgeOperand.get_name(expression_edge_c.?.edge)) == null);
@@ -232,8 +311,8 @@ test "edge operand basic" {
     const rhs_lookup = EdgeOperand.get_operand_by_identifier(b_expr, "rhs");
     try std.testing.expect(lhs_lookup != null);
     try std.testing.expect(rhs_lookup != null);
-    try std.testing.expect(Node.is_same(lhs_lookup.?.node, operand_a));
-    try std.testing.expect(Node.is_same(rhs_lookup.?.node, operand_b));
+    try std.testing.expect(lhs_lookup.?.node.is_same(operand_a));
+    try std.testing.expect(rhs_lookup.?.node.is_same(operand_b));
 
     const CollectOperands = struct {
         edges: std.ArrayList(graph.BoundEdgeReference),
@@ -249,10 +328,11 @@ test "edge operand basic" {
 
     var collector = CollectOperands{ .edges = std.ArrayList(graph.BoundEdgeReference).init(a) };
     defer collector.edges.deinit();
-    const visit_result = EdgeOperand.visit_operand_edges(b_expr, void, &collector, CollectOperands.visit);
+    // Pass the operands container node directly (e.g., OperandSequence, OperandPointer)
+    const visit_result = EdgeOperand.visit_operand_edges(b_operands, void, &collector, CollectOperands.visit);
     try std.testing.expectEqual(visit_result, visitor.VisitResult(void){ .EXHAUSTED = {} });
     try std.testing.expectEqual(collector.edges.items.len, 3);
-    try std.testing.expect(Node.is_same(EdgeOperand.get_operand_node(collector.edges.items[0].edge), operand_a));
-    try std.testing.expect(Node.is_same(EdgeOperand.get_operand_node(collector.edges.items[1].edge), operand_b));
-    try std.testing.expect(Node.is_same(EdgeOperand.get_operand_node(collector.edges.items[2].edge), operand_c));
+    try std.testing.expect(EdgeOperand.get_operand_node(collector.edges.items[0].edge).is_same(operand_a));
+    try std.testing.expect(EdgeOperand.get_operand_node(collector.edges.items[1].edge).is_same(operand_b));
+    try std.testing.expect(EdgeOperand.get_operand_node(collector.edges.items[2].edge).is_same(operand_c));
 }

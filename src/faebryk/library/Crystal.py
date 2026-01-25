@@ -1,83 +1,81 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
-from faebryk.libs.units import P
 
 
-class Crystal(Module):
+class Crystal(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    gnd: F.Electrical
-    unnamed = L.list_field(2, F.Electrical)
+    gnd = F.Electrical.MakeChild()
+    unnamed = [F.Electrical.MakeChild() for _ in range(2)]
 
-    # ----------------------------------------
-    #               parameters
-    # ----------------------------------------
-    frequency = L.p_field(
-        units=P.Hz,
-        likely_constrained=True,
-        soft_set=L.Range(32.768 * P.kHz, 100 * P.MHz),
-        tolerance_guess=50 * P.ppm,
+    frequency = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Hertz,
     )
 
-    frequency_tolerance = L.p_field(
-        units=P.ppm,
-        likely_constrained=True,
-        soft_set=L.Range(10 * P.ppm, 100 * P.ppm),
-        tolerance_guess=10 * P.percent,
+    frequency_tolerance = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ppm,
     )
 
-    frequency_temperature_tolerance = L.p_field(
-        units=P.ppm,
-        likely_constrained=True,
-        soft_set=L.Range(1 * P.ppm, 50 * P.ppm),
-        tolerance_guess=10 * P.percent,
+    frequency_temperature_tolerance = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ppm,
     )
 
-    frequency_ageing = L.p_field(
-        units=P.ppm,
-        likely_constrained=True,
-        soft_set=L.Range(1 * P.ppm, 10 * P.ppm),
-        tolerance_guess=20 * P.percent,
+    frequency_ageing = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ppm,
     )
 
-    equivalent_series_resistance = L.p_field(
-        units=P.Ω,
-        likely_constrained=True,
-        soft_set=L.Range(10 * P.Ω, 200 * P.Ω),
-        tolerance_guess=10 * P.percent,
+    equivalent_series_resistance = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ohm,
     )
 
-    shunt_capacitance = L.p_field(
-        units=P.F,
-        likely_constrained=True,
-        soft_set=L.Range(1 * P.pF, 10 * P.pF),
-        tolerance_guess=20 * P.percent,
+    shunt_capacitance = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Farad,
     )
 
-    load_capacitance = L.p_field(
-        units=P.F,
-        likely_constrained=True,
-        soft_set=L.Range(8 * P.pF, 30 * P.pF),
-        tolerance_guess=10 * P.percent,
+    load_capacitance = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Farad,
     )
 
     # ----------------------------------------
     #                traits
     # ----------------------------------------
-    designator = L.f_field(F.has_designator_prefix)(F.has_designator_prefix.Prefix.XTAL)
-    footprint: F.can_attach_to_footprint_symmetrically
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-    # ----------------------------------------
-    #                connections
-    # ----------------------------------------
+    _can_attatch_to_footprint = fabll.Traits.MakeEdge(
+        F.Footprints.can_attach_to_footprint.MakeChild()
+    )
 
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
+    gnd.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [gnd]))
+
+    for e in unnamed:
+        lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [e])
+        lead.add_dependant(
+            fabll.Traits.MakeEdge(F.Lead.can_attach_to_any_pad.MakeChild(), [lead])
+        )
+        e.add_dependant(lead)
+
+    designator_prefix = fabll.Traits.MakeEdge(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.XTAL)
+    )
+
+    can_bridge = fabll.Traits.MakeEdge(
+        F.can_bridge.MakeChild(["unnamed[0]"], ["unnamed[1]"])
+    )
+
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = fabll.Traits.MakeEdge(
+        F.has_simple_value_representation.MakeChild(
+            S(frequency, tolerance=True),
+        )
+    )
+
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import Crystal, Capacitor
 
         crystal = new Crystal
@@ -99,5 +97,6 @@ class Crystal(Module):
         crystal.unnamed[1] ~> load_cap2 ~> crystal.gnd
         crystal.gnd ~ power_supply.lv
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

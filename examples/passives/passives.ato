@@ -1,0 +1,30 @@
+#pragma experiment("BRIDGE_CONNECT")
+
+import Resistor
+import Capacitor
+import Diode
+
+module App:
+    """
+    Simple passives example demonstrating component instantiation and constraints.
+    """
+
+    # Component instances
+    resistor = new Resistor
+    capacitor = new Capacitor
+    diode = new Diode
+
+    # Resistor constraints (10kohm +/- 10%)
+    assert resistor.resistance within 10kohm +/- 10%
+
+    # Capacitor constraints (100nF +/- 10%, X7R or X7S)
+    assert capacitor.capacitance within 100nF +/- 10%
+    # Note: temperature_coefficient enum constraints not yet supported in ato
+
+    # Diode constraints (forward voltage 0.5V to 0.8V)
+    assert diode.forward_voltage within 0.5V to 0.8V
+
+    # Connections: resistor -> diode -> capacitor triangle
+    resistor.unnamed[0] ~ diode.anode
+    resistor.unnamed[1] ~ capacitor.unnamed[0]
+    diode.cathode ~ capacitor.unnamed[1]

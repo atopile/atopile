@@ -1,0 +1,659 @@
+/* ============================================
+   _explorer.css
+   Explorer Panel, Explorer Sections, Package Node,
+   Symbol Node, Vendor Node, Filter Row, Tree Navigation
+   ============================================ */
+
+/* ============================================
+   Explorer Panel
+   ============================================ */
+
+.explorer-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.explorer-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-xs);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.explorer-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-xs) 0;
+}
+
+/* Explorer Sections */
+.explorer-section {
+  margin-bottom: 2px;
+}
+
+.section-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.section-row:hover {
+  background: var(--bg-tertiary);
+}
+
+.section-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.section-label {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.section-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+
+.section-content {
+  padding-left: var(--spacing-sm);
+}
+
+/* Package Node */
+.package-node {
+  margin-bottom: 1px;
+}
+
+.package-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.package-row:hover {
+  background: var(--bg-hover);
+}
+
+.package-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.package-icon {
+  color: var(--ctp-peach);
+  flex-shrink: 0;
+}
+
+.package-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.package-name {
+  font-size: 11px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.package-version {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  background: var(--bg-tertiary);
+  padding: 1px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.package-content {
+  padding-left: 26px;
+}
+
+.package-description {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: var(--spacing-xs) 0;
+  font-style: italic;
+}
+
+.package-symbols {
+  padding-top: var(--spacing-xs);
+}
+
+/* Symbol Node */
+.symbol-node {
+  /* Container */
+}
+
+.symbol-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 0;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease;
+}
+
+.symbol-row.expandable {
+  cursor: pointer;
+}
+
+.symbol-row:hover {
+  background: var(--bg-hover);
+}
+
+.symbol-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.symbol-spacer {
+  width: 12px;
+  flex-shrink: 0;
+}
+
+.type-icon {
+  flex-shrink: 0;
+}
+
+.type-icon.module {
+  color: var(--ctp-blue);
+}
+
+.type-icon.interface {
+  color: var(--ctp-teal);
+}
+
+.type-icon.component {
+  color: var(--ctp-peach);
+}
+
+.type-icon.parameter {
+  color: var(--ctp-lavender);
+}
+
+.symbol-name {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.export-badge {
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--ctp-green);
+  background: rgba(166, 227, 161, 0.15);
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+}
+
+.symbol-goto {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0;
+  margin-left: auto;
+  transition: all 0.15s ease;
+}
+
+.symbol-row:hover .symbol-goto {
+  opacity: 1;
+}
+
+.symbol-goto:hover {
+  background: var(--accent);
+  color: var(--ctp-crust);
+}
+
+.symbol-children {
+  /* Nested symbols */
+}
+
+/* Explorer section icons */
+.section-row svg {
+  color: var(--text-muted);
+}
+
+.explorer-section:nth-child(1) .section-row svg:not(.section-expand svg) {
+  color: var(--ctp-blue);
+}
+
+.explorer-section:nth-child(2) .section-row svg:not(.section-expand svg) {
+  color: var(--ctp-peach);
+}
+
+.explorer-section:nth-child(3) .section-row svg:not(.section-expand svg) {
+  color: var(--ctp-teal);
+}
+
+/* ============================================
+   Explorer Improvements - Filter Row & Symbol Types
+   ============================================ */
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.symbol-filter {
+  border-left: 1px solid var(--border-color);
+  padding-left: var(--spacing-sm);
+  margin-left: var(--spacing-xs);
+}
+
+/* ============================================
+   Vendor Node (Package Tree)
+   ============================================ */
+
+.vendor-node {
+  margin-bottom: 2px;
+}
+
+.vendor-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.vendor-row:hover {
+  background: var(--bg-tertiary);
+}
+
+.vendor-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.vendor-icon {
+  color: var(--ctp-peach);
+  flex-shrink: 0;
+}
+
+.vendor-name {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.vendor-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+
+.vendor-packages {
+  padding-left: var(--spacing-md);
+}
+
+/* ============================================
+   Package Detail View
+   ============================================ */
+
+.package-node.expanded {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-sm);
+}
+
+.package-detail {
+  padding: var(--spacing-md);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.package-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-sm);
+}
+
+.package-detail-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.package-detail-icon {
+  color: var(--ctp-peach);
+}
+
+.package-detail-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.installed-badge {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--ctp-green);
+  background: rgba(166, 227, 161, 0.15);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+}
+
+.installed-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--ctp-green);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.package-detail-description {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: var(--spacing-md);
+}
+
+.package-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.version-select {
+  flex: 1;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  outline: none;
+}
+
+.version-select:focus {
+  border-color: var(--accent);
+}
+
+.version-select option {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.install-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--ctp-crust);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.install-btn:hover {
+  background: var(--accent-hover);
+}
+
+.install-btn.installed {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.install-btn.installed:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Old package-links styles removed - now using package-stat-links in stats bar */
+
+.package-detail-symbols {
+  padding-top: var(--spacing-xs);
+}
+
+.symbols-header {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--spacing-xs);
+}
+
+/* ============================================
+   Symbol Type Annotation
+   ============================================ */
+
+.symbol-type-annotation {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 2px;
+}
+
+.type-colon {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.type-link {
+  border: none;
+  background: transparent;
+  color: var(--ctp-teal);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.type-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* ============================================
+   Symbol Actions
+   ============================================ */
+
+.symbol-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding-left: var(--spacing-sm);
+}
+
+.symbol-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+/* Build action buttons on symbols should be orange */
+.symbol-action-btn.build {
+  background: var(--ctp-peach);
+  color: var(--ctp-crust);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
+.symbol-action-btn.build:hover {
+  background: var(--ctp-yellow);
+  transform: scale(1.1);
+}
+
+.symbol-action-btn:hover {
+  background: var(--accent);
+  color: var(--ctp-crust);
+}
+
+/* Override symbol-goto in new structure */
+.symbol-row .symbol-goto {
+  margin-left: 0;
+}
+
+/* ============================================
+   Symbol Filter Icons
+   ============================================ */
+
+.filter-btn .type-icon {
+  width: 10px;
+  height: 10px;
+}
+
+.symbol-filter .filter-btn.active {
+  background: var(--bg-active);
+}
+
+.symbol-filter .filter-btn[title="Modules only"].active {
+  color: var(--ctp-blue);
+}
+
+.symbol-filter .filter-btn[title="Interfaces only"].active {
+  color: var(--ctp-teal);
+}
+
+.symbol-filter .filter-btn[title="Components only"].active {
+  color: var(--ctp-peach);
+}
+
+.symbol-filter .filter-btn[title="Parameters only"].active {
+  color: var(--ctp-lavender);
+}
+
+/* ============================================
+   Unified Layout (Single Column)
+   ============================================ */
+
+.unified-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.main-panel {
+  width: 320px;
+  min-width: 280px;
+  max-width: 450px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+}
+
+.panel-sections {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Detail Panel Container (slides in from right) */
+.detail-panel-container {
+  flex: 1;
+  min-width: 400px;
+  max-width: 600px;
+  border-left: 1px solid var(--border-color);
+  background: var(--bg-primary);
+}
+
+/* Isolated view: when package detail is open, hide sections and expand detail */
+.unified-layout.package-detail-open .panel-sections {
+  display: none;
+}
+
+.unified-layout.package-detail-open .detail-panel-container {
+  min-width: unset;
+  max-width: unset;
+  border-left: none;
+}

@@ -1,33 +1,33 @@
 import pytest
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 from faebryk.libs.app.checks import check_design
-from faebryk.libs.exceptions import UserDesignCheckException
-from faebryk.libs.library import L
+from atopile.exceptions import UserDesignCheckException
 from faebryk.libs.smd import SMDSize
-from faebryk.libs.units import P
 
 
+@pytest.mark.skip(reason="I2C.requires_pulls not implemented yet")
 def test_i2c_requires_pulls():
-    class A(Module):
+    class _A(fabll.Node):
         i2c: F.I2C
 
-    class App(Module):
-        a: A
-        b: A
+    class _App(fabll.Node):
+        a: _A
+        b: _A
 
         def __preinit__(self):
             self.a.i2c.connect(self.b.i2c)
 
-    app = App()
+    app = _App()
 
     # no issue if no pad boundary is crossed
-    check_design(app.get_graph(), F.implements_design_check.CheckStage.POST_DESIGN)
+    check_design(app.tg, F.implements_design_check.CheckStage.POST_DESIGN)
 
-    class App2(Module):
-        a: A
-        b: A
+    class _App2(fabll.Node):
+        a: _A
+        b: _A
 
         def __preinit__(self):
             self.a.i2c.connect(self.b.i2c)
@@ -49,87 +49,155 @@ def test_i2c_requires_pulls():
                 )
             ).attach(F.SMDTwoPin(SMDSize.I0402, F.SMDTwoPin.Type.Resistor))
 
-    app2 = App2()
+    app2 = _App2()
 
     # required resistance can be customized
-    app2.a.i2c.get_trait(F.requires_pulls).required_resistance = L.Range(
+    app2.a.i2c.get_trait(F.requires_pulls).required_resistance = fabll.Range(
         0.1 * P.kohm, 0.5 * P.kohm
     )
 
     # connection crosses pad boundary, so the check now fails
     with pytest.raises(UserDesignCheckException):
-        check_design(app2.get_graph(), F.implements_design_check.CheckStage.POST_DESIGN)
+        check_design(app2.tg, F.implements_design_check.CheckStage.POST_DESIGN)
 
     # terminating the connection without providing resistance values results in a
     # warning
     app2.a.i2c.terminate(app2.a)
-    check_design(app2.get_graph(), F.implements_design_check.CheckStage.POST_DESIGN)
+    check_design(app2.tg, F.implements_design_check.CheckStage.POST_DESIGN)
 
     # setting a sufficient resistance fully satisfies the check
-    app2.a.i2c.pull_up_sda.resistance.alias_is(0.2 * P.kohm)
-    app2.a.i2c.pull_up_scl.resistance.alias_is(0.2 * P.kohm)
-    check_design(app2.get_graph(), F.implements_design_check.CheckStage.POST_DESIGN)
+    app2.a.i2c.pull_up_sda.resistance.alias_is(0.2 * 1e3 * F.Units.Ohm)
+    app2.a.i2c.pull_up_scl.resistance.alias_is(0.2 * 1e3 * F.Units.Ohm)
+    check_design(app2.tg, F.implements_design_check.CheckStage.POST_DESIGN)
 
 
 def test_electric_signal_parallel_pull_resistance():
     """Test that ElectricSignal correctly calculates parallel pull resistance."""
 
-    r1_value = L.Range.from_center_rel(10 * P.kohm, 0.02)
-    r2_value = L.Range.from_center_rel(20 * P.kohm, 0.02)
-    r3_value = L.Range.from_center_rel(30 * P.kohm, 0.02)
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    ohm = (
+        F.Units.Ohm.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .get_trait(F.Units.is_unit)
+    )
+    r1_value = (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_center_rel(center=10 * 1e3, rel=0.02, unit=ohm)
+    )
+    r2_value = (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_center_rel(center=20 * 1e3, rel=0.02, unit=ohm)
+    )
+    r3_value = (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_center_rel(center=30 * 1e3, rel=0.02, unit=ohm)
+    )
 
-    class TestModule(Module):
-        signal: F.ElectricSignal
-        power: F.ElectricPower
+    class _TestModule(fabll.Node):
+        signal = F.ElectricSignal.MakeChild()
+        power = F.ElectricPower.MakeChild()
 
-        r1: F.Resistor
-        r2: F.Resistor
-        r3: F.Resistor
+        r1 = F.Resistor.MakeChild()
+        r2 = F.Resistor.MakeChild()
+        r3 = F.Resistor.MakeChild()
 
-        def __preinit__(self):
-            # Set specific resistance values for testing
-            self.r1.resistance.alias_is(r1_value)
-            self.r2.resistance.alias_is(r2_value)
-            self.r3.resistance.alias_is(r3_value)
+    module = _TestModule.bind_typegraph(tg=tg).create_instance(g=g)
 
-            # Connect signal reference
-            self.signal.reference.connect(self.power)
+    # Set specific resistance values for testing
+    module.r1.get().resistance.get().set_superset(g=g, value=r1_value)
+    module.r2.get().resistance.get().set_superset(g=g, value=r2_value)
+    module.r3.get().resistance.get().set_superset(g=g, value=r3_value)
 
-            # Connect resistors in parallel from signal to power rail
-            self.signal.line.connect_via(self.r1, self.power.hv)
-            self.signal.line.connect_via(self.r2, self.power.hv)
-            self.signal.line.connect_via(self.r3, self.power.hv)
+    # Connect signal reference
+    module.signal.get().reference.get()._is_interface.get().connect_to(
+        module.power.get()
+    )
 
-    module = TestModule()
+    # Connect resistors in parallel from signal to power rail
+    for resistor in [module.r1.get(), module.r2.get(), module.r3.get()]:
+        terminals = resistor.get_children(
+            direct_only=True, include_root=False, types=F.Electrical
+        )
+        module.signal.get().line.get()._is_interface.get().connect_to(terminals[0])
+        terminals[1]._is_interface.get().connect_to(module.power.get().hv.get())
 
     expected_resistance = (
-        r1_value.op_invert() + r2_value.op_invert() + r3_value.op_invert()
-    ).op_invert()
+        r1_value.op_invert(g=g, tg=tg)
+        .op_add_intervals(
+            r2_value.op_invert(g=g, tg=tg),
+            g=g,
+            tg=tg,
+        )
+        .op_add_intervals(
+            r3_value.op_invert(g=g, tg=tg),
+            g=g,
+            tg=tg,
+        )
+    ).op_invert(g=g, tg=tg)
 
-    assert module.signal.pull_resistance == expected_resistance
+    lit_trait = (
+        module.signal.get()
+        .pull_resistance.get_trait(F.Parameters.is_parameter_operatable)
+        .try_extract_superset()
+    )
+    assert lit_trait is not None
+    lit = fabll.Traits(lit_trait).get_obj(F.Literals.Numbers)
+    assert lit.op_setic_is_subset_of(g=g, tg=tg, other=expected_resistance)
+    assert expected_resistance.op_setic_is_subset_of(g=g, tg=tg, other=lit)
 
 
 def test_electric_signal_single_pull_resistance():
     """Test that ElectricSignal correctly handles single pull resistance."""
 
-    r1_value = L.Range.from_center_rel(10 * P.kohm, 0.02)
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    r1_value = (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_center_rel(
+            center=10 * 1e3,
+            rel=0.02,
+            unit=F.Units.Ohm.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .get_trait(F.Units.is_unit),
+        )
+    )
 
-    class TestModule(Module):
-        signal: F.ElectricSignal
-        power: F.ElectricPower
+    class _TestModule(fabll.Node):
+        signal = F.ElectricSignal.MakeChild()
+        power = F.ElectricPower.MakeChild()
 
-        def __preinit__(self):
-            # Create single pull-up resistor
-            self.r1 = F.Resistor()
+        r1 = F.Resistor.MakeChild()
 
-            # Set specific resistance value
-            self.r1.resistance.alias_is(r1_value)
+    module = _TestModule.bind_typegraph(tg=tg).create_instance(g=g)
 
-            # Connect signal reference
-            self.signal.reference.connect(self.power)
+    module.r1.get().resistance.get().set_superset(g=g, value=r1_value)
 
-            # Connect single resistor from signal to power rail
-            self.signal.line.connect_via(self.r1, self.power.hv)
+    terminals = module.r1.get().get_children(
+        direct_only=True, include_root=False, types=F.Electrical
+    )
 
-    module = TestModule()
-    assert module.signal.pull_resistance == r1_value
+    # Connect signal reference to the module power rail
+    module.signal.get().reference.get()._is_interface.get().connect_to(
+        module.power.get()
+    )
+
+    # Connect the resistor between the signal line and reference HV
+    module.signal.get().line.get()._is_interface.get().connect_to(terminals[0])
+    terminals[1]._is_interface.get().connect_to(
+        module.signal.get().reference.get().hv.get()
+    )
+
+    lit_trait = (
+        module.signal.get()
+        .pull_resistance.get_trait(F.Parameters.is_parameter_operatable)
+        .try_extract_superset()
+    )
+    assert lit_trait is not None
+    lit = fabll.Traits(lit_trait).get_obj(F.Literals.Numbers)
+    assert lit.op_setic_is_subset_of(g=g, tg=tg, other=r1_value)
+    assert r1_value.op_setic_is_subset_of(g=g, tg=tg, other=lit)

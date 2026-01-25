@@ -2,43 +2,55 @@
 # SPDX-License-Identifier: MIT
 
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-import faebryk.libs.library.L as L
-from faebryk.core.module import Module
-from faebryk.libs.units import P
 
 
-class Battery(Module):
-    voltage = L.p_field(
-        units=P.V,
-        soft_set=L.Range(0 * P.V, 100 * P.V),
-        likely_constrained=True,
+class Battery(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    power = F.ElectricPower.MakeChild()
+
+    voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    capacity = F.Parameters.NumericParameter.MakeChild(unit=F.Units.AmpereHour)
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+    _can_attatch_to_footprint = fabll.Traits.MakeEdge(
+        F.Footprints.can_attach_to_footprint.MakeChild()
     )
-    capacity = L.p_field(
-        units=P.Ah,
-        soft_set=L.Range(100 * P.mAh, 100 * P.Ah),
-        likely_constrained=True,
+
+    power.add_dependant(
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, F.ElectricPower.hv])
+    )
+    power.add_dependant(
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, F.ElectricPower.lv])
     )
 
-    power: F.ElectricPower
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        fabll._ChildField(F.has_single_electric_reference)
+    )
 
-    def __preinit__(self) -> None:
-        self.power.voltage.constrain_subset(self.voltage)
+    # TODO: Add trait edge to power.hv
+    _net_name = fabll.Traits.MakeEdge(
+        child_field=F.has_net_name_suggestion.MakeChild(
+            name="BAT_VCC",
+            level=F.has_net_name_suggestion.Level.SUGGESTED,
+        ),
+        owner=[power, F.ElectricPower.hv],
+    )
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(self.power)
+    designator_prefix = fabll.Traits.MakeEdge(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.BAT)
+    )
 
-    designator = L.f_field(F.has_designator_prefix)("BAT")
-
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.power.hv.add(
-            F.has_net_name("BAT_VCC", level=F.has_net_name.Level.SUGGESTED)
-        )
-
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import Battery, ElectricPower
 
         battery = new Battery
@@ -57,5 +69,6 @@ class Battery(Module):
         battery_pack.voltage = 11.1V +/- 10%  # 3S Li-ion pack
         battery_pack.capacity = 2000mAh +/- 5%
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

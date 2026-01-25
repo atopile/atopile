@@ -9,14 +9,13 @@ from socket import gaierror
 
 import more_itertools
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserInfraError
-from faebryk.core.module import Module
-from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable
+from faebryk.core import graph
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
-from faebryk.libs.exceptions import UserException, downgrade
-from faebryk.libs.http import RequestError, TimeoutException
-from faebryk.libs.library import L
+from faebryk.libs.http import RequestError
 from faebryk.libs.picker.api.api import ApiHTTPError, get_api_client
 from faebryk.libs.picker.api.models import (
     BaseParams,
@@ -30,21 +29,14 @@ from faebryk.libs.picker.lcsc import (
     LCSC_PinmapException,
     attach,
     check_attachable,
-    get_raw,
 )
-from faebryk.libs.picker.picker import (
-    NotCompatibleException,
-    PickError,
-    does_not_require_picker_check,
-)
-from faebryk.libs.sets.sets import EnumSet, P_Set
+from faebryk.libs.picker.picker import PickError
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     Tree,
     cast_assert,
     groupby,
-    not_none,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,15 +82,17 @@ BackendPackage = StrEnum(
 )
 
 
-def _from_smd_size(cls, size: SMDSize, type: type[L.Module]) -> "BackendPackage":
-    if issubclass(type, F.Resistor):
+def _from_smd_size(cls, size: SMDSize, type_node: graph.BoundNode) -> "BackendPackage":  # type: ignore[invalid-type-form]
+    type_name = fbrk.TypeGraph.get_type_name(type_node=type_node)
+
+    if type_name == F.Resistor._type_identifier():
         prefix = "R"
-    elif issubclass(type, F.Capacitor):
+    elif type_name == F.Capacitor._type_identifier():
         prefix = "C"
-    elif issubclass(type, F.Inductor):
+    elif type_name == F.Inductor._type_identifier():
         prefix = "L"
     else:
-        raise NotImplementedError(f"Unsupported pickable trait: {type}")
+        raise NotImplementedError(f"Unsupported pickable trait: {type_node}")
 
     try:
         return cls[f"{prefix}{size.imperial.without_prefix}"]
@@ -110,66 +104,126 @@ BackendPackage.from_smd_size = classmethod(_from_smd_size)  # type: ignore
 
 
 def _prepare_query(
-    module: Module, solver: Solver
+    module: F.Pickable.is_pickable,
+    solver: Solver,
+    g: graph.GraphView,
+    tg: fbrk.TypeGraph,
 ) -> BaseParams | LCSCParams | ManufacturerPartParams:
-    assert module.has_trait(F.is_pickable)
+    # assert module.has_trait(F.Pickable.is_pickable)
     # Error can propagate through,
     # because we expect all pickable modules to be attachable
-    check_attachable(module)
+    module_node = module.get_pickable_node()
+    check_attachable(module_node)
 
-    if trait := module.try_get_trait(F.is_pickable_by_part_number):
+    if trait := module_node.try_get_trait(F.Pickable.is_pickable_by_part_number):
         return ManufacturerPartParams(
             manufacturer_name=trait.get_manufacturer(),
             part_number=trait.get_partno(),
             quantity=qty,
         )
 
-    elif trait := module.try_get_trait(F.is_pickable_by_supplier_id):
-        if trait.get_supplier() == F.is_pickable_by_supplier_id.Supplier.LCSC:
+    elif trait := module_node.try_get_trait(F.Pickable.is_pickable_by_supplier_id):
+        if (
+            trait.get_supplier()
+            == F.Pickable.is_pickable_by_supplier_id.Supplier.LCSC.name
+        ):
             return LCSCParams(
                 lcsc=_extract_numeric_id(trait.get_supplier_part_id()), quantity=qty
             )
 
-    elif trait := module.try_get_trait(F.is_pickable_by_type):
-        params_t = make_params_for_type(trait.pick_type)
+    elif trait := module_node.try_get_trait(F.Pickable.is_pickable_by_type):
+        # TODO: Fix this
+        params_t = make_params_for_type(module_node)
 
-        if pkg_t := module.try_get_trait(F.has_package_requirements):
-            package = pkg_t.get_sizes(solver)
-            package = EnumSet[BackendPackage](
-                *[
-                    BackendPackage.from_smd_size(SMDSize[s.name], trait.pick_type)
-                    for s in package
-                ]
+        if pkg_t := module_node.try_get_trait(F.has_package_requirements):
+            package_constraint = pkg_t.size.get().try_extract_superset()
+            if package_constraint is None:
+                raise PickError(
+                    f"Module `{module_node}` has no constrained package requirements",
+                    module_node,
+                )
+            package = (
+                F.Literals.EnumsFactory(BackendPackage)  # type: ignore[arg-type]
+                .bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup(
+                    *[
+                        BackendPackage.from_smd_size(SMDSize[s], trait.pick_type)  # type: ignore[attr-defined]
+                        for s in F.Literals.AbstractEnums(
+                            package_constraint.instance
+                        ).get_names()
+                    ]
+                )
             )
         else:
             package = None
 
         generic_field_names = {f.name for f in fields(params_t)}
         _, known_params = more_itertools.partition(
-            lambda p: p.get_name() in generic_field_names, module.get_parameters()
+            lambda p: fabll.Traits(p).get_obj_raw().get_name() in generic_field_names,
+            trait.get_params(),
         )
         cmp_params = {
-            p.get_name(): p.get_last_known_deduced_superset(solver)
+            fabll.Traits(p).get_obj_raw(): solver.extract_superset(
+                # FIXME g
+                p  # , g=g, tg=tg
+            )
             for p in known_params
         }
-
         if all(superset is None for superset in cmp_params.values()):
-            logger.warning(f"Module `{module}` has no constrained parameters")
+            logger.warning(f"Module `{module_node}` has no constrained parameters")
 
-        return params_t(package=package, qty=qty, **cmp_params)  # type: ignore
+        # TODO: More robust validation against API contract
+        # Check for singleton literals
+        for param, is_lit in cmp_params.items():
+            literal_node = is_lit.switch_cast()
+            if literal_node.isinstance(F.Literals.Numbers):
+                if literal_node.is_singleton():
+                    from atopile.compiler import DslRichException, DslValueError
+
+                    raise DslRichException(
+                        message=(
+                            f"Parameter `{param.pretty_repr()}` is assigned to an "
+                            f"exact value ({literal_node.pretty_str()}) "
+                            "instead of being constrained to an interval. "
+                        ),
+                        original=DslValueError(),
+                    )
+
+        return params_t(
+            package=package, qty=qty, **{k.get_name(): v for k, v in cmp_params.items()}
+        )  # type: ignore
 
     raise NotImplementedError(
-        f"Unsupported pickable trait: {module.get_trait(F.is_pickable)}"
+        # f"Unsupported pickable trait: {module_node.get_trait(F.Pickable.is_pickable)}"
+        f"Unsupported pickable trait on node: {module_node}"
     )
 
 
-def _process_candidates(module: Module, candidates: list[Component]) -> list[Component]:
+def _process_candidates(
+    module: F.Pickable.is_pickable, candidates: list[Component]
+) -> list[Component]:
+    timings = Times(name="process_candidates")
+
     # Filter parts with weird pinmaps
     it = iter(candidates)
     filtered_candidates = []
-    for c in it:
+    component_node = module.get_pickable_node()
+    if not component_node.has_trait(F.Footprints.can_attach_to_footprint):
+        raise PickError(
+            f"Module {component_node.get_full_name(types=True)} does not have "
+            "can_attach_to_footprint trait",
+            component_node,
+        )
+    module_with_fp = component_node.get_trait(F.Footprints.can_attach_to_footprint)
+    timings.add("setup")
+
+    for idx, c in enumerate(it):
         try:
-            attach(module, c.lcsc_display, check_only=True, get_model=False)
+            with timings.measure(f"attach_check_{idx}"):
+                attach(
+                    module_with_fp, c.lcsc_display, check_only=True, get_3d_model=False
+                )
             filtered_candidates.append(c)
             # If we found one that's ok, just continue since likely enough
             filtered_candidates.extend(it)
@@ -179,42 +233,45 @@ def _process_candidates(module: Module, candidates: list[Component]) -> list[Com
                 raise PickError(
                     (
                         "LCSC has no footprint/symbol for any candidate for "
-                        f"`{module}`. Loosen your selection criteria or try another "
-                        "part which has an LCSC footprint and symbol."
+                        f"`{component_node}`. Loosen your selection criteria or try "
+                        "another part which has an LCSC footprint and symbol."
                     ),
-                    module,
+                    component_node,
                 ) from ex
         except LCSC_PinmapException:
             # if all filtered by pinmap something is fishy
             if not filtered_candidates and candidates[-1] is c:
                 raise
 
+    timings.add("filter_done")
     return filtered_candidates
 
 
 def _find_modules(
-    modules: Tree[Module], solver: Solver
-) -> dict[Module, list[Component]]:
+    modules: Tree[F.Pickable.is_pickable], solver: Solver
+) -> dict[F.Pickable.is_pickable, list[Component]]:
     timings = Times(name="find_modules")
 
-    params = {m: _prepare_query(m, solver) for m in modules}
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    params = {m: _prepare_query(m, solver, g, tg) for m in modules}
     timings.add("prepare queries")
 
-    grouped = groupby(params.items(), lambda p: p[1])
-    queries = list(grouped.keys())
+    # deduplicate params
+    grouped = groupby(params.items(), lambda p: str(p[1].serialize()))
+    queries = [v[0][1] for v in grouped.values()]
+    logger.debug(f"Queries: {len(queries)}")
 
-    def _map_response[T](results: list[T]) -> dict[Module, T]:
+    def _map_response[T](results: list[T]) -> dict[F.Pickable.is_pickable, T]:
         assert len(results) == len(queries)
         return {m: r for ms, r in zip(grouped.values(), results) for m, _ in ms}
 
     try:
         results = client.fetch_parts_multiple(queries)
         timings.add("fetch parts")
-    except TimeoutException as e:
-        raise UserInfraError(
-            "Fetching component data failed to complete in time. "
-            "Please try again later."
-        ) from e
+        logger.debug(
+            f"Fetched {len(results)} parts in {timings.get_formatted('fetch parts')}"
+        )
     except RequestError as e:
         cause = e.args[0]
         while not isinstance(cause, gaierror):
@@ -249,12 +306,20 @@ def _find_modules(
                 raise
         raise e
 
-    out = {m: _process_candidates(m, r) for m, r in _map_response(results).items()}
+    out = {
+        m: _process_candidates(module=m, candidates=r)
+        for m, r in _map_response(results).items()
+    }
+
     timings.add("process candidates")
+    logger.debug(
+        f"Processed {len(out)} candidates in "
+        f"{timings.get_formatted('process candidates')}"
+    )
     return out
 
 
-def _attach(module: Module, c: Component):
+def _attach(module: F.Pickable.is_pickable, c: Component):
     """
     Calls LCSC attach and wraps errors into PickError
     """
@@ -276,123 +341,12 @@ def _attach(module: Module, c: Component):
         )
 
 
-def _get_compatible_parameters(
-    module: Module, c: "Component", solver: Solver
-) -> dict[Parameter, ParameterOperatable.Literal]:
-    """
-    Check if the parameters of a component are compatible with the module
-    """
-    # Nothing to check
-    if not module.has_trait(F.is_pickable_by_type):
-        return {}
-
-    # shortcut because solving slow
-    try:
-        get_raw(c.lcsc_display)
-    except LCSC_NoDataException as e:
-        raise NotCompatibleException(module, c) from e
-
-    design_params = {
-        p.get_name() for p in module.get_trait(F.is_pickable_by_type).params
-    }
-    component_params = c.attribute_literals
-
-    if no_attr := component_params.keys() - design_params:
-        with downgrade(UserException):
-            no_attr_str = "\n".join(f"- `{a}`" for a in no_attr)
-            raise UserException(
-                f"Module `{module}` is missing attributes:\n\n"
-                f" {no_attr_str}\n\n"
-                "This likely means you could use a more precise"
-                " module/component in your design."
-            )
-
-    def _map_param(name: str, param: Parameter) -> tuple[Parameter, P_Set]:
-        c_range = component_params.get(name)
-        if c_range is None:
-            c_range = param.domain.unbounded(param)
-        return param, c_range
-
-    param_mapping = [
-        _map_param(name, param)
-        for name, param in design_params.items()
-        if not param.has_trait(does_not_require_picker_check)
-    ]
-
-    # check for any param that has few supersets whether the component's range
-    # is compatible already instead of waiting for the solver
-    for m_param, c_range in param_mapping:
-        # TODO other loglevel
-        # logger.warning(f"Checking obvious incompatibility for param {m_param}")
-        known_superset = solver.inspect_get_known_supersets(m_param)
-        if not known_superset.is_superset_of(c_range):
-            if LOG_PICK_SOLVE:
-                logger.warning(
-                    f"Known superset {known_superset} is not a superset of {c_range}"
-                    f" for part C{c.lcsc}"
-                )
-            raise NotCompatibleException(module, c, m_param, c_range)
-
-    return {p: c_range for p, c_range in param_mapping}
-
-
-def _check_candidates_compatible(
-    module_candidates: list[tuple[Module, Component]],
-    solver: Solver,
-    allow_not_deducible: bool = False,
-):
-    """
-    Check if combination of all candidates is compatible with each other
-    Checks each candidate first for individual compatibility
-    """
-
-    if not module_candidates:
-        return
-
-    mappings = [_get_compatible_parameters(m, c, solver) for m, c in module_candidates]
-
-    if LOG_PICK_SOLVE:
-        logger.info(f"Solving for modules: {[m for m, _ in module_candidates]}")
-
-    predicates = (
-        Is(m_param, c_range)
-        for param_mapping in mappings
-        for m_param, c_range in not_none(param_mapping).items()
-    )
-
-    solver.try_fulfill(And(*predicates), lock=False, allow_unknown=allow_not_deducible)
-
-
 # public -------------------------------------------------------------------------------
 
 
-def check_and_attach_candidates(
-    candidates: list[tuple[Module, Component]],
-    solver: Solver,
-    allow_not_deducible: bool = False,
-):
-    """
-    Check if given candidates are compatible with each other
-    If so, attach them to the modules
-    Raises:
-        Contradiction
-        NotCompatibleException
-    """
-    _check_candidates_compatible(candidates, solver, allow_not_deducible)
-
-    for m, part in candidates:
-        _attach(m, part)
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                f"Attached {part.lcsc_display} ('{part.description}') to "
-                f"'{m.get_full_name(types=False)}'"
-            )
-
-
 def get_candidates(
-    modules: Tree[Module], solver: Solver
-) -> dict[Module, list[Component]]:
+    modules: Tree[F.Pickable.is_pickable], solver: Solver
+) -> dict[F.Pickable.is_pickable, list[Component]]:
     candidates = modules.copy()
     parts = {}
     empty = set()
@@ -420,7 +374,9 @@ def get_candidates(
     return {}
 
 
-def attach_single_no_check(cmp: Module, part: Component, solver: Solver):
+def attach_single_no_check(
+    cmp: F.Pickable.is_pickable, part: Component, solver: Solver
+):
     """
     Attach a single component to a module
     Attention: Does not check compatibility before or after!

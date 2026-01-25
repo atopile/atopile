@@ -1,5 +1,11 @@
 pub const std = @import("std");
 
+/// Python API version for module creation
+/// This must match Python's sys.api_version (check with: python -c "import sys; print(sys.api_version)")
+/// The API version only changes when there are breaking C API changes, NOT with every Python version.
+/// Python 3.13 and 3.14 both use API version 1013.
+pub const PYTHON_API_VERSION: c_int = 1013;
+
 /// Python C API declarations
 pub const PyObject = opaque {};
 
@@ -100,10 +106,13 @@ pub extern fn PyType_Ready(type: *PyTypeObject) c_int;
 pub extern fn PyModule_AddObject(module: ?*PyObject, name: [*:0]const u8, value: ?*PyObject) c_int;
 pub extern fn PyModule_GetDict(module: ?*PyObject) ?*PyObject;
 pub extern fn _Py_Dealloc(op: *PyObject) void;
+pub extern fn Py_IsInitialized() c_int;
+pub extern fn Py_IsFinalizing() c_int;
 pub extern fn PyObject_GenericGetAttr(obj: ?*PyObject, name: ?*PyObject) ?*PyObject;
 pub extern fn PyObject_GenericSetAttr(obj: ?*PyObject, name: ?*PyObject, value: ?*PyObject) c_int;
 pub extern fn PyType_GenericAlloc(type: *PyTypeObject, nitems: isize) ?*PyObject;
 pub extern fn PyType_GenericNew(type: *PyTypeObject, args: ?*PyObject, kwargs: ?*PyObject) ?*PyObject;
+pub extern fn PyObject_Free(ptr: ?*anyopaque) void;
 
 /// Member descriptor for struct fields
 pub const PyMemberDef = extern struct {
@@ -212,12 +221,14 @@ pub const GS_SENTINEL = PyGetSetDef{
 pub extern fn PyLong_FromLong(value: c_long) ?*PyObject;
 pub extern fn PyLong_FromLongLong(value: c_longlong) ?*PyObject;
 pub extern fn PyLong_FromUnsignedLongLong(value: c_ulonglong) ?*PyObject;
+pub extern fn PyLong_FromSize_t(value: usize) ?*PyObject;
 pub extern fn PyLong_AsLong(obj: ?*PyObject) c_long;
 pub extern fn PyLong_AsLongLong(obj: ?*PyObject) c_longlong;
 pub extern fn PyUnicode_FromString(str: [*:0]const u8) ?*PyObject;
 pub extern fn PyUnicode_FromStringAndSize(str: [*c]const u8, size: isize) ?*PyObject;
 pub extern fn PyUnicode_AsUTF8(obj: ?*PyObject) ?[*:0]const u8;
 pub extern fn PyRun_StringFlags(code: [*:0]const u8, start: c_int, globals: ?*PyObject, locals: ?*PyObject, flags: ?*anyopaque) ?*PyObject;
+pub extern fn PyRun_SimpleString(code: [*:0]const u8) c_int;
 
 pub const Py_single_input: c_int = 256;
 pub const Py_file_input: c_int = 257;
@@ -230,17 +241,16 @@ pub fn Py_None() *PyObject {
     return &_Py_NoneStruct;
 }
 
-// Reference counting - these are macros in Python, so we implement them inline
+// Reference counting
+pub extern fn Py_IncRef(o: *PyObject) void;
+pub extern fn Py_DecRef(o: *PyObject) void;
+
 pub inline fn Py_INCREF(obj: *PyObject) void {
-    // In CPython, Py_INCREF is a macro that increments ob_refcnt
-    // Since PyObject is opaque, we can't directly access ob_refcnt
-    // Instead, just don't increment for now - Python manages the refcount
-    _ = obj;
+    Py_IncRef(obj);
 }
 
 pub inline fn Py_DECREF(obj: *PyObject) void {
-    // Similarly for DECREF
-    _ = obj;
+    Py_DecRef(obj);
 }
 
 // List type for inheritance
@@ -263,6 +273,8 @@ pub fn Py_TYPE(obj: ?*PyObject) ?*PyTypeObject {
 
 // Error handling
 pub extern fn PyErr_SetString(exception: *PyObject, message: [*:0]const u8) void;
+pub extern fn PyErr_SetObject(exception: *PyObject, value: ?*PyObject) void;
+pub extern fn PyErr_NewException(name: [*:0]const u8, base: ?*PyObject, dict: ?*PyObject) ?*PyObject;
 pub extern fn PyErr_Clear() void;
 pub extern fn PyErr_Occurred() ?*PyObject;
 
@@ -285,6 +297,7 @@ pub extern fn PyTuple_SetItem(tuple: ?*PyObject, pos: isize, item: ?*PyObject) c
 pub extern fn PyTuple_GetItem(tuple: ?*PyObject, pos: isize) ?*PyObject;
 pub extern fn PyDict_GetItemString(dict: ?*PyObject, key: [*:0]const u8) ?*PyObject;
 pub extern fn PyDict_New() ?*PyObject;
+pub extern fn PyDict_SetItem(dict: ?*PyObject, key: ?*PyObject, value: ?*PyObject) c_int;
 pub extern fn PyDict_SetItemString(dict: ?*PyObject, key: [*:0]const u8, value: ?*PyObject) c_int;
 pub extern fn PyDict_Next(dict: ?*PyObject, pos: *isize, key: *?*PyObject, value: *?*PyObject) c_int;
 pub extern fn PyFloat_FromDouble(value: f64) ?*PyObject;
@@ -294,6 +307,10 @@ pub extern fn PyList_New(size: isize) ?*PyObject;
 pub extern fn PyList_SetItem(list: ?*PyObject, index: isize, item: ?*PyObject) c_int;
 pub extern fn PyList_Size(list: ?*PyObject) isize;
 pub extern fn PyList_GetItem(list: ?*PyObject, index: isize) ?*PyObject;
+
+// Set API
+pub extern fn PySet_New(iterable: ?*PyObject) ?*PyObject;
+pub extern fn PySet_Add(set: ?*PyObject, key: ?*PyObject) c_int;
 
 // PyList_Check is a macro in Python's C API, we need to implement it ourselves
 // We can use PyObject_IsInstance or just check with PyList_Size
@@ -316,6 +333,7 @@ pub extern fn PyObject_Call(callable: ?*PyObject, args: ?*PyObject, kwargs: ?*Py
 // Python booleans are singleton objects
 pub extern var _Py_TrueStruct: PyObject;
 pub extern var _Py_FalseStruct: PyObject;
+pub extern var _Py_NotImplementedStruct: PyObject;
 
 pub fn Py_True() *PyObject {
     return &_Py_TrueStruct;
@@ -323,6 +341,10 @@ pub fn Py_True() *PyObject {
 
 pub fn Py_False() *PyObject {
     return &_Py_FalseStruct;
+}
+
+pub fn Py_NotImplemented() *PyObject {
+    return &_Py_NotImplementedStruct;
 }
 
 // Exception types

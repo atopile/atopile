@@ -2,6 +2,7 @@ const graph_mod = @import("graph");
 const std = @import("std");
 const composition_mod = @import("composition.zig");
 const edgebuilder_mod = @import("edgebuilder.zig");
+const typegraph_mod = @import("typegraph.zig");
 
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
@@ -17,50 +18,61 @@ const str = graph.str;
 const EdgeComposition = composition_mod.EdgeComposition;
 const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 const return_first = visitor.return_first;
+const TypeGraph = typegraph_mod.TypeGraph;
 
 pub const EdgePointer = struct {
-    pub const tid: Edge.EdgeType = 1759771470;
+    pub const tid: Edge.EdgeType = graph.Edge.hash_edge_type(1759771470);
+    pub var registered: bool = false;
 
-    pub fn init(allocator: std.mem.Allocator, from: NodeReference, to: NodeReference, identifier: ?str, order: ?u32) EdgeReference {
-        const edge = Edge.init(allocator, from, to, tid);
-        build(allocator, identifier, order).apply_to(edge);
+    /// Create an EdgeTraversal for dereferencing the current Pointer node.
+    /// No identifier needed - simply follows the EdgePointer from the current node to its target.
+    pub fn traverse() TypeGraph.ChildReferenceNode.EdgeTraversal {
+        return .{ .identifier = "", .edge_type = tid };
+    }
+
+    pub fn init(from: NodeReference, to: NodeReference, identifier: ?str, index: ?u15) EdgeReference {
+        const edge = EdgeReference.init(from, to, tid);
+        build(identifier, index).apply_to(edge);
         return edge;
     }
 
-    pub fn build(allocator: std.mem.Allocator, identifier: ?str, order: ?u32) EdgeCreationAttributes {
-        var dynamic: ?graph.DynamicAttributes = null;
-        if (order) |o| {
-            dynamic = graph.DynamicAttributes.init(allocator);
-            dynamic.?.values.put("order", .{ .Int = o }) catch unreachable;
+    /// Build EdgeCreationAttributes for an EdgePointer.
+    /// The 15-bit index is split MSB-first: `order` gets high 7 bits, `edge_specific` gets low 8 bits.
+    pub fn build(identifier: ?str, index: ?u15) EdgeCreationAttributes {
+        if (!registered) {
+            @branchHint(.unlikely);
+            registered = true;
+            Edge.register_type(tid) catch {};
         }
+
         return .{
             .edge_type = tid,
             .directional = true,
             .name = identifier,
-            .dynamic = dynamic,
+            .order = if (index) |i| @intCast(i >> 8) else 0,
+            .edge_specific = if (index) |i| @as(u16, i & 0xFF) else null,
+            .dynamic = graph.DynamicAttributes.init_on_stack(),
         };
     }
 
-    pub fn get_order(edge: EdgeReference) ?u32 {
-        const order = edge.attributes.dynamic.values.get("order");
-        if (order) |o| {
-            return @intCast(o.Int);
-        }
-        return null;
+    /// Reconstruct the 15-bit index from order (high 7 bits) and edge_specific (low 8 bits).
+    pub fn get_index(edge: EdgeReference) ?u15 {
+        const low = edge.get_edge_specific() orelse return null;
+        const high: u15 = @intCast(edge.get_order());
+        return (high << 8) | @as(u15, @intCast(low & 0xFF));
     }
 
-    pub fn get_referenced_node(edge: EdgeReference) ?NodeReference {
-        return edge.get_target();
+    pub fn get_referenced_node(edge: EdgeReference) NodeReference {
+        return edge.get_directed_target().?;
     }
 
     pub fn is_instance(E: EdgeReference) bool {
-        return Edge.is_instance(E, tid);
+        return E.is_instance(tid);
     }
 
-    pub fn point_to(bound_node: BoundNodeReference, target_node: NodeReference, identifier: ?str, order: ?u32) BoundEdgeReference {
-        const edge = EdgePointer.init(bound_node.g.allocator, bound_node.node, target_node, identifier, order);
-        const bound_edge = bound_node.g.insert_edge(edge);
-        return bound_edge;
+    pub fn point_to(bound_node: BoundNodeReference, target_node: NodeReference, identifier: ?str, index: ?u15) GraphView.InsertEdgeError!BoundEdgeReference {
+        const edge = EdgePointer.init(bound_node.node, target_node, identifier, index);
+        return bound_node.g.insert_edge(edge);
     }
 
     pub fn visit_pointed_edges(
@@ -80,7 +92,8 @@ pub const EdgePointer = struct {
         };
 
         var visit = Visit{ .cb_ctx = ctx, .cb = f };
-        return bound_node.visit_edges_of_type(tid, T, &visit, Visit.visit);
+        // directed = true: from is source, to is target
+        return bound_node.g.visit_edges_of_type(bound_node.node, tid, T, &visit, Visit.visit, true);
     }
 
     pub fn visit_pointed_edges_with_identifier(
@@ -97,7 +110,8 @@ pub const EdgePointer = struct {
 
             pub fn visit(self_ptr: *anyopaque, bound_edge: BoundEdgeReference) visitor.VisitResult(T) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
-                if (bound_edge.edge.attributes.name) |name| {
+                // Direction filtering is handled by visit_pointed_edges with directed=true
+                if (bound_edge.edge.get_attribute_name()) |name| {
                     if (!std.mem.eql(u8, name, self.identifier)) {
                         return visitor.VisitResult(T){ .CONTINUE = {} };
                     }
@@ -120,10 +134,8 @@ pub const EdgePointer = struct {
             pub fn visit(self_ptr: *anyopaque, bound_edge: BoundEdgeReference) visitor.VisitResult(BoundNodeReference) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
                 _ = self;
-                if (EdgePointer.get_referenced_node(bound_edge.edge)) |target| {
-                    return visitor.VisitResult(BoundNodeReference){ .OK = bound_edge.g.bind(target) };
-                }
-                return visitor.VisitResult(BoundNodeReference){ .CONTINUE = {} };
+                const target = EdgePointer.get_referenced_node(bound_edge.edge);
+                return visitor.VisitResult(BoundNodeReference){ .OK = bound_edge.g.bind(target) };
             }
         };
 
@@ -145,10 +157,8 @@ pub const EdgePointer = struct {
         const result = EdgePointer.visit_pointed_edges(bound_reference_node, BoundEdgeReference, &ctx, return_first(BoundEdgeReference).visit);
         return switch (result) {
             .OK => |edge| blk: {
-                if (EdgePointer.get_referenced_node(edge.edge)) |target| {
-                    break :blk edge.g.bind(target);
-                }
-                break :blk null;
+                const target = EdgePointer.get_referenced_node(edge.edge);
+                break :blk edge.g.bind(target);
             },
             .EXHAUSTED => null,
             .ERROR => null,
@@ -165,12 +175,12 @@ test "basic" {
 
     const n1 = g.create_and_insert_node();
     const n2 = g.create_and_insert_node();
-    const e12 = EdgePointer.init(a, n1.node, n2.node, null, null);
+    const e12 = EdgePointer.init(n1.node, n2.node, null, 0);
 
-    _ = g.insert_edge(e12);
+    _ = try g.insert_edge(e12);
 
     try std.testing.expect(EdgePointer.is_instance(e12));
-    try std.testing.expect(Node.is_same(EdgePointer.get_referenced_node(e12).?, n2.node));
+    try std.testing.expect(EdgePointer.get_referenced_node(e12).is_same(n2.node));
 
     g.deinit();
 }

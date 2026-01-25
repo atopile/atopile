@@ -2,128 +2,121 @@
 # SPDX-License-Identifier: MIT
 
 
-from enum import Enum, auto
+from enum import StrEnum
 
-from deprecated import deprecated
-
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.parameter import ParameterOperatable
-from faebryk.libs.library import L
-from faebryk.libs.units import P
 
 
-class LED(F.Diode):
-    class Color(Enum):
+class LED(fabll.Node):
+    # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
+    class Color(StrEnum):
         # Primary Colors
-        RED = auto()
-        GREEN = auto()
-        BLUE = auto()
+        RED = "RED"
+        GREEN = "GREEN"
+        BLUE = "BLUE"
 
         # Secondary and Mixed Colors
-        YELLOW = auto()
-        ORANGE = auto()
-        PURPLE = auto()
-        CYAN = auto()
-        MAGENTA = auto()
+        YELLOW = "YELLOW"
+        ORANGE = "ORANGE"
+        PURPLE = "PURPLE"
+        CYAN = "CYAN"
+        MAGENTA = "MAGENTA"
 
         # Shades of White
-        WHITE = auto()
-        WARM_WHITE = auto()
-        COLD_WHITE = auto()
-        NATURAL_WHITE = auto()
+        WHITE = "WHITE"
+        WARM_WHITE = "WARM_WHITE"
+        COLD_WHITE = "COLD_WHITE"
+        NATURAL_WHITE = "NATURAL_WHITE"
 
         # Other Colors
-        EMERALD = auto()
-        AMBER = auto()
-        PINK = auto()
-        LIME = auto()
-        VIOLET = auto()
+        EMERALD = "EMERALD"
+        AMBER = "AMBER"
+        PINK = "PINK"
+        LIME = "LIME"
+        VIOLET = "VIOLET"
 
         # Specific LED Colors
-        ULTRA_VIOLET = auto()
-        INFRA_RED = auto()
+        ULTRA_VIOLET = "ULTRA_VIOLET"
+        INFRA_RED = "INFRA_RED"
 
-    brightness = L.p_field(units=P.candela)
-    max_brightness = L.p_field(units=P.candela)
-    color = L.p_field(domain=L.Domains.ENUM(Color))
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    diode = F.Diode.MakeChild()
+    _mark_diode_symbolic = fabll.Traits.MakeEdge(
+        F.has_part_removed.MakeChild(), [diode]
+    )
 
-    # @L.rt_field
-    # def pickable(self):
-    #     return F.is_pickable_by_type(
-    #         F.is_pickable_by_type.Type.LED,
-    #         {
-    #             # Diode
-    #             "forward_voltage": self.forward_voltage,
-    #             "reverse_working_voltage": self.reverse_working_voltage,
-    #             "reverse_leakage_current": self.reverse_leakage_current,
-    #             # LED
-    #             "max_current": self.max_current,
-    #             "max_brightness": self.max_brightness,
-    #             "color": self.color,
-    #         },
-    #     )
+    brightness = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Candela)
+    max_brightness = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Candela)
+    color = F.Parameters.EnumParameter.MakeChild(enum_t=Color)
 
-    def __preinit__(self):
-        self.current.alias_is(self.brightness / self.max_brightness * self.max_current)
-        self.brightness.constrain_le(self.max_brightness)
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-    def set_intensity(self, intensity: ParameterOperatable.NumberLike) -> None:
-        self.brightness.alias_is(intensity * self.max_brightness)
+    _can_attatch_to_footprint = fabll.Traits.MakeEdge(
+        F.Footprints.can_attach_to_footprint.MakeChild()
+    )
 
-    @deprecated(reason="Use PoweredLED instead")
-    def connect_via_current_limiting_resistor(
-        self,
-        input_voltage: ParameterOperatable.NumberLike,
-        resistor: F.Resistor,
-        target: F.Electrical,
-        low_side: bool,
-    ):
-        if low_side:
-            self.cathode.connect_via(resistor, target)
-        else:
-            self.anode.connect_via(resistor, target)
+    designator_prefix = fabll.Traits.MakeEdge(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.D)
+    )
 
-        resistor.resistance.alias_is(
-            self.get_needed_series_resistance_for_current_limit(input_voltage),
+    can_bridge = fabll.Traits.MakeEdge(
+        F.can_bridge.MakeChild(
+            [diode, F.Diode.anode], [diode, F.Diode.cathode]
         )
-        resistor.allow_removal_if_zero()
+    )
 
-    @deprecated(reason="Use PoweredLED instead")
-    def connect_via_current_limiting_resistor_to_power(
-        self, resistor: F.Resistor, power: F.ElectricPower, low_side: bool
-    ):
-        if low_side:
-            self.anode.connect(power.hv)
-        else:
-            self.cathode.connect(power.lv)
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+    # TODO: Implement math and constraints in typegraph
+    # def __preinit__(self):
+    #     self.current.alias_is(self.brightness / self.max_brightness *self.max_current)
+    #     self.brightness.constrain_le(self.max_brightness)
 
-        self.connect_via_current_limiting_resistor(
-            power.voltage,
-            resistor,
-            power.lv if low_side else power.hv,
-            low_side,
+    # def set_intensity(self, intensity: ParameterOperatable.NumberLike) -> None:
+    #     self.brightness.alias_is(intensity * self.max_brightness)
+
+    def on_obj_set(self):
+        S = F.has_simple_value_representation.Spec
+        fabll.Traits.create_and_add_instance_to(
+            node=self, trait=F.has_simple_value_representation
+        ).MakeChild(
+            S(self.max_brightness),
+            S(self.color),
+            S(self.diode.get().forward_voltage, prefix="Vf"),
+            S(self.diode.get().current, prefix="If"),
         )
 
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
-        import LED, Resistor, ElectricPower
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
+            import LED, Resistor, ElectricPower
 
-        led = new LED
-        led.forward_voltage = 2.1V +/- 10%
-        led.current = 1mA +/- 50%
-        led.max_current = 10mA
-        led.color = LED.Color.RED
-        led.brightness = 100mcd
-        led.package = "0603"
+            led = new LED
+            led.forward_voltage = 2.1V +/- 10%
+            led.current = 1mA +/- 50%
+            led.max_current = 10mA
+            led.color = LED.Color.RED
+            led.brightness = 100mcd
+            led.package = "0603"
 
-        # Connect with current limiting resistor
-        res = new Resistor
-        power = new ElectricPower
-        assert power.voltage within 5V +/- 5%
+            # Connect with current limiting resistor
+            res = new Resistor
+            power = new ElectricPower
+            assert power.voltage within 5V +/- 5%
 
-        assert (power.voltage-led.forward_voltage) / res.resistance within led.current
+            assert (power.voltage-led.forward_voltage) / res.resistance within led.current
 
-        power.hv ~> res ~> led ~> power.lv
-        """,
-        language=F.has_usage_example.Language.ato,
+            power.hv ~> res ~> led ~> power.lv
+            """,  # noqa: E501
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

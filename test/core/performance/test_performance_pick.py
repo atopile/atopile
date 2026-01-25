@@ -4,17 +4,16 @@
 import logging
 from itertools import pairwise
 from textwrap import indent
-from typing import Callable
 
 import pytest
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 from faebryk.core.solver.algorithm import get_algorithms
-from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.core.solver.solver import LOG_PICK_SOLVE
+from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import S_LOG, set_log_level
-from faebryk.libs.library import L
 from faebryk.libs.picker.picker import (
     NO_PROGRESS_BAR,
     PickError,
@@ -22,12 +21,7 @@ from faebryk.libs.picker.picker import (
     pick_topologically,
 )
 from faebryk.libs.test.times import Times
-from faebryk.libs.units import P
 from faebryk.libs.util import ConfigFlagInt, indented_container
-from test.common.resources.fabll_modules.RP2040 import RP2040
-from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (
-    RP2040_ReferenceDesign,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -40,38 +34,31 @@ def _setup():
     NO_PROGRESS_BAR.set(True)
 
 
-class _RP2040_Basic(Module):
-    rp2040: RP2040
-    ldo: F.LDO
-    led: F.LED
-
-
 @pytest.mark.slow
 @pytest.mark.usefixtures("setup_project_config")
-@pytest.mark.parametrize(
-    "module_type",
-    [
-        _RP2040_Basic,
-        RP2040_ReferenceDesign,
-        lambda: F.MultiCapacitor(10),
-    ],
-)
-def test_performance_pick_real_module(module_type: Callable[[], Module]):
+def test_performance_pick_real_module():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
     timings = Times()
 
-    app = module_type()
+    class _App(fabll.Node):
+        resistors = [F.Resistor.MakeChild() for _ in range(2)]
+
+    app = _App.bind_typegraph(tg).create_instance(g=g)
     timings.add("construct")
 
-    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
-    timings.add("resolve bus params")
+    # F.is_bus_parameter.resolve_bus_parameters(app.tg)
+    # timings.add("resolve bus params")
 
     pick_tree = get_pick_tree(app)
     timings.add("pick tree")
 
-    solver = DefaultSolver()
+    solver = Solver()
 
-    with timings.as_global("pick"):
-        pick_topologically(pick_tree, solver)
+    # with timings.measure("pick"):
+    pick_topologically(pick_tree, solver)
+    timings.add("pick")
 
     logger.info(f"\n{timings}")
 
@@ -81,52 +68,79 @@ def test_performance_pick_real_module(module_type: Callable[[], Module]):
 def test_performance_pick_rc_formulas():
     _GROUPS = int(GROUPS)
     _GROUP_SIZE = int(GROUP_SIZE)
-    INCREASE = 10 * P.percent
-    TOLERANCE = 20 * P.percent
+    # increase factor: 1.1 +/- 20% = [0.88, 1.32]
+    INCREASE_CENTER = 1.1
+    INCREASE_TOLERANCE = 0.2
 
-    class App(Module):
-        alias_res = L.list_field(_GROUPS, F.Resistor)
-        res = L.list_field(_GROUPS * _GROUP_SIZE, F.Resistor)
+    timings = Times(strategy=Times.Strategy.ALL)
 
-        def __preinit__(self):
-            increase = L.Range.from_center_rel(INCREASE, TOLERANCE) + L.Single(
-                100 * P.percent
-            )
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
 
-            for i in range(_GROUPS):
-                for m1, m2 in pairwise(self.res[i::_GROUPS]):
-                    m2.resistance.constrain_subset(m1.resistance * increase)
-                    # solver doesn't do equation reordering, so we need to reverse
-                    m1.resistance.constrain_subset(m2.resistance / increase)
-                self.alias_res[i].resistance.alias_is(self.res[i].resistance)
+    class _App(fabll.Node):
+        alias_res = [F.Resistor.MakeChild() for _ in range(_GROUPS)]
+        res = [F.Resistor.MakeChild() for _ in range(_GROUPS * _GROUP_SIZE)]
 
-    timings = Times(multi_sample_strategy=Times.MultiSampleStrategy.ALL)
-
-    app = App()
+    app = _App.bind_typegraph(tg).create_instance(g=g)
     timings.add("construct")
 
-    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
-    timings.add("resolve bus params")
+    # Create the increase factor literal (dimensionless)
+    dl_unit = (
+        F.Units.Dimensionless.bind_typegraph(tg).create_instance(g=g).is_unit.get()
+    )
+    increase_lit = (
+        F.Literals.Numbers.bind_typegraph(tg)
+        .create_instance(g=g)
+        .setup_from_center_rel(
+            center=INCREASE_CENTER, rel=INCREASE_TOLERANCE, unit=dl_unit
+        )
+        .can_be_operand.get()
+    )
+
+    # Set up constraints between resistors
+    for i in range(_GROUPS):
+        group_resistors = [
+            app.res[j].get() for j in range(i, _GROUPS * _GROUP_SIZE, _GROUPS)
+        ]
+        for m1, m2 in pairwise(group_resistors):
+            m1_res_op = m1.resistance.get().can_be_operand.get()
+            m2_res_op = m2.resistance.get().can_be_operand.get()
+
+            # m2.resistance in m1.resistance * increase
+            mul_expr = F.Expressions.Multiply.c(m1_res_op, increase_lit)
+            F.Expressions.IsSubset.from_operands(m2_res_op, mul_expr, assert_=True)
+
+            # m1.resistance in m2.resistance / increase (solver doesn't reorder)
+            div_expr = F.Expressions.Divide.c(m2_res_op, increase_lit)
+            F.Expressions.IsSubset.from_operands(m1_res_op, div_expr, assert_=True)
+
+        # alias_res[i].resistance = res[i].resistance
+        alias_res_op = app.alias_res[i].get().resistance.get().can_be_operand.get()
+        first_res_op = group_resistors[0].resistance.get().can_be_operand.get()
+        F.Expressions.Is.from_operands(alias_res_op, first_res_op, assert_=True)
+
+    timings.add("setup constraints")
 
     pick_tree = get_pick_tree(app)
     timings.add("pick tree")
 
-    solver = DefaultSolver()
+    solver = Solver()
     try:
-        with timings.as_global("pick"):
+        with timings.measure("pick"):
             pick_topologically(pick_tree, solver)
     except PickError as e:
         logger.error(f"Error picking: {e.args[0]}")
         params = {
             m.get_full_name(): "\n" + indent(m.pretty_params(solver), prefix="  ")
-            for m in app.get_children_modules(direct_only=True, types=Module)
+            for m in app.get_children(
+                direct_only=True, types=fabll.Node, required_trait=fabll.is_module
+            )
         }
         params = {k: v for k, v in sorted(params.items(), key=lambda t: t[0])}
         logger.info(f"Params:{indented_container(params, use_repr=False)}")
         S_LOG.set(True, force=True)
         LOG_PICK_SOLVE.set(True, force=True)
         set_log_level(logging.DEBUG)
-        solver.update_superset_cache(app)
         # assert False
         return
     finally:
@@ -157,31 +171,49 @@ def test_performance_pick_rc_formulas():
             terminal_str = (
                 "" if terminal is None else "terminal " if terminal else "non-terminal "
             )
-            timings.make_group(
+            timings.group(
                 f"{dirty_str}{terminal_str}algos",
                 lambda k: _is_algo(k, dirty=dirty, terminal=terminal),
             )
 
-        timings.add_seperator()
+        timings.separator()
         for algo in get_algorithms():
-            timings.make_group("Total " + algo.name, lambda k: algo.name + " " in k)
-        timings.add_seperator()
+            timings.group("Total " + algo.name, lambda k: algo.name + " " in k)
+        timings.separator()
         for i in [None, True, False]:
             for j in [None, True, False]:
                 _make_algo_group(dirty=i, terminal=j)
-        timings.add_seperator()
-        timings.make_group(
+        timings.separator()
+        timings.group(
             "mutator setup",
             lambda k: "run_iteration:setup" in k or "run_iteration:close" in k,
         )
-        timings.make_group("backend wait", lambda k: "fetch parts" in k)
-        timings.make_group("solver", lambda k: "algos" == k)
-        logger.info(f"\n{timings.to_str(force_unit='ms')}")
+        timings.group("backend wait", lambda k: "fetch parts" in k)
+        timings.group("solver", lambda k: "algos" == k)
+        logger.info(f"\n{timings.to_str()}")
 
     picked_values = {
-        m.get_full_name(): str(m.resistance.try_get_literal()) for m in app.res
+        m.get().get_full_name(): str(m.get().resistance.get().try_extract_superset())
+        for m in app.res
     }
     logger.info(f"Picked values: {indented_container(picked_values)}")
 
-    pick_time = timings.get_formatted("pick", strat=Times.MultiSampleStrategy.ACC)
+    pick_time = timings.get_formatted("pick", strategy=Times.Strategy.SUM)
     logger.info(f"Pick duration {_GROUPS}x{_GROUP_SIZE}: {pick_time}")
+
+
+if __name__ == "__main__":
+    import tempfile
+    from pathlib import Path
+
+    import typer
+
+    from atopile.config import ProjectConfig, ProjectPaths, config
+
+    with tempfile.TemporaryDirectory() as tmp_path_:
+        tmp_path = Path(tmp_path_)
+        config.project = ProjectConfig.skeleton(
+            entry="", paths=ProjectPaths(build=tmp_path / "build", root=tmp_path)
+        )
+
+        typer.run(test_performance_pick_real_module)

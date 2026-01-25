@@ -1,4 +1,3 @@
-import logging
 from dataclasses import dataclass
 from pathlib import Path
 from textwrap import dedent
@@ -6,9 +5,10 @@ from typing import Literal
 
 from dataclasses_json import DataClassJsonMixin, LetterCase, dataclass_json
 
+from atopile.logging import get_logger
 from faebryk.libs.kicad.paths import get_plugin_paths
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 RESOURCE_DIR = Path(__file__).parent / "resource"
 

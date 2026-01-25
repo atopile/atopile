@@ -26,12 +26,17 @@ const extensionConfig = {
     resolve: {
         // support reading TypeScript and JavaScript files, 📖 -> https://github.com/TypeStrong/ts-loader
         extensions: ['.ts', '.js'],
+        fallback: {
+            bufferutil: false,
+            'utf-8-validate': false,
+        },
     },
     module: {
+        exprContextCritical: false,
         rules: [
             {
                 test: /\.ts$/,
-                exclude: /node_modules/,
+                exclude: [/node_modules/, /dashboard/, /webviews/, /ui-server/],
                 use: [
                     {
                         loader: 'ts-loader',
@@ -41,6 +46,9 @@ const extensionConfig = {
         ],
     },
     devtool: 'source-map',
+    ignoreWarnings: [
+        /vscode-languageserver-types\/lib\/umd\/main\.js/,
+    ],
     infrastructureLogging: {
         level: 'log', // enables logging required for problem matchers
     },

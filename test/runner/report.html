@@ -1,0 +1,1603 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Test Execution Report</title>
+    <style>
+      /* Catppuccin Mocha Palette (Dark) */
+      :root {
+        --ctp-rosewater: #f5e0dc;
+        --ctp-flamingo: #f2cdcd;
+        --ctp-pink: #f5c2e7;
+        --ctp-mauve: #cba6f7;
+        --ctp-red: #f38ba8;
+        --ctp-maroon: #eba0ac;
+        --ctp-peach: #fab387;
+        --ctp-yellow: #f9e2af;
+        --ctp-green: #a6e3a1;
+        --ctp-teal: #94e2d5;
+        --ctp-sky: #89dceb;
+        --ctp-sapphire: #74c7ec;
+        --ctp-blue: #89b4fa;
+        --ctp-lavender: #b4befe;
+        --ctp-text: #cdd6f4;
+        --ctp-subtext1: #bac2de;
+        --ctp-subtext0: #a6adc8;
+        --ctp-overlay2: #9399b2;
+        --ctp-overlay1: #7f849c;
+        --ctp-overlay0: #6c7086;
+        --ctp-surface2: #585b70;
+        --ctp-surface1: #45475a;
+        --ctp-surface0: #313244;
+        --ctp-base: #1e1e2e;
+        --ctp-mantle: #181825;
+        --ctp-crust: #11111b;
+        --modal-bg-overlay: rgba(17, 17, 27, 0.8);
+      }
+
+      /* Catppuccin Latte Palette (Light) */
+      [data-theme="light"] {
+        --ctp-rosewater: #dc8a78;
+        --ctp-flamingo: #dd7878;
+        --ctp-pink: #ea76cb;
+        --ctp-mauve: #8839ef;
+        --ctp-red: #d20f39;
+        --ctp-maroon: #e64553;
+        --ctp-peach: #fe640b;
+        --ctp-yellow: #df8e1d;
+        --ctp-green: #40a02b;
+        --ctp-teal: #179299;
+        --ctp-sky: #04a5e5;
+        --ctp-sapphire: #209fb5;
+        --ctp-blue: #1e66f5;
+        --ctp-lavender: #7287fd;
+        --ctp-text: #4c4f69;
+        --ctp-subtext1: #5c5f77;
+        --ctp-subtext0: #6c6f85;
+        --ctp-overlay2: #7c7f93;
+        --ctp-overlay1: #8c8fa1;
+        --ctp-overlay0: #9ca0b0;
+        --ctp-surface2: #acb0be;
+        --ctp-surface1: #bcc0cc;
+        --ctp-surface0: #ccd0da;
+        --ctp-base: #eff1f5;
+        --ctp-mantle: #e6e9ef;
+        --ctp-crust: #dce0e8;
+        --modal-bg-overlay: rgba(220, 224, 232, 0.8);
+      }
+
+      html {
+        font-size: 12px;
+      }
+
+      body {
+        font-family: sans-serif;
+        margin: 10px;
+        background-color: var(--ctp-base);
+        color: var(--ctp-text);
+      }
+
+      h1 {
+        font-size: 1.5rem;
+        margin-bottom: 10px;
+        color: var(--ctp-text);
+        text-align: center;
+      }
+
+      .summary {
+        margin-bottom: 10px;
+        padding: 8px;
+        background: var(--ctp-mantle);
+        border-radius: 5px;
+        border: 1px solid var(--ctp-surface0);
+        display: flex;
+        align-items: flex-start;
+        gap: 15px;
+      }
+
+      .summary .text-content {
+        line-height: 135%;
+      }
+
+      .progress-bar {
+        width: 100%;
+        background-color: var(--ctp-surface0);
+        border-radius: 5px;
+        overflow: hidden;
+        height: 15px;
+        margin-bottom: 10px;
+      }
+
+      .progress-fill {
+        height: 100%;
+        background-color: var(--ctp-green);
+        transition: width 0.5s;
+        text-align: center;
+        color: var(--ctp-crust);
+        line-height: 15px;
+        font-size: 10px;
+        font-weight: bold;
+      }
+
+      .log-note {
+        font-size: 0.9em;
+        color: var(--ctp-subtext0);
+        margin-bottom: 4px;
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 12px;
+      }
+
+      th,
+      td {
+        border: 1px solid var(--ctp-surface0);
+        padding: 4px;
+        text-align: left;
+      }
+
+      th {
+        background-color: var(--ctp-mantle);
+        cursor: pointer;
+        user-select: none;
+        position: relative;
+        color: var(--ctp-subtext1);
+      }
+
+      th:hover {
+        background-color: var(--ctp-surface0);
+      }
+
+      .passed {
+        color: var(--ctp-green);
+      }
+
+      .failed {
+        color: var(--ctp-red);
+        font-weight: bold;
+      }
+
+      .error {
+        color: var(--ctp-maroon);
+        font-weight: bold;
+      }
+
+      .crashed {
+        color: var(--ctp-mauve);
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+
+      .skipped {
+        color: var(--ctp-yellow);
+      }
+
+      .running {
+        color: var(--ctp-blue);
+      }
+
+      .queued {
+        color: var(--ctp-overlay1);
+        font-style: italic;
+      }
+
+      tr.row-passed {
+        background-color: rgba(166, 227, 161, 0.1);
+      }
+
+      tr.row-failed {
+        background-color: rgba(243, 139, 168, 0.15);
+      }
+
+      tr.row-error {
+        background-color: rgba(235, 160, 172, 0.15);
+      }
+
+      tr.row-crashed {
+        background-color: rgba(203, 166, 247, 0.15);
+      }
+
+      tr.row-skipped {
+        background-color: rgba(249, 226, 175, 0.1);
+      }
+
+      tr.row-running {
+        background-color: rgba(137, 180, 250, 0.15);
+      }
+
+      tr.row-queued {
+        background-color: var(--ctp-mantle);
+      }
+
+      tr:hover {
+        background-color: var(--ctp-surface0);
+      }
+
+      /* Regression highlighting - more prominent */
+      tr.row-regression {
+        background-color: rgba(243, 139, 168, 0.3) !important;
+        border-left: 3px solid var(--ctp-red);
+      }
+
+      /* New test highlighting */
+      tr.row-new {
+        background-color: rgba(137, 180, 250, 0.3) !important;
+        border-left: 3px solid var(--ctp-blue);
+      }
+
+      /* Fixed test highlighting */
+      tr.row-fixed {
+        background-color: rgba(166, 227, 161, 0.3) !important;
+        border-left: 3px solid var(--ctp-green);
+      }
+
+      .controls {
+        margin-bottom: 5px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .filter-input {
+        padding: 3px;
+        width: 200px;
+        background-color: var(--ctp-surface0);
+        border: 1px solid var(--ctp-surface1);
+        color: var(--ctp-text);
+        border-radius: 3px;
+      }
+
+      .filter-input::placeholder {
+        color: var(--ctp-overlay0);
+      }
+
+      .filter-input:focus {
+        outline: none;
+        border-color: var(--ctp-lavender);
+      }
+
+      .table-filter {
+        width: 100%;
+        padding: 4px 6px;
+        font-size: 11px;
+        box-sizing: border-box;
+      }
+
+      .search-row th {
+        padding: 2px 4px;
+        background-color: var(--ctp-surface0);
+        border: 1px solid var(--ctp-surface1);
+      }
+
+      .search-row th:hover {
+        background-color: var(--ctp-surface0);
+        cursor: default;
+      }
+
+      .outcome-filters {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+      }
+
+      .outcome-filters label {
+        cursor: pointer;
+        color: var(--ctp-subtext0);
+      }
+
+      .sort-indicator {
+        margin-left: 5px;
+      }
+
+      .log-match {
+        background-color: var(--ctp-yellow);
+        color: var(--ctp-crust);
+        font-weight: bold;
+      }
+
+      .error-cell {
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 11px;
+        color: var(--ctp-red);
+      }
+
+      .skip-cell {
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 11px;
+        color: var(--ctp-yellow);
+      }
+
+      /* Comparison status styles */
+      .compare-regression {
+        color: var(--ctp-red);
+        font-weight: bold;
+        font-size: 11px;
+      }
+
+      .compare-fixed {
+        color: var(--ctp-green);
+        font-weight: bold;
+        font-size: 11px;
+      }
+
+      .compare-new {
+        color: var(--ctp-blue);
+        font-size: 11px;
+      }
+
+      .compare-same {
+        color: var(--ctp-overlay1);
+        font-size: 11px;
+      }
+
+      .compare-na {
+        color: var(--ctp-overlay0);
+        font-size: 11px;
+      }
+
+      /* Baseline info */
+      .baseline-error {
+        color: var(--ctp-yellow);
+      }
+
+      /* Comparison summary badges */
+      .compare-badge {
+        display: inline-block;
+        padding: 1px 6px;
+        border-radius: 3px;
+        font-size: 11px;
+        margin-left: 4px;
+      }
+
+      .badge-regression {
+        background-color: rgba(243, 139, 168, 0.3);
+        color: var(--ctp-red);
+      }
+
+      .badge-fixed {
+        background-color: rgba(166, 227, 161, 0.3);
+        color: var(--ctp-green);
+      }
+
+      .badge-new {
+        background-color: rgba(137, 180, 250, 0.3);
+        color: var(--ctp-blue);
+      }
+
+      /* Modal styles */
+      .modal {
+        display: none;
+        position: fixed;
+        z-index: 1;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: var(--modal-bg-overlay);
+      }
+
+      .modal.modal-foreground {
+        z-index: 2;
+      }
+
+      .modal-content {
+        background-color: var(--ctp-mantle);
+        margin: 2% auto;
+        padding: 15px;
+        border: 1px solid var(--ctp-surface1);
+        width: 95%;
+        max-width: 1400px;
+        max-height: 92vh;
+        overflow-y: auto;
+        border-radius: 8px;
+      }
+
+      .log-section {
+        margin-bottom: 12px;
+      }
+
+      .log-section h3 {
+        margin: 0 0 6px 0;
+        font-size: 12px;
+        color: var(--ctp-subtext1);
+        position: sticky;
+        top: 0;
+        background: var(--ctp-mantle);
+        padding: 4px 0;
+      }
+
+      .hotkey-list {
+        margin: 0;
+        padding-left: 16px;
+        font-size: 12px;
+        color: var(--ctp-text);
+      }
+
+      .hotkey-list li {
+        margin: 4px 0;
+      }
+
+      .hotkey-section {
+        margin-bottom: 12px;
+      }
+
+      .hotkey-sections {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+
+      .hotkey-section {
+        flex: 1 1 220px;
+        min-width: 220px;
+      }
+
+      .hotkey-section h3 {
+        margin: 0 0 6px 0;
+        font-size: 12px;
+        color: var(--ctp-subtext1);
+      }
+
+      .hotkey-key {
+        font-family: monospace;
+        background: var(--ctp-surface0);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 3px;
+        padding: 1px 4px;
+      }
+
+      pre {
+        background: var(--ctp-crust);
+        padding: 8px;
+        overflow: auto;
+        white-space: pre-wrap;
+        font-size: 11px;
+        color: var(--ctp-text);
+        border-radius: 4px;
+        border: 1px solid var(--ctp-surface0);
+        max-height: 75vh;
+        margin: 0;
+      }
+
+      button {
+        font-size: 11px;
+        padding: 2px 8px;
+        background-color: var(--ctp-surface0);
+        color: var(--ctp-text);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 3px;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background-color: var(--ctp-surface1);
+      }
+
+      /* Stream log link in table cells */
+      .stream-link {
+        display: inline-block;
+        text-decoration: none;
+        font-size: 14px;
+        margin-right: 4px;
+        opacity: 0.7;
+        vertical-align: middle;
+      }
+
+      .stream-link:hover {
+        opacity: 1;
+      }
+
+      /* Modal header layout */
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--ctp-surface0);
+      }
+
+      .modal-header h2 {
+        margin: 0;
+        font-size: 14px;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .modal-buttons {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      /* Copy button styles */
+      .copy-btn {
+        padding: 4px 12px;
+        font-size: 12px;
+      }
+
+      .copy-btn.copied {
+        background-color: var(--ctp-green);
+        color: var(--ctp-crust);
+      }
+
+      .close-btn {
+        font-size: 20px;
+        font-weight: bold;
+        cursor: pointer;
+        color: var(--ctp-overlay1);
+        background: none;
+        border: none;
+        padding: 0 4px;
+      }
+
+      .close-btn:hover {
+        color: var(--ctp-text);
+      }
+
+      /* Scrollbar styling */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: var(--ctp-mantle);
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: var(--ctp-surface1);
+        border-radius: 4px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--ctp-surface2);
+      }
+
+      /* Links */
+      a {
+        color: var(--ctp-blue);
+      }
+
+      a:hover {
+        color: var(--ctp-sky);
+      }
+
+      /* Code elements */
+      code {
+        background-color: var(--ctp-surface0);
+        padding: 2px 4px;
+        border-radius: 3px;
+        color: var(--ctp-peach);
+      }
+
+      /* Strong/bold text */
+      strong {
+        color: var(--ctp-text);
+      }
+
+      /* Emphasis */
+      em {
+        color: var(--ctp-subtext0);
+      }
+
+      /* Checkbox styling */
+      input[type="checkbox"] {
+        accent-color: var(--ctp-lavender);
+      }
+
+      /* Logo styling */
+      .logo-container {
+        margin-left: auto;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+      }
+
+      .logo-container img {
+        max-height: 100%;
+        width: auto;
+        height: auto;
+        border-radius: 8px;
+        background-color: var(--ctp-mantle);
+        padding: 4px;
+        border: 1px solid var(--ctp-surface0);
+        object-fit: contain;
+      }
+
+      /* Theme toggle button */
+      .theme-toggle {
+        position: static;
+        margin-left: 8px;
+        font-size: 11px;
+        background-color: var(--ctp-surface0);
+        color: var(--ctp-text);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 3px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: background-color 0.2s;
+      }
+
+      .theme-toggle:hover {
+        background-color: var(--ctp-surface1);
+      }
+
+      .theme-toggle .icon {
+        font-size: 16px;
+      }
+
+      /* Logs button */
+      .logs-btn {
+        margin-left: 8px;
+        padding: 4px 10px;
+        font-size: 11px;
+        background-color: var(--ctp-surface0);
+        color: var(--ctp-text);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 3px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        transition: background-color 0.2s;
+        text-decoration: none;
+      }
+
+      .logs-btn:hover {
+        background-color: var(--ctp-surface1);
+      }
+
+      .logs-btn .icon {
+        font-size: 14px;
+      }
+
+      /* Baseline selector dropdown */
+      .baseline-selector {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: auto;
+      }
+
+      .baseline-selector label {
+        color: var(--ctp-subtext0);
+        font-size: 11px;
+      }
+
+      .baseline-selector select {
+        padding: 4px 8px;
+        font-size: 11px;
+        background-color: var(--ctp-surface0);
+        color: var(--ctp-text);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 3px;
+        cursor: pointer;
+        min-width: 150px;
+      }
+
+      .baseline-selector select:hover {
+        background-color: var(--ctp-surface1);
+      }
+
+      .baseline-selector select:focus {
+        outline: none;
+        border-color: var(--ctp-lavender);
+      }
+
+      .baseline-status {
+        font-size: 10px;
+        color: var(--ctp-overlay1);
+      }
+
+      .baseline-status.loading {
+        color: var(--ctp-yellow);
+      }
+
+      .baseline-status.error {
+        color: var(--ctp-red);
+      }
+
+      .baseline-status.success {
+        color: var(--ctp-green);
+      }
+    </style>
+    <script>
+      var currentSortColumn = -1;
+      var currentSortDir = "asc";
+
+      // Theme handling
+      function getSystemTheme() {
+        return window.matchMedia("(prefers-color-scheme: light)").matches
+          ? "light"
+          : "dark";
+      }
+
+      function getStoredTheme() {
+        return localStorage.getItem("theme");
+      }
+
+      function setStoredTheme(theme) {
+        localStorage.setItem("theme", theme);
+      }
+
+      function applyTheme(theme) {
+        if (theme === "light") {
+          document.documentElement.setAttribute("data-theme", "light");
+        } else {
+          document.documentElement.removeAttribute("data-theme");
+        }
+        updateThemeButton(theme);
+      }
+
+      function updateThemeButton(theme) {
+        var btn = document.getElementById("themeToggle");
+        if (btn) {
+          var icon = btn.querySelector(".icon");
+          var text = btn.querySelector(".text");
+          if (theme === "light") {
+            icon.textContent = "\u263E"; // Moon symbol
+            text.textContent = "Dark";
+          } else {
+            icon.textContent = "\u2600"; // Sun symbol
+            text.textContent = "Light";
+          }
+        }
+      }
+
+      function toggleTheme() {
+        var currentTheme = document.documentElement.hasAttribute("data-theme")
+          ? "light"
+          : "dark";
+        var newTheme = currentTheme === "light" ? "dark" : "light";
+        applyTheme(newTheme);
+        setStoredTheme(newTheme);
+      }
+
+      function initTheme() {
+        var storedTheme = getStoredTheme();
+        var theme = storedTheme || getSystemTheme();
+        applyTheme(theme);
+
+        // Listen for system theme changes (only if user hasn't set preference)
+        window
+          .matchMedia("(prefers-color-scheme: light)")
+          .addEventListener("change", function (e) {
+            if (!getStoredTheme()) {
+              applyTheme(e.matches ? "light" : "dark");
+            }
+          });
+      }
+
+      // Initialize theme immediately to prevent flash
+      initTheme();
+
+      document.addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll(".outcome-filter").forEach((cb) => {
+          cb.addEventListener("change", filterTable);
+        });
+        var deltaOnly = document.getElementById("deltaOnly");
+        if (deltaOnly) {
+          deltaOnly.addEventListener("change", filterTable);
+        }
+
+        // Initialize theme button state
+        var currentTheme = document.documentElement.hasAttribute("data-theme")
+          ? "light"
+          : "dark";
+        updateThemeButton(currentTheme);
+
+        // Scale logo to match text content height
+        scaleLogoToText();
+
+        // Apply initial filter state
+        filterTable();
+
+        // Start polling if running
+        setInterval(checkAndReload, 2000);
+      });
+
+      function scaleLogoToText() {
+        var textContent = document.querySelector(".text-content");
+        var logoContainer = document.querySelector(".logo-container");
+
+        if (textContent && logoContainer) {
+          var textHeight = textContent.offsetHeight;
+          logoContainer.style.height = textHeight + "px";
+        }
+      }
+
+      async function checkAndReload() {
+        // Don't reload if any modal is open
+        if (document.querySelector('.modal[style*="block"]')) return;
+
+        var statusElement = document.getElementById("status-text");
+        if (!statusElement) return;
+        var statusText = statusElement.innerText;
+        if (!statusText.includes("Running")) return;
+
+        try {
+          var url =
+            window.location.href.split("?")[0] + "?t=" + new Date().getTime();
+          var response = await fetch(url);
+          var text = await response.text();
+          var parser = new DOMParser();
+          var doc = parser.parseFromString(text, "text/html");
+
+          // Update Summary
+          var newSummary = doc.querySelector(".summary");
+          if (newSummary)
+            document.querySelector(".summary").innerHTML = newSummary.innerHTML;
+
+          // Update Progress
+          var newProgress = doc.querySelector(".progress-bar");
+          if (newProgress)
+            document.querySelector(".progress-bar").innerHTML =
+              newProgress.innerHTML;
+
+          // Update Timestamp
+          var newTimestamp = doc.getElementById("timestamp");
+          if (newTimestamp)
+            document.getElementById("timestamp").innerText =
+              newTimestamp.innerText;
+
+          // Update Table Body
+          var newTbody = doc.querySelector("#testTable tbody");
+          if (newTbody) {
+            document.querySelector("#testTable tbody").innerHTML =
+              newTbody.innerHTML;
+
+            // Re-apply filter
+            filterTable();
+
+            // Re-apply sort if active
+            if (currentSortColumn !== -1) {
+              sortGrid(currentSortColumn, currentSortDir);
+            }
+
+            // Rescale logo to match updated text content
+            scaleLogoToText();
+          }
+        } catch (e) {
+          console.error("Failed to reload", e);
+        }
+      }
+
+      /**
+       * Create a search matcher that supports both plain text and regex
+       * @param {string} pattern - The search pattern (plain text or regex)
+       * @returns {function(string): boolean} - Function that tests if text matches
+       */
+      function createSearchMatcher(pattern) {
+        if (!pattern || pattern === "") {
+          return function () {
+            return true;
+          };
+        }
+
+        // Try to compile as regex first
+        try {
+          var regex = new RegExp(pattern, "i");
+          return function (text) {
+            return regex.test(text);
+          };
+        } catch (e) {
+          // If regex compilation fails, fall back to case-insensitive substring match
+          var upperPattern = pattern.toUpperCase();
+          return function (text) {
+            return text.toUpperCase().indexOf(upperPattern) > -1;
+          };
+        }
+      }
+
+      function filterTable() {
+        var input = document.getElementById("searchInput");
+        var generalMatcher = createSearchMatcher(input.value);
+
+        var functionInput = document.getElementById("functionSearchInput");
+        var functionMatcher = createSearchMatcher(functionInput.value);
+
+        var logInput = document.getElementById("logSearchInput");
+        var logMatcher = createSearchMatcher(logInput.value);
+        var hasLogFilter = logInput.value !== "";
+
+        var deltaOnlyCb = document.getElementById("deltaOnly");
+        var deltaOnly = deltaOnlyCb && deltaOnlyCb.checked ? true : false;
+
+        var table = document.getElementById("testTable");
+        var tbody = table.getElementsByTagName("tbody")[0];
+        var tr = tbody.getElementsByTagName("tr");
+
+        var checkedOutcomes = Array.from(
+          document.querySelectorAll(".outcome-filter:checked")
+        ).map((cb) => cb.value);
+
+        for (var i = 0; i < tr.length; i++) {
+          var textMatch = false;
+          // Search in File(0), Class(1), Function(2), Params(3)
+          for (var j = 0; j < 4; j++) {
+            var td = tr[i].getElementsByTagName("td")[j];
+            if (td) {
+              var txtValue = td.textContent || td.innerText;
+              if (generalMatcher(txtValue)) {
+                textMatch = true;
+                break;
+              }
+            }
+          }
+
+          var functionMatch = false;
+          // Search only in Function column (index 2)
+          td = tr[i].getElementsByTagName("td")[2];
+          if (td) {
+            txtValue = td.textContent || td.innerText;
+            functionMatch = functionMatcher(txtValue);
+          } else {
+            functionMatch = functionMatcher("");
+          }
+
+          var logMatch = false;
+          var logButton = tr[i].querySelector("button");
+
+          if (!hasLogFilter) {
+            logMatch = true;
+            if (logButton) logButton.classList.remove("log-match");
+          } else {
+            // Logs are in the modal div inside the row
+            var modalDiv = tr[i].querySelector(".modal-content");
+            if (modalDiv) {
+              var logText = modalDiv.textContent || modalDiv.innerText;
+              logMatch = logMatcher(logText);
+              if (logMatch && logButton) {
+                logButton.classList.add("log-match");
+              } else if (logButton) {
+                logButton.classList.remove("log-match");
+              }
+            } else {
+              logMatch = logMatcher("");
+            }
+          }
+
+          var outcomeMatch = false;
+          // Outcome is column 4
+          td = tr[i].getElementsByTagName("td")[4];
+          if (td) {
+            var outcomeClass = td.className;
+            if (checkedOutcomes.includes(outcomeClass)) {
+              outcomeMatch = true;
+            }
+          }
+
+          var deltaMatch = true;
+          if (deltaOnly) {
+            deltaMatch =
+              tr[i].classList.contains("row-regression") ||
+              tr[i].classList.contains("row-new") ||
+              tr[i].classList.contains("row-fixed");
+          }
+
+          if (
+            textMatch &&
+            functionMatch &&
+            outcomeMatch &&
+            logMatch &&
+            deltaMatch
+          ) {
+            tr[i].style.display = "";
+          } else {
+            tr[i].style.display = "none";
+          }
+        }
+      }
+
+      function sortTable(n) {
+        var dir = "asc";
+        if (currentSortColumn === n && currentSortDir === "asc") {
+          dir = "desc";
+        }
+
+        currentSortColumn = n;
+        currentSortDir = dir;
+        sortGrid(n, dir);
+      }
+
+      function sortGrid(n, dir) {
+        var table = document.getElementById("testTable");
+        var tbody = table.getElementsByTagName("tbody")[0];
+        var rows = Array.from(tbody.getElementsByTagName("tr"));
+
+        rows.sort(function (rowA, rowB) {
+          var x = rowA.getElementsByTagName("TD")[n];
+          var y = rowB.getElementsByTagName("TD")[n];
+
+          var xVal = x.textContent.toLowerCase().trim();
+          var yVal = y.textContent.toLowerCase().trim();
+
+          // Numeric sort for Duration (column 6), Memory (column 7), Peak Memory (column 8)
+          if (n === 6 || n === 7 || n === 8) {
+            // Use data-value attribute if present, otherwise parse text
+            var xAttr = x.getAttribute("data-value");
+            var yAttr = y.getAttribute("data-value");
+
+            var xNum = xAttr ? parseFloat(xAttr) : parseFloat(xVal) || 0;
+            var yNum = yAttr ? parseFloat(yAttr) : parseFloat(yVal) || 0;
+            return dir === "asc" ? xNum - yNum : yNum - xNum;
+          }
+
+          if (xVal < yVal) return dir === "asc" ? -1 : 1;
+          if (xVal > yVal) return dir === "asc" ? 1 : -1;
+          return 0;
+        });
+
+        var fragment = document.createDocumentFragment();
+        rows.forEach(function (row) {
+          fragment.appendChild(row);
+        });
+        tbody.appendChild(fragment);
+
+        // Get headers from the second row (index 1) which contains the actual column headers
+        var thead = table.getElementsByTagName("thead")[0];
+        var headerRows = thead.getElementsByTagName("tr");
+        var headerRow = headerRows.length > 1 ? headerRows[1] : headerRows[0];
+        var headers = headerRow.getElementsByTagName("th");
+
+        for (var j = 0; j < headers.length; j++) {
+          var text = headers[j].innerText.replace(" ▲", "").replace(" ▼", "");
+          headers[j].innerText = text;
+        }
+
+        if (n < headers.length) {
+          headers[n].innerText += dir === "asc" ? " ▲" : " ▼";
+        }
+      }
+
+      function openModal(id) {
+        document.getElementById(id).style.display = "block";
+      }
+
+      function closeModal(id) {
+        document.getElementById(id).style.display = "none";
+      }
+
+      function closeAllModals() {
+        var modals = document.querySelectorAll(".modal");
+        modals.forEach(function (modal) {
+          if (modal.style.display === "block") {
+            modal.style.display = "none";
+          }
+        });
+      }
+
+      function closeHotkeyModal() {
+        var modal = document.getElementById("hotkeyModal");
+        if (modal) {
+          modal.style.display = "none";
+        }
+      }
+
+      function toggleHotkeyModal() {
+        var modal = document.getElementById("hotkeyModal");
+        if (!modal) return;
+        if (modal.style.display === "block") {
+          modal.style.display = "none";
+          return;
+        }
+        closeAllModals();
+        modal.style.display = "block";
+      }
+
+      function copyLogs(modalId) {
+        var modal = document.getElementById(modalId);
+        var pres = modal.querySelectorAll("pre");
+        var text = "";
+        pres.forEach(function (pre) {
+          text += pre.textContent + "\\n\\n";
+        });
+        navigator.clipboard.writeText(text.trim()).then(function () {
+          var btn = modal.querySelector(".copy-btn");
+          btn.textContent = "Copied!";
+          btn.classList.add("copied");
+          setTimeout(function () {
+            btn.textContent = "Copy";
+            btn.classList.remove("copied");
+          }, 2000);
+        });
+      }
+
+      window.onclick = function (event) {
+        if (event.target.className == "modal") {
+          event.target.style.display = "none";
+        }
+      };
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+          var openModals = document.querySelectorAll('.modal[style*="block"]');
+          openModals.forEach(function (modal) {
+            modal.style.display = "none";
+          });
+        }
+      });
+
+      function isTextInputTarget(target) {
+        if (!target) return false;
+        var tag = target.tagName;
+        return (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          target.isContentEditable
+        );
+      }
+
+      function toggleFilterByValue(value) {
+        var checkbox = document.querySelector(
+          '.outcome-filter[value="' + value + '"]'
+        );
+        if (!checkbox) return;
+        checkbox.checked = !checkbox.checked;
+        filterTable();
+      }
+
+      function toggleDeltaOnly() {
+        var deltaOnlyCb = document.getElementById("deltaOnly");
+        if (!deltaOnlyCb) return;
+        deltaOnlyCb.checked = !deltaOnlyCb.checked;
+        filterTable();
+      }
+
+      function getVisibleLogModals() {
+        var rows = document.querySelectorAll("#testTable tbody tr");
+        var modals = [];
+        rows.forEach(function (row) {
+          if (row.style.display === "none") return;
+          var modal = row.querySelector(".modal");
+          if (modal) modals.push(modal);
+        });
+        return modals;
+      }
+
+      var lastLogModalIndex = -1;
+
+      function getOpenLogModalIndex(modals) {
+        var openModal = document.querySelector('.modal[style*="block"]');
+        return modals.indexOf(openModal);
+      }
+
+      function getPreferredLogModalIndex(modals) {
+        if (lastLogModalIndex >= 0 && lastLogModalIndex < modals.length) {
+          return lastLogModalIndex;
+        }
+        return modals.length ? 0 : -1;
+      }
+
+      function showLogModalAtIndex(modals, index) {
+        closeHotkeyModal();
+        modals.forEach(function (modal) {
+          modal.style.display = "none";
+        });
+        modals[index].style.display = "block";
+        lastLogModalIndex = index;
+      }
+
+      function cycleLogModal(direction) {
+        var modals = getVisibleLogModals();
+        if (!modals.length) return;
+
+        var currentIndex = getOpenLogModalIndex(modals);
+        if (currentIndex === -1) {
+          currentIndex = getPreferredLogModalIndex(modals);
+        }
+        var nextIndex;
+
+        if (direction > 0) {
+          nextIndex =
+            currentIndex === -1 ? 0 : (currentIndex + 1) % modals.length;
+        } else {
+          nextIndex =
+            currentIndex === -1
+              ? modals.length - 1
+              : (currentIndex - 1 + modals.length) % modals.length;
+        }
+
+        showLogModalAtIndex(modals, nextIndex);
+      }
+
+      function toggleLogModal() {
+        var modals = getVisibleLogModals();
+        if (!modals.length) return;
+        var openIndex = getOpenLogModalIndex(modals);
+        if (openIndex !== -1) {
+          lastLogModalIndex = openIndex;
+          modals[openIndex].style.display = "none";
+          return;
+        }
+        var nextIndex = getPreferredLogModalIndex(modals);
+        if (nextIndex === -1) return;
+        showLogModalAtIndex(modals, nextIndex);
+      }
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") return;
+        if (isTextInputTarget(event.target)) return;
+        if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+          return;
+        }
+
+        var key = event.key.toLowerCase();
+        if (key === "d") return toggleDeltaOnly();
+        if (key === "p") return toggleFilterByValue("passed");
+        if (key === "f") return toggleFilterByValue("failed");
+        if (key === "e") return toggleFilterByValue("error");
+        if (key === "c") return toggleFilterByValue("crashed");
+        if (key === "s") return toggleFilterByValue("skipped");
+        if (key === "r") return toggleFilterByValue("running");
+        if (key === "q") return toggleFilterByValue("queued");
+        if (key === "l") return toggleLogModal();
+        if (key === "k") return cycleLogModal(1);
+        if (key === "j") return cycleLogModal(-1);
+        if (key === "h") return toggleHotkeyModal();
+      });
+
+      // Baseline selector functionality
+      var availableBaselines = [[baselines_json]];
+      var currentBaseline = "[[current_baseline]]";
+      var currentBaselineInfo = "[[current_baseline_info]]";
+
+      function populateBaselineDropdown() {
+        var select = document.getElementById("baselineSelect");
+        if (!select) return;
+
+        // Clear ALL children (options and optgroups)
+        while (select.firstChild) {
+          select.removeChild(select.firstChild);
+        }
+
+        // Add default option showing current baseline
+        var defaultOption = document.createElement("option");
+        defaultOption.value = "";
+        defaultOption.textContent = currentBaselineInfo || "-- No baseline --";
+        if (!currentBaseline) {
+          defaultOption.selected = true;
+        }
+        select.appendChild(defaultOption);
+
+        // Add local baselines
+        if (availableBaselines && availableBaselines.length > 0) {
+          var optgroup = document.createElement("optgroup");
+          optgroup.label = "Local Baselines";
+
+          availableBaselines.forEach(function (baseline) {
+            var option = document.createElement("option");
+            option.value = "local:" + baseline.name;
+            option.textContent =
+              baseline.name +
+              " (" +
+              (baseline.tests_total || "?") +
+              " tests)";
+            if (currentBaseline === "local:" + baseline.name) {
+              option.selected = true;
+            }
+            optgroup.appendChild(option);
+          });
+
+          select.appendChild(optgroup);
+        }
+      }
+
+      async function loadBaselines() {
+        try {
+          var response = await fetch("/api/baselines");
+          var data = await response.json();
+          if (data.baselines) {
+            availableBaselines = data.baselines;
+            populateBaselineDropdown();
+          }
+        } catch (e) {
+          console.log("Could not load baselines (likely static file)", e);
+        }
+      }
+
+      async function changeBaseline() {
+        var select = document.getElementById("baselineSelect");
+        var status = document.getElementById("baselineStatus");
+        var value = select.value;
+
+        if (!value) {
+          return;
+        }
+
+        if (status) {
+          status.textContent = "Loading...";
+          status.className = "baseline-status loading";
+        }
+
+        try {
+          var response = await fetch("/api/change-baseline", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ baseline: value }),
+          });
+          var data = await response.json();
+
+          if (data.success) {
+            if (status) {
+              status.textContent = "Reloading...";
+              status.className = "baseline-status success";
+            }
+            // Reload the page to show updated report
+            setTimeout(function () {
+              location.reload();
+            }, 500);
+          } else {
+            if (status) {
+              status.textContent = data.error || "Error";
+              status.className = "baseline-status error";
+            }
+          }
+        } catch (e) {
+          if (status) {
+            status.textContent = "Failed to change baseline";
+            status.className = "baseline-status error";
+          }
+          console.error("Failed to change baseline", e);
+        }
+      }
+
+      // Load baselines on page load (only works with live server)
+      document.addEventListener("DOMContentLoaded", function () {
+        populateBaselineDropdown();
+        loadBaselines();
+      });
+    </script>
+  </head>
+  <body>
+    <div id="hotkeyModal" class="modal modal-foreground">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Help</h2>
+          <div class="modal-buttons">
+            <button class="close-btn" onclick="closeModal('hotkeyModal')">
+              &times;
+            </button>
+          </div>
+        </div>
+        <div class="hotkey-sections">
+          <div class="hotkey-section">
+            <h3>Filters</h3>
+            <ul class="hotkey-list">
+              <li>
+                <span class="hotkey-key">d</span> Toggle filter [Delta only]
+              </li>
+              <li><span class="hotkey-key">p</span> Toggle filter [Passed]</li>
+              <li><span class="hotkey-key">f</span> Toggle filter [Failed]</li>
+              <li><span class="hotkey-key">e</span> Toggle filter [Error]</li>
+              <li><span class="hotkey-key">c</span> Toggle filter [Crashed]</li>
+              <li><span class="hotkey-key">s</span> Toggle filter [Skipped]</li>
+              <li><span class="hotkey-key">r</span> Toggle filter [Running]</li>
+              <li><span class="hotkey-key">q</span> Toggle filter [Queued]</li>
+            </ul>
+          </div>
+          <div class="hotkey-section">
+            <h3>Logs</h3>
+            <ul class="hotkey-list">
+              <li><span class="hotkey-key">l</span> Toggle log popup</li>
+            </ul>
+          </div>
+          <div class="hotkey-section">
+            <h3>Move</h3>
+            <ul class="hotkey-list">
+              <li><span class="hotkey-key">k</span> Next log</li>
+              <li><span class="hotkey-key">j</span> Previous log</li>
+            </ul>
+          </div>
+          <div class="hotkey-section">
+            <h3>Other</h3>
+            <ul class="hotkey-list">
+              <li><span class="hotkey-key">h</span> Show help</li>
+              <li><span class="hotkey-key">esc</span> Close popups</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    <h1>Test Execution Report</h1>
+
+    <div class="summary">
+      <div class="text-content">
+        <span id="status-text"><strong>Status:</strong> [[status]]</span> <br />
+        <strong>Workers:</strong> [[workers_active]] active / [[workers_total]]
+        total <br />
+        <strong>Duration:</strong> [[total_duration]] <br />
+        <strong>Sum Duration:</strong> [[total_summed_duration]] <br />
+        <strong>Total Memory:</strong> [[total_memory]] <br />
+        <strong>Updated at:</strong> [[finishing_time]] <br />
+        <strong>Passed:</strong> <span class="passed">[[passed]]</span> |
+        <strong>Failed:</strong> <span class="failed">[[failed]]</span> |
+        <strong>Errors:</strong> <span class="error">[[errors]]</span> |
+        <strong>Crashed:</strong> <span class="crashed">[[crashed]]</span> |
+        <strong>Skipped:</strong> <span class="skipped">[[skipped]]</span> |
+        <strong>Running:</strong> <span class="running">[[running]]</span> |
+        <strong>Queued:</strong> <span class="queued">[[remaining]]</span>
+        <br />
+        <strong>Comparison:</strong>
+        <span class="compare-badge badge-regression"
+          >[[regressions]] regressions</span
+        >
+        <span class="compare-badge badge-fixed">[[fixed]] fixed</span>
+        <span class="compare-badge badge-new">[[new_tests]] new</span>
+        [[baseline_info_html]] [[commit_info_html]] [[ci_info_html]]
+      </div>
+      <div class="logo-container">
+        <img
+          src="../src/vscode-atopile/ato_logo_256x256.png"
+          alt="Atopile Logo"
+        />
+      </div>
+    </div>
+
+    <div class="progress-bar">
+      <div class="progress-fill" style="width: [[progress_percent]]%">
+        [[progress_percent]]%
+      </div>
+    </div>
+
+    <div class="controls">
+      <label
+        ><input type="checkbox" id="deltaOnly" onchange="filterTable()" checked /> Delta
+        only</label
+      >
+      <div class="outcome-filters">
+        <label
+          ><input
+            type="checkbox"
+            class="outcome-filter"
+            value="passed"
+          />
+          Passed</label
+        >
+        <label
+          ><input
+            type="checkbox"
+            class="outcome-filter"
+            value="failed"
+            checked
+          />
+          Failed</label
+        >
+        <label
+          ><input
+            type="checkbox"
+            class="outcome-filter"
+            value="error"
+            checked
+          />
+          Error</label
+        >
+        <label
+          ><input
+            type="checkbox"
+            class="outcome-filter"
+            value="crashed"
+            checked
+          />
+          Crashed</label
+        >
+        <label
+          ><input
+            type="checkbox"
+            class="outcome-filter"
+            value="skipped"
+          />
+          Skipped</label
+        >
+        <label
+          ><input
+            type="checkbox"
+            class="outcome-filter"
+            value="running"
+          />
+          Running</label
+        >
+        <label
+          ><input
+            type="checkbox"
+            class="outcome-filter"
+            value="queued"
+          />
+          Queued</label
+        >
+      </div>
+      <div class="baseline-selector">
+        <label for="baselineSelect">Baseline:</label>
+        <select id="baselineSelect" onchange="changeBaseline()">
+        </select>
+        <span id="baselineStatus" class="baseline-status"></span>
+      </div>
+      <a id="logsBtn" class="logs-btn" href="/logs?test_run_id=[[test_run_id]]" target="_blank" title="View test logs">
+        <span class="icon">&#128203;</span>
+        <span class="text">Logs</span>
+      </a>
+      <button id="themeToggle" class="theme-toggle" onclick="toggleTheme()">
+        <span class="icon">&#9728;</span>
+        <span class="text">Light</span>
+      </button>
+    </div>
+
+    <table id="testTable">
+      <thead>
+        <tr class="search-row">
+          <th>
+            <input
+              type="text"
+              id="searchInput"
+              onkeyup="filterTable()"
+              placeholder="Search File..."
+              class="filter-input table-filter"
+            />
+          </th>
+          <th></th>
+          <th>
+            <input
+              type="text"
+              id="functionSearchInput"
+              onkeyup="filterTable()"
+              placeholder="Search Function..."
+              class="filter-input table-filter"
+            />
+          </th>
+          <th></th>
+          <th></th>
+          <th></th>
+          <th></th>
+          <th></th>
+          <th></th>
+          <th></th>
+          <th></th>
+          <th>
+            <input
+              type="text"
+              id="logSearchInput"
+              onkeyup="filterTable()"
+              placeholder="Search Logs..."
+              class="filter-input table-filter"
+            />
+          </th>
+        </tr>
+        <tr>
+          <th onclick="sortTable(0)">File</th>
+          <th onclick="sortTable(1)">Class</th>
+          <th onclick="sortTable(2)">Function</th>
+          <th onclick="sortTable(3)">Params</th>
+          <th onclick="sortTable(4)">Outcome</th>
+          <th onclick="sortTable(5)">Delta</th>
+          <th onclick="sortTable(6)">Duration</th>
+          <th onclick="sortTable(7)">Speedup</th>
+          <th onclick="sortTable(8)">Memory</th>
+          <th onclick="sortTable(9)">Peak Mem</th>
+          <th onclick="sortTable(10)">Error</th>
+          <th>Logs</th>
+        </tr>
+      </thead>
+      <tbody>
+        [[rows]]
+      </tbody>
+    </table>
+
+    <p><em id="timestamp">Generated at [[timestamp]]</em></p>
+  </body>
+</html>

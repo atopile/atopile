@@ -9,7 +9,6 @@ import re
 from graphlib import TopologicalSorter
 from itertools import groupby
 from pathlib import Path
-from typing import Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -18,21 +17,10 @@ LIBRARY_DIR = REPO_ROOT / "src" / "faebryk" / "library"
 OUT = LIBRARY_DIR / "_F.py"
 
 
-def try_(stmt: str, exc: str | type[Exception] | Iterable[type[Exception]]):
-    if isinstance(exc, type):
-        exc = exc.__name__
-    if not isinstance(exc, str):
-        exc = f"({', '.join(e.__name__ for e in exc)})"
-
-    return (
-        f"try:\n    {stmt}\nexcept {exc} as e:\n    print('{stmt.split(' ')[-1]}', e)"
-    )
-
-
 def topo_sort(modules_out: dict[str, tuple[Path, str]]):
     def find_deps(module_path: Path) -> set[str]:
         f = module_path.read_text(encoding="utf-8")
-        p = re.compile(r"[^a-zA-Z_0-9]F\.([a-zA-Z_][a-zA-Z_0-9]*)")
+        p = re.compile(r"[^\"a-zA-Z_0-9]F\.([a-zA-Z_][a-zA-Z_0-9]*)")
         return set(p.findall(f))
 
     if True:
@@ -82,6 +70,16 @@ def topo_sort(modules_out: dict[str, tuple[Path, str]]):
     ]
 
 
+def has_matching_class(module_path: Path) -> bool:
+    """
+    Check if a module file contains a class with the same name as the file stem
+    """
+    content = module_path.read_text(encoding="utf-8")
+    class_name = module_path.stem
+    pattern = re.compile(rf"^class {re.escape(class_name)}\b", re.MULTILINE)
+    return bool(pattern.search(content))
+
+
 def main():
     assert LIBRARY_DIR.exists()
 
@@ -93,25 +91,23 @@ def main():
 
     modules_out: dict[str, tuple[Path, str]] = {}
 
-    # Import each module and add its class to the current namespace
-    # for module_name in module_files:
-    #    module = importlib.import_module(
-    #        f"faebryk.library.{module_name}"  # , package=__name__
-    #    )
-    #    class_name = module_name
-    #    if hasattr(module, class_name):
-    #        # globals()[class_name] = getattr(module, class_name)
-    #        modules_out[module_name] = class_name
-
-    # assuming class name is equal to file stem
     modules_out = {
-        module_path.stem: (module_path, module_path.stem)
+        module_path.stem: (
+            module_path,
+            module_path.stem if has_matching_class(module_path) else "",
+        )
         for module_path in module_files
     }
 
     modules_ordered = topo_sort(modules_out)
 
-    logger.info(f"Found {len(modules_out)} classes")
+    # Generate import statements
+    import_statements: list[str] = []
+    for module, class_ in modules_ordered:
+        if class_ == "":
+            import_statements.append(f"import faebryk.library.{module} as {module}")
+        else:
+            import_statements.append(f"from faebryk.library.{module} import {class_}")
 
     OUT.write_text(
         "# This file is part of the faebryk project\n"
@@ -130,17 +126,16 @@ def main():
         "# flake8: noqa: F401\n"
         "# flake8: noqa: I001\n"
         "# flake8: noqa: E501\n"
+        "\n" + "\n".join(import_statements) + "\n"
         "\n"
-        + "\n".join(
-            # try_(
-            f"from faebryk.library.{module} import {class_}"
-            #    (AttributeError,),
-            # )
-            for module, class_ in modules_ordered
-        )
-        + "\n",
+        "__all__ = [\n    "
+        + "\n    ".join(f'"{module}",' for module, _ in modules_ordered)
+        + "\n]"
+        "\n",
         encoding="utf-8",
     )
+
+    logger.info(f"Exported to {OUT}")
 
 
 if __name__ == "__main__":

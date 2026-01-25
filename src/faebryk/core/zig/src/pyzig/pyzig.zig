@@ -325,7 +325,6 @@ pub fn wrap_str(value: ?[]const u8) ?*py.PyObject {
     if (out == null) {
         return null;
     }
-    py.Py_INCREF(out.?);
     return out.?;
 }
 
@@ -353,13 +352,15 @@ pub fn wrap_int(value: anytype) ?*py.PyObject {
     if (out == null) {
         return null;
     }
-    py.Py_INCREF(out.?);
     return out.?;
 }
 
-pub fn unwrap_int(comptime T: type, obj: ?*py.PyObject) ?T {
+pub fn unwrap_int(comptime T: type, obj: ?*py.PyObject) error{IntegerOutOfRange}!?T {
     const raw = py.PyLong_AsLongLong(obj);
     if (py.PyErr_Occurred() != null) return null;
+    if (raw < std.math.minInt(T) or raw > std.math.maxInt(T)) {
+        return error.IntegerOutOfRange;
+    }
     const value: T = @intCast(raw);
     return value;
 }

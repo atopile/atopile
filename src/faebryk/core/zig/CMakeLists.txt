@@ -17,13 +17,16 @@ if (WIN32)
     set(ZIG_PY_LIB_DIR_ARG_USE -Dpython-lib-dir=${_py_lib_dir})
   endif()
   set(PYZIG_NAME "pyzig.pyd")
+  set(PYZIG_SEXP_NAME "pyzig_sexp.pyd")
 else()
   set(PYZIG_NAME "pyzig.so")
+  set(PYZIG_SEXP_NAME "pyzig_sexp.so")
 endif()
 
 # Zig build paths --------------------------------------------------------------
 set(ZIG_WORKDIR   "${CMAKE_CURRENT_SOURCE_DIR}")
 set(ZIG_OUT_LIB   "${ZIG_WORKDIR}/zig-out/lib/${PYZIG_NAME}")
+set(ZIG_OUT_LIB_SEXP "${ZIG_WORKDIR}/zig-out/lib/${PYZIG_SEXP_NAME}")
 set(ZIG_BUILD_STAMP "${ZIG_WORKDIR}/zig-out/pyzig.build.stamp")
 
 # macOS cross-arch setup -------------------------------------------------------
@@ -60,7 +63,7 @@ add_custom_command(
           ${ZIG_TARGET_ARG} ${ZIG_PY_LIB_NAME_ARG} ${ZIG_PY_LIB_DIR_ARG_USE}
   COMMAND ${CMAKE_COMMAND} -E touch "${ZIG_BUILD_STAMP}"
   WORKING_DIRECTORY "${ZIG_WORKDIR}"
-  BYPRODUCTS "${ZIG_OUT_LIB}"
+  BYPRODUCTS "${ZIG_OUT_LIB}" "${ZIG_OUT_LIB_SEXP}"
   COMMENT "Building Zig Python extension"
   VERBATIM)
 add_custom_target(pyzig ALL DEPENDS "${ZIG_BUILD_STAMP}")
@@ -84,3 +87,10 @@ install(
   FILES "${ZIG_OUT_LIB}"
   DESTINATION "${SKBUILD_PLATLIB_DIR}"
   RENAME "${ZIG_MODULE_BASENAME}${PY_EXT_SUFFIX}")
+
+# Install the standalone sexp extension as well.
+set(ZIG_MODULE_BASENAME_SEXP "pyzig_sexp")
+install(
+  FILES "${ZIG_OUT_LIB_SEXP}"
+  DESTINATION "${SKBUILD_PLATLIB_DIR}"
+  RENAME "${ZIG_MODULE_BASENAME_SEXP}${PY_EXT_SUFFIX}")

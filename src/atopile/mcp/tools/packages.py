@@ -1,15 +1,8 @@
-from pydantic import BaseModel
-
+from atopile.dataclasses import PackageInfoVeryBrief
 from atopile.mcp.util import MCPTools
 from faebryk.libs.backend.packages.api import PackagesAPIClient, _Endpoints
 
 packages_tools = MCPTools()
-
-
-class PackageInfoVeryBrief(BaseModel):
-    identifier: str
-    version: str
-    summary: str
 
 
 @packages_tools.register()

@@ -2,16 +2,14 @@
 # SPDX-License-Identifier: MIT
 
 from enum import StrEnum
-from typing import Any
+from typing import Self
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 
 
 class has_designator_prefix(fabll.Node):
-    @classmethod
-    def __create_type__(cls, t: fabll.BoundNodeType[fabll.Node, Any]) -> None:
-        cls.prefix_param = t.Child(nodetype=fabll.Parameter)
-
     class Prefix(StrEnum):
         A = "A"
         """Separable assembly or sub-assembly (e.g. printed circuit assembly)"""
@@ -119,12 +117,6 @@ class has_designator_prefix(fabll.Node):
         K = "K"
         """Relay or contactor"""
 
-        LD = "LD"
-        """LED > often changed to "D" for diode"""
-
-        LED = "LED"
-        """LED > often changed to "D" for diode"""
-
         LS = "LS"
         """Loudspeaker or buzzer"""
 
@@ -230,9 +222,55 @@ class has_designator_prefix(fabll.Node):
         ZD = "ZD"
         """Zener diode > often changed to "D" for diode"""
 
-    # def __init__(self, prefix: str | Prefix) -> None:
-    #     super().__init__()
-    #     self.prefix = prefix
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_immutable = fabll.Traits.MakeEdge(fabll.is_immutable.MakeChild()).put_on_type()
+    prefix = F.Parameters.StringParameter.MakeChild()
 
-    # def get_prefix(self) -> str:
-    #     return self.prefix
+    @classmethod
+    def MakeChild(  # type: ignore[override]
+        cls, prefix: str | Prefix
+    ) -> fabll._ChildField[Self]:
+        if isinstance(prefix, cls.Prefix):
+            prefix = prefix.value
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.prefix], prefix)
+        )
+        return out
+
+    def get_prefix(self) -> str:
+        return str(self.prefix.get().extract_singleton())
+
+
+def test_has_designator_prefix():
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _TestModule(fabll.Node):
+        has_designator_prefix = fabll.Traits.MakeEdge(
+            has_designator_prefix.MakeChild("A")
+        )
+
+    module = _TestModule.bind_typegraph(tg).create_instance(g=g)
+
+    assert module.has_trait(has_designator_prefix)
+    assert module.has_designator_prefix.get().get_prefix() == "A"
+
+
+def test_has_designator_prefix_from_enum():
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _TestModule(fabll.Node):
+        has_designator_prefix = fabll.Traits.MakeEdge(
+            has_designator_prefix.MakeChild(has_designator_prefix.Prefix.B)
+        )
+
+    module = _TestModule.bind_typegraph(tg).create_instance(g=g)
+
+    assert module.has_trait(has_designator_prefix)
+    assert module.has_designator_prefix.get().get_prefix() == "B"
+    assert (
+        module.has_designator_prefix.get().get_prefix()
+        == has_designator_prefix.Prefix.B.value
+    )

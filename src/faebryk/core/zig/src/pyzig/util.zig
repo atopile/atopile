@@ -131,7 +131,7 @@ fn printValue(writer: anytype, value: anytype, indent: usize) anyerror!void {
         },
         .array => |arr| {
             if (arr.child == u8) {
-                try printString(writer, value);
+                try printString(writer, &value);
             } else {
                 try printSlice(writer, value[0..], indent);
             }

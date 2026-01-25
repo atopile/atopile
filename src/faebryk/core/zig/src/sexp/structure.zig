@@ -113,8 +113,10 @@ pub const DecodeError = error{
     OutOfMemory,
 };
 
-// Thread-local error context
-threadlocal var current_error_context: ?ErrorContext = null;
+// Error context
+// NOTE: Using non-threadlocal due to Python 3.14 incompatibility with Zig's threadlocal storage
+// This may cause issues in multi-threaded scenarios but the Python GIL typically prevents that
+var current_error_context: ?ErrorContext = null;
 
 pub fn getErrorContext() ?ErrorContext {
     return current_error_context;
@@ -132,7 +134,7 @@ pub fn printError(source: []const u8, err: anytype) void {
     }
 }
 
-fn clearErrorContext() void {
+pub fn clearErrorContext() void {
     current_error_context = null;
 }
 
@@ -481,6 +483,7 @@ fn handleKeyValuesAndBooleans(comptime T: type, allocator: std.mem.Allocator, it
 
         if (!ast.isList(items[i])) continue;
         const kv_items = ast.getList(items[i]).?;
+        if (kv_items.len == 0) continue; // Skip empty lists to prevent segfault
         const key = ast.getSymbol(kv_items[0]) orelse continue;
 
         inline for (fields, 0..) |field, field_idx| {
@@ -530,7 +533,9 @@ fn handleKeyValuesAndBooleans(comptime T: type, allocator: std.mem.Allocator, it
                         }
                     }
                 } else {
-                    if (!fields_set.isSet(field_idx)) {
+                    // Only process if field is not set AND we have at least key+value (len >= 2)
+                    // Skip key-only entries (e.g., "(stroke)") that have no values to prevent segfault
+                    if (!fields_set.isSet(field_idx) and kv_items.len >= 2) {
                         setCtx(T, items[i], field.name, null);
                         @field(result.*, field.name) = if (@typeInfo(field.type) == .@"struct" or (@typeInfo(field.type) == .optional and @typeInfo(@typeInfo(field.type).optional.child) == .@"struct"))
                             try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null }, fm)
@@ -561,6 +566,10 @@ fn finalizeUnsetFields(comptime T: type, allocator: std.mem.Allocator, items: []
                 const sym = ast.getSymbol(nested_items[0]) orelse continue;
                 if (!std.mem.eql(u8, sym, fname)) continue;
                 if (nested_items.len == 1 and field.default_value_ptr != null) {
+                    // Apply the default value when we have a key-only entry like "(stroke)"
+                    const default_ptr = field.default_value_ptr.?;
+                    const default_bytes = @as([*]const u8, @ptrCast(default_ptr))[0..@sizeOf(field.type)];
+                    @memcpy(@as([*]u8, @ptrCast(&@field(result.*, field.name)))[0..@sizeOf(field.type)], default_bytes);
                     fields_set.set(field_idx);
                     found_nested = true;
                     break;
@@ -577,7 +586,10 @@ fn finalizeUnsetFields(comptime T: type, allocator: std.mem.Allocator, items: []
                     const sym = ast.getSymbol(item) orelse continue;
                     if (!std.mem.eql(u8, sym, fname)) continue;
                     if (idx + 1 >= items.len) {
-                        if (field.default_value_ptr != null) {
+                        if (field.default_value_ptr) |default_ptr| {
+                            // Apply the default value when we have a key at end of list
+                            const default_bytes = @as([*]const u8, @ptrCast(default_ptr))[0..@sizeOf(field.type)];
+                            @memcpy(@as([*]u8, @ptrCast(&@field(result.*, field.name)))[0..@sizeOf(field.type)], default_bytes);
                             fields_set.set(field_idx);
                             found_nested = true;
                         }
@@ -598,7 +610,10 @@ fn finalizeUnsetFields(comptime T: type, allocator: std.mem.Allocator, items: []
                         @field(result.*, field.name) = try decodeWithMetadata(field.type, allocator, value_sexp, fm);
                         fields_set.set(field_idx);
                         found_nested = true;
-                    } else if (field.default_value_ptr != null) {
+                    } else if (field.default_value_ptr) |default_ptr| {
+                        // Apply the default value when we have a key that looks like it has no value
+                        const default_bytes = @as([*]const u8, @ptrCast(default_ptr))[0..@sizeOf(field.type)];
+                        @memcpy(@as([*]u8, @ptrCast(&@field(result.*, field.name)))[0..@sizeOf(field.type)], default_bytes);
                         fields_set.set(field_idx);
                         found_nested = true;
                     }
@@ -649,7 +664,10 @@ fn decodeLinkedList(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, 
     _ = metadata;
     const NodeType = T.Node;
     const child_type = std.meta.FieldType(NodeType, .data);
-    const items = ast.getList(sexp).?;
+    const items = ast.getList(sexp) orelse {
+        setCtx(T, sexp, null, "expected list for linked list");
+        return error.UnexpectedType;
+    };
     var ll = T{};
     for (items) |item| {
         const val = try decodeWithMetadata(child_type, allocator, item, .{});
@@ -777,24 +795,57 @@ fn decodeBool(sexp: SExp, metadata: SexpField) DecodeError!bool {
 
 fn decodeEnum(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T {
     _ = metadata; // metadata not used for basic enums (could be used for custom sexp_name in future)
-    // Try to get the enum value as either a symbol or a string
+    // Try to get the enum value as either a symbol, string, or number
     const enum_str = switch (sexp.value) {
         .symbol => |s| s,
         .string => |s| s,
+        .number => |s| s,
         else => {
-            setCtx(T, sexp, null, "expected symbol or string for enum");
+            setCtx(T, sexp, null, "expected symbol, string, or number for enum");
             return error.UnexpectedType;
         },
     };
 
-    inline for (std.meta.fields(T)) |field| {
-        if (std.mem.eql(u8, enum_str, field.name)) {
-            return @field(T, field.name);
-        }
-    }
+    const enum_info = @typeInfo(T).@"enum";
+    const tag_type_info = @typeInfo(enum_info.tag_type);
+    const is_i32_backed = switch (tag_type_info) {
+        .int => |int_info| int_info.signedness == .signed and int_info.bits == 32,
+        else => false,
+    };
 
-    setCtx(T, sexp, null, std.fmt.allocPrint(std.heap.page_allocator, "invalid enum value '{s}' for type {s}", .{ enum_str, @typeName(T) }) catch "invalid enum value");
-    return error.InvalidValue;
+    if (is_i32_backed) {
+        // For i32 enums, first try parsing as integer value
+        if (std.fmt.parseInt(enum_info.tag_type, enum_str, 0)) |enum_int| {
+            // Find the enum field with this integer value
+            inline for (std.meta.fields(T)) |field| {
+                if (field.value == enum_int) {
+                    return @field(T, field.name);
+                }
+            }
+        } else |_| {
+            // If parsing as integer failed, try matching as string name
+        }
+
+        // Fall back to string name matching
+        inline for (std.meta.fields(T)) |field| {
+            if (std.mem.eql(u8, enum_str, field.name)) {
+                return @field(T, field.name);
+            }
+        }
+
+        setCtx(T, sexp, null, std.fmt.allocPrint(std.heap.page_allocator, "invalid enum value '{s}' for type {s}", .{ enum_str, @typeName(T) }) catch "invalid enum value");
+        return error.InvalidValue;
+    } else {
+        // For non-i32 enums, only match by string name
+        inline for (std.meta.fields(T)) |field| {
+            if (std.mem.eql(u8, enum_str, field.name)) {
+                return @field(T, field.name);
+            }
+        }
+
+        setCtx(T, sexp, null, std.fmt.allocPrint(std.heap.page_allocator, "invalid enum value '{s}' for type {s}", .{ enum_str, @typeName(T) }) catch "invalid enum value");
+        return error.InvalidValue;
+    }
 }
 
 // Main encode function with metadata
@@ -802,14 +853,29 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
     const T = @TypeOf(value);
     const type_info = @typeInfo(T);
 
-    // Special handling for enums with symbol flag
+    // Special handling for enums
     if (type_info == .@"enum") {
+        const enum_info = @typeInfo(T).@"enum";
+        const tag_type_info = @typeInfo(enum_info.tag_type);
+        const is_i32_backed = switch (tag_type_info) {
+            .int => |int_info| int_info.signedness == .signed and int_info.bits == 32,
+            else => false,
+        };
+
         inline for (std.meta.fields(T)) |field| {
             if (@intFromEnum(value) == field.value) {
-                if (metadata.symbol orelse true) {
-                    return SExp{ .value = .{ .symbol = field.name }, .location = null };
+                if (is_i32_backed) {
+                    // For i32 enums, output as number
+                    var buf: [20]u8 = undefined;
+                    const num_str = std.fmt.bufPrint(&buf, "{d}", .{@intFromEnum(value)}) catch unreachable;
+                    return SExp{ .value = .{ .number = allocator.dupe(u8, num_str) catch unreachable }, .location = null };
                 } else {
-                    return SExp{ .value = .{ .string = field.name }, .location = null };
+                    // For other enums, use symbol/string as before
+                    if (metadata.symbol orelse true) {
+                        return SExp{ .value = .{ .symbol = field.name }, .location = null };
+                    } else {
+                        return SExp{ .value = .{ .string = field.name }, .location = null };
+                    }
                 }
             }
         }
@@ -871,7 +937,9 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
             // round float to 6 decimal places
             const rounded = std.math.round(value * 10e6) / 10e6;
             const fucked = std.mem.eql(u8, name, "dashed_line_dash_ratio") or std.mem.eql(u8, name, "dashed_line_gap_ratio") or std.mem.eql(u8, name, "hpglpendiameter");
-            const str = if (fucked)
+            const is_whole = rounded == @trunc(rounded);
+            const needs_six_decimals = fucked and !is_whole;
+            const str = if (needs_six_decimals)
                 std.fmt.bufPrint(&buf, "{d:.6}", .{rounded}) catch return error.OutOfMemory
             else
                 std.fmt.bufPrint(&buf, "{d}", .{rounded}) catch return error.OutOfMemory;

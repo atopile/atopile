@@ -1,0 +1,314 @@
+/**
+ * Sidebar Styles
+ * Atopile Design System
+ */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  height: 100vh;
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--bg-primary);
+}
+
+.sidebar.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-base);
+}
+
+/* Server Status Indicator / Button */
+.server-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.server-status.connected {
+  background: rgba(46, 160, 67, 0.15);
+  color: var(--color-success, #2ea043);
+}
+
+.server-status.connected:hover {
+  background: rgba(46, 160, 67, 0.25);
+}
+
+.server-status.disconnected {
+  background: rgba(248, 81, 73, 0.15);
+  color: var(--color-error, #f85149);
+}
+
+.server-status.disconnected:hover {
+  background: rgba(248, 81, 73, 0.3);
+  color: #ff6b6b;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-text {
+  font-weight: 500;
+}
+
+/* Card Component */
+.card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: visible;
+  transition: all var(--transition-fast);
+}
+
+.card:hover {
+  border-color: var(--ctp-surface2);
+}
+
+.card.selected {
+  border-color: var(--ato-orange);
+  background: var(--ato-orange-subtle);
+}
+
+.card.expanded {
+  border-color: var(--ctp-surface2);
+}
+
+.card-flex {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+
+.card-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.card-badge {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  padding: 0 var(--spacing-sm);
+  min-width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--border-subtle);
+  border-radius: 8px;
+  color: var(--text-muted);
+}
+
+.card-content {
+  padding: var(--spacing-sm);
+}
+
+.card-flex .card-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-sm);
+}
+
+/* Actions Grid */
+.actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-xs);
+}
+
+/* Builds List */
+.builds-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+/* Empty State */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl) var(--spacing-lg);
+  text-align: center;
+}
+
+.empty-icon {
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--spacing-md);
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.empty-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.empty-title {
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.empty-desc {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.select-project-btn {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.select-project-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-color);
+}
+
+/* Build Targets Section */
+.builds-targets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.empty-state-small {
+  padding: var(--spacing-md);
+  text-align: center;
+}
+
+/* Project Header with Play Button */
+.project-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.project-selector {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  margin: calc(-1 * var(--spacing-xs)) 0;
+  margin-left: calc(-1 * var(--spacing-sm));
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.project-selector:hover {
+  background: var(--bg-hover);
+}
+
+.project-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.project-name {
+  flex: 1;
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.project-chevron {
+  width: 12px;
+  height: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity var(--transition-fast);
+}
+
+.project-selector:hover .project-chevron {
+  opacity: 1;
+}
+
+/* Play/Build Button - Circular with orange accent */
+.build-play-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--ato-orange);
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--ato-orange);
+  transition: all var(--transition-normal);
+}
+
+.build-play-button:hover:not(:disabled) {
+  background: var(--ato-orange);
+  color: var(--ctp-crust);
+}
+
+.build-play-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.build-play-button svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* Build Targets List */
+.build-targets-list {
+  display: flex;
+  flex-direction: column;
+}

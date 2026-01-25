@@ -16,6 +16,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -114,12 +115,17 @@ class hashable_dict:
         return hash(self) == hash(other)
 
 
-def unique[T, U](it: Iterable[T], key: Callable[[T], U]) -> list[T]:
+def unique[T, U](
+    it: Iterable[T],
+    key: Callable[[T], U],
+    custom_eq: Callable[[U, U], bool] | None = None,
+) -> list[T]:
     seen: list[U] = []
     out: list[T] = []
+    custom_eq = custom_eq or (lambda x, y: x == y)
     for i in it:
         v = key(i)
-        if v in seen:
+        if any(custom_eq(v, s) for s in seen):
             continue
         seen.append(v)
         out.append(i)
@@ -131,13 +137,16 @@ def unique_ref[T](it: Iterable[T]) -> list[T]:
 
 
 def duplicates[T, U](
-    it: Iterable[T], key: Callable[[T], U], by_eq: bool = False
+    it: Iterable[T],
+    key: Callable[[T], U],
+    by_eq: bool = False,
+    custom_eq: Callable[[T, T], bool] | None = None,
 ) -> dict[U, list[T]]:
     if by_eq:
         return {
             k: uv
             for k, v in groupby(it, key).items()
-            if len(uv := unique(v, key=lambda x: x)) > 1
+            if len(uv := unique(v, key=lambda x: x, custom_eq=custom_eq)) > 1
         }
     else:
         return {k: v for k, v in groupby(it, key).items() if len(v) > 1}
@@ -942,7 +951,15 @@ class _ConfigFlagBase[T]:
         if raw_val is None:
             res = self.default
         else:
-            res = self._convert(raw_val)
+            try:
+                res = self._convert(raw_val)
+            except (ValueError, KeyError):
+                print(
+                    f"Invalid environment variable for "
+                    f"{self.name}: {raw_val}. Check your environment variables!"
+                    f"Fallback to default: {self.default}"
+                )
+                res = self.default
 
         if res != self.default:
             logger.warning(f"Config flag |{self.name}={res}|")
@@ -981,7 +998,7 @@ class ConfigFlag(_ConfigFlagBase[bool]):
 
 
 class ConfigFlagEnum[E: StrEnum](_ConfigFlagBase[E]):
-    def __init__(self, enum: type[E], name: str, default: E, descr: str = "") -> None:
+    def __init__(self, name: str, default: E, enum: type[E], descr: str = "") -> None:
         self.enum = enum
         super().__init__(name, default, descr)
 
@@ -1122,7 +1139,10 @@ class DAG[T]:
         child_node._parents.append(parent_node)
 
     def _dfs_cycle_check(
-        self, node: Node[T], visiting: set[Node[T]], visited: set[Node[T]]
+        self,
+        node: Node[T],
+        visiting: set[Node[T]],
+        visited: set[Node[T]],
     ) -> bool:
         """Helper recursive function for cycle detection."""
         visiting.add(node)
@@ -1285,23 +1305,36 @@ class Tree[T](dict[T, "Tree[T]"]):
             # merge lists of parallel subtrees
             yield [n for subtree in level for n in subtree]
 
-    def pretty(self) -> str:
-        # TODO this is def broken for actual trees
+    def pretty(
+        self,
+        node_repr: Callable[[T], str] | None = None,
+        _prefix: str = "",
+        _is_root: bool = True,
+    ) -> str:
+        if node_repr is None:
+            node_repr = repr
 
-        out = ""
-        next_levels = [self]
-        while next_levels:
-            for next_level in next_levels:
-                out += " | ".join(f"{p!r}" for p in next_level.keys())
-            next_levels = [
-                children
-                for next_level in next_levels
-                for _, children in next_level.items()
-            ]
-            if any(next_levels):
-                out += indent("\n↓\n", " " * 12)
+        lines: list[str] = []
+        items = list(self.items())
 
-        return out
+        for i, (key, subtree) in enumerate(items):
+            is_last = i == len(items) - 1
+
+            if _is_root:
+                connector = ""
+                child_prefix = ""
+            else:
+                connector = "└── " if is_last else "├── "
+                child_prefix = _prefix + ("    " if is_last else "│   ")
+
+            lines.append(f"{_prefix}{connector}{node_repr(key)}")
+
+            if subtree:
+                lines.append(
+                    subtree.pretty(node_repr, _prefix=child_prefix, _is_root=False)
+                )
+
+        return "\n".join(lines)
 
     def copy(self) -> "Tree[T]":
         return Tree({k: v.copy() for k, v in self.items()})
@@ -1333,7 +1366,7 @@ class Tree[T](dict[T, "Tree[T]"]):
 
             trees = [child for tree in trees for child in tree.values()]
 
-        raise KeyErrorNotFound(f"Node {node} not found in tree")
+        raise KeyErrorNotFound(f"fabll.Node {node} not found in tree")
 
     def to_dag(self, dag: DAG[T] | None = None) -> DAG[T]:
         if dag is None:
@@ -1692,6 +1725,7 @@ def run_live(
     stdout: Callable[[str], Any] = logger.debug,
     stderr: Callable[[str], Any] = logger.error,
     check: bool = True,
+    timeout: float | None = None,
     **kwargs,
 ) -> tuple[str, str, subprocess.Popen]:
     """Runs a process and logs the output live."""
@@ -1713,9 +1747,31 @@ def run_live(
     reads = [process.stdout, process.stderr]
     stdout_lines = []
     stderr_lines = []
-    while reads and process.poll() is None:
-        # Wait for output on either stream
-        readable, _, _ = select.select(reads, [], [])
+
+    # Keep reading until both streams hit EOF (not just until process exits)
+    # This ensures we capture all buffered output even after process termination
+    while reads:
+        # Use a timeout so we can check for EOF after process exits
+        readable, _, _ = select.select(reads, [], [], 0.1)
+
+        if not readable:
+            # No data available - if process has exited, try one more read
+            # to drain any remaining buffered data
+            if process.poll() is not None:
+                for stream in list(reads):
+                    remaining = stream.read()
+                    if remaining:
+                        for line in remaining.splitlines(keepends=True):
+                            if stream == process.stdout:
+                                stdout_lines.append(line)
+                                if stdout:
+                                    stdout(line.rstrip())
+                            elif stream == process.stderr:
+                                stderr_lines.append(line)
+                                if stderr:
+                                    stderr(line.rstrip())
+                    reads.remove(stream)
+            continue
 
         for stream in readable:
             line = stream.readline()
@@ -1733,7 +1789,7 @@ def run_live(
                     stderr(line.rstrip())
 
     # Ensure the process has finished
-    process.wait()
+    process.wait(timeout=timeout)
 
     # Get return code and check for errors
     if process.returncode != 0 and check:
@@ -2284,7 +2340,7 @@ def robustly_rm_dir(path: os.PathLike) -> None:
     path = Path(path)
 
     def remove_readonly(func, path, excinfo):
-        os.chmod(path, stat.S_IWRITE)
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
         func(path)
 
     shutil.rmtree(path, onexc=remove_readonly)
@@ -2319,6 +2375,7 @@ def try_relative_to(
         raise
 
 
+@once
 def repo_root() -> Path:
     return root_by_file(".git")
 
@@ -2706,6 +2763,20 @@ def least_recently_modified_file(*paths: Path) -> tuple[Path, datetime] | None:
 
 
 class FileChangedWatcher:
+    """
+    Watches directories for changes since init.
+    Returns each changed/deleted/created file.
+    """
+
+    @dataclass
+    class Result:
+        created: list[Path]
+        deleted: list[Path]
+        changed: list[Path]
+
+        def __bool__(self) -> bool:
+            return bool(self.created or self.deleted or self.changed)
+
     class CheckMethod(Enum):
         FS = auto()
         HASH = auto()
@@ -2733,39 +2804,43 @@ class FileChangedWatcher:
             usedforsecurity=False,
         ).hexdigest()
 
-    def __init__(self, *paths: Path, method: CheckMethod):
-        self.paths = paths
-        self.method = method
-
-        match method:
-            case FileChangedWatcher.CheckMethod.FS:
-                self.before = FileChangedWatcher._get_mtime_recursive(*paths)
-            case FileChangedWatcher.CheckMethod.HASH:
-                self.before = FileChangedWatcher._get_hash_recursive(*paths)
-            case _:
-                self.before = None
-
-    def has_changed(self, reset: bool = False) -> bool:
-        changed = True
+    def _get_file_stamp(self, path: Path) -> Any:
         match self.method:
             case FileChangedWatcher.CheckMethod.FS:
-                new_val = FileChangedWatcher._get_mtime_recursive(*self.paths)
-                if self.before is not None:
-                    assert isinstance(self.before, float)
-                    changed = new_val > self.before
+                return path.stat().st_mtime
             case FileChangedWatcher.CheckMethod.HASH:
-                new_val = FileChangedWatcher._get_hash_recursive(*self.paths)
-                if self.before is not None:
-                    assert isinstance(self.before, str)
-                    changed = new_val != self.before
+                return hashlib.sha256(path.read_bytes()).hexdigest()
             case _:
-                new_val = None
-                changed = self.before is not None
+                return None
+
+    def _get_stamps(self) -> dict[Path, Any]:
+        return {
+            f: self._get_file_stamp(f)
+            for path in self.paths
+            for f in (path.rglob(self.glob) if path.is_dir() else [path])
+        }
+
+    def __init__(self, *paths: Path, method: CheckMethod, glob: str | None = None):
+        self.paths = paths
+        self.method = method
+        self.glob = glob or "**"
+        self.before_files = self._get_stamps()
+
+    def has_changed(self, reset: bool = False) -> Result:
+        new_stamps = self._get_stamps()
+
+        created = list(new_stamps.keys() - self.before_files.keys())
+        deleted = list(self.before_files.keys() - new_stamps.keys())
+        changed = [
+            f
+            for f, ns in new_stamps.items()
+            if f in self.before_files and ns != self.before_files[f]
+        ]
 
         if reset:
-            self.before = new_val
+            self.before_files = new_stamps
 
-        return changed
+        return self.Result(created, deleted, changed)
 
 
 def lazy_split[T: str | bytes](string: T, delimiter: T) -> Iterable[T]:
@@ -2903,11 +2978,11 @@ def match_iterables[T, U](
     return zip_dicts_by_key(*dicts)  # type: ignore
 
 
-def debug_perf(*args):
+def debug_perf(*args, _logger: Callable[[str], Any] | None = None):
     def _debug_perf[T: Callable](func: T) -> T:
         # get module of function
         module = func.__module__
-        logger = logging.getLogger(module)
+        logger = _logger or logging.getLogger(module).info
 
         def _wrapper(*args, **kwargs):
             mem_start = psutil.Process().memory_info().rss
@@ -2928,7 +3003,7 @@ def debug_perf(*args):
                     mem_diff = round(mem_diff / (1000**i), 2)
                     break
 
-            logger.info(
+            logger(
                 f"{func.__name__} took {diff} {prefix}s "
                 f"and used {mem_diff} {mem_prefix}B"
             )
@@ -3024,3 +3099,470 @@ def debounce(delay_s: float):
         return _debounced  # type: ignore[return-value]
 
     return _decorator
+
+
+def crosswise[T, U](left: Iterable[T], right: Iterable[U]) -> Iterable[tuple[T, U]]:
+    return ((le, ri) for le in left for ri in right)
+
+
+def insert_into_file(source: Path, header: str, target: Path | None = None):
+    import shutil
+    import tempfile
+
+    if target is None:
+        target = source
+
+    with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as tmp:
+        tmp.write(header)
+        with open(source) as f:
+            shutil.copyfileobj(f, tmp)
+
+    shutil.move(tmp.name, target)
+
+
+def run_processes(cmds: list[list[str]]) -> bool:
+    procs: list[subprocess.Popen] = []
+    rcs = []
+    for cmd in cmds:
+        pid = subprocess.Popen(
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        procs.append(pid)
+    for pid in procs:
+        rcs.append(pid.wait())
+
+    return all(rc == 0 for rc in rcs)
+
+
+def _run_gdb_linux(test_bin: Path | None) -> None:
+    """Linux-specific core dump debugging using gdb + coredumpctl."""
+    if test_bin is None:
+        # run coredumpctl info and look for 'Executable: <test_bin>'
+        try:
+            result = subprocess.run(
+                ["coredumpctl", "info"],
+                capture_output=True,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            print("coredumpctl not available or no core dump found")
+            return
+
+        match = re.search(
+            r"Executable: (.*)", result.stdout.decode("utf-8"), re.MULTILINE
+        )
+        if not match:
+            print("Could not find test binary in coredump")
+            return
+        test_bin = Path(match.group(1))
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        core_file = Path(temp_dir) / "core.dump"
+        try:
+            subprocess.run(
+                ["coredumpctl", "dump", test_bin, *["--output", core_file]],
+                capture_output=True,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            print("Failed to dump core file with coredumpctl")
+            return
+
+        args = """-q -batch \
+            -ex 'set debuginfod enabled off' \
+            -ex 'thread apply all bt 20' \
+            -ex 'echo ===BOTTOM===\n' \
+            -ex 'thread apply all bt -20' \
+            | awk '
+            $0=="===BOTTOM===" {bottom=1; next}
+
+            # top section: print as-is
+            !bottom {print; next}
+
+            # bottom section: only print per-thread blocks if they contain frames >= 20
+            /^Thread [0-9]+/ {
+                if (seen) { for (i=1;i<=n;i++) print buf[i] }
+                delete buf; n=0; seen=0
+                buf[++n]=$0
+                next
+            }
+
+            # keep only frames #20+ (drop overlap/shallow)
+            match($0, /^#([0-9]+)/, m) {
+                if (m[1] >= 20) { buf[++n]=$0; seen=1 }
+                next
+            }
+
+            # keep other lines (but only if we end up keeping some frames)
+            { buf[++n]=$0 }
+            END { if (seen) { for (i=1;i<=n;i++) print buf[i] } }
+            '
+        """
+        cmd = f"gdb {test_bin} {core_file} {args}"
+        print(f"Attach gdb with: `gdb {test_bin} {core_file}")
+        try:
+            subprocess.run(cmd, shell=True, capture_output=False, check=True)
+        except subprocess.CalledProcessError:
+            print("Failed to run gdb on core dump")
+
+
+def _display_macos_crash_report(crash_file: Path) -> None:
+    """Parse and display a macOS .ips crash report in a readable format."""
+    import json
+
+    try:
+        content = crash_file.read_text()
+        # .ips files have a JSON header line followed by a JSON body
+        lines = content.split("\n", 1)
+        if len(lines) < 2:
+            print(content[:2000])
+            return
+
+        try:
+            report = json.loads(lines[1])
+        except json.JSONDecodeError:
+            # Fall back to showing raw content
+            print(content[:2000])
+            return
+
+        # Extract key information
+        exception = report.get("exception", {})
+        termination = report.get("termination", {})
+        threads = report.get("threads", [])
+        images = report.get("usedImages", [])
+
+        # Build image lookup for symbolication
+        image_lookup = {i: img.get("name", f"image{i}") for i, img in enumerate(images)}
+
+        print("\n--- Crash Report ---")
+        print(f"Exception: {exception.get('type', 'Unknown')}")
+        if "subtype" in exception:
+            print(f"  {exception['subtype']}")
+        print(f"Signal: {exception.get('signal', 'Unknown')}")
+        if termination:
+            print(f"Termination: {termination.get('indicator', '')}")
+
+        # Find and print the faulting thread's backtrace
+        faulting_idx = report.get("faultingThread", 0)
+        if threads and faulting_idx < len(threads):
+            thread = threads[faulting_idx]
+            frames = thread.get("frames", [])
+            print(f"\nBacktrace (Thread {faulting_idx}):")
+            for i, frame in enumerate(frames[:30]):  # Limit to 30 frames
+                symbol = frame.get("symbol", "???")
+                image_idx = frame.get("imageIndex", 0)
+                image_name = image_lookup.get(image_idx, "???")
+                source_file = frame.get("sourceFile", "")
+                source_line = frame.get("sourceLine", "")
+
+                loc = ""
+                if source_file:
+                    loc = f" ({source_file}"
+                    if source_line:
+                        loc += f":{source_line}"
+                    loc += ")"
+
+                print(f"  {i:2d}: {symbol}{loc}")
+                print(f"      [{image_name}]")
+
+            if len(frames) > 30:
+                print(f"  ... ({len(frames) - 30} more frames)")
+
+        print(f"\nFull report: {crash_file}")
+
+    except Exception as e:
+        print(f"Error parsing crash report: {e}")
+        # Fall back to raw content
+        try:
+            print(crash_file.read_text()[:2000])
+        except Exception:
+            pass
+
+
+def _run_lldb_macos(test_bin: Path | None, created_after: float | None) -> None:
+    """macOS-specific core dump debugging using lldb."""
+    cores_dir = Path("/cores")
+    core_file: Path | None = None
+
+    # Check if core dumps directory exists and has core files
+    if cores_dir.exists():
+        try:
+            all_core_files = list(cores_dir.glob("core.*"))
+            if created_after is not None:
+                # Only consider core files created after the specified time
+                core_files = [
+                    p for p in all_core_files if p.stat().st_mtime >= created_after
+                ]
+            else:
+                core_files = all_core_files
+            core_files = sorted(
+                core_files, key=lambda p: p.stat().st_mtime, reverse=True
+            )
+            if core_files:
+                core_file = core_files[0]
+        except PermissionError:
+            print("Cannot read /cores directory - permission denied")
+
+    if core_file is None:
+        # No core dump found - check for crash reports instead
+        diag_dir = Path.home() / "Library/Logs/DiagnosticReports"
+        if diag_dir.exists():
+            import time
+
+            # Wait a moment for macOS to write the crash report
+            time.sleep(0.5)
+
+            try:
+                # Look for .ips crash reports (newer format) or .crash files
+                # Filter by likely process names (python, ato, faebryk, or the test binary)
+                likely_names = ["Python", "python", "ato", "faebryk"]
+                if test_bin:
+                    likely_names.append(test_bin.stem)
+
+                crash_files = list(diag_dir.glob("*.ips")) + list(
+                    diag_dir.glob("*.crash")
+                )
+
+                # First try: filter by name AND time
+                if created_after is not None:
+                    time_filtered = [
+                        p for p in crash_files if p.stat().st_mtime >= created_after
+                    ]
+                    # Filter by process name in filename
+                    matching_crashes = [
+                        p
+                        for p in time_filtered
+                        if any(name in p.name for name in likely_names)
+                    ]
+                    if matching_crashes:
+                        crash_files = matching_crashes
+                    elif time_filtered:
+                        # Fall back to time-filtered only
+                        crash_files = time_filtered
+
+                crash_files = sorted(
+                    crash_files, key=lambda p: p.stat().st_mtime, reverse=True
+                )
+                if crash_files:
+                    crash_file = crash_files[0]
+                    print(f"Found crash report: {crash_file}")
+                    _display_macos_crash_report(crash_file)
+                    return
+            except PermissionError:
+                pass
+
+        print("No core dump files found in /cores")
+        if not cores_dir.exists():
+            print(
+                "Core dumps directory /cores does not exist. "
+                "Create with: sudo mkdir /cores && sudo chmod 1777 /cores"
+            )
+        elif not os.access(cores_dir, os.W_OK):
+            print(
+                "The /cores directory is not writable. Fix with: sudo chmod 1777 /cores"
+            )
+        else:
+            print(
+                "Core dumps may be disabled. Try: sudo sysctl kern.coredump=1\n"
+                "Note: macOS often writes crash reports to ~/Library/Logs/DiagnosticReports/ instead."
+            )
+        return
+
+    print(f"Using core file: {core_file}")
+
+    # Build lldb command with backtrace
+    lldb_cmd = ["lldb", "--batch"]
+    if test_bin:
+        lldb_cmd.append(str(test_bin))
+    lldb_cmd.extend(["-c", str(core_file), "-o", "thread backtrace all", "-o", "quit"])
+
+    print(f"Attach lldb with: lldb {test_bin or ''} -c {core_file}")
+    try:
+        subprocess.run(lldb_cmd, check=True)
+    except FileNotFoundError:
+        print(
+            "lldb not found. Install Xcode Command Line Tools: xcode-select --install"
+        )
+    except subprocess.CalledProcessError:
+        print("Failed to run lldb on core dump")
+
+
+def run_gdb(test_bin: Path | None = None, created_after: float | None = None) -> None:
+    """Debug a crash using platform-appropriate tools (gdb on Linux, lldb on macOS)."""
+    if sys.platform.startswith("win"):
+        print("Debugging with core dumps is not supported on Windows")
+        return
+
+    if sys.platform.startswith("darwin"):
+        _run_lldb_macos(test_bin, created_after)
+    else:
+        _run_gdb_linux(test_bin)
+
+
+class _LazyProxy:
+    def __init__(self, f: Callable[[], None], parent: Any, name: str) -> None:
+        self.__f = f
+        self.__parent = parent
+        self.__name = name
+
+    def __get_and_set(self):
+        self.__f()
+        return getattr(self.__parent, self.__name)
+
+    @override
+    def __getattribute__(self, name: str, /) -> Any:
+        if name.startswith("_"):
+            return super().__getattribute__(name)
+        return getattr(self.__get_and_set(), name)
+
+    @override
+    def __setattr__(self, name: str, value: Any, /) -> None:
+        if name.startswith("_"):
+            return super().__setattr__(name, value)
+        setattr(self.__get_and_set(), name, value)
+
+    def __contains__(self, value: Any) -> bool:
+        return value in self.__get_and_set()
+
+    def __iter__(self) -> Iterator[Any]:
+        return iter(self.__get_and_set())
+
+    def __getitem__(self, key: Any) -> Any:
+        return self.__get_and_set()[key]
+
+    def __repr__(self) -> str:
+        return f"_LazyProxy({self.__f}, {self.__parent})"
+
+
+class OrderedSet[T: Hashable](collections.abc.MutableSet[T]):
+    __slots__ = ("_data",)
+
+    def __init__(self, iterable: Iterable[T] = ()):
+        self._data: dict[T, None] = dict.fromkeys(iterable)
+
+    def __contains__(self, x: object, /) -> bool:
+        return x in self._data
+
+    def __iter__(self) -> Iterator[T]:
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def add(self, value: T, /) -> None:
+        self._data[value] = None
+
+    def discard(self, value: T, /) -> None:
+        self._data.pop(value, None)
+
+    def update(self, *iterables: Iterable[T]) -> None:
+        for it in iterables:
+            self._data.update(dict.fromkeys(it))
+
+    def difference_update(self, *others: Iterable[object]) -> None:
+        for other in others:
+            for x in other:
+                self._data.pop(x, None)
+
+    def intersection_update(self, *others: Iterable[object]) -> None:
+        if not others:
+            return
+        rhs = [set(o) for o in others]
+        for k in list(self._data):
+            if not all(k in s for s in rhs):
+                self._data.pop(k, None)
+
+    def difference(self, *others: Iterable[object]) -> "OrderedSet[T]":
+        out = OrderedSet[T](self)
+        out.difference_update(*others)
+        return out
+
+    def intersection(self, *others: Iterable[object]) -> "OrderedSet[T]":
+        out = OrderedSet[T](self)
+        out.intersection_update(*others)
+        return out
+
+    def union(self, *iterables: Iterable[T]) -> "OrderedSet[T]":
+        out = OrderedSet[T](self)
+        out.update(*iterables)
+        return out
+
+    def issubset(self, other: Iterable[object]) -> bool:
+        c = other if isinstance(other, collections.abc.Container) else set(other)
+        return all(k in c for k in self._data)
+
+    def issuperset(self, other: Iterable[object]) -> bool:
+        return all(x in self._data for x in other)
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({list(self._data)})"
+
+
+def one[T](iterable: Iterable[T]) -> T:
+    it = iter(iterable)
+    out = next(it)
+    try:
+        next(it)
+    except StopIteration:
+        return out
+    raise ValueError("Iterable has more than one element")
+
+
+class TestEnvironmentVariables:
+    def test_environment_variable_parsing(self):
+        # create temp env vars for every type
+        # check if they can be parsed
+        def assert_parses(flag_cls, env_name: str, raw_value: str, expected) -> None:
+            os.environ[f"FBRK_{env_name}"] = raw_value
+            assert flag_cls(env_name).get() == expected
+
+        for raw_value, expected in [
+            ("True", True),
+            ("False", False),
+            ("1", True),
+            ("0", False),
+        ]:
+            assert_parses(ConfigFlag, "TEST_BOOL", raw_value, expected)
+
+        for raw_value, expected in [
+            ("1", 1),
+            ("0", 0),
+            ("1.0", 1),
+            ("0.0", 0),
+        ]:
+            assert_parses(ConfigFlagInt, "TEST_INT", raw_value, expected)
+
+        for raw_value in ["1", "0", "1.0", "0.0"]:
+            assert_parses(ConfigFlagFloat, "TEST_FLOAT", raw_value, float(raw_value))
+
+        for raw_value in ["True", "False", "1", "0", "1.0", "0.0"]:
+            assert_parses(ConfigFlagString, "TEST_STRING", raw_value, raw_value)
+
+    def test_environment_variable_parsing_enum(self):
+        class TestEnum(StrEnum):
+            A = "a"
+            B = "b"
+            C = "c"
+
+        os.environ["FBRK_TEST_ENUM"] = "A"
+        assert (
+            ConfigFlagEnum(name="TEST_ENUM", enum=TestEnum, default=TestEnum.B).get()
+            == TestEnum.A
+        )
+
+    def test_environment_variable_parsing_enum_invalid(self, capsys):
+        class TestEnum(StrEnum):
+            A = "a"
+            B = "b"
+            C = "c"
+
+        os.environ["FBRK_TEST_ENUM"] = "D"
+        assert (
+            ConfigFlagEnum(name="TEST_ENUM", enum=TestEnum, default=TestEnum.B).get()
+            == TestEnum.B
+        )
+        # check warning message
+        assert (
+            "Invalid environment variable for FBRK_TEST_ENUM: D. Check your "
+            "environment variables!" in capsys.readouterr().out
+        )

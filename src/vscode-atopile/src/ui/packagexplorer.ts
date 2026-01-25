@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { getLogoUri } from '../common/logo';
 import { BaseWebview } from './webview-base';
 import { traceInfo } from '../common/log/logging';
 import { runAtoCommandInTerminal } from '../common/findbin';
@@ -85,9 +84,6 @@ class PackageExplorerWebview extends BaseWebview {
 
     protected setupPanel(): void {
         if (!this.panel) return;
-
-        // Set custom icon
-        this.panel.iconPath = getLogoUri();
 
         // Send initial theme
         this.sendThemeToWebview();

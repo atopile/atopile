@@ -1,0 +1,495 @@
+/**
+ * DependencyCard styles - Compact dependency display
+ * Similar styling to BuildQueuePanel for consistency
+ */
+
+.dependency-card {
+  margin-top: var(--spacing-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.dependency-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+
+.dependency-card-header:hover {
+  background: var(--bg-hover);
+}
+
+.dependency-card-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dependency-card-expand .expand-icon {
+  transition: transform var(--transition-fast);
+  color: var(--text-muted);
+}
+
+.dependency-card-expand .expand-icon.expanded {
+  transform: rotate(0deg);
+}
+
+.dependency-card-expand .expand-icon:not(.expanded) {
+  transform: rotate(-90deg);
+}
+
+.dependency-card-icon {
+  color: var(--ctp-mauve);
+  flex-shrink: 0;
+}
+
+.dependency-card-title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.dependency-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+
+.dependency-card-content {
+  padding: var(--spacing-xs);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Section headers (transitive deps) */
+.dependency-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm) 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dependency-section-title {
+  flex: 1;
+}
+
+.dependency-section-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+/* Individual dependency item */
+.dependency-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: all var(--transition-fast);
+}
+
+.dependency-item:hover {
+  border-color: var(--border-subtle);
+  background: var(--bg-hover);
+}
+
+.dependency-item.has-update {
+  border-left: 2px solid var(--ctp-peach);
+}
+
+.dependency-item.up-to-date {
+  border-left: 2px solid var(--ctp-green);
+}
+
+.dependency-item.transitive {
+  background: var(--bg-secondary);
+}
+
+.dependency-info {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 0;
+  flex: 1;
+}
+
+.dependency-icon {
+  color: var(--ctp-blue);
+  flex-shrink: 0;
+}
+
+.dependency-name {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dependency-via {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.dependency-publisher {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.dependency-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
+}
+
+.dependency-version-select {
+  font-size: var(--font-size-xs);
+  padding: 2px 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  width: 70px;
+  min-width: 70px;
+  max-width: 70px;
+  text-overflow: ellipsis;
+}
+
+.dependency-version-select:hover {
+  border-color: var(--border-default);
+  background: var(--bg-hover);
+}
+
+.dependency-version-select:focus {
+  outline: none;
+  border-color: var(--ctp-blue);
+}
+
+.dependency-version-select.update-available {
+  border-color: var(--ctp-peach);
+  color: var(--ctp-peach);
+}
+
+.dependency-version-select.up-to-date {
+  border-color: var(--ctp-green);
+  color: var(--ctp-green);
+}
+
+/* Updating state - shows spinner */
+.dependency-version-updating {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  padding: 2px 6px;
+  border: 1px solid var(--ctp-blue);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--ctp-blue);
+  width: 70px;
+  min-width: 70px;
+  max-width: 70px;
+}
+
+.dependency-version-updating .spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Read-only version display */
+.dependency-version-display {
+  font-size: var(--font-size-xs);
+  padding: 2px 6px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.dependency-version-display.transitive {
+  opacity: 0.7;
+}
+
+.dependency-remove-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.dependency-remove-btn:hover:not(:disabled) {
+  color: var(--ctp-red);
+  background: rgba(243, 139, 168, 0.15);
+}
+
+.dependency-remove-btn:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.dependency-remove-btn.removing {
+  color: var(--ctp-yellow);
+}
+
+.dependency-remove-btn .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Expandable dependency item container */
+.dependency-item-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.dependency-item-container.expanded {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.dependency-item.expandable {
+  cursor: pointer;
+}
+
+.dependency-expand-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* Expanded dependency content - wrapper for ProjectCard */
+.dependency-expanded-wrapper {
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Remove the outer card styling when ProjectCard is nested in dependency */
+.dependency-expanded-wrapper .project-card {
+  border: none;
+  border-radius: 0;
+  margin: 0;
+  background: transparent;
+}
+
+/* Hide the header and description in expanded dependencies (we already show it in DependencyItem) */
+.dependency-expanded-wrapper .project-card-name-row,
+.dependency-expanded-wrapper .project-card-description,
+.dependency-expanded-wrapper .package-install-bar {
+  display: none;
+}
+
+/* Header row with publisher and external link */
+.dependency-expanded-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.dependency-external-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.dependency-external-link:hover {
+  color: var(--ctp-blue);
+  background: var(--bg-hover);
+}
+
+.dependency-expanded-loading,
+.dependency-expanded-error {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.dependency-expanded-error {
+  color: var(--ctp-red);
+}
+
+.dependency-expanded-description {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.dependency-expanded-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.dependency-expanded-meta .meta-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.dependency-expanded-meta .meta-item.link {
+  color: var(--ctp-blue);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.dependency-expanded-meta .meta-item.link:hover {
+  text-decoration: underline;
+}
+
+/* Syntax highlighting for ato code */
+.copyable-code-content .ato-keyword {
+  color: var(--ctp-mauve);
+}
+
+.copyable-code-content .ato-type {
+  color: var(--ctp-yellow);
+}
+
+.copyable-code-content .ato-string {
+  color: var(--ctp-green);
+}
+
+.copyable-code-content .ato-operator {
+  color: var(--ctp-sky);
+}
+
+/* Open button for usage examples */
+.copyable-code-header .open-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  margin-left: var(--spacing-xs);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.copyable-code-header .open-btn:hover {
+  color: var(--ctp-blue);
+  background: var(--bg-hover);
+}
+
+.copyable-code-header .actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Usage section */
+.dependency-usage-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+/* Copyable code block */
+.copyable-code {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.copyable-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.copyable-code-header .copy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.copyable-code-header .copy-btn:hover {
+  color: var(--ctp-blue);
+  background: var(--bg-hover);
+}
+
+.copyable-code-header .copy-btn.copied {
+  color: var(--ctp-green);
+}
+
+.copyable-code-content {
+  margin: 0;
+  padding: var(--spacing-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.4;
+}

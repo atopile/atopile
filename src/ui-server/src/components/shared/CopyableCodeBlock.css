@@ -1,0 +1,80 @@
+/**
+ * CopyableCodeBlock styles
+ * Shared across all components that display copyable code
+ */
+
+.copyable-code {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.copyable-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.copyable-code-header .actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.copyable-code-header .copy-btn,
+.copyable-code-header .open-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.copyable-code-header .copy-btn:hover,
+.copyable-code-header .open-btn:hover {
+  color: var(--ctp-blue);
+  background: var(--bg-hover);
+}
+
+.copyable-code-header .copy-btn.copied {
+  color: var(--ctp-green);
+}
+
+.copyable-code-content {
+  margin: 0;
+  padding: var(--spacing-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+/* Syntax highlighting for ato code */
+.copyable-code-content .ato-keyword {
+  color: var(--ctp-mauve);
+}
+
+.copyable-code-content .ato-type {
+  color: var(--ctp-yellow);
+}
+
+.copyable-code-content .ato-string {
+  color: var(--ctp-green);
+}
+
+.copyable-code-content .ato-operator {
+  color: var(--ctp-sky);
+}

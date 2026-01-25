@@ -512,3 +512,50 @@ def test_mutable_list():
     # clear
     fp_lib_table.fp_lib_table.libs.clear()
     assert len(fp_lib_table.fp_lib_table.libs) == 0
+
+
+def test_malformed_sexp_empty_list():
+    """Test that parsing empty nested lists doesn't crash (segfault fix)."""
+    sexp = """
+    (footprint "test"
+        (version 20241229)
+        (generator "pcbnew")
+        (generator_version "9.0")
+        (layer "F.Cu")
+        ()
+    )
+    """
+    from faebryk.libs.kicad.fileformats import kicad
+
+    # Should not crash - empty list is simply ignored
+    fp = kicad.loads(kicad.footprint.FootprintFile, sexp)
+    assert fp.footprint.layer == "F.Cu"
+
+
+def test_malformed_sexp_key_only():
+    """Test that parsing key-only elements like (stroke) doesn't crash (segfault fix)."""
+    sexp = """
+    (footprint "test"
+        (version 20241229)
+        (generator "pcbnew")
+        (generator_version "9.0")
+        (layer "F.Cu")
+        (fp_line
+            (start 0 0)
+            (end 1 1)
+            (stroke)
+            (layer "F.SilkS")
+        )
+    )
+    """
+    from faebryk.libs.kicad.fileformats import kicad
+
+    # Should not crash - key-only entries are skipped
+    # This may raise an error for missing required fields, but should not segfault
+    try:
+        fp = kicad.loads(kicad.footprint.FootprintFile, sexp)
+        # If it parses, verify we got the footprint
+        assert fp.footprint.layer == "F.Cu"
+    except ValueError:
+        # Expected - stroke may be required, but importantly no crash
+        pass

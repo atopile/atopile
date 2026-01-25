@@ -4,15 +4,15 @@
 import logging
 import math
 from operator import add
-from typing import Iterable, Sequence, TypeVar
+from typing import TYPE_CHECKING, Iterable, Sequence, TypeVar
 
-import numpy as np
-from shapely import MultiPolygon, Point, Polygon, transform
+if TYPE_CHECKING:
+    from shapely import Point, Polygon
 
 logger = logging.getLogger(__name__)
 
 
-def polygon_insert_cutout(polygon: Polygon, cutout: Polygon) -> Polygon:
+def polygon_insert_cutout(polygon: "Polygon", cutout: "Polygon") -> "Polygon":
     """
     Insert a cutout into a polygon
 
@@ -20,6 +20,8 @@ def polygon_insert_cutout(polygon: Polygon, cutout: Polygon) -> Polygon:
     :param cutout: The cutout to insert
     :return: The polygon with the cutout inserted
     """
+    import numpy as np
+    from shapely import Polygon
 
     p_coords = list(polygon.exterior.coords)
     c_coords = list(cutout.exterior.coords)
@@ -48,13 +50,14 @@ def polygon_insert_cutout(polygon: Polygon, cutout: Polygon) -> Polygon:
     return Polygon(flattened_coords)
 
 
-def flatten_polygons(polygons: list[Polygon]) -> list[Polygon]:
+def flatten_polygons(polygons: list["Polygon"]) -> list["Polygon"]:
     """
     Flatten a list of polygons by removing polygons that are contained in other polygons
 
     :param polygons: The polygons to flatten
     :return: The flattened polygons
     """
+
     flattened_polygons = []
     while polygons:
         remaining = []
@@ -78,9 +81,12 @@ def flatten_polygons(polygons: list[Polygon]) -> list[Polygon]:
 
 
 def get_distributed_points_in_polygon(
-    polygon: Polygon,
+    polygon: "Polygon",
     density: float,
-) -> list[Point]:
+) -> list["Point"]:
+    import numpy as np
+    from shapely import MultiPolygon, Polygon
+
     """
     Get a list of points that are distributed in a polygon
 
@@ -177,7 +183,9 @@ def get_distributed_points_in_polygon(
     return points
 
 
-def closest_point_on_segment_to_point(line: tuple[Point, Point], point: Point) -> Point:
+def closest_point_on_segment_to_point(
+    line: tuple["Point", "Point"], point: "Point"
+) -> "Point":
     """
     Finds the minimum distance from the point to the line defined by two points
 
@@ -185,6 +193,9 @@ def closest_point_on_segment_to_point(line: tuple[Point, Point], point: Point) -
     :param point: The point to find the distance to
     :return: The closest point on the line segment to the point
     """
+    import numpy as np
+    from shapely import Point
+
     if line[0] == line[1]:
         return line[0]
 
@@ -229,6 +240,8 @@ def closest_point_on_line(p1, p2, p3):
     Returns:
     The coordinates of the closest point on the line to p3.
     """
+    import numpy as np
+
     # Convert points to numpy arrays
     p1 = np.array(p1)
     p2 = np.array(p2)
@@ -252,7 +265,7 @@ def closest_point_on_line(p1, p2, p3):
     return closest_point
 
 
-def get_random_points_in_polygon(polygon: Polygon, num_points: int) -> list[Point]:
+def get_random_points_in_polygon(polygon: "Polygon", num_points: int) -> list["Point"]:
     """
     Get a list of unique random points that are inside a polygon
 
@@ -260,6 +273,9 @@ def get_random_points_in_polygon(polygon: Polygon, num_points: int) -> list[Poin
     :param num_points: The number of points to get
     :return: A list of unique random points that are inside the polygon
     """
+    import numpy as np
+    from shapely import Point
+
     points = []
     min_x, min_y, max_x, max_y = polygon.bounds
     while len(points) < num_points:
@@ -269,7 +285,9 @@ def get_random_points_in_polygon(polygon: Polygon, num_points: int) -> list[Poin
     return points
 
 
-def polygon_to_lines(polygon: Polygon) -> Iterable[tuple[Point, Point]]:
+def polygon_to_lines(polygon: "Polygon") -> Iterable[tuple["Point", "Point"]]:
+    from shapely import Point
+
     coords = [Point(p) for p in polygon.exterior.coords]
     coords += [coords[0]]
     for i in range(len(polygon.exterior.coords) - 1):
@@ -277,10 +295,10 @@ def polygon_to_lines(polygon: Polygon) -> Iterable[tuple[Point, Point]]:
 
 
 def intersect_polygon_with_grid(
-    polys: list[Polygon],
+    polys: list["Polygon"],
     grid_pitch: tuple[float, float],
     grid_offset: tuple[float, float],
-) -> list[Point]:
+) -> list["Point"]:
     """
     Get a list of points on a grid that are inside a list of non-intersecting polygons
 
@@ -289,6 +307,8 @@ def intersect_polygon_with_grid(
     :param grid_offset: The offset of the grid (x, y)
     :return: A list of points that are inside the polygons
     """
+    import numpy as np
+    from shapely import Point
 
     points = []
     min_x, min_y, max_x, max_y = (math.inf, math.inf, -math.inf, -math.inf)
@@ -326,8 +346,8 @@ def intersect_polygon_with_grid(
 
 
 def transform_polygon(
-    poly: Polygon, offset: tuple[float, float], scale: tuple[float, float]
-) -> Polygon:
+    poly: "Polygon", offset: tuple[float, float], scale: tuple[float, float]
+) -> "Polygon":
     """
     Transform a list of polygons using a transformation matrix
 
@@ -337,6 +357,7 @@ def transform_polygon(
 
     :return: The transformed polygons
     """
+    from shapely import transform
 
     return transform(poly, lambda x: (x + offset) * scale)
 
@@ -472,6 +493,8 @@ class Geometry:
     def rotate(
         cls, axis: Point2D, structure: list[Point2D], angle_deg: float
     ) -> list[Point2D]:
+        import numpy as np
+
         theta = np.radians(angle_deg)
         c, s = np.cos(theta), np.sin(theta)
         R = np.array(((c, -s), (s, c)))
@@ -529,6 +552,8 @@ class Geometry:
         """
         Finds the center of the circle passing through the three given points.
         """
+        import numpy as np
+
         # Compute the midpoints
         mid1 = (p1 + p2) / 2
         mid2 = (p2 + p3) / 2
@@ -558,7 +583,9 @@ class Geometry:
     @staticmethod
     def approximate_arc(
         p_start: Point2D, p_mid: Point2D, p_end: Point2D, resolution=10
-    ) -> list[tuple[Point2D, Point2D]]:
+    ) -> list[tuple["Point2D", "Point2D"]]:
+        import numpy as np
+
         p_start, p_mid, p_end = (np.array(p) for p in (p_start, p_mid, p_end))
 
         # Calculate the center of the circle
@@ -624,7 +651,9 @@ class Geometry:
         ]
 
     @staticmethod
-    def average(points: list[Point2D | Point]) -> Point:
+    def average(points: list["Point2D | Point"]) -> "Point":
+        import numpy as np
+
         points4d = [p + (0,) * (4 - len(p)) for p in points]
         # same layer
         assert len({p[3] for p in points4d}) == 1

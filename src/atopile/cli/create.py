@@ -20,6 +20,8 @@ from rich.table import Table
 
 from atopile import errors, version
 from atopile.address import AddrStr
+from atopile.logging import get_logger
+from atopile.logging_utils import rich_print_robust
 from atopile.telemetry import capture
 from faebryk.libs.github import (
     GITHUB_USERNAME_REGEX,
@@ -29,7 +31,6 @@ from faebryk.libs.github import (
     GithubRepoNotFound,
     GithubUserNotLoggedIn,
 )
-from faebryk.libs.logging import rich_print_robust
 from faebryk.libs.util import (
     get_code_bin_of_terminal,
     in_git_repo,
@@ -42,7 +43,7 @@ if TYPE_CHECKING:
 
     from faebryk.libs.picker.api.api import Component
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 logger.setLevel(logging.INFO)
 
 

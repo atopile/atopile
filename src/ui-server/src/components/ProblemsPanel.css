@@ -1,0 +1,238 @@
+/**
+ * Problems Panel Styles
+ * Atopile Design System
+ */
+
+.problems-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: visible;
+}
+
+/* Ensure panel toolbar allows dropdown to overflow */
+.problems-panel .panel-toolbar {
+  overflow: visible;
+  position: relative;
+  z-index: 10;
+}
+
+.problems-panel .panel-toolbar-row {
+  overflow: visible;
+  flex-wrap: nowrap;
+}
+
+.problems-panel.empty {
+  /* Empty state handled by flex layout - no extra padding */
+}
+
+/* Empty state */
+.problems-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-lg);
+  color: var(--text-muted);
+}
+
+.problems-empty-icon {
+  opacity: 0.4;
+  color: var(--ctp-green);
+}
+
+.problems-empty-text {
+  font-size: var(--font-size-sm);
+  opacity: 0.7;
+}
+
+/* Summary header */
+.problems-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--font-size-sm);
+}
+
+.problems-count {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-weight: 500;
+}
+
+.problems-count.error {
+  color: var(--ctp-red);
+}
+
+.problems-count.warning {
+  color: var(--ctp-yellow);
+}
+
+/* Inline summary in toolbar */
+.problems-summary-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
+}
+
+
+/* Problems list */
+.problems-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* File group */
+.problems-file-group {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.problems-file-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-secondary);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+
+.problems-file-header:hover {
+  background: var(--bg-hover);
+}
+
+.problems-file-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.problems-file-header svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.problems-file-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.problems-file-path {
+  flex: 1;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.problems-file-counts {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
+}
+
+.problems-file-count {
+  font-size: var(--font-size-xs);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+.problems-file-count.error {
+  background: rgba(var(--ctp-red-rgb), 0.15);
+  color: var(--ctp-red);
+}
+
+.problems-file-count.warning {
+  background: rgba(var(--ctp-yellow-rgb), 0.15);
+  color: var(--ctp-yellow);
+}
+
+/* Collapsed state */
+.problems-file-group.collapsed .problems-file-header {
+  border-bottom: none;
+}
+
+/* Problem items */
+.problems-file-items {
+  display: flex;
+  flex-direction: column;
+}
+
+.problem-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-md);
+  padding-left: calc(var(--spacing-md) + 12px + var(--spacing-sm));
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+.problem-item:hover {
+  background: var(--bg-hover);
+}
+
+.problem-item.clickable {
+  cursor: pointer;
+}
+
+.problem-item.clickable:hover {
+  background: var(--bg-active);
+}
+
+.problem-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.problem-item.error .problem-icon {
+  color: var(--ctp-red);
+}
+
+.problem-item.warning .problem-icon {
+  color: var(--ctp-yellow);
+}
+
+.problem-message {
+  flex: 1;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.problem-location {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.problem-source {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  padding: 1px 5px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+

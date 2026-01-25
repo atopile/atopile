@@ -1,21 +1,20 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import functools
 import logging
-from dataclasses import asdict, dataclass, field, make_dataclass
+from dataclasses import dataclass, field, make_dataclass
 from typing import Any
 
 from dataclasses_json import config as dataclass_json_config
 from dataclasses_json import dataclass_json
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.parameter import Parameter
-from faebryk.libs.exceptions import UserException, downgrade
+from atopile.exceptions import UserException, downgrade
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
-from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import Serializable, SerializableJSONEncoder, md_list, once
 
 logger = logging.getLogger(__name__)
@@ -27,7 +26,7 @@ class Interval:
     max: float | None
 
 
-ApiParamT = P_Set | None
+ApiParamT = F.Literals.is_literal | None
 
 
 def SerializableField():
@@ -41,14 +40,27 @@ def _pretty_params_helper(params) -> str:
     def _map(v: Any) -> str:
         if v is None:
             return "**unconstrained**"
-        elif isinstance(v, (P_Set, int, float)):
+        # Check if it's an is_literal - these have pretty_str for human-readable output
+        elif isinstance(v, F.Literals.is_literal):
+            return f"`{v.pretty_str()}`"
+        elif isinstance(v, fabll.Node):
+            # Check if this node has an is_literal trait (e.g., enum literal)
+            if v.has_trait(F.Literals.is_literal):
+                return f"`{v.get_trait(F.Literals.is_literal).pretty_str()}`"
+            return f"`{v}`"
+        elif isinstance(v, (int, float)):
             return f"`{v}`"
         elif isinstance(v, str):
             return f'"{v}"'
         else:
             return str(v)
 
-    return md_list(f"`{k}`: {_map(v)}" for k, v in asdict(params).items())
+    # Avoid asdict() as it uses deepcopy which fails on BoundNodeReference
+    from dataclasses import fields as dataclass_fields
+
+    return md_list(
+        f"`{f.name}`: {_map(getattr(params, f.name))}" for f in dataclass_fields(params)
+    )
 
 
 @dataclass_json
@@ -56,7 +68,7 @@ def _pretty_params_helper(params) -> str:
 class BaseParams(Serializable):
     package: ApiParamT = SerializableField()
     qty: int
-    endpoint: F.is_pickable_by_type.Endpoint | None = None
+    endpoint: F.Pickable.is_pickable_by_type.Endpoint | None = None
 
     def serialize(self) -> dict:
         return self.to_dict()  # type: ignore
@@ -66,25 +78,28 @@ class BaseParams(Serializable):
 
 
 @once
-def make_params_for_type(module_type: type[Module]) -> type:
-    m = module_type()
-    assert m.has_trait(F.is_pickable_by_type)
-    pickable_trait = m.get_trait(F.is_pickable_by_type)
+def make_params_for_type(module: fabll.Node) -> type:
+    assert module.has_trait(F.Pickable.is_pickable_by_type)
+    pickable_trait = module.get_trait(F.Pickable.is_pickable_by_type)
 
     fields = [
         (
             "endpoint",
-            F.is_pickable_by_type.Endpoint,
-            field(default=pickable_trait.endpoint.value, init=False),
+            F.Pickable.is_pickable_by_type.Endpoint,
+            field(default=pickable_trait.endpoint, init=False),
         ),
         *[
-            (param.get_name(), ApiParamT, SerializableField())
-            for param in pickable_trait.params
+            (
+                fabll.Traits(param).get_obj_raw().get_name(),
+                ApiParamT,
+                SerializableField(),
+            )
+            for param in pickable_trait.get_params()
         ],
     ]
 
     cls = make_dataclass(
-        f"{module_type.__name__}Params",
+        f"{module.__class__.__name__}Params",
         fields,
         bases=(BaseParams,),
         frozen=True,
@@ -187,50 +202,85 @@ class Component:
 
         return unit_price * qty + handling_fee
 
-    @functools.cached_property
-    def attribute_literals(self) -> dict[str, P_Set | None]:
+    # TODO FIXME this used to be a cached property
+    def attribute_literals(
+        self,
+        *,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+    ) -> dict[str, F.Literals.is_literal | None]:
         def deserialize(k, v):
             if v is None:
                 return None
-            return P_Set.deserialize(v)
+            return F.Literals.is_literal.deserialize(v, g=g, tg=tg)
 
         return {k: deserialize(k, v) for k, v in self.attributes.items()}
 
-    def attach(self, module: Module, qty: int = 1):
-        lcsc_attach(module, self.lcsc_display)
-
-        module.add(
-            F.has_part_picked(
-                PickedPartLCSC(
-                    manufacturer=self.manufacturer_name,
-                    partno=self.part_number,
-                    supplier_partno=self.lcsc_display,
-                    info=PickedPartLCSC.Info(
-                        stock=self.stock,
-                        price=self.get_price(qty),
-                        description=self.description,
-                        basic=bool(self.is_basic),
-                        preferred=bool(self.is_preferred),
-                    ),
-                )
+    def attach(self, pickable_module: F.Pickable.is_pickable, qty: int = 1):
+        module = pickable_module.get_pickable_node()
+        if module is None:
+            raise Exception(
+                f"Module {module.get_full_name(types=True)} does not have "
+                "is_pickable trait",
+                module,
             )
-        )
-        module.add(F.has_datasheet_defined(self.datasheet_url))
+        module_with_fp = module.get_trait(F.Footprints.can_attach_to_footprint)
+        lcsc_attach(module_with_fp, self.lcsc_display)
+
+        fabll.Traits.create_and_add_instance_to(
+            node=module, trait=F.Pickable.has_part_picked
+        ).setup(
+            PickedPartLCSC(
+                manufacturer=self.manufacturer_name,
+                partno=self.part_number,
+                supplier_partno=self.lcsc_display,
+                info=PickedPartLCSC.Info(
+                    stock=self.stock,
+                    price=self.get_price(qty),
+                    description=self.description,
+                    basic=bool(self.is_basic),
+                    preferred=bool(self.is_preferred),
+                ),
+            )
+        ).set_attributes(self.attribute_literals(g=module.g, tg=module.tg))
+
+        fabll.Traits.create_and_add_instance_to(
+            node=module, trait=F.has_datasheet
+        ).setup(datasheet=self.datasheet_url)
 
         missing_attrs = []
         # only for type picks
-        if module.has_trait(F.is_pickable_by_type):
-            for name, literal in self.attribute_literals.items():
-                if not hasattr(module, name):
+        if module.has_trait(F.Pickable.is_pickable_by_type):
+            attribute_literals = self.attribute_literals(g=module.g, tg=module.tg)
+            # Get parameters from the trait
+            design_params = {
+                fabll.Traits(p).get_obj_raw().get_name(): p
+                for p in module.get_trait(F.Pickable.is_pickable_by_type).get_params()
+            }
+            for name, literal in attribute_literals.items():
+                # Get parameter from the trait's registered params
+                param = design_params.get(name)
+                if param is None:
                     missing_attrs.append(name)
                     continue
 
-                p = getattr(module, name)
-                assert isinstance(p, Parameter)
+                # Skip None literals - they mean the attribute is unconstrained
                 if literal is None:
-                    literal = p.domain.unbounded(p)
+                    continue
 
-                p.alias_is(literal)
+                # Get the parameter traits
+                param_operand = param.as_operand.get()
+
+                # Create Is expression to alias parameter to the literal value
+                from faebryk.library.Expressions import IsSuperset
+
+                IsSuperset.bind_typegraph(tg=module.tg).create_instance(
+                    g=module.g
+                ).setup(
+                    param_operand,
+                    literal.as_operand.get(),
+                    assert_=True,
+                )
 
         if missing_attrs:
             with downgrade(UserException):
@@ -245,7 +295,7 @@ class Component:
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                f"Attached component {self.lcsc_display} to module {module}: \n"
+                f"Attached component {self.lcsc_display} to module {module.get_name()}"
                 # f"{indent(str(self.attributes), ' ' * 4)}\n--->\n"
                 # f"{indent(module.pretty_params(), ' ' * 4)}"
             )

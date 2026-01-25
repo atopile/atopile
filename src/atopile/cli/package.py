@@ -1,4 +1,3 @@
-import logging
 import os
 from typing import TYPE_CHECKING, Annotated, Iterator
 
@@ -6,14 +5,14 @@ import typer
 from semver import Version
 
 from atopile.errors import UserBadParameterError, UserException, UserFileNotFoundError
+from atopile.exceptions import accumulate
+from atopile.logging import get_logger
 from atopile.telemetry import capture
-from faebryk.libs.exceptions import accumulate
 
 if TYPE_CHECKING:
     from atopile.config import Config
 
-# Set up logging
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 package_app = typer.Typer(rich_markup_mode="rich")
 
@@ -168,9 +167,9 @@ class _PackageValidators:
                 "Missing required files/directories: " + ", ".join(missing)
             )
 
-        # 3. ato.yaml must contain both 'default' and 'usage' builds
+        # 3. ato.yaml must contain 'usage' build
         build_names = set(config.project.builds.keys())
-        for required_build in {"default", "usage"}:
+        for required_build in {"usage"}:
             if required_build not in build_names:
                 raise UserBadParameterError(
                     f"ato.yaml must define a '{required_build}' build target"
@@ -207,9 +206,15 @@ class _PackageValidators:
         """
         Verify that the `usage` build target's imports reference atopile packages.
         """
+        import re
         from pathlib import Path
 
-        from atopile.front_end import Context, bob
+        import atopile.compiler.ast_types as AST
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.graph as graph
+        import faebryk.core.node as fabll
+        from atopile.compiler.antlr_visitor import ANTLRVisitor
+        from atopile.compiler.parse import parse_file
 
         if (usage_build := config.project.builds.get("usage", None)) is None:
             raise UserBadParameterError("Missing 'usage' build target in ato.yaml")
@@ -218,7 +223,11 @@ class _PackageValidators:
         if not entry_path.exists():
             raise UserFileNotFoundError(f"Usage build entry not found: {entry_path}")
 
-        context = bob.index_file(entry_path)
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        root_ctx = parse_file(entry_path)
+        ast_root = ANTLRVisitor(g, tg, entry_path).visit(root_ctx)
+        assert isinstance(ast_root, AST.File)
 
         permitted_import_prefixes = {
             d.identifier for d in config.project.dependencies or []
@@ -228,24 +237,52 @@ class _PackageValidators:
         if config.project.package is not None:
             permitted_import_prefixes.add(config.project.package.identifier)
 
+        def iter_imports(scope: AST.Scope) -> list[AST.ImportStmt]:
+            imports: list[AST.ImportStmt] = []
+            for stmt_trait in scope.get_child_stmts():
+                stmt_node = fabll.Traits(stmt_trait).get_obj_raw()
+                if isinstance(stmt_node, AST.ImportStmt):
+                    imports.append(stmt_node)
+                    continue
+                if isinstance(stmt_node, (AST.BlockDefinition, AST.ForStmt)):
+                    imports.extend(iter_imports(stmt_node.scope.get()))
+            return imports
+
+        def format_import(node: AST.ImportStmt) -> str:
+            path = node.get_path()
+            if path is not None:
+                return path
+            return f"import {node.get_type_ref_name()}"
+
+        from_paths: set[str] = set()
+        for node in iter_imports(ast_root.scope.get()):
+            path = node.get_path()
+            if path is not None:
+                from_paths.add(path)
+
+        usage_text = entry_path.read_text(encoding="utf-8")
+        for match in re.finditer(r'from\s+"([^"]+)"\s+import', usage_text):
+            from_paths.add(match.group(1))
+
         offending: list[str] = []
-        for _ref, node in context.refs.items():
-            if isinstance(node, Context.ImportPlaceholder):
-                parts = [p for p in node.from_path.split("/") if p]
-                assert parts
+        for path in sorted(from_paths):
+            parts = [p for p in path.split("/") if p]
+            if not parts:
+                offending.append(path)
+                continue
 
-                # Allow local parts imports
-                if parts[0] == "parts":
-                    continue
+            # Allow local parts imports
+            if parts[0] == "parts":
+                continue
 
-                # Allow fully-qualified imports from dependencies
-                if (
-                    len(parts) >= 2
-                    and f"{parts[0]}/{parts[1]}" in permitted_import_prefixes
-                ):
-                    continue
+            # Allow fully-qualified imports from dependencies
+            if (
+                len(parts) >= 2
+                and f"{parts[0]}/{parts[1]}" in permitted_import_prefixes
+            ):
+                continue
 
-                offending.append(node.from_path)
+            offending.append(path)
 
         if offending:
             raise UserBadParameterError(
@@ -274,12 +311,46 @@ class _PackageValidators:
             )
 
     @staticmethod
+    def verify_build_artifacts(config: "Config"):
+        """
+        Verify every build target has all required artifacts.
+        """
+        from faebryk.libs.package.artifacts import Artifacts
+
+        builds_root = Artifacts.builds_dir(config.project)
+        required_patterns = {
+            "glb": "*.glb",
+            "bom.csv": "*.bom.csv",
+            "gerber.zip": "*gerber.zip",
+            "step": "*step",
+        }
+        missing_by_build: dict[str, list[str]] = {}
+        for build_name in config.project.builds.keys():
+            build_dir = builds_root / build_name
+            if not build_dir.exists():
+                missing_by_build[build_name] = list(required_patterns.keys())
+                continue
+            missing: list[str] = []
+            for label, pattern in required_patterns.items():
+                if not any(build_dir.glob(pattern)):
+                    missing.append(label)
+            if missing:
+                missing_by_build[build_name] = missing
+
+        if missing_by_build:
+            missing_lines = [
+                f"{build_name}: {', '.join(missing)}"
+                for build_name, missing in sorted(missing_by_build.items())
+            ]
+            raise UserBadParameterError(
+                "Missing build artifacts per target:\n" + "\n".join(missing_lines)
+            )
+
+    @staticmethod
     def verify_3d_models(config: "Config"):
         from pathlib import Path
 
-        from faebryk.libs.kicad.fileformats_version import (
-            try_load_kicad_pcb_file,
-        )
+        from faebryk.libs.kicad.fileformats import kicad
 
         layout_path: Path = config.project.paths.layout
         kicad_pcb_paths = list(layout_path.rglob("*.kicad_pcb"))
@@ -296,7 +367,7 @@ class _PackageValidators:
             return pcb_dir / p
 
         for pcb_path in kicad_pcb_paths:
-            pcb_file = try_load_kicad_pcb_file(pcb_path)
+            pcb_file = kicad.loads(kicad.pcb.PcbFile, pcb_path)
             pcb_dir = pcb_path.parent
             for fp in pcb_file.kicad_pcb.footprints:
                 for m in getattr(fp, "models", []):
@@ -315,32 +386,64 @@ class _PackageValidators:
 
     @staticmethod
     def verify_no_warnings(config: "Config"):
-        logs_latest = config.project.paths.logs / "latest"
+        from atopile.dataclasses import HistoricalBuild
+        from atopile.model import build_history
 
-        if not logs_latest.exists():
+        project_root = str(config.project.paths.root)
+
+        # Query recent builds for this project from the database
+        builds = build_history.get_builds_by_project_target(
+            project_root=project_root,
+            limit=50,  # Get recent builds
+        )
+
+        if not builds:
             raise UserFileNotFoundError(
-                f"Missing logs directory: {logs_latest}. "
-                "Please run `ato build` to generate logs."
+                f"No build history found for {project_root}. "
+                "Please run `ato build` to generate build records."
             )
 
-        offenders: list[str] = []
-        for path in logs_latest.rglob("*"):
-            if not path.is_file():
-                continue
-            if "warning" in path.name:
-                try:
-                    if path.stat().st_size > 0:
-                        offenders.append(
-                            str(path.relative_to(config.project.paths.root))
-                        )
-                except OSError:
-                    # If the file can't be stat'ed, count it as an offender to be safe
-                    offenders.append(str(path.relative_to(config.project.paths.root)))
+        # Get the latest build for each target
+        latest_by_target: dict[str, HistoricalBuild] = {}
+        for build in builds:
+            target = build.target or "default"
+            if target not in latest_by_target:
+                latest_by_target[target] = build
 
-        if offenders:
+        # Check total warnings from latest builds per target
+        total_warnings = sum(b.warnings for b in latest_by_target.values())
+        if total_warnings > 0:
+            # Collect warning details from individual builds
+            warning_details: list[str] = []
+            for target, build in latest_by_target.items():
+                build_warnings = build.warnings
+                if build_warnings > 0:
+                    # Get full build info for stage details
+                    build_info = build_history.get_build_info_by_id(build.build_id)
+                    if build_info:
+                        stages_with_warnings = [
+                            f"  - {stage['name']}: {stage['warnings']} warning(s)"
+                            for stage in build_info.stages
+                            if stage.get("warnings", 0) > 0
+                        ]
+                        if stages_with_warnings:
+                            warning_details.append(
+                                f"{target} ({build_warnings} warning(s)):\n"
+                                + "\n".join(stages_with_warnings)
+                            )
+                        else:
+                            warning_details.append(
+                                f"{target}: {build_warnings} warning(s)"
+                            )
+                    else:
+                        warning_details.append(
+                            f"{target}: {build_warnings} warning(s)"
+                        )
+
             raise UserBadParameterError(
-                "Warning logs must be empty. Non-empty warning files found:\n\n"
-                + ", ".join(offenders)
+                f"Build completed with {total_warnings} warning(s). "
+                "Warnings must be resolved before publishing.\n\n"
+                + "\n".join(warning_details)
             )
 
     @staticmethod
@@ -381,12 +484,48 @@ class _PackageValidators:
                 )
             )
 
+    @staticmethod
+    def verify_unused_and_duplicate_imports(config: "Config"):
+        import re
+
+        _import_name_regex = r"(import ([^,\n]+))"
+
+        ato_files = config.project.paths.root.rglob("*.ato")
+        for ato_file in ato_files:
+            import_statements: list[re.Match[str]] = []
+            content = ato_file.read_text(encoding="utf-8")
+            for import_name in re.finditer(_import_name_regex, content):
+                import_statements.append(import_name)
+
+            # check if the name is at lease twice in the file
+            unused_imports: list[str] = []
+            duplicates: list[str] = []
+            for import_match in import_statements:
+                if content.count(import_match.group(2)) < 2:
+                    unused_imports.append(import_match.group(2))
+                if content.count(import_match.group(1)) > 1:
+                    duplicates.append(import_match.group(1))
+
+            file_path = ato_file.relative_to(config.project.paths.root)
+            message = ""
+            if unused_imports:
+                message = (
+                    f"Unused imports: [{', '.join(unused_imports)}] in {file_path}"
+                )
+            if duplicates:
+                message += (
+                    f"\nDuplicate imports: [{', '.join(duplicates)}] in {file_path}"
+                )
+            if message:
+                raise UserBadParameterError(message)
+
 
 _DEFAULT_VALIDATORS = [
     _PackageValidators.verify_manifest,
     _PackageValidators.verify_build_exists,
     _PackageValidators.verify_pinned_dependencies,
     _PackageValidators.verify_version_increment,
+    _PackageValidators.verify_usage_import,
 ]
 
 _STRICT_VALIDATORS = [
@@ -395,6 +534,8 @@ _STRICT_VALIDATORS = [
     _PackageValidators.verify_no_warnings,
     _PackageValidators.verify_usage_import,
     _PackageValidators.verify_usage_in_readme,
+    _PackageValidators.verify_build_artifacts,
+    _PackageValidators.verify_unused_and_duplicate_imports,
 ]
 
 

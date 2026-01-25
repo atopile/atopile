@@ -1,0 +1,383 @@
+/**
+ * Atopile Design System
+ * Main entry point - imports modular CSS with theme support
+ */
+
+/* Import all styles from the organized styles folder */
+@import './styles/index.css';
+
+/* ===========================================
+   Standard Library Panel Styles
+   (These extend the base design system)
+   =========================================== */
+
+.stdlib-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.stdlib-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-xs);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.stdlib-toolbar .search-box {
+  flex: 1;
+}
+
+.stdlib-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-sm) 0;
+}
+
+/* Loading State */
+.stdlib-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl) var(--spacing-md);
+  gap: var(--spacing-md);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.stdlib-loading .loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border-subtle);
+  border-top-color: var(--ato-orange);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Empty State */
+.stdlib-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl) var(--spacing-md);
+  gap: var(--spacing-sm);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.stdlib-empty svg {
+  opacity: 0.4;
+}
+
+/* Search Results */
+.stdlib-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.search-results-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+}
+
+/* Groups */
+.stdlib-group {
+  margin-bottom: var(--spacing-sm);
+}
+
+.stdlib-group.collapsed .stdlib-group-items {
+  display: none;
+}
+
+.stdlib-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.stdlib-group-header:hover {
+  background: var(--hover);
+}
+
+.stdlib-group-header .group-chevron {
+  color: var(--text-muted);
+}
+
+.stdlib-group-header .group-icon {
+  display: flex;
+}
+
+.stdlib-group-header .group-label {
+  flex: 1;
+}
+
+.stdlib-group-header .group-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-weight: normal;
+}
+
+.stdlib-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding-left: var(--spacing-sm);
+  margin-top: var(--spacing-xs);
+}
+
+/* Standard Library Card */
+.stdlib-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.stdlib-card:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-color);
+}
+
+.stdlib-card.selected {
+  border-color: var(--ato-orange);
+  background: var(--ato-orange-subtle);
+}
+
+.stdlib-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.stdlib-type-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.stdlib-card-name {
+  flex: 1;
+  font-weight: 500;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.stdlib-type-badge {
+  font-size: var(--font-size-xs);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+.stdlib-card-description {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin-top: var(--spacing-sm);
+  padding-left: calc(14px + var(--spacing-sm)); /* Align with name */
+}
+
+/* Child Tree View */
+.stdlib-card-children {
+  margin-top: var(--spacing-sm);
+  padding-left: var(--spacing-sm);
+  border-left: 1px solid var(--border-subtle);
+  margin-left: calc(7px + var(--spacing-sm)); /* Align with icon center */
+}
+
+.stdlib-child-node {
+  font-size: var(--font-size-xs);
+}
+
+.stdlib-child-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.stdlib-child-row.expandable {
+  cursor: pointer;
+}
+
+.stdlib-child-row:hover {
+  background: var(--hover);
+}
+
+.stdlib-child-row .expand-btn {
+  display: flex;
+  padding: 0;
+  color: var(--text-muted);
+}
+
+.stdlib-child-row .expand-spacer {
+  width: 12px;
+}
+
+.stdlib-child-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.stdlib-child-name {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.stdlib-child-type {
+  font-size: var(--font-size-xs);
+  opacity: 0.7;
+  margin-left: auto;
+}
+
+.stdlib-child-children {
+  margin-left: var(--spacing-xs);
+}
+
+/* Usage Example */
+.stdlib-card-usage {
+  margin-top: var(--spacing-sm);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.stdlib-card-usage .usage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.stdlib-card-usage .copy-btn {
+  display: flex;
+  padding: 2px;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+}
+
+.stdlib-card-usage .copy-btn:hover {
+  background: var(--hover);
+  color: var(--text-primary);
+}
+
+.stdlib-card-usage .usage-code {
+  padding: var(--spacing-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  margin: 0;
+}
+
+/* Action Buttons */
+.stdlib-card-actions {
+  display: flex;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.stdlib-action-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  transition: all var(--transition-fast);
+}
+
+.stdlib-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.stdlib-action-btn.primary {
+  background: var(--ato-orange);
+  color: white;
+  border-color: var(--ato-orange);
+}
+
+.stdlib-action-btn.primary:hover {
+  background: var(--ato-orange-light);
+}
+
+/* Search Box (shared) */
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.search-box:focus-within {
+  border-color: var(--ato-orange);
+}
+
+.search-box svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.search-box input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.search-box input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Empty State (shared) */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl) var(--spacing-md);
+  gap: var(--spacing-sm);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.empty-state .empty-hint {
+  font-size: var(--font-size-xs);
+  opacity: 0.7;
+}

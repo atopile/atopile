@@ -3,7 +3,7 @@
     "displayName": "atopile",
     "icon": "ato_logo_256x256.png",
     "description": "IDE support for atopile.",
-    "version": "0.6.0",
+    "version": "0.14.0",
     "preview": false,
     "publisher": "atopile",
     "license": "MIT",
@@ -48,7 +48,8 @@
     ],
     "main": "./dist/extension.js",
     "scripts": {
-        "vscode:prepublish": "npm run package",
+        "vscode:prepublish": "npm run build:webviews && npm run package",
+        "build:webviews": "cd ../ui-server && npm install && npm run build -- --outDir ../vscode-atopile/resources/webviews",
         "compile": "webpack",
         "watch": "webpack --watch",
         "package": "webpack --mode production --devtool source-map --config ./webpack.config.js",
@@ -100,20 +101,35 @@
                     "title": "atopile",
                     "icon": "ato_logo_256x256.png"
                 }
+            ],
+            "panel": [
+                {
+                    "id": "atopile-panel",
+                    "title": "atopile Logs",
+                    "icon": "ato_logo_256x256.png"
+                }
             ]
         },
         "views": {
             "atopile-explorer": [
                 {
-                    "id": "atopile.project",
-                    "name": "Project",
-                    "contextualTitle": "atopile Project"
+                    "id": "atopile.sidebar",
+                    "name": "",
+                    "contextualTitle": "atopile Project",
+                    "type": "webview"
+                }
+            ],
+            "atopile-panel": [
+                {
+                    "id": "atopile.logViewer",
+                    "name": "Logs",
+                    "type": "webview"
                 }
             ]
         },
         "viewsWelcome": [
             {
-                "view": "atopile.project",
+                "view": "atopile.sidebar",
                 "contents": "You have not opened an atopile project.\n\n[Create New Project](command:atopile.create_project)\n\n[Open Existing Project](command:vscode.openFolder)\n\n[Open Example Projects](command:atopile.example)\n\nRead the [docs](https://docs.atopile.io) or checkout the [source code](https://github.com/atopile/atopile)."
             }
         ],
@@ -160,7 +176,13 @@
             },
             {
                 "command": "atopile.choose_build",
-                "title": "Choose build target",
+                "title": "Choose build targets",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            },
+            {
+                "command": "atopile.choose_project",
+                "title": "Choose project folder",
                 "category": "atopile",
                 "when": "editorLangId == ato"
             },
@@ -198,6 +220,16 @@
             {
                 "command": "atopile.llm.setup",
                 "title": "Setup LLM rules & MCP",
+                "category": "atopile"
+            },
+            {
+                "command": "atopile.showBuildLogs",
+                "title": "Show Build Logs",
+                "category": "atopile"
+            },
+            {
+                "command": "atopile.backendStatus",
+                "title": "Backend Connection Status",
                 "category": "atopile"
             }
         ],
@@ -237,6 +269,7 @@
         "vscode-languageclient": "^9.0.1",
         "vscode-variables": "^1.0.1",
         "which": "^5.0.0",
+        "ws": "^8.19.0",
         "yaml": "^2.8.0"
     },
     "devDependencies": {
@@ -246,6 +279,7 @@
         "@types/node": "^16.18.126",
         "@types/vscode": "1.78.0",
         "@types/which": "^3.0.4",
+        "@types/ws": "^8.18.1",
         "@typescript-eslint/eslint-plugin": "^8.16.0",
         "@typescript-eslint/parser": "^8.19.0",
         "@vscode/test-electron": "^2.4.0",

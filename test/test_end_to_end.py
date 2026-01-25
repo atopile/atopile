@@ -7,16 +7,15 @@ import pytest
 from rich.console import Console
 from rich.table import Table
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.library._F as F
 from atopile import config
 from atopile.build_steps import muster
-from atopile.datatypes import TypeRef
-from atopile.front_end import Bob
-from atopile.parse import parse_text_as_file
-from faebryk.core.solver.nullsolver import NullSolver
+from atopile.compiler.build import _build_from_ctx
+from atopile.compiler.parse import parse_text_as_file
+from faebryk.core.solver.solver import Solver
 from faebryk.libs.kicad.fileformats import kicad
-from faebryk.libs.library import L
-from faebryk.libs.util import cast_assert
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -26,7 +25,6 @@ def test_memory_usage():
     python ./tools/profile.py memray -- $(which pytest) -o addopts='' -s
     --log-cli-level=INFO -k test_memory_usage
     """
-    bob = Bob()
     layout_path = Path(tempfile.mkdtemp()) / "layout.kicad_pcb"
     pcb_file = kicad.pcb.PcbFile(
         kicad_pcb=kicad.pcb.KicadPcb(
@@ -41,6 +39,9 @@ def test_memory_usage():
     ctx = gcfg.select_build("default")
     ctx.__enter__()
 
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
     mem_measurement = {}
 
     def measure_memory(name: str, before: int) -> int:
@@ -50,8 +51,7 @@ def test_memory_usage():
         mem_measurement[name] = mem_gain
         return mem_new
 
-    # solver = DefaultSolver()
-    solver = NullSolver()
+    solver = Solver()
     mem = psutil.Process().memory_info().rss
 
     COUNT = 1000
@@ -68,10 +68,13 @@ def test_memory_usage():
     tree = parse_text_as_file(text)
     mem = measure_memory("Parse", mem)
 
-    node = cast_assert(L.Module, bob.build_ast(tree, TypeRef(["App"])))
+    build_result = _build_from_ctx(g, tree, None)
+    node = build_result.ast_root
     mem = measure_memory("AST", mem)
 
-    pcb = F.PCB(layout_path)
+    tg = fbrk.TypeGraph.create(g=g)
+    pcb = F.PCB.bind_typegraph(tg=tg).create_instance(g=g)
+    pcb.setup(path=str(layout_path), app=node)
     for target in muster.select({"default"}):
         target(node, solver, pcb)
         mem = measure_memory(f"Build {target.name}", mem)

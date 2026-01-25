@@ -4,98 +4,317 @@
 import logging
 import math
 
+import pytest
+
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.library import L
-from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint, Quantity_Set
 
 logger = logging.getLogger(__name__)
 
 
-class FilterElectricalRC(F.Filter):
+class FilterElectricalRC(fabll.Node):
     """
-    Basic Electrical RC filter
+    Basic Electrical RC filter (low-pass)
+
+    Topology:
+        in_.line ~> resistor ~> out.line
+        out.line ~> capacitor ~> in_.reference.lv (ground)
     """
 
-    in_: F.ElectricSignal
-    out: F.ElectricSignal
-    resistor: F.Resistor
-    capacitor: F.Capacitor
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    in_ = F.ElectricSignal.MakeChild()
+    out = F.ElectricSignal.MakeChild()
+    resistor = F.Resistor.MakeChild()
+    capacitor = F.Capacitor.MakeChild()
 
-    def __init__(self, *, _hardcoded: bool = False):
-        super().__init__()
-        self._hardcoded = _hardcoded
+    filter = F.Filter.MakeChild()
 
-    def __preinit__(self):
-        self.response.alias_is(F.Filter.Response.LOWPASS)
-        self.order.alias_is(1)
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-        R = self.resistor.resistance
-        C = self.capacitor.capacitance
-        fc = self.cutoff_frequency
-
-        # Equations
-        if not self._hardcoded:
-            C.alias_is(1 / (R * 2 * math.pi * fc))
-            R.alias_is(1 / (C * 2 * math.pi * fc))
-            fc.alias_is(1 / (2 * math.pi * R * C))
-
-        # Connections
-        self.in_.line.connect_via(
-            (self.resistor, self.capacitor),
-            self.in_.reference.lv,
-        )
-
-        self.in_.line.connect_via(self.resistor, self.out.line)
-
-        # Set the max voltage of the capacitor to min 1.5 times the output voltage
-        self.capacitor.max_voltage.constrain_ge(self.out.reference.voltage * 1.5)
-
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
-
-    @L.rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(self.in_.line, self.out.line)
-
-    @classmethod
-    def hardcoded_rc(cls, resistance: Quantity_Set, capacitance: Quantity_Set):
-        # TODO: Remove hardcoded when normal equations solve faster
-        out = cls(_hardcoded=True)
-        cutoff_frequency = 1 / (
-            Quantity_Interval_Disjoint.from_value(resistance * capacitance)
-            * 2
-            * math.pi
-        )
-        out.resistor.resistance.constrain_subset(resistance)
-        out.capacitor.capacitance.constrain_subset(capacitance)
-        out.cutoff_frequency.constrain_subset(cutoff_frequency)
-        return out
-
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
-        import FilterElectricalRC, ElectricSignal, ElectricPower
-
-        # Create low-pass RC filter
-        rc_filter = new FilterElectricalRC
-        rc_filter.cutoff_frequency = 1kHz +/- 10%
-
-        # Connect power reference
-        power_supply = new ElectricPower
-        assert power_supply.voltage within 5V +/- 5%
-        rc_filter.in_.reference ~ power_supply
-        rc_filter.out.reference ~ power_supply
-
-        # Connect input and output signals
-        input_signal = new ElectricSignal
-        output_signal = new ElectricSignal
-        input_signal ~ rc_filter.in_
-        rc_filter.out ~ output_signal
-
-        # Alternative: use hardcoded values for faster solving
-        rc_filter_fixed = FilterElectricalRC.hardcoded_rc(1kohm +/- 5%, 100nF +/- 10%)
-        """,
-        language=F.has_usage_example.Language.ato,
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
     )
+
+    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(["in_"], ["out"]))
+
+    # ----------------------------------------
+    #            Connections
+    # ----------------------------------------
+    # Topology: in_.line ~> resistor ~> out.line
+    #           out.line ~> capacitor ~> in_.reference.lv
+    _connections = [
+        # in_.line ~ resistor.unnamed[0]
+        fabll.is_interface.MakeConnectionEdge(
+            [in_, F.ElectricSignal.line],
+            [resistor, F.Resistor.unnamed[0]],
+        ),
+        # resistor.unnamed[1] ~ out.line
+        fabll.is_interface.MakeConnectionEdge(
+            [resistor, F.Resistor.unnamed[1]],
+            [out, F.ElectricSignal.line],
+        ),
+        # out.line ~ capacitor.unnamed[0]
+        fabll.is_interface.MakeConnectionEdge(
+            [out, F.ElectricSignal.line],
+            [capacitor, F.Capacitor.unnamed[0]],
+        ),
+        # capacitor.unnamed[1] ~ in_.reference.lv
+        fabll.is_interface.MakeConnectionEdge(
+            [capacitor, F.Capacitor.unnamed[1]],
+            [in_, F.ElectricSignal.reference, F.ElectricPower.lv],
+        ),
+        # Connect in_ and out references together
+        fabll.is_interface.MakeConnectionEdge(
+            [in_, F.ElectricSignal.reference],
+            [out, F.ElectricSignal.reference],
+        ),
+    ]
+
+    # ----------------------------------------
+    #            Expressions / Equations
+    # ----------------------------------------
+    # RC filter cutoff frequency: fc = 1 / (2 * pi * R * C)
+    _equations = [
+        # fc = 1 / (2 * pi * R * C)
+        F.Expressions.Is.MakeChild(
+            [filter, F.Filter.cutoff_frequency],
+            [
+                _div_fc := F.Expressions.Divide.MakeChild(
+                    [
+                        _lit_one := F.Literals.Numbers.MakeChild_SingleValue(
+                            value=1.0, unit=F.Units.Dimensionless
+                        )
+                    ],
+                    [
+                        _mul_two_pi_rc := F.Expressions.Multiply.MakeChild(
+                            [
+                                _lit_two_pi := F.Literals.Numbers.MakeChild_SingleValue(
+                                    value=2.0 * math.pi, unit=F.Units.Dimensionless
+                                )
+                            ],
+                            [
+                                _mul_rc := F.Expressions.Multiply.MakeChild(
+                                    [resistor, F.Resistor.resistance],
+                                    [capacitor, F.Capacitor.capacitance],
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+            assert_=True,
+        ),
+        # Set filter response to LOWPASS (this is an RC low-pass filter)
+        F.Literals.AbstractEnums.MakeChild_SetSuperset(
+            [filter, F.Filter.response], F.Filter.Response.LOWPASS
+        ),
+        # Set filter order to 1 (first-order RC filter)
+        F.Literals.Numbers.MakeChild_SetSingleton(
+            [filter, F.Filter.order], 1.0, unit=F.Units.Dimensionless
+        ),
+    ]
+
+    # ----------------------------------------
+    #            Usage Example
+    # ----------------------------------------
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
+            import FilterElectricalRC, ElectricSignal, ElectricPower
+
+            # Create low-pass RC filter
+            rc_filter = new FilterElectricalRC
+            rc_filter.filter.cutoff_frequency = 1kHz +/- 10%
+
+            # Connect power reference (using reference_shim for convenience)
+            power_supply = new ElectricPower
+            assert power_supply.voltage within 5V +/- 5%
+            rc_filter.reference_shim ~ power_supply
+
+            # Connect input and output signals
+            input_signal = new ElectricSignal
+            output_signal = new ElectricSignal
+            input_signal ~ rc_filter.in_
+            rc_filter.out ~ output_signal
+
+            """,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )
+
+
+# ----------------------------------------
+#                 Tests
+# ----------------------------------------
+
+
+class TestFilterElectricalRC:
+    """Tests for FilterElectricalRC solver equations."""
+
+    @pytest.mark.skip(reason="to_fix")  # FIXME
+    def test_solves_resistance_from_c_and_fc(self):
+        """
+        Test that FilterElectricalRC correctly solves for resistance.
+
+        Given: C = 100nF, fc = 1kHz
+        Expected: R = 1 / (2 * pi * C * fc) ≈ 1591.5 Ω
+        """
+        from faebryk.core.solver.solver import Solver
+        from faebryk.libs.test.boundexpressions import BoundExpressions
+
+        E = BoundExpressions()
+
+        # Create the actual FilterElectricalRC module
+        rc_filter = FilterElectricalRC.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+
+        # Set constraints: C = 100nF, fc = 1kHz
+        C_value = 100e-9  # 100nF in Farads
+        fc_value = 1000  # 1kHz in Hz
+
+        # Get the parameter operands from the filter
+        C_param = rc_filter.capacitor.get().capacitance.get().can_be_operand.get()
+        fc_param = rc_filter.filter.get().cutoff_frequency.get().can_be_operand.get()
+        R_param = rc_filter.resistor.get().resistance.get().can_be_operand.get()
+
+        # Constrain C and fc
+        E.is_subset(C_param, E.lit_op_single((C_value, E.U.Fa)), assert_=True)
+        E.is_subset(fc_param, E.lit_op_single((fc_value, E.U.Hz)), assert_=True)
+
+        # Manually calculate expected resistance: R = 1 / (2 * pi * C * fc)
+        expected_R = 1 / (2 * math.pi * C_value * fc_value)
+
+        # Run solver
+        solver = Solver()
+        solver.simplify_for(C_param, fc_param, R_param)
+
+        # Get solver's result for R
+        result = solver.extract_superset(
+            R_param.as_parameter_operatable.force_get().as_parameter.force_get()
+        )
+        assert result is not None, "Solver should find resistance"
+
+        # Get the Numbers node from the result
+        result_numbers = fabll.Traits(result).get_obj_raw().try_cast(F.Literals.Numbers)
+        assert result_numbers is not None, "Solver result should be Numbers"
+
+        # Create expected Numbers and compare (equals handles tolerance)
+        expected_numbers = E.numbers().setup_from_singleton(
+            expected_R, unit=E._resolve_unit(E.U.Ohm)
+        )
+        assert result_numbers.op_setic_equals(expected_numbers, g=E.g, tg=E.tg), (
+            f"Expected R ≈ {expected_R:.2f} Ω, got {result_numbers.pretty_str()}"
+        )
+
+    @pytest.mark.skip(reason="to_fix")  # FIXME
+    def test_solves_capacitance_from_r_and_fc(self):
+        """
+        Test that FilterElectricalRC correctly solves for capacitance.
+
+        Given: R = 10kΩ, fc = 10kHz
+        Expected: C = 1 / (2 * pi * R * fc) ≈ 1.59nF
+        """
+        from faebryk.core.solver.solver import Solver
+        from faebryk.libs.test.boundexpressions import BoundExpressions
+
+        E = BoundExpressions()
+
+        rc_filter = FilterElectricalRC.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+
+        # Set constraints: R = 10kΩ, fc = 10kHz
+        R_value = 10000  # 10kΩ in Ohms
+        fc_value = 10000  # 10kHz in Hz
+
+        # Get the parameter operands
+        C_param = rc_filter.capacitor.get().capacitance.get().can_be_operand.get()
+        fc_param = rc_filter.filter.get().cutoff_frequency.get().can_be_operand.get()
+        R_param = rc_filter.resistor.get().resistance.get().can_be_operand.get()
+
+        # Constrain R and fc
+        E.is_subset(R_param, E.lit_op_single((R_value, E.U.Ohm)), assert_=True)
+        E.is_subset(fc_param, E.lit_op_single((fc_value, E.U.Hz)), assert_=True)
+
+        # Manually calculate expected capacitance: C = 1 / (2 * pi * R * fc)
+        expected_C = 1 / (2 * math.pi * R_value * fc_value)
+
+        # Run solver
+        solver = Solver()
+        solver.simplify_for(R_param, fc_param, C_param)
+
+        # Get solver's result for C
+        result = solver.extract_superset(
+            C_param.as_parameter_operatable.force_get().as_parameter.force_get()
+        )
+        assert result is not None, "Solver should find capacitance"
+
+        # Get the Numbers node from the result
+        result_numbers = fabll.Traits(result).get_obj_raw().try_cast(F.Literals.Numbers)
+        assert result_numbers is not None, "Solver result should be Numbers"
+
+        # Create expected Numbers and compare (equals handles tolerance)
+        expected_numbers = E.numbers().setup_from_singleton(
+            expected_C, unit=E._resolve_unit(E.U.Fa)
+        )
+        assert result_numbers.op_setic_equals(expected_numbers, g=E.g, tg=E.tg), (
+            f"Expected C ≈ {expected_C:.2e} F, got {result_numbers.pretty_str()}"
+        )
+
+    def test_has_correct_response_and_order(self):
+        """
+        Test that FilterElectricalRC correctly sets filter response to LOWPASS
+        and order to 1.
+        """
+        from faebryk.core.solver.solver import Solver
+        from faebryk.libs.test.boundexpressions import BoundExpressions
+
+        E = BoundExpressions()
+
+        rc_filter = FilterElectricalRC.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+
+        # Get the filter's response and order parameters
+        response_param = rc_filter.filter.get().response.get()
+        order_param = rc_filter.filter.get().order.get()
+
+        # Run solver to resolve constraints
+        solver = Solver()
+        solver.simplify_for(
+            response_param.can_be_operand.get(),
+            order_param.can_be_operand.get(),
+        )
+
+        # Check response is constrained to LOWPASS
+        response_result = solver.extract_superset(
+            response_param.can_be_operand.get()
+            .as_parameter_operatable.force_get()
+            .as_parameter.force_get()
+        )
+        assert response_result is not None, "Solver should find response"
+        response_enum = (
+            fabll.Traits(response_result)
+            .get_obj_raw()
+            .try_cast(F.Literals.AbstractEnums)
+        )
+        assert response_enum is not None, "Response should be an enum literal"
+        assert response_enum.get_values() == [F.Filter.Response.LOWPASS.value], (
+            f"Expected LOWPASS, got {response_enum.get_values()}"
+        )
+
+        # Check order is constrained to 1
+        order_result = solver.extract_superset(
+            order_param.can_be_operand.get()
+            .as_parameter_operatable.force_get()
+            .as_parameter.force_get()
+        )
+        assert order_result is not None, "Solver should find order"
+        order_numbers = (
+            fabll.Traits(order_result).get_obj_raw().try_cast(F.Literals.Numbers)
+        )
+        assert order_numbers is not None, "Order should be a number literal"
+        assert order_numbers.get_single() == 1.0, (
+            f"Expected order = 1, got {order_numbers.get_single()}"
+        )

@@ -1,35 +1,56 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
-from faebryk.libs.units import P
 
 
-class CAN(ModuleInterface):
+class CAN(fabll.Node):
     """
     CAN bus interface
     """
 
-    diff_pair: F.DifferentialPair
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    diff_pair = F.DifferentialPair.MakeChild()
 
-    speed = L.p_field(units=P.bps)
+    baudrate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitsPerSecond)
+    # TODO constrain CAN baudrate between 10kbps to 1Mbps
+    # F.Expressions.Is.MakeChild_Constrain()
 
-    def __preinit__(self) -> None:
-        self.speed.add(F.is_bus_parameter())
+    # impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    # _impedance_constraint = F.Literals.Numbers.MakeChild_ConstrainToSubsetLiteral(
+    #    [impedance], min=120.0, max=120.0, unit=F.Units.Ohm
+    # )
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.diff_pair.p.line.add(
-            F.has_net_name("CAN_H", level=F.has_net_name.Level.SUGGESTED)
-        )
-        self.diff_pair.n.line.add(
-            F.has_net_name("CAN_L", level=F.has_net_name.Level.SUGGESTED)
-        )
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
+    net_names = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="CAN_H", level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[diff_pair, F.DifferentialPair.p],
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="CAN_L", level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[diff_pair, F.DifferentialPair.n],
+        ),
+    ]
+
+    bus_parameters = [
+        fabll.Traits.MakeEdge(F.is_alias_bus_parameter.MakeChild(), owner=[baudrate]),
+    ]
+
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import CAN, ElectricPower, Resistor
 
         can_bus = new CAN
@@ -55,5 +76,6 @@ class CAN(ModuleInterface):
 
         # Common applications: automotive, industrial automation, IoT
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

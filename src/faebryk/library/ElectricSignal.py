@@ -1,167 +1,42 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from functools import reduce
-from typing import Iterable
-
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.link import LinkDirectConditional, LinkDirectConditionalFilterResult
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.node import CNode, Node
-from faebryk.libs.library import L
-from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval,
-    Quantity_Interval_Disjoint,
-)
-from faebryk.libs.units import P
-from faebryk.libs.util import cast_assert
+import faebryk.library.can_be_pulled as can_be_pulled
 
 
-class ElectricSignal(F.Signal):
+class ElectricSignal(fabll.Node):
     """
     ElectricSignal is a class that represents a signal that is represented
     by the voltage between the reference.hv and reference.lv.
     """
 
-    class LinkIsolatedReference(LinkDirectConditional):
-        def test(self, node: CNode):
-            return not isinstance(node, F.ElectricPower)
-
-        def __init__(self) -> None:
-            super().__init__(
-                lambda path: LinkDirectConditionalFilterResult.FILTER_PASS
-                if all(self.test(dst.node) for dst in path)
-                else LinkDirectConditionalFilterResult.FILTER_FAIL_UNRECOVERABLE,
-                needs_only_first_in_path=True,
-            )
-
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    line: F.Electrical
-    reference: F.ElectricPower
+    line = F.Electrical.MakeChild()
+    reference = F.ElectricPower.MakeChild()
 
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(self.reference)
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    # ----------------------------------------
-    #                functions
-    # ----------------------------------------
-    @staticmethod
-    def connect_all_node_references(
-        nodes: Iterable[Node], gnd_only=False
-    ) -> F.ElectricPower:
-        # TODO check if any child contains ElectricLogic which is not connected
-        # e.g find them in graph and check if any has parent without "single reference"
+    _can_be_pulled = fabll.Traits.MakeEdge(
+        can_be_pulled.can_be_pulled.MakeChild(line, reference)
+    )
 
-        refs = {
-            x.get_trait(F.has_single_electric_reference).get_reference()
-            for x in nodes
-            if x.has_trait(F.has_single_electric_reference)
-        } | {x for x in nodes if isinstance(x, F.ElectricPower)}
-        assert refs
-
-        if gnd_only:
-            F.Electrical.connect(*{r.lv for r in refs})
-            return next(iter(refs))
-
-        F.ElectricPower.connect(*refs)
-
-        return next(iter(refs))
-
-    @classmethod
-    def connect_all_module_references(
-        cls,
-        node: Module | ModuleInterface,
-        gnd_only=False,
-        exclude: Iterable[Node] = (),
-    ) -> F.ElectricPower:
-        return cls.connect_all_node_references(
-            node.get_children(
-                direct_only=True, types=(Module, ModuleInterface)
-            ).difference(set(exclude)),
-            gnd_only=gnd_only,
-        )
-
-    @staticmethod
-    def connect_all_references(ifs: Iterable["ElectricSignal"]) -> F.ElectricPower:
-        return F.ElectricPower.connect(*[x.reference for x in ifs])
-
-    @L.rt_field
-    def surge_protected(self):
-        class _can_be_surge_protected_defined(F.can_be_surge_protected_defined):
-            def protect(_self, owner: Module):
-                out = super().protect(owner)
-                for tvs in out.get_children(direct_only=False, types=F.TVS):
-                    tvs.reverse_working_voltage.alias_is(self.reference.voltage)
-                return out
-
-        return _can_be_surge_protected_defined(self.reference.lv, self.line)
+    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(in_=[""], out_=[""]))
 
     @property
-    def pull_resistance(self) -> Quantity_Interval | Quantity_Interval_Disjoint | None:
-        if (connected_to := self.line.get_connected()) is None:
-            return None
+    def pull_resistance(self):
+        """Delegate to the can_be_pulled trait to calculate pull resistance."""
+        return self._can_be_pulled.get().pull_resistance
 
-        parallel_resistors: list[F.Resistor] = []
-        for mif, _ in connected_to.items():
-            if (maybe_parent := mif.get_parent()) is None:
-                continue
-            parent, _ = maybe_parent
-
-            if not isinstance(parent, F.Resistor):
-                continue
-
-            other_side = [x for x in parent.unnamed if x is not mif]
-            assert len(other_side) == 1, "Resistors are bilateral"
-
-            if self.reference.hv not in other_side[0].get_connected():
-                # cannot trivially determine effective resistance
-                return None
-
-            parallel_resistors.append(parent)
-
-        if len(parallel_resistors) == 0:
-            return Quantity_Interval.from_center(0 * P.ohm, 0 * P.ohm)
-        elif len(parallel_resistors) == 1:
-            (resistor,) = parallel_resistors
-            return resistor.resistance.try_get_literal_subset()
-        else:
-            resistances = [
-                resistor.resistance.try_get_literal_subset()
-                for resistor in parallel_resistors
-            ]
-
-            if any(r is None for r in resistances):
-                # incomplete solution
-                return None
-
-            if any(not isinstance(r, Quantity_Interval) for r in resistances):
-                # invalid resistance value
-                return None
-
-            # R_eff = 1 / (1/R1 + 1/R2 + ... + 1/Rn)
-            try:
-                return cast_assert(
-                    (Quantity_Interval, Quantity_Interval_Disjoint),
-                    reduce(
-                        lambda a, b: a + b,
-                        [
-                            cast_assert(Quantity_Interval, r).op_invert()
-                            for r in resistances
-                        ],
-                    ),
-                ).op_invert()
-            except ZeroDivisionError:
-                return None
-
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import ElectricSignal, ElectricPower
 
         signal = new ElectricSignal
@@ -181,5 +56,6 @@ class ElectricSignal(F.Signal):
         diff_pos.reference ~ power_3v3
         diff_neg.reference ~ power_3v3
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

@@ -1,5 +1,7 @@
 import sys
 
+from faebryk.libs.util import ConfigFlag
+
 # fast-path for self-check
 # makes extension a lot faster
 if __name__ in ("__main__", "atopile.cli.cli"):
@@ -31,22 +33,26 @@ from atopile.cli import (
     install,
     kicad_ipc,
     package,
+    serve,
     view,
     lsp,
     mcp,
+    dev,
 )
-from atopile.cli.logging_ import handler, logger
+from atopile.logging import handler, logger
 from atopile.errors import UserException, UserNoProjectException
-from atopile.version import check_for_update
-from faebryk.libs.exceptions import (
+from atopile.exceptions import (
     UserResourceException,
     iter_leaf_exceptions,
 )
-from faebryk.libs.logging import FLOG_FMT
+
+SAFE_MODE_OPTION = ConfigFlag(
+    "SAFE_MODE", False, "Handle exceptions gracefully (coredump)"
+)
 
 app = typer.Typer(
     no_args_is_help=True,
-    pretty_exceptions_enable=bool(FLOG_FMT),  # required to override the excepthook
+    pretty_exceptions_enable=False,  # Use custom excepthook instead
     rich_markup_mode="rich",
 )
 
@@ -115,7 +121,54 @@ def cli(
         bool | None,
         typer.Option("--semver", callback=semver_callback, is_eager=True),
     ] = None,
+    safe_mode: Annotated[
+        bool,
+        typer.Option(
+            "--safe", help="Handle exceptions gracefully (coredump)", hidden=True
+        ),
+    ] = SAFE_MODE_OPTION.get(),
 ):
+    if safe_mode:
+        import os
+        import resource
+        import signal
+        import subprocess
+        import time
+
+        def enable_core_dumps():
+            """Enable core dumps in the child process."""
+            try:
+                resource.setrlimit(
+                    resource.RLIMIT_CORE,
+                    (resource.RLIM_INFINITY, resource.RLIM_INFINITY),
+                )
+            except (ValueError, OSError):
+                pass  # Best effort - may fail if system limit is lower
+
+        args = [arg for arg in sys.argv if arg != "--safe"]
+        env = os.environ.copy()
+        env[SAFE_MODE_OPTION.name] = "N"  # Prevent safe wrapper recursion
+        env["ATO_SAFE"] = "1"  # Signal to workers to enable faulthandler
+
+        start_time = time.time()
+        result = subprocess.Popen(args, env=env, preexec_fn=enable_core_dumps)
+        pid = result.pid
+        returncode = result.wait()
+        if returncode not in (0, 1):
+            from faebryk.libs.util import run_gdb
+
+            print(f"Process exited with code {returncode}, PID was {pid}")
+            # Negative return code means killed by signal
+            if returncode < 0:
+                sig = -returncode
+                try:
+                    sig_name = signal.Signals(sig).name
+                except ValueError:
+                    sig_name = f"signal {sig}"
+                print(f"Killed by {sig_name}")
+            run_gdb(created_after=start_time)
+        sys.exit(returncode)
+
     if debug:
         import debugpy  # pylint: disable=import-outside-toplevel
 
@@ -142,16 +195,22 @@ def cli(
 
         config.interactive = not non_interactive
 
-    if ctx.invoked_subcommand:
-        check_for_update()
+    # TODO use file to rate-limit check_for_update
+    # if ctx.invoked_subcommand:
+    #    check_for_update()
 
     configure.setup()
+
+    # Set up database logging for all CLI commands (not just builds)
+    # This ensures logs from validate, inspect, etc. are also stored in the database
+    from atopile.logging import BuildLogger
+
+    BuildLogger.setup_logging(enable_database=True, stage="cli")
 
 
 app.command()(build.build)
 app.add_typer(create.create_app, name="create")
 app.command(deprecated=True, hidden=True)(install.install)
-app.command(deprecated=True, hidden=True)(configure.configure)
 app.command()(inspect_.inspect)
 app.command()(view.view)
 app.add_typer(package.package_app, name="package", hidden=True)
@@ -162,6 +221,8 @@ app.command(rich_help_panel="Shortcuts")(install.remove)
 app.add_typer(lsp.lsp_app, name="lsp", hidden=True)
 app.add_typer(mcp.mcp_app, name="mcp", hidden=True)
 app.add_typer(kicad_ipc.kicad_ipc_app, name="kicad-ipc", hidden=True)
+app.add_typer(dev.dev_app, name="dev", hidden=True)
+app.add_typer(serve.serve_app, name="serve")
 
 
 @app.command(hidden=True)
@@ -194,7 +255,7 @@ def dump_config(format: ConfigFormat = ConfigFormat.python):
 def validate(
     path: Annotated[Path, typer.Argument(exists=True, file_okay=True, dir_okay=False)],
 ):
-    from atopile import front_end
+    from atopile.compiler import front_end
     from atopile.config import config
 
     path = path.resolve().relative_to(Path.cwd())

@@ -1,0 +1,1703 @@
+/* ============================================
+   _projects.css
+   Projects Panel, Project Cards, Build Cards, Project Groups,
+   Project/Build Actions, Build Progress, Stage List
+   ============================================ */
+
+/* ============================================
+   Projects Panel
+   ============================================ */
+
+.projects-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.projects-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  /* Edge-to-edge: no horizontal padding */
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.projects-toolbar .search-box {
+  flex: 1;
+}
+
+/* Add project button */
+.add-project-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px dashed var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.add-project-btn:hover {
+  border-color: var(--ato-orange);
+  color: var(--ato-orange);
+  background: rgba(249, 80, 21, 0.1);
+}
+
+/* Editable project name */
+.project-name-input {
+  width: auto;
+  min-width: 80px;
+  max-width: 150px;
+  padding: 2px 6px;
+  border: 1px solid var(--ato-orange);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.project-card-name.editable {
+  cursor: text;
+}
+
+.project-card-name.editable:hover {
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--text-muted);
+}
+
+/* Add build button */
+.add-build-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px var(--spacing-sm);
+  margin-left: 6px;
+  padding-left: calc(var(--spacing-sm) + 2px);
+  border: 1px dashed var(--border-subtle);
+  border-left: 2px dashed var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-top: 4px;
+}
+
+.add-build-btn:hover {
+  border-color: var(--ato-orange);
+  border-left-color: var(--ato-orange);
+  color: var(--ato-orange);
+  background: rgba(249, 80, 21, 0.08);
+}
+
+/* Editable build name */
+.build-name-input {
+  width: auto;
+  min-width: 60px;
+  max-width: 120px;
+  padding: 1px 4px;
+  border: 1px solid var(--ato-orange);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 2px;
+  outline: none;
+}
+
+.build-card-name.editable {
+  cursor: text;
+}
+
+.build-card-name.editable:hover {
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--text-muted);
+}
+
+/* Name validation dropdown */
+.name-validation-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 100;
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--ctp-red);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  min-width: 180px;
+  max-width: 280px;
+}
+
+.name-validation-dropdown .validation-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--bg-secondary);
+  border: 1px solid var(--ctp-red);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+}
+
+.name-validation-dropdown .validation-icon {
+  flex-shrink: 0;
+  color: var(--ctp-red);
+}
+
+.name-validation-dropdown .validation-error span {
+  color: var(--ctp-red);
+}
+
+.name-validation-dropdown .validation-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 5px 8px;
+  background: rgba(249, 80, 21, 0.1);
+  border: 1px solid var(--ato-orange);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.name-validation-dropdown .validation-suggestion:hover {
+  background: rgba(249, 80, 21, 0.2);
+  border-color: var(--ato-orange);
+}
+
+.name-validation-dropdown .suggestion-label {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.name-validation-dropdown .suggestion-value {
+  color: var(--ato-orange);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  background: transparent;
+  padding: 0;
+}
+
+.name-validation-dropdown .suggestion-arrow {
+  margin-left: auto;
+  color: var(--ato-orange);
+  opacity: 0.7;
+}
+
+.name-validation-dropdown .validation-suggestion:hover .suggestion-arrow {
+  opacity: 1;
+  transform: translateX(2px);
+}
+
+/* Wrapper for name input with validation dropdown */
+.name-input-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+/* Invalid state styling for inputs */
+.project-name-input.invalid,
+.build-name-input.invalid {
+  border-color: var(--ctp-red);
+}
+
+.project-name-input.invalid:focus,
+.build-name-input.invalid:focus {
+  box-shadow: 0 0 0 2px rgba(243, 139, 168, 0.2);
+}
+
+/* Entry point picker */
+.entry-picker {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
+
+.entry-input {
+  width: 100%;
+  padding: 2px 6px;
+  border: 1px solid var(--ato-orange);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.entry-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 150px;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  z-index: 200;
+  margin-top: 2px;
+}
+
+.entry-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.entry-option:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.entry-option.selected {
+  background: rgba(249, 80, 21, 0.1);
+  color: var(--ato-orange);
+}
+
+.entry-path.editable {
+  cursor: text;
+}
+
+.entry-path.editable:hover {
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--text-muted);
+}
+
+/* Entry picker search box */
+.entry-search-box {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--ato-orange);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  margin-bottom: 2px;
+}
+
+.entry-search-box svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.entry-search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  outline: none;
+  min-width: 0;
+}
+
+.entry-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.entry-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.entry-close-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Entry option parts */
+.entry-option-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.entry-option-file {
+  flex: 1;
+  text-align: right;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entry-option.selected .entry-option-name {
+  color: var(--ato-orange);
+}
+
+/* Module type icon in entry picker */
+.module-type-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.module-type-icon.module {
+  color: var(--ctp-blue);
+}
+
+.module-type-icon.component {
+  color: var(--ctp-green);
+}
+
+.module-type-icon.interface {
+  color: var(--ctp-yellow);
+}
+
+/* Empty state in entry dropdown */
+.entry-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 8px;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.filter-pills {
+  display: flex;
+  gap: 2px;
+}
+
+.filter-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filter-pill:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.filter-pill.active {
+  background: var(--accent);
+  color: var(--ctp-crust);
+}
+
+.projects-tree {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: visible;
+}
+
+.projects-tree .empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* Project Group */
+.project-group {
+  margin-bottom: var(--spacing-sm);
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.group-count {
+  margin-left: auto;
+  font-size: 9px;
+  background: var(--bg-tertiary);
+  padding: 1px 5px;
+  border-radius: 6px;
+}
+
+/* Project Card - Styled like package cards */
+.project-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  /* Edge-to-edge: no horizontal margins, small vertical spacing */
+  margin: var(--spacing-xs) 0;
+  overflow: visible;
+  transition: all var(--transition-fast);
+  position: relative;
+  cursor: pointer;
+  padding: var(--spacing-sm) var(--spacing-xs);
+  border-left: none;
+  border-right: none;
+  border-radius: 0;
+}
+
+.project-card:hover {
+  border-color: var(--ctp-surface2);
+}
+
+.project-card.selected {
+  border-color: var(--ato-orange);
+}
+
+/* Row 1: Project name */
+.project-card-name-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-bottom: 2px;
+}
+
+.project-card-name-row .tree-expand {
+  background: none;
+  border: none;
+  padding: 1px;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color var(--transition-fast);
+}
+
+.project-card-name-row .tree-expand:hover {
+  color: var(--text-primary);
+}
+
+.project-card .project-icon {
+  color: var(--ctp-blue);
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+
+.project-card-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex-shrink: 0;
+  /* Don't use flex: 1 - name should only be as wide as its content */
+}
+
+.project-card .building-indicator {
+  color: var(--ato-orange);
+  flex-shrink: 0;
+  animation: pulse-building 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-building {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* Error and warning indicators with icons */
+.error-indicator,
+.warning-indicator {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 9px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.error-indicator {
+  color: var(--error);
+}
+
+.warning-indicator {
+  color: var(--warning);
+}
+
+.error-indicator svg,
+.warning-indicator svg {
+  flex-shrink: 0;
+}
+
+/* Status indicators and build button container */
+.project-card-actions-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-left: auto;
+  position: relative;
+}
+
+/* Wrapper for indicators that slides left when play/stop button is visible */
+.project-indicators {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  transition: transform 0.2s ease;
+}
+
+/* On hover, slide indicators left to make room for play button */
+.project-card:hover .project-indicators {
+  transform: translateX(-30px);
+}
+
+/* When building, indicators are always shifted (stop button always visible) */
+.project-card.building .project-indicators {
+  transform: translateX(-30px);
+}
+
+/* Last build info (status icon + timestamp) */
+.last-build-info {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.last-build-info .status-icon {
+  width: 10px;
+  height: 10px;
+}
+
+.last-build-info .status-icon.dimmed {
+  opacity: 0.7;
+}
+
+.last-build-info .status-icon.success {
+  color: var(--ctp-green);
+}
+
+.last-build-info .status-icon.warning {
+  color: var(--ctp-yellow);
+}
+
+.last-build-info .status-icon.error {
+  color: var(--ctp-red);
+}
+
+.last-build-time {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+/* Build time indicator (shown when building) */
+.build-time-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--ato-orange);
+  animation: pulse-opacity 1.5s ease-in-out infinite;
+}
+
+.build-time-indicator .build-time {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  white-space: nowrap;
+  min-width: 36px;
+  text-align: right;
+}
+
+@keyframes pulse-opacity {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Modern icon-only build button - slides in from right on hover */
+.project-build-btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1.5px solid var(--ato-orange);
+  background: transparent;
+  color: var(--ato-orange);
+  cursor: pointer;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  opacity: 0;
+  transform: translateX(8px);
+  position: absolute;
+  right: 0;
+}
+
+.project-card:hover .project-build-btn-icon {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Stop button is always visible when building */
+.project-build-btn-icon.stop {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.project-build-btn-icon:hover {
+  color: white;
+  background: var(--ato-orange);
+  transform: scale(1.05);
+}
+
+.project-build-btn-icon svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* Collapsed state - single line */
+.project-card.collapsed .project-card-name-row {
+  margin-bottom: 0;
+}
+
+.inline-build-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-left: auto;
+  margin-right: var(--spacing-xs);
+}
+
+/* Row 2: Description */
+.project-card-description {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-bottom: var(--spacing-xs);
+  padding-left: 36px; /* Align with name (expand + icon + gap) */
+}
+
+.project-card-description .description-text {
+  cursor: pointer;
+  padding: 1px 3px;
+  margin: -1px -3px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.project-card-description .description-text:hover {
+  background: var(--bg-tertiary);
+}
+
+.project-card-description .description-text.placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.project-card-description .description-input {
+  width: 100%;
+  font-size: 10px;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 3px 5px;
+  outline: none;
+  font-family: inherit;
+}
+
+/* Row 3: Build summary */
+.project-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 36px; /* Align with name */
+}
+
+.project-build-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.project-build-summary .build-count {
+  font-family: var(--font-mono);
+}
+
+.project-build-summary .success-indicator {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--success);
+}
+
+/* Expanded: Build targets */
+.project-card-builds {
+  border-top: 1px solid var(--border-subtle);
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-xs) 0;
+}
+
+/* Legacy project-node styles (keeping for backward compat) */
+.project-node {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.project-node.selected {
+  background: var(--bg-secondary);
+  border-left: 2px solid var(--accent);
+}
+
+.project-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.project-row:hover {
+  background: var(--bg-hover);
+}
+
+.project-row.selected {
+  background: transparent;
+}
+
+/* Project action bar - shown when selected */
+.project-action-bar {
+  display: flex;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  padding-left: 32px; /* Align with project name */
+  background: var(--bg-tertiary);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.action-bar-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: none;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.15s ease;
+}
+
+.action-bar-btn:hover {
+  background: var(--accent);
+  color: var(--ctp-crust);
+}
+
+.tree-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tree-spacer {
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.project-icon {
+  flex-shrink: 0;
+}
+
+.project-icon.project {
+  color: var(--ctp-blue);
+}
+
+.project-icon.package {
+  color: var(--ctp-peach);
+}
+
+.project-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-version {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.project-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.project-meta .error-count,
+.project-meta .warn-count,
+.build-meta .error-count,
+.build-meta .warn-count {
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.project-meta .error-count,
+.build-meta .error-count {
+  color: var(--error);
+  background: rgba(243, 139, 168, 0.2);
+}
+
+.project-meta .warn-count,
+.build-meta .warn-count {
+  color: var(--warning);
+  background: rgba(249, 226, 175, 0.2);
+}
+
+.installed-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+}
+
+.project-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: var(--spacing-xs);
+}
+
+.inline-build-btn,
+.inline-detail-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+/* Build buttons should be prominent atopile orange */
+.inline-build-btn {
+  background: var(--ctp-peach);
+  color: var(--ctp-crust);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.inline-build-btn:hover {
+  background: var(--ctp-yellow);
+  color: var(--ctp-crust);
+  transform: scale(1.1);
+}
+
+.inline-detail-btn:hover {
+  background: var(--accent);
+  color: var(--ctp-crust);
+}
+
+/* Build Node - minimal indentation */
+.project-builds {
+  padding-left: 0;
+}
+
+/* Build Card - similar to package cards */
+.build-card {
+  margin-left: 6px;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-left: 2px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.build-card:hover {
+  background: rgba(69, 71, 90, 0.3);
+}
+
+.build-card.selected {
+  border-left-color: var(--accent);
+  background: rgba(203, 166, 247, 0.05);
+  padding: var(--spacing-sm);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+/* Build card header - always visible */
+.build-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+}
+
+.build-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.build-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-left: auto;
+  position: relative;
+}
+
+/* Wrapper for indicators that slides left on hover */
+.build-indicators {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+/* Slide left on hover to reveal play button - but only when NOT building */
+.build-card:not(.building):hover .build-indicators {
+  transform: translateX(-22px);
+  opacity: 0.7;
+}
+
+/* When actively building, indicators stay put - cancel button is always visible */
+.build-card.building .build-indicators {
+  transform: none;
+  opacity: 1;
+}
+
+.build-card-name {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* Inline stage display next to build name during building */
+.build-inline-stage {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-left: var(--spacing-xs);
+  overflow: hidden;
+  position: relative;
+}
+
+/* Scroll-up animation when stage changes */
+.build-inline-stage.animating {
+  animation: stage-scroll-up 0.3s ease-out;
+}
+
+@keyframes stage-scroll-up {
+  0% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Inline elapsed time during building */
+.build-elapsed-time-inline {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* Build target play button - slides in from right on hover */
+.build-target-play-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--ato-orange);
+  background: transparent;
+  color: var(--ato-orange);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  opacity: 0;
+  transform: translateX(8px);
+  position: absolute;
+  right: 0;
+}
+
+.build-card:hover .build-target-play-btn {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.build-target-play-btn:hover {
+  background: var(--ato-orange);
+  color: var(--ctp-crust);
+}
+
+.build-target-play-btn svg {
+  width: 10px;
+  height: 10px;
+  margin-left: 1px; /* Center the play triangle visually */
+}
+
+/* Build target cancel button - slides in from right on hover when building */
+.build-target-cancel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--ato-orange);
+  background: transparent;
+  color: var(--ato-orange);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  opacity: 0;
+  transform: translateX(8px);
+  position: absolute;
+  right: 0;
+}
+
+.build-card:hover .build-target-cancel-btn {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.build-target-cancel-btn:hover {
+  background: var(--ato-orange);
+  color: var(--ctp-crust);
+}
+
+.build-target-cancel-btn svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* Build duration when building (inline in header) */
+.build-duration.building {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--info);
+}
+
+/* Build Progress Bar */
+.build-progress-container {
+  margin-top: var(--spacing-xs);
+  padding: var(--spacing-xs) 0;
+}
+
+.build-progress-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 9px;
+}
+
+.build-current-stage {
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.build-elapsed-time {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+.build-progress-bar {
+  height: 3px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.build-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--ato-orange) 0%, var(--ato-orange-light) 100%);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  position: relative;
+}
+
+/* Animated shimmer effect on progress bar */
+.build-progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.3) 50%,
+    transparent 100%
+  );
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Error and warning indicators in build header */
+.error-indicator,
+.warning-indicator {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.error-indicator {
+  background: rgba(243, 139, 168, 0.2);
+  color: var(--error);
+}
+
+.warning-indicator {
+  background: rgba(249, 226, 175, 0.2);
+  color: var(--warning);
+}
+
+/* Clickable error/warning indicators */
+.error-indicator.clickable,
+.warning-indicator.clickable {
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.error-indicator.clickable:hover {
+  background: rgba(243, 139, 168, 0.4);
+  transform: scale(1.05);
+}
+
+.warning-indicator.clickable:hover {
+  background: rgba(249, 226, 175, 0.4);
+  transform: scale(1.05);
+}
+
+.build-card .error-badge,
+.build-card .warn-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.build-card .error-badge {
+  background: rgba(243, 139, 168, 0.2);
+  color: var(--error);
+}
+
+.build-card .warn-badge {
+  background: rgba(249, 226, 175, 0.2);
+  color: var(--warning);
+}
+
+.build-card .build-duration {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* Build card entry - shown when selected */
+.build-card-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-xs);
+  padding: var(--spacing-xs);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.build-card-entry .build-duration {
+  margin-left: auto;
+}
+
+/* Build card actions */
+.build-card-actions {
+  display: flex;
+  gap: 3px;
+  margin-top: var(--spacing-sm);
+}
+
+.build-card-actions .build-action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 4px;
+  font-size: 9px;
+  border: none;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  min-width: 0;
+}
+
+.build-card-actions .build-action-btn svg {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+}
+
+.build-card-actions .build-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.build-card-actions .build-action-btn.primary {
+  background: var(--ato-orange);
+  color: white;
+  font-weight: 500;
+}
+
+.build-card-actions .build-action-btn.primary:hover {
+  background: var(--ato-orange-light);
+}
+
+.build-card-actions .build-action-btn.primary svg {
+  fill: currentColor;
+}
+
+/* Build card entry row */
+.build-card-entry-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-xs);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.build-card-entry-row .entry-path {
+  flex: 1;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-card-entry-row .build-duration {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* Build stages section */
+.build-stages-section {
+  margin-top: var(--spacing-sm);
+}
+
+.stages-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  padding: var(--spacing-xs);
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+.stages-toggle:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.stages-summary {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.build-stages-list {
+  margin-top: var(--spacing-xs);
+  padding: var(--spacing-xs);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.stage-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 3px 5px;
+  font-size: 10px;
+  border-radius: var(--radius-sm);
+}
+
+.stage-row:hover {
+  background: var(--bg-hover);
+}
+
+/* Clickable stages (warning/error) */
+.stage-row.clickable {
+  cursor: pointer;
+}
+
+.stage-row.clickable:hover {
+  background: var(--bg-tertiary);
+  padding-left: 8px;
+  margin-left: -2px;
+}
+
+.stage-row.clickable.warning:hover {
+  background: rgba(249, 226, 175, 0.1);
+  border-left: 2px solid var(--warning);
+}
+
+.stage-row.clickable.error:hover {
+  background: rgba(243, 139, 168, 0.1);
+  border-left: 2px solid var(--error);
+}
+
+.stage-icon {
+  flex-shrink: 0;
+}
+
+.stage-icon.success { color: var(--success); }
+.stage-icon.warning { color: var(--warning); }
+.stage-icon.error { color: var(--error); }
+.stage-icon.running { color: var(--ato-orange); animation: pulse-building 1.5s ease-in-out infinite; }
+.stage-icon.skipped { color: var(--text-muted); }
+.stage-icon.pending { color: var(--text-muted); opacity: 0.5; }
+
+.stage-name {
+  flex: 1;
+  color: var(--text-secondary);
+}
+
+.stage-row.error .stage-name {
+  color: var(--error);
+}
+
+.stage-row.warning .stage-name {
+  color: var(--warning);
+}
+
+.stage-row.skipped .stage-name {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.stage-message {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.stage-row.error .stage-message {
+  color: var(--error);
+}
+
+.stage-row.warning .stage-message {
+  color: var(--warning);
+}
+
+.stage-duration {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: auto;
+  min-width: 40px;
+  text-align: right;
+}
+
+.stage-row.running .stage-duration {
+  color: var(--info);
+  font-weight: 500;
+}
+
+.stage-row.pending .stage-duration {
+  opacity: 0.5;
+}
+
+/* Build card symbols */
+.build-card-symbols {
+  margin-top: var(--spacing-sm);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--spacing-sm);
+}
+
+/* Legacy build-card-entry for backward compat */
+.build-card-entry {
+  margin-top: var(--spacing-sm);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--spacing-sm);
+}
+
+/* Build status icon */
+.build-status-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.status-icon.success {
+  color: var(--success);
+}
+
+.status-icon.error {
+  color: var(--error);
+}
+
+.status-icon.warning {
+  color: var(--warning);
+}
+
+.status-icon.building {
+  color: var(--ato-orange);
+  animation: pulse-building 1.5s ease-in-out infinite;
+}
+
+.status-icon.queued {
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.status-icon.queued .queue-position {
+  font-size: 8px;
+  font-weight: 600;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  padding: 0 3px;
+  border-radius: 4px;
+  min-width: 12px;
+  text-align: center;
+}
+
+/* Legacy styles for compatibility */
+.build-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.build-name {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.build-entry {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.build-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.build-meta .duration {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+/* Symbol Node - minimal indentation */
+.build-symbols {
+  padding-left: 0;
+}
+
+.symbol-node {
+  border-left: 1px solid var(--border-subtle);
+  margin-left: 2px;
+}
+
+.symbol-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 3px var(--spacing-xs);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.symbol-row:hover {
+  background: var(--bg-hover);
+}
+
+.symbol-row.selected {
+  background: var(--bg-active);
+}
+
+.symbol-name {
+  flex: 1;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+/* Symbol play button - always present, visible on hover */
+.symbol-play-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--ato-orange);
+  background: transparent;
+  color: var(--ato-orange);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  margin-left: auto;
+  opacity: 0;
+}
+
+.symbol-row:hover .symbol-play-btn {
+  opacity: 1;
+}
+
+.symbol-play-btn:hover {
+  background: var(--ato-orange);
+  color: var(--ctp-crust);
+}
+
+.symbol-play-btn svg {
+  width: 8px;
+  height: 8px;
+  margin-left: 1px;
+}
+
+.indicator {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  margin-left: var(--spacing-xs);
+}
+
+.indicator.error {
+  background: var(--error);
+}
+
+.indicator.warning {
+  background: var(--warning);
+}
+
+/* Type icons */
+.type-icon.module {
+  color: var(--ctp-blue);
+}
+
+.type-icon.interface {
+  color: var(--ctp-teal);
+}
+
+.type-icon.component {
+  color: var(--ctp-mauve);
+}
+
+.type-icon.parameter {
+  color: var(--ctp-lavender);
+}
+
+/* Spin animation */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}

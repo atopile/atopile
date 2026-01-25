@@ -1,6 +1,5 @@
 import fnmatch
 import functools
-import logging
 import os
 import re
 import sys
@@ -52,17 +51,18 @@ from atopile.errors import (
     UserFileNotFoundError,
     UserNoProjectException,
 )
+from atopile.exceptions import UserResourceException
+from atopile.logging import get_logger
 from atopile.version import (
     DISTRIBUTION_NAME,
     clean_version,
     get_installed_atopile_version,
 )
-from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.paths import get_config_dir
 from faebryk.libs.test.testutil import in_test
 from faebryk.libs.util import indented_container, md_list
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 yaml = YAML()
 
 
@@ -217,9 +217,6 @@ class ProjectPaths(BaseConfigModel):
     build: Path
     """Build artifact output directory"""
 
-    logs: Path
-    """Build logs directory"""
-
     manifest: Path
     """Build manifest file"""
 
@@ -240,7 +237,6 @@ class ProjectPaths(BaseConfigModel):
         data.setdefault("parts", data["src"] / "parts")
         data.setdefault("layout", data["root"] / "elec" / "layout")
         data["build"] = Path(data.get("build", data["root"] / "build"))
-        data.setdefault("logs", data["build"] / "logs")
         data.setdefault("manifest", data["build"] / "manifest.json")
         data.setdefault("modules", data["root"] / ".ato" / "modules")
 
@@ -303,6 +299,9 @@ class BuildTargetPaths(BaseConfigModel):
     kicad_project: Path
     """Build-target KiCAD project file"""
 
+    documentation: Path
+    """Build-target documentation directory"""
+
     def __init__(self, name: str, project_paths: ProjectPaths, **data: Any):
         if layout_data := data.get("layout"):
             data["layout"] = BuildTargetPaths.find_layout(Path(layout_data))
@@ -313,8 +312,12 @@ class BuildTargetPaths(BaseConfigModel):
 
         if output_base_data := data.get("output_base"):
             data["output_base"] = Path(output_base_data)
+            data.setdefault("documentation", data["output_base"] / "documentation")
         else:
             data["output_base"] = project_paths.build / "builds" / name / name
+            data.setdefault(
+                "documentation", project_paths.build / "builds" / name / "documentation"
+            )
 
         data.setdefault("netlist", data["output_base"] / f"{name}.net")
         data.setdefault("fp_lib_table", data["layout"].parent / "fp-lib-table")
@@ -938,7 +941,9 @@ class ProjectConfig(BaseConfigModel):
     """Skip SSL verification for all API requests."""
 
     @classmethod
-    def from_path(cls, path: Path | None) -> "ProjectConfig | None":
+    def from_path(
+        cls, path: Path | None, *, validate_builds: bool = True
+    ) -> "ProjectConfig | None":
         if path is None:
             return None
 
@@ -953,6 +958,10 @@ class ProjectConfig(BaseConfigModel):
             raise UserFileNotFoundError(f"Failed to load project config: {e}") from e
         except Exception as e:
             raise UserConfigurationError(f"Failed to load project config: {e}") from e
+
+        if not validate_builds and isinstance(file_contents, dict):
+            file_contents = dict(file_contents)
+            file_contents["builds"] = {}
 
         file_contents.setdefault("paths", {}).setdefault("root", path)
         return _try_construct_config(
@@ -994,6 +1003,43 @@ class ProjectConfig(BaseConfigModel):
             for dep in (value or [])
         ]
 
+    @model_validator(mode="after")
+    def validate_unique_entry_points(self) -> Self:
+        """Validate each entry point address is used by at most one build target."""
+        from collections import defaultdict
+
+        # Group build targets by their entry point address
+        entry_to_builds: dict[str, list[str]] = defaultdict(list)
+        for build_name, build_config in self.builds.items():
+            assert build_config.address is not None
+            entry_to_builds[build_config.address].append(build_name)
+
+        # Find duplicates
+        duplicates = {
+            entry: builds
+            for entry, builds in entry_to_builds.items()
+            if len(builds) > 1
+        }
+
+        if duplicates:
+            # return self
+            config_path = self.paths.root / PROJECT_CONFIG_FILENAME
+            error_lines = [
+                f"Multiple build targets share the same entry point in {config_path}:",
+                "",
+            ]
+            for entry, builds in sorted(duplicates.items()):
+                error_lines.append(f"  Entry point: {entry}")
+                error_lines.append(
+                    "    Conflicting build targets: "
+                    + ", ".join(f"`{b}`" for b in sorted(builds)),
+                )
+                error_lines.append("")
+
+            raise UserConfigurationError("\n".join(error_lines))
+
+        return self
+
     @classmethod
     def skeleton(cls, entry: str, paths: ProjectPaths | None):
         """Creates a minimal ProjectConfig"""
@@ -1025,7 +1071,10 @@ class ProjectConfig(BaseConfigModel):
 
             for i, dep in enumerate(deps):
                 if dep.matches(dependency):
-                    config_data["dependencies"][i] = serialized
+                    # Update the existing dependency in place to preserve comments
+                    existing_dep = config_data["dependencies"][i]
+                    existing_dep.clear()
+                    existing_dep.update(serialized)
                     break
             else:
                 if config_data.get("dependencies") is None:
@@ -1187,7 +1236,7 @@ class Config:
         self._project = _try_construct_config(ProjectSettings)
 
     def update_project_settings(
-        self, transformer: Callable[[dict, dict], dict], new_data: dict
+        self, transformer: Callable[[Any, dict], Any], new_data: dict
     ) -> None:
         """Apply an update to the project config file."""
         yaml = YAML(typ="rt")  # round-trip
@@ -1196,7 +1245,7 @@ class Config:
 
         try:
             with filename.open("r", encoding="utf-8") as file:
-                yaml_data: dict = yaml.load(filename) or {}
+                yaml_data = yaml.load(file) or {}
 
             yaml_data = transformer(yaml_data, new_data)
 

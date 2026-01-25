@@ -26,6 +26,11 @@ pub fn main() !void {
 
     const source_dir = args[2];
 
+    // delete output directory
+    std.fs.cwd().deleteTree(output_dir) catch |err| {
+        if (err != error.FileNotFound) return err;
+    };
+
     // Ensure output directory exists
     std.fs.cwd().makePath(root_output_dir) catch |err| {
         if (err != error.PathAlreadyExists) return err;
@@ -34,6 +39,7 @@ pub fn main() !void {
     // TODO: instead of giving responsibility to modules just directly use pyigenerator here
     // But first need to make pyigenerator better to do more fancy stuff
 
+    // sexp is slow
     const sexp_pyi = @import("sexp/sexp_pyi.zig");
     try make_pyi(allocator, output_dir, sexp_pyi, "sexp", source_dir);
     const graph_pyi = @import("graph/graph_pyi.zig");

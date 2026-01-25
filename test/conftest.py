@@ -54,3 +54,35 @@ def save_tmp_path_on_failure(tmp_path: Path, request: pytest.FixtureRequest):
         shutil.copytree(tmp_path, artifact_path, ignore=shutil.ignore_patterns(".git"))
 
         raise
+
+
+# Prevents test isolation issues
+# FIXME
+@pytest.fixture(autouse=True)
+def clear_node_type_caches():
+    """
+    Clearing type caches avoids false hits when the same UUID is reused in a new graph.
+
+    Note: We don't clear TypeNodeBoundTG.__TYPE_NODE_MAP__ because it's keyed by
+    BoundNode, which includes graph identity
+    """
+    from faebryk.core.node import Node
+
+    def _clear_type_caches():
+        for cls in list(Node._seen_types.values()):
+            if hasattr(cls, "_type_cache"):
+                cls._type_cache.clear()
+        Node._seen_types.clear()
+
+    _clear_type_caches()
+    yield
+    _clear_type_caches()
+
+
+# Enable this to force GC collection after each test
+# Useful for debugging memory leaks and segfaults on GC
+# @pytest.hookimpl(tryfirst=True)
+# def pytest_runtest_teardown(item, nextitem):
+#    import gc
+#
+#    gc.collect()

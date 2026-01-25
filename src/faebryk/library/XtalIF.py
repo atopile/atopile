@@ -3,42 +3,38 @@
 
 import logging
 
+import faebryk.core.node as fabll  # noqa: F401
 import faebryk.library._F as F  # noqa: F401
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.units import P  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
 
-class XtalIF(ModuleInterface):
-    """
-    TODO: Docstring describing your module
-    """
-
+class XtalIF(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    xin: F.Electrical
-    xout: F.Electrical
-    gnd: F.Electrical
+    xin = F.Electrical.MakeChild()
+    xout = F.Electrical.MakeChild()
+    gnd = F.Electrical.MakeChild()
 
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    def __preinit__(self):
-        # ------------------------------------
-        #           connections
-        # ------------------------------------
-
-        # ------------------------------------
-        #          parametrization
-        # ------------------------------------
-        pass
-
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.xin.add(F.has_net_name("XIN", level=F.has_net_name.Level.SUGGESTED))
-        self.xout.add(F.has_net_name("XOUT", level=F.has_net_name.Level.SUGGESTED))
-        self.gnd.add(F.has_net_name("GND", level=F.has_net_name.Level.SUGGESTED))
+    net_names = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="XIN",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[xin]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="XOUT",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[xout]
+        ),
+    ]

@@ -1,0 +1,934 @@
+/**
+ * Log Viewer Styles
+ * Uses Atopile Design System variables for consistency
+ */
+
+/* Main container - full viewport */
+.lv-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-base);
+  overflow: hidden;
+}
+
+/* Fixed toolbar at top */
+.lv-toolbar {
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: var(--spacing-sm);
+}
+
+/* Controls row */
+.lv-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.lv-controls-left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.lv-controls-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+/* Status indicator */
+.lv-status {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  height: 24px;
+  position: relative;
+  cursor: default;
+}
+
+/* Status tooltip */
+.lv-status-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm);
+  z-index: 100;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: tooltip-fade-in 0.1s ease-out;
+}
+
+@keyframes tooltip-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.lv-status-tooltip-row {
+  display: flex;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+}
+
+.lv-status-tooltip-row + .lv-status-tooltip-row {
+  margin-top: 2px;
+}
+
+.lv-status-tooltip-label {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.lv-status-tooltip-value {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.lv-status.connected {
+  border-color: var(--ctp-green);
+}
+
+.lv-status.connecting {
+  border-color: var(--ctp-yellow);
+}
+
+.lv-status.disconnected {
+  border-color: var(--ctp-red);
+}
+
+/* Connection Status Dot */
+.lv-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.lv-status.connected .lv-status-dot {
+  color: var(--ctp-green);
+}
+
+.lv-status.connecting .lv-status-dot {
+  color: var(--ctp-yellow);
+  animation: pulse 1s infinite;
+}
+
+.lv-status.disconnected .lv-status-dot {
+  color: var(--ctp-red);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Log count indicator */
+.lv-status-count {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Live badge */
+.lv-live-badge {
+  padding: 1px 4px;
+  background: rgba(166, 227, 161, 0.2);
+  border-radius: 2px;
+  color: var(--ctp-green);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+/* Inputs */
+.lv-input,
+.lv-select {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  height: 24px;
+  transition: border-color var(--transition-fast);
+}
+
+.lv-input:focus,
+.lv-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.lv-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.lv-input-small {
+  width: 100px;
+}
+
+.lv-input-medium {
+  width: 120px;
+}
+
+.lv-input-xs {
+  width: 50px;
+}
+
+.lv-input-search {
+  width: 200px;
+}
+
+.lv-separator {
+  width: 1px;
+  height: 16px;
+  background: var(--border-subtle);
+  flex-shrink: 0;
+}
+
+/* Mode Toggle */
+.lv-mode-toggle {
+  display: flex;
+  gap: 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  height: 24px;
+}
+
+.lv-mode-btn {
+  padding: 0 var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border: none;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  height: 100%;
+}
+
+.lv-mode-btn:hover:not(.active):not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.lv-mode-btn.active {
+  background: var(--accent);
+  color: var(--ctp-crust);
+}
+
+.lv-mode-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Level dropdown - uses shared dropdown patterns */
+.lv-dropdown {
+  position: relative;
+}
+
+.lv-dropdown .selector-trigger {
+  height: 24px;
+  font-family: var(--font-mono);
+  min-width: 120px;
+}
+
+.lv-dropdown .selector-dropdown {
+  min-width: auto;
+  padding: var(--spacing-xs);
+}
+
+.lv-dropdown .dropdown-item {
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.lv-dropdown .dropdown-item:hover {
+  background: var(--bg-hover);
+}
+
+.lv-dropdown .dropdown-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.lv-dropdown .dropdown-item .lv-level-badge {
+  flex: 1;
+}
+
+/* Buttons */
+.lv-btn {
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  height: 24px;
+}
+
+.lv-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.lv-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lv-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--ctp-crust);
+}
+
+.lv-btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.lv-btn-success {
+  background: rgba(166, 227, 161, 0.2);
+  border-color: var(--ctp-green);
+  color: var(--ctp-green);
+}
+
+.lv-btn-success:hover:not(:disabled) {
+  background: rgba(166, 227, 161, 0.3);
+}
+
+.lv-btn-danger {
+  background: rgba(243, 139, 168, 0.2);
+  border-color: var(--ctp-red);
+  color: var(--ctp-red);
+}
+
+.lv-btn-danger:hover:not(:disabled) {
+  background: rgba(243, 139, 168, 0.3);
+}
+
+.lv-btn-small {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-xs);
+}
+
+.lv-btn-active {
+  background: rgba(137, 180, 250, 0.3);
+  border-color: var(--ctp-blue);
+  color: var(--ctp-blue);
+}
+
+.lv-btn-active:hover:not(:disabled) {
+  background: rgba(137, 180, 250, 0.4);
+}
+
+/* Disabled inputs */
+.lv-input:disabled,
+.lv-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Error */
+.lv-error {
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: rgba(243, 139, 168, 0.15);
+  border-radius: var(--radius-sm);
+  color: var(--ctp-red);
+  font-size: var(--font-size-sm);
+}
+
+/* Column Headers - CSS Grid for static positioning */
+.lv-column-headers {
+  display: grid;
+  grid-template-columns: 58px 55px 110px 1fr;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  align-items: center;
+}
+
+/* Compact modes for column headers */
+.lv-column-headers.lv-time-compact {
+  grid-template-columns: 48px 55px 110px 1fr;
+}
+
+.lv-column-headers.lv-level-compact {
+  grid-template-columns: 58px 24px 110px 1fr;
+}
+
+.lv-column-headers.lv-time-compact.lv-level-compact {
+  grid-template-columns: 48px 24px 110px 1fr;
+}
+
+.lv-col-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lv-col-btn {
+  padding: 2px var(--spacing-xs);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.lv-col-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.lv-col-search {
+  padding: 2px var(--spacing-xs);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  flex: 1;
+  min-width: 0;
+  transition: border-color var(--transition-fast);
+}
+
+.lv-col-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.lv-col-search::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.lv-col-search-message {
+  width: 100%;
+}
+
+/* Scrollable log content */
+.lv-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--bg-primary);
+}
+
+.lv-empty {
+  padding: var(--spacing-xl);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-base);
+}
+
+/* Log Entry */
+.lv-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.lv-entry:hover {
+  background: var(--bg-secondary);
+}
+
+.lv-entry:last-child {
+  border-bottom: none;
+}
+
+.lv-entry.error {
+  background: rgba(243, 139, 168, 0.08);
+}
+
+.lv-entry.error:hover {
+  background: rgba(243, 139, 168, 0.12);
+}
+
+.lv-entry-row {
+  display: grid;
+  grid-template-columns: 58px 55px 110px 1fr;
+  gap: var(--spacing-sm);
+  align-items: flex-start;
+}
+
+/* Compact modes for entry rows - must match header */
+.lv-entry-row.lv-time-compact {
+  grid-template-columns: 48px 55px 110px 1fr;
+}
+
+.lv-entry-row.lv-level-compact {
+  grid-template-columns: 58px 24px 110px 1fr;
+}
+
+.lv-entry-row.lv-time-compact.lv-level-compact {
+  grid-template-columns: 48px 24px 110px 1fr;
+}
+
+.lv-ts {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  padding-top: 1px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lv-ts:hover {
+  color: var(--text-secondary);
+}
+
+/* Level Badge */
+.lv-level-badge {
+  padding: 0 5px;
+  border-radius: 2px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  text-align: center;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lv-level-badge:hover {
+  opacity: 0.8;
+}
+
+.lv-level-badge.short {
+  padding: 0 3px;
+}
+
+.lv-level-badge.debug {
+  background: var(--ctp-surface0);
+  color: var(--debug);
+}
+
+.lv-level-badge.info {
+  background: rgba(137, 180, 250, 0.2);
+  color: var(--info);
+}
+
+.lv-level-badge.warning {
+  background: rgba(249, 226, 175, 0.2);
+  color: var(--warning);
+}
+
+.lv-level-badge.error {
+  background: rgba(243, 139, 168, 0.2);
+  color: var(--error);
+}
+
+.lv-level-badge.alert {
+  background: rgba(250, 179, 135, 0.2);
+  color: var(--ctp-peach);
+}
+
+/* Source Badge - color set dynamically per file */
+.lv-source-badge {
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid currentColor;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.lv-source-badge:hover {
+  opacity: 1;
+}
+
+/* Stage Badge */
+.lv-stage-badge {
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  background: rgba(166, 173, 200, 0.15);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Test Badge - truncates from front, shows popup on hover */
+.lv-test-badge {
+  position: relative;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  background: rgba(137, 180, 250, 0.15);
+  color: var(--info);
+  flex-shrink: 0;
+  max-width: 180px;
+  cursor: default;
+}
+
+.lv-test-badge-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+/* Popup on hover */
+.lv-test-badge-popup {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: 4px;
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  color: var(--text-primary);
+  white-space: nowrap;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  direction: ltr;
+}
+
+.lv-test-badge:hover .lv-test-badge-popup {
+  display: block;
+}
+
+/* Message cell - contains optional stage/test badges + message */
+.lv-message-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.lv-message {
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-width: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.lv-highlight {
+  background: rgba(249, 226, 175, 0.4);
+  color: var(--warning);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* Separator lines (detected from messages with >5 '-' or '=' chars) */
+.lv-separator-line {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-xs) 0;
+}
+
+.lv-separator-line-bar {
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+  min-width: 20px;
+}
+
+.lv-separator-single .lv-separator-line-bar {
+  background: var(--text-muted);
+  opacity: 0.4;
+}
+
+.lv-separator-double .lv-separator-line-bar {
+  height: 2px;
+  background: linear-gradient(
+    to bottom,
+    var(--text-muted) 0%,
+    var(--text-muted) 40%,
+    transparent 40%,
+    transparent 60%,
+    var(--text-muted) 60%,
+    var(--text-muted) 100%
+  );
+  opacity: 0.5;
+}
+
+.lv-separator-line-label {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  padding: 0 var(--spacing-xs);
+}
+
+/* Tree structure visualization */
+
+/* Tree group container */
+.lv-tree-group {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.lv-tree-group:last-child {
+  border-bottom: none;
+}
+
+/* Tree row - uses same grid as regular entries */
+.lv-tree-row {
+  display: grid;
+  grid-template-columns: 58px 55px 110px 1fr;
+  gap: var(--spacing-sm);
+  padding: 2px var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  align-items: flex-start;
+}
+
+/* Compact modes for tree rows - must match header */
+.lv-tree-row.lv-time-compact {
+  grid-template-columns: 48px 55px 110px 1fr;
+}
+
+.lv-tree-row.lv-level-compact {
+  grid-template-columns: 58px 24px 110px 1fr;
+}
+
+.lv-tree-row.lv-time-compact.lv-level-compact {
+  grid-template-columns: 48px 24px 110px 1fr;
+}
+
+.lv-tree-row:hover {
+  background: var(--bg-secondary);
+}
+
+.lv-tree-row.error {
+  background: rgba(243, 139, 168, 0.08);
+}
+
+.lv-tree-row.error:hover {
+  background: rgba(243, 139, 168, 0.12);
+}
+
+/* Tree root styling */
+.lv-tree-root {
+  background: var(--bg-secondary);
+}
+
+.lv-tree-root:hover {
+  background: var(--bg-tertiary);
+}
+
+/* Tree child styling */
+.lv-tree-child {
+  background: var(--bg-primary);
+}
+
+/* Tree toggle button - inline in message cell */
+.lv-tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: none;
+  border: none;
+  padding: 0 4px 0 0;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  transition: color var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.lv-tree-toggle:hover {
+  color: var(--text-primary);
+}
+
+.lv-tree-toggle-icon {
+  display: inline-block;
+  font-size: 10px;
+  transition: transform 0.15s ease;
+}
+
+.lv-tree-toggle.expanded .lv-tree-toggle-icon {
+  transform: rotate(90deg);
+}
+
+.lv-tree-toggle.collapsed .lv-tree-toggle-icon {
+  transform: rotate(0deg);
+}
+
+/* Child count badge when collapsed */
+.lv-tree-child-count {
+  font-size: 9px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  padding: 0 3px;
+  margin-left: 2px;
+}
+
+/* Simple space indentation for tree children */
+.lv-tree-indent {
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* Tree message cell */
+.lv-tree-message-cell {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  min-width: 0;
+}
+
+.lv-tree-message-cell .lv-message {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Tracebacks */
+.lv-tracebacks {
+  display: flex;
+  flex-direction: row;
+  gap: var(--spacing-md);
+  margin-top: 2px;
+  margin-left: 60px;
+}
+
+.lv-trace {
+  padding: 0;
+}
+
+.lv-trace-summary {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  font-family: var(--font-mono);
+  text-transform: lowercase;
+  letter-spacing: 0.3px;
+}
+
+.lv-trace-arrow {
+  display: inline-block;
+  font-size: var(--font-size-base);
+  transition: transform 0.15s ease;
+}
+
+.lv-trace-arrow.open {
+  transform: rotate(90deg);
+}
+
+.lv-trace-ato .lv-trace-summary {
+  color: #c9a227;
+}
+
+.lv-trace-python .lv-trace-summary {
+  color: var(--text-muted);
+}
+
+.lv-trace-content {
+  margin-top: var(--spacing-xs);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  font-size: var(--font-size-sm);
+  animation: trace-expand 0.15s ease-out;
+}
+
+@keyframes trace-expand {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.lv-trace-ato .lv-trace-content {
+  color: #c9a227;
+  background: rgba(201, 162, 39, 0.1);
+}
+
+.lv-trace-python .lv-trace-content {
+  color: var(--text-muted);
+  background: rgba(108, 112, 134, 0.1);
+}

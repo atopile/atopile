@@ -3,13 +3,14 @@
 
 from enum import Enum, auto
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.node import rt_field
-from faebryk.libs.library import L
 
 
-class BJT(Module):
+class BJT(fabll.Node):
+    # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
     class DopingType(Enum):
         NPN = auto()
         PNP = auto()
@@ -21,35 +22,65 @@ class BJT(Module):
         SATURATION = auto()
         CUT_OFF = auto()
 
-    doping_type = L.p_field(domain=L.Domains.ENUM(DopingType))
-    operation_region = L.p_field(domain=L.Domains.ENUM(OperationRegion))
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    emitter = F.Electrical.MakeChild()
+    base = F.Electrical.MakeChild()
+    collector = F.Electrical.MakeChild()
 
-    emitter: F.Electrical
-    base: F.Electrical
-    collector: F.Electrical
+    doping_type = F.Parameters.EnumParameter.MakeChild(enum_t=DopingType)
+    operation_region = F.Parameters.EnumParameter.MakeChild(enum_t=OperationRegion)
 
-    designator_prefix = L.f_field(F.has_designator_prefix)(
-        F.has_designator_prefix.Prefix.Q
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+    _can_attatch_to_footprint = fabll.Traits.MakeEdge(
+        F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    @rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(self.collector, self.emitter)
+    # Create named lead fields so we can attach can_attach_to_pad_by_name to them
+    emitter_lead = F.Lead.is_lead.MakeChild()
+    base_lead = F.Lead.is_lead.MakeChild()
+    collector_lead = F.Lead.is_lead.MakeChild()
 
-    @rt_field
-    def pin_association_heuristic(self):
-        return F.has_pin_association_heuristic_lookup_table(
-            mapping={
-                self.emitter: ["E", "Emitter"],
-                self.base: ["B", "Base"],
-                self.collector: ["C", "Collector"],
-            },
-            accept_prefix=False,
-            case_sensitive=False,
+    emitter.add_dependant(fabll.Traits.MakeEdge(emitter_lead, [emitter]))
+    base.add_dependant(fabll.Traits.MakeEdge(base_lead, [base]))
+    collector.add_dependant(fabll.Traits.MakeEdge(collector_lead, [collector]))
+
+    # Attach pad name matchers to the lead fields (not to the Electrical nodes)
+    emitter_lead.add_dependant(
+        fabll.Traits.MakeEdge(
+            F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"e|emitter"),
+            [emitter_lead],
         )
+    )
+    base_lead.add_dependant(
+        fabll.Traits.MakeEdge(
+            F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"b|base"),
+            [base_lead],
+        )
+    )
+    collector_lead.add_dependant(
+        fabll.Traits.MakeEdge(
+            F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"c|collector"),
+            [collector_lead],
+        )
+    )
 
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
+    _can_bridge = fabll.Traits.MakeEdge(
+        F.can_bridge.MakeChild(["collector"], ["emitter"])
+    )
+
+    designator_prefix = fabll.Traits.MakeEdge(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.Q)
+    )
+
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import BJT, Resistor, ElectricPower
 
         bjt = new BJT
@@ -67,5 +98,6 @@ class BJT(Module):
         input_signal ~> base_resistor ~> bjt.base
         output_signal ~ bjt.collector
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

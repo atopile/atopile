@@ -3,188 +3,190 @@
 import logging
 from enum import Enum
 
-from more_itertools import first
-
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.node import Node
-from faebryk.libs.library import L
-from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.units import P
-from faebryk.libs.util import invert_dict, md_list, partition_as_list
 
 logger = logging.getLogger(__name__)
 
 
-class I2C(ModuleInterface):
-    scl: F.ElectricLogic
-    sda: F.ElectricLogic
+class I2C(fabll.Node):
+    # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
+    class SpeedMode(Enum):
+        low_speed = 10  # * P.khertz
+        standard_speed = 100  # * P.khertz
+        fast_speed = 400  # * P.khertz
+        high_speed = 3.4  # * P.Mhertz
 
-    address = L.p_field(within=L.Range(0, 0x7F), domain=L.Domains.Numbers.NATURAL())
-    bus_addresses = L.p_field(
-        within=L.Range(0, 0x7F), domain=L.Domains.Numbers.NATURAL()
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    scl = F.ElectricLogic.MakeChild()
+    sda = F.ElectricLogic.MakeChild()
+
+    address = F.Parameters.NumericParameter.MakeChild(
+        # unit=F.Units.Bit,
+        domain=F.NumberDomain.Args(negative=False, integer=True),
+    )
+    bus_addresses = F.Parameters.NumericParameter.MakeChild(
+        # unit=F.Units.Bit,
+        domain=F.NumberDomain.Args(negative=False, integer=True),
+    )
+    frequency = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
     )
 
-    frequency = L.p_field(
-        units=P.Hz,
-        likely_constrained=True,
-        soft_set=L.Range(10 * P.kHz, 3.4 * P.MHz),
-    )
+    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(in_=[""], out_=[""]))
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    net_names = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="SDA", level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[sda],
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="SCL", level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[scl],
+        ),
+    ]
 
-    @L.rt_field
+    bus_parameters = [
+        fabll.Traits.MakeEdge(F.is_alias_bus_parameter.MakeChild(), owner=[frequency]),
+    ]
+    # ----------------------------------------
+    #                 functions
+    # ----------------------------------------
+
     def requires_pulls(self):
-        def pred(signal: F.ElectricSignal, bus: set[Node]):
-            interface = signal.get_parent_of_type(I2C)
-
-            assert interface in bus
-
-            return (
-                len(bus) > 1
-                # arbitrarily choose an interface to represent the bus for this check
-                and first(sorted(bus, key=lambda n: str(n))) is interface
-                # indicates usage
-                and signal.line.net_crosses_pad_boundary()
-            )
-
-        return F.requires_pulls(
+        self._requires_pulls = F.requires_pulls.MakeChild(
             self.scl,
             self.sda,
-            pred=pred,
-            required_resistance=L.Range(
-                1 * (1 - 0.1) * P.kohm, 10 * (1 + 0.1) * P.kohm
+            interface_type=I2C,
+            required_resistance=F.Literals.Numbers.MakeChild(
+                min=1000 * (1 - 0.1), max=10000 * (1 + 0.1), unit_type=F.Units.Ohm
             ),
         )
 
-    def bus_crosses_pad_boundary(self):
-        return (
-            self.scl.line.net_crosses_pad_boundary()
-            or self.sda.line.net_crosses_pad_boundary()
-        )
+    # def terminate(self, owner: fabll.Node):
+    #     # TODO: https://www.ti.com/lit/an/slva689/slva689.pdf
 
-    def terminate(self, owner: Module):
-        # TODO: https://www.ti.com/lit/an/slva689/slva689.pdf
+    #     self.pull_up_sda = self.sda.pulled.pull(up=True, owner=owner)
+    #     self.pull_up_scl = self.scl.pulled.pull(up=True, owner=owner)
 
-        self.pull_up_sda = self.sda.pulled.pull(up=True, owner=owner)
-        self.pull_up_scl = self.scl.pulled.pull(up=True, owner=owner)
+    # @staticmethod
+    # def define_max_frequency_capability(mode: SpeedMode):
+    #     return fabll.Range(I2C.SpeedMode.low_speed.value, mode.value)
 
-    class SpeedMode(Enum):
-        low_speed = 10 * P.khertz
-        standard_speed = 100 * P.khertz
-        fast_speed = 400 * P.khertz
-        high_speed = 3.4 * P.Mhertz
+    # # self.scl.line.add(F.has_net_name("SCL", level=F.has_net_name.Level.SUGGESTED))
+    # # self.sda.line.add(F.has_net_name("SDA", level=F.has_net_name.Level.SUGGESTED))
 
-    @staticmethod
-    def define_max_frequency_capability(mode: SpeedMode):
-        return L.Range(I2C.SpeedMode.low_speed.value, mode.value)
+    # def _hack_get_connected(self):
+    #     """
+    #     Workaround for hierarchical mifs not working currently
+    #     """
+    #     # Find all I2C interfaces connected to the same bus (via SCL line)
+    #     # Assumption: If SCL is connected, SDA is also connected to the same
+    #     # set of interfaces
+    #     # Ensure the signal is connected to a line
 
-    def __preinit__(self) -> None:
-        self.frequency.add(F.is_bus_parameter())
-        # self.bus_addresses.add(F.is_bus_parameter(reduce=(self.address, Union)))
+    #     # Get all nodes connected electrically to the line
+    #     connected_nodes = self.scl.line.get_connected()
+    #     self.scl
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.scl.line.add(F.has_net_name("SCL", level=F.has_net_name.Level.SUGGESTED))
-        self.sda.line.add(F.has_net_name("SDA", level=F.has_net_name.Level.SUGGESTED))
+    #     # Get all nodes connected logically to the line
+    #     connected_nodes |= self.sda.get_connected()
 
-    def _hack_get_connected(self):
-        """
-        Workaround for hierarchical mifs not working currently
-        """
-        # Find all I2C interfaces connected to the same bus (via SCL line)
-        # Assumption: If SCL is connected, SDA is also connected to the same
-        # set of interfaces
-        # Ensure the signal is connected to a line
+    #     bus_interfaces: set[I2C] = set()
+    #     for node in connected_nodes:
+    #         interface = node.get_parent_of_type(I2C)
+    #         # Filter out nodes not part of an I2C interface
+    #         if interface is not None:
+    #             bus_interfaces.add(interface)
 
-        # Get all nodes connected electrically to the line
-        connected_nodes = self.scl.line.get_connected()
-        # Get all nodes connected logically to the line
-        connected_nodes |= self.sda.get_connected()
+    #     # include shallow connections
+    #     bus_interfaces |= self.get_connected(include_self=False).keys()
 
-        bus_interfaces: set[I2C] = set()
-        for node in connected_nodes:
-            interface = node.get_parent_of_type(I2C)
-            # Filter out nodes not part of an I2C interface
-            if interface is not None:
-                bus_interfaces.add(interface)
+    #     return bus_interfaces
 
-        # include shallow connections
-        bus_interfaces |= self.get_connected(include_self=False).keys()
+    # class requires_unique_addresses(fabll.Node):
+    #     class DuplicateAddressException(
+    #         F.implements_design_check.UnfulfilledCheckException
+    #     ):
+    #         def __init__(self, duplicates: dict[P_Set, list["I2C"]], bus: set["I2C"]):
+    #             message = "Duplicate I2C addresses found on the bus:\\n"
+    #             message += md_list(
+    #                 {f"{addr}": nodes for addr, nodes in duplicates.items()}
+    #             )
+    #             super().__init__(message, nodes=list(bus))
 
-        return bus_interfaces
+    #     design_check: F.implements_design_check
 
-    class requires_unique_addresses(ModuleInterface.TraitT.decless()):
-        class DuplicateAddressException(
-            F.implements_design_check.UnfulfilledCheckException
-        ):
-            def __init__(self, duplicates: dict[P_Set, list["I2C"]], bus: set["I2C"]):
-                message = "Duplicate I2C addresses found on the bus:\\n"
-                message += md_list(
-                    {f"{addr}": nodes for addr, nodes in duplicates.items()}
-                )
-                super().__init__(message, nodes=list(bus))
+    #     @F.implements_design_check.register_post_solve_check
+    #     def __check_post_solve__(self):
+    #         solver = self.design_check.get_solver()
+    #         obj = self.get_obj(I2C)
+    #         bus_interfaces = obj._hack_get_connected()
 
-        design_check: F.implements_design_check
+    #         # If only self or less found, no conflicts possible
+    #         if len(bus_interfaces) <= 1:
+    #             return
 
-        @F.implements_design_check.register_post_solve_check
-        def __check_post_solve__(self):
-            solver = self.design_check.get_solver()
-            obj = self.get_obj(I2C)
-            bus_interfaces = obj._hack_get_connected()
+    #         # Get addresses, handling potential unresolved parameters gracefully
+    #         addresses: dict[I2C, P_Set] = {
+    #             interface: solver.inspect_get_known_supersets(interface.address)
+    #             for interface in bus_interfaces
+    #         }
+    #         unresolved, resolved = partition_as_list(
+    #             lambda s: s[1].is_singleton(), addresses.items()
+    #         )
 
-            # If only self or less found, no conflicts possible
-            if len(bus_interfaces) <= 1:
-                return
+    #         # Check for duplicates
+    #         by_id = invert_dict(dict(resolved))
+    #         duplicates = {
+    #             addr: busses for addr, busses in by_id.items() if len(busses) > 1
+    #         }
+    #         if duplicates:
+    #             raise I2C.requires_unique_addresses.DuplicateAddressException(
+    #                 duplicates=duplicates, bus=bus_interfaces
+    #             )
 
-            # Get addresses, handling potential unresolved parameters gracefully
-            addresses: dict[I2C, P_Set] = {
-                interface: solver.inspect_get_known_supersets(interface.address)
-                for interface in bus_interfaces
-            }
-            unresolved, resolved = partition_as_list(
-                lambda s: s[1].is_single_element(), addresses.items()
-            )
+    #         # TODO: Consider raising MaybeUnfulfilled if there are unresolved addr
+    #         # For now, we only raise if we find concrete duplicates.
 
-            # Check for duplicates
-            by_id = invert_dict(dict(resolved))
-            duplicates = {
-                addr: busses for addr, busses in by_id.items() if len(busses) > 1
-            }
-            if duplicates:
-                raise I2C.requires_unique_addresses.DuplicateAddressException(
-                    duplicates=duplicates, bus=bus_interfaces
-                )
+    # address_check = requires_unique_addresses.MakeChild()
 
-            # TODO: Consider raising MaybeUnfulfilled if there are unresolved addresses?
-            # For now, we only raise if we find concrete duplicates.
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
+            import I2C, ElectricPower
 
-    address_check: requires_unique_addresses
+            i2c_bus = new I2C
+            i2c_bus.frequency = 400kHz  # Fast mode
+            i2c_bus.address = 0x48  # Device address
 
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
-        import I2C, ElectricPower
+            # Connect power reference for logic levels
+            power_3v3 = new ElectricPower
+            assert power_3v3.voltage within 3.3V +/- 5%
+            i2c_bus.scl.reference ~ power_3v3
+            i2c_bus.sda.reference ~ power_3v3
 
-        i2c_bus = new I2C
-        i2c_bus.frequency = 400kHz  # Fast mode
-        i2c_bus.address = 0x48  # Device address
+            # Connect to microcontroller
+            microcontroller.i2c ~ i2c_bus
 
-        # Connect power reference for logic levels
-        power_3v3 = new ElectricPower
-        assert power_3v3.voltage within 3.3V +/- 5%
-        i2c_bus.scl.reference ~ power_3v3
-        i2c_bus.sda.reference ~ power_3v3
-
-        # Connect to microcontroller
-        microcontroller.i2c ~ i2c_bus
-
-        # Connect to I2C sensor
-        sensor.i2c ~ i2c_bus
-        """,
-        language=F.has_usage_example.Language.ato,
+            # Connect to I2C sensor
+            sensor.i2c ~ i2c_bus
+            """,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

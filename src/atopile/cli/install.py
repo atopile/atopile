@@ -6,16 +6,16 @@ This CLI command provides the `ato install` command to:
 - download JLCPCB footprints
 """
 
-import logging
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from atopile import errors
+from atopile.logging import get_logger
 from atopile.telemetry import capture
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 dependencies_app = typer.Typer(rich_markup_mode="rich")
 
@@ -82,13 +82,16 @@ def install(
 
 @capture("cli:sync_start", "cli:sync_end")
 def sync(
-    # TODO: only relevant when supporting version specs
-    # upgrade: Annotated[
-    #    bool,
-    #    typer.Option(
-    #        "--upgrade", "-U", help="Allow package upgrades, ignoring pinned versions"
-    #    ),
-    # ] = False,
+    upgrade: Annotated[
+        bool,
+        typer.Option(
+            "--upgrade", "-U", help="Update dependencies, ignoring pinned versions"
+        ),
+    ] = False,
+    pin: Annotated[
+        bool,
+        typer.Option("--pin", "-p", help="Pin package versions if not already pinned"),
+    ] = False,
     path: Annotated[
         Path | None, typer.Option("--project-path", "-C", help="Path to the project")
     ] = None,
@@ -104,11 +107,18 @@ def sync(
     config.apply_options(None, working_dir=path)
 
     try:
-        ProjectDependencies(install_missing=True, clean_unmanaged_dirs=True)
+        ProjectDependencies(
+            install_missing=True,
+            clean_unmanaged_dirs=True,
+            pin_versions=pin,
+            update_versions=upgrade,
+        )
+
     except (
         api.Errors.PackageNotFoundError,
         api.Errors.ReleaseNotFoundError,
         api.Errors.InvalidPackageIdentifierError,
+        api.Errors.PackagesApiHTTPError,  # catch base class for unexpected HTTP errors
     ) as e:
         raise errors.UserException(f"Error syncing dependencies: {e}") from e
 
@@ -157,6 +167,7 @@ def add(
         api.Errors.PackageNotFoundError,
         api.Errors.ReleaseNotFoundError,
         api.Errors.InvalidPackageIdentifierError,
+        api.Errors.PackagesApiHTTPError,  # catch base class for unexpected HTTP errors
     ) as e:
         raise errors.UserException(f"Error adding dependencies: {e}") from e
 
@@ -185,7 +196,7 @@ def remove(
 
 
 @capture("cli:list_start", "cli:list_end")
-def list():
+def list_():
     """
     List all dependencies in the project
     """
@@ -213,4 +224,4 @@ def list():
 dependencies_app.command()(add)
 dependencies_app.command()(remove)
 dependencies_app.command()(sync)
-dependencies_app.command()(list)
+dependencies_app.command(name="list")(list_)

@@ -161,6 +161,88 @@ If you encounter problems with syntax highlighting or IntelliSense:
 - **GitHub Repository**: [github.com/atopile/atopile](https://github.com/atopile/atopile)
 - **Community**: Join our [Discord]((https://discord.gg/CRe5xaDBr3]https://discord.gg/CRe5xaDBr3)) or [discussions](https://github.com/atopile/atopile/discussions)
 
+## 🛠️ Development
+
+### Starting the Dev Server
+
+The extension UI is built with React and requires two servers running together:
+
+1. **Python Backend** (port assigned by `ato serve backend`) - FastAPI server for project/build data
+2. **Vite Dev Server** (port 5173) - React hot-reload development server
+
+#### Quick Start (Recommended)
+
+Use the provided startup script that handles everything (requires `DASHBOARD_PORT` set):
+
+```bash
+cd src/ui-server
+./dev.sh
+```
+
+This will:
+- Kill any existing processes on the required ports
+- Start the Python backend
+- Start Vite with hot reloading
+- Show you URLs for all services
+
+Press `Ctrl+C` to stop all servers.
+
+#### Custom Workspace Paths
+
+You can specify custom workspace paths to scan for projects:
+
+```bash
+./dev.sh /path/to/your/project /another/project
+```
+
+By default, it uses the atopile repo and `../packages` as workspaces.
+
+#### Manual Startup
+
+If you need to run servers individually:
+
+```bash
+# Terminal 1: Python backend
+ato serve backend --workspace "$(pwd)"
+
+# Terminal 2: Vite
+cd src/ui-server
+npm run dev
+```
+
+#### Accessing the UI
+
+Once running, open http://localhost:5173 in your browser to see the development UI.
+
+### Project Structure
+
+```
+src/vscode-atopile/
+├── src/                    # Extension TypeScript source
+│   ├── extension.ts        # Main extension entry point
+│   ├── common/             # Shared utilities
+│   │   ├── findbin.ts      # Binary detection & UV management
+│   │   ├── lspServer.ts    # LSP client lifecycle
+│   │   ├── appState-ws-standalone.ts  # WebSocket state sync
+│   │   └── settings.ts     # VS Code settings
+│   └── ui/                 # VS Code webview integration
+├── docs/
+│   └── ARCHITECTURE.md     # Developer architecture docs
+└── README.md
+
+src/ui-server/
+├── src/                    # React components + hooks
+├── index.html              # Dev entry (sidebar + log viewer)
+├── sidebar.html            # Sidebar entry
+├── log-viewer.html         # Log viewer entry
+└── dev.sh                  # Dev environment startup script
+```
+
+### Architecture Documentation
+
+For detailed information about how the extension works internally, see:
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Component architecture, event flows, and state management
+
 ## 🤝 Contributing
 
 Found a bug or want to contribute?

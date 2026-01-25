@@ -1,79 +1,88 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from enum import Enum, auto
+from enum import StrEnum
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
-from faebryk.libs.units import P, quantity
 
 
-class Comparator(Module):
-    class OutputType(Enum):
-        Differential = auto()
-        PushPull = auto()
-        OpenDrain = auto()
+class Comparator(fabll.Node):
+    # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
+    class OutputType(StrEnum):
+        Differential = "Differential"
+        PushPull = "PushPull"
+        OpenDrain = "OpenDrain"
 
-    common_mode_rejection_ratio = L.p_field(
-        units=P.dB,
-        likely_constrained=True,
-        soft_set=L.Range(quantity(60, P.dB), quantity(120, P.dB)),
-        tolerance_guess=10 * P.percent,
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    power = F.ElectricPower.MakeChild()
+    inverting_input = F.Electrical.MakeChild()
+    non_inverting_input = F.Electrical.MakeChild()
+    output = F.Electrical.MakeChild()
+
+    input_bias_current = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ampere,
     )
-    input_bias_current = L.p_field(
-        units=P.A,
-        likely_constrained=True,
-        soft_set=L.Range(1 * P.pA, 1 * P.µA),
-        tolerance_guess=20 * P.percent,
+    input_hysteresis_voltage = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Volt,
     )
-    input_hysteresis_voltage = L.p_field(
-        units=P.V,
-        likely_constrained=True,
-        soft_set=L.Range(1 * P.mV, 100 * P.mV),
-        tolerance_guess=15 * P.percent,
+    input_offset_voltage = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Volt,
     )
-    input_offset_voltage = L.p_field(
-        units=P.V,
-        soft_set=L.Range(10 * P.µV, 10 * P.mV),
-        tolerance_guess=20 * P.percent,
+    propagation_delay = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Second,
     )
-    propagation_delay = L.p_field(
-        units=P.s,
-        soft_set=L.Range(10 * P.ns, 1 * P.ms),
-        tolerance_guess=15 * P.percent,
-    )
-    output_type = L.p_field(
-        domain=L.Domains.ENUM(OutputType),
-        likely_constrained=True,
+    output_type = F.Parameters.EnumParameter.MakeChild(
+        enum_t=OutputType,
     )
 
-    power: F.ElectricPower
-    inverting_input: F.Electrical
-    non_inverting_input: F.Electrical
-    output: F.Electrical
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-    @L.rt_field
-    def simple_value_representation(self):
-        S = F.has_simple_value_representation_based_on_params_chain.Spec
-        return F.has_simple_value_representation_based_on_params_chain(
-            S(self.common_mode_rejection_ratio, suffix="CMRR"),
-            S(self.input_bias_current, suffix="Ib"),
-            S(self.input_hysteresis_voltage, suffix="Vhys"),
-            S(self.input_offset_voltage, suffix="Vos"),
-            S(self.propagation_delay, suffix="tpd"),
+    _can_attatch_to_footprint = fabll.Traits.MakeEdge(
+        F.Footprints.can_attach_to_footprint.MakeChild()
+    )
+
+    power.add_dependant(
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, F.ElectricPower.hv])
+    )
+    power.add_dependant(
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, F.ElectricPower.lv])
+    )
+    output.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [output]))
+    inverting_input.add_dependant(
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [inverting_input])
+    )
+    non_inverting_input.add_dependant(
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [non_inverting_input])
+    )
+
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = fabll.Traits.MakeEdge(
+        F.has_simple_value_representation.MakeChild(
+            S(input_bias_current, prefix="Ib"),
+            S(input_hysteresis_voltage, prefix="Vhys"),
+            S(input_offset_voltage, prefix="Vos"),
+            S(propagation_delay, prefix="tpd"),
         )
-
-    designator_prefix = L.f_field(F.has_designator_prefix)(
-        F.has_designator_prefix.Prefix.U
     )
 
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
+    designator_prefix = fabll.Traits.MakeEdge(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.U)
+    )
+
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import Comparator, Resistor, ElectricPower, Electrical
 
         comparator = new Comparator
-        comparator.common_mode_rejection_ratio = 80dB +/- 10%
         comparator.input_bias_current = 1nA +/- 50%
         comparator.input_hysteresis_voltage = 5mV +/- 20%
         comparator.input_offset_voltage = 1mV +/- 30%
@@ -105,5 +114,6 @@ class Comparator(Module):
 
         # Output will be HIGH when input_signal > reference_voltage
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

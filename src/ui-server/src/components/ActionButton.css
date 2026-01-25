@@ -1,0 +1,146 @@
+/**
+ * Action Button Styles
+ * Atopile Design System
+ */
+
+/* Action Button */
+.action-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-xs);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  min-height: 52px;
+}
+
+.action-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-subtle);
+}
+
+.action-button:active {
+  transform: scale(0.97);
+}
+
+.action-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--text-secondary);
+  transition: color var(--transition-fast);
+}
+
+.action-button:hover .action-icon {
+  color: var(--ato-orange);
+}
+
+.action-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.action-label {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  transition: color var(--transition-fast);
+}
+
+.action-button:hover .action-label {
+  color: var(--text-secondary);
+}
+
+/* Icon Button (Toolbar style) */
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.icon-btn.active {
+  background: var(--bg-hover);
+  color: var(--ato-orange);
+}
+
+/* Play/Action Button (Circular) */
+.play-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--ato-orange);
+  background: transparent;
+  color: var(--ato-orange);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.play-btn:hover {
+  background: var(--ato-orange);
+  color: var(--ctp-crust);
+}
+
+/* Install/Action Button */
+.install-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  width: 62px;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.install-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-color);
+}
+
+/* Update available state */
+.install-btn.update-available {
+  background: var(--ato-orange);
+  border-color: var(--ato-orange);
+  color: white;
+}
+
+.install-btn.update-available:hover {
+  background: var(--ato-orange-light);
+}
+
+/* Installed state */
+.install-btn.installed {
+  border-color: var(--ctp-green);
+  color: var(--ctp-green);
+}

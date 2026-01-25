@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import cast
 
 import atopile.config as config
-from atopile import errors
+from atopile import errors, version
 from faebryk.libs.backend.packages.api import Errors as ApiErrors
 from faebryk.libs.backend.packages.api import PackagesAPIClient
 from faebryk.libs.package.dist import Dist, DistValidationError
@@ -30,15 +30,100 @@ def _log_add_package(identifier: str, version: str):
     )
 
 
+def _log_pin_package(identifier: str, version: str):
+    logger.info(
+        f"📌 {identifier}@{version}",
+        extra={"markup": True},
+    )
+
+
 def _log_remove_package(identifier: str, version: str | None):
     dep_str = f"{identifier}@{version}" if version else identifier
     logger.info(f"[red]-[/] {dep_str}", extra={"markup": True})
 
 
+def _select_compatible_registry_release(
+    api: PackagesAPIClient, identifier: str, requested_release: str | None
+) -> str:
+    """
+    Select a compatible release for a package based on the installed atopile version.
+
+    The API returns releases in descending order (newest first), which is part of the
+    API contract. If the user has specified a version, we check that specific version
+    for compatibility and raise an error if it's incompatible. If no version is
+    specified, we fall back to older versions if the latest is incompatible.
+    """
+    releases = api.get_package_releases(identifier)
+    if not releases:
+        raise errors.UserException(f"No releases found for {identifier}")
+
+    # API returns releases in descending order (newest first) by contract
+    installed_version = version.get_installed_atopile_version()
+
+    if requested_release is not None:
+        # User specified a version - find it and check compatibility
+        requested = next(
+            (release for release in releases if release.version == requested_release),
+            None,
+        )
+        if requested is None:
+            raise errors.UserException(
+                f"Release not found: {identifier}@{requested_release}"
+            )
+
+        # If user explicitly specified a version, it must be compatible - no fallback
+        if not version.match(requested.requires_atopile, installed_version):
+            raise errors.UserException(
+                f"Package {identifier}@{requested_release} requires atopile "
+                f"{requested.requires_atopile}, but you have "
+                f"{version.clean_version(installed_version)} installed."
+            )
+
+        return requested.version
+
+    # No version specified - find the first compatible release (fallback behavior)
+    latest_release = releases[0]
+    compatible_release = next(
+        (
+            release
+            for release in releases
+            if version.match(release.requires_atopile, installed_version)
+        ),
+        None,
+    )
+    if compatible_release is None:
+        raise errors.UserException(
+            f"No compatible versions were found of package {identifier} "
+            f"for atopile version {version.clean_version(installed_version)}"
+        )
+
+    if compatible_release.version != latest_release.version:
+        logger.warning(
+            "Package %s@%s requires atopile %s which is incompatible with %s; "
+            "using %s@%s instead.",
+            identifier,
+            latest_release.version,
+            latest_release.requires_atopile,
+            version.clean_version(installed_version),
+            identifier,
+            compatible_release.version,
+        )
+
+    return compatible_release.version
+
+
 class BrokenDependencyError(Exception):
-    def __init__(self, identifier: str, error: Exception):
+    def __init__(
+        self,
+        identifier: str,
+        error: Exception,
+        parent: "ProjectDependency | None" = None,
+        release: str | None = None,
+    ):
         self.identifier = identifier
         self.error = error
+        self.parent = parent
+        self.release = release
 
 
 class ProjectDependency:
@@ -139,15 +224,19 @@ class ProjectDependency:
 
         elif isinstance(self.spec, config.RegistryDependencySpec):
             api = PackagesAPIClient()
+            requested_release = self.spec.release
             try:
+                selected_release = _select_compatible_registry_release(
+                    api, self.spec.identifier, requested_release
+                )
                 dist = api.get_release_dist(
                     self.spec.identifier,
                     Path(temp_dir),
-                    version=self.spec.release,
+                    version=selected_release,
                 )
             except ApiErrors.ReleaseNotFoundError as e:
                 raise errors.UserException(
-                    f"Release not found: {self.spec.identifier}@{self.spec.release}"
+                    f"Release not found: {self.spec.identifier}@{selected_release}"
                 ) from e
             self.spec.release = dist.version
         else:
@@ -186,6 +275,8 @@ class ProjectDependencies:
         sync_versions: bool = True,
         install_missing: bool = False,
         clean_unmanaged_dirs: bool = False,
+        pin_versions: bool = False,
+        update_versions: bool = False,
     ):
         if pcfg is None:
             if self.gcfg is None:
@@ -199,6 +290,21 @@ class ProjectDependencies:
         self.direct_deps = {
             ProjectDependency(spec, pcfg=pcfg) for spec in pcfg.dependencies or []
         }
+
+        if update_versions:
+            # Update manifest specs BEFORE resolving dependencies.
+            # This avoids loading/validating old installed packages that may have
+            # config errors in their ato.yaml (which would fail resolution).
+            if self._update_manifest_versions():
+                if self.gcfg is not None:
+                    self.gcfg.reload()
+                    self.pcfg = self.gcfg.project
+                    pcfg = self.pcfg
+                self.direct_deps = {
+                    ProjectDependency(spec, pcfg=pcfg)
+                    for spec in pcfg.dependencies or []
+                }
+
         self.dag = self.resolve_dependencies()
 
         if sync_versions:
@@ -207,6 +313,8 @@ class ProjectDependencies:
             self.install_missing_dependencies()
         if clean_unmanaged_dirs:
             self.clean_unmanaged_directories()
+        if pin_versions:
+            self.pin_versions()
 
     @property
     def all_deps(self) -> set[ProjectDependency]:
@@ -261,21 +369,53 @@ class ProjectDependencies:
 
             robustly_rm_dir(module_dir / unmanaged_dir)
 
+    @staticmethod
+    def _build_dep_chain(
+        identifier: str,
+        parent_map: dict[str, ProjectDependency],
+        release: str | None = None,
+    ) -> str:
+        """Build a dependency chain string like 'root@1.0 → parent@2.0 → child@3.0'."""
+        chain: list[str] = []
+        current_id: str | None = identifier
+        while current_id is not None:
+            parent = parent_map.get(current_id)
+            if parent is not None:
+                spec = parent.spec
+                if isinstance(spec, config.RegistryDependencySpec) and spec.release:
+                    chain.append(f"{parent.identifier}@{spec.release}")
+                else:
+                    chain.append(parent.identifier)
+                current_id = parent.identifier
+            else:
+                current_id = None
+        chain.reverse()
+        leaf = f"{identifier}@{release}" if release else identifier
+        chain.append(leaf)
+        return " → ".join(chain)
+
     def resolve_dependencies(self):
         dag = DAG[ProjectDependency]()
         # TODO: can be replaced with dag.values
         all_deps: set[ProjectDependency] = set()
+
+        # Track parent relationships for error reporting
+        parent_map: dict[str, ProjectDependency] = {}
 
         # Good old BFS for dependency resolution
         deps_to_process: list[tuple[ProjectDependency | None, ProjectDependency]] = [
             (None, dep) for dep in self.direct_deps
         ]
 
-        acc_errors = []
+        acc_errors: list[BrokenDependencyError] = []
         while deps_to_process:
             to_add = []
             for parent, dep in deps_to_process:
                 try:
+                    # Record parent for chain reporting (first parent wins)
+                    if parent is not None and dep.identifier not in parent_map:
+                        parent_map[dep.identifier] = parent
+
                     dups = all_deps.intersection({dep})
                     assert len(dups) <= 1
                     dup = dups.pop() if dups else None
@@ -299,12 +439,24 @@ class ProjectDependencies:
                     else:
                         dag.add_or_get(dep)
                 except Exception as e:
-                    acc_errors.append(BrokenDependencyError(dep.identifier, e))
+                    release = (
+                        dep.spec.release
+                        if isinstance(dep.spec, config.RegistryDependencySpec)
+                        else None
+                    )
+                    acc_errors.append(
+                        BrokenDependencyError(
+                            dep.identifier, e, parent=parent, release=release
+                        )
+                    )
 
             deps_to_process.clear()
             deps_to_process.extend(to_add)
         if acc_errors:
-            error_list = [f"{e.identifier}: {e.error.message}" for e in acc_errors]
+            error_list = []
+            for e in acc_errors:
+                chain = self._build_dep_chain(e.identifier, parent_map, e.release)
+                error_list.append(f"{chain}: {e.error}")
             raise errors.UserException(f"Broken dependencies:\n {md_list(error_list)}")
 
         if dag.contains_cycles:
@@ -491,6 +643,10 @@ class ProjectDependencies:
                     desired_version = spec.release
 
                     if installed_version != desired_version:
+                        logger.info(
+                            f"Syncing {dep.identifier}: "
+                            f"{installed_version} -> {desired_version}"
+                        )
                         dirty |= _sync_dep(dep, installed_version)
 
                 case "file" | "git":
@@ -507,3 +663,50 @@ class ProjectDependencies:
         if dirty:
             self.reload()
             self.clean_unmanaged_directories()
+
+    def pin_versions(self):
+        """
+        Pin any unpinned registry dependencies to their current installed versions
+        """
+        for dep in self.direct_deps:
+            if (
+                isinstance(dep.spec, config.RegistryDependencySpec)
+                and dep.cfg is not None
+                and dep.cfg.package is not None
+            ):
+                dep.spec.release = dep.cfg.package.version
+                dep.add_to_manifest()
+                _log_pin_package(dep.identifier, dep.cfg.package.version)
+
+    def _update_manifest_versions(self) -> bool:
+        """
+        Update registry dependency specs in the manifest to their latest
+        compatible versions. Returns True if any specs were changed.
+
+        Removes all installed registry dep directories so that
+        resolve_dependencies() downloads fresh copies instead of loading
+        potentially broken old configs.
+        """
+        api = PackagesAPIClient()
+        dirty = False
+        for dep in self.direct_deps:
+            if not isinstance(dep.spec, config.RegistryDependencySpec):
+                continue
+            # Remove old installed directory unconditionally — the installed
+            # copy may have a broken config even if the version hasn't changed.
+            if dep.target_path.exists():
+                robustly_rm_dir(dep.target_path)
+            # Pass None to get the latest compatible release (fallback behavior)
+            latest_version = _select_compatible_registry_release(
+                api, dep.spec.identifier, None
+            )
+            if dep.spec.release != latest_version:
+                logger.info(
+                    f"Updating {dep.spec.identifier}: "
+                    f"{dep.spec.release or '<unpinned>'} -> {latest_version}"
+                )
+                dep.spec.release = latest_version
+                dep.add_to_manifest()
+                dirty = True
+
+        return dirty

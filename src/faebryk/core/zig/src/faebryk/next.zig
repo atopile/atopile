@@ -14,53 +14,58 @@ const str = graph.str;
 const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 
 pub const EdgeNext = struct {
-    pub const tid: Edge.EdgeType = 1759356969;
+    pub const tid: Edge.EdgeType = graph.Edge.hash_edge_type(1759356969);
+    pub var registered: bool = false;
 
-    pub fn init(allocator: std.mem.Allocator, previous_node: NodeReference, next_node: NodeReference) EdgeReference {
-        const edge = Edge.init(allocator, previous_node, next_node, tid);
+    pub fn init(previous_node: NodeReference, next_node: NodeReference) EdgeReference {
+        const edge = EdgeReference.init(previous_node, next_node, tid);
         build().apply_to(edge);
         return edge;
     }
 
     pub fn build() EdgeCreationAttributes {
+        if (!registered) {
+            @branchHint(.unlikely);
+            registered = true;
+            Edge.register_type(tid) catch {};
+        }
         return .{
             .edge_type = tid,
             .directional = true,
             .name = null,
-            .dynamic = null,
+            .dynamic = graph.DynamicAttributes.init_on_stack(),
         };
     }
 
-    pub fn add_next(bound_previous_node: graph.BoundNodeReference, bound_next_node: graph.BoundNodeReference) graph.BoundEdgeReference {
-        const link = EdgeNext.init(bound_previous_node.g.allocator, bound_previous_node.node, bound_next_node.node);
-        const bound_edge = bound_previous_node.g.insert_edge(link);
-        return bound_edge;
+    pub fn add_next(bound_previous_node: graph.BoundNodeReference, bound_next_node: graph.BoundNodeReference) graph.GraphView.InsertEdgeError!graph.BoundEdgeReference {
+        const link = EdgeNext.init(bound_previous_node.node, bound_next_node.node);
+        return bound_previous_node.g.insert_edge(link);
     }
 
     pub fn is_instance(E: EdgeReference) bool {
-        return Edge.is_instance(E, tid);
+        return E.is_instance(tid);
     }
 
     pub fn get_previous_node(E: EdgeReference) ?NodeReference {
-        return E.source;
+        return E.get_directed_source();
     }
 
     pub fn get_next_node(E: EdgeReference) ?NodeReference {
-        return E.target;
+        return E.get_directed_target();
     }
 
     pub fn get_previous_edge(bound_node: graph.BoundNodeReference) ?graph.BoundEdgeReference {
-        return Edge.get_single_edge(bound_node, tid, true);
+        return bound_node.get_single_edge(tid, true);
     }
 
     pub fn get_next_edge(bound_node: graph.BoundNodeReference) ?graph.BoundEdgeReference {
-        return Edge.get_single_edge(bound_node, tid, false);
+        return bound_node.get_single_edge(tid, false);
     }
 
     pub fn get_next_node_from_node(bound_node: graph.BoundNodeReference) ?NodeReference {
         const bedge = get_next_edge(bound_node);
         if (bedge) |b| {
-            return b.edge.target;
+            return b.edge.get_target_node();
         }
         return null;
     }
@@ -68,7 +73,7 @@ pub const EdgeNext = struct {
     pub fn get_previous_node_from_node(bound_node: graph.BoundNodeReference) ?NodeReference {
         const bedge = get_previous_edge(bound_node);
         if (bedge) |b| {
-            return b.edge.source;
+            return b.edge.get_source_node();
         }
         return null;
     }
@@ -84,40 +89,40 @@ test "basic chain" {
     const bn3 = g.create_and_insert_node();
 
     // init ---------------------------------------------------------------------------------------
-    const en12 = EdgeNext.init(g.allocator, bn1.node, bn2.node);
+    const en12 = EdgeNext.init(bn1.node, bn2.node);
 
-    const ben12 = g.insert_edge(en12);
+    const ben12 = try g.insert_edge(en12);
 
     // add_next -----------------------------------------------------------------------------------
-    const ben23 = EdgeNext.add_next(bn2, bn3);
+    const ben23 = try EdgeNext.add_next(bn2, bn3);
 
     // is_instance -------------------------------------------------------------------------------
     try std.testing.expect(EdgeNext.is_instance(ben12.edge));
     try std.testing.expect(EdgeNext.is_instance(ben23.edge));
 
     // get_previous_node -------------------------------------------------------------------------
-    try std.testing.expect(Node.is_same(EdgeNext.get_previous_node(ben12.edge).?, bn1.node));
-    try std.testing.expect(Node.is_same(EdgeNext.get_previous_node(ben23.edge).?, bn2.node));
+    try std.testing.expect(EdgeNext.get_previous_node(ben12.edge).?.is_same(bn1.node));
+    try std.testing.expect(EdgeNext.get_previous_node(ben23.edge).?.is_same(bn2.node));
 
     // get_next_node -----------------------------------------------------------------------------
-    try std.testing.expect(Node.is_same(EdgeNext.get_next_node(ben12.edge).?, bn2.node));
-    try std.testing.expect(Node.is_same(EdgeNext.get_next_node(ben23.edge).?, bn3.node));
+    try std.testing.expect(EdgeNext.get_next_node(ben12.edge).?.is_same(bn2.node));
+    try std.testing.expect(EdgeNext.get_next_node(ben23.edge).?.is_same(bn3.node));
 
     // get_previous_edge --------------------------------------------------------------------------
-    try std.testing.expect(Edge.is_same(EdgeNext.get_previous_edge(bn2).?.edge, ben12.edge));
-    try std.testing.expect(Edge.is_same(EdgeNext.get_previous_edge(bn3).?.edge, ben23.edge));
+    try std.testing.expect(EdgeNext.get_previous_edge(bn2).?.edge.is_same(ben12.edge));
+    try std.testing.expect(EdgeNext.get_previous_edge(bn3).?.edge.is_same(ben23.edge));
 
     // get_next_edge ------------------------------------------------------------------------------
-    try std.testing.expect(Edge.is_same(EdgeNext.get_next_edge(bn1).?.edge, ben12.edge));
-    try std.testing.expect(Edge.is_same(EdgeNext.get_next_edge(bn2).?.edge, ben23.edge));
+    try std.testing.expect(EdgeNext.get_next_edge(bn1).?.edge.is_same(ben12.edge));
+    try std.testing.expect(EdgeNext.get_next_edge(bn2).?.edge.is_same(ben23.edge));
 
     // get_next_node_from_node --------------------------------------------------------------------
-    try std.testing.expect(Node.is_same(EdgeNext.get_next_node_from_node(bn1).?, bn2.node));
-    try std.testing.expect(Node.is_same(EdgeNext.get_next_node_from_node(bn2).?, bn3.node));
+    try std.testing.expect(EdgeNext.get_next_node_from_node(bn1).?.is_same(bn2.node));
+    try std.testing.expect(EdgeNext.get_next_node_from_node(bn2).?.is_same(bn3.node));
 
     // get_previous_node_from_node ----------------------------------------------------------------
-    try std.testing.expect(Node.is_same(EdgeNext.get_previous_node_from_node(bn2).?, bn1.node));
-    try std.testing.expect(Node.is_same(EdgeNext.get_previous_node_from_node(bn3).?, bn2.node));
+    try std.testing.expect(EdgeNext.get_previous_node_from_node(bn2).?.is_same(bn1.node));
+    try std.testing.expect(EdgeNext.get_previous_node_from_node(bn3).?.is_same(bn2.node));
 
     // has to be deleted first
     defer g.deinit();

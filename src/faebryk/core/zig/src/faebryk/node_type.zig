@@ -14,50 +14,55 @@ const str = graph.str;
 const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 
 pub const EdgeType = struct {
-    pub const tid: Edge.EdgeType = 1759276800;
+    pub const tid: Edge.EdgeType = graph.Edge.hash_edge_type(1759276800);
+    pub var registered: bool = false;
 
-    pub fn init(allocator: std.mem.Allocator, type_node: NodeReference, instance_node: NodeReference) EdgeReference {
-        const edge = Edge.init(allocator, type_node, instance_node, tid);
+    pub fn init(type_node: NodeReference, instance_node: NodeReference) EdgeReference {
+        const edge = EdgeReference.init(type_node, instance_node, tid);
         build().apply_to(edge);
         return edge;
     }
 
     pub fn build() EdgeCreationAttributes {
+        if (!registered) {
+            @branchHint(.unlikely);
+            registered = true;
+            Edge.register_type(tid) catch {};
+        }
         return .{
             .edge_type = tid,
             .directional = true,
             .name = null,
-            .dynamic = null,
+            .dynamic = graph.DynamicAttributes.init_on_stack(),
         };
     }
 
-    pub fn add_instance(bound_type_node: graph.BoundNodeReference, bound_instance_node: graph.BoundNodeReference) graph.BoundEdgeReference {
-        const link = EdgeType.init(bound_type_node.g.allocator, bound_type_node.node, bound_instance_node.node);
-        const bound_edge = bound_type_node.g.insert_edge(link);
-        return bound_edge;
+    pub fn add_instance(bound_type_node: graph.BoundNodeReference, bound_instance_node: graph.BoundNodeReference) graph.GraphView.InsertEdgeError!graph.BoundEdgeReference {
+        const link = EdgeType.init(bound_type_node.node, bound_instance_node.node);
+        return bound_type_node.g.insert_edge(link);
     }
 
     pub fn is_instance(E: EdgeReference) bool {
-        return Edge.is_instance(E, tid);
+        return E.is_instance(tid);
     }
 
     pub fn get_type_node(E: EdgeReference) NodeReference {
-        return E.source;
+        return E.get_source_node();
     }
 
     pub fn get_instance_node(E: EdgeReference) ?NodeReference {
-        return E.target;
+        return E.get_target_node();
     }
 
     pub fn get_type_edge(bound_instance_node: graph.BoundNodeReference) ?graph.BoundEdgeReference {
-        return Edge.get_single_edge(bound_instance_node, tid, true);
+        return bound_instance_node.get_single_edge(tid, true);
     }
 
     pub fn is_node_instance_of(bound_node: graph.BoundNodeReference, node_type: NodeReference) bool {
         const type_edge = get_type_edge(bound_node);
         if (type_edge) |edge| {
-            if (edge.edge.get_source()) |source| {
-                return Node.is_same(source, node_type);
+            if (edge.edge.get_directed_source()) |source| {
+                return source.is_same(node_type);
             }
         }
         return false;
@@ -87,7 +92,8 @@ pub const EdgeType = struct {
         };
 
         var visit = Visit{ .cb_ctx = ctx, .cb = f };
-        return bound_type_node.visit_edges_of_type(tid, void, &visit, Visit.visit);
+        // directed = true: type is source, instance is target
+        return bound_type_node.g.visit_edges_of_type(bound_type_node.node, tid, void, &visit, Visit.visit, true);
     }
 };
 
@@ -112,12 +118,12 @@ test "basic typegraph" {
     const bin2 = g.create_and_insert_node();
 
     // init ---------------------------------------------------------------------------------------
-    const et11 = EdgeType.init(g.allocator, btn1.node, bin1.node);
-    _ = g.insert_edge(et11);
+    const et11 = EdgeType.init(btn1.node, bin1.node);
+    _ = try g.insert_edge(et11);
     try std.testing.expect(EdgeType.is_node_instance_of(bin1, btn1.node));
 
     // add_instance -------------------------------------------------------------------------------
-    const bet22 = EdgeType.add_instance(btn2, bin2);
+    const bet22 = try EdgeType.add_instance(btn2, bin2);
     try std.testing.expect(EdgeType.is_node_instance_of(bin2, btn2.node));
 
     // is_edge_instance -------------------------------------------------------------------------------
@@ -125,16 +131,16 @@ test "basic typegraph" {
     try std.testing.expect(EdgeType.is_instance(bet22.edge));
 
     // get_type_node -------------------------------------------------------------------------------
-    try std.testing.expect(Node.is_same(EdgeType.get_type_node(et11), btn1.node));
-    try std.testing.expect(Node.is_same(EdgeType.get_type_node(bet22.edge), btn2.node));
+    try std.testing.expect(EdgeType.get_type_node(et11).is_same(btn1.node));
+    try std.testing.expect(EdgeType.get_type_node(bet22.edge).is_same(btn2.node));
 
     // get_instance_node -------------------------------------------------------------------------------
-    try std.testing.expect(Node.is_same(EdgeType.get_instance_node(et11).?, bin1.node));
-    try std.testing.expect(Node.is_same(EdgeType.get_instance_node(bet22.edge).?, bin2.node));
+    try std.testing.expect(EdgeType.get_instance_node(et11).?.is_same(bin1.node));
+    try std.testing.expect(EdgeType.get_instance_node(bet22.edge).?.is_same(bin2.node));
 
     // get_type_edge -------------------------------------------------------------------------------
-    try std.testing.expect(Edge.is_same(EdgeType.get_type_edge(bin1).?.edge, et11));
-    try std.testing.expect(Edge.is_same(EdgeType.get_type_edge(bin2).?.edge, bet22.edge));
+    try std.testing.expect(EdgeType.get_type_edge(bin1).?.edge.is_same(et11));
+    try std.testing.expect(EdgeType.get_type_edge(bin2).?.edge.is_same(bet22.edge));
 
     // is_node_instance_of -------------------------------------------------------------------------------
     try std.testing.expect(EdgeType.is_node_instance_of(bin1, btn1.node));
@@ -150,10 +156,10 @@ test "basic typegraph" {
         else => {},
     }
     try std.testing.expect(instances.items.len == 1);
-    try std.testing.expect(Edge.is_same(instances.items[0].edge, bet22.edge));
+    try std.testing.expect(instances.items[0].edge.is_same(bet22.edge));
 
     // Also verify the collected instance edge points to the known instance node
-    try std.testing.expect(Node.is_same(EdgeType.get_instance_node(instances.items[0].edge).?, bin2.node));
+    try std.testing.expect(EdgeType.get_instance_node(instances.items[0].edge).?.is_same(bin2.node));
 
     // has to be deleted first
     defer g.deinit();

@@ -7,6 +7,8 @@ const EdgeComposition = @import("composition.zig").EdgeComposition;
 const edgebuilder_mod = @import("edgebuilder.zig");
 const TypeGraph = @import("typegraph.zig").TypeGraph;
 const EdgeType = @import("node_type.zig").EdgeType;
+const Linker = @import("linker.zig").Linker;
+const Trait = @import("trait.zig").Trait;
 
 const Node = graph.Node;
 const NodeReference = graph.NodeReference;
@@ -21,46 +23,89 @@ const str = graph.str;
 const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 
 pub const EdgeInterfaceConnection = struct {
-    pub const tid: Edge.EdgeType = 1759242069;
+    pub const tid: Edge.EdgeType = graph.Edge.hash_edge_type(1759242069);
+    pub var registered: bool = false;
     pub const shallow_attribute = "shallow";
 
     pub fn get_tid() Edge.EdgeType {
         return tid;
     }
 
-    pub fn init(allocator: std.mem.Allocator, N1: NodeReference, N2: NodeReference, shallow: bool) !EdgeReference {
-        const edge = Edge.init(allocator, N1, N2, tid);
-        const attributes = EdgeCreationAttributes{
-            .edge_type = tid,
-            .directional = false,
-            .name = null,
-            .dynamic = graph.DynamicAttributes.init(allocator),
-        };
-        attributes.apply_to(edge);
-        try edge.attributes.dynamic.values.put(shallow_attribute, graph.Literal{ .Bool = shallow });
+    pub fn init(N1: NodeReference, N2: NodeReference, shallow: bool) !EdgeReference {
+        const edge = EdgeReference.init(N1, N2, tid);
+        const attrs = try build(shallow);
+        attrs.apply_to(edge);
         return edge;
     }
 
-    pub fn is_instance(E: EdgeReference) bool {
-        return Edge.is_instance(E, tid);
-    }
-
-    pub fn get_other_connected_node(E: EdgeReference, N: NodeReference) ?NodeReference {
-        if (Node.is_same(E.source, N)) {
-            return E.target;
-        } else if (Node.is_same(E.target, N)) {
-            return E.source;
-        } else {
-            return null;
+    pub fn build(shallow: bool) !EdgeCreationAttributes {
+        var dynamic = graph.DynamicAttributes.init_on_stack();
+        dynamic.put(shallow_attribute, .{ .Bool = shallow });
+        if (!registered) {
+            @branchHint(.unlikely);
+            registered = true;
+            Edge.register_type(tid) catch {};
         }
+        return .{
+            .edge_type = tid,
+            .directional = false,
+            .name = null,
+            .dynamic = dynamic,
+        };
     }
 
     pub fn connect(bn1: BoundNodeReference, bn2: BoundNodeReference) !BoundEdgeReference {
-        return bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.g.allocator, bn1.node, bn2.node, false));
+        const bn1_type_edge = EdgeType.get_type_edge(bn1);
+        const bn2_type_edge = EdgeType.get_type_edge(bn2);
+
+        if (bn1_type_edge == null and bn2_type_edge == null) {
+            // no type information on either node – allow connection
+        } else if (bn1_type_edge == null or bn2_type_edge == null) {
+            return error.IncompatibleTypes;
+        } else {
+            const type1 = EdgeType.get_type_node(bn1_type_edge.?.edge);
+            const type2 = EdgeType.get_type_node(bn2_type_edge.?.edge);
+
+            if (!type1.is_same(type2)) {
+                return error.IncompatibleTypes;
+            }
+        }
+
+        return try bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.node, bn2.node, false));
     }
 
     pub fn connect_shallow(bn1: BoundNodeReference, bn2: BoundNodeReference) !BoundEdgeReference {
-        return bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.g.allocator, bn1.node, bn2.node, true));
+        const bn1_type_edge = EdgeType.get_type_edge(bn1);
+        const bn2_type_edge = EdgeType.get_type_edge(bn2);
+
+        if (bn1_type_edge == null and bn2_type_edge == null) {
+            // no type information on either node – allow connection
+        } else if (bn1_type_edge == null or bn2_type_edge == null) {
+            return error.IncompatibleTypes;
+        } else {
+            const type1 = EdgeType.get_type_node(bn1_type_edge.?.edge);
+            const type2 = EdgeType.get_type_node(bn2_type_edge.?.edge);
+
+            if (!type1.is_same(type2)) {
+                return error.IncompatibleTypes;
+            }
+        }
+
+        return try bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.node, bn2.node, true));
+    }
+
+    pub fn is_instance(E: EdgeReference) bool {
+        return E.is_instance(tid);
+    }
+
+    pub fn get_other_connected_node(E: EdgeReference, N: NodeReference) ?NodeReference {
+        if (E.get_source_node().is_same(N)) {
+            return E.get_target_node();
+        } else if (E.get_target_node().is_same(N)) {
+            return E.get_source_node();
+        } else {
+            return null;
+        }
     }
 
     pub fn visit_connected_edges(
@@ -68,36 +113,129 @@ pub const EdgeInterfaceConnection = struct {
         ctx: *anyopaque,
         f: fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(void),
     ) visitor.VisitResult(void) {
-        return bound_node.visit_edges_of_type(tid, void, ctx, f);
+        return bound_node.g.visit_edges_of_type(bound_node.node, tid, void, ctx, f, null);
     }
 
-    pub fn is_connected_to(allocator: std.mem.Allocator, source: BoundNodeReference, target: BoundNodeReference) !graph.BFSPath {
-        var pf = PathFinder.init(allocator);
+    pub fn is_connected_to(allocator: std.mem.Allocator, source: BoundNodeReference, target: BoundNodeReference) !*graph.BFSPath {
+        var pf: PathFinder = undefined;
+        pf.init(allocator);
         defer pf.deinit();
 
         var paths = try pf.find_paths(source);
         defer paths.deinit();
 
         for (paths.paths.items, 0..) |path, i| {
-            if (Node.is_same(path.get_last_node().node, target.node)) {
+            if (path.get_last_node().node.is_same(target.node)) {
                 // Transfer ownership by removing from collection
                 return paths.paths.swapRemove(i);
             }
         }
 
-        return error.PathNotFound;
+        // No path found - return empty path
+        return try graph.BFSPath.init(allocator, source);
     }
 
     // TODO - A visitor would be nice instead of just returning a list don't ya think?
-    pub fn get_connected(allocator: std.mem.Allocator, source: BoundNodeReference) !graph.BFSPaths {
-        var pf = PathFinder.init(allocator);
+    pub fn get_connected(allocator: std.mem.Allocator, source: BoundNodeReference, include_self: bool) !graph.NodeRefMap.T(*graph.BFSPath) {
+        var pf: PathFinder = undefined;
+        pf.init(allocator);
         defer pf.deinit();
 
-        return try pf.find_paths(source);
+        var paths = try pf.find_paths(source);
+        defer paths.paths.deinit(); // Clean up the ArrayList, but not the paths themselves (transferred to map)
+
+        var paths_map = graph.NodeRefMap.T(*graph.BFSPath).init(allocator);
+
+        for (paths.paths.items) |path| {
+            const end_node = path.get_last_node().node;
+
+            // Skip self-path if include_self is false
+            if (!include_self and end_node.is_same(source.node)) {
+                path.deinit();
+                continue;
+            }
+
+            // Only add the first path to each destination node
+            if (!paths_map.contains(end_node)) {
+                paths_map.put(end_node, path) catch @panic("OOM");
+            } else {
+                // Skip duplicate path and clean it up
+                path.deinit();
+            }
+        }
+
+        return paths_map;
     }
 };
 
 const a = std.testing.allocator;
+
+const is_interface_type_name = "is_interface.node.core.faebryk";
+
+const TestTypes = struct {
+    is_interface: BoundNodeReference,
+    electrical: BoundNodeReference,
+    generic: BoundNodeReference,
+    electric_power: BoundNodeReference,
+};
+
+fn ensure_is_interface_type(tg: *TypeGraph) !BoundNodeReference {
+    if (tg.get_type_by_name(is_interface_type_name)) |trait_type| {
+        return trait_type;
+    }
+    const trait_type = try tg.add_type(is_interface_type_name);
+    try Trait.mark_as_trait(trait_type);
+    return trait_type;
+}
+
+fn init_test_types(tg: *TypeGraph) !TestTypes {
+    const is_interface = try ensure_is_interface_type(tg);
+    const electrical = try tg.add_type("Electrical");
+    const generic = try tg.add_type("Generic");
+    const electric_power = try tg.add_type("ElectricPower");
+    return .{
+        .is_interface = is_interface,
+        .electrical = electrical,
+        .generic = generic,
+        .electric_power = electric_power,
+    };
+}
+
+fn add_is_interface_recursive(tg: *TypeGraph, root: BoundNodeReference) !void {
+    const trait_type = try ensure_is_interface_type(tg);
+    var stack = std.ArrayList(BoundNodeReference).init(a);
+    defer stack.deinit();
+    try stack.append(root);
+
+    while (stack.items.len > 0) {
+        const node = stack.pop().?;
+        _ = try Trait.add_trait_to(node, trait_type);
+
+        const CollectChildren = struct {
+            stack: *std.ArrayList(BoundNodeReference),
+            g: *GraphView,
+
+            pub fn visit_edge(ctx_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+                const self: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                const child = self.g.bind(EdgeComposition.get_child_node(bound_edge.edge));
+                self.stack.append(child) catch @panic("OOM");
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+        };
+
+        var collect = CollectChildren{ .stack = &stack, .g = node.g };
+        _ = EdgeComposition.visit_children_edges(node, void, &collect, CollectChildren.visit_edge);
+    }
+}
+
+fn instantiate_interface(tg: *TypeGraph, node_type: BoundNodeReference) !BoundNodeReference {
+    const node = switch (tg.instantiate_node(node_type)) {
+        .ok => |n| n,
+        .err => return error.InstantiationFailed,
+    };
+    try add_is_interface_recursive(tg, node);
+    return node;
+}
 
 test "basic" {
     // N1 --> N2
@@ -106,65 +244,57 @@ test "basic" {
     var g = graph.GraphView.init(a);
     defer g.deinit(); // Graph owns all inserted nodes/edges and handles their cleanup
 
-    const n1 = Node.init(a);
-    const n2 = Node.init(a);
-    const n3 = Node.init(a);
+    var tg = TypeGraph.init(&g);
+    const electrical_type = try tg.add_type("Electrical");
 
-    // Insert nodes into GraphView g
-    const bn1 = g.insert_node(n1);
-    const bn2 = g.insert_node(n2);
-    const bn3 = g.insert_node(n3);
+    const bn1 = try instantiate_interface(&tg, electrical_type);
+    const bn2 = try instantiate_interface(&tg, electrical_type);
+    const bn3 = try instantiate_interface(&tg, electrical_type);
 
-    std.debug.print("n1.uuid = {}\n", .{n1.attributes.uuid});
-    std.debug.print("n2.uuid = {}\n", .{n2.attributes.uuid});
-    std.debug.print("n3.uuid = {}\n", .{n3.attributes.uuid});
+    const n1 = bn1.node;
+    const n2 = bn2.node;
+    const n3 = bn3.node;
+
+    std.debug.print("n1.uuid = {}\n", .{n1.get_uuid()});
+    std.debug.print("n2.uuid = {}\n", .{n2.get_uuid()});
+    std.debug.print("n3.uuid = {}\n", .{n3.get_uuid()});
 
     const be1 = try EdgeInterfaceConnection.connect(bn1, bn2);
 
-    std.debug.print("e1.uuid = {}\n", .{be1.edge.attributes.uuid});
-    std.debug.print("e1.source.uuid = {}\n", .{be1.edge.source.attributes.uuid});
-    std.debug.print("e1.target.uuid = {}\n", .{be1.edge.target.attributes.uuid});
+    std.debug.print("e1.uuid = {}\n", .{be1.edge.get_uuid()});
+    std.debug.print("e1.source.uuid = {}\n", .{be1.edge.get_source_node().get_uuid()});
+    std.debug.print("e1.target.uuid = {}\n", .{be1.edge.get_target_node().get_uuid()});
 
-    // const n_list = EdgeInterfaceConnection.list_connections(e1);
+    std.debug.print("n2.uuid = {}\n", .{n2.get_uuid()});
 
-    // std.debug.print("n_list.len = {}\n", .{n_list.len});
-    // std.debug.print("n_list[0].uuid = {}\n", .{n_list[0].attributes.uuid});
-    // std.debug.print("n_list[1].uuid = {}\n", .{n_list[1].attributes.uuid});
-
-    // const n2_ref = EdgeInterfaceConnection.get_connected(e1, n1);
-    std.debug.print("n2.uuid = {}\n", .{n2.attributes.uuid});
-    // std.debug.print("n2_ref.uuid = {}\n", .{n2_ref.?.attributes.uuid});
-
-    // EdgeInterfaceConnection.connect(e1, n3, n1);
-
-    std.debug.print("e1.source.uuid = {}\n", .{be1.edge.source.attributes.uuid});
-    std.debug.print("e1.target.uuid = {}\n", .{be1.edge.target.attributes.uuid});
+    std.debug.print("e1.source.uuid = {}\n", .{be1.edge.get_source_node().get_uuid()});
+    std.debug.print("e1.target.uuid = {}\n", .{be1.edge.get_target_node().get_uuid()});
 
     // Expect shallow flag to be present and false by default
-    const shallow_default = be1.edge.attributes.dynamic.values.get(EdgeInterfaceConnection.shallow_attribute).?;
+    const shallow_default = be1.edge.get(EdgeInterfaceConnection.shallow_attribute).?;
     try std.testing.expect(shallow_default.Bool == false);
 
     // Expect e1 source and target to match n1 and n2
-    try std.testing.expect(Node.is_same(be1.edge.source, n1));
-    try std.testing.expect(Node.is_same(be1.edge.target, n2));
+    try std.testing.expect(be1.edge.get_source_node().is_same(n1));
+    try std.testing.expect(be1.edge.get_target_node().is_same(n2));
 
     // Expect e1 source and target to not match n3
-    try std.testing.expect(!Node.is_same(be1.edge.source, n3));
-    try std.testing.expect(!Node.is_same(be1.edge.target, n3));
+    try std.testing.expect(!be1.edge.get_source_node().is_same(n3));
+    try std.testing.expect(!be1.edge.get_target_node().is_same(n3));
 
     // Expect get_connected to return n2 when given n1
-    try std.testing.expect(Node.is_same(EdgeInterfaceConnection.get_other_connected_node(be1.edge, n1).?, n2));
+    try std.testing.expect(EdgeInterfaceConnection.get_other_connected_node(be1.edge, n1).?.is_same(n2));
 
     // Expect get_connected to return n1 when given n2
-    try std.testing.expect(Node.is_same(EdgeInterfaceConnection.get_other_connected_node(be1.edge, n2).?, n1));
+    try std.testing.expect(EdgeInterfaceConnection.get_other_connected_node(be1.edge, n2).?.is_same(n1));
 
     // Expect get_connected to return null when given n3
     try std.testing.expect(EdgeInterfaceConnection.get_other_connected_node(be1.edge, n3) == null);
 
     // Create another connection between n1 and n3 to test multiple connections
     const be2 = try EdgeInterfaceConnection.connect(bn1, bn3);
-    try std.testing.expect(Node.is_same(be2.edge.source, n1));
-    try std.testing.expect(Node.is_same(be2.edge.target, n3));
+    try std.testing.expect(be2.edge.get_source_node().is_same(n1));
+    try std.testing.expect(be2.edge.get_target_node().is_same(n3));
 
     // define visitor that visits all edges connected to n1 in g and saves the EdgeReferences to a list (connected_edges)
     const CollectConnectedEdges = struct {
@@ -194,11 +324,11 @@ test "basic" {
     var found_n2 = false;
     var found_n3 = false;
     for (visit.connected_edges.items) |edge| {
-        if (Node.is_same(edge.edge.source, n1) or Node.is_same(edge.edge.target, n1)) {
-            if (Node.is_same(edge.edge.source, n2) or Node.is_same(edge.edge.target, n2)) {
+        if (edge.edge.get_source_node().is_same(n1) or edge.edge.get_target_node().is_same(n1)) {
+            if (edge.edge.get_source_node().is_same(n2) or edge.edge.get_target_node().is_same(n2)) {
                 found_n2 = true;
             }
-            if (Node.is_same(edge.edge.source, n3) or Node.is_same(edge.edge.target, n3)) {
+            if (edge.edge.get_source_node().is_same(n3) or edge.edge.get_target_node().is_same(n3)) {
                 found_n3 = true;
             }
         }
@@ -207,21 +337,30 @@ test "basic" {
     try std.testing.expect(found_n3);
 }
 
+// Helper function for tests to check that no path exists
+fn expectNoPath(allocator: std.mem.Allocator, source: graph.BoundNodeReference, target: graph.BoundNodeReference) !void {
+    const path = try EdgeInterfaceConnection.is_connected_to(allocator, source, target);
+    defer path.deinit();
+    try std.testing.expectEqual(@as(usize, 0), path.traversed_edges.items.len);
+}
+
 test "self_connect" {
     // N1 (self-connect implied)
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.create_and_insert_node();
-    const bn2 = g.create_and_insert_node();
+    var tg = TypeGraph.init(&g);
+    const electrical_type = try tg.add_type("Electrical");
+    const bn1 = try instantiate_interface(&tg, electrical_type);
+    const bn2 = try instantiate_interface(&tg, electrical_type);
 
-    // expect not connected
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, bn1, bn2));
+    // expect not connected (empty path)
+    try expectNoPath(a, bn1, bn2);
 
     // expect connected
     var path = try EdgeInterfaceConnection.is_connected_to(a, bn1, bn1);
     defer path.deinit();
-    try std.testing.expect(Node.is_same(path.get_last_node().node, bn1.node));
+    try std.testing.expect(path.get_last_node().node.is_same(bn1.node));
 }
 
 test "is_connected_to" {
@@ -231,15 +370,65 @@ test "is_connected_to" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.create_and_insert_node();
-    const bn2 = g.create_and_insert_node();
-    const bn3 = g.create_and_insert_node();
+    var tg = TypeGraph.init(&g);
+    const test_types = try init_test_types(&tg);
+
+    const bn1 = try instantiate_interface(&tg, test_types.electrical);
+    const bn2 = try instantiate_interface(&tg, test_types.electrical);
+    const bn3 = try instantiate_interface(&tg, test_types.electrical);
     _ = try EdgeInterfaceConnection.connect(bn1, bn2);
     _ = try EdgeInterfaceConnection.connect(bn1, bn3);
 
     var path = try EdgeInterfaceConnection.is_connected_to(a, bn1, bn2);
     defer path.deinit();
-    try std.testing.expect(Node.is_same(path.get_last_node().node, bn2.node));
+    try std.testing.expect(path.get_last_node().node.is_same(bn2.node));
+}
+
+test "simple_electric_power_hierarchy" {
+    // ElectricPower (EP_1)
+    //   |
+    //   +--(ref)--> ElectricSignal (signal_1) --(iface)--> ElectricSignal (signal_2)
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+
+    var tg = TypeGraph.init(&g);
+    const test_types = try init_test_types(&tg);
+
+    const electric_signal = try tg.add_type("ElectricSignal");
+
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "HV", null, false);
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "LV", null, false);
+    _ = try tg.add_make_child(electric_signal, test_types.electrical, "line", null, false);
+    _ = try tg.add_make_child(electric_signal, test_types.electric_power, "reference", null, false);
+
+    const EP_1 = try instantiate_interface(&tg, test_types.electric_power);
+    const HV_1 = EdgeComposition.get_child_by_identifier(EP_1, "HV").?;
+    const signal_1 = try instantiate_interface(&tg, electric_signal);
+    const signal_2 = try instantiate_interface(&tg, electric_signal);
+    const signal_1_reference = EdgeComposition.get_child_by_identifier(signal_1, "reference").?;
+
+    const extra_electric_signal = try instantiate_interface(&tg, electric_signal);
+    const extra_electrical = EdgeComposition.get_child_by_identifier(extra_electric_signal, "line").?;
+
+    const EP_2 = try instantiate_interface(&tg, test_types.electric_power);
+    const LV_2 = EdgeComposition.get_child_by_identifier(EP_2, "LV").?;
+
+    _ = try EdgeInterfaceConnection.connect(EP_1, signal_1_reference);
+    _ = try EdgeInterfaceConnection.connect(signal_1, signal_2);
+    _ = try EdgeInterfaceConnection.connect(extra_electrical, HV_1);
+
+    _ = try EdgeInterfaceConnection.connect(EP_1, EP_2);
+    // _ = try EdgeInterfaceConnection.connect(HV_1, LV_2);
+    _ = LV_2;
+
+    var paths = try EdgeInterfaceConnection.get_connected(a, HV_1, true);
+    defer {
+        var it = paths.iterator();
+        while (it.next()) |entry| {
+            entry.value_ptr.*.deinit();
+        }
+        paths.deinit();
+    }
 }
 
 test "down_connect" {
@@ -251,21 +440,17 @@ test "down_connect" {
     defer g.deinit();
 
     var tg = TypeGraph.init(&g);
-    const ElectricPowerType = try tg.add_type("ElectricPower");
-    const ElectricalType = try tg.add_type("Electrical");
-    const LinkType = try tg.add_type("Link");
+    const test_types = try init_test_types(&tg);
+    // const LinkType = try tg.add_type("Link");
 
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV");
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV");
-    _ = try tg.add_make_child(ElectricalType, LinkType, "HV/LV Child");
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "HV", null, false);
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "LV", null, false);
 
-    const EP_1 = try tg.instantiate_node(ElectricPowerType);
+    const EP_1 = try instantiate_interface(&tg, test_types.electric_power);
     const HV_1 = EdgeComposition.get_child_by_identifier(EP_1, "HV").?;
     const LV_1 = EdgeComposition.get_child_by_identifier(EP_1, "LV").?;
 
-    const HV_1_Child = EdgeComposition.get_child_by_identifier(LV_1, "HV/LV Child").?;
-
-    const EP_2 = try tg.instantiate_node(ElectricPowerType);
+    const EP_2 = try instantiate_interface(&tg, test_types.electric_power);
     const HV_2 = EdgeComposition.get_child_by_identifier(EP_2, "HV").?;
     const LV_2 = EdgeComposition.get_child_by_identifier(EP_2, "LV").?;
 
@@ -273,23 +458,22 @@ test "down_connect" {
 
     var path = try EdgeInterfaceConnection.is_connected_to(a, EP_1, EP_2);
     defer path.deinit();
-    try std.testing.expect(Node.is_same(path.get_last_node().node, EP_2.node));
+    try std.testing.expect(path.get_last_node().node.is_same(EP_2.node));
 
     var path_hv = try EdgeInterfaceConnection.is_connected_to(a, HV_1, HV_2);
     defer path_hv.deinit();
-    try std.testing.expect(Node.is_same(path_hv.get_last_node().node, HV_2.node));
+    try std.testing.expect(path_hv.get_last_node().node.is_same(HV_2.node));
 
     var path_lv = try EdgeInterfaceConnection.is_connected_to(a, LV_1, LV_2);
     defer path_lv.deinit();
-    try std.testing.expect(Node.is_same(path_lv.get_last_node().node, LV_2.node));
+    try std.testing.expect(path_lv.get_last_node().node.is_same(LV_2.node));
 
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, HV_1, LV_2));
+    try expectNoPath(a, HV_1, LV_2);
+    try expectNoPath(a, LV_1, HV_2);
 
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, LV_1, HV_2));
-
-    const link_a = try tg.instantiate_node(LinkType);
-    const link_b = try tg.instantiate_node(LinkType);
-    const link_c = try tg.instantiate_node(LinkType);
+    const link_a = try instantiate_interface(&tg, test_types.electrical);
+    const link_b = try instantiate_interface(&tg, test_types.electrical);
+    const link_c = try instantiate_interface(&tg, test_types.electrical);
     _ = try EdgeInterfaceConnection.connect(HV_1, link_a);
     _ = try EdgeInterfaceConnection.connect(link_a, link_b);
     _ = try EdgeInterfaceConnection.connect(link_b, link_c);
@@ -297,11 +481,13 @@ test "down_connect" {
 
     var path_hv_link_lv = try EdgeInterfaceConnection.is_connected_to(a, HV_1, LV_2);
     defer path_hv_link_lv.deinit();
-    try std.testing.expect(Node.is_same(path_hv_link_lv.get_last_node().node, LV_2.node));
+    try std.testing.expect(path_hv_link_lv.get_last_node().node.is_same(LV_2.node));
 
-    _ = try EdgeInterfaceConnection.connect_shallow(HV_1_Child, LV_2);
+    const HV_1_Child = try instantiate_interface(&tg, test_types.electrical);
+    _ = try EdgeComposition.add_child(HV_1, HV_1_Child.node, "HV/LV Child");
 
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, HV_1_Child, LV_2));
+    _ = try EdgeInterfaceConnection.connect(HV_1, LV_2);
+    try expectNoPath(a, HV_1_Child, LV_2);
 }
 
 test "no_connect_cases" {
@@ -318,25 +504,23 @@ test "no_connect_cases" {
     var tg = TypeGraph.init(&g);
     const GenericType = try tg.add_type("Generic");
 
-    const bn1 = try tg.instantiate_node(GenericType);
-    const bn2 = try tg.instantiate_node(GenericType);
-    const bn3 = try tg.instantiate_node(GenericType);
-    const bn4 = try tg.instantiate_node(GenericType);
-    const bn5 = try tg.instantiate_node(GenericType);
-    const bn6 = try tg.instantiate_node(GenericType);
+    const bn1 = try instantiate_interface(&tg, GenericType);
+    const bn2 = try instantiate_interface(&tg, GenericType);
+    const bn3 = try instantiate_interface(&tg, GenericType);
+    const bn4 = try instantiate_interface(&tg, GenericType);
+    const bn5 = try instantiate_interface(&tg, GenericType);
+    const bn6 = try instantiate_interface(&tg, GenericType);
 
-    _ = EdgeComposition.add_child(bn1, bn2.node, null);
-    _ = EdgeComposition.add_child(bn3, bn2.node, null);
+    _ = try EdgeComposition.add_child(bn1, bn2.node, null);
+    _ = try EdgeComposition.add_child(bn3, bn2.node, null);
     _ = try EdgeInterfaceConnection.connect(bn3, bn4);
-    _ = EdgeComposition.add_child(bn5, bn4.node, null);
-    _ = EdgeComposition.add_child(bn6, bn1.node, null);
-    _ = EdgeComposition.add_child(bn6, bn3.node, null);
+    _ = try EdgeComposition.add_child(bn5, bn4.node, null);
+    _ = try EdgeComposition.add_child(bn6, bn1.node, null);
+    _ = try EdgeComposition.add_child(bn6, bn3.node, null);
 
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, bn1, bn2));
-
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, bn1, bn3));
-
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, bn1, bn5));
+    try expectNoPath(a, bn1, bn2);
+    try expectNoPath(a, bn1, bn3);
+    try expectNoPath(a, bn1, bn5);
 }
 
 test "chains_direct" {
@@ -344,16 +528,19 @@ test "chains_direct" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const M1 = g.create_and_insert_node();
-    const M2 = g.create_and_insert_node();
-    const M3 = g.create_and_insert_node();
+    var tg = TypeGraph.init(&g);
+    const test_types = try init_test_types(&tg);
+
+    const M1 = try instantiate_interface(&tg, test_types.electrical);
+    const M2 = try instantiate_interface(&tg, test_types.electrical);
+    const M3 = try instantiate_interface(&tg, test_types.electrical);
 
     _ = try EdgeInterfaceConnection.connect(M1, M2);
     _ = try EdgeInterfaceConnection.connect(M2, M3);
 
     var path = try EdgeInterfaceConnection.is_connected_to(a, M1, M3);
     defer path.deinit();
-    try std.testing.expect(Node.is_same(path.get_last_node().node, M3.node));
+    try std.testing.expect(path.get_last_node().node.is_same(M3.node));
 }
 
 test "chains_double_shallow_flat" {
@@ -361,16 +548,19 @@ test "chains_double_shallow_flat" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.create_and_insert_node();
-    const bn2 = g.create_and_insert_node();
-    const bn3 = g.create_and_insert_node();
+    var tg = TypeGraph.init(&g);
+    const test_types = try init_test_types(&tg);
+
+    const bn1 = try instantiate_interface(&tg, test_types.electrical);
+    const bn2 = try instantiate_interface(&tg, test_types.electrical);
+    const bn3 = try instantiate_interface(&tg, test_types.electrical);
 
     _ = try EdgeInterfaceConnection.connect_shallow(bn1, bn2);
     _ = try EdgeInterfaceConnection.connect_shallow(bn2, bn3);
 
     var path = try EdgeInterfaceConnection.is_connected_to(a, bn1, bn3);
     defer path.deinit();
-    try std.testing.expect(Node.is_same(path.get_last_node().node, bn3.node));
+    try std.testing.expect(path.get_last_node().node.is_same(bn3.node));
 }
 
 test "chains_mixed_shallow_flat" {
@@ -378,16 +568,19 @@ test "chains_mixed_shallow_flat" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.create_and_insert_node();
-    const bn2 = g.create_and_insert_node();
-    const bn3 = g.create_and_insert_node();
+    var tg = TypeGraph.init(&g);
+    const test_types = try init_test_types(&tg);
+
+    const bn1 = try instantiate_interface(&tg, test_types.electrical);
+    const bn2 = try instantiate_interface(&tg, test_types.electrical);
+    const bn3 = try instantiate_interface(&tg, test_types.electrical);
 
     _ = try EdgeInterfaceConnection.connect_shallow(bn1, bn2);
     _ = try EdgeInterfaceConnection.connect(bn2, bn3);
 
     var path = try EdgeInterfaceConnection.is_connected_to(a, bn1, bn3);
     defer path.deinit();
-    try std.testing.expect(Node.is_same(path.get_last_node().node, bn3.node));
+    try std.testing.expect(path.get_last_node().node.is_same(bn3.node));
 }
 
 test "multiple_paths" {
@@ -399,13 +592,16 @@ test "multiple_paths" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.create_and_insert_node();
-    const bn2 = g.create_and_insert_node();
-    const bn3 = g.create_and_insert_node();
-    const bn4 = g.create_and_insert_node();
-    const bn5 = g.create_and_insert_node();
-    const bn6 = g.create_and_insert_node();
-    const bn7 = g.create_and_insert_node();
+    var tg = TypeGraph.init(&g);
+    const test_types = try init_test_types(&tg);
+
+    const bn1 = try instantiate_interface(&tg, test_types.electrical);
+    const bn2 = try instantiate_interface(&tg, test_types.electrical);
+    const bn3 = try instantiate_interface(&tg, test_types.electrical);
+    const bn4 = try instantiate_interface(&tg, test_types.electrical);
+    const bn5 = try instantiate_interface(&tg, test_types.electrical);
+    const bn6 = try instantiate_interface(&tg, test_types.electrical);
+    const bn7 = try instantiate_interface(&tg, test_types.electrical);
 
     _ = try EdgeInterfaceConnection.connect(bn1, bn2);
     _ = try EdgeInterfaceConnection.connect(bn2, bn4);
@@ -417,11 +613,19 @@ test "multiple_paths" {
 
     var path = try EdgeInterfaceConnection.is_connected_to(a, bn1, bn4);
     defer path.deinit();
-    try std.testing.expect(Node.is_same(path.get_last_node().node, bn4.node));
+    try std.testing.expect(path.get_last_node().node.is_same(bn4.node));
 
-    const all_paths = try EdgeInterfaceConnection.get_connected(a, bn1);
-    defer all_paths.deinit();
-    try std.testing.expect(all_paths.paths.items.len == 8);
+    var all_paths = try EdgeInterfaceConnection.get_connected(a, bn1, true);
+
+    defer {
+        var it = all_paths.iterator();
+        while (it.next()) |entry| {
+            entry.value_ptr.*.deinit();
+        }
+        all_paths.deinit();
+    }
+
+    try std.testing.expect(all_paths.count() == 7);
 }
 
 test "hierarchy_short" {
@@ -432,21 +636,19 @@ test "hierarchy_short" {
     defer g.deinit();
 
     var tg = TypeGraph.init(&g);
-    const ElectricPowerType = try tg.add_type("ElectricPower");
-    const ElectricalType = try tg.add_type("Electrical");
-    const LinkType = try tg.add_type("Link");
+    const test_types = try init_test_types(&tg);
 
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV");
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV");
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "HV", null, false);
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "LV", null, false);
 
-    const electric_power = try tg.instantiate_node(ElectricPowerType);
+    const electric_power = try instantiate_interface(&tg, test_types.electric_power);
     const hv_pin = EdgeComposition.get_child_by_identifier(electric_power, "HV").?;
     const lv_pin = EdgeComposition.get_child_by_identifier(electric_power, "LV").?;
 
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, electric_power, lv_pin));
+    try expectNoPath(a, electric_power, lv_pin);
 
-    const link_a = try tg.instantiate_node(LinkType);
-    const link_b = try tg.instantiate_node(LinkType);
+    const link_a = try instantiate_interface(&tg, test_types.electrical);
+    const link_b = try instantiate_interface(&tg, test_types.electrical);
 
     _ = try EdgeInterfaceConnection.connect(hv_pin, link_a);
     _ = try EdgeInterfaceConnection.connect(link_a, link_b);
@@ -454,7 +656,41 @@ test "hierarchy_short" {
 
     var hv_to_lv = try EdgeInterfaceConnection.is_connected_to(a, hv_pin, lv_pin);
     defer hv_to_lv.deinit();
-    try std.testing.expect(Node.is_same(hv_to_lv.get_last_node().node, lv_pin.node));
+    try std.testing.expect(hv_to_lv.get_last_node().node.is_same(lv_pin.node));
+}
+
+test "indirect_short" {
+    // EP0 --- EP1 --- EP2
+    //  |             |
+    //  HV --------- LV
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+
+    var tg = TypeGraph.init(&g);
+    const test_types = try init_test_types(&tg);
+
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "HV", null, false);
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "LV", null, false);
+
+    const ep0 = try instantiate_interface(&tg, test_types.electric_power);
+    const ep1 = try instantiate_interface(&tg, test_types.electric_power);
+    const ep2 = try instantiate_interface(&tg, test_types.electric_power);
+
+    const ep0_hv = EdgeComposition.get_child_by_identifier(ep0, "HV").?;
+    const ep1_hv = EdgeComposition.get_child_by_identifier(ep1, "HV").?;
+    const ep1_lv = EdgeComposition.get_child_by_identifier(ep1, "LV").?;
+    const ep2_lv = EdgeComposition.get_child_by_identifier(ep2, "LV").?;
+
+    _ = try EdgeInterfaceConnection.connect(ep0, ep1);
+    _ = try EdgeInterfaceConnection.connect(ep1, ep2);
+
+    try expectNoPath(a, ep1_hv, ep1_lv);
+
+    _ = try EdgeInterfaceConnection.connect(ep0_hv, ep2_lv);
+
+    var ep1_short = try EdgeInterfaceConnection.is_connected_to(a, ep1_hv, ep1_lv);
+    defer ep1_short.deinit();
+    try std.testing.expect(ep1_short.get_last_node().node.is_same(ep1_lv.node));
 }
 
 test "shallow_filter_allows_alternative_route" {
@@ -465,17 +701,16 @@ test "shallow_filter_allows_alternative_route" {
     defer g.deinit();
 
     var tg = TypeGraph.init(&g);
-    const ElectricPowerType = try tg.add_type("ElectricPower");
-    const ElectricalType = try tg.add_type("Electrical");
+    const test_types = try init_test_types(&tg);
 
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV");
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV");
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "HV", null, false);
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "LV", null, false);
 
-    const start_parent = try tg.instantiate_node(ElectricPowerType);
+    const start_parent = try instantiate_interface(&tg, test_types.electric_power);
     const start_child = EdgeComposition.get_child_by_identifier(start_parent, "HV").?;
-    const target_parent = try tg.instantiate_node(ElectricPowerType);
+    const target_parent = try instantiate_interface(&tg, test_types.electric_power);
     const target_child = EdgeComposition.get_child_by_identifier(target_parent, "HV").?;
-    const bus = try tg.instantiate_node(ElectricalType);
+    const bus = try instantiate_interface(&tg, test_types.electrical);
 
     _ = try EdgeInterfaceConnection.connect_shallow(start_parent, target_parent);
 
@@ -484,7 +719,7 @@ test "shallow_filter_allows_alternative_route" {
 
     var path = try EdgeInterfaceConnection.is_connected_to(a, start_child, target_child);
     defer path.deinit();
-    try std.testing.expect(Node.is_same(path.get_last_node().node, target_child.node));
+    try std.testing.expect(path.get_last_node().node.is_same(target_child.node));
 }
 
 test "chains_mixed_shallow_nested" {
@@ -506,13 +741,13 @@ test "chains_mixed_shallow_nested" {
     const HVType = try tg.add_type("HV");
     const LVType = try tg.add_type("LV");
 
-    _ = try tg.add_make_child(ElType, LineType, "line");
-    _ = try tg.add_make_child(ElType, RefType, "reference");
-    _ = try tg.add_make_child(RefType, HVType, "hv");
-    _ = try tg.add_make_child(RefType, LVType, "lv");
+    _ = try tg.add_make_child(ElType, LineType, "line", null, false);
+    _ = try tg.add_make_child(ElType, RefType, "reference", null, false);
+    _ = try tg.add_make_child(RefType, HVType, "hv", null, false);
+    _ = try tg.add_make_child(RefType, LVType, "lv", null, false);
 
     var el: [3]graph.BoundNodeReference = undefined;
-    for (&el) |*slot| slot.* = try tg.instantiate_node(ElType);
+    for (&el) |*slot| slot.* = try instantiate_interface(&tg, ElType);
 
     var line: [3]graph.BoundNodeReference = undefined;
     var reference: [3]graph.BoundNodeReference = undefined;
@@ -531,34 +766,31 @@ test "chains_mixed_shallow_nested" {
 
     var el_path = try EdgeInterfaceConnection.is_connected_to(a, el[0], el[2]);
     defer el_path.deinit();
-    try std.testing.expect(Node.is_same(el_path.get_last_node().node, el[2].node));
+    try std.testing.expect(el_path.get_last_node().node.is_same(el[2].node));
 
     var line_path = try EdgeInterfaceConnection.is_connected_to(a, line[1], line[2]);
     defer line_path.deinit();
-    try std.testing.expect(Node.is_same(line_path.get_last_node().node, line[2].node));
+    try std.testing.expect(line_path.get_last_node().node.is_same(line[2].node));
 
     var ref_path = try EdgeInterfaceConnection.is_connected_to(a, reference[1], reference[2]);
     defer ref_path.deinit();
-    try std.testing.expect(Node.is_same(ref_path.get_last_node().node, reference[2].node));
+    try std.testing.expect(ref_path.get_last_node().node.is_same(reference[2].node));
 
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, line[0], line[1]));
-
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, reference[0], reference[1]));
-
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, line[0], line[2]));
-
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, reference[0], reference[2]));
+    try expectNoPath(a, line[0], line[1]);
+    try expectNoPath(a, reference[0], reference[1]);
+    try expectNoPath(a, line[0], line[2]);
+    try expectNoPath(a, reference[0], reference[2]);
 
     _ = try EdgeInterfaceConnection.connect(line[0], line[1]);
     _ = try EdgeInterfaceConnection.connect(reference[0], reference[1]);
 
     var el_up = try EdgeInterfaceConnection.is_connected_to(a, el[0], el[1]);
     defer el_up.deinit();
-    try std.testing.expect(Node.is_same(el_up.get_last_node().node, el[1].node));
+    try std.testing.expect(el_up.get_last_node().node.is_same(el[1].node));
 
     var el_full = try EdgeInterfaceConnection.is_connected_to(a, el[0], el[2]);
     defer el_full.deinit();
-    try std.testing.expect(Node.is_same(el_full.get_last_node().node, el[2].node));
+    try std.testing.expect(el_full.get_last_node().node.is_same(el[2].node));
 }
 
 test "split_flip_negative" {
@@ -570,14 +802,13 @@ test "split_flip_negative" {
 
     var tg = TypeGraph.init(&g);
     const HighType = try tg.add_type("High");
-    const Lower1Type = try tg.add_type("Lower1");
-    const Lower2Type = try tg.add_type("Lower2");
+    const LowType = try tg.add_type("Low");
 
-    _ = try tg.add_make_child(HighType, Lower1Type, "lower1");
-    _ = try tg.add_make_child(HighType, Lower2Type, "lower2");
+    _ = try tg.add_make_child(HighType, LowType, "lower1", null, false);
+    _ = try tg.add_make_child(HighType, LowType, "lower2", null, false);
 
     var high: [2]graph.BoundNodeReference = undefined;
-    for (&high) |*slot| slot.* = try tg.instantiate_node(HighType);
+    for (&high) |*slot| slot.* = try instantiate_interface(&tg, HighType);
 
     var lower1: [2]graph.BoundNodeReference = undefined;
     var lower2: [2]graph.BoundNodeReference = undefined;
@@ -589,7 +820,7 @@ test "split_flip_negative" {
     _ = try EdgeInterfaceConnection.connect(lower1[0], lower2[1]);
     _ = try EdgeInterfaceConnection.connect(lower2[0], lower1[1]);
 
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, high[0], high[1]));
+    try expectNoPath(a, high[0], high[1]);
 }
 
 test "up_connect_simple_two_negative" {
@@ -604,11 +835,11 @@ test "up_connect_simple_two_negative" {
     const Lower1Type = try tg.add_type("Lower1");
     const Lower2Type = try tg.add_type("Lower2");
 
-    _ = try tg.add_make_child(HighType, Lower1Type, "lower1");
-    _ = try tg.add_make_child(HighType, Lower2Type, "lower2");
+    _ = try tg.add_make_child(HighType, Lower1Type, "lower1", null, false);
+    _ = try tg.add_make_child(HighType, Lower2Type, "lower2", null, false);
 
     var high: [2]graph.BoundNodeReference = undefined;
-    for (&high) |*slot| slot.* = try tg.instantiate_node(HighType);
+    for (&high) |*slot| slot.* = try instantiate_interface(&tg, HighType);
 
     var lower1: [2]graph.BoundNodeReference = undefined;
     var lower2: [2]graph.BoundNodeReference = undefined;
@@ -619,7 +850,7 @@ test "up_connect_simple_two_negative" {
 
     _ = try EdgeInterfaceConnection.connect(lower1[0], lower1[1]);
 
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, high[0], high[1]));
+    try expectNoPath(a, high[0], high[1]);
 }
 
 test "loooooong_chain" {
@@ -632,6 +863,9 @@ test "loooooong_chain" {
 
     var g = graph.GraphView.init(allocator);
     defer g.deinit();
+
+    var tg = TypeGraph.init(&g);
+    const test_types = try init_test_types(&tg);
 
     const chain_length = 1000;
     var nodes = std.ArrayList(graph.BoundNodeReference).init(allocator);
@@ -648,7 +882,7 @@ test "loooooong_chain" {
         if (i % 1000 == 0 and i > 0) {
             std.debug.print("  Created {} nodes...\n", .{i});
         }
-        const node = g.create_and_insert_node();
+        const node = try instantiate_interface(&tg, test_types.electrical);
         nodes.appendAssumeCapacity(node);
     }
     std.debug.print("  All {} nodes created.\n", .{chain_length});
@@ -669,7 +903,7 @@ test "loooooong_chain" {
     var timer = try std.time.Timer.start();
 
     // Test pathfinding from first to last node
-    var path = try EdgeInterfaceConnection.is_connected_to(g.allocator, nodes.items[0], nodes.items[chain_length - 1]);
+    var path = try EdgeInterfaceConnection.is_connected_to(allocator, nodes.items[0], nodes.items[chain_length - 1]);
     defer path.deinit();
 
     // Stop timer
@@ -683,7 +917,7 @@ test "loooooong_chain" {
     std.debug.print("  Time: {d:.3}s ({} ms)\n", .{ elapsed_s, elapsed_ms });
 
     // Verify we found a path to the correct target
-    try std.testing.expect(Node.is_same(path.get_last_node().node, nodes.items[chain_length - 1].node));
+    try std.testing.expect(path.get_last_node().node.is_same(nodes.items[chain_length - 1].node));
 }
 
 test "shallow_edges" {
@@ -696,28 +930,28 @@ test "shallow_edges" {
     defer g.deinit();
 
     var tg = TypeGraph.init(&g);
-    const GenericType = try tg.add_type("Generic");
+    const test_types = try init_test_types(&tg);
 
-    const bn1 = try tg.instantiate_node(GenericType);
-    const bn2 = try tg.instantiate_node(GenericType);
-    const bn3 = try tg.instantiate_node(GenericType);
-    const bn4 = try tg.instantiate_node(GenericType);
-    const bn5 = try tg.instantiate_node(GenericType);
-    const bn6 = try tg.instantiate_node(GenericType);
+    const bn1 = try instantiate_interface(&tg, test_types.generic);
+    const bn2 = try instantiate_interface(&tg, test_types.generic);
+    const bn3 = try instantiate_interface(&tg, test_types.generic);
+    const bn4 = try instantiate_interface(&tg, test_types.generic);
+    const bn5 = try instantiate_interface(&tg, test_types.generic);
+    const bn6 = try instantiate_interface(&tg, test_types.generic);
 
-    _ = EdgeComposition.add_child(bn1, bn2.node, null);
-    _ = EdgeComposition.add_child(bn2, bn3.node, null);
+    _ = try EdgeComposition.add_child(bn1, bn2.node, null);
+    _ = try EdgeComposition.add_child(bn2, bn3.node, null);
 
-    _ = EdgeComposition.add_child(bn4, bn5.node, null);
-    _ = EdgeComposition.add_child(bn5, bn6.node, null);
+    _ = try EdgeComposition.add_child(bn4, bn5.node, null);
+    _ = try EdgeComposition.add_child(bn5, bn6.node, null);
 
     _ = try EdgeInterfaceConnection.connect_shallow(bn2, bn5);
 
     var shallow_path = try EdgeInterfaceConnection.is_connected_to(a, bn2, bn5);
     defer shallow_path.deinit();
-    try std.testing.expect(Node.is_same(shallow_path.get_last_node().node, bn5.node));
+    try std.testing.expect(shallow_path.get_last_node().node.is_same(bn5.node));
 
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, bn3, bn6));
+    try expectNoPath(a, bn3, bn6);
 }
 
 test "type_graph_pathfinder" {
@@ -737,16 +971,16 @@ test "type_graph_pathfinder" {
     const I2C_SDA = try tg.add_type("I2C_SDA");
 
     // I2C has dedicated SCL and SDA child types
-    _ = try tg.add_make_child(I2C, I2C_SCL, null);
-    _ = try tg.add_make_child(I2C, I2C_SDA, null);
+    _ = try tg.add_make_child(I2C, I2C_SCL, "scl", null, false);
+    _ = try tg.add_make_child(I2C, I2C_SDA, "sda", null, false);
 
     // Sensor has an I2C interface
-    _ = try tg.add_make_child(Sensor, I2C, null);
+    _ = try tg.add_make_child(Sensor, I2C, null, null, false);
 
     // Create sensor instances
-    const sensor1 = try tg.instantiate_node(Sensor);
-    const sensor2 = try tg.instantiate_node(Sensor);
-    const sensor3 = try tg.instantiate_node(Sensor);
+    const sensor1 = try instantiate_interface(&tg, Sensor);
+    const sensor2 = try instantiate_interface(&tg, Sensor);
+    const sensor3 = try instantiate_interface(&tg, Sensor);
 
     // Get I2C interfaces from each sensor
     const sensor1_i2c = EdgeComposition.try_get_single_child_of_type(sensor1, I2C.node).?;
@@ -770,11 +1004,11 @@ test "type_graph_pathfinder" {
     _ = try EdgeInterfaceConnection.connect(sensor1_scl, sensor2_scl);
     var paths_scl = try EdgeInterfaceConnection.is_connected_to(a, sensor1_scl, sensor2_scl);
     defer paths_scl.deinit();
-    try std.testing.expect(Node.is_same(paths_scl.get_last_node().node, sensor2_scl.node));
+    try std.testing.expect(paths_scl.get_last_node().node.is_same(sensor2_scl.node));
     std.debug.print("✓ I2C SCL lines connected\n", .{});
 
     // Test 2: Different signal types should not connect (scl ≠ sda)
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, sensor1_scl, sensor1_sda));
+    try expectNoPath(a, sensor1_scl, sensor1_sda);
     std.debug.print("✓ SCL ≠ SDA (no crosstalk)\n", .{});
 
     // Test 3: Shallow link behavior
@@ -784,17 +1018,17 @@ test "type_graph_pathfinder" {
     // Test 3a: Direct connection through shallow link works at I2C level
     var paths_i2c_shallow = try EdgeInterfaceConnection.is_connected_to(a, sensor2_i2c, sensor3_i2c);
     defer paths_i2c_shallow.deinit();
-    try std.testing.expect(Node.is_same(paths_i2c_shallow.get_last_node().node, sensor3_i2c.node));
+    try std.testing.expect(paths_i2c_shallow.get_last_node().node.is_same(sensor3_i2c.node));
     std.debug.print("✓ Shallow link at I2C level works\n", .{});
 
     // Test 3b: Cannot traverse from child (SCL) up through parent and across shallow link
     // sensor2.scl -> sensor2.i2c ~(shallow)~ sensor3.i2c -> sensor3.scl
     // This should be filtered because we start at SCL (child level) and the shallow link is at I2C (parent level)
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, sensor2_scl, sensor3_scl));
+    try expectNoPath(a, sensor2_scl, sensor3_scl);
     std.debug.print("✓ Shallow link blocks child->parent->shallow\n", .{});
 
     // Test 4: Type mismatch - I2C to I2C_SCL
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, sensor1_i2c, sensor1_scl));
+    try expectNoPath(a, sensor1_i2c, sensor1_scl);
     std.debug.print("✓ Type mismatch filtered (I2C ≠ I2C_SCL)\n", .{});
 
     // Test 5: Multi-hop on same bus (sensor1.scl -> sensor2.scl, sensor2.sda -> sensor3.sda via shallow)
@@ -803,12 +1037,12 @@ test "type_graph_pathfinder" {
 
     // Since there's a shallow link at I2C level, we can't reach sensor3.sda from sensor1.sda
     // because the path would be: sensor1.sda -> sensor2.sda -> (up to sensor2.i2c) -> (shallow to sensor3.i2c) -> sensor3.sda
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, sensor1_sda, sensor3_sda));
+    try expectNoPath(a, sensor1_sda, sensor3_sda);
     std.debug.print("✓ Shallow link prevents bus chaining from child\n", .{});
 
     // Test 6: Normal (non-shallow) I2C connection allows child traversal
     // Create a 4th sensor and connect its I2C with a normal (non-shallow) edge
-    const sensor4 = try tg.instantiate_node(Sensor);
+    const sensor4 = try instantiate_interface(&tg, Sensor);
     const sensor4_i2c = EdgeComposition.try_get_single_child_of_type(sensor4, I2C.node).?;
     const sensor4_scl = EdgeComposition.try_get_single_child_of_type(sensor4_i2c, I2C_SCL.node).?;
     const sensor4_sda = EdgeComposition.try_get_single_child_of_type(sensor4_i2c, I2C_SDA.node).?;
@@ -820,17 +1054,17 @@ test "type_graph_pathfinder" {
     // Path: sensor1.scl -> (up to sensor1.i2c) -> (normal edge to sensor4.i2c) -> (down to sensor4.scl)
     var paths_scl_hierarchy = try EdgeInterfaceConnection.is_connected_to(a, sensor1_scl, sensor4_scl);
     defer paths_scl_hierarchy.deinit();
-    try std.testing.expect(Node.is_same(paths_scl_hierarchy.get_last_node().node, sensor4_scl.node));
+    try std.testing.expect(paths_scl_hierarchy.get_last_node().node.is_same(sensor4_scl.node));
     std.debug.print("✓ Normal I2C link allows SCL->I2C->I2C->SCL\n", .{});
 
     // Test 6b: SDA should be connected through I2C hierarchy
     // Path: sensor1.sda -> (up to sensor1.i2c) -> (normal edge to sensor4.i2c) -> (down to sensor4.sda)
     var paths_sda_hierarchy = try EdgeInterfaceConnection.is_connected_to(a, sensor1_sda, sensor4_sda);
     defer paths_sda_hierarchy.deinit();
-    try std.testing.expect(Node.is_same(paths_sda_hierarchy.get_last_node().node, sensor4_sda.node));
+    try std.testing.expect(paths_sda_hierarchy.get_last_node().node.is_same(sensor4_sda.node));
     std.debug.print("✓ Normal I2C link allows SDA->I2C->I2C->SDA\n", .{});
 
     // Test 6c: But SCL should NOT connect to SDA (different child types, even through hierarchy)
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, sensor1_scl, sensor4_sda));
+    try expectNoPath(a, sensor1_scl, sensor4_sda);
     std.debug.print("✓ SCL ≠ SDA even through I2C hierarchy\n", .{});
 }

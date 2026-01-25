@@ -1,0 +1,64 @@
+/**
+ * UsageCard styles - Collapsible usage snippets
+ */
+
+.usage-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.usage-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+
+.usage-card-header:hover {
+  background: var(--bg-hover);
+}
+
+.usage-card-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.usage-card-expand .expand-icon {
+  transition: transform var(--transition-fast);
+  color: var(--text-muted);
+}
+
+.usage-card-expand .expand-icon.expanded {
+  transform: rotate(0deg);
+}
+
+.usage-card-expand .expand-icon:not(.expanded) {
+  transform: rotate(-90deg);
+}
+
+.usage-card-icon {
+  color: var(--ctp-green);
+  flex-shrink: 0;
+}
+
+.usage-card-title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.usage-card-content {
+  padding: var(--spacing-xs);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  border-top: 1px solid var(--border-subtle);
+}

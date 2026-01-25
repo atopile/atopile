@@ -1,0 +1,2937 @@
+{
+  "Project": {
+    "$defs": {
+      "BuildStatus": {
+        "description": "Build status states - overall status of a build.",
+        "enum": [
+          "queued",
+          "building",
+          "success",
+          "warning",
+          "failed",
+          "cancelled"
+        ],
+        "title": "BuildStatus",
+        "type": "string"
+      },
+      "BuildTarget": {
+        "description": "A build target from ato.yaml.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "entry": {
+            "title": "Entry",
+            "type": "string"
+          },
+          "root": {
+            "title": "Root",
+            "type": "string"
+          },
+          "lastBuild": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/BuildTargetStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "name",
+          "entry",
+          "root"
+        ],
+        "title": "BuildTarget",
+        "type": "object"
+      },
+      "BuildTargetStatus": {
+        "description": "Persisted status from last build of a target.",
+        "properties": {
+          "status": {
+            "$ref": "#/$defs/BuildStatus"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "elapsedSeconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Elapsedseconds"
+          },
+          "warnings": {
+            "default": 0,
+            "title": "Warnings",
+            "type": "integer"
+          },
+          "errors": {
+            "default": 0,
+            "title": "Errors",
+            "type": "integer"
+          },
+          "stages": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stages"
+          },
+          "buildId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Buildid"
+          }
+        },
+        "required": [
+          "status",
+          "timestamp"
+        ],
+        "title": "BuildTargetStatus",
+        "type": "object"
+      }
+    },
+    "description": "A project discovered from ato.yaml.",
+    "properties": {
+      "root": {
+        "title": "Root",
+        "type": "string"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "targets": {
+        "items": {
+          "$ref": "#/$defs/BuildTarget"
+        },
+        "title": "Targets",
+        "type": "array"
+      }
+    },
+    "required": [
+      "root",
+      "name",
+      "targets"
+    ],
+    "title": "Project",
+    "type": "object"
+  },
+  "BuildTarget": {
+    "$defs": {
+      "BuildStatus": {
+        "description": "Build status states - overall status of a build.",
+        "enum": [
+          "queued",
+          "building",
+          "success",
+          "warning",
+          "failed",
+          "cancelled"
+        ],
+        "title": "BuildStatus",
+        "type": "string"
+      },
+      "BuildTargetStatus": {
+        "description": "Persisted status from last build of a target.",
+        "properties": {
+          "status": {
+            "$ref": "#/$defs/BuildStatus"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "elapsedSeconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Elapsedseconds"
+          },
+          "warnings": {
+            "default": 0,
+            "title": "Warnings",
+            "type": "integer"
+          },
+          "errors": {
+            "default": 0,
+            "title": "Errors",
+            "type": "integer"
+          },
+          "stages": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stages"
+          },
+          "buildId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Buildid"
+          }
+        },
+        "required": [
+          "status",
+          "timestamp"
+        ],
+        "title": "BuildTargetStatus",
+        "type": "object"
+      }
+    },
+    "description": "A build target from ato.yaml.",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "entry": {
+        "title": "Entry",
+        "type": "string"
+      },
+      "root": {
+        "title": "Root",
+        "type": "string"
+      },
+      "lastBuild": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/BuildTargetStatus"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "name",
+      "entry",
+      "root"
+    ],
+    "title": "BuildTarget",
+    "type": "object"
+  },
+  "Build": {
+    "$defs": {
+      "BuildStage": {
+        "description": "A stage within a build.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "stageId": {
+            "default": "",
+            "title": "Stageid",
+            "type": "string"
+          },
+          "displayName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Displayname"
+          },
+          "elapsedSeconds": {
+            "default": 0.0,
+            "title": "Elapsedseconds",
+            "type": "number"
+          },
+          "status": {
+            "$ref": "#/$defs/StageStatus",
+            "default": "pending"
+          },
+          "infos": {
+            "default": 0,
+            "title": "Infos",
+            "type": "integer"
+          },
+          "warnings": {
+            "default": 0,
+            "title": "Warnings",
+            "type": "integer"
+          },
+          "errors": {
+            "default": 0,
+            "title": "Errors",
+            "type": "integer"
+          },
+          "alerts": {
+            "default": 0,
+            "title": "Alerts",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "BuildStage",
+        "type": "object"
+      },
+      "BuildStatus": {
+        "description": "Build status states - overall status of a build.",
+        "enum": [
+          "queued",
+          "building",
+          "success",
+          "warning",
+          "failed",
+          "cancelled"
+        ],
+        "title": "BuildStatus",
+        "type": "string"
+      },
+      "StageStatus": {
+        "description": "Stage status states - status of individual build stages.",
+        "enum": [
+          "pending",
+          "running",
+          "success",
+          "warning",
+          "failed",
+          "error",
+          "skipped"
+        ],
+        "title": "StageStatus",
+        "type": "string"
+      }
+    },
+    "description": "A build (active, queued, or completed).",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "displayName": {
+        "title": "Displayname",
+        "type": "string"
+      },
+      "projectName": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Projectname"
+      },
+      "buildId": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Buildid"
+      },
+      "buildKey": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Buildkey"
+      },
+      "status": {
+        "$ref": "#/$defs/BuildStatus",
+        "default": "queued"
+      },
+      "elapsedSeconds": {
+        "default": 0.0,
+        "title": "Elapsedseconds",
+        "type": "number"
+      },
+      "warnings": {
+        "default": 0,
+        "title": "Warnings",
+        "type": "integer"
+      },
+      "errors": {
+        "default": 0,
+        "title": "Errors",
+        "type": "integer"
+      },
+      "returnCode": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Returncode"
+      },
+      "error": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Error"
+      },
+      "projectRoot": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Projectroot"
+      },
+      "target": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Target"
+      },
+      "entry": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Entry"
+      },
+      "startedAt": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Startedat"
+      },
+      "completedAt": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Completedat"
+      },
+      "duration": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Duration"
+      },
+      "stages": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/BuildStage"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Stages"
+      },
+      "totalStages": {
+        "default": 20,
+        "title": "Totalstages",
+        "type": "integer"
+      },
+      "logDir": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Logdir"
+      },
+      "logFile": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Logfile"
+      },
+      "queuePosition": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Queueposition"
+      }
+    },
+    "required": [
+      "name",
+      "displayName"
+    ],
+    "title": "Build",
+    "type": "object"
+  },
+  "BuildStage": {
+    "$defs": {
+      "StageStatus": {
+        "description": "Stage status states - status of individual build stages.",
+        "enum": [
+          "pending",
+          "running",
+          "success",
+          "warning",
+          "failed",
+          "error",
+          "skipped"
+        ],
+        "title": "StageStatus",
+        "type": "string"
+      }
+    },
+    "description": "A stage within a build.",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "stageId": {
+        "default": "",
+        "title": "Stageid",
+        "type": "string"
+      },
+      "displayName": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Displayname"
+      },
+      "elapsedSeconds": {
+        "default": 0.0,
+        "title": "Elapsedseconds",
+        "type": "number"
+      },
+      "status": {
+        "$ref": "#/$defs/StageStatus",
+        "default": "pending"
+      },
+      "infos": {
+        "default": 0,
+        "title": "Infos",
+        "type": "integer"
+      },
+      "warnings": {
+        "default": 0,
+        "title": "Warnings",
+        "type": "integer"
+      },
+      "errors": {
+        "default": 0,
+        "title": "Errors",
+        "type": "integer"
+      },
+      "alerts": {
+        "default": 0,
+        "title": "Alerts",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "title": "BuildStage",
+    "type": "object"
+  },
+  "PackageInfo": {
+    "description": "Information about a package.",
+    "properties": {
+      "identifier": {
+        "title": "Identifier",
+        "type": "string"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "publisher": {
+        "title": "Publisher",
+        "type": "string"
+      },
+      "version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Version"
+      },
+      "latestVersion": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Latest Version"
+      },
+      "description": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Description"
+      },
+      "summary": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Summary"
+      },
+      "homepage": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Homepage"
+      },
+      "repository": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Repository"
+      },
+      "license": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "License"
+      },
+      "installed": {
+        "default": false,
+        "title": "Installed",
+        "type": "boolean"
+      },
+      "installedIn": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Installed In",
+        "type": "array"
+      },
+      "hasUpdate": {
+        "default": false,
+        "title": "Has Update",
+        "type": "boolean"
+      },
+      "downloads": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Downloads"
+      },
+      "versionCount": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Version Count"
+      },
+      "keywords": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Keywords"
+      }
+    },
+    "required": [
+      "identifier",
+      "name",
+      "publisher"
+    ],
+    "title": "PackageInfo",
+    "type": "object"
+  },
+  "PackageDetails": {
+    "$defs": {
+      "PackageDependency": {
+        "description": "A package dependency.",
+        "properties": {
+          "identifier": {
+            "title": "Identifier",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
+          }
+        },
+        "required": [
+          "identifier"
+        ],
+        "title": "PackageDependency",
+        "type": "object"
+      },
+      "PackageVersion": {
+        "description": "Information about a package version/release.",
+        "properties": {
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "releasedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Released At"
+          },
+          "requiresAtopile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Requires Atopile"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Size"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "PackageVersion",
+        "type": "object"
+      }
+    },
+    "description": "Detailed information about a package from the registry.",
+    "properties": {
+      "identifier": {
+        "title": "Identifier",
+        "type": "string"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "publisher": {
+        "title": "Publisher",
+        "type": "string"
+      },
+      "version": {
+        "title": "Version",
+        "type": "string"
+      },
+      "summary": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Summary"
+      },
+      "description": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Description"
+      },
+      "homepage": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Homepage"
+      },
+      "repository": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Repository"
+      },
+      "license": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "License"
+      },
+      "downloads": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Downloads"
+      },
+      "downloadsThisWeek": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Downloads This Week"
+      },
+      "downloadsThisMonth": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Downloads This Month"
+      },
+      "versions": {
+        "items": {
+          "$ref": "#/$defs/PackageVersion"
+        },
+        "title": "Versions",
+        "type": "array"
+      },
+      "versionCount": {
+        "default": 0,
+        "title": "Version Count",
+        "type": "integer"
+      },
+      "installed": {
+        "default": false,
+        "title": "Installed",
+        "type": "boolean"
+      },
+      "installedVersion": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Installed Version"
+      },
+      "installedIn": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Installed In",
+        "type": "array"
+      },
+      "dependencies": {
+        "items": {
+          "$ref": "#/$defs/PackageDependency"
+        },
+        "title": "Dependencies",
+        "type": "array"
+      }
+    },
+    "required": [
+      "identifier",
+      "name",
+      "publisher",
+      "version"
+    ],
+    "title": "PackageDetails",
+    "type": "object"
+  },
+  "PackageVersion": {
+    "description": "Information about a package version/release.",
+    "properties": {
+      "version": {
+        "title": "Version",
+        "type": "string"
+      },
+      "releasedAt": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Released At"
+      },
+      "requiresAtopile": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Requires Atopile"
+      },
+      "size": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Size"
+      }
+    },
+    "required": [
+      "version"
+    ],
+    "title": "PackageVersion",
+    "type": "object"
+  },
+  "Problem": {
+    "description": "A problem (error or warning) from a build log.",
+    "properties": {
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "level": {
+        "enum": [
+          "error",
+          "warning"
+        ],
+        "title": "Level",
+        "type": "string"
+      },
+      "message": {
+        "title": "Message",
+        "type": "string"
+      },
+      "file": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "File"
+      },
+      "line": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Line"
+      },
+      "column": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Column"
+      },
+      "stage": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Stage"
+      },
+      "logger": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Logger"
+      },
+      "buildName": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Build Name"
+      },
+      "projectName": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Project Name"
+      },
+      "timestamp": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Timestamp"
+      },
+      "atoTraceback": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Ato Traceback"
+      },
+      "excInfo": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Exc Info"
+      }
+    },
+    "required": [
+      "id",
+      "level",
+      "message"
+    ],
+    "title": "Problem",
+    "type": "object"
+  },
+  "ProblemFilter": {
+    "description": "Filter settings for problems.",
+    "properties": {
+      "levels": {
+        "items": {
+          "enum": [
+            "error",
+            "warning"
+          ],
+          "type": "string"
+        },
+        "title": "Levels",
+        "type": "array"
+      },
+      "buildNames": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Build Names",
+        "type": "array"
+      },
+      "stageIds": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Stage Ids",
+        "type": "array"
+      }
+    },
+    "title": "ProblemFilter",
+    "type": "object"
+  },
+  "StdLibItem": {
+    "$defs": {
+      "StdLibChild": {
+        "description": "A child field within a standard library item.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "itemType": {
+            "$ref": "#/$defs/StdLibItemType"
+          },
+          "children": {
+            "items": {
+              "$ref": "#/$defs/StdLibChild"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "enumValues": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Enum Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "itemType"
+        ],
+        "title": "StdLibChild",
+        "type": "object"
+      },
+      "StdLibItemType": {
+        "description": "Type of standard library item.",
+        "enum": [
+          "interface",
+          "module",
+          "component",
+          "trait",
+          "parameter"
+        ],
+        "title": "StdLibItemType",
+        "type": "string"
+      }
+    },
+    "description": "A standard library item (module, interface, trait, etc.).",
+    "properties": {
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "type": {
+        "$ref": "#/$defs/StdLibItemType"
+      },
+      "description": {
+        "title": "Description",
+        "type": "string"
+      },
+      "usage": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Usage"
+      },
+      "children": {
+        "items": {
+          "$ref": "#/$defs/StdLibChild"
+        },
+        "title": "Children",
+        "type": "array"
+      },
+      "parameters": {
+        "items": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "title": "Parameters",
+        "type": "array"
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "type",
+      "description"
+    ],
+    "title": "StdLibItem",
+    "type": "object"
+  },
+  "StdLibChild": {
+    "$defs": {
+      "StdLibChild": {
+        "description": "A child field within a standard library item.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "itemType": {
+            "$ref": "#/$defs/StdLibItemType"
+          },
+          "children": {
+            "items": {
+              "$ref": "#/$defs/StdLibChild"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "enumValues": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Enum Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "itemType"
+        ],
+        "title": "StdLibChild",
+        "type": "object"
+      },
+      "StdLibItemType": {
+        "description": "Type of standard library item.",
+        "enum": [
+          "interface",
+          "module",
+          "component",
+          "trait",
+          "parameter"
+        ],
+        "title": "StdLibItemType",
+        "type": "string"
+      }
+    },
+    "$ref": "#/$defs/StdLibChild"
+  },
+  "BOMData": {
+    "$defs": {
+      "BOMComponent": {
+        "description": "BOM component.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lcsc": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Lcsc"
+          },
+          "manufacturer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Manufacturer"
+          },
+          "mpn": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mpn"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "package": {
+            "title": "Package",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "quantity": {
+            "default": 1,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "unitCost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Unit Cost"
+          },
+          "stock": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stock"
+          },
+          "isBasic": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Is Basic"
+          },
+          "isPreferred": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Is Preferred"
+          },
+          "source": {
+            "default": "picked",
+            "title": "Source",
+            "type": "string"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/$defs/BOMParameter"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "usages": {
+            "items": {
+              "$ref": "#/$defs/BOMUsage"
+            },
+            "title": "Usages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "value",
+          "package"
+        ],
+        "title": "BOMComponent",
+        "type": "object"
+      },
+      "BOMParameter": {
+        "description": "BOM component parameter.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "title": "BOMParameter",
+        "type": "object"
+      },
+      "BOMUsage": {
+        "description": "BOM component usage location.",
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "designator": {
+            "title": "Designator",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "designator"
+        ],
+        "title": "BOMUsage",
+        "type": "object"
+      }
+    },
+    "description": "Bill of Materials data.",
+    "properties": {
+      "version": {
+        "default": "1.0",
+        "title": "Version",
+        "type": "string"
+      },
+      "components": {
+        "items": {
+          "$ref": "#/$defs/BOMComponent"
+        },
+        "title": "Components",
+        "type": "array"
+      }
+    },
+    "title": "BOMData",
+    "type": "object"
+  },
+  "BOMComponent": {
+    "$defs": {
+      "BOMParameter": {
+        "description": "BOM component parameter.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "title": "BOMParameter",
+        "type": "object"
+      },
+      "BOMUsage": {
+        "description": "BOM component usage location.",
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "designator": {
+            "title": "Designator",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "designator"
+        ],
+        "title": "BOMUsage",
+        "type": "object"
+      }
+    },
+    "description": "BOM component.",
+    "properties": {
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "lcsc": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Lcsc"
+      },
+      "manufacturer": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Manufacturer"
+      },
+      "mpn": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Mpn"
+      },
+      "type": {
+        "title": "Type",
+        "type": "string"
+      },
+      "value": {
+        "title": "Value",
+        "type": "string"
+      },
+      "package": {
+        "title": "Package",
+        "type": "string"
+      },
+      "description": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Description"
+      },
+      "quantity": {
+        "default": 1,
+        "title": "Quantity",
+        "type": "integer"
+      },
+      "unitCost": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Unit Cost"
+      },
+      "stock": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Stock"
+      },
+      "isBasic": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Is Basic"
+      },
+      "isPreferred": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Is Preferred"
+      },
+      "source": {
+        "default": "picked",
+        "title": "Source",
+        "type": "string"
+      },
+      "parameters": {
+        "items": {
+          "$ref": "#/$defs/BOMParameter"
+        },
+        "title": "Parameters",
+        "type": "array"
+      },
+      "usages": {
+        "items": {
+          "$ref": "#/$defs/BOMUsage"
+        },
+        "title": "Usages",
+        "type": "array"
+      }
+    },
+    "required": [
+      "id",
+      "type",
+      "value",
+      "package"
+    ],
+    "title": "BOMComponent",
+    "type": "object"
+  },
+  "BOMParameter": {
+    "description": "BOM component parameter.",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "value": {
+        "title": "Value",
+        "type": "string"
+      },
+      "unit": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Unit"
+      }
+    },
+    "required": [
+      "name",
+      "value"
+    ],
+    "title": "BOMParameter",
+    "type": "object"
+  },
+  "BOMUsage": {
+    "description": "BOM component usage location.",
+    "properties": {
+      "address": {
+        "title": "Address",
+        "type": "string"
+      },
+      "designator": {
+        "title": "Designator",
+        "type": "string"
+      }
+    },
+    "required": [
+      "address",
+      "designator"
+    ],
+    "title": "BOMUsage",
+    "type": "object"
+  },
+  "VariablesData": {
+    "$defs": {
+      "Variable": {
+        "description": "A variable in the design.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "spec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Spec"
+          },
+          "specTolerance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Spec Tolerance"
+          },
+          "actual": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Actual"
+          },
+          "actualTolerance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Actual Tolerance"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Unit"
+          },
+          "type": {
+            "default": "dimensionless",
+            "title": "Type",
+            "type": "string"
+          },
+          "meetsSpec": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Meets Spec"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Variable",
+        "type": "object"
+      },
+      "VariableNode": {
+        "description": "A node in the variable tree.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "module",
+              "interface",
+              "component"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "typeName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Type Name"
+          },
+          "variables": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/$defs/Variable"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Variables"
+          },
+          "children": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/$defs/VariableNode"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Children"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "path"
+        ],
+        "title": "VariableNode",
+        "type": "object"
+      }
+    },
+    "description": "Variables data for a build target.",
+    "properties": {
+      "version": {
+        "default": "1.0",
+        "title": "Version",
+        "type": "string"
+      },
+      "nodes": {
+        "items": {
+          "$ref": "#/$defs/VariableNode"
+        },
+        "title": "Nodes",
+        "type": "array"
+      }
+    },
+    "title": "VariablesData",
+    "type": "object"
+  },
+  "VariableNode": {
+    "$defs": {
+      "Variable": {
+        "description": "A variable in the design.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "spec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Spec"
+          },
+          "specTolerance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Spec Tolerance"
+          },
+          "actual": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Actual"
+          },
+          "actualTolerance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Actual Tolerance"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Unit"
+          },
+          "type": {
+            "default": "dimensionless",
+            "title": "Type",
+            "type": "string"
+          },
+          "meetsSpec": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Meets Spec"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Variable",
+        "type": "object"
+      },
+      "VariableNode": {
+        "description": "A node in the variable tree.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "module",
+              "interface",
+              "component"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "typeName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Type Name"
+          },
+          "variables": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/$defs/Variable"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Variables"
+          },
+          "children": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/$defs/VariableNode"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Children"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "path"
+        ],
+        "title": "VariableNode",
+        "type": "object"
+      }
+    },
+    "$ref": "#/$defs/VariableNode"
+  },
+  "Variable": {
+    "description": "A variable in the design.",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "spec": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Spec"
+      },
+      "specTolerance": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Spec Tolerance"
+      },
+      "actual": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Actual"
+      },
+      "actualTolerance": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Actual Tolerance"
+      },
+      "unit": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Unit"
+      },
+      "type": {
+        "default": "dimensionless",
+        "title": "Type",
+        "type": "string"
+      },
+      "meetsSpec": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Meets Spec"
+      },
+      "source": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Source"
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "title": "Variable",
+    "type": "object"
+  },
+  "ModuleDefinition": {
+    "$defs": {
+      "ModuleChild": {
+        "description": "A child field within a module (interface, parameter, nested module, etc.).",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "typeName": {
+            "title": "Typename",
+            "type": "string"
+          },
+          "itemType": {
+            "enum": [
+              "interface",
+              "module",
+              "component",
+              "parameter",
+              "trait"
+            ],
+            "title": "Itemtype",
+            "type": "string"
+          },
+          "children": {
+            "items": {
+              "$ref": "#/$defs/ModuleChild"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "spec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Spec"
+          }
+        },
+        "required": [
+          "name",
+          "typeName",
+          "itemType"
+        ],
+        "title": "ModuleChild",
+        "type": "object"
+      }
+    },
+    "description": "A module/interface/component definition from an .ato file.",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "type": {
+        "enum": [
+          "module",
+          "interface",
+          "component"
+        ],
+        "title": "Type",
+        "type": "string"
+      },
+      "file": {
+        "title": "File",
+        "type": "string"
+      },
+      "entry": {
+        "title": "Entry",
+        "type": "string"
+      },
+      "line": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Line"
+      },
+      "superType": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Super Type"
+      },
+      "children": {
+        "items": {
+          "$ref": "#/$defs/ModuleChild"
+        },
+        "title": "Children",
+        "type": "array"
+      }
+    },
+    "required": [
+      "name",
+      "type",
+      "file",
+      "entry"
+    ],
+    "title": "ModuleDefinition",
+    "type": "object"
+  },
+  "ModuleChild": {
+    "$defs": {
+      "ModuleChild": {
+        "description": "A child field within a module (interface, parameter, nested module, etc.).",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "typeName": {
+            "title": "Typename",
+            "type": "string"
+          },
+          "itemType": {
+            "enum": [
+              "interface",
+              "module",
+              "component",
+              "parameter",
+              "trait"
+            ],
+            "title": "Itemtype",
+            "type": "string"
+          },
+          "children": {
+            "items": {
+              "$ref": "#/$defs/ModuleChild"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "spec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Spec"
+          }
+        },
+        "required": [
+          "name",
+          "typeName",
+          "itemType"
+        ],
+        "title": "ModuleChild",
+        "type": "object"
+      }
+    },
+    "$ref": "#/$defs/ModuleChild"
+  },
+  "FileTreeNode": {
+    "$defs": {
+      "FileTreeNode": {
+        "description": "A node in the file tree (either a file or folder).",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "file",
+              "folder"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "extension": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Extension"
+          },
+          "children": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/$defs/FileTreeNode"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Children"
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "type"
+        ],
+        "title": "FileTreeNode",
+        "type": "object"
+      }
+    },
+    "$ref": "#/$defs/FileTreeNode"
+  },
+  "DependencyInfo": {
+    "description": "A project dependency with version info.",
+    "properties": {
+      "identifier": {
+        "title": "Identifier",
+        "type": "string"
+      },
+      "version": {
+        "title": "Version",
+        "type": "string"
+      },
+      "latestVersion": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Latest Version"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "publisher": {
+        "title": "Publisher",
+        "type": "string"
+      },
+      "repository": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Repository"
+      },
+      "hasUpdate": {
+        "default": false,
+        "title": "Has Update",
+        "type": "boolean"
+      },
+      "isDirect": {
+        "default": false,
+        "title": "Is Direct",
+        "type": "boolean"
+      },
+      "via": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Via"
+      }
+    },
+    "required": [
+      "identifier",
+      "version",
+      "name",
+      "publisher"
+    ],
+    "title": "DependencyInfo",
+    "type": "object"
+  },
+  "AtopileConfig": {
+    "$defs": {
+      "DetectedInstallation": {
+        "description": "A detected atopile installation.",
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
+          },
+          "source": {
+            "default": "path",
+            "enum": [
+              "path",
+              "venv",
+              "manual"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "DetectedInstallation",
+        "type": "object"
+      },
+      "InstallProgress": {
+        "description": "Installation progress info.",
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Percent"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "InstallProgress",
+        "type": "object"
+      }
+    },
+    "description": "Atopile configuration state.",
+    "properties": {
+      "currentVersion": {
+        "default": "",
+        "title": "Current Version",
+        "type": "string"
+      },
+      "source": {
+        "default": "release",
+        "enum": [
+          "release",
+          "branch",
+          "local"
+        ],
+        "title": "Source",
+        "type": "string"
+      },
+      "localPath": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Local Path"
+      },
+      "branch": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Branch"
+      },
+      "availableVersions": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Available Versions",
+        "type": "array"
+      },
+      "availableBranches": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Available Branches",
+        "type": "array"
+      },
+      "detectedInstallations": {
+        "items": {
+          "$ref": "#/$defs/DetectedInstallation"
+        },
+        "title": "Detected Installations",
+        "type": "array"
+      },
+      "isInstalling": {
+        "default": false,
+        "title": "Is Installing",
+        "type": "boolean"
+      },
+      "installProgress": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/InstallProgress"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "error": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Error"
+      }
+    },
+    "title": "AtopileConfig",
+    "type": "object"
+  },
+  "DetectedInstallation": {
+    "description": "A detected atopile installation.",
+    "properties": {
+      "path": {
+        "title": "Path",
+        "type": "string"
+      },
+      "version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Version"
+      },
+      "source": {
+        "default": "path",
+        "enum": [
+          "path",
+          "venv",
+          "manual"
+        ],
+        "title": "Source",
+        "type": "string"
+      }
+    },
+    "required": [
+      "path"
+    ],
+    "title": "DetectedInstallation",
+    "type": "object"
+  },
+  "InstallProgress": {
+    "description": "Installation progress info.",
+    "properties": {
+      "message": {
+        "title": "Message",
+        "type": "string"
+      },
+      "percent": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Percent"
+      }
+    },
+    "required": [
+      "message"
+    ],
+    "title": "InstallProgress",
+    "type": "object"
+  }
+}
