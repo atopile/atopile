@@ -652,7 +652,10 @@ fn decodeLinkedList(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, 
     _ = metadata;
     const NodeType = T.Node;
     const child_type = std.meta.FieldType(NodeType, .data);
-    const items = ast.getList(sexp).?;
+    const items = ast.getList(sexp) orelse {
+        setCtx(T, sexp, null, "expected list for linked list");
+        return error.UnexpectedType;
+    };
     var ll = T{};
     for (items) |item| {
         const val = try decodeWithMetadata(child_type, allocator, item, .{});
