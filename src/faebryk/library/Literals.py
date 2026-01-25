@@ -3203,11 +3203,25 @@ class Numbers(fabll.Node):
                   Useful for internal scalar values like unit multipliers/offsets
                   that don't have dimensional meaning. For user-facing quantities,
                   explicitly pass Dimensionless if the quantity is dimensionless.
+
+        Note: Values converted to base units at declaration time (e.g., 80mV -> 0.08V).
+        The has_display_unit trait stores the user's original unit for display purposes.
+        The has_unit trait stores the base unit (multiplier=1.0).
         """
-        from faebryk.library.Units import Dimensionless
+        from faebryk.library.Units import Dimensionless, extract_unit_info, has_unit
+
+        # Convert values to base units if using a prefixed unit
+        if unit is not None and unit is not Dimensionless:
+            unit_info = extract_unit_info(unit)
+            if unit_info.multiplier != 1.0 or unit_info.offset != 0.0:
+                # Prefixed unit: convert values to base units
+                # e.g., 80mV -> 0.08V (multiply by 0.001)
+                min = min * unit_info.multiplier + unit_info.offset
+                max = max * unit_info.multiplier + unit_info.offset
 
         if not NumericInterval.validate_bounds(min, max):
             raise ValueError(f"Invalid interval: {min} > {max}")
+
         out = fabll._ChildField(cls)
         numeric_set = NumericSet.MakeChild(min=min, max=max)
         out.add_dependant(numeric_set)
@@ -3219,13 +3233,37 @@ class Numbers(fabll.Node):
         )
 
         if unit is not None and unit is not Dimensionless:
-            unit_child_field = unit.MakeChild()
-            out.add_dependant(unit_child_field)
-            from faebryk.library.Units import has_unit
+            from faebryk.library.Units import has_display_unit
 
+            # Store display unit (user's original unit, e.g., mV)
+            display_unit_child = unit.MakeChild()
+            out.add_dependant(display_unit_child)
             out.add_dependant(
-                fabll.Traits.MakeEdge(has_unit.MakeChild([unit_child_field]), [out])
+                fabll.Traits.MakeEdge(
+                    has_display_unit.MakeChild([display_unit_child]), [out]
+                )
             )
+
+            unit_info = extract_unit_info(unit)
+            if unit_info.multiplier == 1.0 and unit_info.offset == 0.0:
+                # Base unit - use same child as has_unit (display and base are the same)
+                out.add_dependant(
+                    fabll.Traits.MakeEdge(
+                        has_unit.MakeChild([display_unit_child]), [out]
+                    )
+                )
+            else:
+                # Prefixed unit - create base unit for has_unit
+                # Values are stored in base units, so has_unit must reflect this
+                from faebryk.library.Parameters import NumericParameter
+
+                base_unit_child = NumericParameter._make_1_0_unit(
+                    unit_info.basis_vector
+                ).MakeChild()
+                out.add_dependant(base_unit_child)
+                out.add_dependant(
+                    fabll.Traits.MakeEdge(has_unit.MakeChild([base_unit_child]), [out])
+                )
 
         return out
 
@@ -3295,18 +3333,62 @@ class Numbers(fabll.Node):
         numeric_set: NumericSet,
         unit: "is_unit | None" = None,
     ) -> "Numbers":
-        g = self.g
-        self.numeric_set_ptr.get().point(numeric_set)
+        """
+        Set up a Numbers literal with a numeric set and optional unit.
 
-        from faebryk.library.Units import has_unit
+        If a prefixed unit is provided (multiplier != 1.0 or offset != 0.0),
+        the numeric_set values are automatically converted to base units.
+
+        The has_display_unit trait stores the user's original unit for display.
+        The has_unit trait stores the base unit (multiplier=1.0).
+        """
+        g = self.g
+        tg = self.tg
+
+        from faebryk.library.Units import has_display_unit, has_unit
 
         if not unit or unit.is_dimensionless():
             unit = None
+            self.numeric_set_ptr.get().point(numeric_set)
         else:
             unit = unit.copy_into(g=g)
 
-        if unit:
-            fabll.Traits.create_and_add_instance_to(self, has_unit).setup(is_unit=unit)
+            # Check if this is a prefixed unit (multiplier != 1.0 or offset != 0.0)
+            multiplier = unit._extract_multiplier()
+            offset = unit._extract_offset()
+
+            if multiplier != 1.0 or offset != 0.0:
+                # Prefixed unit - convert values to base units
+                converted_values = [
+                    (
+                        interval.get_min_value() * multiplier + offset,
+                        interval.get_max_value() * multiplier + offset,
+                    )
+                    for interval in numeric_set.get_intervals()
+                ]
+                numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
+                    values=converted_values
+                )
+
+            self.numeric_set_ptr.get().point(numeric_set)
+
+            # Always store display unit (user's original unit)
+            fabll.Traits.create_and_add_instance_to(self, has_display_unit).setup(
+                is_unit=unit
+            )
+
+            if multiplier == 1.0 and offset == 0.0:
+                # Base unit - has_unit points to same unit as has_display_unit
+                fabll.Traits.create_and_add_instance_to(self, has_unit).setup(
+                    is_unit=unit
+                )
+            else:
+                # Prefixed unit - create base unit for has_unit
+                base_unit = unit.to_base_units(g=g, tg=tg)
+                if base_unit:
+                    fabll.Traits.create_and_add_instance_to(self, has_unit).setup(
+                        is_unit=base_unit
+                    )
 
         return self
 
@@ -3316,9 +3398,7 @@ class Numbers(fabll.Node):
         rel: float,
         unit: "is_unit | None" = None,
     ) -> "Numbers":
-        """
-        Create a Numbers literal from a center and relative tolerance.
-        """
+        """Create a Numbers literal from a center and relative tolerance."""
         g = self.g
         tg = self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
@@ -3332,6 +3412,7 @@ class Numbers(fabll.Node):
         max: float,
         unit: "is_unit | None" = None,
     ) -> "Numbers":
+        """Create a Numbers literal from min and max values."""
         g = self.g
         tg = self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
@@ -3342,6 +3423,7 @@ class Numbers(fabll.Node):
     def setup_from_singletons(
         self, values: list[float], unit: "is_unit | None" = None
     ) -> "Numbers":
+        """Create a Numbers literal from a list of singleton values (discrete set)."""
         g = self.g
         tg = self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
@@ -4795,6 +4877,110 @@ class TestNumbers:
         assert numeric_set.get_min_value() == 1.0
         assert numeric_set.get_max_value() == 1.0
         assert is_unit.get_symbols(app.quantity_set.get().get_is_unit()) == ["m"]
+
+    def test_make_child_prefixed_unit(self):
+        """Test that prefixed units (mV) store both has_display_unit and has_unit."""
+        from faebryk.library.Units import (
+            UnitExpressionFactory,
+            Volt,
+            has_display_unit,
+            has_unit,
+            is_unit,
+        )
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        # Create a millivolt type (mV = 0.001 * V)
+        MilliVolt = UnitExpressionFactory(
+            symbols=("mV",),
+            unit_vector=((Volt, 1),),
+            multiplier=0.001,
+        )
+
+        class _App(fabll.Node):
+            # 80mV should be stored as 0.08V internally
+            quantity = Numbers.MakeChild_SingleValue(value=80, unit=MilliVolt)
+
+        app = _App.bind_typegraph(tg=tg).create_instance(g=g)
+        quantity = app.quantity.get()
+
+        # Numeric value should be converted to base units (80mV = 0.08V)
+        numeric_set = quantity.get_numeric_set()
+        assert numeric_set.get_min_value() == 0.08, (
+            f"Expected 0.08, got {numeric_set.get_min_value()}"
+        )
+
+        # has_display_unit should store mV (multiplier=0.001)
+        display_unit_trait = quantity.try_get_trait(has_display_unit)
+        assert display_unit_trait is not None, "Missing has_display_unit trait"
+        display_unit = display_unit_trait.get_is_unit()
+        display_multiplier = is_unit._extract_multiplier(display_unit)
+        assert display_multiplier == 0.001, (
+            f"Expected display multiplier 0.001, got {display_multiplier}"
+        )
+
+        # has_unit should store V (multiplier=1.0), base unit matching the stored values
+        unit_trait = quantity.try_get_trait(has_unit)
+        assert unit_trait is not None, "Missing has_unit trait"
+        base_unit = unit_trait.get_is_unit()
+        base_multiplier = is_unit._extract_multiplier(base_unit)
+        assert base_multiplier == 1.0, (
+            f"Expected base multiplier 1.0, got {base_multiplier}"
+        )
+
+    def test_setup_from_min_max_prefixed_unit(self):
+        """Test setup_from_min_max with prefixed units converts values correctly."""
+        from faebryk.library.Units import (
+            UnitExpressionFactory,
+            Volt,
+            has_display_unit,
+            has_unit,
+            is_unit,
+        )
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        # Create a millivolt type (mV = 0.001 * V)
+        MilliVolt = UnitExpressionFactory(
+            symbols=("mV",),
+            unit_vector=((Volt, 1),),
+            multiplier=0.001,
+        )
+
+        # Create mV is_unit instance
+        mv_instance = MilliVolt.bind_typegraph(tg=tg).create_instance(g=g)
+        mv_is_unit = mv_instance.is_unit.get()
+
+        # Create Numbers using setup_from_min_max with 80mV
+        quantity = Numbers.create_instance(g=g, tg=tg).setup_from_min_max(
+            min=80, max=80, unit=mv_is_unit
+        )
+
+        # Numeric value should be converted to base units (80mV = 0.08V)
+        numeric_set = quantity.get_numeric_set()
+        assert numeric_set.get_min_value() == 0.08, (
+            f"Expected 0.08, got {numeric_set.get_min_value()}"
+        )
+
+        # has_display_unit should store mV (multiplier=0.001)
+        display_unit_trait = quantity.try_get_trait(has_display_unit)
+        assert display_unit_trait is not None, "Missing has_display_unit trait"
+        display_unit = display_unit_trait.get_is_unit()
+        display_multiplier = is_unit._extract_multiplier(display_unit)
+        assert display_multiplier == 0.001, (
+            f"Expected display multiplier 0.001, got {display_multiplier}"
+        )
+
+        # has_unit should store V (multiplier=1.0) - the base unit
+        unit_trait = quantity.try_get_trait(has_unit)
+        assert unit_trait is not None, "Missing has_unit trait"
+        base_unit = unit_trait.get_is_unit()
+        base_multiplier = is_unit._extract_multiplier(base_unit)
+        assert base_multiplier == 1.0, (
+            f"Expected base multiplier 1.0, got {base_multiplier}"
+        )
 
     def test_create_instance(self):
         from faebryk.library.Units import is_unit
