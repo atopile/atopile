@@ -26,10 +26,11 @@ from atopile.dataclasses import (
     RegistrySearchResponse,
     RegistryStatus,
 )
+from atopile.model.model_state import model_state
 from atopile.server import package_manager
 from atopile.server.app_context import AppContext
-from atopile.server.core import packages as core_packages
 from atopile.server.connections import server_state
+from atopile.server.core import packages as core_packages
 from faebryk.libs.backend.packages.api import PackagesAPIClient
 
 log = logging.getLogger(__name__)
@@ -490,7 +491,7 @@ async def refresh_packages_state(
 
     async with lock:
         if scan_paths is None:
-            scan_paths = server_state.workspace_paths
+            scan_paths = model_state.workspace_paths
 
         # Run blocking I/O in thread pool to avoid blocking event loop
         state_packages, registry_error = await asyncio.to_thread(
@@ -509,7 +510,7 @@ async def refresh_installed_packages_state(
 ) -> None:
     """Refresh installed package flags without hitting the registry."""
     if scan_paths is None:
-        scan_paths = server_state.workspace_paths
+        scan_paths = model_state.workspace_paths
 
     if not scan_paths:
         await server_state.emit_event("packages_changed")

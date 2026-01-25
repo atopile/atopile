@@ -8,7 +8,6 @@ The backend no longer owns UI or data state; it only emits notifications.
 import asyncio
 import logging
 import uuid
-from pathlib import Path
 from typing import Optional
 
 from fastapi import WebSocket
@@ -24,22 +23,6 @@ class ServerConnections:
     def __init__(self) -> None:
         self._clients: dict[str, ConnectedClient] = {}
         self._lock = asyncio.Lock()
-        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
-        self._workspace_paths: list[Path] = []
-
-    def set_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Store the event loop for background thread emits."""
-        self._event_loop = loop
-        log.info("ServerConnections: Event loop captured")
-
-    def set_workspace_paths(self, paths: list[Path]) -> None:
-        """Set workspace paths for discovery operations."""
-        self._workspace_paths = paths
-
-    @property
-    def workspace_paths(self) -> list[Path]:
-        """Get workspace paths for discovery operations."""
-        return self._workspace_paths
 
     async def connect_client(self, websocket: WebSocket) -> str:
         """Accept a WebSocket connection and return client ID."""
@@ -92,16 +75,6 @@ class ServerConnections:
 
         if dead_clients:
             log.info("Removed %d dead clients", len(dead_clients))
-
-    def emit_event_sync(self, event_type: str, data: Optional[dict] = None) -> None:
-        """Emit an event from synchronous code."""
-        if self._event_loop and self._event_loop.is_running():
-            asyncio.run_coroutine_threadsafe(
-                self.emit_event(event_type, data), self._event_loop
-            )
-        else:
-            log.warning("No event loop available for event emit")
-
 
 server_state = ServerConnections()
 

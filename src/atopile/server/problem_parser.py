@@ -12,7 +12,7 @@ from pathlib import Path
 
 from atopile.dataclasses import Problem
 from atopile.logging import BuildLogger
-from atopile.server.connections import server_state
+from atopile.model.model_state import model_state
 
 log = logging.getLogger(__name__)
 
@@ -117,20 +117,14 @@ def sync_problems_to_state(developer_mode: bool | None = None) -> None:
     Emit a problems-changed event for WebSocket clients.
 
     Called after build completes to update problems from log files.
-    Uses asyncio.run_coroutine_threadsafe to schedule on main event loop.
+    Uses model_state.emit_event_sync for thread-safe event emission.
 
     Args:
         developer_mode: If True, show all audiences. If False, only show 'user' audience.
             If None, uses the current developer_mode setting from server_state.
     """
-    loop = server_state._event_loop
-    if loop is not None and loop.is_running():
-        payload = {"developer_mode": developer_mode} if developer_mode is not None else {}
-        asyncio.run_coroutine_threadsafe(
-            server_state.emit_event("problems_changed", payload), loop
-        )
-    else:
-        log.warning("Cannot emit problems event: event loop not available")
+    payload = {"developer_mode": developer_mode} if developer_mode is not None else {}
+    model_state.emit_event_sync("problems_changed", payload)
 
 
 __all__ = [

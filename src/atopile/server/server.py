@@ -18,11 +18,13 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from atopile.server import build_history, project_discovery
+from atopile.model import build_history
+from atopile.model.model_state import model_state
+from atopile.server import project_discovery
 from atopile.server.app_context import AppContext
+from atopile.server.connections import server_state
 from atopile.server.domains import packages as packages_domain
 from atopile.server.file_watcher import FileChangeResult, FileWatcher
-from atopile.server.connections import server_state
 
 log = logging.getLogger(__name__)
 
@@ -52,7 +54,7 @@ async def _load_projects_background(ctx: AppContext) -> None:
 
 
 async def _refresh_projects_state() -> None:
-    workspace_paths = server_state.workspace_paths or []
+    workspace_paths = model_state.workspace_paths or []
     if not workspace_paths:
         await server_state.emit_event("projects_changed")
         return
@@ -154,7 +156,7 @@ def _debounce(key: str, delay_s: float, coro_factory) -> None:
 
 
 def _get_project_roots() -> list[Path]:
-    return server_state.workspace_paths or []
+    return model_state.workspace_paths or []
 
 
 def _get_workspace_roots() -> list[Path]:
@@ -163,7 +165,7 @@ def _get_workspace_roots() -> list[Path]:
     Watching workspace roots instead of individual project roots reduces
     the number of FSEvents streams on macOS, avoiding stream exhaustion.
     """
-    return server_state.workspace_paths or []
+    return model_state.workspace_paths or []
 
 
 def _affected_project_roots(
@@ -393,8 +395,11 @@ def create_app(
         loop.set_default_executor(executor)
         log.info("Configured thread pool with 64 workers")
 
-        server_state.set_event_loop(loop)
-        server_state.set_workspace_paths(ctx.workspace_paths)
+        # Configure model_state with event loop and workspace paths
+        model_state.set_event_loop(loop)
+        model_state.set_workspace_paths(ctx.workspace_paths)
+        # Register server_state.emit_event as the event emitter callback
+        model_state.register_event_emitter(server_state.emit_event)
 
         asyncio.create_task(_refresh_stdlib_state())
         asyncio.create_task(_watch_stdlib_background())

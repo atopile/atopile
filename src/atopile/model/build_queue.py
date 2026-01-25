@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import Any
 
 from atopile.dataclasses import BuildStatus, StageStatus
-from atopile.server import build_history, problem_parser
-from atopile.server.connections import server_state
+from atopile.model import build_history
+from atopile.model.model_state import model_state
 
 log = logging.getLogger(__name__)
 
@@ -602,9 +602,6 @@ class BuildQueue:
                 # Emit build change event for /ws/state clients
                 _sync_builds_to_state()
 
-                # Refresh problems from logs after build completes
-                problem_parser.sync_problems_to_state()
-
                 # Clear module introspection cache (build may have run ato sync)
                 from atopile.server.module_introspection import clear_module_cache
 
@@ -931,19 +928,13 @@ def _sync_builds_to_state():
     Emit build change events for WebSocket clients.
 
     Called when build status changes (from background thread).
-    Uses asyncio.run_coroutine_threadsafe to schedule on main event loop.
+    Uses model_state.emit_event_sync for thread-safe event emission.
     """
     # Clean up old completed builds first
     _cleanup_completed_builds()
 
-    # Schedule async state update on main event loop
-    loop = server_state._event_loop
-    if loop is not None and loop.is_running():
-        asyncio.run_coroutine_threadsafe(
-            server_state.emit_event("builds_changed"), loop
-        )
-    else:
-        log.warning("Cannot sync builds to state: event loop not available")
+    # Emit event via model_state
+    model_state.emit_event_sync("builds_changed")
 
 
 def _refresh_bom_for_selected(build_info: dict[str, Any]) -> None:
@@ -957,13 +948,7 @@ def _refresh_bom_for_selected(build_info: dict[str, Any]) -> None:
     if target:
         payload["target"] = target
 
-    loop = server_state._event_loop
-    if loop is not None and loop.is_running():
-        asyncio.run_coroutine_threadsafe(
-            server_state.emit_event("bom_changed", payload), loop
-        )
-    else:
-        log.warning("Cannot refresh BOM: event loop not available")
+    model_state.emit_event_sync("bom_changed", payload)
 
 
 def _refresh_project_last_build(build_info: dict[str, Any]) -> None:
@@ -977,16 +962,7 @@ def _refresh_project_last_build(build_info: dict[str, Any]) -> None:
     if not project_root:
         return
 
-    loop = server_state._event_loop
-    if loop is not None and loop.is_running():
-        asyncio.run_coroutine_threadsafe(
-            server_state.emit_event(
-                "projects_changed", {"project_root": project_root}
-            ),
-            loop,
-        )
-    else:
-        log.warning("Cannot refresh project last_build: event loop not available")
+    model_state.emit_event_sync("projects_changed", {"project_root": project_root})
 
 
 async def _sync_builds_to_state_async():
@@ -996,7 +972,7 @@ async def _sync_builds_to_state_async():
     Called from async contexts (like WebSocket handlers) where we want
     to await the event emit rather than scheduling it.
     """
-    await server_state.emit_event("builds_changed")
+    await model_state.emit_event("builds_changed")
 
 
 def cancel_build(build_id: str) -> bool:

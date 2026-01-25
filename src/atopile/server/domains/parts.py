@@ -8,7 +8,7 @@ from typing import Iterable, Optional
 
 from atopile.dataclasses import Log
 from atopile.logging import BuildLogger, SQLiteLogWriter
-from atopile.server import build_history
+from atopile.model import build_history
 from faebryk.libs.picker.api.api import get_api_client
 from faebryk.libs.picker.api.models import Component, LCSCParams
 

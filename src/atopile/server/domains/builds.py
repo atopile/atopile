@@ -18,9 +18,8 @@ from atopile.dataclasses import (
     BuildTargetResponse,
     MaxConcurrentRequest,
 )
-from atopile.server import build_history, project_discovery
-from atopile.server.app_context import AppContext
-from atopile.server.build_queue import (
+from atopile.model import build_history
+from atopile.model.build_queue import (
     _DEFAULT_MAX_CONCURRENT,
     _active_builds,
     _build_lock,
@@ -30,6 +29,8 @@ from atopile.server.build_queue import (
     _sync_builds_to_state,
     cancel_build,
 )
+from atopile.server import project_discovery
+from atopile.server.app_context import AppContext
 
 log = logging.getLogger(__name__)
 
@@ -280,7 +281,7 @@ def handle_cancel_build(build_id: str) -> dict:
 
 def handle_get_active_builds() -> dict:
     """Get all active (queued or building) builds."""
-    from atopile.server.build_queue import _acquire_build_lock, _release_build_lock
+    from atopile.model.build_queue import _acquire_build_lock, _release_build_lock
 
     log.info("[DEBUG] handle_get_active_builds called")
     builds = []

@@ -112,7 +112,7 @@ def handle_get_bom_by_build_id(build_id: str) -> dict | None:
 
     Returns BOM data or None if not found.
     """
-    from atopile.server import build_history
+    from atopile.model import build_history
 
     # Look up build info
     build_info = build_history.get_build_info_by_id(build_id)
@@ -154,7 +154,7 @@ def handle_get_variables_by_build_id(build_id: str) -> dict | None:
 
     Returns variables data or None if not found.
     """
-    from atopile.server import build_history
+    from atopile.model import build_history
 
     # Look up build info
     build_info = build_history.get_build_info_by_id(build_id)

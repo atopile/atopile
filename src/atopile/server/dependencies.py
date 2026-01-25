@@ -58,11 +58,11 @@ class AppDependencies:
 
     @property
     def build_queue(self):
-        """Get the build queue (lazy-loaded from server.py)."""
+        """Get the build queue (lazy-loaded from model)."""
         if self._build_queue is None:
-            from .server import build_queue
+            from atopile.model.build_queue import _build_queue
 
-            self._build_queue = build_queue
+            self._build_queue = _build_queue
         return self._build_queue
 
     @property
@@ -81,20 +81,7 @@ class AppDependencies:
         if self.config.logs_base:
             return self.config.logs_base
 
-        from .server import state
-
-        return state.get("logs_base")
-
-    @property
-    def workspace_paths(self) -> list[Path]:
-        """Get workspace paths."""
-        if self.config.workspace_paths:
-            return self.config.workspace_paths
-
-        from .server import state
-
-        return state.get("workspace_paths", [])
-
+        return None  # logs_base not available via model_state
 
 # Dependency functions for FastAPI
 
@@ -122,8 +109,3 @@ def get_server_state(deps: AppDependencies = Depends(get_deps)):
 def get_logs_base(deps: AppDependencies = Depends(get_deps)) -> Optional[Path]:
     """FastAPI dependency to get logs base directory."""
     return deps.logs_base
-
-
-def get_workspace_paths(deps: AppDependencies = Depends(get_deps)) -> list[Path]:
-    """FastAPI dependency to get workspace paths."""
-    return deps.workspace_paths
