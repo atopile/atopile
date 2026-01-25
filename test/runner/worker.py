@@ -209,6 +209,8 @@ def main():
 
     finally:
         print(f"Worker {pid} shutting down")
+        # Flush any pending test logs to the database before exiting
+        LoggerForTest.close_all()
         try:
             client.post(
                 f"{ORCHESTRATOR_URL}/event",

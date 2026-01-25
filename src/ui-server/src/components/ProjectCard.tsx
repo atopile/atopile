@@ -1,0 +1,841 @@
+/**
+ * ProjectCard - Unified component for displaying projects and packages.
+ * A package is just a project with additional package metadata (version, publisher, install status).
+ *
+ * Modes:
+ * - editable (local projects): Can edit name/description, has build controls
+ * - readOnly (packages): No editing, has install bar and package metadata
+ *
+ * See COMPONENT_ARCHITECTURE.md for the full editability matrix.
+ */
+import { useState, useEffect, memo, useMemo, useRef } from 'react'
+import {
+  ChevronDown, ChevronRight, Play, Layers, Package,
+  AlertCircle, AlertTriangle, Square, Download, Check,
+  Search, ArrowUpCircle, Loader2, ExternalLink
+} from 'lucide-react'
+import { getLastBuildStatusIcon, formatRelativeTime } from './BuildNode'
+import { BuildsCard } from './BuildsCard'
+import { ProjectExplorerCard } from './ProjectExplorerCard'
+import { FileExplorer, type FileTreeNode } from './FileExplorer'
+import { DependencyCard, type ProjectDependency } from './DependencyCard'
+import { NameValidationDropdown } from './NameValidationDropdown'
+import { MetadataBar } from './shared'
+import { UsageCard } from './UsageCard'
+import { validateName } from '../utils/nameValidation'
+import { compareVersionsDesc, isInstalledInProject } from '../utils/packageUtils'
+import { generateImportStatement, generateUsageExample } from '../utils/codeHighlight'
+import { api } from '../api/client'
+import type {
+  Selection,
+  BuildTarget,
+  Project,
+  ModuleDefinition,
+  AvailableProject
+} from './projectsTypes'
+import type { PackageDetails } from '../types/build'
+import './ProjectCard.css'
+
+// Version selector dropdown
+function VersionSelector({
+  versions,
+  selectedVersion,
+  onVersionChange,
+  latestVersion
+}: {
+  versions: string[]
+  selectedVersion: string
+  onVersionChange: (version: string) => void
+  latestVersion?: string
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const validVersions = versions.filter(v => v && v !== 'unknown')
+  if (validVersions.length === 0) return null
+
+  const validSelectedVersion = selectedVersion && selectedVersion !== 'unknown' ? selectedVersion : null
+  const displayVersion = validSelectedVersion || validVersions[0] || ''
+
+  return (
+    <div className="version-selector" ref={dropdownRef}>
+      <button
+        className="version-selector-btn"
+        onClick={(e) => {
+          e.stopPropagation()
+          setIsOpen(!isOpen)
+        }}
+        title="Select version"
+      >
+        <span className="version-selector-value">{displayVersion}</span>
+        <ChevronDown size={10} />
+      </button>
+      {isOpen && (
+        <div className="version-selector-menu">
+          {validVersions.map((v) => (
+            <button
+              key={v}
+              className={`version-option ${v === selectedVersion ? 'selected' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onVersionChange(v)
+                setIsOpen(false)
+              }}
+            >
+              <span>{v}</span>
+              {v === latestVersion && <span className="latest-tag">latest</span>}
+              {v === selectedVersion && <Check size={12} className="selected-check" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Project selector dropdown
+function ProjectSelector({
+  availableProjects,
+  selectedProjectId,
+  onSelect
+}: {
+  availableProjects: AvailableProject[]
+  selectedProjectId: string
+  onSelect: (projectId: string) => void
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+        setSearchQuery('')
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  useEffect(() => {
+    if (isOpen && availableProjects.length > 5 && searchInputRef.current) {
+      searchInputRef.current.focus()
+    }
+  }, [isOpen, availableProjects.length])
+
+  const selectedProject = availableProjects.find(p => p.id === selectedProjectId)
+  const displayName = selectedProject?.name || 'project'
+
+  return (
+    <div className="project-selector" ref={dropdownRef}>
+      <button
+        className="project-selector-btn"
+        onClick={(e) => {
+          e.stopPropagation()
+          setIsOpen(!isOpen)
+        }}
+        title={`Install to: ${selectedProject?.name}`}
+      >
+        <span className="project-selector-name">{displayName}</span>
+        <ChevronDown size={10} />
+      </button>
+      {isOpen && (
+        <div className="project-selector-menu">
+          <div className="dropdown-header">Install to:</div>
+          {availableProjects.length > 5 && (
+            <div className="dropdown-search">
+              <Search size={10} />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Filter projects..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          )}
+          <div className="dropdown-items">
+            {availableProjects
+              .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+              .map(p => (
+                <button
+                  key={p.id}
+                  className={`dropdown-item ${p.id === selectedProjectId ? 'selected' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onSelect(p.id)
+                    setIsOpen(false)
+                  }}
+                >
+                  <Layers size={12} />
+                  <span>{p.name}</span>
+                  {p.id === selectedProjectId && <Check size={12} className="selected-check" />}
+                </button>
+              ))}
+            {availableProjects.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+              <div className="dropdown-empty">No projects match "{searchQuery}"</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Check if package is installed in a specific project (returns detailed status)
+function getInstallStatus(
+  pkg: Project,
+  targetProjectPath: string
+): { installed: boolean; version?: string; needsUpdate?: boolean; latestVersion?: string } {
+  const installedIn = (pkg as any).installedIn || []
+  const installed = isInstalledInProject(installedIn, targetProjectPath)
+
+  if (!installed) return { installed: false }
+
+  const needsUpdate = pkg.latestVersion && pkg.version && pkg.version !== pkg.latestVersion
+
+  return {
+    installed: true,
+    version: pkg.version,
+    needsUpdate: !!needsUpdate,
+    latestVersion: pkg.latestVersion
+  }
+}
+
+// ProjectCard Props
+// Preset configurations for different view contexts
+export type ProjectCardPreset = 'localProject' | 'packageExplorer' | 'dependencyExpanded';
+
+interface PresetFlags {
+  readOnly: boolean;
+  showInstallBar: boolean;
+  showBuildControls: boolean;
+  showUsageExamples: boolean;
+  showMetadata: boolean;
+  showModuleExplorer: boolean;
+  showFileExplorer: boolean;
+}
+
+const PRESET_FLAGS: Record<ProjectCardPreset, PresetFlags> = {
+  localProject: {
+    readOnly: false,
+    showInstallBar: false,
+    showBuildControls: true,
+    showUsageExamples: false,
+    showMetadata: false,
+    showModuleExplorer: true,
+    showFileExplorer: true,
+  },
+  packageExplorer: {
+    readOnly: true,
+    showInstallBar: true,
+    showBuildControls: false,
+    showUsageExamples: true,
+    showMetadata: true,
+    showModuleExplorer: false,  // Package may not be installed locally
+    showFileExplorer: false,
+  },
+  dependencyExpanded: {
+    readOnly: true,
+    showInstallBar: false,  // Already installed as dependency
+    showBuildControls: false,
+    showUsageExamples: true,
+    showMetadata: true,
+    showModuleExplorer: true,
+    showFileExplorer: true,
+  },
+};
+
+interface ProjectCardProps {
+  project: Project
+  selection: Selection
+  onSelect: (selection: Selection) => void
+  onBuild: (level: 'project' | 'build' | 'symbol', id: string, label: string) => void
+  onCancelBuild?: (buildId: string) => void
+  onStageFilter?: (stageName: string, buildId?: string, projectId?: string) => void
+  isExpanded: boolean
+  onExpandChange: (projectId: string, expanded: boolean) => void
+
+  // Preset (recommended) - sets multiple flags at once
+  preset?: ProjectCardPreset
+
+  // Edit mode props (for local projects)
+  onUpdateProject?: (projectId: string, updates: Partial<Project>) => void
+  onAddBuild?: (projectId: string) => void
+  onUpdateBuild?: (projectId: string, buildId: string, updates: Partial<BuildTarget>) => void
+  onDeleteBuild?: (projectId: string, buildId: string) => void
+  onProjectExpand?: (projectRoot: string) => void
+  onDependencyVersionChange?: (projectId: string, identifier: string, newVersion: string) => void
+  onRemoveDependency?: (projectId: string, identifier: string) => void
+
+  // Common props
+  onOpenSource?: (projectId: string, entry: string) => void
+  onOpenKiCad?: (projectId: string, buildId: string) => void
+  onOpenLayout?: (projectId: string, buildId: string) => void
+  onOpen3D?: (projectId: string, buildId: string) => void
+  onFileClick?: (projectId: string, filePath: string) => void
+
+  // Data props
+  availableModules?: ModuleDefinition[]
+  projectFiles?: FileTreeNode[]
+  projectDependencies?: ProjectDependency[]
+  projectFilesByRoot?: Record<string, FileTreeNode[]>
+  updatingDependencyIds?: string[]  // IDs of dependencies being updated (format: projectRoot:dependencyId)
+
+  // Package mode props (can override preset or use directly)
+  readOnly?: boolean  // If true, show as package (no editing)
+  availableProjects?: AvailableProject[]  // For install target selection
+  onInstall?: (projectId: string, targetProject: string, version?: string) => void
+  isInstalling?: boolean
+}
+
+export const ProjectCard = memo(function ProjectCard({
+  project,
+  selection,
+  onSelect,
+  onBuild,
+  onCancelBuild,
+  onStageFilter,
+  isExpanded,
+  onExpandChange,
+  preset,
+  onUpdateProject,
+  onAddBuild,
+  onUpdateBuild,
+  onDeleteBuild,
+  onProjectExpand,
+  onDependencyVersionChange,
+  onRemoveDependency,
+  onOpenSource,
+  onOpenKiCad,
+  onOpenLayout,
+  onOpen3D,
+  onFileClick,
+  availableModules = [],
+  projectFiles = [],
+  projectDependencies = [],
+  projectFilesByRoot = {},
+  updatingDependencyIds = [],
+  readOnly: readOnlyProp,
+  availableProjects = [],
+  onInstall,
+  isInstalling = false
+}: ProjectCardProps) {
+  // Derive feature flags from preset or props
+  const presetFlags = preset ? PRESET_FLAGS[preset] : null;
+  const readOnly = readOnlyProp ?? presetFlags?.readOnly ?? false;
+  const showInstallBar = presetFlags?.showInstallBar ?? (readOnly && availableProjects.length > 0);
+  const showBuildControls = presetFlags?.showBuildControls ?? !readOnly;
+  const showUsageExamples = presetFlags?.showUsageExamples ?? readOnly;
+  const showMetadata = presetFlags?.showMetadata ?? readOnly;
+  const showModuleExplorer = presetFlags?.showModuleExplorer ?? !readOnly;
+  const showFileExplorer = presetFlags?.showFileExplorer ?? !readOnly;
+  const expanded = isExpanded
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [isEditingDesc, setIsEditingDesc] = useState(false)
+  const [projectName, setProjectName] = useState(project.name)
+  const [description, setDescription] = useState(project.summary || '')
+  const [descExpanded, setDescExpanded] = useState(false)
+  const isSelected = selection.type === 'project' && selection.projectId === project.id
+
+  // Build status (for editable mode) - use project.builds here since builds variable isn't defined yet
+  const totalErrors = project.builds.reduce((sum, b) => sum + (b.errors || 0), 0)
+  const totalWarnings = project.builds.reduce((sum, b) => sum + (b.warnings || 0), 0)
+  const isBuilding = project.builds.some(b => b.status === 'building')
+
+  // Live timer for building state
+  const buildingBuilds = project.builds.filter(b => b.status === 'building')
+  const maxElapsedFromBuilds = buildingBuilds.length > 0
+    ? Math.max(...buildingBuilds.map(b => b.elapsedSeconds || 0))
+    : 0
+  const [displayElapsed, setDisplayElapsed] = useState(maxElapsedFromBuilds)
+
+  useEffect(() => {
+    if (!isBuilding) {
+      setDisplayElapsed(0)
+      return
+    }
+    setDisplayElapsed(maxElapsedFromBuilds)
+    const interval = setInterval(() => {
+      setDisplayElapsed(prev => prev + 1)
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [isBuilding, maxElapsedFromBuilds])
+
+  const formatBuildTime = (seconds: number): string => {
+    const hrs = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    const secs = Math.floor(seconds % 60)
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  // Package mode state
+  const [selectedVersion, setSelectedVersion] = useState(() => {
+    const latestVersion = project.latestVersion && project.latestVersion !== 'unknown' ? project.latestVersion : null
+    const version = project.version && project.version !== 'unknown' ? project.version : null
+    return latestVersion || version || ''
+  })
+  const [selectedProjectId, setSelectedProjectId] = useState(() => {
+    return availableProjects.find(p => p.isActive)?.id || availableProjects[0]?.id || ''
+  })
+
+  // Package details (fetched on expand for packages)
+  const [packageDetails, setPackageDetails] = useState<PackageDetails | null>(null)
+  const [detailsLoading, setDetailsLoading] = useState(false)
+  const [detailsError, setDetailsError] = useState<string | null>(null)
+
+  // Fetch package details when expanded (package mode only)
+  useEffect(() => {
+    if (!readOnly || !expanded || packageDetails || detailsLoading) return
+
+    setDetailsLoading(true)
+    setDetailsError(null)
+
+    api.packages
+      .details(project.id)
+      .then((details) => {
+        if (details) {
+          setPackageDetails(details)
+          const sortedDetailVersions = (details.versions || [])
+            .map((v) => v.version)
+            .filter((v) => v && v !== 'unknown')
+            .sort(compareVersionsDesc)
+          if (
+            sortedDetailVersions.length > 0 &&
+            (!selectedVersion || selectedVersion === project.version)
+          ) {
+            setSelectedVersion(sortedDetailVersions[0])
+          }
+        } else {
+          setDetailsError('Failed to load package details')
+        }
+      })
+      .catch(err => {
+        setDetailsError(err.message || 'Failed to load package details')
+      })
+      .finally(() => {
+        setDetailsLoading(false)
+      })
+  }, [readOnly, expanded, packageDetails, detailsLoading, project.id, selectedVersion])
+
+  const defaultDescription = "A new atopile project!"
+  const displayDescription = description || project.description || defaultDescription
+  const isDefaultDesc = !description && !project.description
+
+  // Name validation
+  const nameValidation = useMemo(() => validateName(projectName), [projectName])
+
+  const handleNameSave = () => {
+    if (!nameValidation.isValid) return
+    setIsEditingName(false)
+    onUpdateProject?.(project.id, { name: projectName })
+  }
+
+  const handleDescriptionSave = () => {
+    setIsEditingDesc(false)
+    onUpdateProject?.(project.id, { summary: description })
+  }
+
+  // Install handling (package mode)
+  const selectedTarget = availableProjects.find(p => p.id === selectedProjectId)
+  const installStatus = getInstallStatus(project, selectedTarget?.path || selectedProjectId)
+
+  const handleInstall = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onInstall?.(project.id, selectedProjectId, selectedVersion || undefined)
+  }
+
+  // Build available versions list
+  const rawVersions = packageDetails?.versions?.map((v: { version: string }) => v.version) ||
+    (project.latestVersion && project.version && project.latestVersion !== project.version
+      ? [project.latestVersion, project.version]
+      : project.version ? [project.version] : project.latestVersion ? [project.latestVersion] : [])
+  const versions = rawVersions
+    .filter(v => v && v !== 'unknown')
+    .sort(compareVersionsDesc)
+
+  // Convert dependencies to DependencyCard format
+  const dependencies: ProjectDependency[] = readOnly
+    ? (packageDetails?.dependencies || []).map(dep => {
+        const parts = dep.identifier.split('/')
+        const publisher = parts.length === 2 ? parts[0] : 'unknown'
+        const name = parts.length === 2 ? parts[1] : dep.identifier
+        return {
+          identifier: dep.identifier,
+          version: dep.version || 'latest',
+          name,
+          publisher,
+        }
+      })
+    : projectDependencies
+
+  // For packages, compute the actual filesystem path if installed
+  // Packages are installed at <project_root>/.ato/modules/<package_id>/
+  const packagePath = readOnly && packageDetails?.installedIn?.[0]
+    ? `${packageDetails.installedIn[0]}/.ato/modules/${project.id}`
+    : project.root
+
+  // For packages, use builds from packageDetails (converted to BuildTarget format)
+  const builds: BuildTarget[] = readOnly && packageDetails?.builds
+    ? packageDetails.builds.map((b, idx) => ({
+        id: b.name || `build-${idx}`,
+        name: b.name || 'default',
+        entry: b.entry || '',
+        root: packagePath,
+        status: 'idle' as const,
+      }))
+    : project.builds
+
+  const isPackage = readOnly || project.type === 'package'
+  const Icon = isPackage ? Package : Layers
+
+  return (
+    <div
+      className={`project-card ${isSelected ? 'selected' : ''} ${expanded ? 'expanded' : 'collapsed'} ${isBuilding ? 'building' : ''} ${isPackage ? 'package-mode' : ''}`}
+      onClick={() => {
+        const willExpand = !expanded
+        onExpandChange(project.id, willExpand)
+        onSelect({
+          type: 'project',
+          projectId: project.id,
+          label: project.name
+        })
+        if (willExpand && onProjectExpand) {
+          onProjectExpand(project.root)
+        }
+      }}
+    >
+      {/* Header row */}
+      <div className="project-card-name-row">
+        <span className="tree-expand">
+          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </span>
+        <Icon size={18} className={`project-icon ${isPackage ? 'package' : ''}`} />
+
+        {/* Name - editable only in edit mode when expanded */}
+        {isEditingName && expanded && !readOnly ? (
+          <div className="name-input-wrapper" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="text"
+              className={`project-name-input ${!nameValidation.isValid ? 'invalid' : ''}`}
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              onBlur={() => {
+                if (nameValidation.isValid) handleNameSave()
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleNameSave()
+                if (e.key === 'Escape') {
+                  setProjectName(project.name)
+                  setIsEditingName(false)
+                }
+              }}
+              autoFocus
+            />
+            <NameValidationDropdown
+              validation={nameValidation}
+              onApplySuggestion={(s) => setProjectName(s)}
+            />
+          </div>
+        ) : (
+          <span
+            className={`project-card-name ${expanded && !readOnly ? 'editable' : ''}`}
+            onClick={expanded && !readOnly ? (e) => {
+              e.stopPropagation()
+              setIsEditingName(true)
+            } : undefined}
+            title={expanded && !readOnly ? "Click to edit name" : undefined}
+          >
+            {projectName}
+          </span>
+        )}
+
+        {/* Publisher badge (package mode) */}
+        {isPackage && project.publisher && (
+          <span className={`package-publisher-tag ${project.publisher === 'atopile' ? 'official' : ''}`}>
+            {project.publisher.toLowerCase()}
+          </span>
+        )}
+
+        {/* External link (package mode) */}
+        {isPackage && project.homepage && (
+          <a
+            href={project.homepage}
+            className="package-external-link"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open homepage"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ExternalLink size={12} />
+          </a>
+        )}
+
+        {/* Status indicators and build button */}
+        {showBuildControls && (
+          <div className="project-card-actions-row">
+            <div className="project-indicators">
+              {isBuilding && (
+                <span className="build-time-indicator" title="Build time">
+                  <span className="build-time">{formatBuildTime(displayElapsed)}</span>
+                </span>
+              )}
+              {!isBuilding && (
+                <>
+                  {totalErrors > 0 && (
+                    <span className="error-indicator">
+                      <AlertCircle size={12} />
+                      <span>{totalErrors}</span>
+                    </span>
+                  )}
+                  {totalWarnings > 0 && (
+                    <span className="warning-indicator">
+                      <AlertTriangle size={12} />
+                      <span>{totalWarnings}</span>
+                    </span>
+                  )}
+                  {project.lastBuildTimestamp && (
+                    <span className="last-build-info" title={`Last build: ${project.lastBuildStatus || 'unknown'}`}>
+                      {project.lastBuildStatus && getLastBuildStatusIcon(project.lastBuildStatus, 10)}
+                      <span className="last-build-time">{formatRelativeTime(project.lastBuildTimestamp)}</span>
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+
+            {isBuilding ? (
+              <button
+                className="project-build-btn-icon stop"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  project.builds
+                    .filter(b => b.status === 'building' && b.buildId)
+                    .forEach(b => onCancelBuild?.(b.buildId!))
+                }}
+                title={`Stop all builds in ${project.name}`}
+              >
+                <Square size={12} fill="currentColor" />
+              </button>
+            ) : (
+              <button
+                className="project-build-btn-icon"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onBuild('project', project.id, project.name)
+                }}
+                title={`Build all targets in ${project.name}`}
+              >
+                <Play size={14} fill="currentColor" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Description row - only show in collapsed view for packages, always show when expanded */}
+      {((project.summary || project.description || !readOnly) && (readOnly || expanded)) && (
+        <div
+          className={`project-card-description ${!expanded ? 'clamped' : ''} ${expanded && !descExpanded ? 'clamped' : ''}`}
+          onClick={expanded && readOnly ? (e) => {
+            e.stopPropagation()
+            setDescExpanded(!descExpanded)
+          } : undefined}
+        >
+          {isEditingDesc && !readOnly ? (
+            <input
+              type="text"
+              className="description-input"
+              value={description}
+              placeholder={defaultDescription}
+              onChange={(e) => setDescription(e.target.value)}
+              onBlur={handleDescriptionSave}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleDescriptionSave()
+                if (e.key === 'Escape') {
+                  setDescription(project.summary || '')
+                  setIsEditingDesc(false)
+                }
+              }}
+              autoFocus
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span
+              className={`description-text ${isDefaultDesc ? 'placeholder' : ''}`}
+              onClick={!readOnly ? (e) => {
+                e.stopPropagation()
+                setIsEditingDesc(true)
+              } : undefined}
+              title={!readOnly ? "Click to edit description" : undefined}
+            >
+              {expanded ? (project.description || displayDescription) : displayDescription}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Install bar (package mode only, not for dependencies) */}
+      {showInstallBar && availableProjects.length > 0 && (
+        <div className="package-install-bar" onClick={(e) => e.stopPropagation()}>
+          <ProjectSelector
+            availableProjects={availableProjects}
+            selectedProjectId={selectedProjectId}
+            onSelect={setSelectedProjectId}
+          />
+          {versions.length > 0 && (
+            <VersionSelector
+              versions={versions}
+              selectedVersion={selectedVersion}
+              onVersionChange={setSelectedVersion}
+              latestVersion={project.latestVersion}
+            />
+          )}
+          <button
+            className={`install-btn ${isInstalling ? 'installing' : ''} ${installStatus.installed ? (installStatus.needsUpdate ? 'update-available' : 'installed') : ''}`}
+            onClick={handleInstall}
+            disabled={isInstalling}
+            title={isInstalling
+              ? 'Installing...'
+              : installStatus.needsUpdate
+                ? `Update to ${selectedVersion} in ${selectedTarget?.name}`
+                : installStatus.installed
+                  ? `Installed in ${selectedTarget?.name}`
+                  : `Install ${selectedVersion} to ${selectedTarget?.name}`}
+          >
+            {isInstalling ? (
+              <>
+                <Loader2 size={14} className="spin" />
+                <span>Installing...</span>
+              </>
+            ) : installStatus.installed ? (
+              installStatus.needsUpdate ? (
+                <>
+                  <ArrowUpCircle size={14} />
+                  <span>Update</span>
+                </>
+              ) : (
+                <>
+                  <Check size={14} />
+                  <span>Installed</span>
+                </>
+              )
+            ) : (
+              <>
+                <Download size={14} />
+                <span>Install</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Expanded content */}
+      {expanded && (
+        <div className="project-card-content">
+          {/* Loading state (package mode) */}
+          {readOnly && detailsLoading && (
+            <div className="package-loading">
+              <Loader2 size={16} className="spin" />
+              <span>Loading package details...</span>
+            </div>
+          )}
+
+          {/* Error state (package mode) */}
+          {readOnly && detailsError && (
+            <div className="package-error">
+              <span>Failed to load details: {detailsError}</span>
+            </div>
+          )}
+
+          {/* Package metadata */}
+          {showMetadata && packageDetails && !detailsLoading && (
+            <MetadataBar
+              downloads={packageDetails.downloads}
+              versionCount={packageDetails.versionCount}
+              license={packageDetails.license}
+            />
+          )}
+
+          {/* Import and Usage examples */}
+          {showUsageExamples && packageDetails && !detailsLoading && (
+            <UsageCard
+              importCode={generateImportStatement(project.id, project.name)}
+              usageCode={generateUsageExample(project.name)}
+              onOpenUsage={() => onOpenSource?.(project.id, `${project.name}.ato`)}
+            />
+          )}
+
+          {/* Module Explorer - only show if we have a valid filesystem path */}
+          {/* For local projects: always show. For packages/deps: show if path differs from identifier (was resolved) */}
+          {showModuleExplorer && (!readOnly || project.root !== project.id) && (
+            <ProjectExplorerCard
+              builds={builds}
+              projectRoot={packagePath}
+              defaultExpanded={false}
+            />
+          )}
+
+          {/* Builds */}
+          <BuildsCard
+            builds={builds}
+            projectId={project.id}
+            selection={selection}
+            onSelect={onSelect}
+            onBuild={onBuild}
+            onCancelBuild={onCancelBuild}
+            onStageFilter={onStageFilter}
+            onUpdateBuild={onUpdateBuild}
+            onDeleteBuild={onDeleteBuild}
+            onOpenSource={onOpenSource}
+            onOpenKiCad={onOpenKiCad}
+            onOpenLayout={onOpenLayout}
+            onOpen3D={onOpen3D}
+            onAddBuild={onAddBuild}
+            availableModules={availableModules}
+            readOnly={readOnly}
+            defaultExpanded={false}
+          />
+
+          {/* File Explorer */}
+          {showFileExplorer && (
+            <FileExplorer
+              files={projectFiles}
+              onFileClick={onFileClick ? (path) => onFileClick(project.id, path) : undefined}
+            />
+          )}
+
+          {/* Dependencies */}
+          <DependencyCard
+            dependencies={dependencies}
+            projectId={project.id}
+            projectRoot={readOnly ? packagePath : project.root}
+            onVersionChange={onDependencyVersionChange}
+            onRemove={onRemoveDependency}
+            readOnly={readOnly}
+            onProjectExpand={onProjectExpand}
+            projectFilesByRoot={projectFilesByRoot}
+            updatingDependencyIds={updatingDependencyIds}
+            onFileClick={onFileClick}
+          />
+        </div>
+      )}
+    </div>
+  )
+})

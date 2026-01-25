@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Literal, Optional, TypedDict
 
 from fastapi import WebSocket
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # =============================================================================
 # Enums and Type Aliases
@@ -317,16 +317,29 @@ Log.Entry.__dataclass_fields__["audience"].default = Log.Audience.DEVELOPER
 Log.TestEntry.__dataclass_fields__["audience"].default = Log.Audience.DEVELOPER
 
 
+def _to_camel(s: str) -> str:
+    """Convert snake_case to camelCase."""
+    components = s.split("_")
+    return components[0] + "".join(x.title() for x in components[1:])
+
+
+class CamelModel(BaseModel):
+    model_config = ConfigDict(
+        alias_generator=_to_camel,
+        populate_by_name=True,
+    )
+
+
 # =============================================================================
 # Build-related Pydantic Models
 # =============================================================================
 
 
-class BuildStage(BaseModel):
+class BuildStage(CamelModel):
     """A stage within a build."""
 
     name: str
-    stage_id: str
+    stage_id: str = ""
     display_name: Optional[str] = None
     elapsed_seconds: float = 0.0
     status: StageStatus = StageStatus.PENDING
@@ -336,7 +349,7 @@ class BuildStage(BaseModel):
     alerts: int = 0
 
 
-class Build(BaseModel):
+class Build(CamelModel):
     """A build (active, queued, or completed)."""
 
     # Core identification
@@ -344,6 +357,7 @@ class Build(BaseModel):
     display_name: str
     project_name: Optional[str] = None
     build_id: Optional[str] = None
+    build_key: Optional[str] = None
 
     # Status
     status: BuildStatus = BuildStatus.QUEUED
@@ -355,9 +369,11 @@ class Build(BaseModel):
 
     # Context
     project_root: Optional[str] = None
-    targets: Optional[list[str]] = None
+    target: Optional[str] = None
     entry: Optional[str] = None
     started_at: Optional[float] = None
+    completed_at: Optional[float] = None
+    duration: Optional[float] = None
 
     # Stages and logs
     stages: Optional[list[BuildStage]] = None
@@ -370,8 +386,25 @@ class Build(BaseModel):
     # Queue info
     queue_position: Optional[int] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _fill_display_fields(cls, values: Any) -> Any:
+        if not isinstance(values, dict):
+            return values
+        target = values.get("target") or values.get("name") or "default"
+        values.setdefault("name", target)
+        project_root = values.get("project_root")
+        if project_root and not values.get("project_name"):
+            values["project_name"] = Path(project_root).name
+        if not values.get("display_name"):
+            if values.get("project_name"):
+                values["display_name"] = f"{values['project_name']}:{values['name']}"
+            else:
+                values["display_name"] = values["name"]
+        return values
 
-class BuildRequest(BaseModel):
+
+class BuildRequest(CamelModel):
     """Request to start a build."""
 
     project_root: str
@@ -382,35 +415,33 @@ class BuildRequest(BaseModel):
     standalone: bool = False  # Whether to use standalone mode
 
 
-class BuildTargetInfo(BaseModel):
+class BuildTargetInfo(CamelModel):
     """Build target queued by a build request."""
 
     target: str
     build_id: str
 
 
-class BuildResponse(BaseModel):
+class BuildResponse(CamelModel):
     """Response from build request."""
 
     success: bool
     message: str
-    build_id: Optional[str] = None
-    targets: list[str] = Field(default_factory=list)
     build_targets: list[BuildTargetInfo] = Field(default_factory=list)
 
 
-class BuildStatusResponse(BaseModel):
-    """Response for build status."""
+class BuildTargetResponse(CamelModel):
+    """Response for build target status (one build_id = one target)."""
 
     build_id: str
-    status: BuildStatus  # Use BuildStatus enum
+    target: str
+    status: BuildStatus
     project_root: str
-    targets: list[str]
     return_code: Optional[int] = None
     error: Optional[str] = None
 
 
-class BuildTargetStatus(BaseModel):
+class BuildTargetStatus(CamelModel):
     """Persisted status from last build of a target."""
 
     status: BuildStatus
@@ -419,15 +450,23 @@ class BuildTargetStatus(BaseModel):
     warnings: int = 0
     errors: int = 0
     stages: Optional[list[dict]] = None
+    build_id: Optional[str] = None  # Build ID hash for reference
 
 
-class BuildTarget(BaseModel):
+class BuildTarget(CamelModel):
     """A build target from ato.yaml."""
 
     name: str
     entry: str
     root: str
     last_build: Optional[BuildTargetStatus] = None
+
+
+class BuildsResponse(CamelModel):
+    """Response for /api/builds endpoints."""
+
+    builds: list[Build]
+    total: Optional[int] = None
 
 
 class MaxConcurrentRequest(BaseModel):
@@ -448,18 +487,11 @@ class Project(BaseModel):
     targets: list[BuildTarget]
 
 
-class ProjectsResponse(BaseModel):
+class ProjectsResponse(CamelModel):
     """Response for /api/projects endpoint."""
 
     projects: list[Project]
     total: int
-
-
-def _to_camel(s: str) -> str:
-    """Convert snake_case to camelCase."""
-    components = s.split("_")
-    return components[0] + "".join(x.title() for x in components[1:])
-
 
 class ModuleChild(BaseModel):
     """A child field within a module (interface, parameter, nested module, etc.)."""
@@ -473,6 +505,9 @@ class ModuleChild(BaseModel):
     type_name: str  # The type name (e.g., "Electrical", "Resistor", "V")
     item_type: Literal["interface", "module", "component", "parameter", "trait"]
     children: list["ModuleChild"] = Field(default_factory=list)
+    # For parameters: user-specified constraint (e.g., "50 kΩ ±10%", "0402")
+    # None means no constraint was specified
+    spec: Optional[str] = None
 
 
 class ModuleDefinition(BaseModel):
@@ -521,6 +556,8 @@ class DependencyInfo(BaseModel):
     publisher: str  # e.g., "atopile"
     repository: Optional[str] = None
     has_update: bool = False
+    is_direct: bool = False
+    via: Optional[list[str]] = None
 
 
 class DependenciesResponse(BaseModel):
@@ -970,134 +1007,6 @@ class AtopileConfig(BaseModel):
     install_progress: Optional[InstallProgress] = None
     error: Optional[str] = None
 
-
-# =============================================================================
-# AppState Pydantic Model
-# =============================================================================
-
-
-class AppState(BaseModel):
-    """
-    THE SINGLE APP STATE - All state lives here.
-
-    Python server owns this state and pushes it to all connected clients
-    via WebSocket on every change.
-    """
-
-    # Connection
-    is_connected: bool = True
-
-    # Projects (from ato.yaml)
-    projects: list[Project] = Field(default_factory=list)
-    is_loading_projects: bool = False
-    projects_error: Optional[str] = None
-    selected_project_root: Optional[str] = None
-    selected_target_names: list[str] = Field(default_factory=list)
-
-    # Builds (completed builds from /api/summary)
-    builds: list[Build] = Field(default_factory=list)
-
-    # Queued builds (from /api/builds/active)
-    queued_builds: list[Build] = Field(default_factory=list)
-
-    # Packages
-    packages: list[PackageInfo] = Field(default_factory=list)
-    is_loading_packages: bool = False
-    packages_error: Optional[str] = None
-    installing_package_ids: list[str] = Field(default_factory=list)
-    install_error: Optional[str] = None
-
-    # Standard Library
-    stdlib_items: list[StdLibItem] = Field(default_factory=list)
-    is_loading_stdlib: bool = False
-
-    # BOM
-    bom_data: Optional[BOMData] = None
-    is_loading_bom: bool = False
-    bom_error: Optional[str] = None
-
-    # Package details
-    selected_package_details: Optional[PackageDetails] = None
-    is_loading_package_details: bool = False
-    package_details_error: Optional[str] = None
-
-    # Build selection
-    selected_build_name: Optional[str] = None
-    selected_project_name: Optional[str] = None
-
-    # Sidebar UI
-    expanded_targets: list[str] = Field(default_factory=list)
-
-    # Extension info
-    version: str = "dev"
-    logo_uri: str = ""
-
-    # Atopile configuration
-    atopile: AtopileConfig = Field(default_factory=AtopileConfig)
-
-    # Problems
-    problems: list[Problem] = Field(default_factory=list)
-    is_loading_problems: bool = False
-    problem_filter: ProblemFilter = Field(default_factory=ProblemFilter)
-
-    # Developer mode - shows all log audiences instead of just 'user'
-    developer_mode: bool = False
-
-    # Project modules
-    project_modules: dict[str, list[ModuleDefinition]] = Field(default_factory=dict)
-    is_loading_modules: bool = False
-
-    # Project files
-    project_files: dict[str, list[FileTreeNode]] = Field(default_factory=dict)
-    is_loading_files: bool = False
-
-    # Project dependencies
-    project_dependencies: dict[str, list[DependencyInfo]] = Field(default_factory=dict)
-    is_loading_dependencies: bool = False
-
-    # Variables
-    current_variables_data: Optional[VariablesData] = None
-    is_loading_variables: bool = False
-    variables_error: Optional[str] = None
-
-    # Open signals (one-shot signals to open files/apps)
-    open_file: Optional[str] = None
-    open_file_line: Optional[int] = None
-    open_file_column: Optional[int] = None
-    open_layout: Optional[str] = None
-    open_kicad: Optional[str] = None
-    open_3d: Optional[str] = None
-
-    class Config:
-        # Use camelCase for JSON serialization to match frontend
-        populate_by_name = True
-
-    def to_frontend_dict(self) -> dict:
-        """Convert to dict with camelCase keys for frontend compatibility."""
-        # Get the dict representation
-        data = self.model_dump()
-
-        # Convert snake_case to camelCase
-        def to_camel(s: str) -> str:
-            components = s.split("_")
-            return components[0] + "".join(x.title() for x in components[1:])
-
-        def is_path_key(k: str) -> bool:
-            """Check if a key looks like a file path (should not be converted)."""
-            return "/" in k or k.startswith(".")
-
-        def convert_keys(obj: Any) -> Any:
-            if isinstance(obj, dict):
-                return {
-                    (k if is_path_key(k) else to_camel(k)): convert_keys(v)
-                    for k, v in obj.items()
-                }
-            elif isinstance(obj, list):
-                return [convert_keys(item) for item in obj]
-            else:
-                return obj
-
-        return convert_keys(data)
 
 
 # =============================================================================

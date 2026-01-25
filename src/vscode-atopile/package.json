@@ -91,18 +91,6 @@
                     "scope": "resource",
                     "type": "boolean",
                     "default": true
-                },
-                "atopile.dashboardApiUrl": {
-                    "description": "URL of the atopile build dashboard API server",
-                    "scope": "resource",
-                    "type": "string",
-                    "default": "http://localhost:8501"
-                },
-                "atopile.backendAutoStart": {
-                    "description": "Automatically start the atopile backend server when the extension activates",
-                    "scope": "resource",
-                    "type": "boolean",
-                    "default": true
                 }
             }
         },
@@ -125,8 +113,8 @@
         "views": {
             "atopile-explorer": [
                 {
-                    "id": "atopile.project",
-                    "name": "Project",
+                    "id": "atopile.sidebar",
+                    "name": "",
                     "contextualTitle": "atopile Project",
                     "type": "webview"
                 }
@@ -141,7 +129,7 @@
         },
         "viewsWelcome": [
             {
-                "view": "atopile.project",
+                "view": "atopile.sidebar",
                 "contents": "You have not opened an atopile project.\n\n[Create New Project](command:atopile.create_project)\n\n[Open Existing Project](command:vscode.openFolder)\n\n[Open Example Projects](command:atopile.example)\n\nRead the [docs](https://docs.atopile.io) or checkout the [source code](https://github.com/atopile/atopile)."
             }
         ],

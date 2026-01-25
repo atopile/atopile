@@ -5,7 +5,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Settings, ChevronDown, FolderOpen, Loader2, AlertCircle, Check, GitBranch, Package, Search, X } from 'lucide-react';
 import { sendAction } from '../../api/websocket';
-import { DEFAULT_LOGO } from './sidebarUtils';
+import { handleEvent } from '../../api/eventHandler';
+import { useStore } from '../../store';
+import type { AtopileState } from '../../types/build';
 
 // Send action to backend via WebSocket
 const action = (name: string, data?: Record<string, unknown>) => {
@@ -19,34 +21,22 @@ const action = (name: string, data?: Record<string, unknown>) => {
   sendAction(name, data);
 };
 
-interface AtopileState {
-  isInstalling?: boolean;
-  installProgress?: {
-    message?: string;
-    percent?: number;
-  } | null;
-  error?: string | null;
-  source?: 'release' | 'branch' | 'local';
-  currentVersion?: string;
-  availableVersions?: string[];
-  branch?: string | null;
-  availableBranches?: string[];
-  localPath?: string | null;
-  detectedInstallations?: Array<{
-    path: string;
-    source: string;
-    version?: string | null;
-  }>;
-}
-
 interface SidebarHeaderProps {
-  logoUri?: string;
-  version?: string;
   atopile?: AtopileState;
   developerMode?: boolean;
 }
 
-export function SidebarHeader({ logoUri, version, atopile, developerMode }: SidebarHeaderProps) {
+export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
+  const iconUrl =
+    typeof window !== 'undefined'
+      ? (window as Window & { __ATOPILE_ICON_URL__?: string }).__ATOPILE_ICON_URL__
+      : undefined;
+  const extensionVersion =
+    typeof window !== 'undefined'
+      ? (window as Window & { __ATOPILE_EXTENSION_VERSION__?: string })
+          .__ATOPILE_EXTENSION_VERSION__
+      : undefined;
+
   // Settings dropdown state
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
@@ -216,13 +206,9 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
   return (
     <div className="panel-header">
       <div className="header-title">
-        <img
-          className="logo"
-          src={logoUri || DEFAULT_LOGO}
-          alt="atopile"
-        />
+        {iconUrl && <img className="header-logo" src={iconUrl} alt="atopile logo" />}
         <span>atopile</span>
-        {version && <span className="version-badge">v{version}</span>}
+        {extensionVersion && <span className="version-badge">v{extensionVersion}</span>}
       </div>
       <div className="header-actions">
         <div className="settings-dropdown-container" ref={settingsRef}>
@@ -569,7 +555,10 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                       <input
                         type="checkbox"
                         checked={developerMode || false}
-                        onChange={(e) => action('setDeveloperMode', { enabled: e.target.checked })}
+                        onChange={(e) => {
+                          useStore.getState().setDeveloperMode(e.target.checked);
+                          void handleEvent('problems_changed', {});
+                        }}
                       />
                       <span className="settings-toggle-slider" />
                     </label>

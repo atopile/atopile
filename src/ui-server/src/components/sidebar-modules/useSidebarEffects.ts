@@ -5,27 +5,26 @@
 
 import { useEffect, useRef } from 'react';
 import { useStore } from '../../store';
+import { api } from '../../api/client';
+import { fetchInitialData } from '../../api/eventHandler';
+import type { PanelId } from '../../utils/panelConfig';
+
+interface PanelControls {
+  expandPanel: (id: PanelId) => void;
+  collapsePanel: (id: PanelId) => void;
+  togglePanel: (id: PanelId) => void;
+}
 
 interface UseSidebarEffectsProps {
   selectedProjectRoot: string | null;
   selectedTargetName: string | null;
-  collapsedSections: Set<string>;
-  sectionHeights: Record<string, number>;
-  setSectionHeights: React.Dispatch<React.SetStateAction<Record<string, number>>>;
-  setCollapsedSections: React.Dispatch<React.SetStateAction<Set<string>>>;
-  containerRef: React.RefObject<HTMLDivElement>;
-  action: (name: string, data?: Record<string, unknown>) => void;
+  panels: PanelControls;
 }
 
 export function useSidebarEffects({
   selectedProjectRoot,
   selectedTargetName,
-  collapsedSections,
-  sectionHeights,
-  setSectionHeights,
-  setCollapsedSections,
-  containerRef,
-  action,
+  panels,
 }: UseSidebarEffectsProps) {
   const bomRequestIdRef = useRef(0);
   const variablesRequestIdRef = useRef(0);
@@ -39,37 +38,27 @@ export function useSidebarEffects({
       };
       if (!detail?.sectionId || !detail?.type) return;
 
-      const sectionId = detail.sectionId as string;
-      setCollapsedSections((prev) => {
-        const next = new Set(prev);
-        if (detail.type === 'openSection') {
-          next.delete(sectionId);
-        } else if (detail.type === 'closeSection') {
-          next.add(sectionId);
-        } else if (detail.type === 'toggleSection') {
-          if (next.has(sectionId)) {
-            next.delete(sectionId);
-          } else {
-            next.add(sectionId);
-          }
-        }
-        return next;
-      });
+      const sectionId = detail.sectionId as PanelId;
+      if (detail.type === 'openSection') {
+        panels.expandPanel(sectionId);
+      } else if (detail.type === 'closeSection') {
+        panels.collapsePanel(sectionId);
+      } else if (detail.type === 'toggleSection') {
+        panels.togglePanel(sectionId);
+      }
     };
 
     window.addEventListener('atopile:ui_action', handleUiAction);
     return () => window.removeEventListener('atopile:ui_action', handleUiAction);
-  }, [setCollapsedSections]);
+  }, [panels]);
 
   // Initial data refresh after mount
   useEffect(() => {
     const timer = setTimeout(() => {
-      action('refreshProblems');
-      action('refreshPackages');
-      action('refreshStdlib');
+      void fetchInitialData();
     }, 100);
     return () => clearTimeout(timer);
-  }, [action]);
+  }, []);
 
   // Fetch BOM data when project or target selection changes
   useEffect(() => {
@@ -86,7 +75,18 @@ export function useSidebarEffects({
     const requestId = ++bomRequestIdRef.current;
     useStore.getState().setLoadingBom(true);
     useStore.getState().setBomError(null);
-    action('refreshBOM', { projectRoot: selectedProjectRoot, target: selectedTargetName, requestId });
+    api.bom
+      .get(selectedProjectRoot, selectedTargetName)
+      .then((result) => {
+        if (requestId !== bomRequestIdRef.current) return;
+        useStore.getState().setBomData(result);
+      })
+      .catch((error) => {
+        if (requestId !== bomRequestIdRef.current) return;
+        useStore.getState().setBomError(
+          error instanceof Error ? error.message : String(error)
+        );
+      });
   }, [selectedProjectRoot, selectedTargetName]);
 
   // Fetch Variables data when project or target selection changes
@@ -104,89 +104,19 @@ export function useSidebarEffects({
     const requestId = ++variablesRequestIdRef.current;
     useStore.getState().setLoadingVariables(true);
     useStore.getState().setVariablesError(null);
-    action('fetchVariables', { projectRoot: selectedProjectRoot, target: selectedTargetName, requestId });
+    api.variables
+      .get(selectedProjectRoot, selectedTargetName)
+      .then((result) => {
+        if (requestId !== variablesRequestIdRef.current) return;
+        useStore.getState().setVariablesData(result);
+      })
+      .catch((error) => {
+        if (requestId !== variablesRequestIdRef.current) return;
+        useStore.getState().setVariablesError(
+          error instanceof Error ? error.message : String(error)
+        );
+      });
   }, [selectedProjectRoot, selectedTargetName]);
 
-  // Package install state is owned by backend; frontend is read-only.
-
-  // Auto-expand: detect unused space and cropped sections
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const sectionIds = ['projects', 'packages', 'problems', 'stdlib', 'variables', 'bom'];
-    let debounceTimeoutId: ReturnType<typeof setTimeout> | null = null;
-
-    const checkAutoExpand = () => {
-      const containerHeight = container.clientHeight;
-      let totalUsedHeight = 0;
-      let croppedSectionInfo: { id: string; neededHeight: number; currentHeight: number } | null = null;
-
-      for (const id of sectionIds) {
-        if (collapsedSections.has(id)) continue;
-
-        const section = container.querySelector(`[data-section-id="${id}"]`) as HTMLElement;
-        if (!section) continue;
-
-        const sectionBody = section.querySelector('.section-body') as HTMLElement;
-        const titleBar = section.querySelector('.section-title-bar') as HTMLElement;
-
-        if (titleBar) totalUsedHeight += titleBar.offsetHeight;
-        if (sectionBody) {
-          const currentBodyHeight = sectionBody.offsetHeight;
-          const contentHeight = sectionBody.scrollHeight;
-          totalUsedHeight += currentBodyHeight;
-
-          const isOverflowing = contentHeight > currentBodyHeight + 5;
-
-          if (isOverflowing && !croppedSectionInfo) {
-            croppedSectionInfo = {
-              id,
-              neededHeight: contentHeight - currentBodyHeight,
-              currentHeight: section.offsetHeight,
-            };
-          }
-        }
-
-        const resizeHandle = section.querySelector('.section-resize-handle') as HTMLElement;
-        if (resizeHandle) totalUsedHeight += resizeHandle.offsetHeight;
-
-        totalUsedHeight += 1;
-      }
-
-      const unusedSpace = containerHeight - totalUsedHeight;
-      if (unusedSpace > 20 && croppedSectionInfo) {
-        const expandAmount = Math.min(unusedSpace, croppedSectionInfo.neededHeight);
-        const newHeight = croppedSectionInfo.currentHeight + expandAmount;
-
-        const currentSetHeight = sectionHeights[croppedSectionInfo.id];
-        if (!currentSetHeight || Math.abs(currentSetHeight - newHeight) > 5) {
-          setSectionHeights(prev => ({
-            ...prev,
-            [croppedSectionInfo!.id]: newHeight,
-          }));
-        }
-      }
-    };
-
-    const debouncedCheckAutoExpand = () => {
-      if (debounceTimeoutId !== null) {
-        clearTimeout(debounceTimeoutId);
-      }
-      debounceTimeoutId = setTimeout(checkAutoExpand, 100);
-    };
-
-    const initialTimeoutId = setTimeout(checkAutoExpand, 150);
-
-    const resizeObserver = new ResizeObserver(debouncedCheckAutoExpand);
-    resizeObserver.observe(container);
-
-    return () => {
-      clearTimeout(initialTimeoutId);
-      if (debounceTimeoutId !== null) {
-        clearTimeout(debounceTimeoutId);
-      }
-      resizeObserver.disconnect();
-    };
-  }, [collapsedSections, sectionHeights, setSectionHeights, containerRef]);
+  // Auto-expand/collapse is now handled by usePanelSizing hook based on store state.
 }

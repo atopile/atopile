@@ -7,17 +7,14 @@ interface CollapsibleSectionProps {
   badgeType?: 'count' | 'filter'
   errorCount?: number
   warningCount?: number
-  warningMessage?: string | null  // Tooltip message for warnings (e.g., "Registry unavailable")
-  loading?: boolean  // Show loading spinner in title bar
+  warningMessage?: string | null
+  loading?: boolean
   collapsed: boolean
   onToggle: () => void
   onClearFilter?: () => void
-  height?: number
-  maxHeight?: number  // Auto-size up to this max, then scroll
+  height?: number  // Calculated height from usePanelSizing (includes title bar)
   onResizeStart?: (e: React.MouseEvent) => void
   children: React.ReactNode
-  flexGrow?: boolean
-  autoSize?: boolean
 }
 
 export function CollapsibleSection({
@@ -33,30 +30,19 @@ export function CollapsibleSection({
   onToggle,
   onClearFilter,
   height,
-  maxHeight,
   onResizeStart,
   children,
-  flexGrow,
-  autoSize
 }: CollapsibleSectionProps) {
-  // Has a manually set height?
-  const hasManualHeight = !collapsed && height && !flexGrow
-  // Auto-size with max constraint?
-  const hasMaxHeight = !collapsed && !height && maxHeight && !flexGrow
-  const hasAutoSize = !collapsed && autoSize && !height && !maxHeight && !flexGrow
-
-  // Build style object
-  const sectionStyle: React.CSSProperties | undefined = hasManualHeight
-    ? { height, flex: '0 1 auto', minHeight: 0 }
-    : hasMaxHeight
-    ? { maxHeight, flex: '0 1 auto', minHeight: 0 }
-    : hasAutoSize
-    ? { flex: '0 1 auto', minHeight: 0 }
-    : undefined
+  // Build style: use calculated height if provided, otherwise let CSS handle it
+  const sectionStyle: React.CSSProperties | undefined = collapsed
+    ? undefined  // Collapsed: CSS handles it (flex: 0 0 auto)
+    : height
+      ? { height, flex: '0 0 auto' }  // Explicit height from calculation
+      : { flex: '1 1 0', minHeight: 0 }  // Fallback: share space equally
 
   return (
     <div
-      className={`collapsible-section ${collapsed ? 'collapsed' : ''} ${flexGrow ? 'flex-grow' : ''} ${hasManualHeight ? 'has-height' : ''} ${hasMaxHeight ? 'has-max-height' : ''}`}
+      className={`collapsible-section ${collapsed ? 'collapsed' : ''} ${height ? 'has-height' : ''}`}
       style={sectionStyle}
       data-section-id={id}
     >
@@ -92,14 +78,14 @@ export function CollapsibleSection({
             <AlertTriangle size={10} />
           </span>
         )}
-        
+
         {/* Badge (count or filter) */}
         {badge !== undefined && (
           <span className={`section-badge ${badgeType === 'filter' ? 'filter-badge' : ''}`}>
             {badgeType === 'filter' && <Filter size={8} />}
             {badge}
             {badgeType === 'filter' && onClearFilter && (
-              <button 
+              <button
                 className="clear-filter-btn"
                 onClick={(e) => {
                   e.stopPropagation()
@@ -113,14 +99,14 @@ export function CollapsibleSection({
           </span>
         )}
       </div>
-      
+
       {!collapsed && (
         <>
           <div className="section-body">
             {children}
           </div>
-          {onResizeStart && !flexGrow && (
-            <div 
+          {onResizeStart && (
+            <div
               className="section-resize-handle"
               onMouseDown={onResizeStart}
             >

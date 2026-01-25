@@ -1,5 +1,5 @@
 import { ConfigurationChangeEvent, Event, EventEmitter, ExtensionContext, window } from 'vscode';
-import { onDidChangePythonInterpreter, IInterpreterDetails, initializePython } from './python';
+import { initializePython } from './python';
 import { onDidChangeConfiguration } from './vscodeapi';
 import * as fs from 'fs';
 import { getWorkspaceSettings, ISettings } from './settings';
@@ -27,7 +27,6 @@ export const onDidChangeAtoBinInfo: Event<AtoBinInfo> = onDidChangeAtoBinInfoEve
 const UV_ATO_VERSION = 'atopile';
 
 export var g_uv_path_local: string | null = null;
-let g_pyAtoBin: string | null = null;
 
 // Track the build terminal for reuse
 let g_buildTerminal: vscode.Terminal | undefined;
@@ -69,39 +68,7 @@ async function _getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
         traceError(`Invalid atopile.ato path in settings: ${settings.ato} not found.`);
     }
 
-    // event based python && lazy ato
-    // Disabled, too buggy
-    // if (g_pyAtoBin && fs.existsSync(g_pyAtoBin)) {
-    //     traceInfo(`Using ato bin from venv: ${g_pyAtoBin}`);
-    //     return {
-    //         command: [g_pyAtoBin],
-    //         source: 'venv',
-    //     };
-    // }
-
-    // Check extension managed uv
-
-    // lazy load
-    // Using system (user-managed) ato is breaking too often to maintain
-    // let sysAtoBin = await which('ato', { nothrow: true });
-    // if (sysAtoBin) {
-    //     traceVerbose(`Using ato bin from system PATH: ${sysAtoBin}`);
-    //     return {
-    //         command: [sysAtoBin],
-    //         source: 'system',
-    //     };
-    // }
-
-    // Using system uv introduces more branching e.g outdated system uv / python
-    // let uvBin = await which('uv', { nothrow: true });
-    // if (uvBin) {
-    //     traceInfo(`Using system uv to run ato: ${uvBin}`);
-    //     return {
-    //         command: [uvBin, 'tool', 'run', '--from', UV_ATO_VERSION, 'ato'],
-    //         source: 'system-uv',
-    //     };
-    // }
-
+    // Use extension-managed uv to run ato
     if (g_uv_path_local) {
         const uvBinLocal = await which(g_uv_path_local, { nothrow: true });
         if (uvBinLocal) {
@@ -172,6 +139,19 @@ export async function getAtoBin(settings?: ISettings, timeout_ms?: number): Prom
     }
 
     return atoBin;
+}
+
+export async function resolveAtoBinForWorkspace(): Promise<{
+    settings: ISettings;
+    atoBin: AtoBinLocator;
+} | null> {
+    const projectRoot = await getProjectRoot();
+    const settings = await getWorkspaceSettings(projectRoot);
+    const atoBin = await getAtoBin(settings);
+    if (!atoBin) {
+        return null;
+    }
+    return { settings, atoBin };
 }
 
 
@@ -251,19 +231,6 @@ export async function initAtoBin(context: ExtensionContext): Promise<void> {
     g_uv_path_local = getExtensionManagedUvPath(context);
 
     context.subscriptions.push(
-        onDidChangePythonInterpreter(async (e: IInterpreterDetails) => {
-            const binDir = e.bin_dir;
-            if (!binDir) {
-                return;
-            }
-            g_pyAtoBin = binDir + '/ato';
-            if (!fs.existsSync(g_pyAtoBin)) {
-                traceVerbose(`ato bin not found in venv: ${g_pyAtoBin}`);
-                return;
-            }
-            traceVerbose(`findbin: ato bin found in venv: ${g_pyAtoBin}`);
-            onDidChangeAtoBinInfoEvent.fire({ init: e.init });
-        }),
         onDidChangeConfiguration(async (e: ConfigurationChangeEvent) => {
             if (e.affectsConfiguration(`atopile.ato`) || e.affectsConfiguration('atopile.from')) {
                 onDidChangeAtoBinInfoEvent.fire({ init: false });

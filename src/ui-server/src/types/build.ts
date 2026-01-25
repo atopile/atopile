@@ -46,7 +46,7 @@ export interface Build {
 
   // Context (present for active builds)
   projectRoot?: string;
-  targets?: string[];
+  target?: string;
   entry?: string;
   startedAt?: number;  // Unix timestamp
 
@@ -94,6 +94,8 @@ export interface ProjectDependency {
   publisher: string;   // e.g., "atopile"
   repository?: string;
   hasUpdate?: boolean;
+  isDirect?: boolean;
+  via?: string[];
 }
 
 export interface Project {
@@ -103,10 +105,6 @@ export interface Project {
   dependencies?: ProjectDependency[];  // Project dependencies from ato.yaml
 }
 
-/**
- * THE SINGLE APP STATE - All state lives here.
- * UI server owns this; it is synced from the backend.
- */
 // --- Package Types ---
 
 export interface PackageInfo {
@@ -143,6 +141,12 @@ export interface PackageDependency {
   version?: string;
 }
 
+// Package build target info (from ato.yaml)
+export interface PackageBuildTarget {
+  name: string;
+  entry: string;
+}
+
 // Detailed package info from registry (from /api/packages/{id}/details)
 export interface PackageDetails {
   identifier: string;
@@ -167,6 +171,8 @@ export interface PackageDetails {
   installedIn: string[];
   // Dependencies
   dependencies?: PackageDependency[];
+  // Builds (from package's ato.yaml - may not always be available)
+  builds?: PackageBuildTarget[];
 }
 
 // --- Package Summary Types (from /api/packages/summary) ---
@@ -307,37 +313,48 @@ export interface LcscPartsResponse {
   parts: Record<string, LcscPartData | null>;
 }
 
-export interface AppState {
-  // Connection
-  isConnected: boolean;
+export interface AtopileState {
+  currentVersion: string;           // Currently active version (e.g., "0.14.0")
+  source: 'release' | 'branch' | 'local';  // Source type
+  localPath: string | null;         // Local path when source is 'local'
+  branch: string | null;            // Git branch when source is 'branch'
+  availableVersions: string[];      // List of versions from PyPI
+  availableBranches: string[];      // List of branches from GitHub
+  detectedInstallations: {          // Local installations found on system
+    path: string;
+    version: string | null;
+    source: 'path' | 'venv' | 'manual';  // Where it was found
+  }[];
+  isInstalling: boolean;            // Installation in progress
+  installProgress: {                // Progress info during install
+    message: string;
+    percent?: number;
+  } | null;
+  error: string | null;             // Any error message
+}
 
+export interface ServerData {
   // Projects (from ato.yaml)
   projects: Project[];
   isLoadingProjects: boolean;
   projectsError: string | null;
-  selectedProjectRoot: string | null;
-  selectedTargetNames: string[];
 
   // Builds from /api/summary - completed builds and project context
   builds: Build[];
 
   // Queued builds from /api/builds/active - display-ready for queue panel
-  // Backend formats this data, frontend just renders
   queuedBuilds: Build[];
 
   // Packages (from dashboard API /api/packages/summary)
   packages: PackageInfo[];
   isLoadingPackages: boolean;
   packagesError: string | null;  // Registry error visibility
-  installingPackageIds: string[];  // Packages currently being installed
-  installError: string | null;  // Error from last install attempt
 
   // Standard Library (from dashboard API)
   stdlibItems: StdLibItem[];
   isLoadingStdlib: boolean;
 
   // BOM (from dashboard API /api/bom)
-  // Note: Python camelCase converts is_loading_bom to isLoadingBom (not isLoadingBOM)
   bomData: BOMData | null;
   isLoadingBom: boolean;
   bomError: string | null;
@@ -347,42 +364,51 @@ export interface AppState {
   isLoadingPackageDetails: boolean;
   packageDetailsError: string | null;
 
+  // Atopile configuration
+  atopile: AtopileState;
+
+  // Problems/diagnostics (parsed from log files)
+  problems: Problem[];
+  isLoadingProblems: boolean;
+
+  // Project modules (from /api/modules endpoint)
+  projectModules: Record<string, ModuleDefinition[]>;
+  isLoadingModules: boolean;
+
+  // Project files (from /api/files endpoint)
+  projectFiles: Record<string, FileTreeNode[]>;
+  isLoadingFiles: boolean;
+
+  // Project dependencies (from ato.yaml)
+  projectDependencies: Record<string, ProjectDependency[]>;
+  isLoadingDependencies: boolean;
+
+  // Variables (from /api/variables endpoint)
+  currentVariablesData: VariablesData | null;
+  isLoadingVariables: boolean;
+  variablesError: string | null;
+}
+
+export interface UIState {
+  // Connection
+  isConnected: boolean;
+
+  // Project selection
+  selectedProjectRoot: string | null;
+  selectedTargetNames: string[];
+
   // Build selection
   selectedBuildId: string | null;  // Primary identifier for selected build
   selectedBuildName: string | null;  // For display/backwards compatibility
   selectedProjectName: string | null;
 
+  // Log viewer
+  logViewerBuildId: string | null;  // Build ID currently shown in log viewer
+
   // Sidebar UI
   expandedTargets: string[];
 
-  // Extension info
-  version: string;
-  logoUri: string;
-
-  // Atopile configuration
-  atopile: {
-    currentVersion: string;           // Currently active version (e.g., "0.14.0")
-    source: 'release' | 'branch' | 'local';  // Source type
-    localPath: string | null;         // Local path when source is 'local'
-    branch: string | null;            // Git branch when source is 'branch'
-    availableVersions: string[];      // List of versions from PyPI
-    availableBranches: string[];      // List of branches from GitHub
-    detectedInstallations: {          // Local installations found on system
-      path: string;
-      version: string | null;
-      source: 'path' | 'venv' | 'manual';  // Where it was found
-    }[];
-    isInstalling: boolean;            // Installation in progress
-    installProgress: {                // Progress info during install
-      message: string;
-      percent?: number;
-    } | null;
-    error: string | null;             // Any error message
-  };
-
-  // Problems/diagnostics (parsed from log files)
-  problems: Problem[];
-  isLoadingProblems: boolean;
+  // Problems filter
   problemFilter: {
     levels: ('error' | 'warning')[];
     buildNames: string[];
@@ -392,26 +418,10 @@ export interface AppState {
   // Developer mode - shows all log audiences instead of just 'user'
   developerMode: boolean;
 
-  // Project modules (from /api/modules endpoint)
-  // Map of project root to available modules
-  projectModules: Record<string, ModuleDefinition[]>;
-  isLoadingModules: boolean;
-
-  // Project files (from /api/files endpoint)
-  // Map of project root to file tree (.ato and .py files)
-  projectFiles: Record<string, FileTreeNode[]>;
-  isLoadingFiles: boolean;
-
-  // Project dependencies (from ato.yaml)
-  // Map of project root to dependencies list
-  projectDependencies: Record<string, ProjectDependency[]>;
-  isLoadingDependencies: boolean;
-
-  // Variables (from /api/variables endpoint)
-  // Current variables for selected project/target - frontend just displays this
-  currentVariablesData: VariablesData | null;
-  isLoadingVariables: boolean;
-  variablesError: string | null;
+  // Package install/update tracking
+  installingPackageIds: string[];
+  installError: string | null;
+  updatingDependencyIds: string[];
 }
 
 // --- Problem Types ---
@@ -439,6 +449,9 @@ export interface ModuleChild {
   typeName: string;  // The type name (e.g., "Electrical", "Resistor", "V")
   itemType: 'interface' | 'module' | 'component' | 'parameter' | 'trait';
   children: ModuleChild[];  // Nested children (recursive)
+  // For parameters: user-specified constraint (e.g., "50 kΩ ±10%", "0402")
+  // Undefined means no constraint was specified
+  spec?: string;
 }
 
 export interface ModuleDefinition {

@@ -61,6 +61,7 @@ def _load_last_build_for_target(
             warnings=data.get("warnings", 0),
             errors=data.get("errors", 0),
             stages=data.get("stages"),  # May be None if not present
+            build_id=data.get("build_id"),  # Build ID hash
         )
     except Exception as e:
         log.debug(f"Failed to load build summary for {target_name}: {e}")
@@ -510,7 +511,8 @@ def update_dependency_version(
 
     deps = data["dependencies"]
 
-    # Handle list format: ["atopile/resistors@^1.0.0", ...]
+    # Handle list format: ["atopile/resistors@^1.0.0", ...] or
+    # [{type: registry, identifier: ..., release: ...}, ...]
     if isinstance(deps, list):
         found = False
         new_deps = []
@@ -527,6 +529,14 @@ def update_dependency_version(
                     found = True
                 else:
                     new_deps.append(dep)
+            elif isinstance(dep, dict):
+                # Handle registry format:
+                # {type: registry, identifier: ..., release: ...}
+                dep_id = dep.get("identifier")
+                if dep_id == identifier:
+                    dep["release"] = new_version
+                    found = True
+                new_deps.append(dep)
             else:
                 new_deps.append(dep)
 

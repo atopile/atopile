@@ -3,17 +3,22 @@
  * Event handlers for the Sidebar component
  */
 
-import { useCallback, useRef } from 'react';
 import { sendActionWithResponse } from '../../api/websocket';
+import { api } from '../../api/client';
 import { useStore } from '../../store';
 import type { Selection, SelectedPackage, StageFilter } from './sidebarUtils';
+import type { PanelId } from '../../utils/panelConfig';
+
+interface PanelControls {
+  expandPanel: (id: PanelId) => void;
+  collapsePanel: (id: PanelId) => void;
+  togglePanel: (id: PanelId) => void;
+}
 
 interface UseSidebarHandlersProps {
   projects: any[];
   state: any;
-  sectionHeights: Record<string, number>;
-  setSectionHeights: React.Dispatch<React.SetStateAction<Record<string, number>>>;
-  setCollapsedSections: React.Dispatch<React.SetStateAction<Set<string>>>;
+  panels: PanelControls;
   setSelection: React.Dispatch<React.SetStateAction<Selection>>;
   setSelectedPackage: React.Dispatch<React.SetStateAction<SelectedPackage | null>>;
   setActiveStageFilter: React.Dispatch<React.SetStateAction<StageFilter | null>>;
@@ -23,32 +28,12 @@ interface UseSidebarHandlersProps {
 export function useSidebarHandlers({
   projects,
   state,
-  sectionHeights,
-  setSectionHeights,
-  setCollapsedSections,
+  panels,
   setSelection,
   setSelectedPackage,
   setActiveStageFilter,
   action,
 }: UseSidebarHandlersProps) {
-  // Resize refs
-  const resizingRef = useRef<string | null>(null);
-  const startYRef = useRef(0);
-  const startHeightRef = useRef(0);
-  const rafRef = useRef<number | null>(null);
-
-  // Simple handlers - no useCallback needed
-  const toggleSection = (sectionId: string) => {
-    setCollapsedSections(prev => {
-      const next = new Set(prev);
-      if (next.has(sectionId)) {
-        next.delete(sectionId);
-      } else {
-        next.add(sectionId);
-      }
-      return next;
-    });
-  };
 
   const handleSelect = (sel: Selection) => {
     setSelection(sel);
@@ -58,8 +43,7 @@ export function useSidebarHandlers({
       const projectRoot = project?.root || project?.path;
       if (projectRoot) {
         useStore.getState().setSelectedTargets([]);
-        action('setSelectedTargets', { targetNames: [] });
-        action('selectProject', { projectRoot });
+        useStore.getState().selectProject(projectRoot);
       }
     }
   };
@@ -67,15 +51,11 @@ export function useSidebarHandlers({
   const handleSelectProject = (projectRoot: string | null) => {
     useStore.getState().selectProject(projectRoot);
     useStore.getState().setSelectedTargets([]);
-    action('selectProject', { projectRoot });
-    action('setSelectedTargets', { targetNames: [] });
   };
 
   const handleSelectTarget = (projectRoot: string, targetName: string) => {
     useStore.getState().selectProject(projectRoot);
     useStore.getState().setSelectedTargets([targetName]);
-    action('selectProject', { projectRoot });
-    action('setSelectedTargets', { targetNames: [targetName] });
   };
 
   const handleBuild = (level: 'project' | 'build' | 'symbol', id: string, label: string) => {
@@ -97,11 +77,8 @@ export function useSidebarHandlers({
       projectId
     });
 
-    setCollapsedSections(prev => {
-      const next = new Set(prev);
-      next.delete('problems');
-      return next;
-    });
+    // Expand problems panel when filtering
+    panels.expandPanel('problems');
   };
 
   const clearStageFilter = () => {
@@ -110,10 +87,19 @@ export function useSidebarHandlers({
 
   const handleOpenPackageDetail = (pkg: SelectedPackage) => {
     setSelectedPackage(pkg);
-    action('getPackageDetails', { packageId: pkg.fullName });
+    useStore.getState().setLoadingPackageDetails(true);
+    api.packages
+      .details(pkg.fullName)
+      .then((details) => useStore.getState().setPackageDetails(details))
+      .catch((error) => {
+        useStore.getState().setPackageDetailsError(
+          error instanceof Error ? error.message : String(error)
+        );
+      });
   };
 
   const handlePackageInstall = (packageId: string, projectRoot: string, version?: string) => {
+    useStore.getState().addInstallingPackage(packageId);
     action('installPackage', { packageId, projectRoot, version });
   };
 
@@ -124,15 +110,36 @@ export function useSidebarHandlers({
   const handleProjectExpand = (projectRoot: string) => {
     const modules = state?.projectModules?.[projectRoot];
     if (projectRoot && (!modules || modules.length === 0)) {
-      action('fetchModules', { projectRoot });
+      useStore.getState().setLoadingModules(true);
+      api.modules
+        .list(projectRoot)
+        .then((result) => useStore.getState().setProjectModules(projectRoot, result.modules))
+        .catch((error) => {
+          console.error('Failed to fetch modules:', error);
+          useStore.getState().setLoadingModules(false);
+        });
     }
     const files = state?.projectFiles?.[projectRoot];
     if (projectRoot && (!files || files.length === 0)) {
-      action('fetchFiles', { projectRoot });
+      useStore.getState().setLoadingFiles(true);
+      api.files
+        .list(projectRoot)
+        .then((result) => useStore.getState().setProjectFiles(projectRoot, result.files))
+        .catch((error) => {
+          console.error('Failed to fetch files:', error);
+          useStore.getState().setLoadingFiles(false);
+        });
     }
     const deps = state?.projectDependencies?.[projectRoot];
     if (projectRoot && (!deps || deps.length === 0)) {
-      action('fetchDependencies', { projectRoot });
+      useStore.getState().setLoadingDependencies(true);
+      api.dependencies
+        .list(projectRoot)
+        .then((result) => useStore.getState().setProjectDependencies(projectRoot, result.dependencies))
+        .catch((error) => {
+          console.error('Failed to fetch dependencies:', error);
+          useStore.getState().setLoadingDependencies(false);
+        });
     }
   };
 
@@ -231,66 +238,46 @@ export function useSidebarHandlers({
     identifier: string,
     newVersion: string
   ) => {
+    const store = useStore.getState();
+
+    // Mark as updating
+    store.addUpdatingDependency(projectId, identifier);
+
     try {
+      // First update the config file
       const response = await sendActionWithResponse('updateDependencyVersion', {
         project_root: projectId,
         identifier,
         new_version: newVersion,
       });
+
       if (response.result?.success) {
-        action('fetchDependencies', { projectRoot: projectId });
+        // Then install the updated version
+        await sendActionWithResponse('installPackage', {
+          packageId: identifier,
+          projectRoot: projectId,
+          version: newVersion,
+        });
+
+        // Refresh dependencies after install completes
+        try {
+          const result = await api.dependencies.list(projectId);
+          useStore.getState().setProjectDependencies(projectId, result.dependencies);
+        } catch (error) {
+          console.error('Failed to refresh dependencies:', error);
+        }
       } else {
         console.error('Failed to update dependency version:', response.result?.message);
       }
     } catch (error) {
       console.error('Failed to update dependency version:', error);
+    } finally {
+      // Mark as done
+      store.removeUpdatingDependency(projectId, identifier);
     }
   };
 
-  // Resize Handlers - KEEP useCallback: added as document event listeners
-  const handleResizeMove = useCallback((e: MouseEvent) => {
-    if (!resizingRef.current) return;
-
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current);
-    }
-
-    rafRef.current = requestAnimationFrame(() => {
-      const delta = e.clientY - startYRef.current;
-      const newHeight = Math.max(100, startHeightRef.current + delta);
-      setSectionHeights(prev => ({ ...prev, [resizingRef.current!]: newHeight }));
-      rafRef.current = null;
-    });
-  }, [setSectionHeights]);
-
-  const handleResizeEnd = useCallback(() => {
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-    resizingRef.current = null;
-    document.removeEventListener('mousemove', handleResizeMove);
-    document.removeEventListener('mouseup', handleResizeEnd);
-  }, [handleResizeMove]);
-
-  const handleResizeStart = useCallback((sectionId: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    resizingRef.current = sectionId;
-    startYRef.current = e.clientY;
-
-    if (sectionHeights[sectionId]) {
-      startHeightRef.current = sectionHeights[sectionId];
-    } else {
-      const section = (e.target as HTMLElement).closest('.collapsible-section');
-      startHeightRef.current = section ? section.getBoundingClientRect().height : 200;
-    }
-
-    document.addEventListener('mousemove', handleResizeMove);
-    document.addEventListener('mouseup', handleResizeEnd);
-  }, [sectionHeights, handleResizeMove, handleResizeEnd]);
-
   return {
-    toggleSection,
     handleSelect,
     handleBuild,
     handleCancelBuild,
@@ -311,6 +298,5 @@ export function useSidebarHandlers({
     handleDependencyVersionChange,
     handleSelectProject,
     handleSelectTarget,
-    handleResizeStart,
   };
 }

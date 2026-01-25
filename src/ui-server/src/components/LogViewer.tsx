@@ -538,8 +538,9 @@ export function LogViewer() {
   const [audience, setAudience] = useState<Audience>('developer');
   const [search, setSearch] = useState('');
 
-  // Build log specific parameters
-  const [buildId, setBuildId] = useState(initialParams.buildId);
+  // Build log specific parameters - buildId is in store for cross-component access
+  const buildId = useStore((state) => state.logViewerBuildId) ?? '';
+  const setBuildId = (id: string) => useStore.getState().setLogViewerBuildId(id || null);
   const [stage, setStage] = useState('');
 
   // Test log specific parameters
@@ -949,6 +950,11 @@ export function LogViewer() {
             };
         wsRef.current.send(JSON.stringify(payload));
       }
+    }
+
+    // Initialize buildId from URL params on mount
+    if (initialParams.buildId && !buildId) {
+      setBuildId(initialParams.buildId);
     }
   }, [logLevels, streaming, mode, buildId, testRunId, stage, testName, audience]);
 

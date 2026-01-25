@@ -69,6 +69,7 @@ dependencies = [
     "typing-extensions>=4.6.3",
     "urllib3>=2.2.1",
     "uvicorn>=0.29.0",
+    "watchdog>=4.0.0",
     "websockets>=12.0",
     "zstd>=1.5.6.7",
 ]
@@ -99,6 +100,7 @@ dev = [
     "ziglang==0.14.1",
     "graphviz>=0.21",
     "py-spy>=0.4.1",
+    "pydantic-to-typescript>=2.0.0",  # Generate TypeScript types from Pydantic models
     #"austin-dist>=4.0.0",
     #"austin-python>=2.1.2",
 ]

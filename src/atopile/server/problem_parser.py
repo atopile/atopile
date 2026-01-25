@@ -12,7 +12,7 @@ from pathlib import Path
 
 from atopile.dataclasses import Problem
 from atopile.logging import BuildLogger
-from atopile.server.state import server_state
+from atopile.server.connections import server_state
 
 log = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ def _load_problems_from_db(
 
 def sync_problems_to_state(developer_mode: bool | None = None) -> None:
     """
-    Sync problems to server_state for WebSocket broadcast.
+    Emit a problems-changed event for WebSocket clients.
 
     Called after build completes to update problems from log files.
     Uses asyncio.run_coroutine_threadsafe to schedule on main event loop.
@@ -123,63 +123,17 @@ def sync_problems_to_state(developer_mode: bool | None = None) -> None:
         developer_mode: If True, show all audiences. If False, only show 'user' audience.
             If None, uses the current developer_mode setting from server_state.
     """
-    # If not specified, get from server_state
-    if developer_mode is None:
-        developer_mode = server_state.state.developer_mode
-
     loop = server_state._event_loop
     if loop is not None and loop.is_running():
+        payload = {"developer_mode": developer_mode} if developer_mode is not None else {}
         asyncio.run_coroutine_threadsafe(
-            sync_problems_to_state_async(developer_mode=developer_mode), loop
+            server_state.emit_event("problems_changed", payload), loop
         )
     else:
-        log.warning("Cannot sync problems to state: event loop not available")
-
-
-async def sync_problems_to_state_async(developer_mode: bool = False) -> None:
-    """
-    Async function to refresh problems from build logs.
-
-    Reads problems from the central SQLite log DB and updates server_state.
-
-    Args:
-        developer_mode: If True, show all audiences. If False, only show 'user' audience.
-    """
-    from atopile.dataclasses import Problem as StateProblem
-
-    try:
-        all_problems: list[StateProblem] = []
-
-        for problem in _load_problems_from_db(developer_mode=developer_mode):
-            all_problems.append(
-                StateProblem(
-                    id=problem.id,
-                    level=problem.level,
-                    message=problem.message,
-                    file=problem.file,
-                    line=problem.line,
-                    column=problem.column,
-                    stage=problem.stage,
-                    logger=problem.logger,
-                    build_name=problem.build_name,
-                    project_name=problem.project_name,
-                    timestamp=problem.timestamp,
-                    ato_traceback=problem.ato_traceback,
-                    exc_info=problem.exc_info,
-                )
-            )
-
-        await server_state.set_problems(all_problems)
-        audience_desc = "all audiences" if developer_mode else "user audience only"
-        log.info(
-            f"Refreshed problems ({audience_desc}): {len(all_problems)} problems found"
-        )
-    except Exception as exc:
-        log.error(f"Failed to refresh problems: {exc}")
+        log.warning("Cannot emit problems event: event loop not available")
 
 
 __all__ = [
     "_load_problems_from_db",
     "sync_problems_to_state",
-    "sync_problems_to_state_async",
 ]

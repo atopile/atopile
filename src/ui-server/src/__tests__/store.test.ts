@@ -5,7 +5,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useStore, useSelectedProject, useSelectedBuild, useFilteredProblems, useFilteredLogs } from '../store';
+import { useStore, useSelectedProject, useSelectedBuild, useFilteredProblems } from '../store';
 import type { Project, Build, Problem } from '../types/build';
 
 // Helper to reset store state between tests
@@ -42,8 +42,6 @@ const resetStore = () => {
     logTotalCount: undefined,
     logHasMore: undefined,
     expandedTargets: [],
-    version: 'dev',
-    logoUri: '',
     atopile: {
       currentVersion: '',
       source: 'release',
@@ -145,6 +143,7 @@ const sampleProblems: Problem[] = [
   },
 ];
 
+
 describe('Zustand Store', () => {
   beforeEach(() => {
     resetStore();
@@ -161,31 +160,6 @@ describe('Zustand Store', () => {
 
       useStore.getState().setConnected(false);
       expect(useStore.getState().isConnected).toBe(false);
-    });
-  });
-
-  describe('replaceState', () => {
-    it('replaces state from WebSocket broadcast', () => {
-      useStore.getState().replaceState({
-        projects: sampleProjects,
-        builds: sampleBuilds,
-        version: '1.0.0',
-      });
-
-      const state = useStore.getState();
-      expect(state.projects).toEqual(sampleProjects);
-      expect(state.builds).toEqual(sampleBuilds);
-      expect(state.version).toBe('1.0.0');
-      expect(state.isConnected).toBe(true); // Always sets connected
-    });
-
-    it('preserves unreplaced state', () => {
-      useStore.setState({ selectedProjectRoot: '/test' });
-      useStore.getState().replaceState({ version: '2.0.0' });
-
-      const state = useStore.getState();
-      expect(state.selectedProjectRoot).toBe('/test');
-      expect(state.version).toBe('2.0.0');
     });
   });
 
@@ -374,36 +348,4 @@ describe('Store Selectors', () => {
     });
   });
 
-  describe('useFilteredLogs', () => {
-    beforeEach(() => {
-      useStore.setState({ logEntries: sampleLogs });
-    });
-
-    it('filters by enabled log levels', () => {
-      useStore.setState({ enabledLogLevels: ['ERROR'] });
-      const { result } = renderHook(() => useFilteredLogs());
-      expect(result.current).toHaveLength(1);
-      expect(result.current[0].level).toBe('ERROR');
-    });
-
-    it('filters by search query', () => {
-      useStore.setState({
-        enabledLogLevels: ['INFO', 'WARNING', 'ERROR', 'DEBUG'],
-        logSearchQuery: 'build',
-      });
-      const { result } = renderHook(() => useFilteredLogs());
-      expect(result.current).toHaveLength(1);
-      expect(result.current[0].message).toContain('build');
-    });
-
-    it('combines level and search filters', () => {
-      useStore.setState({
-        enabledLogLevels: ['INFO', 'WARNING'],
-        logSearchQuery: 'warning',
-      });
-      const { result } = renderHook(() => useFilteredLogs());
-      expect(result.current).toHaveLength(1);
-      expect(result.current[0].level).toBe('WARNING');
-    });
-  });
 });

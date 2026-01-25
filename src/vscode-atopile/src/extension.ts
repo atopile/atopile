@@ -4,7 +4,7 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { registerLogger, traceInfo, traceLog, traceVerbose } from './common/log/logging';
-import { startOrRestartServer, initServer, onNeedsRestart } from './common/server';
+import { startOrRestartServer, initServer, onNeedsRestart } from './common/lspServer';
 import { getLSClientTraceLevel } from './common/utilities';
 import { createOutputChannel, get_ide_type } from './common/vscodeapi';
 import * as ui from './ui/ui';
@@ -14,7 +14,6 @@ import { onBuildTargetChanged } from './common/target';
 import { Build } from './common/manifest';
 import { openPackageExplorer } from './ui/packagexplorer';
 import * as llm from './common/llm';
-import { appStateManager, initAtopileSettingsSync } from './common/appState';
 import { backendServer } from './common/backendServer';
 
 export let g_lsClient: LanguageClient | undefined;
@@ -90,42 +89,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const newClient = await startOrRestartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient);
         g_lsClient = newClient;
 
-        const autoStartBackend = vscode.workspace
-            .getConfiguration('atopile')
-            .get<boolean>('backendAutoStart', true);
-
         // On initial start, start backend server
         // On user-initiated restarts, restart backend server if configured
         if (isInitialStart) {
             isInitialStart = false;
-            if (autoStartBackend) {
-                // Start backend server in background (don't block extension activation)
-                backendServer.startServer().then(success => {
-                    if (success) {
-                        traceInfo('Backend server started successfully');
-                    } else {
-                        traceInfo('Backend server failed to start (may need manual start)');
-                    }
-                });
+            const success = await backendServer.startServer();
+            if (success) {
+                traceInfo('Backend server started successfully');
             } else {
-                traceInfo('Backend auto-start disabled; connecting to configured dashboardApiUrl');
+                traceInfo('Backend server failed to start');
             }
-        } else if (autoStartBackend) {
-            traceInfo('User requested restart, restarting backend server...');
-            backendServer.restartServer().then(success => {
-                if (!success) {
-                    traceInfo('Backend server restart failed');
-                }
-            });
         } else {
-            traceInfo('Backend auto-start disabled; skipping backend restart');
+            traceInfo('User requested restart, restarting backend server...');
+            const success = await backendServer.restartServer();
+            if (!success) {
+                traceInfo('Backend server restart failed');
+            }
         }
 
-        // Notify backend that installation/restart completed
+        // Notify backend that installation/restart completed (via webview WebSocket)
         if (newClient) {
-            appStateManager.sendAction('setAtopileInstalling', { installing: false });
+            backendServer.sendToWebview({
+                type: 'setAtopileInstalling',
+                installing: false
+            });
         } else {
-            appStateManager.sendAction('setAtopileInstalling', {
+            backendServer.sendToWebview({
+                type: 'setAtopileInstalling',
                 installing: false,
                 error: 'Failed to start language server'
             });
@@ -153,8 +143,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await ui.activate(context);
     await llm.activate(context);
 
-    // Sync atopile settings from UI to extension (manual restart required to apply)
-    context.subscriptions.push(initAtopileSettingsSync(context));
+    // Note: Atopile settings sync is now handled by SidebarProvider via postMessage
 
     context.subscriptions.push(vscode.window.registerUriHandler(new atopileUriHandler()));
 

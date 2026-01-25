@@ -8,7 +8,6 @@ import {
 type StdLibType = 'interface' | 'module' | 'component' | 'trait' | 'parameter'
 
 // Child/field in an interface or module
-// Backend uses to_frontend_dict() which converts snake_case to camelCase
 interface StdLibChild {
   name: string
   type: string  // The type name (e.g., "Electrical", "ElectricLogic")
@@ -19,7 +18,6 @@ interface StdLibChild {
 
 // Helper to get item type from child
 function getChildItemType(child: StdLibChild): StdLibType {
-  // Backend sends camelCase via to_frontend_dict()
   return child.itemType || 'interface'
 }
 
@@ -148,9 +146,8 @@ function StdLibCard({
                 <button className="copy-btn" onClick={(e) => {
                   e.stopPropagation()
                   handleCopy(item.usage || '')
-                }}>
+                }} title="Copy to clipboard">
                   <Copy size={12} />
-                  Copy
                 </button>
               </div>
               <pre className="usage-code">{item.usage}</pre>

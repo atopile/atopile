@@ -2340,7 +2340,7 @@ def robustly_rm_dir(path: os.PathLike) -> None:
     path = Path(path)
 
     def remove_readonly(func, path, excinfo):
-        os.chmod(path, stat.S_IWRITE)
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
         func(path)
 
     shutil.rmtree(path, onexc=remove_readonly)

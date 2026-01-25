@@ -10,7 +10,7 @@ The extension consists of several interconnected components:
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        VS Code Extension                             │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────────┐ │
-│  │ extension  │  │  findbin   │  │  server    │  │ appState-ws    │ │
+│  │ extension  │  │  findbin   │  │ lspServer  │  │ appState-ws    │ │
 │  │    .ts     │──│    .ts     │──│    .ts     │  │ standalone.ts  │ │
 │  │ (entry)    │  │(bin detect)│  │(LSP client)│  │(WebSocket sync)│ │
 │  └────────────┘  └────────────┘  └────────────┘  └────────────────┘ │
@@ -21,7 +21,7 @@ The extension consists of several interconnected components:
     ┌──────────┐    ┌──────────┐    ┌───────────┐   ┌───────────┐
     │ ui/setup │    │   UV     │    │ ato lsp   │   │ ato serve │
     │   .ts    │    │ (binary) │    │  start    │   │  (Python) │
-    │(uv setup)│    │          │    │  (stdio)  │   │ :8501     │
+    │(uv setup)│    │          │    │  (stdio)  │   │ :<ephemeral> │
     └──────────┘    └──────────┘    └───────────┘   └───────────┘
 ```
 
@@ -31,7 +31,7 @@ The extension consists of several interconnected components:
 |------|---------|
 | `src/extension.ts` | Extension entry point, activates all components |
 | `src/common/findbin.ts` | Detects ato binary location, manages UV |
-| `src/common/server.ts` | LSP client lifecycle management |
+| `src/common/lspServer.ts` | LSP client lifecycle management |
 | `src/common/backendServer.ts` | Backend server lifecycle (auto-start, restart, stop) |
 | `src/common/appState-ws-standalone.ts` | WebSocket state sync with Python backend |
 | `src/common/settings.ts` | VS Code settings management |
@@ -85,7 +85,7 @@ If no ato binary found and `atopile.autoInstall` is true:
 
 ## Server Management
 
-### LSP Server (server.ts)
+### LSP Server (lspServer.ts)
 
 The Language Server provides:
 - Syntax highlighting
@@ -125,7 +125,7 @@ The Python backend (`ato serve`) provides:
 - Restarted when atopile version changes
 - Gracefully stopped when extension deactivates
 
-**Connection:** WebSocket at `ws://localhost:8501/ws/state`
+**Connection:** WebSocket at `ws://127.0.0.1:<ephemeral>/ws/state`
 
 **Health Check:** The extension polls `GET /health` during startup to verify server is ready.
 
@@ -193,10 +193,11 @@ When user changes version in UI:
     "atopile.ato": "",           // Direct path to ato binary
     "atopile.from": "atopile",   // UV source (PyPI or git+URL)
     "atopile.autoInstall": true, // Auto-install UV/atopile
-    "atopile.telemetry": true,   // Send telemetry
-    "atopile.dashboardApiUrl": "http://localhost:8501"
+    "atopile.telemetry": true    // Send telemetry
 }
 ```
+
+The backend server is always extension-managed and bound to a per-session local port.
 
 ### Version Requirements
 
@@ -232,7 +233,7 @@ interface AtopileConfig {
 | Event | Source | Triggers |
 |-------|--------|----------|
 | `onDidChangeAtoBinInfoEvent` | findbin.ts | Server restart |
-| `onNeedsRestart` | server.ts | LSP server restart |
+| `onNeedsRestart` | lspServer.ts | LSP server restart |
 | `onBuildTargetChanged` | target.ts | LSP notification |
 | `onDidChangeConfiguration` | VS Code | Settings sync |
 

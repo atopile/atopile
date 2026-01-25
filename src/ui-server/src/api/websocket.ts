@@ -1,13 +1,14 @@
 /**
- * WebSocket client for real-time state updates from the Python backend.
+ * WebSocket client for event notifications from the Python backend.
  *
- * The backend broadcasts full state on every change. This client connects
- * to the WebSocket endpoint and updates the Zustand store.
+ * The backend emits lightweight events; this client triggers REST fetches
+ * and updates the Zustand store locally.
  */
 
 import { useStore } from '../store';
-import type { AppState } from '../types/build';
-import { WS_STATE_URL, getWorkspaceFolders } from './index';
+import { WS_STATE_URL, getWorkspaceFolders } from './config';
+import { postMessage } from './vscodeApi';
+import { fetchInitialData, handleEvent } from './eventHandler';
 
 // Reconnection settings
 const RECONNECT_DELAY_MS = 1000;
@@ -16,9 +17,10 @@ const RECONNECT_BACKOFF_MULTIPLIER = 1.5;
 const CONNECTION_TIMEOUT_MS = 5000; // Timeout for connection handshake
 
 // Message types from backend
-interface StateMessage {
-  type: 'state';
-  data: AppState;
+interface EventMessage {
+  type: 'event';
+  event: string;
+  data?: unknown;
 }
 
 interface ActionResultMessage {
@@ -35,7 +37,7 @@ interface ActionResultMessage {
   error?: string;
 }
 
-type BackendMessage = StateMessage | ActionResultMessage;
+type BackendMessage = EventMessage | ActionResultMessage;
 
 // WebSocket connection state
 let ws: WebSocket | null = null;
@@ -200,12 +202,17 @@ function handleOpen(): void {
   reconnectAttempts = 0;
   useStore.getState().setConnected(true);
 
+  // Notify VS Code extension of connection status
+  postMessage({ type: 'connectionStatus', isConnected: true });
+
   // Send workspace folders to backend if provided by VS Code extension
   const workspaceFolders = getWorkspaceFolders();
   if (workspaceFolders.length > 0) {
     console.log('[WS] Sending workspace folders:', workspaceFolders);
     sendAction('setWorkspaceFolders', { folders: workspaceFolders });
   }
+
+  void fetchInitialData();
 }
 
 function handleMessage(event: MessageEvent): void {
@@ -213,31 +220,83 @@ function handleMessage(event: MessageEvent): void {
     const message = JSON.parse(event.data) as BackendMessage;
 
     switch (message.type) {
-      case 'state':
-        // Full state replacement from backend
-        {
-          const rawState = message.data as unknown as Record<string, unknown>;
-          const {
-            installing_package_ids,
-            install_error,
-            ...rest
-          } = rawState as Record<string, unknown>;
+      case 'event': {
+        const eventName = message.event;
+        const payload = message.data;
 
-          const restState = rest as unknown as AppState;
-
-          useStore.getState().replaceState({
-            ...restState,
-            installingPackageIds:
-              (installing_package_ids as string[] | undefined) ??
-              restState.installingPackageIds ??
-              [],
-            installError:
-              (install_error as string | null | undefined) ??
-              restState.installError ??
-              null,
-          });
+        if (eventName === 'open_file' && payload && typeof payload === 'object') {
+          const data = payload as { path?: string; line?: number; column?: number };
+          if (data.path) {
+            postMessage({
+              type: 'openSignals',
+              openFile: data.path,
+              openFileLine: data.line ?? null,
+              openFileColumn: data.column ?? null,
+              openLayout: null,
+              openKicad: null,
+              open3d: null,
+            });
+          }
         }
+        if (eventName === 'open_layout' && payload && typeof payload === 'object') {
+          const data = payload as { path?: string };
+          if (data.path) {
+            postMessage({
+              type: 'openSignals',
+              openFile: null,
+              openFileLine: null,
+              openFileColumn: null,
+              openLayout: data.path,
+              openKicad: null,
+              open3d: null,
+            });
+          }
+        }
+        if (eventName === 'open_kicad' && payload && typeof payload === 'object') {
+          const data = payload as { path?: string };
+          if (data.path) {
+            postMessage({
+              type: 'openSignals',
+              openFile: null,
+              openFileLine: null,
+              openFileColumn: null,
+              openLayout: null,
+              openKicad: data.path,
+              open3d: null,
+            });
+          }
+        }
+        if (eventName === 'open_3d' && payload && typeof payload === 'object') {
+          const data = payload as { path?: string };
+          if (data.path) {
+            postMessage({
+              type: 'openSignals',
+              openFile: null,
+              openFileLine: null,
+              openFileColumn: null,
+              openLayout: null,
+              openKicad: null,
+              open3d: data.path,
+            });
+          }
+        }
+
+        void handleEvent(eventName, payload).then(() => {
+          if (eventName === 'atopile_config_changed') {
+            const atopile = useStore.getState().atopile;
+            postMessage({
+              type: 'atopileSettings',
+              atopile: {
+                source: atopile.source,
+                currentVersion: atopile.currentVersion,
+                branch: atopile.branch,
+                localPath: atopile.localPath,
+              },
+            });
+          }
+        });
         break;
+      }
 
       case 'action_result':
         // Action response (success/failure)
@@ -284,6 +343,9 @@ function handleClose(event: CloseEvent): void {
   ws = null;
   useStore.getState().setConnected(false);
 
+  // Notify VS Code extension of connection status
+  postMessage({ type: 'connectionStatus', isConnected: false });
+
   if (!isIntentionallyClosed) {
     scheduleReconnect();
   }
@@ -319,26 +381,6 @@ function scheduleReconnect(): void {
     reconnectAttempts++;
     connect();
   }, delay);
-}
-
-// --- React hook for connection lifecycle ---
-
-/**
- * React hook to manage WebSocket connection lifecycle.
- * Call this once at the app root level.
- */
-export function useWebSocketConnection(): void {
-  // Connect on mount, disconnect on unmount
-  // This uses a custom hook pattern that works with React's lifecycle
-  if (typeof window !== 'undefined') {
-    // Only run in browser
-    const { useEffect } = require('react');
-
-    useEffect(() => {
-      connect();
-      return () => disconnect();
-    }, []);
-  }
 }
 
 // Export for use in components

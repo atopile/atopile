@@ -78,7 +78,8 @@ def save_build_to_history(build_id: str, build_info: dict) -> None:
                 build_id,
                 build_info.get("build_key", ""),
                 build_info.get("project_root", ""),
-                json.dumps(build_info.get("targets", [])),
+                # Store target as single value (column still named "targets" for compat)
+                build_info.get("target", "default"),
                 build_info.get("entry"),
                 build_info.get("status", "unknown"),
                 build_info.get("return_code"),
@@ -126,7 +127,7 @@ def load_recent_builds_from_history(limit: int = 50) -> list[dict]:
                     "build_id": row["build_id"],
                     "build_key": row["build_key"],
                     "project_root": row["project_root"],
-                    "targets": json.loads(row["targets"]),
+                    "target": row["targets"],  # Column named "targets" but stores single target
                     "entry": row["entry"],
                     "status": row["status"],
                     "return_code": row["return_code"],
@@ -183,7 +184,7 @@ def get_build_info_by_id(build_id: str) -> dict | None:
             "build_id": row["build_id"],
             "build_key": row["build_key"],
             "project_root": row["project_root"],
-            "targets": json.loads(row["targets"]),
+            "target": row["targets"],  # Column named "targets" but stores single target
             "entry": row["entry"],
             "status": row["status"],
             "return_code": row["return_code"],
@@ -215,7 +216,7 @@ def get_builds_by_project_target(
 
     Args:
         project_root: Filter by project root path
-        target: Filter by target name (searches in targets JSON array)
+        target: Filter by target name
         limit: Maximum number of results
     """
     if not _build_history_db or not _build_history_db.exists():
@@ -235,11 +236,9 @@ def get_builds_by_project_target(
             params.append(project_root)
 
         if target:
-            # Search in JSON array - SQLite JSON1 extension or simple LIKE
-            # targets is stored as JSON array like '["default", "other"]'
-            query += " AND (targets LIKE ? OR targets LIKE ?)"
-            params.append(f'["{target}"]')  # Exact single match
-            params.append(f'%"{target}"%')  # Part of array
+            # Column named "targets" but stores single target string
+            query += " AND targets = ?"
+            params.append(target)
 
         query += " ORDER BY started_at DESC LIMIT ?"
         params.append(limit)
@@ -250,11 +249,6 @@ def get_builds_by_project_target(
 
         builds = []
         for row in rows:
-            targets_list = json.loads(row["targets"])
-            # If target filter was provided, double-check the match
-            if target and target not in targets_list:
-                continue
-
             builds.append(
                 {
                     "build_id": row["build_id"],
@@ -266,7 +260,7 @@ def get_builds_by_project_target(
                     else None,
                     "warnings": row["warnings"],
                     "errors": row["errors"],
-                    "targets": targets_list,
+                    "target": row["targets"],  # Column named "targets" but stores single target
                     "project_root": row["project_root"],
                 }
             )

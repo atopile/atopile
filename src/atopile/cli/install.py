@@ -82,13 +82,12 @@ def install(
 
 @capture("cli:sync_start", "cli:sync_end")
 def sync(
-    # TODO: only relevant when supporting version specs
-    # upgrade: Annotated[
-    #    bool,
-    #    typer.Option(
-    #        "--upgrade", "-U", help="Allow package upgrades, ignoring pinned versions"
-    #    ),
-    # ] = False,
+    upgrade: Annotated[
+        bool,
+        typer.Option(
+            "--upgrade", "-U", help="Update dependencies, ignoring pinned versions"
+        ),
+    ] = False,
     pin: Annotated[
         bool,
         typer.Option("--pin", "-p", help="Pin package versions if not already pinned"),
@@ -109,7 +108,10 @@ def sync(
 
     try:
         ProjectDependencies(
-            install_missing=True, clean_unmanaged_dirs=True, pin_versions=pin
+            install_missing=True,
+            clean_unmanaged_dirs=True,
+            pin_versions=pin,
+            update_versions=upgrade,
         )
 
     except (

@@ -101,6 +101,17 @@ class SinglePinAddressor(fabll.Node):
     # ----------------------------------------
     #     post-solve check
     # ----------------------------------------
+    class StatesNotConfiguredError(F.implements_design_check.UnfulfilledCheckException):
+        """Raised when SinglePinAddressor is used without module templating."""
+
+        def __init__(self, addressor: "SinglePinAddressor"):
+            super().__init__(
+                "SinglePinAddressor requires explicit states configuration via "
+                "module templating. Use: new SinglePinAddressor<states=N> "
+                "(e.g. new SinglePinAddressor<states=4>)",
+                nodes=[addressor],
+            )
+
     class OffsetNotResolvedError(F.implements_design_check.UnfulfilledCheckException):
         """Raised when the offset parameter cannot be resolved to a single value."""
 
@@ -119,6 +130,11 @@ class SinglePinAddressor(fabll.Node):
         After the solver resolves the offset value (0 to N-1), this method connects
         the address_line.line to the corresponding state's line.
         """
+        # Check that states were configured via module templating
+        state_list = self.states.get().as_list()
+        if len(state_list) == 0:
+            raise self.StatesNotConfiguredError(self)
+
         # Get solver from design check
         solver = self.design_check.get().get_solver()
 
@@ -131,8 +147,7 @@ class SinglePinAddressor(fabll.Node):
         if lit is None or not lit.op_setic_is_singleton():
             lit = solver.simplify_and_extract_superset(offset_p)
 
-        # Get the states to determine max_offset
-        state_list = self.states.get().as_list()
+        # Get max_offset from already-fetched state_list
         max_offset = len(state_list) - 1
 
         if lit is None or not lit.op_setic_is_singleton():
@@ -438,3 +453,28 @@ def test_single_pin_addressor_expression_propagation():
     assert int(result_node.get_single()) == 2, (
         f"Offset should be 2, got {result_node.get_single()}"
     )
+
+
+def test_single_pin_addressor_raises_without_templating():
+    """
+    Test that SinglePinAddressor raises a compile-time error if instantiated
+    without module templating (e.g. `new SinglePinAddressor` instead of
+    `new SinglePinAddressor<states=4>`).
+    """
+    from atopile.compiler import DslRichException
+    from test.compiler.conftest import build_instance
+
+    with pytest.raises(DslRichException, match="requires module templating"):
+        build_instance(
+            """
+            import SinglePinAddressor
+            import Electrical
+
+            module App:
+                addressor = new SinglePinAddressor
+                electrical = new Electrical
+                addressor.states[0] ~ electrical
+            """,
+            "App",
+            stdlib_extra=[SinglePinAddressor],
+        )

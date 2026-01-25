@@ -11,7 +11,7 @@ import type {
   Project,
   LcscPartData
 } from '../types/build'
-import { sendActionWithResponse } from '../api/websocket'
+import { api } from '../api/client'
 import { ProjectDropdown, type ProjectOption } from './ProjectDropdown'
 
 // Component types (local type alias for UI)
@@ -440,9 +440,9 @@ export function BOMPanel({
   const [lcscParts, setLcscParts] = useState<Record<string, LcscPartData | null>>({})
   const [lcscLoadingIds, setLcscLoadingIds] = useState<Set<string>>(new Set())
   const [latestBuildInfo, setLatestBuildInfo] = useState<{
-    build_id?: string
-    started_at?: number
-    completed_at?: number
+    buildId?: string
+    startedAt?: number
+    completedAt?: number
   } | null>(null)
   const [forceRefreshBuildId, setForceRefreshBuildId] = useState<string | null>(null)
   const lcscRequestIdRef = useRef(0)
@@ -459,13 +459,8 @@ export function BOMPanel({
     Promise.all(
       projects.map(async (project) => {
         try {
-          const response = await sendActionWithResponse('getBomTargets', {
-            projectRoot: project.root,
-          })
-          const result = response.result ?? {}
-          const targets = Array.isArray((result as { targets?: unknown }).targets)
-            ? (result as { targets: string[] }).targets
-            : []
+          const result = await api.bom.targets(project.root)
+          const targets = Array.isArray(result.targets) ? result.targets : []
           return [project.root, targets] as const
         } catch {
           return [project.root, [] as string[]] as const
@@ -518,22 +513,16 @@ export function BOMPanel({
       return
     }
 
-    sendActionWithResponse('getBuildsByProject', {
-      projectRoot: selectedProjectRoot,
-      target: selectedTargetName ?? undefined,
-      limit: 1,
-    })
-      .then((response) => {
-        const result = response.result ?? {}
-        const build = Array.isArray((result as { builds?: unknown }).builds)
-          ? (result as { builds: any[] }).builds[0]
-          : null
+    api.builds
+      .byProject(selectedProjectRoot, selectedTargetName ?? undefined, 1)
+      .then((result) => {
+        const build = Array.isArray(result.builds) ? result.builds[0] : null
         setLatestBuildInfo(build ? {
-          build_id: build.build_id,
-          started_at: build.started_at,
-          completed_at: build.completed_at ?? (
-            build.started_at && build.duration ? build.started_at + build.duration : undefined
-          ),
+          buildId: build.buildId,
+          startedAt: build.startedAt,
+          completedAt: build.startedAt && build.elapsedSeconds
+            ? build.startedAt + build.elapsedSeconds
+            : undefined,
         } : null)
       })
       .catch((error) => {
@@ -544,14 +533,14 @@ export function BOMPanel({
 
   // Check if build is stale (older than 24 hours) to trigger LCSC refresh
   useEffect(() => {
-    if (!latestBuildInfo?.build_id) return
-    const timestamp = latestBuildInfo.completed_at ?? latestBuildInfo.started_at
+    if (!latestBuildInfo?.buildId) return
+    const timestamp = latestBuildInfo.completedAt ?? latestBuildInfo.startedAt
     if (!timestamp) return
     const ageSeconds = Date.now() / 1000 - timestamp
     const isBuildStale = ageSeconds > 24 * 60 * 60
     if (!isBuildStale) return
-    if (lastLcscRefreshBuildIdRef.current === latestBuildInfo.build_id) return
-    setForceRefreshBuildId(latestBuildInfo.build_id)
+    if (lastLcscRefreshBuildIdRef.current === latestBuildInfo.buildId) return
+    setForceRefreshBuildId(latestBuildInfo.buildId)
   }, [latestBuildInfo])
 
   const lcscIds = useMemo(() => {
@@ -590,15 +579,14 @@ export function BOMPanel({
       for (const id of missing) next.add(id)
       return next
     })
-    sendActionWithResponse('fetchLcscParts', {
-      lcscIds: missing,
-      projectRoot: selectedProjectRoot ?? undefined,
-      target: selectedTargetName ?? undefined,
-    })
-      .then((response) => {
+    api.parts
+      .lcsc(missing, {
+        projectRoot: selectedProjectRoot ?? undefined,
+        target: selectedTargetName ?? undefined,
+      })
+      .then((result) => {
         if (requestId !== lcscRequestIdRef.current) return
-        const result = response.result ?? {}
-        const parts = (result as { parts?: Record<string, LcscPartData | null> }).parts || {}
+        const parts = result.parts || {}
         setLcscParts((prev) => ({ ...prev, ...parts }))
       })
       .catch((error) => {
@@ -611,8 +599,8 @@ export function BOMPanel({
           for (const id of missing) next.delete(id)
           return next
         })
-        if (forceRefresh && latestBuildInfo?.build_id) {
-          lastLcscRefreshBuildIdRef.current = latestBuildInfo.build_id
+        if (forceRefresh && latestBuildInfo?.buildId) {
+          lastLcscRefreshBuildIdRef.current = latestBuildInfo.buildId
           setForceRefreshBuildId(null)
         }
       })

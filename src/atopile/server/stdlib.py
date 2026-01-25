@@ -76,18 +76,34 @@ def _get_stdlib_typegraph_cache() -> tuple[
 
 
 def get_stdlib_watch_paths() -> list[Path]:
-    """Return filesystem paths for stdlib allowlist types."""
+    """Return filesystem paths for stdlib allowlist types.
+
+    Returns the common ancestor directory of all stdlib files to minimize
+    the number of file system watches needed.
+    """
     from atopile.compiler.ast_visitor import STDLIB_ALLOWLIST
 
-    paths: set[Path] = set()
+    paths: list[Path] = []
     for obj in STDLIB_ALLOWLIST:
         try:
             source = inspect.getsourcefile(obj)
         except Exception:
             source = None
         if source:
-            paths.add(Path(source))
-    return sorted(paths)
+            paths.append(Path(source).resolve())
+
+    if not paths:
+        return []
+
+    # Find common ancestor of all paths
+    common = paths[0].parent
+    for p in paths[1:]:
+        while not p.is_relative_to(common):
+            common = common.parent
+            if common == common.parent:  # Hit root
+                break
+
+    return [common]
 
 
 def _get_item_type_from_typegraph(

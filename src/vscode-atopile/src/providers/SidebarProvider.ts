@@ -14,6 +14,34 @@ import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
 import { traceInfo, traceError } from '../common/log/logging';
 
+// Message types from the webview
+interface OpenSignalsMessage {
+  type: 'openSignals';
+  openFile?: string | null;
+  openFileLine?: number | null;
+  openFileColumn?: number | null;
+  openLayout?: string | null;
+  openKicad?: string | null;
+  open3d?: string | null;
+}
+
+interface ConnectionStatusMessage {
+  type: 'connectionStatus';
+  isConnected: boolean;
+}
+
+interface AtopileSettingsMessage {
+  type: 'atopileSettings';
+  atopile: {
+    source?: string;
+    currentVersion?: string;
+    branch?: string | null;
+    localPath?: string | null;
+  };
+}
+
+type WebviewMessage = OpenSignalsMessage | ConnectionStatusMessage | AtopileSettingsMessage;
+
 /**
  * Check if we're running in development mode.
  * Dev mode is detected by checking if the Vite manifest exists.
@@ -37,21 +65,46 @@ function getNonce(): string {
   return text;
 }
 
+function getWsOrigin(wsUrl: string): string {
+  try {
+    return new URL(wsUrl).origin;
+  } catch {
+    return wsUrl;
+  }
+}
+
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
-  public static readonly viewType = 'atopile.project';
+  public static readonly viewType = 'atopile.sidebar';
 
   private _view?: vscode.WebviewView;
   private _disposables: vscode.Disposable[] = [];
   private _lastMode: 'dev' | 'prod' | null = null;
   private _hasHtml: boolean = false;
+  private _lastWorkspaceRoot: string | null = null;
+  private _lastApiUrl: string | null = null;
+  private _lastWsUrl: string | null = null;
 
-  constructor(private readonly _extensionUri: vscode.Uri) {
+  constructor(
+    private readonly _extensionUri: vscode.Uri,
+    private readonly _extensionVersion: string
+  ) {
     this._disposables.push(
       backendServer.onStatusChange((connected) => {
         if (connected) {
           this._refreshWebview();
         }
+      })
+    );
+    this._disposables.push(
+      vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        this._postWorkspaceRoot();
+      })
+    );
+    // Forward messages from backendServer to webview
+    this._disposables.push(
+      backendServer.onWebviewMessage((message) => {
+        this._postToWebview(message);
       })
     );
   }
@@ -80,7 +133,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const isDev = isDevelopmentMode(extensionPath);
     const mode: 'dev' | 'prod' = isDev ? 'dev' : 'prod';
 
-    if (this._hasHtml && this._lastMode === mode) {
+    const apiUrl = backendServer.apiUrl;
+    const wsUrl = backendServer.wsUrl;
+    const urlsUnchanged = this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl;
+    if (this._hasHtml && this._lastMode === mode && urlsUnchanged) {
       traceInfo('[SidebarProvider] Skipping refresh (already loaded)', { mode });
       return;
     }
@@ -92,6 +148,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     this._hasHtml = true;
     this._lastMode = mode;
+    this._lastApiUrl = apiUrl;
+    this._lastWsUrl = wsUrl;
   }
 
   public resolveWebviewView(
@@ -120,6 +178,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       localResourceRoots: isDev
         ? [] // No local resources in dev mode
         : [
+            vscode.Uri.file(path.join(extensionPath, 'resources')),
             vscode.Uri.file(path.join(extensionPath, 'resources', 'webviews')),
             vscode.Uri.file(path.join(extensionPath, 'webviews', 'dist')),
           ],
@@ -137,15 +196,196 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     this._hasHtml = true;
     this._lastMode = mode;
+    this._lastApiUrl = backendServer.apiUrl;
+    this._lastWsUrl = backendServer.wsUrl;
+    this._postWorkspaceRoot();
+
+    // Listen for messages from webview
+    this._disposables.push(
+      webviewView.webview.onDidReceiveMessage(
+        (message: WebviewMessage) => this._handleWebviewMessage(message),
+        undefined
+      )
+    );
   }
 
   /**
    * Get workspace folder paths from VS Code.
    */
-  private _getWorkspaceFolders(): string[] {
+  private _getWorkspaceRoot(): string | null {
     const folders = vscode.workspace.workspaceFolders;
-    if (!folders) return [];
-    return folders.map(f => f.uri.fsPath);
+    if (!folders || folders.length === 0) return null;
+    return folders[0].uri.fsPath;
+  }
+
+  private _postWorkspaceRoot(): void {
+    if (!this._view) {
+      return;
+    }
+    const root = this._getWorkspaceRoot();
+    if (this._lastWorkspaceRoot === root) {
+      return;
+    }
+    this._lastWorkspaceRoot = root;
+    this._view.webview.postMessage({ type: 'workspace-root', root });
+  }
+
+  /**
+   * Post a message to the webview.
+   */
+  private _postToWebview(message: Record<string, unknown>): void {
+    if (!this._view) {
+      traceInfo('[SidebarProvider] Cannot post message - no view');
+      return;
+    }
+    this._view.webview.postMessage(message);
+  }
+
+  /**
+   * Handle messages from the webview (forwarded from ui-server via postMessage).
+   */
+  private _handleWebviewMessage(message: WebviewMessage): void {
+    switch (message.type) {
+      case 'openSignals':
+        this._handleOpenSignals(message);
+        break;
+      case 'connectionStatus':
+        backendServer.setConnected(message.isConnected);
+        break;
+      case 'atopileSettings':
+        this._handleAtopileSettings(message.atopile);
+        break;
+      default:
+        traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
+    }
+  }
+
+  /**
+   * Handle open signals from the backend.
+   */
+  private _handleOpenSignals(msg: OpenSignalsMessage): void {
+    if (msg.openFile) {
+      this._openFile(msg.openFile, msg.openFileLine ?? undefined, msg.openFileColumn ?? undefined);
+    }
+    if (msg.openLayout) {
+      this._openWithVSCode(msg.openLayout);
+    }
+    if (msg.openKicad) {
+      this._openWithSystem(msg.openKicad);
+    }
+    if (msg.open3d) {
+      this._openWithSystem(msg.open3d);
+    }
+  }
+
+  /**
+   * Open a file in VS Code at a specific line and column.
+   */
+  private _openFile(filePath: string, line?: number, column?: number): void {
+    traceInfo(`[SidebarProvider] Opening file: ${filePath}${line ? `:${line}` : ''}`);
+    const uri = vscode.Uri.file(filePath);
+    vscode.workspace.openTextDocument(uri).then(
+      (doc) => {
+        const options: vscode.TextDocumentShowOptions = {};
+        if (line != null) {
+          const position = new vscode.Position(Math.max(0, line - 1), column ?? 0);
+          options.selection = new vscode.Range(position, position);
+        }
+        vscode.window.showTextDocument(doc, options);
+      },
+      (err) => {
+        traceError(`[SidebarProvider] Failed to open file ${filePath}: ${err}`);
+      }
+    );
+  }
+
+  /**
+   * Open a file in VS Code (for layout files).
+   */
+  private _openWithVSCode(filePath: string): void {
+    traceInfo(`[SidebarProvider] Opening with VS Code: ${filePath}`);
+    vscode.commands.executeCommand('vscode.open', vscode.Uri.file(filePath));
+  }
+
+  /**
+   * Open a file with the system default application (for KiCad, 3D files).
+   * Uses VS Code's openExternal API which is safe and cross-platform.
+   */
+  private _openWithSystem(filePath: string): void {
+    traceInfo(`[SidebarProvider] Opening with system: ${filePath}`);
+    const uri = vscode.Uri.file(filePath);
+    vscode.env.openExternal(uri).then(
+      (success) => {
+        if (!success) {
+          traceError(`[SidebarProvider] Failed to open: ${filePath}`);
+          vscode.window.showErrorMessage(`Failed to open file with system application`);
+        }
+      },
+      (err) => {
+        traceError(`[SidebarProvider] Failed to open: ${err}`);
+        vscode.window.showErrorMessage(`Failed to open: ${err.message}`);
+      }
+    );
+  }
+
+  /**
+   * Handle atopile settings changes from the UI.
+   * Syncs atopile settings to VS Code configuration.
+   */
+  private _handleAtopileSettings(atopile: AtopileSettingsMessage['atopile']): void {
+    if (!atopile) return;
+
+    // Store for comparison to avoid unnecessary updates
+    const settingsKey = JSON.stringify({
+      source: atopile.source,
+      currentVersion: atopile.currentVersion,
+      branch: atopile.branch,
+      localPath: atopile.localPath,
+    });
+
+    // Skip if nothing changed (we'd need to track this, but for simplicity we'll always update)
+    // This is called on every state update, so we should be careful not to spam config changes
+
+    const config = vscode.workspace.getConfiguration('atopile');
+    const hasWorkspace = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0;
+    const target = hasWorkspace ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+
+    try {
+      if (atopile.source === 'local' && atopile.localPath) {
+        // For local mode, set the 'ato' setting directly
+        traceInfo(`[SidebarProvider] Setting atopile.ato = ${atopile.localPath}`);
+        config.update('ato', atopile.localPath, target);
+        config.update('from', undefined, target);
+      } else {
+        // For release/branch mode, set the 'from' setting
+        const fromValue = this._atopileSettingsToFrom(atopile);
+        traceInfo(`[SidebarProvider] Setting atopile.from = ${fromValue}`);
+        config.update('from', fromValue, target);
+        config.update('ato', undefined, target);
+      }
+    } catch (error) {
+      traceError(`[SidebarProvider] Failed to update atopile settings: ${error}`);
+    }
+  }
+
+  /**
+   * Convert UI atopile settings to a VS Code 'atopile.from' setting value.
+   */
+  private _atopileSettingsToFrom(atopile: AtopileSettingsMessage['atopile']): string {
+    if (!atopile) return 'atopile';
+
+    switch (atopile.source) {
+      case 'release':
+        return atopile.currentVersion
+          ? `atopile@${atopile.currentVersion}`
+          : 'atopile';
+      case 'branch':
+        return `git+https://github.com/atopile/atopile.git@${atopile.branch || 'main'}`;
+      case 'local':
+        return atopile.localPath || '';
+      default:
+        return 'atopile';
+    }
   }
 
   /**
@@ -157,11 +397,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const viteDevServer = 'http://localhost:5173';
     const backendUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
-    const workspaceFolders = this._getWorkspaceFolders();
+    const wsOrigin = getWsOrigin(wsUrl);
+    const workspaceRoot = this._getWorkspaceRoot();
 
-    // Pass workspace folders as URL query param (base64 encoded to handle special chars)
-    const workspaceParam = workspaceFolders.length > 0
-      ? `?workspace=${encodeURIComponent(JSON.stringify(workspaceFolders))}`
+    const workspaceParam = workspaceRoot
+      ? `?workspace=${encodeURIComponent(workspaceRoot)}`
       : '';
 
     return `<!DOCTYPE html>
@@ -174,7 +414,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     frame-src ${viteDevServer};
     style-src 'unsafe-inline';
     script-src 'unsafe-inline';
-    connect-src ${viteDevServer} ${backendUrl} ${wsUrl};
+    connect-src ${viteDevServer} ${backendUrl} ${wsOrigin};
   ">
   <title>atopile</title>
   <style>
@@ -207,6 +447,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 <body>
   <div class="dev-banner">DEV MODE - Loading from Vite</div>
   <iframe src="${viteDevServer}/sidebar.html${workspaceParam}"></iframe>
+  <script>
+    window.addEventListener('message', (event) => {
+      const data = event && event.data;
+      if (!data || data.type !== 'workspace-root') return;
+      const iframe = document.querySelector('iframe');
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage(data, '*');
+      }
+    });
+  </script>
 </body>
 </html>`;
   }
@@ -224,6 +474,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const jsPath = path.join(webviewsDir, 'sidebar.js');
     const cssPath = path.join(webviewsDir, 'sidebar.css');
     const baseCssPath = path.join(webviewsDir, 'index.css');
+    const iconPath = path.join(extensionPath, 'resources', 'atopile-icon.svg');
 
     traceInfo('[SidebarProvider] _getProdHtml paths:', {
       webviewsDir,
@@ -245,11 +496,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const baseCssUri = fs.existsSync(baseCssPath)
       ? webview.asWebviewUri(vscode.Uri.file(baseCssPath))
       : null;
+    const iconUri = fs.existsSync(iconPath)
+      ? webview.asWebviewUri(vscode.Uri.file(iconPath)).toString()
+      : '';
 
     // Get backend URLs from backendServer (uses discovered port or config)
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
-    const workspaceFolders = this._getWorkspaceFolders();
+    const wsOrigin = getWsOrigin(wsUrl);
+    const workspaceRoot = this._getWorkspaceRoot();
 
     // Debug: log URLs being used
     traceInfo('SidebarProvider: Generating HTML with apiUrl:', apiUrl, 'wsUrl:', wsUrl);
@@ -265,7 +520,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     script-src ${webview.cspSource} 'nonce-${nonce}';
     font-src ${webview.cspSource};
     img-src ${webview.cspSource} data:;
-    connect-src ${apiUrl} ${wsUrl} ws://localhost:* http://localhost:*;
+    connect-src ${apiUrl} ${wsOrigin};
   ">
   <title>atopile</title>
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
@@ -278,9 +533,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     // Inject backend URLs for the React app
     window.__ATOPILE_API_URL__ = '${apiUrl}';
-    window.__ATOPILE_WS_URL__ = '${wsUrl}';
-    // Inject workspace folders for the React app
-    window.__ATOPILE_WORKSPACE_FOLDERS__ = ${JSON.stringify(workspaceFolders)};
+    window.__ATOPILE_WS_URL__ = '${wsOrigin}';
+    window.__ATOPILE_ICON_URL__ = '${iconUri}';
+    window.__ATOPILE_EXTENSION_VERSION__ = '${this._extensionVersion}';
+    // Inject workspace root for the React app
+    window.__ATOPILE_WORKSPACE_ROOT__ = ${JSON.stringify(workspaceRoot || '')};
   </script>
   <style>
     /* Debug: loading indicator */

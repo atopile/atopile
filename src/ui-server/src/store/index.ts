@@ -8,7 +8,9 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import type {
-  AppState,
+  ServerData,
+  UIState,
+  AtopileState,
   Project,
   Build,
   PackageInfo,
@@ -22,10 +24,8 @@ import type {
   VariablesData,
 } from '../types/build';
 
-// Initial state matching the backend AppState
-const initialState: AppState = {
-  // Connection
-  isConnected: false,
+// Initial state for the store
+const initialState: ServerData & UIState = {
 
   // Projects
   projects: [],
@@ -44,6 +44,7 @@ const initialState: AppState = {
   packagesError: null,
   installingPackageIds: [],
   installError: null,
+  updatingDependencyIds: [],
 
   // Standard Library
   stdlibItems: [],
@@ -64,12 +65,11 @@ const initialState: AppState = {
   selectedBuildName: null,
   selectedProjectName: null,
 
+  // Log viewer
+  logViewerBuildId: null as string | null,
+
   // Sidebar UI
   expandedTargets: [],
-
-  // Extension info
-  version: 'dev',
-  logoUri: '',
 
   // Atopile configuration
   atopile: {
@@ -113,18 +113,21 @@ const initialState: AppState = {
   currentVariablesData: null,
   isLoadingVariables: false,
   variablesError: null,
+
+  // Connection
+  isConnected: false,
 };
 
 // Store actions interface
 interface StoreActions {
   // Connection
   setConnected: (connected: boolean) => void;
-
-  // Full state replacement (from WebSocket)
-  replaceState: (state: Partial<AppState>) => void;
+  setAtopileConfig: (config: Partial<AtopileState>) => void;
 
   // Projects
   setProjects: (projects: Project[]) => void;
+  setLoadingProjects: (loading: boolean) => void;
+  setProjectsError: (error: string | null) => void;
   selectProject: (projectRoot: string | null) => void;
   setSelectedTargets: (targetNames: string[]) => void;
   toggleTarget: (targetName: string) => void;
@@ -136,22 +139,31 @@ interface StoreActions {
   selectBuild: (buildName: string | null) => void;
   selectBuildById: (buildId: string | null, buildName?: string | null) => void;
 
+  // Log viewer
+  setLogViewerBuildId: (buildId: string | null) => void;
+
   // Packages
   setPackages: (packages: PackageInfo[]) => void;
   setLoadingPackages: (loading: boolean) => void;
   setPackagesError: (error: string | null) => void;
   setPackageDetails: (details: PackageDetails | null) => void;
   setLoadingPackageDetails: (loading: boolean) => void;
+  setPackageDetailsError: (error: string | null) => void;
   addInstallingPackage: (packageId: string) => void;
   removeInstallingPackage: (packageId: string) => void;
   setInstallError: (packageId: string, error: string | null) => void;
+  clearInstallingPackages: () => void;
+  addUpdatingDependency: (projectRoot: string, dependencyId: string) => void;
+  removeUpdatingDependency: (projectRoot: string, dependencyId: string) => void;
 
   // Problems
   setProblems: (problems: Problem[]) => void;
+  setLoadingProblems: (loading: boolean) => void;
   setDeveloperMode: (enabled: boolean) => void;
 
   // Standard Library
   setStdlibItems: (items: StdLibItem[]) => void;
+  setLoadingStdlib: (loading: boolean) => void;
 
   // BOM
   setBomData: (data: BOMData | null) => void;
@@ -165,15 +177,18 @@ interface StoreActions {
 
   // Project data
   setProjectModules: (projectRoot: string, modules: ModuleDefinition[]) => void;
+  setLoadingModules: (loading: boolean) => void;
   setProjectFiles: (projectRoot: string, files: FileTreeNode[]) => void;
+  setLoadingFiles: (loading: boolean) => void;
   setProjectDependencies: (projectRoot: string, deps: ProjectDependency[]) => void;
+  setLoadingDependencies: (loading: boolean) => void;
 
   // Reset
   reset: () => void;
 }
 
 // Combined store type
-type Store = AppState & StoreActions;
+type Store = ServerData & UIState & StoreActions;
 
 export const useStore = create<Store>()(
   devtools(
@@ -183,16 +198,17 @@ export const useStore = create<Store>()(
       // Connection
       setConnected: (connected) => set({ isConnected: connected }),
 
-      // Full state replacement (from WebSocket broadcast)
-      replaceState: (newState) =>
+      setAtopileConfig: (config) =>
         set((state) => ({
-          ...state,
-          ...newState,
-          isConnected: true,
+          atopile: { ...state.atopile, ...config },
         })),
 
       // Projects
-      setProjects: (projects) => set({ projects }),
+      setProjects: (projects) =>
+        set({ projects, isLoadingProjects: false, projectsError: null }),
+      setLoadingProjects: (loading) => set({ isLoadingProjects: loading }),
+      setProjectsError: (error) =>
+        set({ projectsError: error, isLoadingProjects: false }),
 
       selectProject: (projectRoot) => set({ selectedProjectRoot: projectRoot }),
 
@@ -235,6 +251,9 @@ export const useStore = create<Store>()(
       selectBuildById: (buildId, buildName = null) =>
         set({ selectedBuildId: buildId, selectedBuildName: buildName }),
 
+      // Log viewer
+      setLogViewerBuildId: (buildId) => set({ logViewerBuildId: buildId }),
+
       // Packages
       setPackages: (packages) => set({ packages, isLoadingPackages: false }),
 
@@ -247,10 +266,14 @@ export const useStore = create<Store>()(
         set({
           selectedPackageDetails: details,
           isLoadingPackageDetails: false,
+          packageDetailsError: null,
         }),
 
       setLoadingPackageDetails: (loading) =>
         set({ isLoadingPackageDetails: loading }),
+
+      setPackageDetailsError: (error) =>
+        set({ packageDetailsError: error, isLoadingPackageDetails: false }),
 
       addInstallingPackage: (packageId) =>
         set((state) => ({
@@ -271,13 +294,36 @@ export const useStore = create<Store>()(
           installingPackageIds: state.installingPackageIds.filter((id) => id !== packageId),
         })),
 
+      clearInstallingPackages: () =>
+        set({ installingPackageIds: [], installError: null }),
+
+      addUpdatingDependency: (projectRoot, dependencyId) =>
+        set((state) => {
+          const key = `${projectRoot}:${dependencyId}`;
+          return {
+            updatingDependencyIds: state.updatingDependencyIds.includes(key)
+              ? state.updatingDependencyIds
+              : [...state.updatingDependencyIds, key],
+          };
+        }),
+
+      removeUpdatingDependency: (projectRoot, dependencyId) =>
+        set((state) => {
+          const key = `${projectRoot}:${dependencyId}`;
+          return {
+            updatingDependencyIds: state.updatingDependencyIds.filter((id) => id !== key),
+          };
+        }),
+
       // Problems
       setProblems: (problems) => set({ problems, isLoadingProblems: false }),
+      setLoadingProblems: (loading) => set({ isLoadingProblems: loading }),
       setDeveloperMode: (enabled) => set({ developerMode: enabled }),
 
       // Standard Library
       setStdlibItems: (items) =>
         set({ stdlibItems: items, isLoadingStdlib: false }),
+      setLoadingStdlib: (loading) => set({ isLoadingStdlib: loading }),
 
       // BOM
       setBomData: (data) => set({ bomData: data, isLoadingBom: false, bomError: null }),
@@ -301,6 +347,7 @@ export const useStore = create<Store>()(
           },
           isLoadingModules: false,
         })),
+      setLoadingModules: (loading) => set({ isLoadingModules: loading }),
 
       setProjectFiles: (projectRoot, files) =>
         set((state) => ({
@@ -310,6 +357,7 @@ export const useStore = create<Store>()(
           },
           isLoadingFiles: false,
         })),
+      setLoadingFiles: (loading) => set({ isLoadingFiles: loading }),
 
       setProjectDependencies: (projectRoot, deps) =>
         set((state) => ({
@@ -319,6 +367,7 @@ export const useStore = create<Store>()(
           },
           isLoadingDependencies: false,
         })),
+      setLoadingDependencies: (loading) => set({ isLoadingDependencies: loading }),
 
       // Reset
       reset: () => set(initialState),

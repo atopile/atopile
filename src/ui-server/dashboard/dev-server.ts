@@ -6,7 +6,13 @@ import { WebSocketServer, WebSocket } from 'ws';
 import * as http from 'http';
 
 const DEV_WS_PORT = 3001, HTTP_PORT = 3002;
-const BACKEND_WS = 'ws://localhost:8501/ws/state';
+const BACKEND_WS = process.env.VITE_WS_URL
+  || process.env.BACKEND_WS
+  || (process.env.VITE_API_URL ? `${process.env.VITE_API_URL.replace(/^http/, 'ws')}/ws/state` : '');
+
+if (!BACKEND_WS) {
+  throw new Error('BACKEND_WS not configured. Set VITE_WS_URL or VITE_API_URL.');
+}
 
 // WebSocket proxy: Browser <-> Dev Server <-> Python Backend
 const wss = new WebSocketServer({ port: DEV_WS_PORT });

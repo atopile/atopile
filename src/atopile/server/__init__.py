@@ -3,13 +3,13 @@ Atopile Server - FastAPI backend for the atopile VS Code extension.
 
 This package provides:
 - REST API endpoints for projects, builds, packages
-- WebSocket connections for real-time state updates
+- WebSocket connections for real-time events
 - Build queue management
 - Package registry integration
 
 Directory Structure:
 - server.py: Main FastAPI app and route handlers (being refactored)
-- state.py: ServerState singleton for state management
+- connections.py: ServerConnections singleton for event delivery
 - stdlib.py: Standard library introspection
 - routes/: FastAPI routers by domain (projects, builds, packages, etc.)
 

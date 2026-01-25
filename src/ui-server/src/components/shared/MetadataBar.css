@@ -1,0 +1,28 @@
+/**
+ * MetadataBar styles
+ */
+
+.metadata-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.metadata-bar .meta-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.metadata-bar .meta-item.link {
+  color: var(--ctp-blue);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.metadata-bar .meta-item.link:hover {
+  text-decoration: underline;
+}

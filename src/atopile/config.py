@@ -941,7 +941,9 @@ class ProjectConfig(BaseConfigModel):
     """Skip SSL verification for all API requests."""
 
     @classmethod
-    def from_path(cls, path: Path | None) -> "ProjectConfig | None":
+    def from_path(
+        cls, path: Path | None, *, validate_builds: bool = True
+    ) -> "ProjectConfig | None":
         if path is None:
             return None
 
@@ -956,6 +958,10 @@ class ProjectConfig(BaseConfigModel):
             raise UserFileNotFoundError(f"Failed to load project config: {e}") from e
         except Exception as e:
             raise UserConfigurationError(f"Failed to load project config: {e}") from e
+
+        if not validate_builds and isinstance(file_contents, dict):
+            file_contents = dict(file_contents)
+            file_contents["builds"] = {}
 
         file_contents.setdefault("paths", {}).setdefault("root", path)
         return _try_construct_config(
@@ -1016,6 +1022,7 @@ class ProjectConfig(BaseConfigModel):
         }
 
         if duplicates:
+            # return self
             config_path = self.paths.root / PROJECT_CONFIG_FILENAME
             error_lines = [
                 f"Multiple build targets share the same entry point in {config_path}:",
@@ -1064,7 +1071,10 @@ class ProjectConfig(BaseConfigModel):
 
             for i, dep in enumerate(deps):
                 if dep.matches(dependency):
-                    config_data["dependencies"][i] = serialized
+                    # Update the existing dependency in place to preserve comments
+                    existing_dep = config_data["dependencies"][i]
+                    existing_dep.clear()
+                    existing_dep.update(serialized)
                     break
             else:
                 if config_data.get("dependencies") is None:
@@ -1226,7 +1236,7 @@ class Config:
         self._project = _try_construct_config(ProjectSettings)
 
     def update_project_settings(
-        self, transformer: Callable[[dict, dict], dict], new_data: dict
+        self, transformer: Callable[[Any, dict], Any], new_data: dict
     ) -> None:
         """Apply an update to the project config file."""
         yaml = YAML(typ="rt")  # round-trip
@@ -1235,7 +1245,7 @@ class Config:
 
         try:
             with filename.open("r", encoding="utf-8") as file:
-                yaml_data: dict = yaml.load(filename) or {}
+                yaml_data = yaml.load(file) or {}
 
             yaml_data = transformer(yaml_data, new_data)
 

@@ -120,13 +120,10 @@ def handle_get_bom_by_build_id(build_id: str) -> dict | None:
         return None
 
     project_root = build_info.get("project_root")
-    targets = build_info.get("targets", [])
+    target = build_info.get("target")
 
-    if not project_root or not targets:
+    if not project_root or not target:
         return None
-
-    # Use the first target (most builds have one target)
-    target = targets[0]
 
     project_path = Path(project_root)
     bom_path = project_path / "build" / "builds" / target / f"{target}.bom.json"
@@ -165,13 +162,10 @@ def handle_get_variables_by_build_id(build_id: str) -> dict | None:
         return None
 
     project_root = build_info.get("project_root")
-    targets = build_info.get("targets", [])
+    target = build_info.get("target")
 
-    if not project_root or not targets:
+    if not project_root or not target:
         return None
-
-    # Use the first target (most builds have one target)
-    target = targets[0]
 
     project_path = Path(project_root)
     variables_path = (

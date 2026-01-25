@@ -350,9 +350,7 @@ class _PackageValidators:
     def verify_3d_models(config: "Config"):
         from pathlib import Path
 
-        from faebryk.libs.kicad.fileformats_version import (
-            try_load_kicad_pcb_file,
-        )
+        from faebryk.libs.kicad.fileformats import kicad
 
         layout_path: Path = config.project.paths.layout
         kicad_pcb_paths = list(layout_path.rglob("*.kicad_pcb"))
@@ -369,7 +367,7 @@ class _PackageValidators:
             return pcb_dir / p
 
         for pcb_path in kicad_pcb_paths:
-            pcb_file = try_load_kicad_pcb_file(pcb_path)
+            pcb_file = kicad.loads(kicad.pcb.PcbFile, pcb_path)
             pcb_dir = pcb_path.parent
             for fp in pcb_file.kicad_pcb.footprints:
                 for m in getattr(fp, "models", []):
@@ -483,6 +481,41 @@ class _PackageValidators:
                 )
             )
 
+    @staticmethod
+    def verify_unused_and_duplicate_imports(config: "Config"):
+        import re
+
+        _import_name_regex = r"(import ([^,\n]+))"
+
+        ato_files = config.project.paths.root.rglob("*.ato")
+        for ato_file in ato_files:
+            import_statements: list[re.Match[str]] = []
+            content = ato_file.read_text(encoding="utf-8")
+            for import_name in re.finditer(_import_name_regex, content):
+                import_statements.append(import_name)
+
+            # check if the name is at lease twice in the file
+            unused_imports: list[str] = []
+            duplicates: list[str] = []
+            for import_match in import_statements:
+                if content.count(import_match.group(2)) < 2:
+                    unused_imports.append(import_match.group(2))
+                if content.count(import_match.group(1)) > 1:
+                    duplicates.append(import_match.group(1))
+
+            file_path = ato_file.relative_to(config.project.paths.root)
+            message = ""
+            if unused_imports:
+                message = (
+                    f"Unused imports: [{', '.join(unused_imports)}] in {file_path}"
+                )
+            if duplicates:
+                message += (
+                    f"\nDuplicate imports: [{', '.join(duplicates)}] in {file_path}"
+                )
+            if message:
+                raise UserBadParameterError(message)
+
 
 _DEFAULT_VALIDATORS = [
     _PackageValidators.verify_manifest,
@@ -493,12 +526,13 @@ _DEFAULT_VALIDATORS = [
 ]
 
 _STRICT_VALIDATORS = [
-    # _PackageValidators.verify_3d_models, # TODO: fixme
+    _PackageValidators.verify_3d_models,
     _PackageValidators.verify_file_structure,
     _PackageValidators.verify_no_warnings,
     _PackageValidators.verify_usage_import,
     _PackageValidators.verify_usage_in_readme,
     _PackageValidators.verify_build_artifacts,
+    _PackageValidators.verify_unused_and_duplicate_imports,
 ]
 
 

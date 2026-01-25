@@ -12,7 +12,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.compiler import CompilerException, DslException
+from atopile.compiler import CompilerException, DslException, DslRichException
 from atopile.compiler import ast_types as AST
 from atopile.logging import get_logger
 from faebryk.core.faebrykpy import (
@@ -293,6 +293,7 @@ class ActionsFactory:
         nodetype: str | type[fabll.Node],
         identifier: str,
         template_args: dict[str, str | bool | float] | None,
+        source_chunk_node: "AST.SourceChunk | None" = None,
     ) -> fabll._ChildField:
         """Common implementation for child field creation."""
         if isinstance(nodetype, type):
@@ -302,6 +303,36 @@ class ActionsFactory:
                 )
             ) is not None:
                 return field
+
+            # If MakeChild exists with required params but no template_args,
+            # the user forgot to use module templating
+            if not template_args and hasattr(nodetype, "MakeChild"):
+                import inspect
+
+                sig = inspect.signature(nodetype.MakeChild)
+                required = [
+                    p.name
+                    for p in sig.parameters.values()
+                    if p.name not in ("cls", "self")
+                    and p.default is inspect.Parameter.empty
+                    and p.kind
+                    not in (
+                        inspect.Parameter.VAR_POSITIONAL,
+                        inspect.Parameter.VAR_KEYWORD,
+                    )
+                ]
+                if required:
+                    msg = (
+                        f"`{nodetype.__name__}` requires module templating. "
+                        f"Use: new {nodetype.__name__}"
+                        f"<{', '.join(f'{p}=...' for p in required)}>"
+                    )
+                    raise DslRichException(
+                        msg,
+                        original=DslException(msg),
+                        source_node=source_chunk_node,
+                    )
+
         return fabll._ChildField(nodetype=nodetype, identifier=identifier)
 
     @staticmethod
@@ -309,9 +340,12 @@ class ActionsFactory:
         module_type: type[fabll.Node],
         identifier: str,
         template_args: dict[str, str | bool | float] | None = None,
+        source_chunk_node: "AST.SourceChunk | None" = None,
     ) -> fabll._ChildField:
         """Create a child field from a fabll.Node class with optional template args."""
-        return ActionsFactory._make_child_field(module_type, identifier, template_args)
+        return ActionsFactory._make_child_field(
+            module_type, identifier, template_args, source_chunk_node
+        )
 
     @staticmethod
     def child_field(
@@ -319,6 +353,7 @@ class ActionsFactory:
         type_identifier: str,
         module_type: type[fabll.Node] | None = None,
         template_args: dict[str, str | bool | float] | None = None,
+        source_chunk_node: "AST.SourceChunk | None" = None,
     ) -> fabll._ChildField:
         """
         Create a child field from a type identifier string.
@@ -327,7 +362,7 @@ class ActionsFactory:
         """
         if module_type is not None:
             return ActionsFactory._make_child_field(
-                module_type, identifier, template_args
+                module_type, identifier, template_args, source_chunk_node
             )
         return fabll._ChildField(nodetype=type_identifier, identifier=identifier)
 
@@ -398,6 +433,7 @@ class ActionsFactory:
                 type_identifier=type_identifier,
                 module_type=module_type,
                 template_args=template_args,
+                source_chunk_node=source_chunk_node,
             ),
             import_ref=import_ref,
             source_chunk_node=source_chunk_node,
@@ -448,6 +484,7 @@ class ActionsFactory:
                         type_identifier=type_identifier,
                         module_type=module_type,
                         template_args=template_args,
+                        source_chunk_node=source_chunk_node,
                     ),
                     import_ref=import_ref,
                     source_chunk_node=source_chunk_node,

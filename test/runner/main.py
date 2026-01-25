@@ -2880,8 +2880,8 @@ LOG_VIEWER_DIST_DIR = (
 
 
 @app.get("/logs")
-async def serve_log_viewer():
-    """Serve the log viewer HTML page."""
+async def serve_log_viewer(request: Request):
+    """Serve the log viewer HTML page with injected API URL."""
     html_path = LOG_VIEWER_DIST_DIR / "log-viewer.html"
     if not html_path.exists():
         return HTMLResponse(
@@ -2892,6 +2892,19 @@ async def serve_log_viewer():
         )
 
     content = html_path.read_text(encoding="utf-8")
+
+    # Inject the API URL so the log viewer can connect to this server's WebSocket
+    # The log viewer JavaScript expects window.__ATOPILE_API_URL__ to be set
+    host = request.headers.get("host", "127.0.0.1")
+    # Ensure we use http (not https) for local server
+    api_url = f"http://{host}"
+    inject_script = f"""<script>
+    window.__ATOPILE_API_URL__ = "{api_url}";
+    </script>
+    """
+    # Insert the script right after <head>
+    content = content.replace("<head>", f"<head>\n    {inject_script}", 1)
+
     return HTMLResponse(content=content)
 
 

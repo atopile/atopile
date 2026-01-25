@@ -37,15 +37,7 @@ import atopile
 import faebryk
 from atopile.dataclasses import Log, StageCompleteEvent, StageStatusEvent
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
-from atopile.logging_utils import (
-    PLOG,
-    error_console,
-)
-
-# =============================================================================
-# Build Status and Events
-# =============================================================================
-
+from atopile.logging_utils import PLOG, console, error_console
 
 # Suppress noisy third-party loggers
 logging.getLogger("requests").setLevel(logging.WARNING)
@@ -144,7 +136,10 @@ def _get_pretty_repr(value: object, max_len: int = 200) -> str:
 
 
 def _serialize_local_var(
-    value: object, max_repr_len: int = 200, max_container_items: int = 50, depth: int = 0
+    value: object,
+    max_repr_len: int = 200,
+    max_container_items: int = 50,
+    depth: int = 0,
 ) -> dict:
     """
     Safely serialize a local variable for JSON storage.
@@ -162,7 +157,11 @@ def _serialize_local_var(
     if isinstance(value, str):
         # Truncate long strings
         if len(value) > max_repr_len:
-            return {"type": type_name, "value": value[:max_repr_len] + "...", "truncated": True}
+            return {
+                "type": type_name,
+                "value": value[:max_repr_len] + "...",
+                "truncated": True,
+            }
         return {"type": type_name, "value": value}
 
     # Handle containers recursively (if not too deep)
@@ -173,8 +172,14 @@ def _serialize_local_var(
             for k, v in items:
                 # Keys must be strings for JSON
                 key_str = str(k) if not isinstance(k, str) else k
-                serialized[key_str] = _serialize_local_var(v, max_repr_len, max_container_items, depth + 1)
-            result: dict[str, Any] = {"type": "dict", "value": serialized, "length": len(value)}
+                serialized[key_str] = _serialize_local_var(
+                    v, max_repr_len, max_container_items, depth + 1
+                )
+            result: dict[str, Any] = {
+                "type": "dict",
+                "value": serialized,
+                "length": len(value),
+            }
             if len(value) > max_container_items:
                 result["truncated"] = True
             return result
@@ -185,7 +190,11 @@ def _serialize_local_var(
                 _serialize_local_var(item, max_repr_len, max_container_items, depth + 1)
                 for item in items
             ]
-            result = {"type": type_name, "value": serialized_items, "length": len(value)}
+            result = {
+                "type": type_name,
+                "value": serialized_items,
+                "length": len(value),
+            }
             if len(value) > max_container_items:
                 result["truncated"] = True
             return result
@@ -196,7 +205,11 @@ def _serialize_local_var(
                 _serialize_local_var(item, max_repr_len, max_container_items, depth + 1)
                 for item in items
             ]
-            result = {"type": type_name, "value": serialized_items, "length": len(value)}
+            result = {
+                "type": type_name,
+                "value": serialized_items,
+                "length": len(value),
+            }
             if len(value) > max_container_items:
                 result["truncated"] = True
             return result
@@ -1341,7 +1354,8 @@ class LogHandler(RichHandler):
                 if record.levelno >= logging.ERROR and record.exc_info:
                     stderr_console = Console(file=sys.stderr, width=self.console.width)
                     stderr_console.print(renderable, crop=False, overflow="ignore")
-                self.console.print(renderable, crop=False, overflow="ignore")
+                else:
+                    self.console.print(renderable, crop=False, overflow="ignore")
             except Exception:
                 self.handleError(record)
             finally:
@@ -1572,6 +1586,9 @@ def load_test_logs_stream(
 handler = LogHandler(console=error_console)
 handler.setFormatter(_DEFAULT_FORMATTER)
 logging.basicConfig(level=logging.DEBUG, handlers=[handler])
+
+if _is_serving():
+    handler.console = console
 
 atexit.register(BuildLogger.close_all)
 atexit.register(LoggerForTest.close_all)

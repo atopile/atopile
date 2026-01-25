@@ -22,9 +22,9 @@ function findBuildForTarget(
     }
     const buildProjectName = b.projectName || (b.projectRoot ? b.projectRoot.split('/').pop() : null);
     if (buildProjectName !== projectName) return false;
-    const targets = b.targets || [];
-    if (targets.length > 0) {
-      return targets.includes(targetName);
+    // Check if build target matches
+    if (b.target) {
+      return b.target === targetName;
     }
     return b.name === targetName;
   });
@@ -129,6 +129,7 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
             elapsedSeconds: t.lastBuild.elapsedSeconds,
             warnings: t.lastBuild.warnings,
             errors: t.lastBuild.errors,
+            buildId: t.lastBuild.buildId,
             stages: t.lastBuild.stages?.map((s: any) => ({
               name: s.name,
               displayName: s.displayName,
@@ -205,6 +206,7 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
               elapsedSeconds: build.elapsedSeconds,
               warnings: build.warnings || 0,
               errors: build.errors || 0,
+              buildId: build.buildId,
             } : undefined,
           };
         });

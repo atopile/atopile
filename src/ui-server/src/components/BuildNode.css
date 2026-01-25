@@ -183,3 +183,14 @@
   color: var(--ctp-red);
   opacity: 0.8;
 }
+
+/* Build ID label in expanded view */
+.build-id-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  background: var(--bg-tertiary);
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}

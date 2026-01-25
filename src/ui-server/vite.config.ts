@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import fs from 'fs';
@@ -305,40 +305,57 @@ function screenshotPlugin() {
   };
 }
 
-export default defineConfig(({ mode }) => ({
-  plugins: [react(), screenshotPlugin()],
-  // Dev server settings
-  server: {
-    port: 5173,
-    open: true,
-    // Proxy websocket and API requests to the backend server
-    proxy: {
-      '/ws': {
-        target: 'ws://localhost:8501',
-        ws: true,
-      },
-      '/api': {
-        target: 'http://localhost:8501',
-        changeOrigin: true,
+function httpToWsUrl(httpUrl: string): string {
+  const url = new URL(httpUrl);
+  const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  const port = url.port ? `:${url.port}` : '';
+  return `${wsProtocol}//${url.hostname}${port}`;
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), 'VITE_');
+  const apiTarget = env.VITE_API_URL || '';
+  const wsTarget = env.VITE_WS_URL
+    ? new URL(env.VITE_WS_URL).origin.replace(/^http/, 'ws')
+    : (apiTarget ? httpToWsUrl(apiTarget) : '');
+  const proxy = apiTarget ? {
+    '/ws': {
+      target: wsTarget,
+      ws: true,
+    },
+    '/api': {
+      target: apiTarget,
+      changeOrigin: true,
+    },
+  } : undefined;
+
+  return {
+    plugins: [react(), screenshotPlugin()],
+    // Dev server settings
+    server: {
+      port: 5173,
+      open: true,
+      // Proxy websocket and API requests to the backend server
+      proxy,
+    },
+    build: {
+      outDir: 'dist',
+      emptyOutDir: true,
+      chunkSizeWarningLimit: 1600,
+      rollupOptions: {
+        // In production, build the separate webview entry points
+        input: mode === 'development'
+          ? resolve(__dirname, 'index.html')
+          : {
+              sidebar: resolve(__dirname, 'sidebar.html'),
+              logViewer: resolve(__dirname, 'log-viewer.html'),
+            },
+        output: {
+          entryFileNames: '[name].js',
+          chunkFileNames: '[name]-[hash].js',
+          assetFileNames: '[name].[ext]',
+        },
       },
     },
-  },
-  build: {
-    outDir: 'dist',
-    emptyOutDir: true,
-    rollupOptions: {
-      // In production, build the separate webview entry points
-      input: mode === 'development' 
-        ? resolve(__dirname, 'index.html')
-        : {
-            sidebar: resolve(__dirname, 'sidebar.html'),
-            logViewer: resolve(__dirname, 'log-viewer.html'),
-          },
-      output: {
-        entryFileNames: '[name].js',
-        chunkFileNames: '[name]-[hash].js',
-        assetFileNames: '[name].[ext]',
-      },
-    },
-  },
-}));
+  };
+});

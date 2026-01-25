@@ -11,7 +11,7 @@ export interface QueuedBuild {
   buildId: string;
   status: 'queued' | 'building' | 'success' | 'failed' | 'cancelled';
   projectRoot: string;
-  targets: string[];
+  target: string;
   entry?: string;
   startedAt: number;
   elapsedSeconds?: number;
@@ -96,10 +96,8 @@ function BuildQueueItem({ build, onCancel }: { build: QueuedBuild; onCancel: () 
   }, [build.status, build.startedAt, build.elapsedSeconds]);
 
   const projectName = getProjectName(build.projectRoot);
-  // Show all targets, or entry for standalone builds
-  const targetName = build.targets.length > 0
-    ? (build.targets.length === 1 ? build.targets[0] : build.targets.join(', '))
-    : (build.entry || 'default');
+  // Show target name, or entry for standalone builds
+  const targetName = build.target || build.entry || 'default';
   const currentStage = getCurrentStage(build);
 
   const statusIcon = {
