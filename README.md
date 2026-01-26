@@ -71,13 +71,14 @@ High-level steps:
 - Build outputs — BOM, fabrication and assembly data, reports
 - PCB fab/assembly — send outputs to your manufacturer
 
-## Examples
+## Example Projects
 
-- Quickstart walkthrough: https://docs.atopile.io/atopile/quickstart
-- Open examples via the editor (“atopile: Open Example”)
+- Open examples via the editor (“atopile: Open Example”) https://github.com/atopile/atopile/tree/main/examples
 - NONOS — Open-source smart speaker https://github.com/atopile/nonos
+- DSP - Open-source multi-channel DSP https://github.com/atopile/dsp
 - AI-Pin — Vibe-coded Humane Pin https://github.com/atopile/ai-pin
 - Hyperion — 300K nit display for raves https://github.com/atopile/hyperion
+- Cellsim - 18 channel battery cell simulator https://github.com/atopile/cellsim
 
 ## Packages and parts
 
