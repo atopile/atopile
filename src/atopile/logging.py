@@ -91,7 +91,11 @@ def _should_log(record: logging.LogRecord) -> bool:
         return True
     if name.startswith("httpcore") or name.startswith("atopile.server"):
         return False
-    return name.startswith("atopile") or name.startswith("faebryk")
+    return (
+        name.startswith("atopile")
+        or name.startswith("faebryk")
+        or name.startswith("test")
+    )
 
 
 class AtoLogger(logging.Logger):
@@ -576,6 +580,14 @@ class LoggerForTest(BaseLogger):
         for h in logging.getLogger().handlers:
             if isinstance(h, LogHandler) and h._test_logger:
                 h._test_logger.close()
+
+    @classmethod
+    def flush_all(cls) -> None:
+        """Flush pending logs without closing the writer."""
+        with SQLiteLogWriter._lock:
+            writer = SQLiteLogWriter._instances.get("test")
+            if writer:
+                writer.flush()
 
     @classmethod
     def setup_logging(cls, test_run_id: str, test: str = "") -> "LoggerForTest | None":

@@ -195,6 +195,9 @@ def main():
                 LoggerForTest.update_test_name(nodeid)
                 run_pytest_with_timeout(nodeid)
 
+                # Flush logs after each test to ensure they're written to DB
+                LoggerForTest.flush_all()
+
                 # always exit
                 # break
 

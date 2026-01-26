@@ -308,6 +308,49 @@ export const api = {
       }),
   },
 
+  // Tests
+  tests: {
+    collect: (paths: string = 'test src', filter: string = '', markers: string = '') => {
+      const params = new URLSearchParams();
+      params.set('paths', paths);
+      if (filter) params.set('filter', filter);
+      if (markers) params.set('markers', markers);
+      return fetchJSON<{
+        success: boolean;
+        tests: Array<{
+          node_id: string;
+          file: string;
+          class_name: string | null;
+          method_name: string;
+          display_name: string;
+        }>;
+        errors: Record<string, string>;
+        error: string | null;
+      }>(`/api/tests/collect?${params}`);
+    },
+
+    lastRun: (testName: string) =>
+      fetchJSON<{
+        found: boolean;
+        test_run_id: string | null;
+        timestamp: string | null;
+      }>(`/api/tests/last-run?test_name=${encodeURIComponent(testName)}`),
+
+    flags: () =>
+      fetchJSON<{
+        success: boolean;
+        flags: Array<{
+          env_name: string;
+          kind: string;
+          python_name: string | null;
+          default: string | null;
+          current: string | null;
+          description: string | null;
+        }>;
+        error: string | null;
+      }>('/api/tests/flags'),
+  },
+
   // Build targets
   buildTargets: {
     add: (projectRoot: string, name: string, entry: string) =>

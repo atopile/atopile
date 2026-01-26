@@ -416,6 +416,9 @@ def create_app(
         projects as projects_routes,
     )
     from atopile.server.routes import (
+        tests as tests_routes,
+    )
+    from atopile.server.routes import (
         websocket as ws_routes,
     )
 
@@ -427,6 +430,7 @@ def create_app(
     app.include_router(parts_routes.router)
     app.include_router(problems_routes.router)
     app.include_router(packages_routes.router)
+    app.include_router(tests_routes.router)
 
     return app
 
