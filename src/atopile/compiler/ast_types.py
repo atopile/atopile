@@ -29,7 +29,7 @@ class is_assignable(fabll.Node):
 
     def switch_cast(
         self,
-    ) -> "AstString | Boolean | NewExpression | Quantity | BoundedQuantity | BilateralQuantity | BinaryExpression | GroupExpression":  # noqa: E501
+    ) -> "AstString | Boolean | NewExpression | Quantity | BoundedQuantity | BilateralQuantity | BinaryExpression | GroupExpression | FieldRef":  # noqa: E501
         types = [
             AstString,
             Boolean,
@@ -39,6 +39,7 @@ class is_assignable(fabll.Node):
             BilateralQuantity,
             BinaryExpression,
             GroupExpression,
+            FieldRef,
         ]
         obj = fabll.Traits(self).get_obj_raw()
         for t in types:
@@ -229,6 +230,7 @@ class FieldRefPart(fabll.Node):
 
 
 class FieldRef(fabll.Node):
+    _is_assignable = fabll.Traits.MakeEdge(is_assignable.MakeChild())
     _is_arithmetic = fabll.Traits.MakeEdge(is_arithmetic.MakeChild())
     _is_arithmetic_atom = fabll.Traits.MakeEdge(is_arithmetic_atom.MakeChild())
     _is_connectable = fabll.Traits.MakeEdge(is_connectable.MakeChild())
