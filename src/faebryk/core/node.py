@@ -1221,11 +1221,11 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def get_root_id(self) -> str:
         return f"0x{self.instance.node().get_uuid():X}"
 
-    def get_name(self, accept_no_parent: bool = True) -> str:
+    def get_name(self, accept_no_parent: bool = True, with_detail: bool = False) -> str:
         from faebryk.library.has_name_override import has_name_override
 
         if self.has_trait(has_name_override):
-            return self.get_trait(has_name_override).get_name()
+            return self.get_trait(has_name_override).get_name(with_detail=with_detail)
         elif (parent := self.get_parent()) is not None:
             return parent[1]
         elif accept_no_parent:

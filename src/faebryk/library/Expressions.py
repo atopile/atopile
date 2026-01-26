@@ -1,3 +1,4 @@
+import logging
 import math
 import os
 from dataclasses import dataclass
@@ -20,6 +21,8 @@ from faebryk.libs.util import (
     once,
     zip_dicts_by_key,
 )
+
+logger = logging.getLogger(__name__)
 
 # TODO complete signatures
 # TODO consider moving to zig
@@ -310,14 +313,19 @@ class is_expression(fabll.Node):
             if lit := op.as_literal.try_get():
                 return lit.pretty_str()
             if po := op.as_parameter_operatable.try_get():
-                op_out = po.compact_repr(
-                    use_full_name=use_full_name, no_lit_suffix=no_lit_suffix
-                )
-                if (op_expr := po.as_expression.try_get()) and len(
-                    op_expr.get_operands()
-                ) > 1:
-                    op_out = f"({op_out})"
-                return op_out
+                if op_expr := po.as_expression.try_get():
+                    op_out = po.compact_repr(
+                        use_full_name=use_full_name, no_lit_suffix=no_lit_suffix
+                    )
+                    if len(op_expr.get_operands()) > 1:
+                        op_out = f"({op_out})"
+                    return op_out
+                elif op_p := po.as_parameter.try_get():
+                    return op_p.compact_repr(
+                        use_full_name=use_full_name,
+                        no_lit_suffix=no_lit_suffix,
+                        with_detail=False,
+                    )
             return str(op)
 
         formatted_operands = [format_operand(op) for op in operands]
@@ -377,7 +385,7 @@ class is_expression(fabll.Node):
             )
         ]
         alias_suffix = ",".join(
-            [p.compact_repr(use_full_name=use_full_name) for p in ps]
+            [p.compact_repr(use_full_name=use_full_name, with_detail=False) for p in ps]
         )
         if alias_suffix:
             alias_suffix = f"[{alias_suffix}]"
@@ -776,7 +784,11 @@ class is_expression(fabll.Node):
             assert False
 
         p = p_instance.is_parameter.get()
-        p.set_name(f"Rep({self.compact_repr(no_lit_suffix=True)})")
+        e_compact = self.compact_repr(no_lit_suffix=True, no_class_suffix=True)
+        p.set_name(
+            f"R0x{p.instance.node().get_uuid():X}",
+            detail=f"(o=`{e_compact}`)",
+        )
         if alias:
             Is.c(self.as_operand.get(), p.as_operand.get(), assert_=True)
         return p

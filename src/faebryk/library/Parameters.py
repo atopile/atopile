@@ -392,6 +392,7 @@ class is_parameter(fabll.Node):
         self,
         use_full_name: bool = False,
         no_lit_suffix: bool = False,
+        with_detail: bool = True,
     ) -> str:
         """
         Unit only printed if not dimensionless.
@@ -402,7 +403,7 @@ class is_parameter(fabll.Node):
         name = (
             obj.get_full_name()
             if use_full_name and obj.get_parent() is not None
-            else obj.get_name()
+            else obj.get_name(with_detail=with_detail)
         )
 
         unitstr = ""
@@ -439,14 +440,14 @@ class is_parameter(fabll.Node):
                 return x
         raise TypeError(f"Unknown parameter type: {obj}")
 
-    def set_name(self, name: str) -> None:
+    def set_name(self, name: str, detail: str | None = None) -> None:
         from faebryk.library.has_name_override import has_name_override
 
         obj = fabll.Traits(self).get_obj_raw()
         has_name = (
             has_name_override.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
-            .setup(name=name)
+            .setup(name=name, detail=detail)
         )
         fabll.Traits.add_instance_to(node=obj, trait_instance=has_name)
 
