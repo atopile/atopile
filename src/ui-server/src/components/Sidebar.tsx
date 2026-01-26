@@ -327,8 +327,7 @@ export function Sidebar() {
             activeFilePath={activeEditorFile}
             lastAtoFile={lastAtoFile}
             projects={projects || []}
-            projectModules={projectModules || {}}
-            onFetchModules={handlers.handleProjectExpand}
+            onRefreshStructure={handlers.handleStructureRefresh}
           />
         </CollapsibleSection>
 

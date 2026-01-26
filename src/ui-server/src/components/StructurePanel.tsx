@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { FileCode, Loader2, AlertTriangle, Search, X, RefreshCw } from 'lucide-react'
-import type { ModuleChild, ModuleDefinition, Project } from '../types/build'
+import type { ModuleChild, Project } from '../types/build'
 import { sendActionWithResponse } from '../api/websocket'
 import { ModuleTree } from './ModuleTreeNode'
 import './StructurePanel.css'
@@ -9,8 +9,7 @@ interface StructurePanelProps {
   activeFilePath: string | null
   lastAtoFile: string | null
   projects: Project[]
-  projectModules: Record<string, ModuleDefinition[]>
-  onFetchModules: (projectRoot: string) => void
+  onRefreshStructure: () => void
 }
 
 type ExplorerState =
@@ -75,8 +74,7 @@ export function StructurePanel({
   activeFilePath,
   lastAtoFile,
   projects,
-  projectModules,
-  onFetchModules,
+  onRefreshStructure,
 }: StructurePanelProps) {
   const [state, setState] = useState<ExplorerState>({ status: 'idle' })
   const [searchTerm, setSearchTerm] = useState('')
@@ -129,10 +127,6 @@ export function StructurePanel({
     return normalized.startsWith(prefix) ? normalized.slice(prefix.length) : effectiveAtoFile
   }, [effectiveAtoFile, activeProject])
 
-  const activeProjectModules = activeProject
-    ? projectModules[activeProject.root]
-    : undefined
-
   // Filter children based on search term
   const filteredModules = useMemo(() => {
     if (state.status !== 'ready') return []
@@ -170,8 +164,8 @@ export function StructurePanel({
     if (!effectiveAtoFile || !activeProject) return
     lastRequestKeyRef.current = null
     setRefreshToken((value) => value + 1)
-    onFetchModules(activeProject.root)
-  }, [effectiveAtoFile, activeProject, onFetchModules])
+    onRefreshStructure()
+  }, [effectiveAtoFile, activeProject, onRefreshStructure])
 
   const handleClearSearch = useCallback(() => {
     setSearchTerm('')
@@ -205,10 +199,6 @@ export function StructurePanel({
     if (!activeProject) {
       setState({ status: 'error', message: 'File is outside the current workspace' })
       return
-    }
-
-    if (!activeProjectModules || activeProjectModules.length === 0) {
-      onFetchModules(activeProject.root)
     }
 
     const requestKey = `${activeProject.root}:${effectiveAtoFile}`
@@ -254,7 +244,7 @@ export function StructurePanel({
         if (requestId !== requestIdRef.current) return
         setState({ status: 'error', message: error.message || 'Failed to load structure' })
       })
-  }, [effectiveAtoFile, activeProject, activeProjectModules, onFetchModules, projects.length, refreshToken])
+  }, [effectiveAtoFile, activeProject, projects.length, refreshToken])
 
   useEffect(() => {
     if (!effectiveAtoFile || state.status !== 'ready') return

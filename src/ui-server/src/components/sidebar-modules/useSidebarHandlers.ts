@@ -108,6 +108,10 @@ export function useSidebarHandlers({
     action('createProject', data || {});
   };
 
+  const handleStructureRefresh = () => {
+    // Structure panel triggers its own module introspection request.
+  };
+
   const handleProjectExpand = (projectRoot: string) => {
     const modules = state?.projectModules?.[projectRoot];
     if (projectRoot && (!modules || modules.length === 0)) {
@@ -268,6 +272,7 @@ export function useSidebarHandlers({
     handlePackageInstall,
     handleCreateProject,
     handleProjectExpand,
+    handleStructureRefresh,
     handleOpenSource,
     handleOpenKiCad,
     handleOpenLayout,
