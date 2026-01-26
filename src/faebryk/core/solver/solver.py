@@ -128,7 +128,7 @@ class Solver:
                 )
                 logger.error("G_out")
                 MutationStage.print_graph_contents_static(
-                    mutator.tg_in, mutator.G_out, log=logger.error
+                    mutator.tg_out, mutator.G_out, log=logger.error
                 )
                 raise
 

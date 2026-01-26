@@ -1163,12 +1163,26 @@ class MutationMap:
         ):
             if S_LOG:
                 logger.debug(f"Running {algo.name} -------")
-            algo_result = Mutator(
+            mutator = Mutator(
                 mut_map,
                 algo,
                 iteration=0,
                 terminal=False,
-            ).run()
+            )
+            try:
+                algo_result = mutator.run()
+            except:
+                if S_LOG:
+                    logger.error(f"Error running algorithm {algo.name}")
+                    logger.error("G_in")
+                    MutationStage.print_graph_contents_static(
+                        mutator.tg_in, mutator.G_in, log=logger.error
+                    )
+                    logger.error("G_out")
+                    MutationStage.print_graph_contents_static(
+                        mutator.tg_out, mutator.G_out, log=logger.error
+                    )
+                raise
 
             mut_map = mut_map.extend(algo_result.mutation_stage)
 
@@ -1408,14 +1422,37 @@ class ExpressionBuilder[
         )
 
     def matches(
-        self, other: F.Expressions.is_expression, allow_different_graph: bool
+        self,
+        other: F.Expressions.is_expression,
+        allow_different_graph: bool,
+        mutator: "Mutator",
     ) -> bool:
+        def _operand_matches(
+            x1: F.Parameters.can_be_operand, x2: F.Parameters.can_be_operand
+        ) -> bool:
+            same = x1.is_same(x2, allow_different_graph=allow_different_graph)
+            if same:
+                return True
+            if (
+                allow_different_graph
+                and not x1.is_in_graph(x2.g)
+                and (x1_po := x1.as_parameter_operatable.try_get())
+                and (x2_po := x2.as_parameter_operatable.try_get())
+            ):
+                if not mutator.has_been_mutated(x1_po) or not mutator.has_been_mutated(
+                    x2_po
+                ):
+                    return False
+                x1_po = mutator.get_mutated(x1_po)
+                x2_po = mutator.get_mutated(x2_po)
+                return x1_po.is_same(x2_po, allow_different_graph=allow_different_graph)
+            return False
+
         same_type = fabll.Traits(other).get_obj_raw().isinstance(self.factory)
         same_operands = len(self.operands) == len(
             other_ops := other.get_operands()
         ) and all(
-            x1.is_same(x2, allow_different_graph=allow_different_graph)
-            for x1, x2 in zip_equal(self.operands, other_ops)
+            _operand_matches(x1, x2) for x1, x2 in zip_equal(self.operands, other_ops)
         )
         same_terminate = self.terminate == bool(
             other.try_get_sibling_trait(is_terminated)
@@ -1673,11 +1710,7 @@ class Mutator:
 
         builder = ExpressionBuilder.from_e(expr).with_(
             factory=expression_factory if expression_factory is not None else None,
-            # TODO automatically flatten exprs if algo layer wants the comfort
-            # enforce lit or param
-            operands=[self.get_operand_copy(op) for op in operands]
-            if operands is not None
-            else None,
+            operands=list(operands),
             assert_=assert_,
             terminate=self.is_terminated(expr),
             traits=traits if traits is not None else [],
@@ -1692,11 +1725,9 @@ class Mutator:
         if assert_:
             alias_p = None
         else:
-            pre_alias_op = invariants.AliasClass.of(
-                expr.as_operand.get()
-            ).representative()
             alias_p = (
-                self.get_operand_copy(pre_alias_op)
+                invariants.AliasClass.of(expr.as_operand.get())
+                .representative()
                 .as_parameter_operatable.force_get()
                 .as_parameter.force_get()
             )
@@ -1738,7 +1769,7 @@ class Mutator:
 
         # copy detection
         if operands == e_operands and builder.matches(
-            new_expr_e, allow_different_graph=True
+            new_expr_e, allow_different_graph=True, mutator=self
         ):
             self.transformations.copied.add(expr_po)
 
@@ -2015,6 +2046,8 @@ class Mutator:
     def get_mutated(
         self, po: F.Parameters.is_parameter_operatable
     ) -> F.Parameters.is_parameter_operatable:
+        if po.is_in_graph(self.G_out):
+            return po
         return self.transformations.mutated[po]
 
     def try_get_mutated(

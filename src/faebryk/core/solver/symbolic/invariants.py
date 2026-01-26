@@ -25,9 +25,9 @@ from faebryk.core.solver.utils import (
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.util import ConfigFlag, OrderedSet, indented_container, not_none
 
-_logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 if S_LOG:
-    _logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.DEBUG)
 
 IsSubset = F.Expressions.IsSubset
 
@@ -36,23 +36,6 @@ INVARIANT_LOG = ConfigFlag(
 )
 
 I_LOG = S_LOG and INVARIANT_LOG
-
-
-# TODO get rid of those functions
-def debug(msg: str):
-    _logger.debug(msg)
-
-
-def info(msg: str):
-    _logger.info(msg)
-
-
-def warning(msg: str):
-    _logger.warning(msg)
-
-
-def error(msg: str):
-    _logger.error(msg)
 
 
 class AliasClass:
@@ -69,10 +52,10 @@ class AliasClass:
         if not aliases:
             return AliasClassStub(is_or_member, allow_non_repr=allow_non_repr)
 
-        if len(aliases) == 1:
-            return AliasClassIs(next(iter(aliases)))
-
-        assert False, "Unreachable"
+        assert len(aliases) == 1, f"Broken invariant: multiple aliases: {
+            indented_container([a.is_expression.get().compact_repr() for a in aliases])
+        }"
+        return AliasClassIs(next(iter(aliases)))
 
     @abstractmethod
     def get_with_trait[TR: fabll.NodeT](self, trait: type[TR]) -> set[TR]: ...
@@ -377,7 +360,7 @@ class SubsumptionCheck:
         Single alias per class: A is! B, B is C! => Is!(A, B, C)
         #TODO Single param per class  C param, Is!(A, B, C) => Is!(A, B)
         """
-        # I think this invariant only gets triggered if algos make aliases
+        # Gets triggered if algos make aliases or invariants.py makes/xfers classes
 
         if not builder.assert_:
             return SubsumptionCheck.Result()
@@ -421,7 +404,7 @@ class SubsumptionCheck:
             terminate=False,
             traits=[],
         )
-        debug(f"New alias: {builder}")
+        logger.debug(f"New alias: {builder}")
         return SubsumptionCheck.Result(
             builder,
             subsumed=[alias.is_expression.get() for alias in existing_aliases],
@@ -573,7 +556,9 @@ def _no_predicate_literals(
         # P!{⊆/⊇|True} -> P!
         if any(op.get_with_trait(F.Expressions.is_predicate) for op in class_ops):
             if I_LOG:
-                debug(f"Remove predicate literal {pretty_expr(builder, mutator)}")
+                logger.debug(
+                    f"Remove predicate literal {pretty_expr(builder, mutator)}"
+                )
             return None
         # P {⊆|True} -> P!
         a_class = class_ops[0]
@@ -582,7 +567,7 @@ def _no_predicate_literals(
                 before = pred.as_expression.get().compact_repr()
                 mutator.assert_(pred)
                 after = pred.as_expression.get().compact_repr()
-                debug(f"Assert implicit predicate `{before}` -> `{after}`")
+                logger.debug(f"Assert implicit predicate `{before}` -> `{after}`")
             else:
                 mutator.assert_(pred)
 
@@ -637,7 +622,7 @@ def _no_literal_inequalities(
     )  # TODO fuck you pyright
 
     if I_LOG:
-        debug(
+        logger.debug(
             f"Converting {pretty_expr(builder, mutator)} ->"
             f" {pretty_expr(new_builder, mutator)}"
         )
@@ -671,7 +656,7 @@ def _no_predicate_operands(
     new_builder = builder.with_(operands=new_operands)
 
     if I_LOG and new_operands != builder.operands:
-        debug(
+        logger.debug(
             f"Predicate operands: {pretty_expr(builder, mutator)} ->"
             f" {pretty_expr(new_builder, mutator)}"
         )
@@ -764,7 +749,9 @@ class Folds:
 
         # Reflexive expression with same operands -> always True, drop
         if I_LOG:
-            debug(f"Reflexive tautology dropped: {pretty_expr(builder, mutator)}")
+            logger.debug(
+                f"Reflexive tautology dropped: {pretty_expr(builder, mutator)}"
+            )
 
         return mutator.make_singleton(True).is_literal.get()
 
@@ -825,7 +812,7 @@ def _fold(
     assert lit_fold is not None
 
     if I_LOG:
-        debug(
+        logger.debug(
             f"Folded `{pretty_expr(builder, mutator)}` "
             f"to literal `{lit_fold.pretty_str()}`"
         )
@@ -911,7 +898,7 @@ def _no_singleton_supersets(
 
     out = builder.with_(operands=mapped_operands)
     if I_LOG:
-        debug(
+        logger.debug(
             f"No singleton supersets: {pretty_expr(builder, mutator)} -> "
             f"{pretty_expr(out, mutator)}"
         )
@@ -943,7 +930,7 @@ def _deduplicate_idempotent_operands(
     out = builder.with_(operands=list(unique_operands))
 
     if len(out.operands) != len(builder.operands) and I_LOG:
-        debug(
+        logger.debug(
             f"Deduplicated idempotent operands: {pretty_expr(builder, mutator)} -> "
             f"{pretty_expr(out, mutator)}"
         )
@@ -967,7 +954,7 @@ def _ss_lits_available(mutator: Mutator):
         if ss_t_e.get_operands_with_trait(F.Expressions.is_expression):
             continue
         if S_LOG:
-            debug(f"Copying ss lit: {pretty_expr(ss_t_e, mutator)}")
+            logger.debug(f"Copying ss lit: {pretty_expr(ss_t_e, mutator)}")
         mutator.get_copy(ss_t.can_be_operand.get())
 
 
@@ -987,7 +974,7 @@ def _operands_mutated_and_expressions_flat(
             # Create an alias representative now
             alias_param = op_e.create_representative(alias=True)
             if I_LOG:
-                debug(
+                logger.debug(
                     f"Created alias for expression operand: "
                     f"{op.pretty()}: {alias_param.compact_repr()}"
                 )
@@ -1013,6 +1000,26 @@ def _operands_classes(builder: ExpressionBuilder) -> list["AliasClass"]:
     return [
         AliasClass.of(op, allow_non_repr=builder.is_alias()) for op in builder.operands
     ]
+
+
+def _merge_alias(
+    mutator: Mutator,
+    old_alias: F.Parameters.is_parameter,
+    new_alias: F.Parameters.is_parameter,
+) -> None:
+    old_alias_po = old_alias.as_parameter_operatable.get()
+    new_alias_po = new_alias.as_parameter_operatable.get()
+    if not mutator.has_been_mutated(old_alias_po):
+        mutator._mutate(old_alias_po, new_alias_po)
+        return
+    old_mutated = (
+        mutator.get_mutated(old_alias_po)
+        if not old_alias_po.is_in_graph(mutator.G_out)
+        else old_alias_po
+    )
+    if old_mutated.is_same(new_alias_po):
+        return
+    raise NotImplementedError("TODO merge mutated parameter")
 
 
 def insert_expression(
@@ -1098,19 +1105,28 @@ def insert_expression(
         # merge alias
         if alias:
             if I_LOG:
-                debug(
+                logger.debug(
                     f"Merge alias: {alias.compact_repr()}"
                     f" with congruent {congruent_op.pretty()}"
                 )
-            mutator.create_check_and_insert_expression_from_builder(
-                ExpressionBuilder(
-                    F.Expressions.Is,
-                    [alias.as_operand.get(), congruent_op],
-                    assert_=True,
-                    terminate=True,
-                    traits=[],
-                )
+            # TODO this is a shortcut for below, we dont really want shortcuts for now
+            _merge_alias(
+                mutator,
+                alias,
+                AliasClass.of(congruent_op)
+                .representative()
+                .as_parameter_operatable.force_get()
+                .as_parameter.force_get(),
             )
+            # mutator.create_check_and_insert_expression_from_builder(
+            #     ExpressionBuilder(
+            #         F.Expressions.Is,
+            #         [alias.as_operand.get(), congruent_op],
+            #         assert_=True,
+            #         terminate=True,
+            #         traits=[],
+            #     )
+            # )
         # unflag dirty
         if expr_already_exists_in_old_graph:
             if congruent_po in mutator.transformations.created:
@@ -1127,7 +1143,7 @@ def insert_expression(
                 mutator.transformations.asserted.remove(congruent_assertable)
 
         if I_LOG:
-            debug(
+            logger.debug(
                 f"Found congruent expression for {pretty_expr(builder, mutator)}:"
                 f" {congruent_op.pretty()}"
             )
@@ -1141,7 +1157,7 @@ def insert_expression(
         subsume_res = find_subsuming_expression(mutator, builder)
         if subsume_res.subsumed and I_LOG:
             reprs = [s.compact_repr() for s in subsume_res.subsumed]
-            debug(f"Subsumed: {indented_container(reprs)}")
+            logger.debug(f"Subsumed: {indented_container(reprs)}")
         for subsumed in subsume_res.subsumed or []:
             subsumed_po = subsumed.as_parameter_operatable.get()
             mutator.mark_irrelevant(subsumed_po)
@@ -1156,15 +1172,17 @@ def insert_expression(
                         new = pretty_expr(most_constrained, mutator)
                         if new == orig:
                             new = "congruent"
-                        debug(f"Subsume replaced: {orig} -> {new}")
+                        logger.debug(f"Subsume replaced: {orig} -> {new}")
                     return InsertExpressionResult(most_constrained, False)
                 case ExpressionBuilder():
                     builder = most_constrained
                     if I_LOG:
-                        debug(f"Subsume adjust {pretty_expr(builder, mutator)}")
+                        logger.debug(f"Subsume adjust {pretty_expr(builder, mutator)}")
                 case SubsumptionCheck.Result._DISCARD():
                     if I_LOG:
-                        debug(f"Subsume discard: {pretty_expr(builder, mutator)}")
+                        logger.debug(
+                            f"Subsume discard: {pretty_expr(builder, mutator)}"
+                        )
                     return InsertExpressionResult(None, False)
 
     # * no empty supersets
@@ -1195,7 +1213,7 @@ def insert_expression(
         and not builder.indexed_ops_with_trait(F.Parameters.is_parameter)
     ):
         if I_LOG:
-            debug(f"Terminate ss lit: {pretty_expr(builder, mutator)}")
+            logger.debug(f"Terminate ss lit: {pretty_expr(builder, mutator)}")
         builder = builder.with_(terminate=True)
 
     # * terminate A is! B
@@ -1206,7 +1224,7 @@ def insert_expression(
         and not builder.terminate
     ):
         if I_LOG:
-            debug(f"Terminate is!: {pretty_expr(builder, mutator)}")
+            logger.debug(f"Terminate is!: {pretty_expr(builder, mutator)}")
         builder = builder.with_(terminate=True)
 
     # * canonical (covered by create)
@@ -1219,6 +1237,9 @@ def insert_expression(
     # transfer/create alias for new expr
     if alias:
         # TODO find alias in old graph and copy it over if it exists
+        alias = mutator.get_mutated(
+            alias.as_parameter_operatable.get()
+        ).as_parameter.force_get()
         mutator.create_check_and_insert_expression_from_builder(
             ExpressionBuilder(
                 F.Expressions.Is,
@@ -1264,7 +1285,7 @@ def wrap_insert_expression(
 ) -> InsertExpressionResult:
     s = scope()
     if I_LOG:
-        warning(
+        logger.warning(
             f"Processing: {pretty_expr(builder, mutator)},"
             f" alias: {alias.compact_repr() if alias else None}"
         )
@@ -1286,7 +1307,7 @@ def wrap_insert_expression(
     else:
         op_e = res.out
         op = op_e.as_operand.get()
-        if builder.matches(op_e, allow_different_graph=True):
+        if builder.matches(op_e, allow_different_graph=True, mutator=mutator):
             target_dbg = "COPY"
         else:
             target_dbg = f"`{op.pretty()}`"
@@ -1295,17 +1316,17 @@ def wrap_insert_expression(
             target_dbg = "MERGED"
 
         elif target_dbg == src_dbg:
-            error(f"Builder pretty: {builder!r}")
-            error(f"Builder: {builder.terminate=} {builder.assert_=}")
-            error(f"Builder operands {indented_container(builder.operands)}")
-            error(f"Expr: {fabll.Traits(op).get_obj_raw()}")
+            logger.error(f"Builder pretty: {builder!r}")
+            logger.error(f"Builder: {builder.terminate=} {builder.assert_=}")
+            logger.error(f"Builder operands {indented_container(builder.operands)}")
+            logger.error(f"Expr: {fabll.Traits(op).get_obj_raw()}")
             if op_e:
-                error(f"Operands: {indented_container(op_e.get_operands())}")
+                logger.error(f"Operands: {indented_container(op_e.get_operands())}")
             assert False, "NOOP copy"
 
     # TODO debug
     # if target_dbg not in {"COPY", "MERGED"}:
-    warning(f"{src_dbg} -> {target_dbg}")
+    logger.warning(f"{src_dbg} -> {target_dbg}")
 
     s.__exit__(None, None, None)
     return res

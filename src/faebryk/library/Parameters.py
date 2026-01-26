@@ -451,6 +451,13 @@ class is_parameter(fabll.Node):
         )
         fabll.Traits.add_instance_to(node=obj, trait_instance=has_name)
 
+    def __rich_repr__(self):
+        try:
+            yield self.compact_repr(no_lit_suffix=True)
+        except Exception as e:
+            yield f"Error in repr: {e}"
+        yield "on " + fabll.Traits(self).get_obj_raw().get_full_name(types=True)
+
 
 class ParameterIsNotConstrainedToLiteral(Exception):
     def __init__(self, parameter: fabll.Node):
