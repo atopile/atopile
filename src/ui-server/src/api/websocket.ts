@@ -313,10 +313,120 @@ async function refreshProjects(): Promise<void> {
   }
 }
 
+function getSelectedTargetName(): string | null {
+  const state = useStore.getState();
+  if (!state.selectedProjectRoot) return null;
+  if (state.selectedTargetNames?.length) return state.selectedTargetNames[0] ?? null;
+  const project = state.projects.find((p) => p.root === state.selectedProjectRoot);
+  return project?.targets?.[0]?.name ?? null;
+}
+
+async function refreshDependencies(projectRoot?: string | null): Promise<void> {
+  const root = projectRoot || useStore.getState().selectedProjectRoot;
+  if (!root) return;
+  try {
+    const response = await api.dependencies.list(root);
+    useStore.getState().setProjectDependencies(root, response.dependencies || []);
+  } catch (error) {
+    console.warn('[WS] Failed to refresh dependencies:', error);
+  }
+}
+
+async function refreshBom(): Promise<void> {
+  const state = useStore.getState();
+  if (!state.selectedProjectRoot) return;
+  const targetName = getSelectedTargetName();
+  if (!targetName) return;
+  try {
+    state.setLoadingBom(true);
+    const response = await api.bom.get(state.selectedProjectRoot, targetName);
+    state.setBomData(response || null);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch BOM';
+    state.setBomError(message);
+  }
+}
+
+async function refreshVariables(): Promise<void> {
+  const state = useStore.getState();
+  if (!state.selectedProjectRoot) return;
+  const targetName = getSelectedTargetName();
+  if (!targetName) return;
+  try {
+    state.setLoadingVariables(true);
+    const response = await api.variables.get(state.selectedProjectRoot, targetName);
+    state.setVariablesData(response || null);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Failed to fetch variables';
+    state.setVariablesError(message);
+  }
+}
+
+async function refreshPackages(): Promise<void> {
+  const state = useStore.getState();
+  try {
+    state.setLoadingPackages(true);
+    const response = await api.packages.list();
+    state.setPackages(response.packages || []);
+  } catch (error) {
+    console.warn('[WS] Failed to refresh packages:', error);
+    state.setPackages([]);
+  }
+}
+
+async function refreshStdlib(): Promise<void> {
+  const state = useStore.getState();
+  try {
+    state.setLoadingStdlib(true);
+    const response = await api.stdlib.list();
+    state.setStdlibItems(response.items || []);
+  } catch (error) {
+    console.warn('[WS] Failed to refresh stdlib:', error);
+    state.setStdlibItems([]);
+  }
+}
+
+async function refreshProblems(): Promise<void> {
+  const state = useStore.getState();
+  try {
+    state.setLoadingProblems(true);
+    const response = await api.problems.list();
+    state.setProblems(response.problems || []);
+  } catch (error) {
+    console.warn('[WS] Failed to refresh problems:', error);
+    state.setProblems([]);
+  }
+}
+
 function handleEventMessage(message: EventMessage): void {
+  const data = message.data ?? {};
+  const projectRoot =
+    (typeof data.projectRoot === 'string' && data.projectRoot) ||
+    (typeof data.project_root === 'string' && data.project_root) ||
+    null;
+
   switch (message.event) {
     case 'projects_changed':
       void refreshProjects();
+      break;
+    case 'project_dependencies_changed':
+      void refreshDependencies(projectRoot);
+      break;
+    case 'bom_changed':
+      void refreshBom();
+      break;
+    case 'variables_changed':
+      void refreshVariables();
+      break;
+    case 'packages_changed':
+      void refreshPackages();
+      break;
+    case 'stdlib_changed':
+      void refreshStdlib();
+      break;
+    case 'problems_changed':
+      void refreshProblems();
       break;
     default:
       break;

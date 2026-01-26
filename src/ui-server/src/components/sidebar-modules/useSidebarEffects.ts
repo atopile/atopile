@@ -5,6 +5,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useStore } from '../../store';
+import { api } from '../../api/client';
 import type { PanelId } from '../../utils/panelConfig';
 
 interface PanelControls {
@@ -28,6 +29,81 @@ export function useSidebarEffects({
 }: UseSidebarEffectsProps) {
   const bomRequestIdRef = useRef(0);
   const variablesRequestIdRef = useRef(0);
+
+  const fetchPackages = async () => {
+    const store = useStore.getState();
+    store.setLoadingPackages(true);
+    try {
+      const response = await api.packages.list();
+      store.setPackages(response.packages || []);
+    } catch (error) {
+      console.warn('[UI] Failed to fetch packages', error);
+      store.setPackages([]);
+    }
+  };
+
+  const fetchStdlib = async () => {
+    const store = useStore.getState();
+    store.setLoadingStdlib(true);
+    try {
+      const response = await api.stdlib.list();
+      store.setStdlibItems(response.items || []);
+    } catch (error) {
+      console.warn('[UI] Failed to fetch stdlib', error);
+      store.setStdlibItems([]);
+    }
+  };
+
+  const fetchProblems = async () => {
+    const store = useStore.getState();
+    store.setLoadingProblems(true);
+    try {
+      const response = await api.problems.list();
+      store.setProblems(response.problems || []);
+    } catch (error) {
+      console.warn('[UI] Failed to fetch problems', error);
+      store.setProblems([]);
+    }
+  };
+
+  const fetchDependencies = async (projectRoot: string) => {
+    const store = useStore.getState();
+    try {
+      const response = await api.dependencies.list(projectRoot);
+      store.setProjectDependencies(projectRoot, response.dependencies || []);
+    } catch (error) {
+      console.warn('[UI] Failed to fetch dependencies', error);
+      store.setProjectDependencies(projectRoot, []);
+    }
+  };
+
+  const fetchBom = async (projectRoot: string, targetName: string) => {
+    const store = useStore.getState();
+    store.setLoadingBom(true);
+    store.setBomError(null);
+    try {
+      const response = await api.bom.get(projectRoot, targetName);
+      store.setBomData(response || null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to fetch BOM';
+      console.warn('[UI] Failed to fetch BOM', error);
+      store.setBomError(message);
+    }
+  };
+
+  const fetchVariables = async (projectRoot: string, targetName: string) => {
+    const store = useStore.getState();
+    store.setLoadingVariables(true);
+    store.setVariablesError(null);
+    try {
+      const response = await api.variables.get(projectRoot, targetName);
+      store.setVariablesData(response || null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to fetch variables';
+      console.warn('[UI] Failed to fetch variables', error);
+      store.setVariablesError(message);
+    }
+  };
 
   // Allow external UI actions (e.g., open/close sections)
   useEffect(() => {
@@ -55,9 +131,9 @@ export function useSidebarEffects({
   // Initial data refresh after mount
   useEffect(() => {
     const timer = setTimeout(() => {
-      action('refreshProblems');
-      action('refreshPackages');
-      action('refreshStdlib');
+      void fetchProblems();
+      void fetchPackages();
+      void fetchStdlib();
     }, 100);
     return () => clearTimeout(timer);
   }, [action]);
@@ -75,9 +151,7 @@ export function useSidebarEffects({
     }
 
     const requestId = ++bomRequestIdRef.current;
-    useStore.getState().setLoadingBom(true);
-    useStore.getState().setBomError(null);
-    action('refreshBOM', { projectRoot: selectedProjectRoot, target: selectedTargetName, requestId });
+    void fetchBom(selectedProjectRoot, selectedTargetName);
   }, [selectedProjectRoot, selectedTargetName]);
 
   // Fetch dependencies for active project (packages panel)
@@ -85,7 +159,7 @@ export function useSidebarEffects({
     if (!selectedProjectRoot) return;
     const deps = useStore.getState().projectDependencies?.[selectedProjectRoot];
     if (deps !== undefined) return;
-    action('fetchDependencies', { projectRoot: selectedProjectRoot });
+    void fetchDependencies(selectedProjectRoot);
   }, [selectedProjectRoot, action]);
 
   // Fetch Variables data when project or target selection changes
@@ -101,9 +175,7 @@ export function useSidebarEffects({
     }
 
     const requestId = ++variablesRequestIdRef.current;
-    useStore.getState().setLoadingVariables(true);
-    useStore.getState().setVariablesError(null);
-    action('fetchVariables', { projectRoot: selectedProjectRoot, target: selectedTargetName, requestId });
+    void fetchVariables(selectedProjectRoot, selectedTargetName);
   }, [selectedProjectRoot, selectedTargetName]);
 
   // Package install state is owned by backend; frontend is read-only.

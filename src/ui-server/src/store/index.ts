@@ -176,10 +176,12 @@ interface StoreActions {
 
   // Problems
   setProblems: (problems: Problem[]) => void;
+  setLoadingProblems: (loading: boolean) => void;
   setDeveloperMode: (enabled: boolean) => void;
 
   // Standard Library
   setStdlibItems: (items: StdLibItem[]) => void;
+  setLoadingStdlib: (loading: boolean) => void;
 
   // BOM
   setBomData: (data: BOMData | null) => void;
@@ -444,11 +446,13 @@ export const useStore = create<Store>()(
 
       // Problems
       setProblems: (problems) => set({ problems, isLoadingProblems: false }),
+      setLoadingProblems: (loading) => set({ isLoadingProblems: loading }),
       setDeveloperMode: (enabled) => set({ developerMode: enabled }),
 
       // Standard Library
       setStdlibItems: (items) =>
         set({ stdlibItems: items, isLoadingStdlib: false }),
+      setLoadingStdlib: (loading) => set({ isLoadingStdlib: loading }),
 
       // BOM
       setBomData: (data) => set({ bomData: data, isLoadingBom: false, bomError: null }),
