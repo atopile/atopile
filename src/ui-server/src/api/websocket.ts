@@ -6,7 +6,7 @@
  */
 
 import { useStore } from '../store';
-import type { AppState } from '../types/build';
+import type { AppState, Build } from '../types/build';
 import { api } from './client';
 import { WS_STATE_URL, getWorkspaceFolders } from './config';
 import { postMessage } from './vscodeApi';
@@ -219,6 +219,7 @@ function handleOpen(): void {
   }
 
   void refreshProjects();
+  void refreshBuilds();
 }
 
 function handleMessage(event: MessageEvent): void {
@@ -285,6 +286,9 @@ function handleMessage(event: MessageEvent): void {
         }
         if (!result.success) {
           console.error(`[WS] Action failed: ${message.action}`, result.error);
+        }
+        if (message.action === 'build' || message.action === 'cancelBuild') {
+          void refreshBuilds();
         }
         if (typeof window !== 'undefined') {
           window.dispatchEvent(
@@ -399,6 +403,137 @@ async function refreshProblems(): Promise<void> {
   }
 }
 
+function normalizeStage(stage: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...stage,
+    stageId:
+      (stage.stageId as string | undefined) ??
+      (stage.stage_id as string | undefined),
+    displayName:
+      (stage.displayName as string | undefined) ??
+      (stage.display_name as string | undefined),
+    elapsedSeconds:
+      (stage.elapsedSeconds as number | undefined) ??
+      (stage.elapsed_seconds as number | undefined),
+  };
+}
+
+function normalizeBuild(raw: Record<string, unknown>): Build {
+  const stages = Array.isArray(raw.stages)
+    ? raw.stages.map((stage) => normalizeStage(stage as Record<string, unknown>))
+    : raw.stages;
+
+  return {
+    ...(raw as Build),
+    buildId:
+      (raw.buildId as string | undefined) ??
+      (raw.build_id as string | undefined),
+    buildKey:
+      (raw.buildKey as string | undefined) ??
+      (raw.build_key as string | undefined),
+    displayName:
+      (raw.displayName as string | undefined) ??
+      (raw.display_name as string | undefined),
+    projectName:
+      (raw.projectName as string | null | undefined) ??
+      (raw.project_name as string | null | undefined),
+    projectRoot:
+      (raw.projectRoot as string | undefined) ??
+      (raw.project_root as string | undefined),
+    startedAt:
+      (raw.startedAt as number | undefined) ??
+      (raw.started_at as number | undefined),
+    completedAt:
+      (raw.completedAt as number | undefined) ??
+      (raw.completed_at as number | undefined),
+    elapsedSeconds:
+      (raw.elapsedSeconds as number | undefined) ??
+      (raw.elapsed_seconds as number | undefined),
+    returnCode:
+      (raw.returnCode as number | null | undefined) ??
+      (raw.return_code as number | null | undefined),
+    totalStages:
+      (raw.totalStages as number | undefined) ??
+      (raw.total_stages as number | undefined),
+    logDir:
+      (raw.logDir as string | undefined) ??
+      (raw.log_dir as string | undefined),
+    logFile:
+      (raw.logFile as string | undefined) ??
+      (raw.log_file as string | undefined),
+    queuePosition:
+      (raw.queuePosition as number | undefined) ??
+      (raw.queue_position as number | undefined),
+    stages: stages as Build['stages'],
+  };
+}
+
+function getBuildKey(build: Build): string {
+  const project = build.projectRoot || build.projectName || 'unknown';
+  const target = build.target || build.name || 'default';
+  return `${project}:${target}`;
+}
+
+async function refreshBuilds(): Promise<void> {
+  const state = useStore.getState();
+  try {
+    const previousBuildsById = new Map<string, Build>();
+    for (const build of [...state.builds, ...state.queuedBuilds]) {
+      if (build.buildId) {
+        previousBuildsById.set(build.buildId, build);
+      }
+    }
+
+    const [active, history] = await Promise.all([
+      api.builds.active(),
+      api.builds.history(),
+    ]);
+    const activeBuilds = (active.builds || []).map((build) =>
+      normalizeBuild(build as Record<string, unknown>)
+    );
+    const smoothedActiveBuilds = activeBuilds.map((build) => {
+      if (!build.buildId) return build;
+      const previous = previousBuildsById.get(build.buildId);
+      const hasStages = Array.isArray(build.stages) && build.stages.length > 0;
+      const hadStages =
+        Array.isArray(previous?.stages) && previous.stages.length > 0;
+      if (!hasStages && hadStages && previous?.stages) {
+        return {
+          ...build,
+          stages: previous.stages,
+        };
+      }
+      return build;
+    });
+    const historyBuilds = (history.builds || []).map((build) =>
+      normalizeBuild(build as Record<string, unknown>)
+    );
+
+    const activeKeys = new Set(smoothedActiveBuilds.map(getBuildKey));
+    const recentHistoryByKey = new Map<string, Build>();
+    const sortedHistory = [...historyBuilds].sort((a, b) => {
+      const aTime = (a.completedAt ?? a.startedAt ?? 0) as number;
+      const bTime = (b.completedAt ?? b.startedAt ?? 0) as number;
+      return bTime - aTime;
+    });
+    for (const build of sortedHistory) {
+      if (build.status === 'queued' || build.status === 'building') continue;
+      const key = getBuildKey(build);
+      if (activeKeys.has(key) || recentHistoryByKey.has(key)) continue;
+      recentHistoryByKey.set(key, build);
+    }
+    const recentHistoryBuilds = [...recentHistoryByKey.values()];
+    const queuedBuilds = [...smoothedActiveBuilds, ...recentHistoryBuilds];
+
+    // Use active builds for queued display since /api/builds/queue is status-only.
+    state.setBuilds(smoothedActiveBuilds);
+    state.setQueuedBuilds(queuedBuilds);
+    state.setBuildHistory(historyBuilds);
+  } catch (error) {
+    console.warn('[WS] Failed to refresh builds:', error);
+  }
+}
+
 function handleEventMessage(message: EventMessage): void {
   const data = message.data ?? {};
   const projectRoot =
@@ -409,6 +544,9 @@ function handleEventMessage(message: EventMessage): void {
   switch (message.event) {
     case 'projects_changed':
       void refreshProjects();
+      break;
+    case 'builds_changed':
+      void refreshBuilds();
       break;
     case 'project_dependencies_changed':
       void refreshDependencies(projectRoot);

@@ -727,6 +727,16 @@
   text-overflow: ellipsis;
 }
 
+.build-queue-stage {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
 .build-queue-status {
   font-size: 9px;
   color: var(--text-muted);
@@ -737,9 +747,16 @@
   display: inline-flex;
   align-items: center;
   margin-left: auto;
+  gap: 6px;
 }
 
 .build-queue-counter {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.build-queue-time {
   font-size: 9px;
   color: var(--text-muted);
   font-family: var(--font-mono);

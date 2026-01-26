@@ -40,7 +40,13 @@ function formatPath(path: string): string {
 }
 
 function formatDuration(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds <= 0) return ''
+  if (!Number.isFinite(seconds) || seconds < 0) return ''
+  if (seconds < 1) {
+    return `${seconds.toFixed(2)}s`
+  }
+  if (seconds < 10) {
+    return `${seconds.toFixed(1)}s`
+  }
   const total = Math.floor(seconds)
   if (total < 60) {
     return `${total}s`
@@ -965,6 +971,30 @@ function StageStatusIcon({ status }: { status: string }) {
   }
 }
 
+function getCurrentStage(build: QueuedBuild): { name: string } | null {
+  if (!build.stages || build.stages.length === 0) return null
+
+  const running = build.stages.find(
+    (stage) => stage.status === 'running' || stage.status === 'building'
+  )
+  if (running) {
+    return { name: running.displayName || running.name }
+  }
+
+  const completed = [...build.stages].reverse().find((stage) =>
+    stage.status === 'success' ||
+    stage.status === 'warning' ||
+    stage.status === 'failed' ||
+    stage.status === 'error'
+  )
+
+  if (completed) {
+    return { name: completed.displayName || completed.name }
+  }
+
+  return null
+}
+
 function BuildQueueItem({
   build,
   onCancel,
@@ -973,6 +1003,7 @@ function BuildQueueItem({
   onCancel?: (buildId: string) => void
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
+  const [elapsed, setElapsed] = useState(build.elapsedSeconds || 0)
 
   // Calculate progress from stages
   const progress = useMemo(() => {
@@ -989,6 +1020,29 @@ function BuildQueueItem({
   const hasStages = build.stages && build.stages.length > 0
   const canExpand = true
   const buildCounter = useMemo(() => getBuildCounter(build.buildId), [build.buildId])
+  const currentStage = useMemo(() => getCurrentStage(build), [build])
+
+  useEffect(() => {
+    const isActive = build.status === 'queued' || build.status === 'building'
+    if (!isActive) {
+      setElapsed(build.elapsedSeconds || 0)
+      return
+    }
+
+    const startTime = build.startedAt ? build.startedAt * 1000 : 0
+    if (!startTime) {
+      setElapsed(build.elapsedSeconds || 0)
+      return
+    }
+
+    const updateElapsed = () => {
+      setElapsed((Date.now() - startTime) / 1000)
+    }
+
+    updateElapsed()
+    const interval = setInterval(updateElapsed, 1000)
+    return () => clearInterval(interval)
+  }, [build.status, build.startedAt, build.elapsedSeconds])
 
   const totalDuration = useMemo(() => {
     if (typeof build.elapsedSeconds === 'number' && build.elapsedSeconds > 0) {
@@ -998,6 +1052,27 @@ function BuildQueueItem({
     const sum = build.stages.reduce((acc, stage) => acc + (stage.elapsedSeconds ?? 0), 0)
     return sum > 0 ? sum : null
   }, [build.elapsedSeconds, build.stages])
+
+  const completedStageSeconds = useMemo(() => {
+    if (!build.stages || build.stages.length === 0) return 0
+    return build.stages
+      .filter((stage) =>
+        stage.status === 'success' ||
+        stage.status === 'warning' ||
+        stage.status === 'failed' ||
+        stage.status === 'error'
+      )
+      .reduce((acc, stage) => acc + (stage.elapsedSeconds ?? 0), 0)
+  }, [build.stages])
+
+  const runningStageElapsed = useMemo(() => {
+    if (!build.stages || build.stages.length === 0) return null
+    const hasRunning = build.stages.some((stage) => stage.status === 'running')
+    if (!hasRunning) return null
+    const computed = elapsed - completedStageSeconds
+    if (!Number.isFinite(computed)) return null
+    return Math.max(0, computed)
+  }, [build.stages, elapsed, completedStageSeconds])
 
   const completedAt = useMemo(() => {
     if (!build.startedAt) return null
@@ -1010,9 +1085,10 @@ function BuildQueueItem({
   const statusLabel = useMemo(() => {
     switch (build.status) {
       case 'queued':
-        return 'Queued'
       case 'building':
-        return `Building ${progress}%`
+        return ''
+      case 'queued':
+        return 'Queued'
       case 'success':
       case 'failed':
       case 'warning':
@@ -1022,6 +1098,12 @@ function BuildQueueItem({
         return build.status
     }
   }, [build.status, progress, completedAt])
+
+  const elapsedLabel = useMemo(() => {
+    if (build.status !== 'queued' && build.status !== 'building') return ''
+    if (elapsed > 0) return formatDuration(elapsed)
+    return '0s'
+  }, [build.status, elapsed])
 
   return (
     <div className={`build-queue-item ${build.status} ${isExpanded ? 'expanded' : ''}`}>
@@ -1035,10 +1117,18 @@ function BuildQueueItem({
         {isComplete && <BuildStatusIcon status={build.status} />}
         <div className="build-queue-info">
           <span className="build-queue-target">{targetName}</span>
+          {build.status === 'building' && currentStage && (
+            <span className="build-queue-stage" title={currentStage.name}>
+              {currentStage.name}
+            </span>
+          )}
         </div>
         {statusLabel && (
           <div className="build-queue-meta">
             <span className="build-queue-status">{statusLabel}</span>
+            {elapsedLabel && (
+              <span className="build-queue-time">{elapsedLabel}</span>
+            )}
           </div>
         )}
         {build.status === 'building' && (
@@ -1078,9 +1168,16 @@ function BuildQueueItem({
               <div key={index} className={`build-stage ${stage.status}`}>
                 <StageStatusIcon status={stage.status} />
                 <span className="stage-name">{stage.displayName || stage.name}</span>
-                {stage.elapsedSeconds !== undefined && stage.elapsedSeconds > 0 && (
-                  <span className="stage-time">{formatDuration(stage.elapsedSeconds)}</span>
-                )}
+                {(() => {
+                  const stageElapsed = stage.status === 'running'
+                    ? runningStageElapsed ?? stage.elapsedSeconds
+                    : stage.elapsedSeconds
+                  if (stageElapsed === undefined || stageElapsed === null) return null
+                  if (stage.status === 'pending') return null
+                  return (
+                    <span className="stage-time">{formatDuration(stageElapsed)}</span>
+                  )
+                })()}
               </div>
             ))
           ) : (

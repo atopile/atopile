@@ -15,11 +15,13 @@ from atopile.dataclasses import (
     Build,
     BuildRequest,
     BuildResponse,
+    BuildStage,
     BuildStatus,
     BuildTargetInfo,
     BuildTargetResponse,
     HistoricalBuild,
     MaxConcurrentRequest,
+    StageStatus,
 )
 from atopile.model import build_history
 from atopile.model.build_queue import (
@@ -39,6 +41,44 @@ from atopile.model.model_state import model_state
 log = logging.getLogger(__name__)
 
 
+def _convert_stage_dicts(stage_dicts: list[dict] | None) -> list[BuildStage] | None:
+    if not stage_dicts:
+        return []
+    stages: list[BuildStage] = []
+    for stage in stage_dicts:
+        if not isinstance(stage, dict):
+            continue
+        try:
+            status = StageStatus(stage.get("status", "pending"))
+        except Exception:
+            status = StageStatus.PENDING
+        stages.append(
+            BuildStage(
+                name=stage.get("name", ""),
+                stage_id=stage.get("stage_id", stage.get("name", "")),
+                display_name=stage.get("display_name"),
+                elapsed_seconds=stage.get("elapsed_seconds", 0.0),
+                status=status,
+                infos=stage.get("infos", 0),
+                warnings=stage.get("warnings", 0),
+                errors=stage.get("errors", 0),
+                alerts=stage.get("alerts", 0),
+            )
+        )
+    return stages
+
+
+def _infer_building_status(
+    status: BuildStatus, stages: list[BuildStage] | None
+) -> BuildStatus:
+    if status != BuildStatus.QUEUED or not stages:
+        return status
+    for stage in stages:
+        if stage.status != StageStatus.PENDING:
+            return BuildStatus.BUILDING
+    return status
+
+
 def _active_build_to_build(build: ActiveBuild) -> Build:
     """Convert an ActiveBuild to a Build Pydantic model."""
     completed_statuses = (
@@ -56,12 +96,15 @@ def _active_build_to_build(build: ActiveBuild) -> Build:
     project_name = Path(build.project_root).name if build.project_root else "unknown"
     target = build.target or "default"
 
+    stages = _convert_stage_dicts(build.stages)
+    status = _infer_building_status(build.status, stages)
+
     return Build(
         build_id=build.build_id,
         name=target,
         display_name=f"{project_name}:{target}",
         project_name=project_name,
-        status=build.status,
+        status=status,
         elapsed_seconds=elapsed,
         started_at=build.building_started_at or build.started_at,
         warnings=build.warnings,
@@ -70,7 +113,7 @@ def _active_build_to_build(build: ActiveBuild) -> Build:
         project_root=build.project_root,
         target=target,
         entry=build.entry,
-        stages=None,  # Will be populated with BuildStage objects if needed
+        stages=stages,
         queue_position=None,
         error=build.error,
     )
@@ -85,6 +128,9 @@ def _historical_build_to_build(build: HistoricalBuild) -> Build:
     if status in (BuildStatus.BUILDING, BuildStatus.QUEUED):
         status = BuildStatus.FAILED
         error = error or "Build was interrupted"
+
+    stages = _convert_stage_dicts(build.stages)
+    status = _infer_building_status(status, stages)
 
     return Build(
         build_id=build.build_id,
@@ -102,7 +148,7 @@ def _historical_build_to_build(build: HistoricalBuild) -> Build:
         project_root=build.project_root,
         target=build.target or "default",
         entry=build.entry,
-        stages=None,  # Will be populated with BuildStage objects if needed
+        stages=stages,
         queue_position=None,
         error=error,
     )

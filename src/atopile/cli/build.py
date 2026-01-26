@@ -1038,7 +1038,8 @@ class ParallelBuildManager:
             # Add newline after header in verbose mode for cleaner stage output
             newline = "\n" if print_headers else ""
             console.print(
-                f"[bold cyan]▶ Building {display_name}{build_id_str}[/bold cyan]{newline}"
+                "[bold cyan]▶ Building "
+                f"{display_name}{build_id_str}[/bold cyan]{newline}"
             )
             if stage_printer is not None:
                 bp.set_stage_printer(stage_printer)
@@ -1161,6 +1162,27 @@ class ParallelBuildManager:
                 }
                 for entry in bp._stage_history
             ]
+
+        if bp.is_running and bp.current_stage and bp.current_stage != "Queued":
+            running_elapsed = (
+                time.time() - bp._stage_start_time if bp._stage_start_time else 0.0
+            )
+            running_stage = {
+                "name": bp.current_stage,
+                "stage_id": bp._current_stage_id or bp.current_stage,
+                "display_name": bp.current_stage,
+                "status": StageStatus.RUNNING.value,
+                "elapsed_seconds": round(running_elapsed, 2),
+                "infos": 0,
+                "warnings": 0,
+                "errors": 0,
+                "alerts": 0,
+            }
+            stages = data.get("stages")
+            if stages is None:
+                data["stages"] = [running_stage]
+            else:
+                data["stages"] = [*stages, running_stage]
 
         return data
 
@@ -1450,6 +1472,11 @@ def build(
 
     # Worker mode - run single build directly (no config needed yet)
     if os.environ.get("ATO_BUILD_EVENT_FD"):
+        db_path = os.environ.get("ATO_BUILD_HISTORY_DB")
+        if db_path:
+            from atopile.model import build_history
+
+            build_history.init_build_history_db(Path(db_path))
         config.apply_options(
             entry=entry,
             selected_builds=selected_builds,

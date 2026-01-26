@@ -146,12 +146,32 @@ def _run_build_subprocess(
             env=env,
         )
 
+        stderr_tail = ""
+        if process.stderr:
+            try:
+                os.set_blocking(process.stderr.fileno(), False)
+            except (AttributeError, OSError, ValueError):
+                pass
+
+        def drain_stderr() -> None:
+            nonlocal stderr_tail
+            if not process or not process.stderr:
+                return
+            while True:
+                try:
+                    chunk = process.stderr.read(4096)
+                except BlockingIOError:
+                    break
+                if not chunk:
+                    break
+                stderr_tail = (stderr_tail + chunk)[-5000:]
+
         # Poll for completion while monitoring the database for stage updates
         last_stages: list[dict] = []
         poll_interval = 0.5
-        stderr_output = ""
 
         while process.poll() is None:
+            drain_stderr()
             # Check for cancellation
             if cancel_flags.get(build_id, False):
                 process.terminate()
@@ -189,7 +209,8 @@ def _run_build_subprocess(
 
         # Process completed
         return_code = process.returncode
-        stderr_output = process.stderr.read() if process.stderr else ""
+        drain_stderr()
+        stderr_output = stderr_tail
 
         # Get final stages from database
         build_info = build_history.get_build_info_by_id(build_id)

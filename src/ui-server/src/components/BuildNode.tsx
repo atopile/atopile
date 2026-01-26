@@ -32,6 +32,12 @@ function StageTimer() {
 
 // Format time in mm:ss or hh:mm:ss
 export function formatBuildTime(seconds: number): string {
+  if (seconds >= 0 && seconds < 1) {
+    return `${seconds.toFixed(2)}s`;
+  }
+  if (seconds > 0 && seconds < 10) {
+    return `${seconds.toFixed(1)}s`;
+  }
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);

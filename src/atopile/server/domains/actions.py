@@ -17,7 +17,6 @@ from atopile.config import ProjectConfig
 from atopile.dataclasses import ActiveBuild, AppContext, BuildStatus, Log
 from atopile.logging import BuildLogger
 from atopile.model.build_queue import (
-    _active_builds,
     _build_lock,
     _build_queue,
     _is_duplicate_build,
@@ -348,7 +347,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             if not build_id:
                 return {"success": False, "error": "Missing buildId"}
 
-            if build_id not in _active_builds:
+            if not model_state.find_build(build_id):
                 return {"success": False, "error": f"Build not found: {build_id}"}
 
             success = cancel_build(build_id)
@@ -560,13 +559,14 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                         )
                         loop = event_bus._event_loop
                         if loop and loop.is_running():
+                            error_payload = {
+                                "error": f"Failed to install {pkg_spec}: {error_msg}",
+                                "package_id": package_id,
+                            }
                             asyncio.run_coroutine_threadsafe(
                                 server_state.emit_event(
                                     "packages_changed",
-                                    {
-                                        "error": f"Failed to install {pkg_spec}: {error_msg}",
-                                        "package_id": package_id,
-                                    },
+                                    error_payload,
                                 ),
                                 loop,
                             )
@@ -960,9 +960,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Entry file not found: {entry_path}",
                 }
 
-            await server_state.emit_event(
-                "open_file", {"path": str(entry_path)}
-            )
+            await server_state.emit_event("open_file", {"path": str(entry_path)})
             return {"success": True}
 
         if action == "openLayout":
@@ -1036,7 +1034,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             return {"success": False, "error": "selectBuild is frontend-only"}
 
         elif action == "toggleProblemLevelFilter":
-            return {"success": False, "error": "toggleProblemLevelFilter is frontend-only"}
+            return {
+                "success": False,
+                "error": "toggleProblemLevelFilter is frontend-only",
+            }
 
         elif action == "setDeveloperMode":
             return {"success": False, "error": "setDeveloperMode is frontend-only"}
