@@ -21,11 +21,11 @@ export const PANEL_CONFIGS: Record<string, PanelConfig> = {
     priority: 'high',
     collapseWhenEmpty: false,
   },
-  buildQueue: {
-    id: 'buildQueue',
-    minHeight: 60,
-    preferredHeight: 120,
-    maxHeight: 240,
+  structure: {
+    id: 'structure',
+    minHeight: 80,
+    preferredHeight: 180,
+    maxHeight: 360,
     priority: 'normal',
     collapseWhenEmpty: true,
   },
@@ -74,7 +74,7 @@ export const PANEL_CONFIGS: Record<string, PanelConfig> = {
 // All panel IDs in display order
 export const PANEL_IDS = [
   'projects',
-  'buildQueue',
+  'structure',
   'packages',
   'problems',
   'stdlib',

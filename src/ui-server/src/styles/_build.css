@@ -34,7 +34,7 @@
 .action-btn.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 .action-btn.primary:hover {
@@ -266,7 +266,7 @@
 
 .build-actions-bar .build-action-btn:hover {
   background: var(--accent);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 .build-actions-bar .build-action-btn.primary {

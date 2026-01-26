@@ -4,17 +4,19 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, GitBranch, Circle } from 'lucide-react';
+import { ChevronDown, ChevronRight, GitBranch, Circle, Loader2 } from 'lucide-react';
 import type { BuildTarget } from './projectsTypes';
 import type { ModuleChild } from '../types/build';
 import { ModuleTree } from './ModuleTreeNode';
-import { api } from '../api/client';
+import { sendActionWithResponse } from '../api/websocket';
 import './ProjectExplorerCard.css';
 
 interface ProjectExplorerCardProps {
   builds: BuildTarget[];
   projectRoot: string;
   defaultExpanded?: boolean;
+  /** Whether builds data is still loading (e.g., from package details fetch) */
+  isLoading?: boolean;
 }
 
 type TargetState =
@@ -25,7 +27,7 @@ type TargetState =
 
 const getTargetKey = (build: BuildTarget) => `${build.id}:${build.entry ?? ''}`;
 
-export function ProjectExplorerCard({ builds, projectRoot, defaultExpanded = false }: ProjectExplorerCardProps) {
+export function ProjectExplorerCard({ builds, projectRoot, defaultExpanded = false, isLoading = false }: ProjectExplorerCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [expandedTargets, setExpandedTargets] = useState<Set<string>>(new Set());
   const [targetStates, setTargetStates] = useState<Record<string, TargetState>>({});
@@ -47,9 +49,20 @@ export function ProjectExplorerCard({ builds, projectRoot, defaultExpanded = fal
       [key]: { status: 'loading' }
     }));
 
-    api.modules
-      .getChildren(projectRoot, build.entry, 5)
-      .then((children) => {
+    sendActionWithResponse(
+      'getModuleChildren',
+      {
+        projectRoot,
+        entryPoint: build.entry,
+        maxDepth: 5,
+      },
+      { timeoutMs: 30000 }
+    )
+      .then((response) => {
+        const result = response.result ?? {};
+        const children = Array.isArray((result as { children?: unknown }).children)
+          ? (result as { children: ModuleChild[] }).children
+          : [];
         setTargetStates(prev => ({
           ...prev,
           [key]: { status: 'ready', children }
@@ -78,8 +91,8 @@ export function ProjectExplorerCard({ builds, projectRoot, defaultExpanded = fal
     });
   }, [expanded, builds, expandedTargets, projectRoot, targetStates]);
 
-  // Don't render if no builds - but still show header when loading could provide builds
-  if (!builds || builds.length === 0) {
+  // Don't render if no builds and not loading
+  if ((!builds || builds.length === 0) && !isLoading) {
     return null;
   }
 
@@ -100,11 +113,21 @@ export function ProjectExplorerCard({ builds, projectRoot, defaultExpanded = fal
         </span>
         <GitBranch size={14} className="project-explorer-card-icon" />
         <span className="project-explorer-card-title">Explorer</span>
-        <span className="project-explorer-count">{builds.length}</span>
+        {isLoading && (!builds || builds.length === 0) ? (
+          <Loader2 size={12} className="spin" />
+        ) : (
+          <span className="project-explorer-count">{builds.length}</span>
+        )}
       </div>
 
       {expanded && (
         <div className="project-explorer-card-content">
+          {isLoading && (!builds || builds.length === 0) && (
+            <div className="project-explorer-loading">
+              <Loader2 size={12} className="spin" />
+              <span>Loading build targets...</span>
+            </div>
+          )}
           {builds.map((build) => {
             const isTargetExpanded = expandedTargets.has(build.id);
             const key = targetKeys.get(build.id) ?? getTargetKey(build);

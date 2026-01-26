@@ -666,19 +666,19 @@ export const BuildNode = memo(function BuildNode({
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
+                gap: 'var(--spacing-sm)',
                 padding: '4px 8px 4px 24px',
-                fontSize: '10px',
-                color: '#6c7086',
+                fontSize: 'var(--font-size-xs)',
+                color: 'var(--text-muted)',
                 cursor: 'pointer',
               }}
             >
               <span
                 style={{
-                  fontFamily: 'monospace',
-                  background: 'rgba(108, 112, 134, 0.2)',
+                  fontFamily: 'var(--font-mono)',
+                  background: 'var(--bg-tertiary)',
                   padding: '1px 6px',
-                  borderRadius: '4px',
+                  borderRadius: 'var(--radius-sm)',
                 }}
               >
                 {(build.buildId || build.lastBuild?.buildId)?.slice(0, 8)}
