@@ -121,7 +121,7 @@ body.resizing .collapsible-section {
 
 .section-badge.filter-badge {
   background: var(--accent);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
   font-weight: 500;
 }
 

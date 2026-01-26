@@ -5,8 +5,6 @@
 
 import { useEffect, useRef } from 'react';
 import { useStore } from '../../store';
-import { api } from '../../api/client';
-import { fetchInitialData } from '../../api/eventHandler';
 import type { PanelId } from '../../utils/panelConfig';
 
 interface PanelControls {
@@ -19,12 +17,14 @@ interface UseSidebarEffectsProps {
   selectedProjectRoot: string | null;
   selectedTargetName: string | null;
   panels: PanelControls;
+  action: (name: string, data?: Record<string, unknown>) => void;
 }
 
 export function useSidebarEffects({
   selectedProjectRoot,
   selectedTargetName,
   panels,
+  action,
 }: UseSidebarEffectsProps) {
   const bomRequestIdRef = useRef(0);
   const variablesRequestIdRef = useRef(0);
@@ -55,10 +55,12 @@ export function useSidebarEffects({
   // Initial data refresh after mount
   useEffect(() => {
     const timer = setTimeout(() => {
-      void fetchInitialData();
+      action('refreshProblems');
+      action('refreshPackages');
+      action('refreshStdlib');
     }, 100);
     return () => clearTimeout(timer);
-  }, []);
+  }, [action]);
 
   // Fetch BOM data when project or target selection changes
   useEffect(() => {
@@ -75,19 +77,16 @@ export function useSidebarEffects({
     const requestId = ++bomRequestIdRef.current;
     useStore.getState().setLoadingBom(true);
     useStore.getState().setBomError(null);
-    api.bom
-      .get(selectedProjectRoot, selectedTargetName)
-      .then((result) => {
-        if (requestId !== bomRequestIdRef.current) return;
-        useStore.getState().setBomData(result);
-      })
-      .catch((error) => {
-        if (requestId !== bomRequestIdRef.current) return;
-        useStore.getState().setBomError(
-          error instanceof Error ? error.message : String(error)
-        );
-      });
+    action('refreshBOM', { projectRoot: selectedProjectRoot, target: selectedTargetName, requestId });
   }, [selectedProjectRoot, selectedTargetName]);
+
+  // Fetch dependencies for active project (packages panel)
+  useEffect(() => {
+    if (!selectedProjectRoot) return;
+    const deps = useStore.getState().projectDependencies?.[selectedProjectRoot];
+    if (deps !== undefined) return;
+    action('fetchDependencies', { projectRoot: selectedProjectRoot });
+  }, [selectedProjectRoot, action]);
 
   // Fetch Variables data when project or target selection changes
   useEffect(() => {
@@ -104,19 +103,9 @@ export function useSidebarEffects({
     const requestId = ++variablesRequestIdRef.current;
     useStore.getState().setLoadingVariables(true);
     useStore.getState().setVariablesError(null);
-    api.variables
-      .get(selectedProjectRoot, selectedTargetName)
-      .then((result) => {
-        if (requestId !== variablesRequestIdRef.current) return;
-        useStore.getState().setVariablesData(result);
-      })
-      .catch((error) => {
-        if (requestId !== variablesRequestIdRef.current) return;
-        useStore.getState().setVariablesError(
-          error instanceof Error ? error.message : String(error)
-        );
-      });
+    action('fetchVariables', { projectRoot: selectedProjectRoot, target: selectedTargetName, requestId });
   }, [selectedProjectRoot, selectedTargetName]);
 
+  // Package install state is owned by backend; frontend is read-only.
   // Auto-expand/collapse is now handled by usePanelSizing hook based on store state.
 }

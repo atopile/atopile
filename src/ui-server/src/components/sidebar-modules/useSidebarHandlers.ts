@@ -4,7 +4,6 @@
  */
 
 import { sendActionWithResponse } from '../../api/websocket';
-import { api } from '../../api/client';
 import { useStore } from '../../store';
 import type { Selection, SelectedPackage, StageFilter } from './sidebarUtils';
 import type { PanelId } from '../../utils/panelConfig';
@@ -42,20 +41,31 @@ export function useSidebarHandlers({
       const project = projects.find(p => p.id === sel.projectId);
       const projectRoot = project?.root || project?.path;
       if (projectRoot) {
-        useStore.getState().setSelectedTargets([]);
-        useStore.getState().selectProject(projectRoot);
+        const coreProject = state?.projects?.find((p: any) => p.root === projectRoot);
+        const defaultTarget = coreProject?.targets?.[0]?.name ?? null;
+        const targetNames = defaultTarget ? [defaultTarget] : [];
+        useStore.getState().setSelectedTargets(targetNames);
+        action('setSelectedTargets', { targetNames });
+        action('selectProject', { projectRoot });
       }
     }
   };
 
   const handleSelectProject = (projectRoot: string | null) => {
+    const project = state?.projects?.find((p: any) => p.root === projectRoot);
+    const defaultTarget = project?.targets?.[0]?.name ?? null;
+    const targetNames = defaultTarget ? [defaultTarget] : [];
     useStore.getState().selectProject(projectRoot);
-    useStore.getState().setSelectedTargets([]);
+    useStore.getState().setSelectedTargets(targetNames);
+    action('selectProject', { projectRoot });
+    action('setSelectedTargets', { targetNames });
   };
 
   const handleSelectTarget = (projectRoot: string, targetName: string) => {
     useStore.getState().selectProject(projectRoot);
     useStore.getState().setSelectedTargets([targetName]);
+    action('selectProject', { projectRoot });
+    action('setSelectedTargets', { targetNames: [targetName] });
   };
 
   const handleBuild = (level: 'project' | 'build' | 'symbol', id: string, label: string) => {
@@ -87,59 +97,34 @@ export function useSidebarHandlers({
 
   const handleOpenPackageDetail = (pkg: SelectedPackage) => {
     setSelectedPackage(pkg);
-    useStore.getState().setLoadingPackageDetails(true);
-    api.packages
-      .details(pkg.fullName)
-      .then((details) => useStore.getState().setPackageDetails(details))
-      .catch((error) => {
-        useStore.getState().setPackageDetailsError(
-          error instanceof Error ? error.message : String(error)
-        );
-      });
+    action('getPackageDetails', { packageId: pkg.fullName });
   };
 
   const handlePackageInstall = (packageId: string, projectRoot: string, version?: string) => {
-    useStore.getState().addInstallingPackage(packageId);
     action('installPackage', { packageId, projectRoot, version });
   };
 
-  const handleCreateProject = (parentDirectory?: string, name?: string) => {
-    action('createProject', { parentDirectory, name });
+  const handleCreateProject = (data?: { name?: string; license?: string; description?: string; parentDirectory?: string }) => {
+    action('createProject', data || {});
   };
 
   const handleProjectExpand = (projectRoot: string) => {
     const modules = state?.projectModules?.[projectRoot];
     if (projectRoot && (!modules || modules.length === 0)) {
-      useStore.getState().setLoadingModules(true);
-      api.modules
-        .list(projectRoot)
-        .then((result) => useStore.getState().setProjectModules(projectRoot, result.modules))
-        .catch((error) => {
-          console.error('Failed to fetch modules:', error);
-          useStore.getState().setLoadingModules(false);
-        });
+      action('fetchModules', { projectRoot });
     }
     const files = state?.projectFiles?.[projectRoot];
     if (projectRoot && (!files || files.length === 0)) {
-      useStore.getState().setLoadingFiles(true);
-      api.files
-        .list(projectRoot)
-        .then((result) => useStore.getState().setProjectFiles(projectRoot, result.files))
-        .catch((error) => {
-          console.error('Failed to fetch files:', error);
-          useStore.getState().setLoadingFiles(false);
-        });
+      action('fetchFiles', { projectRoot });
     }
     const deps = state?.projectDependencies?.[projectRoot];
     if (projectRoot && (!deps || deps.length === 0)) {
-      useStore.getState().setLoadingDependencies(true);
-      api.dependencies
-        .list(projectRoot)
-        .then((result) => useStore.getState().setProjectDependencies(projectRoot, result.dependencies))
-        .catch((error) => {
-          console.error('Failed to fetch dependencies:', error);
-          useStore.getState().setLoadingDependencies(false);
-        });
+      action('fetchDependencies', { projectRoot });
+    }
+    // Also fetch builds for installed dependencies (reads local ato.yaml)
+    const builds = state?.projectBuilds?.[projectRoot];
+    if (projectRoot && (!builds || builds.length === 0)) {
+      action('fetchBuilds', { projectRoot });
     }
   };
 
@@ -260,12 +245,7 @@ export function useSidebarHandlers({
         });
 
         // Refresh dependencies after install completes
-        try {
-          const result = await api.dependencies.list(projectId);
-          useStore.getState().setProjectDependencies(projectId, result.dependencies);
-        } catch (error) {
-          console.error('Failed to refresh dependencies:', error);
-        }
+        action('fetchDependencies', { projectRoot: projectId });
       } else {
         console.error('Failed to update dependency version:', response.result?.message);
       }

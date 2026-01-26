@@ -12,7 +12,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { PANEL_IDS, type PanelId } from '../utils/panelConfig';
+import { PANEL_CONFIGS, PANEL_IDS, type PanelId } from '../utils/panelConfig';
 
 // Constants
 const TITLE_BAR_HEIGHT = 32; // Height of each panel's title bar
@@ -25,7 +25,6 @@ interface PanelState {
 
 interface UsePanelSizingOptions {
   containerRef: React.RefObject<HTMLElement>;
-  hasActiveBuilds?: boolean;
   hasProjectSelected?: boolean;
 }
 
@@ -47,24 +46,30 @@ interface UsePanelSizingReturn {
 function getInitialState(): Record<PanelId, PanelState> {
   const state: Partial<Record<PanelId, PanelState>> = {};
   for (const id of PANEL_IDS) {
-    state[id] = { collapsed: true };
+    state[id] = { collapsed: id !== 'projects' };
   }
   return state as Record<PanelId, PanelState>;
+}
+
+function clampBodyHeight(panelId: PanelId, bodyHeight: number): number {
+  const maxHeight = PANEL_CONFIGS[panelId]?.maxHeight;
+  if (!maxHeight) {
+    return bodyHeight;
+  }
+  return Math.min(bodyHeight, maxHeight);
 }
 
 export function usePanelSizing(options: UsePanelSizingOptions): UsePanelSizingReturn {
   const {
     containerRef,
-    hasActiveBuilds = false,
     hasProjectSelected = false,
   } = options;
 
   const [panelStates, setPanelStates] = useState<Record<PanelId, PanelState>>(getInitialState);
-  const [priorityPanel, setPriorityPanel] = useState<PanelId | null>(null);
+  const [priorityPanel, setPriorityPanel] = useState<PanelId | null>('projects');
   const [containerHeight, setContainerHeight] = useState(0);
 
   // Track previous values for auto-expand
-  const prevHasActiveBuilds = useRef(hasActiveBuilds);
   const prevHasProjectSelected = useRef(hasProjectSelected);
 
   // Resize drag refs
@@ -89,18 +94,6 @@ export function usePanelSizing(options: UsePanelSizingOptions): UsePanelSizingRe
 
     return () => observer.disconnect();
   }, [containerRef]);
-
-  // Auto-expand: Build Queue when builds start
-  useEffect(() => {
-    if (hasActiveBuilds && !prevHasActiveBuilds.current) {
-      setPanelStates(prev => ({
-        ...prev,
-        buildQueue: { ...prev.buildQueue, collapsed: false },
-      }));
-      setPriorityPanel('buildQueue');
-    }
-    prevHasActiveBuilds.current = hasActiveBuilds;
-  }, [hasActiveBuilds]);
 
   // Auto-expand: Projects when a project is selected
   useEffect(() => {
@@ -164,7 +157,7 @@ export function usePanelSizing(options: UsePanelSizingOptions): UsePanelSizingRe
     if (autoSizedPanels.length === 1) {
       // Only one auto-sized panel - it gets all remaining space
       const id = autoSizedPanels[0];
-      const bodyHeight = Math.max(MIN_BODY_HEIGHT, remainingSpace);
+      const bodyHeight = clampBodyHeight(id, Math.max(MIN_BODY_HEIGHT, remainingSpace));
       heights[id] = bodyHeight + TITLE_BAR_HEIGHT;
     } else if (priorityInAuto) {
       // Multiple auto-sized panels with a priority panel
@@ -175,9 +168,11 @@ export function usePanelSizing(options: UsePanelSizingOptions): UsePanelSizingRe
 
       for (const id of autoSizedPanels) {
         if (id === priorityPanel) {
-          heights[id] = prioritySpace + TITLE_BAR_HEIGHT;
+          const bodyHeight = clampBodyHeight(id, prioritySpace);
+          heights[id] = bodyHeight + TITLE_BAR_HEIGHT;
         } else {
-          heights[id] = MIN_BODY_HEIGHT + TITLE_BAR_HEIGHT;
+          const bodyHeight = clampBodyHeight(id, MIN_BODY_HEIGHT);
+          heights[id] = bodyHeight + TITLE_BAR_HEIGHT;
         }
       }
     } else {
@@ -185,7 +180,8 @@ export function usePanelSizing(options: UsePanelSizingOptions): UsePanelSizingRe
       // Distribute space equally
       const spacePerPanel = Math.max(MIN_BODY_HEIGHT, remainingSpace / autoSizedPanels.length);
       for (const id of autoSizedPanels) {
-        heights[id] = spacePerPanel + TITLE_BAR_HEIGHT;
+        const bodyHeight = clampBodyHeight(id, spacePerPanel);
+        heights[id] = bodyHeight + TITLE_BAR_HEIGHT;
       }
     }
 
@@ -205,8 +201,17 @@ export function usePanelSizing(options: UsePanelSizingOptions): UsePanelSizingRe
           userHeight: willExpand ? prev[panelId].userHeight : undefined,
         },
       };
-      if (willExpand) {
+      if (panelId === 'projects') {
+        if (willExpand) {
+          setPriorityPanel('projects');
+        } else {
+          const nextPriority = PANEL_IDS.find(id => !newState[id].collapsed) ?? null;
+          setPriorityPanel(nextPriority);
+        }
+      } else if (willExpand && newState.projects?.collapsed) {
         setPriorityPanel(panelId);
+      } else if (!newState.projects?.collapsed) {
+        setPriorityPanel('projects');
       }
       return newState;
     });
@@ -214,19 +219,35 @@ export function usePanelSizing(options: UsePanelSizingOptions): UsePanelSizingRe
 
   // Expand panel
   const expandPanel = useCallback((panelId: PanelId) => {
-    setPanelStates(prev => ({
-      ...prev,
-      [panelId]: { ...prev[panelId], collapsed: false },
-    }));
-    setPriorityPanel(panelId);
+    setPanelStates(prev => {
+      const nextState = {
+        ...prev,
+        [panelId]: { ...prev[panelId], collapsed: false },
+      };
+      if (panelId === 'projects') {
+        setPriorityPanel('projects');
+      } else if (nextState.projects?.collapsed) {
+        setPriorityPanel(panelId);
+      } else {
+        setPriorityPanel('projects');
+      }
+      return nextState;
+    });
   }, []);
 
   // Collapse panel
   const collapsePanel = useCallback((panelId: PanelId) => {
-    setPanelStates(prev => ({
-      ...prev,
-      [panelId]: { ...prev[panelId], collapsed: true, userHeight: undefined },
-    }));
+    setPanelStates(prev => {
+      const nextState = {
+        ...prev,
+        [panelId]: { ...prev[panelId], collapsed: true, userHeight: undefined },
+      };
+      if (panelId === 'projects') {
+        const nextPriority = PANEL_IDS.find(id => !nextState[id].collapsed) ?? null;
+        setPriorityPanel(nextPriority);
+      }
+      return nextState;
+    });
   }, []);
 
   // Resize handlers

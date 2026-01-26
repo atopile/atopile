@@ -457,7 +457,7 @@
 }
 
 .settings-status .status-ok {
-  color: var(--ctp-green);
+  color: var(--success);
 }
 
 /* Detected Installations */
@@ -670,11 +670,11 @@
 }
 
 .path-validation-status.valid {
-  color: var(--ctp-green);
+  color: var(--success);
 }
 
 .path-validation-status.invalid {
-  color: var(--ctp-red);
+  color: var(--error);
 }
 
 .path-validation-status svg {
@@ -687,11 +687,11 @@
 
 /* Input validation states */
 .settings-input.valid {
-  border-color: var(--ctp-green);
+  border-color: var(--success);
 }
 
 .settings-input.invalid {
-  border-color: var(--ctp-red);
+  border-color: var(--error);
 }
 
 /* Install Status (inline) */

@@ -147,7 +147,7 @@
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
@@ -159,13 +159,12 @@
 
 .stdlib-card.selected {
   border-color: var(--ato-orange);
-  background: var(--ato-orange-subtle);
 }
 
 .stdlib-card-header {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: var(--spacing-xs);
 }
 
 .stdlib-type-icon {

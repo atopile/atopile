@@ -5,9 +5,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Settings, ChevronDown, FolderOpen, Loader2, AlertCircle, Check, GitBranch, Package, Search, X } from 'lucide-react';
 import { sendAction } from '../../api/websocket';
-import { handleEvent } from '../../api/eventHandler';
-import { useStore } from '../../store';
-import type { AtopileState } from '../../types/build';
 
 // Send action to backend via WebSocket
 const action = (name: string, data?: Record<string, unknown>) => {
@@ -20,6 +17,26 @@ const action = (name: string, data?: Record<string, unknown>) => {
   }
   sendAction(name, data);
 };
+
+interface AtopileState {
+  isInstalling?: boolean;
+  installProgress?: {
+    message?: string;
+    percent?: number;
+  } | null;
+  error?: string | null;
+  source?: 'release' | 'branch' | 'local';
+  currentVersion?: string;
+  availableVersions?: string[];
+  branch?: string | null;
+  availableBranches?: string[];
+  localPath?: string | null;
+  detectedInstallations?: Array<{
+    path: string;
+    source: string;
+    version?: string | null;
+  }>;
+}
 
 interface SidebarHeaderProps {
   atopile?: AtopileState;
@@ -555,10 +572,7 @@ export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
                       <input
                         type="checkbox"
                         checked={developerMode || false}
-                        onChange={(e) => {
-                          useStore.getState().setDeveloperMode(e.target.checked);
-                          void handleEvent('problems_changed', {});
-                        }}
+                        onChange={(e) => action('setDeveloperMode', { enabled: e.target.checked })}
                       />
                       <span className="settings-toggle-slider" />
                     </label>

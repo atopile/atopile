@@ -8,6 +8,7 @@ import {
 type StdLibType = 'interface' | 'module' | 'component' | 'trait' | 'parameter'
 
 // Child/field in an interface or module
+// Backend uses to_frontend_dict() which converts snake_case to camelCase
 interface StdLibChild {
   name: string
   type: string  // The type name (e.g., "Electrical", "ElectricLogic")
@@ -18,6 +19,7 @@ interface StdLibChild {
 
 // Helper to get item type from child
 function getChildItemType(child: StdLibChild): StdLibType {
+  // Backend sends camelCase via to_frontend_dict()
   return child.itemType || 'interface'
 }
 
@@ -112,8 +114,8 @@ function StdLibCard({
   const hasChildren = (item.children?.length ?? 0) > 0
 
   return (
-    <div className={`stdlib-card${isSelected ? ' selected' : ''}`} onClick={onSelect}>
-      <div className="stdlib-card-header">
+    <div className={`stdlib-card${isSelected ? ' selected' : ''}`}>
+      <div className="stdlib-card-header" onClick={onSelect}>
         {hasChildren && (
           <span className="stdlib-expand-icon">
             {isSelected ? <ChevronDown size={12} /> : <ChevronRight size={12} />}

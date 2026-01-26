@@ -32,7 +32,7 @@
 }
 
 .detail-package-icon {
-  color: var(--ctp-peach);
+  color: var(--accent-secondary);
 }
 
 .detail-header-info {
@@ -150,7 +150,7 @@
 
 .detail-install-btn.install {
   background: var(--accent);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 .detail-install-btn.install:hover {
@@ -319,8 +319,8 @@
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-lg);
-  background: var(--ctp-green);
-  color: var(--ctp-crust);
+  background: var(--success);
+  color: var(--text-on-status);
   border: none;
   border-radius: var(--radius-md);
   font-size: 12px;
@@ -429,16 +429,62 @@
   font-family: var(--font-mono);
 }
 
+/* Code view panel with syntax highlighting */
+.detail-code-view {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
 .detail-code-block {
+  margin: 0;
   padding: var(--spacing-md);
   background: var(--ctp-crust);
-  border-radius: var(--radius-md);
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-secondary);
   overflow-x: auto;
   white-space: pre;
   line-height: 1.6;
+}
+
+.detail-code-block code {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* Basic syntax highlighting for .ato code */
+.detail-code-block .language-ato {
+  color: var(--ctp-text);
+}
+
+.detail-section .copyable-code + .copyable-code {
+  margin-top: var(--spacing-sm);
+}
+
+.detail-usage-code .copyable-code {
+  border: none;
+  background: transparent;
+}
+
+.detail-usage-code .copyable-code-header {
+  padding-left: 0;
+  padding-right: 0;
+  background: transparent;
+  border-bottom: 0;
+}
+
+.detail-usage-code .copyable-code-content {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+}
+
+.detail-usage-empty {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
 }
 
 /* ============================================
@@ -462,7 +508,7 @@
 
 .package-open-detail:hover {
   background: var(--accent);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 .package-symbols-preview {

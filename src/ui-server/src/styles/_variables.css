@@ -48,6 +48,11 @@
   --font-size-md: 12px;
   --font-size-lg: 13px;
 
+  /* Icon Sizes */
+  --icon-size-sm: 12px;   /* Row icons, inline icons */
+  --icon-size-md: 14px;   /* Tree expand, header actions */
+  --icon-size-lg: 16px;   /* Status icons, emphasis */
+
   /* Z-Index Scale */
   --z-base: 0;
   --z-elevated: 10;
@@ -74,6 +79,14 @@
   --ctp-yellow: #f9e2af;
   --ctp-green: #a6e3a1;
   --ctp-teal: #94e2d5;
+
+  /* RGB variants for rgba() usage */
+  --ctp-red-rgb: 243, 139, 168;
+  --ctp-yellow-rgb: 249, 226, 175;
+  --ctp-green-rgb: 166, 227, 161;
+  --ctp-blue-rgb: 137, 180, 250;
+  --ctp-peach-rgb: 250, 179, 135;
+  --ctp-mauve-rgb: 203, 166, 247;
   --ctp-sky: #89dceb;
   --ctp-sapphire: #74c7ec;
   --ctp-blue: #89b4fa;
@@ -122,6 +135,16 @@
   --info: var(--vscode-editorInfo-foreground, var(--ctp-blue));
   --debug: var(--ctp-overlay1);
 
+  /* Status backgrounds (15-20% opacity) */
+  --success-bg: rgba(var(--ctp-green-rgb), 0.15);
+  --warning-bg: rgba(var(--ctp-yellow-rgb), 0.15);
+  --error-bg: rgba(var(--ctp-red-rgb), 0.15);
+  --info-bg: rgba(var(--ctp-blue-rgb), 0.15);
+
+  /* Text on colored backgrounds */
+  --text-on-accent: var(--ctp-crust);
+  --text-on-status: var(--ctp-crust);
+
   /* Card backgrounds */
   --bg-card: var(--bg-tertiary);
   --bg-card-hover: var(--bg-hover);
@@ -152,6 +175,14 @@
   --ctp-yellow: #df8e1d;
   --ctp-green: #40a02b;
   --ctp-teal: #179299;
+
+  /* RGB variants for rgba() usage (Latte) */
+  --ctp-red-rgb: 210, 15, 57;
+  --ctp-yellow-rgb: 223, 142, 29;
+  --ctp-green-rgb: 64, 160, 43;
+  --ctp-blue-rgb: 30, 102, 245;
+  --ctp-peach-rgb: 254, 100, 11;
+  --ctp-mauve-rgb: 136, 57, 239;
   --ctp-sky: #04a5e5;
   --ctp-sapphire: #209fb5;
   --ctp-blue: #1e66f5;
@@ -200,6 +231,16 @@
   --info: var(--vscode-editorInfo-foreground, var(--ctp-blue));
   --debug: var(--ctp-overlay1);
 
+  /* Status backgrounds (15-20% opacity) */
+  --success-bg: rgba(var(--ctp-green-rgb), 0.15);
+  --warning-bg: rgba(var(--ctp-yellow-rgb), 0.15);
+  --error-bg: rgba(var(--ctp-red-rgb), 0.15);
+  --info-bg: rgba(var(--ctp-blue-rgb), 0.15);
+
+  /* Text on colored backgrounds */
+  --text-on-accent: var(--ctp-base);
+  --text-on-status: var(--ctp-base);
+
   /* Card backgrounds */
   --bg-card: var(--bg-tertiary);
   --bg-card-hover: var(--bg-hover);
@@ -232,6 +273,15 @@
     --ctp-yellow: #df8e1d;
     --ctp-green: #40a02b;
     --ctp-teal: #179299;
+
+    /* RGB variants for rgba() usage (Latte) */
+    --ctp-red-rgb: 210, 15, 57;
+    --ctp-yellow-rgb: 223, 142, 29;
+    --ctp-green-rgb: 64, 160, 43;
+    --ctp-blue-rgb: 30, 102, 245;
+    --ctp-peach-rgb: 254, 100, 11;
+    --ctp-mauve-rgb: 136, 57, 239;
+
     --ctp-sky: #04a5e5;
     --ctp-sapphire: #209fb5;
     --ctp-blue: #1e66f5;
@@ -279,6 +329,16 @@
     --error: var(--vscode-notificationsErrorIcon-foreground, var(--ctp-red));
     --info: var(--vscode-editorInfo-foreground, var(--ctp-blue));
     --debug: var(--ctp-overlay1);
+
+    /* Status backgrounds (15-20% opacity) */
+    --success-bg: rgba(var(--ctp-green-rgb), 0.15);
+    --warning-bg: rgba(var(--ctp-yellow-rgb), 0.15);
+    --error-bg: rgba(var(--ctp-red-rgb), 0.15);
+    --info-bg: rgba(var(--ctp-blue-rgb), 0.15);
+
+    /* Text on colored backgrounds */
+    --text-on-accent: var(--ctp-base);
+    --text-on-status: var(--ctp-base);
 
     /* Card backgrounds */
     --bg-card: var(--bg-tertiary);

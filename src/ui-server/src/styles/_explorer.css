@@ -114,7 +114,7 @@
 }
 
 .package-icon {
-  color: var(--ctp-peach);
+  color: var(--accent-secondary);
   flex-shrink: 0;
 }
 
@@ -225,7 +225,7 @@
 }
 
 .export-badge {
-  font-size: 8px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   text-transform: uppercase;
   color: var(--ctp-green);
@@ -257,7 +257,7 @@
 
 .symbol-goto:hover {
   background: var(--accent);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 .symbol-children {
@@ -387,7 +387,7 @@
 }
 
 .package-detail-icon {
-  color: var(--ctp-peach);
+  color: var(--accent-secondary);
 }
 
 .package-detail-name {
@@ -459,7 +459,7 @@
   background: var(--accent);
   border: none;
   border-radius: var(--radius-sm);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
@@ -557,7 +557,7 @@
 /* Build action buttons on symbols should be orange */
 .symbol-action-btn.build {
   background: var(--ctp-peach);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
   box-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
 
@@ -568,7 +568,7 @@
 
 .symbol-action-btn:hover {
   background: var(--accent);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 /* Override symbol-goto in new structure */
@@ -636,6 +636,19 @@
   flex-direction: column;
   overflow: hidden;
   min-height: 0;
+}
+
+.panel-sections.projects-pinned .collapsible-section[data-section-id="structure"] {
+  margin-top: auto;
+  border-top: none;
+}
+
+.panel-sections.projects-pinned .collapsible-section[data-section-id="projects"] {
+  border-bottom: none;
+}
+
+.panel-sections.projects-pinned .collapsible-section[data-section-id="structure"] .section-title-bar {
+  border-top: 1px solid var(--border-color);
 }
 
 /* Detail Panel Container (slides in from right) */

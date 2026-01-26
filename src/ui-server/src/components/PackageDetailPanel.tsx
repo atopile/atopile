@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import {
   X, Package, Download, ExternalLink,
-  CheckCircle, Tag, Calendar, FileCode, Play,
+  CheckCircle, Tag, Calendar, FileCode,
   Loader2, AlertCircle, Globe
 } from 'lucide-react'
 import type { PackageDetails } from '../types/build'
+import { CopyableCodeBlock } from './shared'
 
 interface PackageDetailProps {
   package: {
@@ -24,7 +25,7 @@ interface PackageDetailProps {
   error: string | null
   onClose: () => void
   onInstall: (version: string) => void
-  onBuild: (entry?: string) => void
+  onBuild?: (entry?: string) => void  // Optional, no longer used in UI
 }
 
 // Format download count for display (e.g., 12847 -> "12.8k")
@@ -80,7 +81,6 @@ export function PackageDetailPanel({
   error,
   onClose,
   onInstall,
-  onBuild
 }: PackageDetailProps) {
   // Use details from API if available, fallback to basic package info
   const details = packageDetails
@@ -117,6 +117,7 @@ export function PackageDetailPanel({
   const description = details?.description || details?.summary || pkg.description
   const isInstalled = details?.installed ?? pkg.installed
   const installedVersion = details?.installedVersion || pkg.version
+  const usageContent = details?.usageContent?.trim()
 
   return (
     <div className="package-detail-panel">
@@ -216,15 +217,6 @@ export function PackageDetailPanel({
                 </>
               )}
             </button>
-            <button
-              className="detail-build-btn"
-              onClick={() => onBuild()}
-              title="Build this package (installs if needed)"
-              disabled={isLoading || isInstalling}
-            >
-              <Play size={14} />
-              Build
-            </button>
           </div>
 
           {/* Install error message */}
@@ -244,31 +236,25 @@ export function PackageDetailPanel({
           )}
         </section>
 
-        {/* Exports - placeholder until backend provides symbol introspection */}
+        {/* Usage Example - code view panel */}
         <section className="detail-section">
           <h3 className="detail-section-title">
             <FileCode size={14} />
-            Exported Symbols
+            Usage
           </h3>
-          <p className="muted">Symbol introspection coming soon</p>
-        </section>
-
-        {/* Usage Example */}
-        <section className="detail-section">
-          <h3 className="detail-section-title">
-            <FileCode size={14} />
-            Usage Example
-          </h3>
-          <pre className="detail-code-block">
-{`from "${pkg.fullName}/${pkg.name}.ato" import RP2040
-
-module MyBoard:
-    mcu = new RP2040
-
-    # Connect interfaces
-    power ~ mcu.power
-    i2c ~ mcu.i2c`}
-          </pre>
+          <div className="detail-usage-code">
+            {usageContent ? (
+              <CopyableCodeBlock
+                label="usage.ato"
+                code={usageContent}
+                highlightAto
+              />
+            ) : (
+              <div className="detail-usage-empty">
+                {isInstalled ? 'No usage.ato found for this package.' : 'Available after installing.'}
+              </div>
+            )}
+          </div>
         </section>
       </div>
 

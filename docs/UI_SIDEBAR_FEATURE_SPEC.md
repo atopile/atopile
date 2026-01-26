@@ -348,7 +348,7 @@ This table maps each UI slice to event(s) and the preferred fetch endpoint/actio
 
 ### UI Files to Copy (Sidebar Scope)
 
-**Likely OK as‑is (pure UI / styling):**
+**Core sidebar UI (required):**
 - `src/ui-server/src/components/Sidebar.tsx`
 - `src/ui-server/src/components/ActiveProjectPanel.tsx`
 - `src/ui-server/src/components/StructurePanel.tsx`
@@ -360,16 +360,30 @@ This table maps each UI slice to event(s) and the preferred fetch endpoint/actio
 - `src/ui-server/src/components/PackageDetailPanel.tsx`
 - `src/ui-server/src/components/CollapsibleSection.tsx`
 - `src/ui-server/src/components/sidebar-modules/*`
+- `src/ui-server/src/components/ModuleTreeNode.tsx` (StructurePanel dependency)
+- `src/ui-server/src/components/shared/*` (CopyableCodeBlock, badges)
 - `src/ui-server/src/hooks/usePanelSizing.ts`
 - `src/ui-server/src/styles/_explorer.css`
 - `src/ui-server/src/styles/_utilities.css`
 - `src/ui-server/src/components/*.css` (related to the above panels)
+
+**Supporting UI (optional, only if keeping other pages/features):**
+- `src/ui-server/src/components/ProjectsPanel.tsx`
+- `src/ui-server/src/components/ProjectCard.tsx`
+- `src/ui-server/src/components/ProjectExplorerCard.tsx`
+- `src/ui-server/src/components/DependencyCard.tsx`
+- `src/ui-server/src/components/BuildsCard.tsx`
+- `src/ui-server/src/components/BuildItem.tsx`
+- `src/ui-server/src/components/BuildNode.tsx`
+- `src/ui-server/src/components/BuildTargetItem.tsx`
 
 **Needs structural updates (event‑bus alignment):**
 - `src/ui-server/src/api/websocket.ts`  
   - Replace full‑state handling with event handling; keep `action_result`.
 - `src/ui-server/src/store/index.ts`  
   - Remove `replaceState` full‑state pathway; keep per‑slice setters and loading/error states.
+- `src/ui-server/src/hooks/useConnection.ts`  
+  - Reconnect logic can stay, but should subscribe to event‑bus messages (no AppState replacement).
 - `src/ui-server/src/components/sidebar-modules/useSidebarEffects.ts`  
   - Swap “action‑driven state push” for event‑triggered refetch.
 - `src/ui-server/src/components/sidebar-modules/useSidebarHandlers.ts`  
@@ -382,3 +396,5 @@ This table maps each UI slice to event(s) and the preferred fetch endpoint/actio
 **Optional / Evaluate:**
 - `src/ui-server/src/api/client.ts`  
   - Prefer this for refetch endpoints under the event‑bus model.
+- `src/ui-server/src/api/vscodeApi.ts`  
+  - Verify host messaging still aligns (open file/layout, connection status).

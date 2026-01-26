@@ -3,7 +3,7 @@
  */
 
 import { useMemo } from 'react';
-import type { QueuedBuild } from '../BuildQueuePanel';
+import type { QueuedBuild } from '../../types/build';
 import { type Selection, type StageFilter } from './sidebarUtils';
 
 // Local helper functions that work with any build structure
@@ -92,10 +92,9 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
   const transformedProjects = useMemo((): any[] => {
     if (!state?.projects?.length) return [];
 
-    const activeBuilds = [
-      ...(state?.queuedBuilds || []),
-      ...(state?.builds || []),
-    ];
+    const activeBuilds = (state?.builds || []).filter((b: any) =>
+      b.status === 'queued' || b.status === 'building'
+    );
 
     return state.projects.map((p: any) => {
       const projectModules = state.projectModules?.[p.root] || [];
@@ -267,8 +266,11 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
     else projectCount++;
   }
 
-  // Queued builds - NO MEMO: just property access with default
-  const queuedBuilds: QueuedBuild[] = (state?.queuedBuilds || []) as QueuedBuild[];
+  // Queued builds + recent completed builds for display in Build Queue
+  // Combines active builds with recently completed ones for quick review
+  const queuedBuilds = useMemo((): QueuedBuild[] => {
+    return (state?.queuedBuilds || []) as QueuedBuild[];
+  }, [state?.queuedBuilds]);
 
   // Index projects by ID - KEEP: creates Map for O(1) lookups used in filtering
   const projectsById = useMemo(() => {

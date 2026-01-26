@@ -1,14 +1,14 @@
 /**
- * WebSocket client for event notifications from the Python backend.
+ * WebSocket client for real-time state updates from the Python backend.
  *
- * The backend emits lightweight events; this client triggers REST fetches
- * and updates the Zustand store locally.
+ * The backend broadcasts full state on every change. This client connects
+ * to the WebSocket endpoint and updates the Zustand store.
  */
 
 import { useStore } from '../store';
+import type { AppState } from '../types/build';
 import { WS_STATE_URL, getWorkspaceFolders } from './config';
 import { postMessage } from './vscodeApi';
-import { fetchInitialData, handleEvent } from './eventHandler';
 
 // Reconnection settings
 const RECONNECT_DELAY_MS = 1000;
@@ -17,10 +17,9 @@ const RECONNECT_BACKOFF_MULTIPLIER = 1.5;
 const CONNECTION_TIMEOUT_MS = 5000; // Timeout for connection handshake
 
 // Message types from backend
-interface EventMessage {
-  type: 'event';
-  event: string;
-  data?: unknown;
+interface StateMessage {
+  type: 'state';
+  data: AppState;
 }
 
 interface ActionResultMessage {
@@ -37,7 +36,7 @@ interface ActionResultMessage {
   error?: string;
 }
 
-type BackendMessage = EventMessage | ActionResultMessage;
+type BackendMessage = StateMessage | ActionResultMessage;
 
 // WebSocket connection state
 let ws: WebSocket | null = null;
@@ -211,8 +210,6 @@ function handleOpen(): void {
     console.log('[WS] Sending workspace folders:', workspaceFolders);
     sendAction('setWorkspaceFolders', { folders: workspaceFolders });
   }
-
-  void fetchInitialData();
 }
 
 function handleMessage(event: MessageEvent): void {
@@ -220,83 +217,45 @@ function handleMessage(event: MessageEvent): void {
     const message = JSON.parse(event.data) as BackendMessage;
 
     switch (message.type) {
-      case 'event': {
-        const eventName = message.event;
-        const payload = message.data;
+      case 'state':
+        // Full state replacement from backend
+        // Note: Backend's to_frontend_dict() converts all keys to camelCase
+        {
+          const state = message.data as AppState;
 
-        if (eventName === 'open_file' && payload && typeof payload === 'object') {
-          const data = payload as { path?: string; line?: number; column?: number };
-          if (data.path) {
-            postMessage({
-              type: 'openSignals',
-              openFile: data.path,
-              openFileLine: data.line ?? null,
-              openFileColumn: data.column ?? null,
-              openLayout: null,
-              openKicad: null,
-              open3d: null,
-            });
-          }
-        }
-        if (eventName === 'open_layout' && payload && typeof payload === 'object') {
-          const data = payload as { path?: string };
-          if (data.path) {
-            postMessage({
-              type: 'openSignals',
-              openFile: null,
-              openFileLine: null,
-              openFileColumn: null,
-              openLayout: data.path,
-              openKicad: null,
-              open3d: null,
-            });
-          }
-        }
-        if (eventName === 'open_kicad' && payload && typeof payload === 'object') {
-          const data = payload as { path?: string };
-          if (data.path) {
-            postMessage({
-              type: 'openSignals',
-              openFile: null,
-              openFileLine: null,
-              openFileColumn: null,
-              openLayout: null,
-              openKicad: data.path,
-              open3d: null,
-            });
-          }
-        }
-        if (eventName === 'open_3d' && payload && typeof payload === 'object') {
-          const data = payload as { path?: string };
-          if (data.path) {
-            postMessage({
-              type: 'openSignals',
-              openFile: null,
-              openFileLine: null,
-              openFileColumn: null,
-              openLayout: null,
-              openKicad: null,
-              open3d: data.path,
-            });
-          }
-        }
+          // Extract one-shot open signals before replacing state
+          const { openFile, openFileLine, openFileColumn, openLayout, openKicad, open3D, ...stateWithoutSignals } = state;
 
-        void handleEvent(eventName, payload).then(() => {
-          if (eventName === 'atopile_config_changed') {
-            const atopile = useStore.getState().atopile;
+          // Update store with state (excluding one-shot signals)
+          useStore.getState().replaceState(stateWithoutSignals);
+
+          // Forward open signals to VS Code extension (one-shot actions)
+          if (openFile || openLayout || openKicad || open3D) {
+            postMessage({
+              type: 'openSignals',
+              openFile: openFile ?? null,
+              openFileLine: openFileLine ?? null,
+              openFileColumn: openFileColumn ?? null,
+              openLayout: openLayout ?? null,
+              openKicad: openKicad ?? null,
+              open3d: open3D ?? null,
+            });
+          }
+
+          // Forward atopile settings changes to VS Code extension
+          if (state.atopile) {
             postMessage({
               type: 'atopileSettings',
               atopile: {
-                source: atopile.source,
-                currentVersion: atopile.currentVersion,
-                branch: atopile.branch,
-                localPath: atopile.localPath,
+                source: state.atopile.source,
+                currentVersion: state.atopile.currentVersion,
+                branch: state.atopile.branch,
+                localPath: state.atopile.localPath,
               },
             });
           }
-        });
+        }
         break;
-      }
 
       case 'action_result':
         // Action response (success/failure)
