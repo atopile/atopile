@@ -362,6 +362,57 @@ def query_one(
     return results[0] if results else None
 
 
+def update(
+    db_path: Path,
+    instance: Any,
+    *,
+    where: str,
+    params: tuple[Any, ...] | list[Any] = (),
+) -> int:
+    """
+    Update rows in the table for *instance*'s class.
+
+    All non-primary-key fields are SET from the serialized instance.
+
+    Args:
+        db_path: Path to the SQLite database file.
+        instance: A model instance whose fields map to the table columns.
+        where: WHERE clause **without** the ``WHERE`` keyword
+               (e.g. ``"build_id = ?"``).
+        params: Bind parameters for the WHERE clause.
+
+    Returns:
+        Number of rows affected.
+    """
+    model_cls = type(instance)
+    table = _get_tablename(model_cls)
+    data = to_row_dict(instance)
+
+    fields_info = _model_fields(model_cls)
+    pk_cols = {
+        name
+        for name, info in fields_info.items()
+        if info.metadata.get("primary_key")
+    }
+    update_cols = [c for c in data if c not in pk_cols]
+
+    if not update_cols:
+        return 0
+
+    set_clause = ", ".join(f"{col} = ?" for col in update_cols)
+    set_params = [data[col] for col in update_cols]
+
+    sql = f"UPDATE {table} SET {set_clause}"
+    if where:
+        sql += f" WHERE {where}"
+
+    bind = set_params + list(params)
+
+    with _connect(db_path) as conn:
+        cursor = conn.execute(sql, bind)
+        return cursor.rowcount
+
+
 def execute(
     db_path: Path,
     sql: str,

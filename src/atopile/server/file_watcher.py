@@ -26,6 +26,7 @@ def _configure_watchdog_logging() -> None:
         "watchdog.observers.fsevents",
         "watchdog.observers.inotify_buffer",
         "watchdog.observers.polling",
+        "fsevents",
     ):
         logger = logging.getLogger(name)
         logger.setLevel(logging.WARNING)

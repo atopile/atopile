@@ -13,13 +13,53 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from atopile.dataclasses import ActiveBuild, BuildStatus, StageStatus
+from atopile import sqlite_model
+from atopile.dataclasses import (
+    ActiveBuild,
+    BuildStatus,
+    HistoricalBuild,
+    StageStatus,
+)
 from atopile.model import build_history
 from atopile.model.model_state import model_state
 from atopile.server.events import event_bus
+
+# ---------------------------------------------------------------------------
+# Typed messages from build worker threads
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class BuildStartedMsg:
+    build_id: str
+
+
+@dataclass(frozen=True)
+class BuildStageMsg:
+    build_id: str
+    stages: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class BuildCompletedMsg:
+    build_id: str
+    return_code: int
+    error: str | None
+    stages: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class BuildCancelledMsg:
+    build_id: str
+
+
+BuildResultMsg = (
+    BuildStartedMsg | BuildStageMsg | BuildCompletedMsg | BuildCancelledMsg
+)
 
 log = logging.getLogger(__name__)
 
@@ -72,38 +112,36 @@ def _run_build_subprocess(
     entry: str | None,
     standalone: bool,
     build_timestamp: str | None,
-    result_q: queue.Queue,
+    result_q: queue.Queue[BuildResultMsg],
     cancel_flags: dict[str, bool],
 ) -> None:
     """
     Run a single build in a subprocess and report progress.
 
-    This function runs in a worker thread. It spawns an `ato build` subprocess
-    and monitors it for completion while polling the database for stage updates.
+    This function runs in a worker thread. It spawns an ``ato build``
+    subprocess and monitors it for completion while polling the database
+    for stage updates.
     """
-    # Send "started" message
-    result_q.put(
-        {
-            "type": "started",
-            "build_id": build_id,
-            "project_root": project_root,
-            "target": target,
-        }
-    )
+    result_q.put(BuildStartedMsg(build_id=build_id))
 
     process = None
-    final_stages: list[dict] = []
+    final_stages: list[dict[str, Any]] = []
     error_msg: str | None = None
     return_code: int = -1
 
     try:
         # Build the command (prefer explicit binary, then PATH, then module)
-        ato_binary = os.environ.get("ATO_BINARY") or os.environ.get("ATO_BINARY_PATH")
+        ato_binary = (
+            os.environ.get("ATO_BINARY")
+            or os.environ.get("ATO_BINARY_PATH")
+        )
         resolved_ato = ato_binary or shutil.which("ato")
         if resolved_ato:
             cmd = [resolved_ato, "build", "--verbose"]
         else:
-            cmd = [sys.executable, "-m", "atopile", "build", "--verbose"]
+            cmd = [
+                sys.executable, "-m", "atopile", "build", "--verbose",
+            ]
 
         # Determine target for monitoring
         monitor_target: str
@@ -111,7 +149,6 @@ def _run_build_subprocess(
         if standalone and entry:
             cmd.append(entry)
             cmd.append("--standalone")
-            # For standalone builds, the target name is "default"
             monitor_target = "default"
         else:
             cmd.extend(["--build", target])
@@ -123,18 +160,19 @@ def _run_build_subprocess(
         # Run the build subprocess
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
-        env["ATO_BUILD_ID"] = build_id  # Pass build_id to subprocess
+        env["ATO_BUILD_ID"] = build_id
         if build_timestamp:
             env["ATO_BUILD_TIMESTAMP"] = build_timestamp
 
-        # Pass the build history DB path to the subprocess
         db_path = build_history.get_build_history_db()
         if db_path:
             env["ATO_BUILD_HISTORY_DB"] = str(db_path)
 
         log.info(
-            f"Build {build_id}: starting subprocess - cmd={' '.join(cmd)}, "
-            f"cwd={project_root}, monitor_target={monitor_target}"
+            f"Build {build_id}: starting subprocess - "
+            f"cmd={' '.join(cmd)}, "
+            f"cwd={project_root}, "
+            f"monitor_target={monitor_target}"
         )
 
         process = subprocess.Popen(
@@ -146,52 +184,43 @@ def _run_build_subprocess(
             env=env,
         )
 
-        # Poll for completion while monitoring the database for stage updates
-        last_stages: list[dict] = []
+        # Poll for completion while monitoring the DB for stage updates
+        last_stages: list[dict[str, Any]] = []
         poll_interval = 0.5
         stderr_output = ""
 
         while process.poll() is None:
-            # Check for cancellation
             if cancel_flags.get(build_id, False):
                 process.terminate()
                 try:
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     process.kill()
-                result_q.put(
-                    {
-                        "type": "cancelled",
-                        "build_id": build_id,
-                    }
-                )
-                return  # Exit the function after cancellation
+                result_q.put(BuildCancelledMsg(build_id=build_id))
+                return
 
-            # Query the database for stage updates
             build_info = build_history.get_build_info_by_id(build_id)
             current_stages = build_info.stages if build_info else []
 
-            # Check if stages changed
             if current_stages != last_stages:
                 log.debug(
-                    f"Build {build_id}: stage update - {len(current_stages)} stages"
+                    f"Build {build_id}: stage update "
+                    f"- {len(current_stages)} stages"
                 )
-                result_q.put(
-                    {
-                        "type": "stage",
-                        "build_id": build_id,
-                        "stages": current_stages,
-                    }
-                )
+                result_q.put(BuildStageMsg(
+                    build_id=build_id,
+                    stages=current_stages,
+                ))
                 last_stages = current_stages
 
             time.sleep(poll_interval)
 
         # Process completed
         return_code = process.returncode
-        stderr_output = process.stderr.read() if process.stderr else ""
+        stderr_output = (
+            process.stderr.read() if process.stderr else ""
+        )
 
-        # Get final stages from database
         build_info = build_history.get_build_info_by_id(build_id)
         if build_info:
             final_stages = build_info.stages
@@ -207,16 +236,12 @@ def _run_build_subprocess(
         error_msg = str(exc)
         return_code = -1
 
-    # Send completion message
-    result_q.put(
-        {
-            "type": "completed",
-            "build_id": build_id,
-            "return_code": return_code,
-            "error": error_msg,
-            "stages": final_stages,
-        }
-    )
+    result_q.put(BuildCompletedMsg(
+        build_id=build_id,
+        return_code=return_code,
+        error=error_msg,
+        stages=final_stages,
+    ))
 
 
 class BuildQueue:
@@ -244,7 +269,7 @@ class BuildQueue:
         self._executor: ThreadPoolExecutor | None = None
 
         # Result queue for worker threads to report back
-        self._result_q: queue.Queue[dict[str, Any]] = queue.Queue()
+        self._result_q: queue.Queue[BuildResultMsg] = queue.Queue()
 
         # Cancel flags (thread-safe dict for signaling cancellation)
         self._cancel_flags: dict[str, bool] = {}
@@ -466,105 +491,123 @@ class BuildQueue:
             except queue.Empty:
                 break
 
-            build_id = msg.get("build_id")
-            msg_type = msg.get("type")
-
-            if msg_type == "started":
-                building_started_at = time.time()
+            if isinstance(msg, BuildStartedMsg):
                 with _build_lock:
-                    build = model_state.find_build(build_id)
+                    build = model_state.find_build(msg.build_id)
                     if build:
                         build.status = BuildStatus.BUILDING
-                        build.building_started_at = building_started_at
-
-                # Emit build change event for /ws/state clients
+                        build.building_started_at = time.time()
                 _sync_builds_to_state()
 
-            elif msg_type == "stage":
-                stages = msg.get("stages", [])
+            elif isinstance(msg, BuildStageMsg):
                 with _build_lock:
-                    build = model_state.find_build(build_id)
+                    build = model_state.find_build(msg.build_id)
                     if build:
-                        build.stages = stages
-
-                # Emit build change event for /ws/state clients
+                        build.stages = msg.stages
                 _sync_builds_to_state()
 
-            elif msg_type == "completed":
-                return_code = msg.get("return_code", -1)
-                error = msg.get("error")
-                stages = msg.get("stages", [])
-                status = BuildStatus.SUCCESS if return_code == 0 else BuildStatus.FAILED
-                duration = 0.0
+            elif isinstance(msg, BuildCompletedMsg):
+                self._handle_completed(msg)
 
+            elif isinstance(msg, BuildCancelledMsg):
                 with _build_lock:
-                    build = model_state.find_build(build_id)
-                    if build:
-                        started_at = build.building_started_at or build.started_at
-                        if started_at:
-                            duration = time.time() - started_at
-                        build.status = status
-                        build.return_code = return_code
-                        build.error = error
-                        build.stages = stages
-                        build.duration = duration
-
-                        # Count warnings/errors from stages
-                        build.warnings = sum(
-                            1
-                            for s in stages
-                            if s.get("status") == StageStatus.WARNING.value
-                        )
-                        build.errors = sum(
-                            1
-                            for s in stages
-                            if s.get("status") == StageStatus.ERROR.value
-                        )
-
-                with self._active_lock:
-                    self._active.discard(build_id)
-
-                with self._cancel_lock:
-                    self._cancel_flags.pop(build_id, None)
-
-                # Emit build change event for /ws/state clients
-                _sync_builds_to_state()
-
-                # Clear module introspection cache (build may have run ato sync)
-                from atopile.server.module_introspection import clear_module_cache
-
-                clear_module_cache()
-
-                # Save to history
-                with _build_lock:
-                    build = model_state.find_build(build_id)
-                    if build:
-                        build_history.save_build_to_history(build_id, build)
-
-                # Refresh project lastBuild data so frontend shows updated timestamps
-                with _build_lock:
-                    build = model_state.find_build(build_id)
-                if build:
-                    _refresh_project_last_build(build)
-                    # Refresh BOM data for selected project/target after build completes
-                    _refresh_bom_for_selected(build)
-
-                log.info(f"BuildQueue: Build {build_id} completed with status {status}")
-
-            elif msg_type == "cancelled":
-                with _build_lock:
-                    build = model_state.find_build(build_id)
+                    build = model_state.find_build(msg.build_id)
                     if build:
                         build.status = BuildStatus.CANCELLED
 
                 with self._active_lock:
-                    self._active.discard(build_id)
-
+                    self._active.discard(msg.build_id)
                 with self._cancel_lock:
-                    self._cancel_flags.pop(build_id, None)
+                    self._cancel_flags.pop(msg.build_id, None)
 
-                # Emit build change event for /ws/state clients
                 _sync_builds_to_state()
+
+    def _handle_completed(self, msg: BuildCompletedMsg) -> None:
+        """Handle a build-completed message."""
+        completed_at = time.time()
+
+        warnings = sum(
+            1 for s in msg.stages
+            if s.get("status") == StageStatus.WARNING.value
+        )
+        errors = sum(
+            1 for s in msg.stages
+            if s.get("status") == StageStatus.ERROR.value
+        )
+        status = BuildStatus.from_return_code(
+            msg.return_code, warnings
+        )
+
+        # Update the active build record
+        started_at = completed_at
+        duration = 0.0
+
+        with _build_lock:
+            build = model_state.find_build(msg.build_id)
+            if build:
+                started_at = (
+                    build.building_started_at
+                    or build.started_at
+                    or completed_at
+                )
+                duration = completed_at - started_at
+
+                build.status = status
+                build.return_code = msg.return_code
+                build.error = msg.error
+                build.stages = msg.stages
+                build.duration = duration
+                build.warnings = warnings
+                build.errors = errors
+
+        with self._active_lock:
+            self._active.discard(msg.build_id)
+        with self._cancel_lock:
+            self._cancel_flags.pop(msg.build_id, None)
+
+        _sync_builds_to_state()
+
+        from atopile.server.module_introspection import (
+            clear_module_cache,
+        )
+        clear_module_cache()
+
+        # Save to history
+        db = build_history.get_build_history_db()
+        if db and build:
+            row = HistoricalBuild(
+                build_id=msg.build_id,
+                project_root=build.project_root or "",
+                target=build.target or "default",
+                entry=build.entry,
+                status=status,
+                return_code=msg.return_code,
+                error=msg.error,
+                started_at=started_at,
+                duration=duration,
+                stages=msg.stages,
+                warnings=warnings,
+                errors=errors,
+                completed_at=completed_at,
+            )
+            try:
+                sqlite_model.save(db, row)
+            except Exception:
+                log.exception(
+                    f"Failed to save build {msg.build_id} to history"
+                )
+
+        # Refresh project data for frontend
+        with _build_lock:
+            build = model_state.find_build(msg.build_id)
+        if build:
+            _refresh_project_last_build(build)
+            _refresh_bom_for_selected(build)
+
+        log.info(
+            f"BuildQueue: Build {msg.build_id} completed "
+            f"with status {status}"
+        )
 
     def _dispatch_next(self) -> None:
         """Dispatch next pending build if capacity available."""

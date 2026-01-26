@@ -35,6 +35,7 @@ from rich.traceback import Traceback
 
 import atopile
 import faebryk
+from atopile import sqlite_model
 from atopile.dataclasses import (
     BuildRow,
     Log,
@@ -44,7 +45,6 @@ from atopile.dataclasses import (
     TestLogRow,
     TestRunRow,
 )
-from atopile import sqlite_model
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 from atopile.logging_utils import PLOG, console, error_console
 
@@ -87,7 +87,7 @@ def _is_serving() -> bool:
 def _should_log(record: logging.LogRecord) -> bool:
     """Filter for atopile/faebryk logs, excluding server/http unless serving."""
     name = record.name
-    if name.startswith("watchdog"):
+    if name.startswith(("watchdog", "fsevents")):
         return False
     if _is_serving():
         return True

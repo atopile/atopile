@@ -13,11 +13,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum, StrEnum
 from pathlib import Path
-from typing import Any, ClassVar, Literal, Optional, TypedDict
+from typing import Any, Literal, Optional, TypedDict
 
 from fastapi import WebSocket
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-
 
 # =============================================================================
 # Enums and Type Aliases
@@ -33,6 +32,15 @@ class BuildStatus(str, Enum):
     WARNING = "warning"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+    @classmethod
+    def from_return_code(
+        cls, return_code: int, warnings: int = 0
+    ) -> BuildStatus:
+        """Derive terminal build status from a process return code."""
+        if return_code != 0:
+            return cls.FAILED
+        return cls.WARNING if warnings > 0 else cls.SUCCESS
 
 
 class StageStatus(str, Enum):
