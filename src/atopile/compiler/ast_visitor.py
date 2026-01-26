@@ -1993,7 +1993,8 @@ class ASTVisitor:
 
         # Track the global best prefix match across all ancestors
         # We only use prefix matches as a fallback if no exact match is found
-        global_best_prefix_match: tuple["AST.SourceChunk | None", int] = (None, -1)
+        # Initialize score to 0 so only actual matches (score > 0) are recorded
+        global_best_prefix_match: tuple["AST.SourceChunk | None", int] = (None, 0)
 
         for ancestor in reversed(common_ancestors):
             source_path = source_py.get_path_from_ancestor(ancestor)
@@ -2067,7 +2068,8 @@ class ASTVisitor:
                     score = len(lhs_path) + len(rhs_path)
                     match_score = max(match_score, score)
 
-                if match_score > global_best_prefix_match[1]:
+                # Only record if there's an actual prefix match (score > 0)
+                if match_score > 0 and match_score > global_best_prefix_match[1]:
                     _logger.debug("    Prefix match score: %d", match_score)
                     global_best_prefix_match = (
                         ASTVisitor.get_source_chunk(make_link_node),
@@ -2296,7 +2298,11 @@ class TestSourceChunkForConnection:
     @staticmethod
     def test_no_match_returns_none():
         """
-        Test that when there's no match at all, None is returned.
+        Test that when querying for a non-existent connection, None is returned
+        even if there are other unrelated connections in the module.
+
+        This ensures we don't incorrectly return the source chunk of an
+        unrelated MakeLink just because it exists in the module.
         """
         import textwrap
 
@@ -2306,7 +2312,7 @@ class TestSourceChunkForConnection:
         tg = fbrk.TypeGraph.create(g=g)
         stdlib = StdlibRegistry(tg)
 
-        # Build ato source with disconnected modules
+        # Build ato source with connections, but query for unconnected nodes
         result = build_source(
             g=g,
             tg=tg,
@@ -2314,16 +2320,15 @@ class TestSourceChunkForConnection:
                 """
                 import Electrical
 
-                module ModuleA:
-                    pin_a = new Electrical
-
-                module ModuleB:
-                    pin_b = new Electrical
-
                 module App:
-                    a = new ModuleA
-                    b = new ModuleB
-                    # No connection between a.pin_a and b.pin_b
+                    # These pins ARE connected
+                    connected_a = new Electrical
+                    connected_b = new Electrical
+                    connected_a ~ connected_b
+
+                    # These pins are NOT connected
+                    unconnected_a = new Electrical
+                    unconnected_b = new Electrical
                 """
             ),
         )
@@ -2335,31 +2340,27 @@ class TestSourceChunkForConnection:
         app_type = result.state.type_roots["App"]
         app_instance = tg.instantiate_node(type_node=app_type, attributes={})
 
-        # Get disconnected nodes
-        a_node = fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=app_instance, child_identifier="a"
+        # Get the unconnected nodes
+        unconnected_a = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance, child_identifier="unconnected_a"
         )
-        assert a_node is not None
+        assert unconnected_a is not None
 
-        pin_a = fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=a_node, child_identifier="pin_a"
+        unconnected_b = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance, child_identifier="unconnected_b"
         )
-        assert pin_a is not None
+        assert unconnected_b is not None
 
-        b_node = fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=app_instance, child_identifier="b"
+        # Query for a connection between the unconnected nodes
+        # There IS a MakeLink in App (connected_a ~ connected_b), but it
+        # should NOT be returned since it doesn't match our query
+        source_chunk = ASTVisitor.get_source_chunk_for_connection(
+            unconnected_a, unconnected_b, tg
         )
-        assert b_node is not None
 
-        pin_b = fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=b_node, child_identifier="pin_b"
-        )
-        assert pin_b is not None
-
-        # Query for a non-existent connection
-        source_chunk = ASTVisitor.get_source_chunk_for_connection(pin_a, pin_b, tg)
-
-        # Should return None since there's no connection
+        # Should return None - the connected_a ~ connected_b MakeLink
+        # should not be returned just because it exists in the same module
         assert source_chunk is None, (
-            "Expected None when no connection exists between nodes"
+            "Expected None when querying for unconnected nodes, even if "
+            "other connections exist in the module"
         )
