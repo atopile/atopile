@@ -1362,15 +1362,6 @@ export function ActiveProjectPanel({
           />
         </div>
 
-        {/* Project Description */}
-        {activeProject && (
-          <ProjectDescription
-            description={activeProject.description}
-            onUpdate={onUpdateDescription ? (desc) => onUpdateDescription(activeProject.root, desc) : undefined}
-            disabled={!activeProject}
-          />
-        )}
-
         <div className="build-controls">
           <button
             className="control-btn primary"
