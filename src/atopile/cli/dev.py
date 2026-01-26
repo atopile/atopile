@@ -197,98 +197,6 @@ def install():
     print("Remember to reload your extension!")
 
 
-@dataclass(frozen=True)
-class _ConfigFlagDef:
-    env_name: str
-    kind: str
-    python_name: str | None
-    file: Path
-    line: int
-    default: str | None
-    descr: str | None
-
-
-def _iter_python_files(*roots: Path) -> list[Path]:
-    out: list[Path] = []
-    for r in roots:
-        if not r.exists():
-            continue
-        out.extend(p for p in r.rglob("*.py") if p.is_file())
-    return out
-
-
-def _format_ast_target(target) -> str | None:
-    import ast
-
-    match target:
-        case ast.Name(id=name):
-            return name
-        case ast.Attribute(value=base, attr=attr):
-            base_s = _format_ast_target(base)
-            if base_s is None:
-                return attr
-            return f"{base_s}.{attr}"
-        case _:
-            return None
-
-
-def _extract_str_constant(node) -> str | None:
-    import ast
-
-    match node:
-        case ast.Constant(value=str_val) if isinstance(str_val, str):
-            return str_val
-        case _:
-            return None
-
-
-def _extract_literal_repr(node) -> str | None:
-    import ast
-
-    match node:
-        case ast.Constant(value=v):
-            return repr(v)
-        case ast.Name(id=name):
-            # best-effort: many defaults are literals; if not, still provide identifier
-            return name
-        case ast.Attribute(value=ast.Name(id=obj_name), attr=attr_name):
-            # Handle Enum.MEMBER style attribute access
-            return f"{obj_name}.{attr_name}"
-        case ast.UnaryOp(op=ast.USub(), operand=ast.Constant(value=v)) if isinstance(
-            v, (int, float)
-        ):
-            return repr(-v)
-        case _:
-            return None
-
-
-def _is_configflag_ctor(call) -> str | None:
-    """
-    Return the constructor name if `call` looks like ConfigFlag*(...) or None.
-    """
-    import ast
-
-    if not isinstance(call, ast.Call):
-        return None
-
-    fn = call.func
-    name = None
-    if isinstance(fn, ast.Name):
-        name = fn.id
-    elif isinstance(fn, ast.Attribute):
-        name = fn.attr
-
-    if name in {
-        "ConfigFlag",
-        "ConfigFlagInt",
-        "ConfigFlagFloat",
-        "ConfigFlagString",
-        "ConfigFlagEnum",
-    }:
-        return name
-    return None
-
-
 def _env_truthy(name: str) -> bool | None:
     val = os.getenv(name)
     if val is None:
@@ -328,110 +236,8 @@ def _resolve_llm_flag(llm_cli: bool) -> bool:
     return _detect_llm_agent()
 
 
-def _find_configflags_in_assignment(value, *, file: Path, line: int, python_name: str):
-    import ast
-
-    found: list[_ConfigFlagDef] = []
-    for node in ast.walk(value):
-        if not isinstance(node, ast.Call):
-            continue
-        ctor = _is_configflag_ctor(node)
-        if ctor is None:
-            continue
-
-        env_name = _extract_str_constant(node.args[0]) if node.args else None
-        if not env_name:
-            continue
-
-        default: str | None = None
-        descr: str | None = None
-        for kw in node.keywords:
-            if kw.arg == "default":
-                default = _extract_literal_repr(kw.value)
-            elif kw.arg == "descr":
-                descr = _extract_str_constant(kw.value) or _extract_literal_repr(
-                    kw.value
-                )
-
-        # Common positional patterns used in this repo:
-        # - ConfigFlag("NAME", False, "descr")
-        # - ConfigFlag("NAME", False)
-        if default is None and len(node.args) >= 2:
-            default = _extract_literal_repr(node.args[1])
-        if descr is None and len(node.args) >= 3:
-            descr = _extract_str_constant(node.args[2]) or _extract_literal_repr(
-                node.args[2]
-            )
-
-        found.append(
-            _ConfigFlagDef(
-                env_name=env_name,
-                kind=ctor,
-                python_name=python_name,
-                file=file,
-                line=line,
-                default=default,
-                descr=descr,
-            )
-        )
-
-    return found
-
-
-def _discover_configflags(*roots: Path) -> list[_ConfigFlagDef]:
-    import ast
-
-    flags: list[_ConfigFlagDef] = []
-    for path in _iter_python_files(*roots):
-        try:
-            src = path.read_text(encoding="utf-8")
-        except Exception:
-            continue
-        try:
-            tree = ast.parse(src, filename=str(path))
-        except SyntaxError:
-            continue
-
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign):
-                if not node.targets:
-                    continue
-                python_name = _format_ast_target(node.targets[0])
-                if python_name is None:
-                    continue
-                flags.extend(
-                    _find_configflags_in_assignment(
-                        node.value,
-                        file=path,
-                        line=node.lineno,
-                        python_name=python_name,
-                    )
-                )
-            elif isinstance(node, ast.AnnAssign):
-                python_name = _format_ast_target(node.target)
-                if python_name is None or node.value is None:
-                    continue
-                flags.extend(
-                    _find_configflags_in_assignment(
-                        node.value,
-                        file=path,
-                        line=node.lineno,
-                        python_name=python_name,
-                    )
-                )
-
-    # Dedupe exact duplicates (same env/type/location/name)
-    uniq: dict[tuple[str, str, str, int, str | None], _ConfigFlagDef] = {}
-    for f in flags:
-        k = (f.env_name, f.kind, str(f.file), f.line, f.python_name)
-        uniq[k] = f
-    return sorted(
-        uniq.values(), key=lambda f: (f.env_name, f.kind, str(f.file), f.line)
-    )
-
-
 def _count_callsites(
-    flags: list[_ConfigFlagDef],
+    flags: list,
     *,
     roots: list[Path],
 ) -> dict[tuple[Path, int, str], int]:
@@ -446,6 +252,8 @@ def _count_callsites(
     """
     import io
     import tokenize
+
+    from atopile.config_flags import _iter_python_files
 
     tracked_names = {
         f.python_name for f in flags if f.python_name and f.python_name.isidentifier()
@@ -509,6 +317,8 @@ def flags():
     from rich.console import Console
     from rich.table import Table
 
+    from atopile.config_flags import discover_configflags
+
     def _linkify_urls(text: str) -> str:
         """Convert URLs to Rich hyperlinks with shorter display text."""
         url_pattern = r"(https?://[^\s]+)"
@@ -526,7 +336,7 @@ def flags():
             f"This command must be run from the '/atopile' folder, not from [{here}]."
         )
     roots = [here / p for p in roots]
-    discovered = _discover_configflags(*roots)
+    discovered = discover_configflags(*roots)
     uses_by_def = _count_callsites(discovered, roots=roots)
 
     table = Table(title="ConfigFlags", show_lines=True)
@@ -545,18 +355,15 @@ def flags():
         if f.python_name and f.python_name.isidentifier():
             uses = str(uses_by_def.get((f.file.resolve(), f.line, f.python_name), 0))
 
-        # Get current value from environment
-        current = os.getenv(f"{f.env_name}", "")
-
         # Convert URLs to clickable hyperlinks
         descr = _linkify_urls(f.descr) if f.descr else ""
 
         table.add_row(
-            f.env_name,
+            f.full_env_name,
             f.kind,
             f.python_name or "",
             f.default or "",
-            current,
+            f.current_value,
             descr,
             loc,
             uses,
