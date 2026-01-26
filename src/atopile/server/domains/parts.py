@@ -7,7 +7,7 @@ import time
 from typing import Iterable, Optional
 
 from atopile.dataclasses import Log
-from atopile.logging import BuildLogger, SQLiteLogWriter
+from atopile.logging import BuildLogger, get_build_appender
 from atopile.model import build_history
 from faebryk.libs.picker.api.api import get_api_client
 from faebryk.libs.picker.api.models import Component, LCSCParams
@@ -74,7 +74,10 @@ def _log_out_of_stock(
         return False
 
     logger = BuildLogger(build_id, stage="bom")
-    logger.set_writer(SQLiteLogWriter.get_build_instance())
+    appender = get_build_appender()
+    if not appender:
+        return False
+    logger.set_writer(appender)
     logger.warning(
         f"Out of stock: {component.lcsc_display} ({component.part_number})",
         audience=Log.Audience.USER,

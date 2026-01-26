@@ -841,12 +841,7 @@ class ParallelBuildManager:
 
     def _write_live_summary(self) -> None:
         """Write per-target build status to the build history database."""
-        from atopile import sqlite_model
         from atopile.model import build_history
-
-        db = build_history.get_build_history_db()
-        if not db:
-            return
 
         _FINISHED = {
             BuildStatus.SUCCESS,
@@ -874,10 +869,10 @@ class ParallelBuildManager:
             )
 
             # Update existing record, or create if first seen
-            if not sqlite_model.historical_builds.update(
-                db, row, where="build_id = ?", params=(bp.build_id,)
+            if not build_history.update_build(
+                row, where="build_id = ?", params=(bp.build_id,)
             ):
-                sqlite_model.historical_builds.save(db, row)
+                build_history.save_build(row)
 
     def run_until_complete(self) -> dict[str, int]:
         """

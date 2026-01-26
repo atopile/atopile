@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from atopile import sqlite_model
 from atopile.dataclasses import (
     ActiveBuild,
     BuildStatus,
@@ -592,8 +591,7 @@ class BuildQueue:
         clear_module_cache()
 
         # Save to history
-        db = build_history.get_build_history_db()
-        if db and build:
+        if build:
             row = HistoricalBuild(
                 build_id=msg.build_id,
                 project_root=build.project_root or "",
@@ -610,7 +608,7 @@ class BuildQueue:
                 completed_at=completed_at,
             )
             try:
-                sqlite_model.historical_builds.save(db, row)
+                build_history.save_build(row)
             except Exception:
                 log.exception(
                     f"Failed to save build {msg.build_id} to history"
