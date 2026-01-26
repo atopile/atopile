@@ -1161,6 +1161,37 @@ class ASTVisitor:
                 target_path, assignable.operand
             )
 
+        # Handle field-to-field assignment (e.g., a.voltage = b.voltage)
+        # This creates an "Is" constraint between the two parameters
+        assignable_value = assignable_node.get_value().switch_cast()
+        if assignable_value.isinstance(AST.FieldRef):
+            source_field_ref = assignable_value.cast(AST.FieldRef)
+            source_path = self.visit_FieldRef(source_field_ref)
+
+            unique_target_str = (
+                str(target_path).replace(".", "_")
+                + f"_{next(ActionsFactory._unique_counter)}"
+            )
+
+            # Create an Is constraint linking target to source
+            return [
+                AddMakeChildAction(
+                    target_path=FieldPath(
+                        segments=(
+                            *target_path.segments,
+                            FieldPath.Segment(f"constraint_{unique_target_str}"),
+                        )
+                    ),
+                    child_field=F.Expressions.Is.MakeChild(
+                        target_path.to_ref_path(),
+                        list(source_path.identifiers()),
+                        assert_=True,
+                    ),
+                    soft_create=True,
+                    source_chunk_node=node.source.get(),
+                )
+            ]
+
         if (assignable := self.visit_Assignable(assignable_node)) is None:
             return NoOpAction()
 
