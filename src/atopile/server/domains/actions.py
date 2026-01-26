@@ -814,7 +814,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             file_tree = await asyncio.to_thread(
                 core_projects.build_file_tree, project_path, project_path
             )
-            return {"success": True, "files": file_tree}
+            return {
+                "success": True,
+                "files": [node.model_dump(by_alias=True) for node in file_tree],
+            }
 
         if action == "fetchDependencies":
             project_root = payload.get("projectRoot", "")
@@ -833,6 +836,41 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             dependencies = await asyncio.to_thread(_build_dependencies, project_path)
             return {"success": True, "dependencies": dependencies}
+
+        if action == "fetchBuilds":
+            project_root = payload.get("projectRoot", "")
+            if not project_root:
+                return {"success": True, "info": "No project specified"}
+
+            project_path = Path(project_root)
+            if not await asyncio.to_thread(project_path.exists):
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            data, _ = core_projects._load_ato_yaml(project_path)
+            builds = []
+            for name, config in (data.get("builds") or {}).items():
+                if isinstance(config, dict):
+                    entry = config.get("entry", "")
+                else:
+                    entry = str(config)
+                last_build = core_projects._load_last_build_for_target(
+                    project_path, name
+                )
+                builds.append(
+                    {
+                        "name": name,
+                        "entry": entry,
+                        "root": project_root,
+                        "lastBuild": last_build.model_dump(by_alias=True)
+                        if last_build
+                        else None,
+                    }
+                )
+
+            return {"success": True, "builds": builds}
 
         if action == "getModuleChildren":
             project_root = payload.get("projectRoot", "")
@@ -854,6 +892,50 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             return {
                 "success": True,
                 "children": [child.model_dump(by_alias=True) for child in result],
+            }
+
+        if action == "getModuleChildrenForFile":
+            project_root = payload.get("projectRoot", "")
+            file_path = payload.get("filePath", "")
+            max_depth = int(payload.get("maxDepth", 2))
+            if not project_root or not file_path:
+                return {"success": False, "error": "Missing projectRoot or filePath"}
+
+            project_path = Path(project_root)
+            if not await asyncio.to_thread(project_path.exists):
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            from atopile.server.module_introspection import (
+                introspect_module_definition,
+            )
+
+            max_depth = max(0, min(5, max_depth))
+            file_rel = None
+            try:
+                file_rel = str(Path(file_path).resolve().relative_to(project_path))
+            except Exception:
+                file_rel = None
+
+            response = await asyncio.to_thread(
+                projects_domain.handle_get_modules, project_root
+            )
+            modules = response.modules if response else []
+            if file_rel:
+                modules = [m for m in modules if m.file == file_rel]
+            else:
+                modules = [m for m in modules if m.file and file_path.endswith(m.file)]
+
+            enriched = [
+                introspect_module_definition(project_path, module, max_depth)
+                for module in modules
+            ]
+
+            return {
+                "success": True,
+                "modules": [module.model_dump(by_alias=True) for module in enriched],
             }
 
         if action == "getBuildsByProject":
