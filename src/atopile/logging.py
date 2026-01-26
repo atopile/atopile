@@ -17,6 +17,7 @@ import sqlite3
 import struct
 import sys
 import threading
+import time
 import traceback
 from collections.abc import Iterable
 from contextlib import contextmanager
@@ -35,7 +36,6 @@ from rich.traceback import Traceback
 
 import atopile
 import faebryk
-from atopile import sqlite_model
 from atopile.dataclasses import (
     Log,
     StageCompleteEvent,
@@ -304,17 +304,188 @@ def _extract_traceback_frames(
 # Log appender singletons
 # =============================================================================
 
-_appenders: dict[str, sqlite_model.TableHelper] = {}
+_BUILD_LOGS_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS logs (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    build_id          TEXT,
+    timestamp         TEXT,
+    stage             TEXT,
+    level             TEXT,
+    message           TEXT,
+    logger_name       TEXT,
+    audience          TEXT DEFAULT 'developer',
+    source_file       TEXT,
+    source_line       INTEGER,
+    ato_traceback     TEXT,
+    python_traceback  TEXT,
+    objects           TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_logs_build_id ON logs(build_id);
+"""
+
+_TEST_LOGS_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS test_runs (
+    test_run_id TEXT PRIMARY KEY,
+    created_at  TEXT
+);
+CREATE TABLE IF NOT EXISTS test_logs (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    test_run_id       TEXT,
+    timestamp         TEXT,
+    test_name         TEXT,
+    level             TEXT,
+    message           TEXT,
+    logger_name       TEXT,
+    audience          TEXT DEFAULT 'developer',
+    source_file       TEXT,
+    source_line       INTEGER,
+    ato_traceback     TEXT,
+    python_traceback  TEXT,
+    objects           TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_test_logs_test_run_id ON test_logs(test_run_id);
+"""
+
+_LOG_COLUMNS = [
+    "build_id", "timestamp", "stage", "level", "message",
+    "logger_name", "audience", "source_file", "source_line",
+    "ato_traceback", "python_traceback", "objects",
+]
+
+_TEST_LOG_COLUMNS = [
+    "test_run_id", "timestamp", "test_name", "level", "message",
+    "logger_name", "audience", "source_file", "source_line",
+    "ato_traceback", "python_traceback", "objects",
+]
+
+_WAL_PRAGMAS = (
+    "journal_mode=WAL",
+    "synchronous=NORMAL",
+    "temp_store=MEMORY",
+    "busy_timeout=30000",
+)
+
+
+class _LogAppender:
+    """Batched SQLite log appender with WAL mode."""
+
+    BATCH_SIZE = 300
+    FLUSH_INTERVAL = 0.5
+
+    def __init__(
+        self,
+        db_path: Path,
+        schema_sql: str,
+        table: str,
+        columns: list[str],
+    ) -> None:
+        self.table = table
+        self.columns = columns
+
+        cols = ", ".join(columns)
+        ph = ", ".join("?" for _ in columns)
+        self._insert_sql = f"INSERT INTO {table} ({cols}) VALUES ({ph})"
+
+        self._db_path = db_path
+        self._local = threading.local()
+
+        self._buffer: list[Any] = []
+        self._buffer_lock = threading.Lock()
+        self._last_flush = time.monotonic()
+        self._closed = False
+
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = self._connection()
+        conn.executescript(schema_sql)
+        conn.commit()
+
+    def _connection(self) -> sqlite3.Connection:
+        if not hasattr(self._local, "conn") or self._local.conn is None:
+            self._local.conn = sqlite3.connect(
+                str(self._db_path), check_same_thread=False, timeout=30.0
+            )
+            for pragma in _WAL_PRAGMAS:
+                self._local.conn.execute(f"PRAGMA {pragma}")
+        return self._local.conn
+
+    def _serialize(self, entry: Any) -> tuple:
+        from enum import Enum
+
+        vals = []
+        for col in self.columns:
+            v = getattr(entry, col)
+            if isinstance(v, Enum):
+                v = v.value
+            elif isinstance(v, (dict, list)):
+                v = json.dumps(v)
+            vals.append(v)
+        return tuple(vals)
+
+    def append(self, entry: Any) -> None:
+        """Buffer an entry for batched insertion."""
+        if self._closed:
+            return
+        with self._buffer_lock:
+            self._buffer.append(entry)
+            should_flush = (
+                len(self._buffer) >= self.BATCH_SIZE
+                or (time.monotonic() - self._last_flush) > self.FLUSH_INTERVAL
+            )
+        if should_flush:
+            self.flush()
+
+    def flush(self) -> None:
+        with self._buffer_lock:
+            if not self._buffer:
+                return
+            entries, self._buffer = self._buffer, []
+            self._last_flush = time.monotonic()
+
+        data = [self._serialize(e) for e in entries]
+        try:
+            conn = self._connection()
+            conn.executemany(self._insert_sql, data)
+            conn.commit()
+        except sqlite3.Error as e:
+            self._local.conn = None
+            try:
+                conn = self._connection()
+                conn.executemany(self._insert_sql, data)
+                conn.commit()
+            except sqlite3.Error:
+                pass
+
+    def execute(self, sql: str, params: tuple[Any, ...] = ()) -> None:
+        """Run arbitrary SQL on the underlying connection."""
+        try:
+            conn = self._connection()
+            conn.execute(sql, params)
+            conn.commit()
+        except sqlite3.Error:
+            pass
+
+    def close(self) -> None:
+        self._closed = True
+        self.flush()
+        if hasattr(self._local, "conn") and self._local.conn:
+            try:
+                self._local.conn.close()
+            except sqlite3.Error:
+                pass
+            self._local.conn = None
+
+
+_appenders: dict[str, _LogAppender] = {}
 _appender_lock = threading.Lock()
 
 
 def _get_appender(
-    key: str, db_path: Path, schema: str, table: str, columns: list[str],
-) -> sqlite_model.TableHelper:
+    key: str, db_path: Path, schema_sql: str, table: str, columns: list[str],
+) -> _LogAppender:
     with _appender_lock:
         if key not in _appenders:
-            _appenders[key] = sqlite_model.TableHelper(
-                db_path, schema, table, columns,
+            _appenders[key] = _LogAppender(
+                db_path, schema_sql, table, columns,
             )
         return _appenders[key]
 
@@ -325,7 +496,7 @@ def _close_appender(key: str) -> None:
             _appenders.pop(key).close()
 
 
-def get_build_appender() -> sqlite_model.TableHelper | None:
+def get_build_appender() -> _LogAppender | None:
     """Get the active build log appender, if one exists."""
     return _appenders.get("build")
 
@@ -410,7 +581,7 @@ class BaseLogger:
     def __init__(self, identifier: str, context: str = ""):
         self._identifier = identifier
         self._context = context
-        self._writer: sqlite_model.TableHelper | None = None
+        self._writer: _LogAppender | None = None
 
     # Static methods for backward compatibility
     capture_logs = staticmethod(capture_logs)
@@ -424,7 +595,7 @@ class BaseLogger:
     def set_context(self, context: str) -> None:
         self._context = context
 
-    def set_writer(self, writer: sqlite_model.TableHelper) -> None:
+    def set_writer(self, writer: _LogAppender) -> None:
         self._writer = writer
 
     def log(
@@ -559,8 +730,8 @@ class LoggerForTest(BaseLogger):
     def setup_logging(cls, test_run_id: str, test: str = "") -> "LoggerForTest | None":
         try:
             appender = _get_appender(
-                "test", cls.get_log_db(), "test_logs.sql",
-                "test_logs", sqlite_model.TEST_LOG_COLUMNS,
+                "test", cls.get_log_db(), _TEST_LOGS_SCHEMA,
+                "test_logs", _TEST_LOG_COLUMNS,
             )
             appender.execute(
                 "INSERT OR IGNORE INTO test_runs (test_run_id) VALUES (?)",
@@ -650,21 +821,14 @@ class BuildLogger(BaseLogger):
     ) -> "BuildLogger":
         timestamp = timestamp or NOW
         appender = _get_appender(
-            "build", cls.get_log_db(), "build_logs.sql",
-            "logs", sqlite_model.LOG_COLUMNS,
+            "build", cls.get_log_db(), _BUILD_LOGS_SCHEMA,
+            "logs", _LOG_COLUMNS,
         )
 
         if build_id is None:
             from atopile.buildutil import generate_build_id
 
             build_id = generate_build_id(project_path, target, timestamp)
-        appender.execute(
-            "INSERT OR IGNORE INTO builds"
-            " (build_id, project_path, target, timestamp)"
-            " VALUES (?, ?, ?, ?)",
-            (build_id, project_path, target, timestamp),
-        )
-
         if build_id not in cls._loggers:
             bl = cls(build_id, stage)
             bl.set_writer(appender)

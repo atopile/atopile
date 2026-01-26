@@ -841,7 +841,7 @@ class ParallelBuildManager:
 
     def _write_live_summary(self) -> None:
         """Write per-target build status to the build history database."""
-        from atopile.model import build_history
+        from atopile.model.sqlite import BuildHistory
 
         _FINISHED = {
             BuildStatus.SUCCESS,
@@ -868,11 +868,7 @@ class ParallelBuildManager:
                 completed_at=time.time() if bp.status in _FINISHED else None,
             )
 
-            # Update existing record, or create if first seen
-            if not build_history.update_build(
-                row, where="build_id = ?", params=(bp.build_id,)
-            ):
-                build_history.save_build(row)
+            BuildHistory.set(row)
 
     def run_until_complete(self) -> dict[str, int]:
         """
@@ -1311,18 +1307,10 @@ def _build_all_projects(
         jobs,
     )
 
-    # Initialize build history database (central location alongside build_logs.db)
-    from atopile.model import build_history
-    from faebryk.libs.paths import get_log_dir
+    # Initialize build history database
+    from atopile.model.sqlite import BuildHistory
 
-    db_path = os.environ.get("ATO_BUILD_HISTORY_DB")
-    if db_path:
-        build_history.init_build_history_db(Path(db_path))
-    else:
-        # CLI mode: use central log directory
-        default_db_path = get_log_dir() / "build_history.db"
-        default_db_path.parent.mkdir(parents=True, exist_ok=True)
-        build_history.init_build_history_db(default_db_path)
+    BuildHistory.init_db()
 
     # Create and run parallel build manager
     manager = ParallelBuildManager(
@@ -1529,18 +1517,10 @@ def build(
         (name, project_root, None) for name in build_names
     ]
 
-    # Initialize build history database (central location alongside build_logs.db)
-    from atopile.model import build_history
-    from faebryk.libs.paths import get_log_dir
+    # Initialize build history database
+    from atopile.model.sqlite import BuildHistory
 
-    db_path = os.environ.get("ATO_BUILD_HISTORY_DB")
-    if db_path:
-        build_history.init_build_history_db(Path(db_path))
-    else:
-        # CLI mode: use central log directory
-        default_db_path = get_log_dir() / "build_history.db"
-        default_db_path.parent.mkdir(parents=True, exist_ok=True)
-        build_history.init_build_history_db(default_db_path)
+    BuildHistory.init_db()
 
     # Create and run parallel build manager
     manager = ParallelBuildManager(

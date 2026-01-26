@@ -19,8 +19,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from atopile.dataclasses import AppContext
-from atopile.model import build_history
 from atopile.model.model_state import model_state
+from atopile.model.sqlite import BuildHistory
 from atopile.server.connections import server_state
 from atopile.server.core import projects as core_projects
 from atopile.server.domains import packages as packages_domain
@@ -36,9 +36,6 @@ PACKAGES_REFRESH_MIN_INTERVAL_S = float(
 )
 _debounce_tasks: dict[str, asyncio.Task] = {}
 _last_packages_registry_refresh: float = 0.0
-
-init_build_history_db = build_history.init_build_history_db
-
 
 async def _load_projects_background(ctx: AppContext) -> None:
     """Background task to load projects without blocking startup."""
@@ -350,12 +347,8 @@ def create_app(
     )
     app.state.ctx = ctx
 
-    # Initialize build history database in central log directory
-    from faebryk.libs.paths import get_log_dir
-
-    build_history_db_path = get_log_dir() / "build_history.db"
-    build_history_db_path.parent.mkdir(parents=True, exist_ok=True)
-    init_build_history_db(build_history_db_path)
+    # Initialize build history database
+    BuildHistory.init_db()
 
     @app.on_event("startup")
     async def on_startup():

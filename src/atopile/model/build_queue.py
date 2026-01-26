@@ -25,6 +25,7 @@ from atopile.dataclasses import (
 )
 from atopile.model import build_history
 from atopile.model.model_state import model_state
+from atopile.model.sqlite import BUILD_HISTORY_DB, BuildHistory
 from atopile.server.events import event_bus
 
 # ---------------------------------------------------------------------------
@@ -163,9 +164,7 @@ def _run_build_subprocess(
         if build_timestamp:
             env["ATO_BUILD_TIMESTAMP"] = build_timestamp
 
-        db_path = build_history.get_build_history_db()
-        if db_path:
-            env["ATO_BUILD_HISTORY_DB"] = str(db_path)
+        env["ATO_BUILD_HISTORY_DB"] = str(BUILD_HISTORY_DB)
 
         log.info(
             f"Build {build_id}: starting subprocess - "
@@ -608,7 +607,7 @@ class BuildQueue:
                 completed_at=completed_at,
             )
             try:
-                build_history.save_build(row)
+                BuildHistory.set(row)
             except Exception:
                 log.exception(
                     f"Failed to save build {msg.build_id} to history"
