@@ -104,16 +104,11 @@ logging.setLoggerClass(AtoLogger)
 def _get_pretty_repr(value: object, max_len: int = 200) -> str:
     """Get pretty repr using __pretty_repr__ or __rich_repr__ or fallback to repr."""
     try:
-        # Try pretty_repr first (faebryk convention)
-        if hasattr(value, "pretty_repr"):
-            result = str(value.pretty_repr())
-            return result[:max_len] + "..." if len(result) > max_len else result
-
         # Try __rich_repr__ (Rich library protocol)
         if hasattr(value, "__rich_repr__"):
             type_name = type(value).__name__
             rich_repr_parts = []
-            for item in value.__rich_repr__():
+            for item in getattr(value, "__rich_repr__")():
                 if isinstance(item, tuple):
                     if len(item) == 2:
                         key, val = item
