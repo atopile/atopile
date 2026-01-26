@@ -1784,8 +1784,8 @@ class Mutator:
         if obj.is_in_graph(self.G_out):
             return obj
         if obj_po := obj.as_parameter_operatable.try_get():
-            if obj_po in self.transformations.mutated:
-                return self.transformations.mutated[obj_po].as_operand.get()
+            if self.has_been_mutated(obj_po):
+                return self.get_mutated(obj_po).as_operand.get()
             if obj_e := obj_po.as_expression.try_get():
                 return self.mutate_expression(obj_e)
             if obj_p := obj_po.as_parameter.try_get():
@@ -2157,6 +2157,8 @@ class Mutator:
         self.check_no_illegal_mutations()
         if S_LOG:
             logger.debug("Copying unmutated")
+            # TODO remove log
+            self.mutation_map.last_stage.print_graph_contents()
         self._copy_unmutated()
         self.G_transient.destroy()
 

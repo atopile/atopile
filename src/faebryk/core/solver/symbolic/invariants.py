@@ -365,11 +365,11 @@ class SubsumptionCheck:
         if not builder.assert_:
             return SubsumptionCheck.Result()
 
-        existing_aliases = [
+        existing_aliases = {
             alias
             for op in builder.operands
             for alias in op.get_operations(F.Expressions.Is, predicates_only=True)
-        ]
+        }
         if not existing_aliases:
             # TODO filter multi param
             return SubsumptionCheck.Result()
@@ -391,7 +391,7 @@ class SubsumptionCheck:
 
         # case 1: Is!(A,B,C), Is!(A, B) => Is!(A,B,C)
         if len(existing_aliases) == 1:
-            existing_alias = existing_aliases[0].is_expression.get()
+            existing_alias = next(iter(existing_aliases)).is_expression.get()
             if len(existing_alias.get_operands()) == len(ops):
                 return SubsumptionCheck.Result(most_constrained_expr=existing_alias)
 
@@ -404,7 +404,7 @@ class SubsumptionCheck:
             terminate=False,
             traits=[],
         )
-        logger.debug(f"New alias: {builder}")
+        logger.debug(f"New alias: {pretty_expr(builder, mutator)}")
         return SubsumptionCheck.Result(
             builder,
             subsumed=[alias.is_expression.get() for alias in existing_aliases],
@@ -1237,9 +1237,11 @@ def insert_expression(
     # transfer/create alias for new expr
     if alias:
         # TODO find alias in old graph and copy it over if it exists
-        alias = mutator.get_mutated(
-            alias.as_parameter_operatable.get()
-        ).as_parameter.force_get()
+        alias = (
+            mutator.get_copy(alias.as_operand.get())
+            .as_parameter_operatable.force_get()
+            .as_parameter.force_get()
+        )
         mutator.create_check_and_insert_expression_from_builder(
             ExpressionBuilder(
                 F.Expressions.Is,
