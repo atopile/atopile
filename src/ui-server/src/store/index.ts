@@ -143,6 +143,8 @@ interface StoreActions {
 
   // Projects
   setProjects: (projects: Project[]) => void;
+  setLoadingProjects: (loading: boolean) => void;
+  setProjectsError: (error: string | null) => void;
   selectProject: (projectRoot: string | null) => void;
   setSelectedTargets: (targetNames: string[]) => void;
   toggleTarget: (targetName: string) => void;
@@ -170,6 +172,7 @@ interface StoreActions {
   setLoadingPackageDetails: (loading: boolean) => void;
   addInstallingPackage: (packageId: string) => void;
   removeInstallingPackage: (packageId: string) => void;
+  clearInstallingPackages: () => void;
   setInstallError: (packageId: string, error: string | null) => void;
   addUpdatingDependency: (projectRoot: string, dependencyId: string) => void;
   removeUpdatingDependency: (projectRoot: string, dependencyId: string) => void;
@@ -201,6 +204,9 @@ interface StoreActions {
   setProjectFiles: (projectRoot: string, files: FileTreeNode[]) => void;
   setProjectDependencies: (projectRoot: string, deps: ProjectDependency[]) => void;
   setProjectBuilds: (projectRoot: string, builds: BuildTarget[]) => void;
+  setLoadingModules: (loading: boolean) => void;
+  setLoadingFiles: (loading: boolean) => void;
+  setLoadingDependencies: (loading: boolean) => void;
 
   // Reset
   reset: () => void;
@@ -311,7 +317,29 @@ export const useStore = create<Store>()(
       },
 
       // Projects
-      setProjects: (projects) => set({ projects }),
+      setProjects: (projects) => set({ projects, isLoadingProjects: false }),
+
+      setLoadingProjects: (loading) => set({ isLoadingProjects: loading }),
+
+      setProjectsError: (error) => {
+        if (projectsErrorTimeout) {
+          clearTimeout(projectsErrorTimeout);
+          projectsErrorTimeout = null;
+        }
+        set(
+          error
+            ? { projectsError: error, isLoadingProjects: false }
+            : { projectsError: null }
+        );
+        if (error) {
+          projectsErrorTimeout = setTimeout(() => {
+            set((state) =>
+              state.projectsError === error ? { projectsError: null } : {}
+            );
+            projectsErrorTimeout = null;
+          }, ERROR_TIMEOUT_MS);
+        }
+      },
 
       selectProject: (projectRoot) => set({ selectedProjectRoot: projectRoot }),
 
@@ -411,6 +439,9 @@ export const useStore = create<Store>()(
         set((state) => ({
           installingPackageIds: state.installingPackageIds.filter((id) => id !== packageId),
         })),
+
+      clearInstallingPackages: () =>
+        set({ installingPackageIds: [], installError: null }),
 
       setInstallError: (packageId, error) => {
         if (installErrorTimeout) {
@@ -543,6 +574,10 @@ export const useStore = create<Store>()(
           },
           isLoadingBuilds: false,
         })),
+
+      setLoadingModules: (loading) => set({ isLoadingModules: loading }),
+      setLoadingFiles: (loading) => set({ isLoadingFiles: loading }),
+      setLoadingDependencies: (loading) => set({ isLoadingDependencies: loading }),
 
       // Reset
       reset: () => set(initialState),

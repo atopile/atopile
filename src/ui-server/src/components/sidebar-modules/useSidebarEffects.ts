@@ -3,7 +3,7 @@
  * Handles all useEffect logic for the Sidebar component
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useStore } from '../../store';
 import { api } from '../../api/client';
 import type { PanelId } from '../../utils/panelConfig';
@@ -27,9 +27,6 @@ export function useSidebarEffects({
   panels,
   action,
 }: UseSidebarEffectsProps) {
-  const bomRequestIdRef = useRef(0);
-  const variablesRequestIdRef = useRef(0);
-
   const fetchPackages = async () => {
     const store = useStore.getState();
     store.setLoadingPackages(true);
@@ -150,7 +147,6 @@ export function useSidebarEffects({
       return;
     }
 
-    const requestId = ++bomRequestIdRef.current;
     void fetchBom(selectedProjectRoot, selectedTargetName);
   }, [selectedProjectRoot, selectedTargetName]);
 
@@ -174,7 +170,6 @@ export function useSidebarEffects({
       return;
     }
 
-    const requestId = ++variablesRequestIdRef.current;
     void fetchVariables(selectedProjectRoot, selectedTargetName);
   }, [selectedProjectRoot, selectedTargetName]);
 

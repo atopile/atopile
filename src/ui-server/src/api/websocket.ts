@@ -6,7 +6,7 @@
  */
 
 import { useStore } from '../store';
-import type { AppState, Build } from '../types/build';
+import type { AppState, Build, BuildStatus } from '../types/build';
 import { api } from './client';
 import { WS_STATE_URL, getWorkspaceFolders } from './config';
 import { postMessage } from './vscodeApi';
@@ -418,52 +418,85 @@ function normalizeStage(stage: Record<string, unknown>): Record<string, unknown>
   };
 }
 
-function normalizeBuild(raw: Record<string, unknown>): Build {
-  const stages = Array.isArray(raw.stages)
-    ? raw.stages.map((stage) => normalizeStage(stage as Record<string, unknown>))
-    : raw.stages;
+function normalizeBuild(raw: Build | Record<string, unknown>): Build {
+  const rawData = raw as Record<string, unknown>;
+  const stages = Array.isArray(rawData.stages)
+    ? rawData.stages.map((stage) =>
+      normalizeStage(stage as Record<string, unknown>)
+    )
+    : rawData.stages;
+
+  const name =
+    (rawData.name as string | undefined) ??
+    (rawData.build_name as string | undefined) ??
+    (rawData.buildName as string | undefined) ??
+    (rawData.target as string | undefined) ??
+    'unknown';
+  const displayName =
+    (rawData.displayName as string | undefined) ??
+    (rawData.display_name as string | undefined) ??
+    name;
+  const projectName =
+    (rawData.projectName as string | null | undefined) ??
+    (rawData.project_name as string | null | undefined) ??
+    null;
+  const status =
+    (rawData.status as BuildStatus | undefined) ??
+    'queued';
+  const elapsedSeconds =
+    (rawData.elapsedSeconds as number | undefined) ??
+    (rawData.elapsed_seconds as number | undefined) ??
+    0;
+  const warnings =
+    (rawData.warnings as number | undefined) ??
+    0;
+  const errors =
+    (rawData.errors as number | undefined) ??
+    0;
+  const returnCode =
+    (rawData.returnCode as number | null | undefined) ??
+    (rawData.return_code as number | null | undefined) ??
+    null;
+  const error =
+    (rawData.error as string | undefined) ??
+    (rawData.error_message as string | undefined) ??
+    (rawData.errorMessage as string | undefined);
 
   return {
-    ...(raw as Build),
+    name,
+    displayName,
+    projectName,
+    status,
+    elapsedSeconds,
+    warnings,
+    errors,
+    returnCode,
+    error,
     buildId:
-      (raw.buildId as string | undefined) ??
-      (raw.build_id as string | undefined),
-    buildKey:
-      (raw.buildKey as string | undefined) ??
-      (raw.build_key as string | undefined),
-    displayName:
-      (raw.displayName as string | undefined) ??
-      (raw.display_name as string | undefined),
-    projectName:
-      (raw.projectName as string | null | undefined) ??
-      (raw.project_name as string | null | undefined),
+      (rawData.buildId as string | undefined) ??
+      (rawData.build_id as string | undefined),
     projectRoot:
-      (raw.projectRoot as string | undefined) ??
-      (raw.project_root as string | undefined),
+      (rawData.projectRoot as string | undefined) ??
+      (rawData.project_root as string | undefined),
+    target:
+      (rawData.target as string | undefined),
+    entry:
+      (rawData.entry as string | undefined),
     startedAt:
-      (raw.startedAt as number | undefined) ??
-      (raw.started_at as number | undefined),
-    completedAt:
-      (raw.completedAt as number | undefined) ??
-      (raw.completed_at as number | undefined),
-    elapsedSeconds:
-      (raw.elapsedSeconds as number | undefined) ??
-      (raw.elapsed_seconds as number | undefined),
-    returnCode:
-      (raw.returnCode as number | null | undefined) ??
-      (raw.return_code as number | null | undefined),
+      (rawData.startedAt as number | undefined) ??
+      (rawData.started_at as number | undefined),
     totalStages:
-      (raw.totalStages as number | undefined) ??
-      (raw.total_stages as number | undefined),
+      (rawData.totalStages as number | undefined) ??
+      (rawData.total_stages as number | undefined),
     logDir:
-      (raw.logDir as string | undefined) ??
-      (raw.log_dir as string | undefined),
+      (rawData.logDir as string | undefined) ??
+      (rawData.log_dir as string | undefined),
     logFile:
-      (raw.logFile as string | undefined) ??
-      (raw.log_file as string | undefined),
+      (rawData.logFile as string | undefined) ??
+      (rawData.log_file as string | undefined),
     queuePosition:
-      (raw.queuePosition as number | undefined) ??
-      (raw.queue_position as number | undefined),
+      (rawData.queuePosition as number | undefined) ??
+      (rawData.queue_position as number | undefined),
     stages: stages as Build['stages'],
   };
 }
@@ -489,7 +522,7 @@ async function refreshBuilds(): Promise<void> {
       api.builds.history(),
     ]);
     const activeBuilds = (active.builds || []).map((build) =>
-      normalizeBuild(build as Record<string, unknown>)
+      normalizeBuild(build)
     );
     const smoothedActiveBuilds = activeBuilds.map((build) => {
       if (!build.buildId) return build;
@@ -506,14 +539,14 @@ async function refreshBuilds(): Promise<void> {
       return build;
     });
     const historyBuilds = (history.builds || []).map((build) =>
-      normalizeBuild(build as Record<string, unknown>)
+      normalizeBuild(build)
     );
 
     const activeKeys = new Set(smoothedActiveBuilds.map(getBuildKey));
     const recentHistoryByKey = new Map<string, Build>();
     const sortedHistory = [...historyBuilds].sort((a, b) => {
-      const aTime = (a.completedAt ?? a.startedAt ?? 0) as number;
-      const bTime = (b.completedAt ?? b.startedAt ?? 0) as number;
+      const aTime = (a.startedAt ?? 0) as number;
+      const bTime = (b.startedAt ?? 0) as number;
       return bTime - aTime;
     });
     for (const build of sortedHistory) {

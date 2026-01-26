@@ -307,7 +307,6 @@ export function Sidebar() {
                 });
               }
             }}
-            onUpdateDescription={(projectRoot, description) => action('updateProjectDescription', { project_root: projectRoot, description })}
             onGenerateManufacturingData={handleGenerateManufacturingData}
             queuedBuilds={queuedBuilds}
             onCancelBuild={handlers.handleCancelQueuedBuild}

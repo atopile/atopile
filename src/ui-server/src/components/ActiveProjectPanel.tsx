@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Package, CheckCircle2, XCircle, AlertCircle, AlertTriangle, Target, Pencil } from 'lucide-react'
+import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Package, CheckCircle2, XCircle, AlertCircle, AlertTriangle, Target } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
 import type { QueuedBuild } from '../types/build'
 import './ActiveProjectPanel.css'
@@ -25,7 +25,6 @@ interface ActiveProjectPanelProps {
   onOpenLayout: (projectRoot: string, targetName: string) => void
   onCreateProject?: (data?: NewProjectData) => void
   onCreateTarget?: (projectRoot: string, data: NewTargetData) => void
-  onUpdateDescription?: (projectRoot: string, description: string) => void
   onGenerateManufacturingData?: (projectRoot: string, targetName: string) => void
   queuedBuilds?: QueuedBuild[]
   onCancelBuild?: (buildId: string) => void
@@ -420,100 +419,6 @@ function TargetSelector({
           disabled={disabled}
         >
           <Plus size={12} />
-        </button>
-      )}
-    </div>
-  )
-}
-
-// ProjectDescription component - inline editable description
-function ProjectDescription({
-  description,
-  onUpdate,
-  disabled,
-}: {
-  description?: string
-  onUpdate?: (description: string) => void
-  disabled?: boolean
-}) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [editValue, setEditValue] = useState(description || '')
-  const inputRef = useRef<HTMLTextAreaElement>(null)
-
-  // Sync editValue when description changes
-  useEffect(() => {
-    if (!isEditing) {
-      setEditValue(description || '')
-    }
-  }, [description, isEditing])
-
-  // Focus input when entering edit mode
-  useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus()
-      inputRef.current.select()
-    }
-  }, [isEditing])
-
-  const handleSave = () => {
-    if (onUpdate && editValue !== description) {
-      onUpdate(editValue.trim())
-    }
-    setIsEditing(false)
-  }
-
-  const handleCancel = () => {
-    setEditValue(description || '')
-    setIsEditing(false)
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSave()
-    } else if (e.key === 'Escape') {
-      handleCancel()
-    }
-  }
-
-  if (isEditing) {
-    return (
-      <div className="project-description editing">
-        <textarea
-          ref={inputRef}
-          className="description-input"
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onBlur={handleSave}
-          placeholder="Add a project description..."
-          rows={2}
-          disabled={disabled}
-        />
-      </div>
-    )
-  }
-
-  return (
-    <div className="project-description">
-      <span className="description-text">
-        {description || (
-          <span
-            className="description-placeholder"
-            onClick={() => onUpdate && !disabled && setIsEditing(true)}
-          >
-            Add description...
-          </span>
-        )}
-      </span>
-      {onUpdate && description && (
-        <button
-          className="description-edit-btn"
-          onClick={() => setIsEditing(true)}
-          title="Edit description"
-          disabled={disabled}
-        >
-          <Pencil size={10} />
         </button>
       )}
     </div>
@@ -1074,10 +979,9 @@ function BuildQueueItem({
   const statusLabel = useMemo(() => {
     switch (build.status) {
       case 'queued':
+        return 'Queued'
       case 'building':
         return ''
-      case 'queued':
-        return 'Queued'
       case 'success':
       case 'failed':
       case 'warning':
@@ -1192,7 +1096,6 @@ export function ActiveProjectPanel({
   onOpenLayout,
   onCreateProject,
   onCreateTarget,
-  onUpdateDescription,
   onGenerateManufacturingData,
   queuedBuilds = [],
   onCancelBuild,
@@ -1289,8 +1192,6 @@ export function ActiveProjectPanel({
       onSelectTarget(activeProject.root, activeTargetName)
     }
   }, [activeProject, selectedProjectRoot, selectedTargetName, activeTargetName, onSelectProject, onSelectTarget])
-
-  const hasActiveBuilds = projectBuilds.length > 0
 
   // Tooltip text based on state
   const getOutputTooltip = (action: string) => {
