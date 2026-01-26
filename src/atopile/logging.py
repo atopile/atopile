@@ -77,11 +77,11 @@ def _is_serving() -> bool:
 
 def _should_log(record: logging.LogRecord) -> bool:
     """Filter for atopile/faebryk logs, excluding server/http unless serving."""
+    name = record.name
+    if name.startswith(("httpcore", "atopile.server", "atopile.model")):
+        return False
     if _is_serving():
         return True
-    name = record.name
-    if name.startswith("httpcore") or name.startswith("atopile.server"):
-        return False
     return name.startswith("atopile") or name.startswith("faebryk")
 
 
@@ -1196,7 +1196,8 @@ class LogHandler(RichHandler):
         if hide or not exc_type or not exc_value:
             return None
 
-        # Use console width or None (unlimited) for traceback width to prevent truncation
+        # Use console width or None (unlimited) for
+        # traceback width to prevent truncation
         width = getattr(self, "tracebacks_width", None) or getattr(
             self.console, "width", None
         )
