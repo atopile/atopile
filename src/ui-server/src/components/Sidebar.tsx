@@ -288,7 +288,25 @@ export function Sidebar() {
             onOpen3D={(projectRoot, targetName) => handleOpenOutput('open3D', projectRoot, targetName)}
             onOpenLayout={(projectRoot, targetName) => handleOpenOutput('openLayout', projectRoot, targetName)}
             onCreateProject={handlers.handleCreateProject}
-            onCreateTarget={(projectRoot, data) => action('createTarget', { project_root: projectRoot, name: data.name, entry: data.entry })}
+            onCreateTarget={async (projectRoot, data) => {
+              try {
+                const response = await sendActionWithResponse('addBuildTarget', {
+                  project_root: projectRoot,
+                  name: data.name,
+                  entry: data.entry,
+                });
+                if (response.result?.success) {
+                  action('refreshProjects');
+                }
+              } catch (error) {
+                action('uiLog', {
+                  level: 'error',
+                  message: `Failed to add target: ${
+                    error instanceof Error ? error.message : 'Unknown error'
+                  }`,
+                });
+              }
+            }}
             onUpdateDescription={(projectRoot, description) => action('updateProjectDescription', { project_root: projectRoot, description })}
             onGenerateManufacturingData={handleGenerateManufacturingData}
             queuedBuilds={queuedBuilds}

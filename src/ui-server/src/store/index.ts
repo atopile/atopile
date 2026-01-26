@@ -193,6 +193,9 @@ interface StoreActions {
   setLoadingVariables: (loading: boolean) => void;
   setVariablesError: (error: string | null) => void;
 
+  // Atopile config
+  setAtopileConfig: (update: Partial<AppState['atopile']>) => void;
+
   // Project data
   setProjectModules: (projectRoot: string, modules: ModuleDefinition[]) => void;
   setProjectFiles: (projectRoot: string, files: FileTreeNode[]) => void;
@@ -494,6 +497,15 @@ export const useStore = create<Store>()(
           }, ERROR_TIMEOUT_MS);
         }
       },
+
+      // Atopile config
+      setAtopileConfig: (update) =>
+        set((state) => ({
+          atopile: {
+            ...state.atopile,
+            ...update,
+          },
+        })),
 
       // Project data
       setProjectModules: (projectRoot, modules) =>

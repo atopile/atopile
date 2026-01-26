@@ -377,6 +377,44 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 return {"success": True, **response.model_dump(by_alias=True)}
             return {"success": False, "error": "No modules found"}
 
+        if action == "checkEntry":
+            project_root = payload.get("project_root") or payload.get("projectRoot", "")
+            entry = payload.get("entry") or payload.get("entryPoint") or ""
+            if not project_root or not entry:
+                return {
+                    "success": False,
+                    "error": "Missing project_root or entry",
+                }
+
+            project_path = Path(project_root)
+            if not await asyncio.to_thread(project_path.exists):
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            file_part = entry.split(":", 1)[0]
+            file_exists = False
+            if file_part:
+                file_path = (project_path / file_part).resolve()
+                file_exists = await asyncio.to_thread(file_path.exists)
+
+            module_exists = False
+            try:
+                response = await asyncio.to_thread(
+                    projects_domain.handle_get_modules, project_root
+                )
+                modules = response.modules if response else []
+                module_exists = any(m.entry == entry for m in modules)
+            except Exception:
+                module_exists = False
+
+            return {
+                "success": True,
+                "file_exists": file_exists,
+                "module_exists": module_exists,
+            }
+
         if action == "getPackageDetails":
             package_id = payload.get("packageId", "")
             if package_id:

@@ -139,6 +139,14 @@ export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
     }
   }, [showSettings]);
 
+  // Fetch branches only when settings open and branch source is selected
+  useEffect(() => {
+    if (!showSettings) return;
+    if (atopile?.source !== 'branch') return;
+    if (atopile?.availableBranches && atopile.availableBranches.length > 0) return;
+    action('refreshAtopileBranches');
+  }, [showSettings, atopile?.source, atopile?.availableBranches]);
+
   // Close branch dropdown when clicking outside
   useEffect(() => {
     if (!showBranchDropdown) return;

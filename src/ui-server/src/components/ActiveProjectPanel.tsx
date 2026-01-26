@@ -547,7 +547,6 @@ interface ModuleDefinition {
 interface EntryStatus {
   file_exists: boolean
   module_exists: boolean
-  will_create: boolean
 }
 
 // New Target Form component with autocomplete
@@ -583,15 +582,6 @@ function NewTargetForm({
     nameRef.current?.focus()
   }, [])
 
-  // Auto-generate entry from name (only if entry is empty)
-  useEffect(() => {
-    if (name && !entry) {
-      // Convert name to a valid entry path: name.ato:Name
-      const moduleName = name.charAt(0).toUpperCase() + name.slice(1).replace(/-/g, '_')
-      setEntry(`${name}.ato:${moduleName}`)
-    }
-  }, [name])
-
   // Check entry status when entry changes (debounced)
   useEffect(() => {
     if (!entry || !projectRoot) {
@@ -602,7 +592,7 @@ function NewTargetForm({
     // Check if entry matches an existing module
     const matchingModule = modules?.find(m => m.entry === entry)
     if (matchingModule) {
-      setEntryStatus({ file_exists: true, module_exists: true, will_create: false })
+      setEntryStatus({ file_exists: true, module_exists: true })
       return
     }
 
@@ -615,17 +605,15 @@ function NewTargetForm({
           project_root: projectRoot,
           entry,
         })
-        const result = response.result as { success?: boolean; file_exists?: boolean; module_exists?: boolean; will_create?: boolean } | undefined
+        const result = response.result as { success?: boolean; file_exists?: boolean; module_exists?: boolean } | undefined
         if (result?.success) {
           setEntryStatus({
             file_exists: Boolean(result.file_exists),
             module_exists: Boolean(result.module_exists),
-            will_create: Boolean(result.will_create),
           })
         }
       } catch (err) {
-        // Assume will create on error
-        setEntryStatus({ file_exists: false, module_exists: false, will_create: true })
+        setEntryStatus({ file_exists: false, module_exists: false })
       } finally {
         setIsCheckingEntry(false)
       }
@@ -687,10 +675,10 @@ function NewTargetForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim()) return
+    if (!name.trim() || !entry.trim()) return
     onSubmit({
       name: name.trim(),
-      entry: entry.trim() || `${name.trim()}.ato:${name.trim().charAt(0).toUpperCase() + name.trim().slice(1)}`,
+      entry: entry.trim(),
     })
   }
 
@@ -705,8 +693,8 @@ function NewTargetForm({
     if (isCheckingEntry) return 'Checking...'
     if (!entryStatus) return 'Format: file.ato:ModuleName'
     if (entryStatus.module_exists) return '✓ Module exists'
-    if (entryStatus.file_exists) return '⚡ Will add module to existing file'
-    return '⚡ Will create new file with module'
+    if (entryStatus.file_exists) return '⚠ Module not found in file'
+    return '⚠ Entry does not exist'
   }
 
   const getEntryStatusClass = () => {
@@ -753,21 +741,22 @@ function NewTargetForm({
       <div className="form-field entry-field">
         <label htmlFor="target-entry">Entry Point</label>
         <div className="entry-input-wrapper">
-          <input
-            ref={entryRef}
-            id="target-entry"
-            type="text"
-            placeholder="e.g., main.ato:SensorBoard"
-            value={entry}
+        <input
+          ref={entryRef}
+          id="target-entry"
+          type="text"
+          placeholder="e.g., main.ato:SensorBoard"
+          value={entry}
             onChange={(e) => {
               setEntry(e.target.value)
               setShowSuggestions(true)
             }}
             onFocus={() => setShowSuggestions(true)}
             onKeyDown={handleEntryKeyDown}
-            disabled={isCreating}
-            autoComplete="off"
-          />
+          disabled={isCreating}
+          autoComplete="off"
+          required
+        />
           {showSuggestions && suggestions.length > 0 && (
             <div className="entry-suggestions" ref={suggestionsRef}>
               {suggestions.map((module, index) => (
@@ -805,7 +794,7 @@ function NewTargetForm({
         <button
           type="submit"
           className="form-btn primary"
-          disabled={isCreating || !name.trim()}
+          disabled={isCreating || !name.trim() || !entry.trim()}
         >
           {isCreating ? 'Creating...' : 'Create'}
         </button>
@@ -1357,9 +1346,6 @@ export function ActiveProjectPanel({
       <div className="builds-section">
         <div className="builds-header">
           <span className="section-label">Targets</span>
-          {hasActiveBuilds && (
-            <span className="builds-badge">{projectBuilds.length}</span>
-          )}
         </div>
 
         <div className="build-targets">
@@ -1480,9 +1466,6 @@ export function ActiveProjectPanel({
               className={`toggle-chevron ${showBuildQueue ? 'open' : ''}`}
             />
             <span>Build Queue</span>
-            {projectBuilds.length > 0 && (
-              <span className="build-queue-count">{projectBuilds.length}</span>
-            )}
           </button>
           {showBuildQueue && (
             <div className="build-queue-list">
