@@ -10,14 +10,14 @@ import pytest
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.mutator import MutationMap
+from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_expression
 from faebryk.core.solver.utils import (
     Contradiction,
     ContradictionByLiteral,
 )
-from faebryk.libs.picker.picker import pick_part_recursively
+from faebryk.libs.picker.picker import pick_parts_recursively
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.util import not_none
 
@@ -34,8 +34,7 @@ dimensionless = F.Units.Dimensionless
 
 def _create_letters(
     E: BoundExpressions, n: int, units: type[fabll.Node] | None = None
-) -> tuple[F.Parameters.ReprContext, list[F.Parameters.is_parameter_operatable]]:
-    context = F.Parameters.ReprContext()
+) -> list[F.Parameters.is_parameter_operatable]:
     if units is None:
         units = E.U.dl
 
@@ -50,7 +49,7 @@ def _create_letters(
     app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
     params = [p.get().is_parameter_operatable.get() for p in app.params]
 
-    return context, params
+    return params
 
 
 def _extract(
@@ -60,9 +59,12 @@ def _extract(
 ) -> F.Literals.is_literal:
     if not isinstance(res, MutationMap):
         assert domain_default
-        return res.simplify_and_extract_superset(
-            op.as_parameter_operatable.force_get().as_parameter.force_get()
-        )
+        op_po = op.as_parameter_operatable.force_get()
+        if e := op_po.as_expression.try_get():
+            p = e.create_representative()
+        else:
+            p = op_po.as_parameter.force_get()
+        return res.simplify_and_extract_superset(p)
     return not_none(
         res.try_extract_superset(
             op.as_parameter_operatable.force_get(),
@@ -81,11 +83,6 @@ def _extract_and_check(
     domain_default: bool = True,
 ) -> bool:
     extracted = _extract(op, res, domain_default=domain_default)
-    ctx = (
-        res.print_ctx
-        if isinstance(res, MutationMap)
-        else not_none(res.state).data.mutation_map.print_ctx
-    )
     if isinstance(expected, F.Literals.is_literal):
         expected = expected.as_operand.get()
     if isinstance(expected, F.Literals.LiteralNodes):
@@ -96,7 +93,7 @@ def _extract_and_check(
             print(
                 f"Expected {expected}"
                 f" but got {extracted.pretty_str()}"
-                f"\nfor op: {op.as_parameter_operatable.force_get().compact_repr(ctx)}"
+                f"\nfor op: {op.as_parameter_operatable.force_get().compact_repr()}"
             )
         return matches
 
@@ -108,6 +105,16 @@ def _extract_and_check(
             f"\nfor op: {op.pretty()}"
         )
     return matches
+
+
+def _extract_numbers(
+    solver: Solver, po: F.Parameters.is_parameter_operatable
+) -> F.Literals.Numbers:
+    return (
+        solver.extract_superset(po.as_parameter.force_get())
+        .switch_cast()
+        .cast(F.Literals.Numbers)
+    )
 
 
 def test_solve_phase_one():
@@ -370,11 +377,10 @@ def test_alias_classes():
     addition2 = E.add(D, C)
     E.is_(H, addition2, assert_=True)
 
-    context = F.Parameters.ReprContext()
     for p in (A, B, C, D, H):
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
     solver = Solver()
-    repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     # A, B, and H are aliased via the Is constraints and commutativity of addition
     # A is! B, B is! (C+D), H is! (D+C) where C+D == D+C
@@ -486,9 +492,8 @@ def test_subset_superset():
     E.is_subset(B, E.lit_op_range((5, 20)), assert_=True)
     E.is_(A, B, assert_=True)
 
-    context = F.Parameters.ReprContext()
     for p in [A, B]:
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     solver = Solver()
     with pytest.raises(Contradiction):
@@ -519,9 +524,8 @@ def test_very_simple_alias_class():
     E.is_(B, C, assert_=True)
     E.is_subset(A, E.lit_op_range(((1, E.U.V), (2, E.U.V))), assert_=True)
 
-    context = F.Parameters.ReprContext()
     for p in params:
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
@@ -564,13 +568,12 @@ def test_less_obvious_contradiction_by_literal():
     E.is_(C, E.add(A, B), assert_=True)
     E.is_subset(E.lit_op_range(((0.0, E.U.V), (15.0, E.U.V))), C, assert_=True)
 
-    print_context = F.Parameters.ReprContext()
     for p in (A, B, C):
-        p.as_parameter_operatable.force_get().compact_repr(print_context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     solver = Solver()
     with pytest.raises(ContradictionByLiteral):
-        solver.simplify(E.tg, E.g, print_context=print_context)
+        solver.simplify(E.tg, E.g)
 
 
 def test_symmetric_inequality_correlated():
@@ -645,12 +648,11 @@ def test_super_simple_literal_folding(
     E = BoundExpressions()
     operands_op = [E.lit_op_single(o) for o in operands]
     expr = expr_type(*operands_op)
+    p = expr.get_sibling_trait(F.Expressions.is_expression).create_representative()
+
     solver = Solver()
 
-    E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
-
-    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
-    assert _extract_and_check(expr, repr_map, expected)
+    assert _extract_and_check(p.as_operand.get(), solver, expected)
 
 
 def test_literal_folding_add_multiplicative_1():
@@ -688,14 +690,13 @@ def test_literal_folding_add_multiplicative_1():
     assert rep_A is not None
     assert rep_B is not None
 
-    context = repr_map.print_ctx
     operands = (
         fabll.Traits(rep_add)
         .get_obj(F.Expressions.Add)
         .is_expression.get()
         .get_operands()
     )
-    assert len(operands) == 2, f"{rep_add.compact_repr(context)}"
+    assert len(operands) == 2, f"{rep_add.compact_repr()}"
     mul1, mul2 = operands
 
     mulexp1 = fabll.Traits(mul1).get_obj(F.Expressions.Multiply)
@@ -787,14 +788,13 @@ def test_transitive_subset():
     E.is_subset(A, B, assert_=True)
     E.is_subset(B, C, assert_=True)
 
-    context = F.Parameters.ReprContext()
     for p in (A, B, C):
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     E.is_subset(C, E.lit_op_range((0, 10)), assert_=True)
 
     solver = Solver()
-    repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     assert _extract_and_check(A, repr_map, E.lit_op_range((0, 10)))
 
 
@@ -1091,7 +1091,7 @@ def test_jlcpcb_pick_resistor():
     )
 
     solver = Solver()
-    pick_part_recursively(resistor, solver)
+    pick_parts_recursively(resistor, solver)
 
     assert resistor.has_trait(F.Pickable.has_part_picked)
     print(resistor.get_trait(F.Pickable.has_part_picked).get_part())
@@ -1113,7 +1113,7 @@ def test_jlcpcb_pick_capacitor():
     )
 
     solver = Solver()
-    pick_part_recursively(capacitor, solver)
+    pick_parts_recursively(capacitor, solver)
 
     assert capacitor.has_trait(F.Pickable.has_part_picked)
     print(capacitor.get_trait(F.Pickable.has_part_picked).get_part())
@@ -1135,7 +1135,7 @@ def test_jlcpcb_pick_led():
     )
 
     solver = Solver()
-    pick_part_recursively(led, solver)
+    pick_parts_recursively(led, solver)
 
     assert led.has_trait(F.Pickable.has_part_picked)
     print(led.get_trait(F.Pickable.has_part_picked).get_part())
@@ -1353,12 +1353,11 @@ def test_graph_split():
     E.is_(Aop, C, assert_=True)
     E.is_(Bop, D, assert_=True)
 
-    context = F.Parameters.ReprContext()
     for p in (Aop, Bop, C, D):
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     solver = Solver()
-    repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     assert (
         not_none(
@@ -1514,18 +1513,6 @@ def test_fold_or_true():
 
     solver = Solver()
     assert _extract_and_check(C, solver, True)
-
-
-def test_fold_not():
-    E = BoundExpressions()
-    A = E.bool_parameter_op()
-    B = E.bool_parameter_op()
-
-    E.is_subset(A, E.lit_bool(False), assert_=True)
-    E.is_(E.not_(A), B, assert_=True)
-
-    solver = Solver()
-    assert _extract_and_check(B, solver, True)
 
 
 def test_fold_ss_transitive():
@@ -1810,15 +1797,13 @@ def test_simplify_non_terminal_manual_test_1():
     B = E.add(A, A)
 
     solver = Solver()
-    solver.simplify(E.g, E.tg)
+    solver.simplify(E.g, E.tg, terminal=False)
     _ = E.add(B, A)
     E.is_subset(A, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
 
-    solver.simplify(E.g, E.tg)
+    solver.simplify(E.g, E.tg, terminal=False)
 
     solver.simplify(E.tg, E.g, terminal=True)
-
-    solver.simplify(E.g, E.tg)
 
 
 @pytest.mark.skip(reason="to_fix")  # FIXME
@@ -1829,7 +1814,7 @@ def test_simplify_non_terminal_manual_test_2():
     FBRK_LOG_PICK_SOLVE=y FBRK_SLOG=y and read log
     """
     E = BoundExpressions()
-    context, ps = _create_letters(E, 3, units=E.U.V)
+    ps = _create_letters(E, 3, units=E.U.V)
     A, B, C = ps
 
     INCREASE = (20, E.U.dl)
@@ -1864,7 +1849,7 @@ def test_simplify_non_terminal_manual_test_2():
                 E.is_(_inc, E.divide(_inc, increase), assert_=True)
 
         p_lit = solver.extract_superset(p.as_parameter.force_get())
-        print(f"{p.as_parameter.force_get().compact_repr(context)}, lit:", p_lit)
+        print(f"{p.as_parameter.force_get().compact_repr()}, lit:", p_lit)
         print(f"{p_lit.as_operand.get()}, {E.multiply(origin[1], _inc)}")
         assert p_lit.op_setic_is_subset_of(
             E.multiply(origin[1], _inc).as_literal.force_get()
@@ -2033,12 +2018,11 @@ def test_fold_correlated():
     E.is_(B, op[0](A, lit_operand), assert_=True)  # B is A + 5
     E.is_(C, op_inv[0](B, A), assert_=True)  # C is B - A
 
-    context = F.Parameters.ReprContext()
     for p in (A, B, C):
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     solver = Solver()
-    repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     ss_lit = repr_map.try_extract_superset(C.as_parameter_operatable.force_get())
     assert ss_lit is not None
@@ -2523,3 +2507,160 @@ def test_lower_estimation_partial_uncorrelation():
         is_fully_tightened = abs(min_val - 9) < 0.01 and abs(max_val - 12) < 0.01
         # Note: partial uncorrelation might still allow some propagation
         # for the A+B subexpression, but not the full D expression
+
+
+def test_fold_not_false():
+    E = BoundExpressions()
+    A = E.bool_parameter_op()
+    E.is_subset(A, E.lit_bool(False), assert_=True)
+
+    e1 = E.not_(A)
+
+    solver = Solver()
+    assert _extract_and_check(e1, solver, True)
+
+
+def test_fold_not_contradiction():
+    E = BoundExpressions()
+    A = E.bool_parameter_op()
+    E.is_subset(A, E.lit_bool(True), assert_=True)
+
+    e1 = E.not_(A, assert_=True)
+
+    solver = Solver()
+    with pytest.raises(Contradiction):
+        _extract_and_check(e1, solver, False)
+
+
+def test_solver_continuation_after_constraint_addition():
+    """
+    Test the picking scenario: initial solve -> add constraint -> re-solve.
+    This mimics what happens during part picking:
+    1. Initial solve with multiple parameters
+    2. Pick a part (add IsSuperset constraint to narrow bounds)
+    3. Re-solve to propagate narrower bounds to dependent parameters
+    """
+    import time
+
+    E = BoundExpressions()
+    [A, B, C] = _create_letters(E, 3)
+    A_op, B_op, C_op = A.as_operand.get(), B.as_operand.get(), C.as_operand.get()
+
+    # Initial design constraint: A in range 1k-10k``
+    E.is_subset(A_op, E.lit_op_range((1000, 10000)), assert_=True)
+
+    # B = A * 2 (like a ratio constraint)
+    E.is_(B_op, E.multiply(A_op, E.lit_op_single(2)), assert_=True)
+
+    # C = B + 1000
+    E.is_(C_op, E.add(B_op, E.lit_op_single(1000)), assert_=True)
+
+    solver = Solver()
+    t0 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=[A_op, B_op, C_op])
+    initial_solve_time = time.perf_counter() - t0
+
+    B_initial = _extract_numbers(solver, B)
+    C_initial = _extract_numbers(solver, C)
+
+    # Simulate picking a part: narrow A to [4k, 6k] (like selecting a specific resistor)
+    E.is_subset(A_op, E.lit_op_range((4000, 6000)), assert_=True)
+
+    # Re-solve (should be faster)
+    t1 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=[A_op, B_op, C_op])
+    continuation_solve_time = time.perf_counter() - t1
+
+    B_after = _extract_numbers(solver, B)
+    C_after = _extract_numbers(solver, C)
+
+    # Should be tighter than initial
+    assert B_after.get_min_value() >= B_initial.get_min_value(), "B should be tighter"
+    assert B_after.get_max_value() <= B_initial.get_max_value(), "B should be tighter"
+    assert C_after.get_min_value() >= C_initial.get_min_value(), "C should be tighter"
+    assert C_after.get_max_value() <= C_initial.get_max_value(), "C should be tighter"
+
+    # Timing report
+    print("\n=== Solver Continuation Timing Report ===")
+    print(f"Initial solve time:      {initial_solve_time * 1000:.2f} ms")
+    print(f"Continuation solve time: {continuation_solve_time * 1000:.2f} ms")
+    if initial_solve_time > 0:
+        speedup = (
+            initial_solve_time / continuation_solve_time
+            if continuation_solve_time > 0
+            else float("inf")
+        )
+        print(f"Speedup:                 {speedup:.2f}x")
+    print("==========================================\n")
+
+
+def test_solver_continuation_multi_pick_scenario():
+    """
+    Test a more realistic picking scenario with multiple components.
+    Simulates picking 3 components sequentially and verifies constraint propagation.
+    """
+    import time
+
+    E = BoundExpressions()
+    params = _create_letters(E, 5)
+    params_ops = [p.as_operand.get() for p in params]
+
+    # Initial constraint: first param in range 1k-100k
+    E.is_subset(params_ops[0], E.lit_op_range((1000, 100000)), assert_=True)
+
+    # Chain dependencies: each param = previous * 0.9
+    for i in range(len(params_ops) - 1):
+        E.is_(
+            params_ops[i + 1],
+            E.multiply(params_ops[i], E.lit_op_single(0.9)),
+            assert_=True,
+        )
+
+    solver = Solver()
+    timings: list[tuple[str, float]] = []
+
+    t0 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=params_ops)
+    timings.append(("Initial solve", time.perf_counter() - t0))
+
+    P4_initial = _extract_numbers(solver, params[4])
+
+    # Pick component 0: add constraint to narrow bounds (like picking a part)
+    E.is_subset(params_ops[0], E.lit_op_range((50000, 60000)), assert_=True)
+    t1 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=params_ops)
+    timings.append(("After pick 1", time.perf_counter() - t1))
+
+    # Verify tightening
+    P4_after1 = _extract_numbers(solver, params[4])
+    assert P4_after1.get_max_value() <= P4_initial.get_max_value(), (
+        "P4 should be tighter after pick 1"
+    )
+
+    # Pick component 2: add another constraint
+    E.is_subset(params_ops[2], E.lit_op_range((35000, 45000)), assert_=True)
+    t2 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=params_ops)
+    timings.append(("After pick 2", time.perf_counter() - t2))
+
+    # Pick component 3
+    E.is_subset(params_ops[3], E.lit_op_range((30000, 42000)), assert_=True)
+    t3 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=params_ops)
+    timings.append(("After pick 3", time.perf_counter() - t3))
+
+    # Final verification
+    P4_final = _extract_numbers(solver, params[4])
+    assert P4_final.get_min_value() >= 0, "P4 min should be positive"
+
+    # Timing report
+    print("\n=== Multi-Pick Solver Continuation Timing Report ===")
+    for name, duration in timings:
+        print(f"{name:20s}: {duration * 1000:8.2f} ms")
+    if len(timings) >= 2:
+        avg_continuation = sum(t for _, t in timings[1:]) / len(timings[1:])
+        initial_time = timings[0][1]
+        if avg_continuation > 0:
+            speedup = initial_time / avg_continuation
+            print(f"{'Avg speedup':20s}: {speedup:8.2f}x")
+    print("=====================================================\n")

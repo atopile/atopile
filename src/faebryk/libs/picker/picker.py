@@ -1,11 +1,9 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-
 import logging
-import time
 from abc import ABC, abstractmethod
+from collections import deque
 from dataclasses import dataclass
-from itertools import combinations
 from textwrap import indent
 from typing import Iterable
 
@@ -199,49 +197,45 @@ def _list_to_hack_tree(
     return Tree({m: Tree() for m in modules})
 
 
-def _get_anticorrelated_pairs(tg) -> set[frozenset["F.Parameters.is_parameter"]]:
+def _is_correlation_predicate(expr: "F.Expressions.is_expression") -> bool:
     """
-    Collect all parameter pairs that are explicitly marked as uncorrelated
-    via Not(Correlated(...)) expressions.
+    Check if an expression is a Correlated or Not(Correlated(...)) predicate.
+    These indicate statistical correlation, not constraint dependence.
+
+    TODO: method on is_expression to lookup trait on owner's type
     """
-    out: set[frozenset[F.Parameters.is_parameter]] = set()
+    if (node := fabll.Traits(expr).get_obj_raw()) is None:
+        return False
 
-    for expr in F.Expressions.Correlated.bind_typegraph(tg).get_instances():
-        ops = expr.can_be_operand.get().get_operations(
-            recursive=False, predicates_only=False
-        )
+    # Correlated(...)
+    if node.isinstance(F.Expressions.Correlated):
+        return True
 
-        is_negated = any(op.try_cast(F.Expressions.Not) is not None for op in ops)
+    # Not(Correlated(...))
+    # FIXME: more general method for compound exprs
+    if node.isinstance(F.Expressions.Not):
+        for op in expr.get_operands():
+            op_node = fabll.Traits(op).get_obj_raw()
+            if op_node is not None and op_node.isinstance(F.Expressions.Correlated):
+                return True
 
-        if not is_negated:
-            continue
-
-        corr_params = [
-            p
-            for leaf in expr.is_expression.get().get_operand_leaves_operatable()
-            if (p := leaf.as_parameter.try_get())
-        ]
-
-        for p1, p2 in combinations(corr_params, 2):
-            out.add(frozenset([p1, p2]))
-
-    return out
+    return False
 
 
 def find_independent_groups(
-    modules: Iterable["F.Pickable.is_pickable"], solver: Solver
+    modules: Iterable["F.Pickable.is_pickable"],
 ) -> list[set["F.Pickable.is_pickable"]]:
     """
     Find groups of modules that are independent of each other.
 
-    Independence is determined by:
-    - no transitive expression involvement (distinct cliques)
-    - explicit Not(Correlated(...)) overrides transitive relationships
+    Independence is determined by transitive closure through predicates involving a
+    module's picked parameters. Picking a module in one component cannot influence the
+    constraints derivable for modules in other components.
+
+    TODO: more aggressive splitting by examining predicate expressions
     """
     unique_modules: set[F.Pickable.is_pickable] = set(modules)
-    tg = list(modules)[0].tg  # FIXME
-
-    anticorrelated_pairs = _get_anticorrelated_pairs(tg)
+    tg = next(iter(modules)).tg
 
     # Map picked parameters to modules
     all_params: set[F.Parameters.is_parameter] = set()
@@ -256,54 +250,78 @@ def find_independent_groups(
                 all_params.add(p)
                 p_to_module_map[p] = m_pbt
 
-    root_preds: set[F.Expressions.is_expression] = {
-        pred.as_expression.get()
-        for pred in F.Expressions.is_predicate.bind_typegraph(tg).get_instances()
-        if not pred.as_expression.get()
-        .as_operand.get()
-        .get_operations(recursive=True, predicates_only=True)
-    }
+    root_preds: set[F.Expressions.is_predicate] = set()
+    pred_to_params: dict[
+        F.Expressions.is_predicate, set[F.Parameters.is_parameter]
+    ] = {}
 
-    # Traverse parameter → expression → other parameters
-    def get_neighbors(
-        path: list[F.Parameters.is_parameter],
-    ) -> list[F.Parameters.is_parameter]:
-        current = path[-1]
-        neighbors: set[F.Parameters.is_parameter] = set()
+    # Build cache of params per predicate
+    for pred in F.Expressions.is_predicate.bind_typegraph(tg).get_instances():
+        expr = pred.as_expression.get()
 
-        for expr in current.as_operand.get().get_operations(predicates_only=True):
-            if (
-                expr_e := expr.get_trait(F.Expressions.is_expression)
-            ) not in root_preds:
-                continue
-
-            for leaf in expr_e.get_operand_leaves_operatable():
-                if (p := leaf.as_parameter.try_get()) and p != current:
-                    # Anti-correlation breaks the transitive chain
-                    if frozenset({current, p}) not in anticorrelated_pairs:
-                        neighbors.add(p)
-
-        return list(neighbors)
-
-    visited: set[F.Parameters.is_parameter] = set()
-    p_cliques: list[set[F.Parameters.is_parameter]] = []
-
-    for start_p in all_params:
-        if start_p in visited:
+        # Root predicates only
+        if expr.as_operand.get().get_operations(recursive=True, predicates_only=True):
             continue
-        component = bfs_visit(get_neighbors, [start_p])
-        visited.update(component)
-        p_cliques.append(component)
 
-    # Group modules by parameter clique membership
-    module_cliques = EquivalenceClasses[F.Pickable.is_pickable](unique_modules)
-    for p_clique in p_cliques:
-        p_modules = {p_to_module_map[p] for p in p_clique if p in p_to_module_map}
-        if p_modules:
-            module_cliques.add_eq(*[n._is_pickable.get() for n in p_modules])
+        # Skip correlation predicates
+        if _is_correlation_predicate(expr):
+            continue
 
-    out = module_cliques.get()
-    logger.debug(
+        params = {
+            p
+            for leaf in expr.get_operand_leaves_operatable()
+            if (p := leaf.as_parameter.try_get())
+        }
+        pred_to_params[pred] = params
+        root_preds.add(pred)
+
+    def get_predicate_neighbors(
+        path: list[F.Expressions.is_predicate],
+    ) -> list[F.Expressions.is_predicate]:
+        current = path[-1]
+        return list(
+            {
+                other_pred
+                for param in pred_to_params[current]
+                for expr in param.as_operand.get().get_operations(predicates_only=True)
+                if (other_pred := expr.try_get_trait(F.Expressions.is_predicate))
+                and other_pred in root_preds
+                and other_pred != current
+            }
+        )
+
+    visited_preds: set[F.Expressions.is_predicate] = set()
+    pred_components: list[set[F.Expressions.is_predicate]] = []
+
+    # BFS to find predicate components (connected subgraphs)
+    for start_pred in root_preds:
+        if start_pred in visited_preds:
+            continue
+        component = bfs_visit(get_predicate_neighbors, [start_pred])
+        visited_preds.update(component)
+        pred_components.append(component)
+
+    # Map predicate components to parameter components
+    p_components: list[set[F.Parameters.is_parameter]] = [
+        params_in_component
+        for pred_component in pred_components
+        if (
+            params_in_component := {
+                p for pred in pred_component for p in pred_to_params[pred]
+            }
+        )
+    ]
+
+    # Group modules by parameter component membership
+    module_components = EquivalenceClasses[F.Pickable.is_pickable](unique_modules)
+    for p_component in p_components:
+        if p_modules := {
+            p_to_module_map[p] for p in p_component if p in p_to_module_map
+        }:
+            module_components.add_eq(*[n._is_pickable.get() for n in p_modules])
+
+    out = module_components.get()
+    logger.info(
         indented_container(
             [{m.get_pickable_node() for m in g} for g in out],
             recursive=True,
@@ -333,15 +351,26 @@ def _infer_uncorrelated_params(tree: Tree["F.Pickable.is_pickable"]):
 
     g = next(iter(uncorrelated_params)).g
     tg = next(iter(uncorrelated_params)).tg
-
-    F.Expressions.Not.c(
-        F.Expressions.Correlated.c(
-            *[p.as_operand.get() for p in uncorrelated_params], g=g, tg=tg
-        ),
-        g=g,
-        tg=tg,
-        assert_=True,
+    corr = F.Expressions.Correlated.c(
+        *[p.as_operand.get() for p in uncorrelated_params], g=g, tg=tg
     )
+    F.Expressions.Not.c(corr, g=g, tg=tg, assert_=True)
+
+
+def _collect_relevant_params(
+    modules: Iterable["F.Pickable.is_pickable"],
+) -> list["F.Parameters.can_be_operand"]:
+    """Collect all pickable parameters from modules."""
+    return [
+        p.as_operand.get()
+        for m in modules
+        if (
+            pbt := m.get_parent_of_type(
+                F.Pickable.is_pickable_by_type, direct_only=True, include_root=False
+            )
+        )
+        for p in pbt.get_params()
+    ]
 
 
 def _format_pcb_contradiction_error(
@@ -407,13 +436,127 @@ def _format_pcb_contradiction_error(
     return "\n".join(lines)
 
 
+@dataclass(frozen=True)
+class PickNodeData:
+    depth: int
+    module_count: int
+    branching_factor: int
+    module_name: str
+
+    def __repr__(self) -> str:
+        return f"{self.module_name} (d={self.depth} b={self.branching_factor})"
+
+
+@dataclass
+class PickWorkItem:
+    modules: set["F.Pickable.is_pickable"]
+    solver: Solver
+    depth: int
+    parent_key: PickNodeData | None = None
+
+
+def _pick_tree(
+    initial_modules: set["F.Pickable.is_pickable"],
+    solver: Solver,
+    picker_lib,
+    progress: Advancable | None,
+) -> Tree[PickNodeData]:
+    """
+    Pick all modules using breadth-first iteration with batched API calls.
+
+    Algorithm:
+    1. Expand: Find independent groups for all work items at current level
+    2. Batch fetch: Collect candidates for all modules at this level
+    3. Pick and advance: Select parts, prepare work items for next level
+    """
+    work_queue = deque([PickWorkItem(initial_modules, solver, depth=0)])
+    pick_tree: Tree[PickNodeData] = Tree()
+    subtrees: dict[PickNodeData | None, Tree[PickNodeData]] = {None: pick_tree}
+
+    while work_queue:
+        expanded: deque[PickWorkItem] = deque()
+
+        for item in work_queue:
+            if not (relevant := _collect_relevant_params(item.modules)):
+                continue
+
+            g, tg = next(iter(relevant)).g, next(iter(relevant)).tg
+            item.solver.simplify(g, tg, terminal=False, relevant=relevant)
+
+            groups = find_independent_groups(item.modules)
+            group_solvers = [next(item.solver.fork()) for _ in range(len(groups))]
+
+            for group, group_solver in zip(groups, group_solvers):
+                expanded.append(
+                    PickWorkItem(
+                        modules=group,
+                        solver=group_solver,
+                        depth=item.depth,
+                        parent_key=item.parent_key,
+                    )
+                )
+
+        if not expanded:
+            break
+
+        depth = expanded[0].depth
+        logger.info(
+            f"[depth={depth}] Processing {len(expanded)} groups, "
+            f"{sum(len(item.modules) for item in expanded)} total modules"
+        )
+
+        all_modules = _list_to_hack_tree(m for item in expanded for m in item.modules)
+        all_candidates = picker_lib.get_candidates(all_modules, solver)
+        next_queue: deque[PickWorkItem] = deque()
+
+        for item in expanded:
+            group_candidates = {m: all_candidates[m] for m in item.modules}
+            if no_candidates := [m for m, cs in group_candidates.items() if not cs]:
+                raise PickError(
+                    f"No candidates found for {no_candidates}", *no_candidates
+                )
+
+            # Heuristic: pick most-constrained module (fewest candidates)
+            module = min(item.modules, key=lambda m: len(group_candidates[m]))
+            part = next(iter(group_candidates[module]))
+
+            module_name = module.get_pickable_node().get_full_name()
+            logger.info(f"  Picking {module_name}")
+            picker_lib.attach_single_no_check(module, part, item.solver)
+
+            if progress:
+                progress.advance()
+
+            node_data = PickNodeData(
+                depth=item.depth,
+                module_count=len(item.modules),
+                branching_factor=len(expanded),
+                module_name=module_name,
+            )
+            parent_tree = subtrees[item.parent_key]
+            child_tree: Tree[PickNodeData] = Tree()
+            parent_tree[node_data] = child_tree
+            subtrees[node_data] = child_tree
+            if remaining := item.modules - {module}:
+                next_queue.append(
+                    PickWorkItem(
+                        modules=remaining,
+                        solver=item.solver,
+                        depth=item.depth + 1,
+                        parent_key=node_data,
+                    )
+                )
+
+        work_queue = next_queue
+
+    return pick_tree
+
+
 def pick_topologically(
     tree: Tree["F.Pickable.is_pickable"],
     solver: Solver,
     progress: Advancable | None = None,
 ):
-    # TODO implement backtracking
-
     import faebryk.libs.picker.api.picker_lib as picker_lib
 
     def _pick_explicit_modules(explicit_modules: list["F.Pickable.is_pickable"]):
@@ -427,16 +570,6 @@ def pick_topologically(
                 progress.advance()
 
     timings = Times(name="pick")
-
-    def _relevant_params(m: F.Pickable.is_pickable) -> set[F.Parameters.can_be_operand]:
-        pbt = m.get_parent_of_type(
-            F.Pickable.is_pickable_by_type, direct_only=True, include_root=False
-        )
-        if not pbt:
-            return set()
-        params = pbt.get_params()
-        return {p.as_operand.get() for p in params}
-
     tree_backup = set(tree.keys())
     _pick_count = len(tree)
 
@@ -454,88 +587,37 @@ def pick_topologically(
     _infer_uncorrelated_params(tree)
 
     timings.add("setup")
-    relevant = [rp for m in tree.keys() for rp in _relevant_params(m)]
-    with timings.measure("parallel slow-pick"):
-        if relevant:
-            g = relevant[0].g
-            tg = relevant[0].tg
-            logger.info(f"Simplifying with {len(relevant)} relevant parameters")
-            with timings.measure("simplify"):
-                solver.simplify(g, tg, terminal=True, relevant=relevant)
-            logger.info(f"Solved in {timings.get_formatted('simplify')}")
-            with timings.measure("get candidates"):
-                candidates = picker_lib.get_candidates(tree, solver)
-            no_candidates = [m for m, cs in candidates.items() if not cs]
-            if no_candidates:
-                raise PickError(
-                    f"No candidates found for {no_candidates}", *no_candidates
-                )
 
-            while tree:
-                groups = find_independent_groups(tree.keys(), solver)
-                # pick module with least candidates first
-                picked = [
-                    (
-                        m := min(group, key=lambda _m: len(candidates[_m])),
-                        candidates[m][0],
-                    )
-                    for group in groups
-                ]
-                logger.info(f"Picking {len(groups)} independent groups")
-                for m, part in picked:
-                    logger.info(f"Picking {m.get_pickable_node()}")
-                    picker_lib.attach_single_no_check(m, part, solver)
-                    if progress:
-                        progress.advance()
-                tree, _ = update_pick_tree(tree)
-                if not tree:
-                    break
-                relevant = [rp for m in tree.keys() for rp in _relevant_params(m)]
-                g = relevant[0].g
-                tg = relevant[0].tg
-                if not relevant:
-                    break
-                now = time.perf_counter()
-                with timings.measure("simplify"):
-                    solver.simplify(g, tg, terminal=True, relevant=relevant)
-                logger.info(f"Solved in {(time.perf_counter() - now) * 1000:.3f}ms")
-                with timings.measure("get candidates"):
-                    candidates = picker_lib.get_candidates(tree, solver)
-                no_candidates = [m for m, cs in candidates.items() if not cs]
-                if no_candidates:
-                    raise PickError(
-                        f"No candidates found for {no_candidates}", *no_candidates
-                    )
+    with timings.measure("pick tree"):
+        if all_modules := set(tree.keys()):
+            pick_tree: Tree[PickNodeData] = _pick_tree(
+                all_modules, solver, picker_lib, progress
+            )
+            logger.info(
+                "Picking tree (d=depth, b=branching_factor):\n" + pick_tree.pretty()
+            )
+        else:
+            pick_tree = Tree()
 
     if _pick_count:
-        logger.info(
-            f"Slow-picked parts in {timings.get_formatted('parallel slow-pick')}"
-        )
+        logger.info(f"Picked parts in {timings.get_formatted('pick tree')}")
 
-    logger.info(f"Picked complete: picked {_pick_count} parts")
-    relevant = [rp for m in tree_backup for rp in _relevant_params(m)]
-    if relevant:
+    if relevant := _collect_relevant_params(tree_backup):
+        g, tg = next(iter(relevant)).g, next(iter(relevant)).tg
+
         with timings.measure("verify design"):
             logger.info("Verify design")
-            # hack
-            n = next(iter(relevant), None)
-            if n:
-                g = n.g
-                tg = n.tg
-                try:
-                    solver.simplify(g, tg, terminal=True, relevant=relevant)
-                except Contradiction as e:
-                    # Check if PCB-sourced constraints are involved
-                    error_msg = _format_pcb_contradiction_error(e, tg)
-                    raise PickVerificationError(error_msg, *tree_backup) from e
+            try:
+                solver.simplify(g, tg, terminal=True, relevant=relevant)
+            except Contradiction as e:
+                error_msg = _format_pcb_contradiction_error(e, tg)
+                raise PickVerificationError(error_msg, *tree_backup) from e
         logger.info(f"Verified design in {timings.get_formatted('verify design')}")
-    else:
-        logger.info("No relevant parameters to verify design with")
 
 
 # TODO should be a Picker
 @debug_perf
-def pick_part_recursively(
+def pick_parts_recursively(
     module: fabll.Node, solver: Solver, progress: Advancable | None = None
 ):
     pick_tree = get_pick_tree(module)

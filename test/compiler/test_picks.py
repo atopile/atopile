@@ -10,7 +10,7 @@ import faebryk.library._F as F
 from atopile.compiler.build import Linker, StdlibRegistry, build_file
 from faebryk.core.faebrykpy import EdgeComposition
 from faebryk.core.solver.solver import Solver
-from faebryk.libs.picker.picker import pick_part_recursively
+from faebryk.libs.picker.picker import pick_parts_recursively
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.util import not_none
@@ -46,7 +46,7 @@ def test_ato_pick_resistor():
         == SMDSize.I0805
     )
 
-    pick_part_recursively(r1, Solver())
+    pick_parts_recursively(r1, Solver())
 
     assert r1.has_trait(F.Pickable.has_part_picked)
 
@@ -73,7 +73,7 @@ def test_ato_pick_capacitor():
         == SMDSize.I0402
     )
 
-    pick_part_recursively(r1, Solver())
+    pick_parts_recursively(r1, Solver())
 
     assert r1.has_trait(F.Pickable.has_part_picked)
 
@@ -123,7 +123,7 @@ def test_ato_pick_inductor(
         == package
     )
 
-    pick_part_recursively(inductor, Solver())
+    pick_parts_recursively(inductor, Solver())
 
     assert inductor.has_trait(F.Pickable.has_part_picked)
 
@@ -182,7 +182,7 @@ def test_ato_pick_resistor_dependency(tmp_path: Path):
     app_instance = tg.instantiate_node(type_node=app_type, attributes={})
 
     solver = Solver()
-    pick_part_recursively(fabll.Node.bind_instance(app_instance), solver)
+    pick_parts_recursively(fabll.Node.bind_instance(app_instance), solver)
 
     r1 = fabll.Node.bind_instance(_get_child(app_instance, "r1"))
     r2 = fabll.Node.bind_instance(_get_child(app_instance, "r2"))

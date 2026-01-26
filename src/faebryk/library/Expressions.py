@@ -278,35 +278,40 @@ class is_expression(fabll.Node):
 
     @staticmethod
     def _compact_repr(
-        context: F.Parameters.ReprContext,
         style: is_expression_type.ReprStyle,
         symbol: str,
         is_predicate: bool,
         is_terminated: bool,
         lit_suffix: str,
-        use_name: bool,
+        use_full_name: bool,
+        class_suffix: str,
         expr_name: str,
         operands: Sequence["F.Parameters.can_be_operand"],
         no_lit_suffix: bool,
+        no_class_suffix: bool,
     ):
         """Return compact math repr with symbols (+, *, ≥, ¬, ∧) and precedence."""
         symbol_suffix = ""
         if is_predicate:
-            # symbol = f"\033[4m{symbol}!\033[0m"
             symbol_suffix += "!"
 
-            if is_terminated:
-                symbol_suffix += "$"
+        if is_terminated:
+            symbol_suffix += "$"
+
+        if not no_lit_suffix:
+            symbol_suffix += lit_suffix
+
+        if not no_class_suffix:
+            symbol_suffix += class_suffix
 
         symbol += symbol_suffix
-        symbol += lit_suffix
 
         def format_operand(op: "F.Parameters.can_be_operand"):
             if lit := op.as_literal.try_get():
                 return lit.pretty_str()
             if po := op.as_parameter_operatable.try_get():
                 op_out = po.compact_repr(
-                    context, use_name=use_name, no_lit_suffix=no_lit_suffix
+                    use_full_name=use_full_name, no_lit_suffix=no_lit_suffix
                 )
                 if (op_expr := po.as_expression.try_get()) and len(
                     op_expr.get_operands()
@@ -334,10 +339,7 @@ class is_expression(fabll.Node):
         elif len(formatted_operands) == 1:
             out = f"{expr_name}{symbol_suffix}({formatted_operands[0]})"
         elif lit_suffix and len(formatted_operands) > 2:
-            out = (
-                f"{expr_name}{symbol_suffix}{lit_suffix}"
-                f"({', '.join(formatted_operands)})"
-            )
+            out = f"{expr_name}{symbol_suffix}({', '.join(formatted_operands)})"
         elif style.placement == is_expression_type.ReprStyle.Placement.INFIX:
             symbol = f" {symbol} "
             out = f"{symbol.join(formatted_operands)}"
@@ -359,29 +361,44 @@ class is_expression(fabll.Node):
 
     def compact_repr(
         self,
-        context: "F.Parameters.ReprContext | None" = None,
-        use_name: bool = False,
+        use_full_name: bool = False,
         no_lit_suffix: bool = False,
+        no_class_suffix: bool = False,
     ) -> str:
         """Return compact math repr with symbols (+, *, ≥, ¬, ∧) and precedence."""
         from faebryk.core.solver.mutator import is_terminated
 
+        aliases = self.as_operand.get().get_operations(Is, predicates_only=True)
+        ps = [
+            p
+            for alias in aliases
+            for p in alias.is_expression.get().get_operands_with_trait(
+                F.Parameters.is_parameter
+            )
+        ]
+        alias_suffix = ",".join(
+            [p.compact_repr(use_full_name=use_full_name) for p in ps]
+        )
+        if alias_suffix:
+            alias_suffix = f"[{alias_suffix}]"
+
         style = self.get_repr_style()
         return self._compact_repr(
-            context if context is not None else F.Parameters.ReprContext(),
-            style,
-            style.symbol if style.symbol is not None else type(self).__name__,
-            bool(self.try_get_sibling_trait(is_predicate)),
-            bool(self.try_get_sibling_trait(is_terminated)),
+            style=style,
+            symbol=style.symbol if style.symbol is not None else type(self).__name__,
+            is_predicate=bool(self.try_get_sibling_trait(is_predicate)),
+            is_terminated=bool(self.try_get_sibling_trait(is_terminated)),
             lit_suffix=(
                 self.as_parameter_operatable.get()._get_lit_suffix()
                 if not no_lit_suffix
                 else ""
             ),
-            use_name=use_name,
+            use_full_name=use_full_name,
+            class_suffix=alias_suffix,
             expr_name=not_none(fabll.Traits(self).get_obj_raw().get_type_name()),
             operands=self.get_operands(),
             no_lit_suffix=no_lit_suffix,
+            no_class_suffix=no_class_suffix,
         )
 
     def is_congruent_to_factory(
@@ -457,6 +474,16 @@ class is_expression(fabll.Node):
         return sorted(
             exprs,
             key=F.Parameters.is_parameter_operatable.get_depth,
+            reverse=not ascending,
+        )
+
+    @staticmethod
+    def sort_by_depth_expr(
+        exprs: Iterable["is_expression"], ascending: bool = True
+    ) -> list["is_expression"]:
+        return sorted(
+            exprs,
+            key=lambda e: e.as_parameter_operatable.get().get_depth(),
             reverse=not ascending,
         )
 
@@ -727,6 +754,39 @@ class is_expression(fabll.Node):
             return BooleanParameter
 
         raise ValueError(f"Unknown parameter type for expression {self}")
+
+    def create_representative(
+        self,
+        alias: bool = True,
+    ) -> F.Parameters.is_parameter:
+        """
+        Warning: Strips unit!
+        """
+        g = self.g
+        tg = self.tg
+        p_type = self.get_parameter_type()
+        p_instance = p_type.bind_typegraph(tg=tg).create_instance(g=g)
+        if isinstance(p_instance, F.Parameters.NumericParameter):
+            p_instance.setup(
+                domain=F.Parameters.NumericParameter.DOMAIN_SKIP, is_unit=None
+            )
+        elif isinstance(p_instance, F.Parameters.BooleanParameter):
+            p_instance.setup()
+        else:
+            assert False
+
+        p = p_instance.is_parameter.get()
+        p.set_name(f"Rep({self.compact_repr(no_lit_suffix=True)})")
+        if alias:
+            Is.c(self.as_operand.get(), p.as_operand.get(), assert_=True)
+        return p
+
+    def __rich_repr__(self):
+        try:
+            yield self.compact_repr()
+        except Exception as e:
+            yield f"Error in repr: {e}"
+        yield "on " + fabll.Traits(self).get_obj_raw().get_full_name(types=True)
 
 
 # TODO
@@ -2041,7 +2101,7 @@ class Xor(fabll.Node):
 
 
 class Implies(fabll.Node):
-    as_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
+    can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
@@ -2113,6 +2173,10 @@ class Implies(fabll.Node):
 
 
 class IfThenElse(fabll.Node):
+    can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
+        F.Parameters.is_parameter_operatable.MakeChild()
+    )
     has_side_effects = fabll.Traits.MakeEdge(has_side_effects.MakeChild())
     is_expression_type = fabll.Traits.MakeEdge(
         is_expression_type.MakeChild(
@@ -2867,6 +2931,7 @@ class Is(fabll.Node):
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
     is_setic = fabll.Traits.MakeEdge(is_setic.MakeChild())
+    has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
 
     operands = OperandSet.MakeChild()
 
@@ -3042,7 +3107,7 @@ class Mapping:
                 Implies.from_operands(
                     case.as_operand.get(),
                     impl.as_operand.get(),
-                ).as_operand.get()
+                ).can_be_operand.get()
                 for case, impl in cases
             ),
         ).is_expression.get()
@@ -3114,16 +3179,13 @@ def test_repr_style():
 
 
 def test_compact_repr():
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
+    from faebryk.libs.test.boundexpressions import BoundExpressions
 
-    p1 = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    p2 = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    or_ = Or.c(
-        p1.can_be_operand.get(),
-        p2.can_be_operand.get(),
-        assert_=True,
-    )
+    E = BoundExpressions()
+
+    p1_op = E.bool_parameter_op(name="A")
+    p2_op = E.bool_parameter_op(name="B")
+    or_ = E.or_(p1_op, p2_op, assert_=True)
     or_repr = (
         or_.as_parameter_operatable.force_get().as_expression.force_get().compact_repr()
     )
@@ -3154,8 +3216,6 @@ def test_compact_repr_memory_leak():
     expr = or_.as_parameter_operatable.force_get().as_expression.force_get()
     param = p1.is_parameter.get()
 
-    ctx = F.Parameters.ReprContext()
-
     process = psutil.Process()
 
     def run(n: int):
@@ -3163,8 +3223,8 @@ def test_compact_repr_memory_leak():
         mem_base = process.memory_info().rss
 
         for _ in range(n):
-            expr.compact_repr(context=ctx)
-            param.compact_repr(context=ctx)
+            expr.compact_repr()
+            param.compact_repr()
 
         gc.collect()
 

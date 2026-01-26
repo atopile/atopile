@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from abc import abstractmethod
 from enum import Enum, auto
 from functools import reduce
-from typing import Any, NamedTuple, Sequence, cast
+from typing import Any, NamedTuple, Sequence, cast, override
 
 import pytest
 
@@ -12,6 +13,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from atopile.logging import scope
 from faebryk.core.solver.algorithm import SolverAlgorithm
 from faebryk.core.solver.mutator import ExpressionBuilder, MutationMap, Mutator
 from faebryk.core.solver.utils import (
@@ -21,11 +23,11 @@ from faebryk.core.solver.utils import (
     pretty_expr,
 )
 from faebryk.libs.test.boundexpressions import BoundExpressions
-from faebryk.libs.util import ConfigFlag, indented_container, not_none
+from faebryk.libs.util import ConfigFlag, OrderedSet, indented_container, not_none
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 if S_LOG:
-    logger.setLevel(logging.DEBUG)
+    _logger.setLevel(logging.DEBUG)
 
 IsSubset = F.Expressions.IsSubset
 
@@ -34,6 +36,120 @@ INVARIANT_LOG = ConfigFlag(
 )
 
 I_LOG = S_LOG and INVARIANT_LOG
+
+
+# TODO get rid of those functions
+def debug(msg: str):
+    _logger.debug(msg)
+
+
+def info(msg: str):
+    _logger.info(msg)
+
+
+def warning(msg: str):
+    _logger.warning(msg)
+
+
+def error(msg: str):
+    _logger.error(msg)
+
+
+class AliasClass:
+    @classmethod
+    def of(
+        cls,
+        is_or_member: F.Expressions.Is | F.Parameters.can_be_operand,
+        allow_non_repr: bool = False,
+    ) -> "AliasClass":
+        if isinstance(is_or_member, F.Expressions.Is):
+            return AliasClassIs(is_or_member)
+        aliases = is_or_member.get_operations(F.Expressions.Is, predicates_only=True)
+
+        if not aliases:
+            return AliasClassStub(is_or_member, allow_non_repr=allow_non_repr)
+
+        if len(aliases) == 1:
+            return AliasClassIs(next(iter(aliases)))
+
+        assert False, "Unreachable"
+
+    @abstractmethod
+    def get_with_trait[TR: fabll.NodeT](self, trait: type[TR]) -> set[TR]: ...
+
+    def representative(self) -> F.Parameters.can_be_operand: ...
+
+    def operands(self) -> list[F.Parameters.can_be_operand]: ...
+
+    def try_get_superset(self) -> F.Literals.is_literal | None: ...
+
+
+class AliasClassStub(AliasClass):
+    def __init__(
+        self, member: F.Parameters.can_be_operand, allow_non_repr: bool = False
+    ):
+        self.member = member
+        # literal or parameter or predicate
+        # if we try to run Alias invariants, we dont have the alias yet
+        assert (
+            allow_non_repr
+            or not self.member.try_get_sibling_trait(F.Expressions.is_expression)
+            or self.member.try_get_sibling_trait(F.Expressions.is_predicate)
+        )
+
+    @override
+    def get_with_trait[TR: fabll.NodeT](self, trait: type[TR]) -> set[TR]:
+        if out := self.member.try_get_sibling_trait(trait):
+            return {out}
+        return set()
+
+    @override
+    def representative(self) -> F.Parameters.can_be_operand:
+        return self.member
+
+    @override
+    def operands(self) -> list[F.Parameters.can_be_operand]:
+        return [self.member]
+
+    @override
+    def try_get_superset(self) -> F.Literals.is_literal | None:
+        if lit := self.member.try_get_sibling_trait(F.Literals.is_literal):
+            return lit
+        return self.member.as_parameter_operatable.get().try_extract_superset()
+
+
+class AliasClassIs(AliasClass):
+    def __init__(self, is_: F.Expressions.Is):
+        self.is_ = is_
+
+    @override
+    def operands(self):
+        return self.is_.is_expression.get().get_operands()
+
+    @override
+    def representative(self) -> F.Parameters.can_be_operand:
+        params = self.is_.is_expression.get().get_operands_with_trait(
+            F.Parameters.is_parameter
+        )
+        assert len(params) == 1, f"Expected 1 parameter, got {len(params)}"
+        return next(iter(params)).as_operand.get()
+
+    def expressions(self) -> set[F.Expressions.is_expression]:
+        return self.is_.is_expression.get().get_operands_with_trait(
+            F.Expressions.is_expression
+        )
+
+    @override
+    def get_with_trait[TR: fabll.NodeT](self, trait: type[TR]) -> set[TR]:
+        return self.is_.is_expression.get().get_operands_with_trait(trait)
+
+    @override
+    def try_get_superset(self) -> F.Literals.is_literal | None:
+        return (
+            self.representative()
+            .as_parameter_operatable.force_get()
+            .try_extract_superset()
+        )
 
 
 class SubsumptionCheck:
@@ -118,12 +234,15 @@ class SubsumptionCheck:
             )
             if superset_lit.op_setic_equals(merged_superset):
                 return SubsumptionCheck.Result(superset_ss.is_expression.get())
+            if merged_superset.op_setic_equals(new_superset):
+                merged_superset = new_superset
             return SubsumptionCheck.Result(
                 ExpressionBuilder(
                     IsSubset,
                     [subset_op.as_operand.get(), merged_superset.as_operand.get()],
                     assert_=True,
                     terminate=False,
+                    traits=[],
                 ),
                 subsumed=[superset_ss.is_expression.get()],
             )
@@ -162,6 +281,7 @@ class SubsumptionCheck:
                     [merged_subset.as_operand.get(), superset_op.as_operand.get()],
                     assert_=True,
                     terminate=False,
+                    traits=[],
                 ),
                 subsumed=[subset_ss.is_expression.get()],
             )
@@ -247,19 +367,78 @@ class SubsumptionCheck:
             ):
                 return SubsumptionCheck.Result(most_constrained_expr=candidate_expr)
 
-        return SubsumptionCheck.Result()
+        return SubsumptionCheck.Result(
+            most_constrained_expr=builder.with_(operands=new_operands)
+        )
+
+    @staticmethod
+    def is_(mutator: Mutator, builder: "ExpressionBuilder") -> Result:
+        """
+        Single alias per class: A is! B, B is C! => Is!(A, B, C)
+        #TODO Single param per class  C param, Is!(A, B, C) => Is!(A, B)
+        """
+        # I think this invariant only gets triggered if algos make aliases
+
+        if not builder.assert_:
+            return SubsumptionCheck.Result()
+
+        existing_aliases = [
+            alias
+            for op in builder.operands
+            for alias in op.get_operations(F.Expressions.Is, predicates_only=True)
+        ]
+        if not existing_aliases:
+            # TODO filter multi param
+            return SubsumptionCheck.Result()
+
+        ops = {
+            op
+            for alias in existing_aliases
+            for op in alias.is_expression.get().get_operands()
+        } | set(builder.operands)
+
+        param_ops = {
+            p
+            for op in ops
+            if (p := op.try_get_sibling_trait(F.Parameters.is_parameter))
+        }
+
+        if len(param_ops) > 1 and len(param_ops) != len(ops):
+            raise NotImplementedError("I dont want to deal with this")
+
+        # case 1: Is!(A,B,C), Is!(A, B) => Is!(A,B,C)
+        if len(existing_aliases) == 1:
+            existing_alias = existing_aliases[0].is_expression.get()
+            if len(existing_alias.get_operands()) == len(ops):
+                return SubsumptionCheck.Result(most_constrained_expr=existing_alias)
+
+        # case 2: Is!(A,B), Is!(A,B,C) => Is!(A,B,C)
+        # case 3: Is!(A,B,C), Is!(D,E), Is!(C,D) => Is!(A,B,C,D,E)
+        builder = ExpressionBuilder(
+            F.Expressions.Is,
+            list(ops),
+            assert_=True,
+            terminate=False,
+            traits=[],
+        )
+        debug(f"New alias: {builder}")
+        return SubsumptionCheck.Result(
+            builder,
+            subsumed=[alias.is_expression.get() for alias in existing_aliases],
+        )
 
 
 def find_subsuming_expression(
     mutator: Mutator,
     builder: "ExpressionBuilder[Any]",
 ) -> SubsumptionCheck.Result:
-    # TODO use right graph
     match builder.factory:
         case F.Expressions.IsSubset:
             return SubsumptionCheck.subset(mutator, builder)
         case F.Expressions.Or:
             return SubsumptionCheck.or_(mutator, builder)
+        case F.Expressions.Is:
+            return SubsumptionCheck.is_(mutator, builder)
         case _:
             return SubsumptionCheck.Result()
 
@@ -272,19 +451,22 @@ def find_congruent_expression[T: F.Expressions.ExpressionNodes](
     """
     Careful: Disregards asserted (on purpose)!
     """
+    factory_bound = builder.factory.bind_typegraph(mutator.tg_in)
     allow_uncorrelated = (
+        # predicates are always correlated to each other via True
         builder.assert_
+        # manual override
         or allow_uncorrelated_congruence_match
-        # TODO use setic trait instead
-        or builder.factory in [F.Expressions.IsSubset]
+        # setic expressions don't differentiate correlation
+        or factory_bound.check_if_instance_of_type_has_trait(F.Expressions.is_setic)
     )
     non_lits = list(builder.indexed_pos().values())
     if not non_lits:
+        # discovery works different with only lits
+        # TODO think about how useful this case actually is for !allow_uncorrelated
         lit_ops = {
             op
-            for op in builder.factory.bind_typegraph(mutator.tg_in).get_instances(
-                mutator.G_out
-            )
+            for op in factory_bound.get_instances(mutator.G_out)
             if mutator.utils.is_literal_expression(
                 op.get_trait(F.Parameters.can_be_operand)
             )
@@ -301,27 +483,33 @@ def find_congruent_expression[T: F.Expressions.ExpressionNodes](
             return next(iter(lit_ops))
         return None
 
-    candidates = next(iter(non_lits)).get_operations(builder.factory)
+    parents = [
+        non_lit.get_operations(F.Expressions.is_expression) for non_lit in non_lits
+    ]
+    common = reduce(lambda x, y: x & y, parents)
 
-    for c in candidates:
-        if c.get_trait(F.Expressions.is_expression).is_congruent_to_factory(
+    for c in common:
+        if c.is_congruent_to_factory(
             builder.factory,
+            # comparing repr is enough
             builder.operands,
             g=mutator.G_transient,
             tg=mutator.tg_in,
             allow_uncorrelated=allow_uncorrelated,
             check_constrained=False,
-            # inductive, if subexpression was congruent to another expression
-            # it would have already been merged
-            # helps with performance
+            # no nested expressions
             recursive=False,
         ):
-            return c
+            return fabll.Traits(c).get_obj(builder.factory)
     return None
 
 
 class InsertExpressionResult(NamedTuple):
-    out_operand: F.Parameters.can_be_operand
+    out: F.Expressions.is_expression | None
+    """
+    Per default expression.
+    Only if predicate implicitly subsumed, then True.
+    """
     is_new: bool
 
 
@@ -332,7 +520,7 @@ def _no_empty_superset(
     """
     A ss! {} => Contradiction.
     """
-    factory, operands, assert_, _ = builder
+    factory, operands, assert_, _, _ = builder
     if (
         factory is IsSubset
         and assert_
@@ -357,24 +545,22 @@ def _no_predicate_literals(
     mutator: Mutator, builder: ExpressionBuilder[Any]
 ) -> ExpressionBuilder | None:
     """
-    P!{S/P|False} -> Contradiction
+    P!{⊆/⊇|False} -> Contradiction
     P {⊆|True} -> P!
     P! ss! True / True ss! P! -> Drop (carries no information)
     """
 
-    # FIXME: important
-    #  if we assert an expression then we need to uphold the invariant
-    #   that it's not used as operand
-
-    factory, operands, assert_, _ = builder
+    factory, operands, assert_, _, _ = builder
     if not (factory is F.Expressions.IsSubset and assert_):
         return builder
 
     if not (lits := builder.indexed_lits()):
         return builder
 
-    # P!{⊆|False} -> Contradiction
-    if operands[0].try_get_sibling_trait(F.Expressions.is_predicate) and any(
+    class_ops = _operands_classes(builder)
+
+    # P!{⊆/⊇|False} -> Contradiction
+    if class_ops[0].get_with_trait(F.Expressions.is_predicate) and any(
         lit.op_setic_equals_singleton(False) for lit in lits.values()
     ):
         raise Contradiction(
@@ -384,23 +570,21 @@ def _no_predicate_literals(
         )
 
     if any(lit.op_setic_equals_singleton(True) for lit in lits.values()):
-        # P!{S/P|True} -> P!
-        if any(op.try_get_sibling_trait(F.Expressions.is_predicate) for op in operands):
+        # P!{⊆/⊇|True} -> P!
+        if any(op.get_with_trait(F.Expressions.is_predicate) for op in class_ops):
             if I_LOG:
-                logger.debug(
-                    f"Remove predicate literal {pretty_expr(builder, mutator)}"
-                )
+                debug(f"Remove predicate literal {pretty_expr(builder, mutator)}")
             return None
         # P {⊆|True} -> P!
-        if pred := operands[0].try_get_sibling_trait(F.Expressions.is_assertable):
+        a_class = class_ops[0]
+        for pred in a_class.get_with_trait(F.Expressions.is_assertable):
             if I_LOG:
-                before = pred.as_expression.get().compact_repr(mutator.print_ctx)
+                before = pred.as_expression.get().compact_repr()
                 mutator.assert_(pred)
-                after = pred.as_expression.get().compact_repr(mutator.print_ctx)
-                logger.debug(f"Assert implicit predicate `{before}` -> `{after}`")
+                after = pred.as_expression.get().compact_repr()
+                debug(f"Assert implicit predicate `{before}` -> `{after}`")
             else:
                 mutator.assert_(pred)
-            return None
 
     return builder
 
@@ -420,7 +604,7 @@ def _no_literal_inequalities(
     """
     import math
 
-    factory, operands, assert_, terminate = builder
+    factory, operands, assert_, terminate, _ = builder
 
     if factory is not F.Expressions.GreaterOrEqual or not assert_:
         return builder
@@ -448,11 +632,12 @@ def _no_literal_inequalities(
 
     new_operands = [po_operand, new_superset.can_be_operand.get()]
     new_builder = cast(
-        ExpressionBuilder, ExpressionBuilder(IsSubset, new_operands, assert_, terminate)
+        ExpressionBuilder,
+        ExpressionBuilder(IsSubset, new_operands, assert_, terminate, []),
     )  # TODO fuck you pyright
 
     if I_LOG:
-        logger.debug(
+        debug(
             f"Converting {pretty_expr(builder, mutator)} ->"
             f" {pretty_expr(new_builder, mutator)}"
         )
@@ -467,21 +652,26 @@ def _no_predicate_operands(
     don't use predicates as operands:
     Op(P!, ...) -> Op(True, ...)
     """
-    _, operands, _, _ = builder
+
+    # only assertable can have predicate operands
+    if not builder.factory.bind_typegraph(
+        mutator.tg_in
+    ).check_if_instance_of_type_has_trait(F.Expressions.is_assertable):
+        return builder
+
+    class_ops = _operands_classes(builder)
 
     new_operands = [
         mutator.make_singleton(True).can_be_operand.get()
-        if op.try_get_sibling_trait(F.Expressions.is_predicate)
-        else op
-        for op in operands
+        if op.get_with_trait(F.Expressions.is_predicate)
+        else op.representative()
+        for op in class_ops
     ]
 
-    new_builder = ExpressionBuilder(
-        builder.factory, new_operands, builder.assert_, builder.terminate
-    )
+    new_builder = builder.with_(operands=new_operands)
 
-    if I_LOG and new_operands != operands:
-        logger.debug(
+    if I_LOG and new_operands != builder.operands:
+        debug(
             f"Predicate operands: {pretty_expr(builder, mutator)} ->"
             f" {pretty_expr(new_builder, mutator)}"
         )
@@ -489,11 +679,125 @@ def _no_predicate_operands(
     return new_builder
 
 
-def _fold_pure_literal_operands(
+# TODO move to expression_wise.py
+class Folds:
+    @staticmethod
+    def _or(
+        mutator: Mutator, builder: ExpressionBuilder
+    ) -> F.Literals.is_literal | None:
+        if not (lits := builder.indexed_lits()):
+            return None
+        if any(lit.op_setic_equals_singleton(True) for lit in lits.values()):
+            return mutator.make_singleton(True).is_literal.get()
+        return None
+
+    @staticmethod
+    def _sin(
+        mutator: Mutator, builder: ExpressionBuilder
+    ) -> F.Literals.is_literal | None:
+        return mutator.utils.make_number_literal_from_range(-1, 1).is_literal.get()
+
+    @staticmethod
+    def _round(
+        mutator: Mutator, builder: ExpressionBuilder
+    ) -> F.Literals.is_literal | None:
+        """
+        ```
+        A^0 -> 1
+        0^A -> 0
+        1^A -> 1
+        ```
+        """
+        if not (lits := builder.indexed_lits()):
+            return None
+
+        if exp_lit := lits.get(1):
+            if exp_lit.op_setic_equals_singleton(0):
+                return mutator.make_singleton(1).is_literal.get()
+        if base_lit := lits.get(0):
+            if base_lit.op_setic_equals_singleton(0):
+                return mutator.make_singleton(0).is_literal.get()
+            if base_lit.op_setic_equals_singleton(1):
+                return mutator.make_singleton(1).is_literal.get()
+
+        return None
+
+    @staticmethod
+    def _is(
+        mutator: Mutator, builder: ExpressionBuilder
+    ) -> F.Literals.is_literal | None:
+        """
+        no single operand Is: Is(A) -> True
+        """
+        if len(builder.operands) == 1:
+            return mutator.make_singleton(True).is_literal.get()
+        return None
+
+    @staticmethod
+    def _no_reflexive_tautologies(
+        mutator: Mutator, builder: ExpressionBuilder[Any]
+    ) -> F.Literals.is_literal | None:
+        """
+        Reflexive expressions with identical operands are tautologies:
+        A ss A -> True (drop)
+        A >= A -> True (drop)
+
+        A is A handled by idempotent operands
+
+        Returns None to indicate the expression should be replaced with True.
+        """
+        if builder.factory is F.Expressions.Is:
+            return None
+
+        # If literal, let literal folding handle it
+        if builder.indexed_lits():
+            return None
+
+        # Need at least 2 operands for reflexivity check
+        if len(builder.operands) < 2:
+            return None
+
+        # Check if all operands are the same (by identity)
+        dedup = set(builder.operands)
+        if len(dedup) == len(builder.operands):
+            return None
+
+        # Reflexive expression with same operands -> always True, drop
+        if I_LOG:
+            debug(f"Reflexive tautology dropped: {pretty_expr(builder, mutator)}")
+
+        return mutator.make_singleton(True).is_literal.get()
+
+    @staticmethod
+    def fold(
+        mutator: Mutator, builder: ExpressionBuilder
+    ) -> F.Literals.is_literal | None:
+        match builder.factory:
+            case F.Expressions.Or:
+                res = Folds._or(mutator, builder)
+            case F.Expressions.Sin:
+                res = Folds._sin(mutator, builder)
+            case F.Expressions.Is:
+                res = Folds._is(mutator, builder)
+            case _:
+                res = None
+        if res:
+            return res
+
+        # Check if factory has is_reflexive trait
+        if not builder.factory.bind_typegraph(
+            mutator.tg_in
+        ).check_if_instance_of_type_has_trait(F.Expressions.is_reflexive):
+            res = Folds._no_reflexive_tautologies(mutator, builder)
+
+        return res
+
+
+def _fold(
     mutator: Mutator,
     builder: ExpressionBuilder,
     force_replacable_by_literal: bool = False,
-) -> InsertExpressionResult | None:
+) -> tuple[F.Literals.is_literal, bool] | None:
     """
     Fold pure literal operands: E(X, Y) -> E{S/P|...}(X, Y)
     No pure P!
@@ -504,108 +808,31 @@ def _fold_pure_literal_operands(
     """
     from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_operands
 
+    # Don't fold terminated expressions
+    if builder.terminate:
+        return None
+
+    lit_fold = None
     if not (
-        lit_fold := exec_pure_literal_operands(
+        lit_fold_pure := exec_pure_literal_operands(
             mutator.G_transient, mutator.tg_out, builder.factory, builder.operands
         )
-    ):
+    ) and not (lit_fold := Folds.fold(mutator, builder)):
         return None
+
+    if lit_fold_pure:
+        lit_fold = lit_fold_pure
+    assert lit_fold is not None
 
     if I_LOG:
-        logger.debug(
-            f"Folded ({pretty_expr(builder, mutator)}) "
-            f"to literal {lit_fold.pretty_str()}"
+        debug(
+            f"Folded `{pretty_expr(builder, mutator)}` "
+            f"to literal `{lit_fold.pretty_str()}`"
         )
-    if builder.assert_:
-        # P!{⊆|True} -> P!$
-        if lit_fold.op_setic_equals_singleton(True):
-            return InsertExpressionResult(lit_fold.as_operand.get(), False)
-        else:
-            # False/ {True,False}
-            raise ContradictionByLiteral(
-                "P!{⊆|False}",
-                involved=[],
-                literals=[lit_fold],
-                mutator=mutator,
-            )
-    if force_replacable_by_literal:
-        return InsertExpressionResult(lit_fold.as_operand.get(), False)
+    if force_replacable_by_literal or lit_fold.op_setic_is_singleton():
+        return lit_fold, True
 
-    new_expr = mutator._create_and_insert_expression(builder.with_(terminate=True))
-    new_expr_op = new_expr.get_trait(F.Parameters.can_be_operand)
-    lit_op = lit_fold.as_operand.get()
-    mutator.create_check_and_insert_expression(
-        F.Expressions.IsSubset,
-        new_expr_op,
-        lit_op,
-        terminate=True,
-        assert_=True,
-        from_ops=[],
-    )
-    mutator.create_check_and_insert_expression(
-        F.Expressions.IsSubset,
-        lit_op,
-        new_expr_op,
-        terminate=True,
-        assert_=True,
-        from_ops=[],
-    )
-    return InsertExpressionResult(new_expr_op, True)
-
-
-def _fold_unpure_literal_operands(
-    mutator: Mutator, builder: ExpressionBuilder
-) -> InsertExpressionResult | None:
-    """
-    Fold unpure literal operands: f1(f2(X)) ⊆! eval(f1(f2(X)))
-    """
-    from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_operands
-
-    # TODO use setic trait instead
-    if builder.factory in [F.Expressions.IsSubset, F.Expressions.Is]:
-        return None
-
-    if not (
-        not builder.indexed_ops_with_trait(F.Parameters.is_parameter)
-        and all(
-            mutator.utils.is_literal_expression(op.as_operand.get())
-            for op in builder.indexed_ops_with_trait(
-                F.Expressions.is_expression
-            ).values()
-        )
-    ):
-        return None
-
-    lit_operands = [
-        lit
-        if (lit := op.try_get_sibling_trait(F.Literals.is_literal))
-        # inner literal expression has already superset due to invariant
-        else not_none(
-            mutator.utils.try_extract_superset(op.as_parameter_operatable.force_get())
-        )
-        for op in builder.operands
-    ]
-
-    operands = [op.as_operand.get() for op in lit_operands]
-    folded_lit = exec_pure_literal_operands(
-        mutator.G_transient, mutator.tg_out, builder.factory, operands
-    )
-    if folded_lit is None:
-        return None
-
-    folded_lit_op = folded_lit.as_operand.get()
-    new_expr = mutator._create_and_insert_expression(builder.with_(operands=operands))
-    new_expr_op = new_expr.get_trait(F.Parameters.can_be_operand)
-    mutator.create_check_and_insert_expression(
-        F.Expressions.IsSubset,
-        new_expr_op,
-        folded_lit_op,
-        terminate=True,
-        assert_=True,
-        from_ops=[],
-    )
-
-    return InsertExpressionResult(new_expr_op, True)
+    return lit_fold, bool(lit_fold_pure) or lit_fold.op_setic_is_singleton()
 
 
 def _no_literal_aliases(
@@ -652,6 +879,7 @@ def _no_literal_aliases(
         [non_lit_op, lit.as_operand.get()],
         builder.assert_,
         builder.terminate,
+        builder.traits,
     )
 
     return builder
@@ -667,12 +895,9 @@ def _no_singleton_supersets(
     not on
     - A{⊆|{X]} ss! X
     - X ss! A{⊆|{X]}
-    - A is! B{⊆|{X}} # done by distribute literals alias classes
+    in general not terminated
     """
-    lits = builder.indexed_lits()
-    if builder.factory is F.Expressions.IsSubset and builder.assert_ and lits:
-        return builder
-    if builder.factory is F.Expressions.Is and builder.assert_:
+    if builder.terminate:
         return builder
 
     mapped_operands = [
@@ -686,47 +911,11 @@ def _no_singleton_supersets(
 
     out = builder.with_(operands=mapped_operands)
     if I_LOG:
-        logger.debug(
+        debug(
             f"No singleton supersets: {pretty_expr(builder, mutator)} -> "
             f"{pretty_expr(out, mutator)}"
         )
     return out
-
-
-def _no_reflexive_tautologies(
-    mutator: Mutator, builder: ExpressionBuilder[Any]
-) -> ExpressionBuilder | None:
-    """
-    Reflexive expressions with identical operands are tautologies:
-    A is A -> True (drop)
-    A ss A -> True (drop)
-    A >= A -> True (drop)
-
-    Returns None to indicate the expression should be replaced with True.
-    """
-    # Check if factory has is_reflexive trait
-    if not builder.factory.bind_typegraph(
-        mutator.tg_in
-    ).check_if_instance_of_type_has_trait(F.Expressions.is_reflexive):
-        return builder
-
-    # Need at least 2 operands for reflexivity check
-    if len(builder.operands) < 2:
-        return builder
-
-    # Check if all operands are the same (by identity)
-    first_op = builder.operands[0]
-    if not all(first_op.is_same(op) for op in builder.operands[1:]):
-        return builder
-
-    # If literal, let literal folding handle it
-    if first_op.try_get_sibling_trait(F.Literals.is_literal):
-        return builder
-
-    # Reflexive expression with same operands -> always True, drop
-    if I_LOG:
-        logger.debug(f"Reflexive tautology dropped: {pretty_expr(builder, mutator)}")
-    return None
 
 
 def _deduplicate_idempotent_operands(
@@ -734,6 +923,7 @@ def _deduplicate_idempotent_operands(
 ) -> ExpressionBuilder:
     """
     Deduplicate operands in idempotent expressions:
+    Is(A, A, B) -> Is(A, B) (not for predicates!)
     Or(A, A, B) -> Or(A, B)
     Union(A, A, B) -> Union(A, B)
     Intersection(A, A, B) -> Intersection(A, B)
@@ -744,79 +934,118 @@ def _deduplicate_idempotent_operands(
     ).check_if_instance_of_type_has_trait(F.Expressions.has_idempotent_operands):
         return builder
 
-    # Deduplicate operands by identity (preserving order)
-    seen: set[int] = set()
-    unique_operands: list[F.Parameters.can_be_operand] = []
-    for op in builder.operands:
-        # Use node UUID for identity comparison
-        op_id = op.instance.node().get_uuid()
-        if op_id not in seen:
-            seen.add(op_id)
-            unique_operands.append(op)
-
-    if len(unique_operands) == len(builder.operands):
+    if builder.factory is F.Expressions.Is and builder.assert_:
         return builder
 
-    out = builder.with_(operands=unique_operands)
-    if I_LOG:
-        logger.debug(
+    # Deduplicate operands by identity (preserving order)
+    # no need to check eq class, because already all mapped to their representative in expr
+    unique_operands = OrderedSet(builder.operands)
+    out = builder.with_(operands=list(unique_operands))
+
+    if len(out.operands) != len(builder.operands) and I_LOG:
+        debug(
             f"Deduplicated idempotent operands: {pretty_expr(builder, mutator)} -> "
             f"{pretty_expr(out, mutator)}"
         )
+
     return out
 
 
-def _no_single_operand_is(
-    mutator: Mutator, builder: ExpressionBuilder[Any]
-) -> ExpressionBuilder | None:
-    """
-    Is expressions with a single operand are tautologies:
-    Is(A) -> True (drop if predicate, else map to True)
-    Is!(A) -> drop (no information)
+def _ss_lits_available(mutator: Mutator):
+    if getattr(mutator, "_ss_lits_available", False):
+        return
+    setattr(mutator, "_ss_lits_available", True)
 
-    This handles edge cases where Is is created with only one operand.
-    Returns None to indicate the expression should be replaced with True.
-    """
-    if builder.factory is not F.Expressions.Is:
-        return builder
+    ss_ts = mutator.get_typed_expressions(
+        F.Expressions.IsSubset,
+        required_traits=(F.Expressions.is_predicate,),
+        require_literals=True,
+        require_non_literals=True,
+    )
+    for ss_t in ss_ts:
+        ss_t_e = ss_t.is_expression.get()
+        if ss_t_e.get_operands_with_trait(F.Expressions.is_expression):
+            continue
+        if S_LOG:
+            debug(f"Copying ss lit: {pretty_expr(ss_t_e, mutator)}")
+        mutator.get_copy(ss_t.can_be_operand.get())
 
-    if len(builder.operands) != 1:
-        return builder
 
-    # Single operand Is is always True (A is A)
-    if I_LOG:
-        logger.debug(f"Single operand Is dropped: {pretty_expr(builder, mutator)}")
-    return None
+def _operands_mutated_and_expressions_flat(
+    mutator: Mutator, builder: ExpressionBuilder
+) -> ExpressionBuilder:
+    def _get_representative(
+        op: F.Parameters.can_be_operand,
+        is_alias: bool = False,
+    ) -> F.Parameters.can_be_operand:
+        if (
+            (op_po := op.as_parameter_operatable.try_get())
+            and (op_e := op_po.as_expression.try_get())
+            and not op_e.try_get_sibling_trait(F.Expressions.is_predicate)
+            and not op.get_operations(F.Expressions.Is, predicates_only=True)
+        ) and not mutator.has_been_mutated(op_po):
+            # Create an alias representative now
+            alias_param = op_e.create_representative(alias=True)
+            if I_LOG:
+                debug(
+                    f"Created alias for expression operand: "
+                    f"{op.pretty()}: {alias_param.compact_repr()}"
+                )
+            op = alias_param.as_operand.get()
+
+        copied = mutator.get_copy(op)
+        # if builder is alias expr operands might not have a repr yet,
+        # so need to allow stub classes
+        representative = AliasClass.of(copied, allow_non_repr=is_alias).representative()
+
+        return representative
+
+    # mutated/created, thus we can call mutator.get_copy on them
+    return builder.with_(
+        operands=[
+            _get_representative(op, is_alias=builder.is_alias())
+            for op in builder.operands
+        ]
+    )
+
+
+def _operands_classes(builder: ExpressionBuilder) -> list["AliasClass"]:
+    return [
+        AliasClass.of(op, allow_non_repr=builder.is_alias()) for op in builder.operands
+    ]
 
 
 def insert_expression(
     mutator: Mutator,
     builder: ExpressionBuilder,
+    alias: F.Parameters.is_parameter | None = None,
     expr_already_exists_in_old_graph: bool = False,
     allow_uncorrelated_congruence_match: bool = False,
 ) -> InsertExpressionResult:
     """
     Invariants
     Sequencing sensitive!
-    * ✓ terminated expressions are already copied
+    * ✓ ss lits (A ⊆! X, X ⊆! A) already copied
     * TODO: don't mutate terminated expressions?
+    * WIP every expr has a representative param if its not a predicate
+    * WIP all epxrs are flat (no nested expressions)
+    * WIP single alias per class
+    * WIP preds no aliases
+       # TODO this can not really happen, we need no alias to predicate
     * ✓ don't use predicates as operands: Op(P!, ...) -> Op(True, ...)
     * ✓ P{⊆|True} -> P!, P!{S/P|False} -> Contradiction, P!{⊆|True} -> P!
-    * ✓ no single operand Is: Is(A) -> True
-    * ✓ no reflexive tautologies: A is A -> True, A ss A -> True, A >= A -> True
     * ✓ deduplicate idempotent operands: Or(A, A, B) -> Or(A, B)
     * ✓ no A >! X or X >! A (create A ss! X or X ss! A)
-    * ✓ no singleton supersets: f(A{⊆|[X]}, B, ...) -> f(X, B ...)
+    * ✓ no singleton superset operands: f(A{⊆|[X]}, B, ...) -> f(X, B ...)
     * ✓ no congruence
     * ✓ minimal subsumption
     * ✓ - intersected supersets (single superset)
     * ✓ no empty supersets
-    * ✓ fold pure literal expressions: E(X, Y) -> E{S/P|...}(X, Y)
-    * - no pure P!
-    * ✓ superset estimate lit exprs: f1(f2(A{⊆|X})) ⊆! f1(f2(X))
+    * ✓ no A is! X(single) => A ss! X
+    * ✓ fold literal expressions: E(X, Y) -> E{S/P|...}(X, Y)
     * ✓ terminate ss lit: A ss! X -> A ss!$ X; X ss! A -> X ss!$ A TODO rethink/expand
+    * ✓ terminate is!
     * ✓ canonical
-    * no A is X(single) => A ss! X
 
     ====
     - allow_uncorrelated_congruence_match: sometimes it's okay to match
@@ -828,33 +1057,21 @@ def insert_expression(
     #  thus expression might be incorrectly marked as new
 
     # * terminated expressions are already copied
-    mutator._copy_terminated()
+    # mutator._copy_terminated()
+    # * ss lits (A ⊆! X, X ⊆! A) already copied
+    super_lit, sub_lit = None, None
+
+    _ss_lits_available(mutator)
+
+    builder = _operands_mutated_and_expressions_flat(mutator, builder)
 
     # * Op(P!, ...) -> Op(True, ...)
     builder = _no_predicate_operands(mutator, builder)
 
-    # P!{S/P|False} -> Contradiction, P!{P|True} -> P!, P {⊆|True} -> P!
+    # P!{⊆|False} -> Contradiction, P!{⊆|True} -> P!, P {⊆|True} -> P!
     builder_ = _no_predicate_literals(mutator, builder)
     if builder_ is None:
-        return InsertExpressionResult(
-            mutator.make_singleton(True).can_be_operand.get(), False
-        )
-    builder = builder_
-
-    # * no single operand Is: Is(A) -> True
-    builder_ = _no_single_operand_is(mutator, builder)
-    if builder_ is None:
-        return InsertExpressionResult(
-            mutator.make_singleton(True).can_be_operand.get(), False
-        )
-    builder = builder_
-
-    # * no reflexive tautologies: A is A -> True, A ss A -> True
-    builder_ = _no_reflexive_tautologies(mutator, builder)
-    if builder_ is None:
-        return InsertExpressionResult(
-            mutator.make_singleton(True).can_be_operand.get(), False
-        )
+        return InsertExpressionResult(None, False)
     builder = builder_
 
     # * deduplicate idempotent operands: Or(A, A, B) -> Or(A, B)
@@ -870,30 +1087,51 @@ def insert_expression(
     if congruent := find_congruent_expression(
         mutator, builder, allow_uncorrelated_congruence_match
     ):
+        congruent_expr = congruent.get_trait(F.Expressions.is_expression)
+        congruent_op = congruent.get_trait(F.Parameters.can_be_operand)
+        congruent_po = congruent_op.as_parameter_operatable.force_get()
         if builder.assert_:
             congruent_assertable = congruent.get_trait(F.Expressions.is_assertable)
             mutator.assert_(congruent_assertable)
         if builder.terminate:
-            congruent_expr = congruent.get_trait(F.Expressions.is_expression)
             mutator.terminate(congruent_expr)
-        congruent_op = congruent.get_trait(F.Parameters.can_be_operand)
-        congruent_po = congruent_op.as_parameter_operatable.force_get()
+        # merge alias
+        if alias:
+            if I_LOG:
+                debug(
+                    f"Merge alias: {alias.compact_repr()}"
+                    f" with congruent {congruent_op.pretty()}"
+                )
+            mutator.create_check_and_insert_expression_from_builder(
+                ExpressionBuilder(
+                    F.Expressions.Is,
+                    [alias.as_operand.get(), congruent_op],
+                    assert_=True,
+                    terminate=True,
+                    traits=[],
+                )
+            )
+        # unflag dirty
         if expr_already_exists_in_old_graph:
             if congruent_po in mutator.transformations.created:
                 del mutator.transformations.created[congruent_po]
-            if builder.assert_:
-                congruent_assertable = congruent_po.get_sibling_trait(
-                    F.Expressions.is_assertable
+            if (
+                builder.assert_
+                and (
+                    congruent_assertable := congruent_po.get_sibling_trait(
+                        F.Expressions.is_assertable
+                    )
                 )
-                if congruent_assertable in mutator.transformations.asserted:
-                    mutator.transformations.asserted.remove(congruent_assertable)
+                and congruent_assertable in mutator.transformations.asserted
+            ):
+                mutator.transformations.asserted.remove(congruent_assertable)
 
         if I_LOG:
-            logger.debug(
+            debug(
                 f"Found congruent expression for {pretty_expr(builder, mutator)}:"
                 f" {congruent_op.pretty()}"
             )
-        return InsertExpressionResult(congruent_op, False)
+        return InsertExpressionResult(congruent_expr, False)
 
     # * minimal subsumption
     # Check for semantic subsumption (only for assertable)
@@ -902,85 +1140,140 @@ def insert_expression(
     ).check_if_instance_of_type_has_trait(F.Expressions.is_assertable):
         subsume_res = find_subsuming_expression(mutator, builder)
         if subsume_res.subsumed and I_LOG:
-            ctx = mutator.mutation_map.print_ctx
-            reprs = [s.compact_repr(ctx) for s in subsume_res.subsumed]
-            logger.debug(f"Subsumed: {indented_container(reprs)}")
+            reprs = [s.compact_repr() for s in subsume_res.subsumed]
+            debug(f"Subsumed: {indented_container(reprs)}")
         for subsumed in subsume_res.subsumed or []:
             subsumed_po = subsumed.as_parameter_operatable.get()
             mutator.mark_irrelevant(subsumed_po)
             if subsumed_po in mutator.transformations.created:
                 del mutator.transformations.created[subsumed_po]
 
-        if most_constrained_expr := subsume_res.most_constrained_expr:
-            match most_constrained_expr:
+        if most_constrained := subsume_res.most_constrained_expr:
+            match most_constrained:
                 case F.Expressions.is_expression():
                     if I_LOG:
                         orig = pretty_expr(builder, mutator)
-                        new = pretty_expr(most_constrained_expr, mutator)
+                        new = pretty_expr(most_constrained, mutator)
                         if new == orig:
                             new = "congruent"
-                        logger.debug(f"Subsume replaced: {orig} -> {new}")
-                    return InsertExpressionResult(
-                        most_constrained_expr.as_operand.get(), False
-                    )
+                        debug(f"Subsume replaced: {orig} -> {new}")
+                    return InsertExpressionResult(most_constrained, False)
                 case ExpressionBuilder():
-                    builder = most_constrained_expr
+                    builder = most_constrained
                     if I_LOG:
-                        logger.debug(f"Subsume adjust {pretty_expr(builder, mutator)}")
-
+                        debug(f"Subsume adjust {pretty_expr(builder, mutator)}")
                 case SubsumptionCheck.Result._DISCARD():
                     if I_LOG:
-                        logger.debug(
-                            f"Subsume discard: {pretty_expr(builder, mutator)}"
-                        )
-                    return InsertExpressionResult(
-                        mutator.make_singleton(True).can_be_operand.get(), False
-                    )
+                        debug(f"Subsume discard: {pretty_expr(builder, mutator)}")
+                    return InsertExpressionResult(None, False)
+
     # * no empty supersets
     _no_empty_superset(mutator, builder)
 
-    # no A is! X
+    # * no A is! X
     builder = _no_literal_aliases(mutator, builder)
 
-    # * fold pure literal expressions
-    # needs to run last since it creates new expressions
-    # folding to literal will result in ss/sup in mutator.mutate_expression
-    if lit_fold := _fold_pure_literal_operands(
+    # * fold literal expressions
+    if lit_fold_res := _fold(
         mutator,
         builder,
         force_replacable_by_literal=allow_uncorrelated_congruence_match,
     ):
-        return lit_fold
+        super_lit, pure = lit_fold_res
+        if pure:
+            sub_lit = super_lit
+            builder = builder.with_(terminate=True)
 
-    if lit_fold := _fold_unpure_literal_operands(mutator, builder):
-        return lit_fold
+            # TODO can consider later a shortcut for singletons to not make the expr
 
-    # * terminate ss lit
+    # * terminate A ss! X, X ss! A
     if (
         builder.factory is F.Expressions.IsSubset
         and builder.assert_
         and builder.indexed_lits
         and not builder.terminate
-        and not builder.indexed_ops_with_trait(F.Expressions.is_expression)
+        and not builder.indexed_ops_with_trait(F.Parameters.is_parameter)
     ):
         if I_LOG:
-            logger.debug(f"Terminate ss lit: {pretty_expr(builder, mutator)}")
+            debug(f"Terminate ss lit: {pretty_expr(builder, mutator)}")
+        builder = builder.with_(terminate=True)
+
+    # * terminate A is! B
+    # invariants guarantee ops not lit
+    if (
+        builder.factory is F.Expressions.Is
+        and builder.assert_
+        and not builder.terminate
+    ):
+        if I_LOG:
+            debug(f"Terminate is!: {pretty_expr(builder, mutator)}")
         builder = builder.with_(terminate=True)
 
     # * canonical (covered by create)
     expr = mutator._create_and_insert_expression(builder)
-    return InsertExpressionResult(expr.get_trait(F.Parameters.can_be_operand), True)
+
+    # Create alias for non-predicate expressions (invariant: every non-predicate
+    # expression must have an Is alias so it can be used as an operand)
+    if not builder.assert_ and alias is None:
+        alias = expr.is_expression.get().create_representative(alias=False)
+    # transfer/create alias for new expr
+    if alias:
+        # TODO find alias in old graph and copy it over if it exists
+        mutator.create_check_and_insert_expression_from_builder(
+            ExpressionBuilder(
+                F.Expressions.Is,
+                [alias.as_operand.get(), expr.can_be_operand.get()],
+                assert_=True,
+                terminate=True,
+                traits=[],
+            )
+        )
+
+    if super_lit:
+        target = alias or expr.is_expression.get()
+        mutator.create_check_and_insert_expression_from_builder(
+            ExpressionBuilder(
+                F.Expressions.IsSubset,
+                [target.as_operand.get(), super_lit.as_operand.get()],
+                assert_=True,
+                terminate=True,
+                traits=[],
+            )
+        )
+    if sub_lit:
+        target = alias or expr.is_expression.get()
+        mutator.create_check_and_insert_expression_from_builder(
+            ExpressionBuilder(
+                F.Expressions.IsSubset,
+                [sub_lit.as_operand.get(), target.as_operand.get()],
+                assert_=True,
+                terminate=True,
+                traits=[],
+            )
+        )
+
+    return InsertExpressionResult(expr.is_expression.get(), True)
 
 
 def wrap_insert_expression(
     mutator: Mutator,
     builder: ExpressionBuilder,
+    alias: F.Parameters.is_parameter | None = None,
     expr_already_exists_in_old_graph: bool = False,
     allow_uncorrelated_congruence_match: bool = False,
 ) -> InsertExpressionResult:
+    s = scope()
+    if I_LOG:
+        warning(
+            f"Processing: {pretty_expr(builder, mutator)},"
+            f" alias: {alias.compact_repr() if alias else None}"
+        )
+        s.__enter__()
+
     res = insert_expression(
         mutator,
         builder,
+        alias,
         expr_already_exists_in_old_graph=expr_already_exists_in_old_graph,
         allow_uncorrelated_congruence_match=allow_uncorrelated_congruence_match,
     )
@@ -988,26 +1281,33 @@ def wrap_insert_expression(
         return res
 
     src_dbg = f"`{pretty_expr(builder, mutator)}`"
-    if res.out_operand is None:
+    if res.out is None:
         target_dbg = "Dropped"
     else:
-        op = res.out_operand
-        if (
-            op_e := op.try_get_sibling_trait(F.Expressions.is_expression)
-        ) and builder.matches(op_e):
+        op_e = res.out
+        op = op_e.as_operand.get()
+        if builder.matches(op_e, allow_different_graph=True):
             target_dbg = "COPY"
         else:
-            ctx = mutator.mutation_map.print_ctx
-            target_dbg = f"`{op.pretty(context=ctx)}`"
+            target_dbg = f"`{op.pretty()}`"
 
-        if target_dbg == src_dbg:
-            target_dbg = (
-                f"NOOP (assert: {builder.assert_}, terminate: {builder.terminate})"
-            )
+        if target_dbg == src_dbg and not res.is_new:
+            target_dbg = "MERGED"
+
+        elif target_dbg == src_dbg:
+            error(f"Builder pretty: {builder!r}")
+            error(f"Builder: {builder.terminate=} {builder.assert_=}")
+            error(f"Builder operands {indented_container(builder.operands)}")
+            error(f"Expr: {fabll.Traits(op).get_obj_raw()}")
+            if op_e:
+                error(f"Operands: {indented_container(op_e.get_operands())}")
+            assert False, "NOOP copy"
+
     # TODO debug
-    # if target_dbg != "COPY":
-    logger.warning(f"{src_dbg} -> {target_dbg}")
+    # if target_dbg not in {"COPY", "MERGED"}:
+    warning(f"{src_dbg} -> {target_dbg}")
 
+    s.__exit__(None, None, None)
     return res
 
 
@@ -1049,7 +1349,7 @@ class TestInvariantsSimple:
             p_op,
             assert_=True,
         )
-        pred_op = not_none(pred_res.out_operand)
+        pred_op = not_none(pred_res.out).as_operand.get()
 
         # Or(Not!(p), p)
         or_res = mutator.create_check_and_insert_expression(
@@ -1061,7 +1361,7 @@ class TestInvariantsSimple:
         )
 
         # => Or(True, p)
-        assert or_res.out_operand and or_res.out_operand.get_sibling_trait(
+        assert or_res.out and or_res.out.as_operand.get().get_sibling_trait(
             F.Expressions.is_expression
         ).get_operands()[0].get_sibling_trait(
             F.Literals.is_literal
@@ -1082,8 +1382,10 @@ class TestInvariantsSimple:
         )
 
         assert (
-            pred_res.out_operand
-            and pred_res.out_operand.as_parameter_operatable.force_get()
+            pred_res.out
+            and not_none(pred_res.out)
+            .as_operand.get()
+            .as_parameter_operatable.force_get()
             .force_extract_superset()
             .op_setic_equals(
                 F.Literals.Numbers.bind_typegraph(mutator.tg_in)
@@ -1116,7 +1418,7 @@ class TestInvariantsSimple:
             p_op,
             assert_=False,  # Not asserted initially
         )
-        not_op = not_none(not_res.out_operand)
+        not_op = not_none(not_res.out).as_operand.get()
 
         # Assert IsSubset(Not(p), True) - this should trigger P{⊆|True} -> P!
         mutator.create_check_and_insert_expression(
@@ -1153,7 +1455,7 @@ class TestInvariantsSimple:
             p_op,
             assert_=True,
         )
-        not_op = not_none(not_res.out_operand)
+        not_op = not_none(not_res.out).as_operand.get()
 
         # Test _no_predicate_literals directly with IsSubset(P!, False)
         false_lit = mutator.make_singleton(False).can_be_operand.get()
@@ -1162,6 +1464,7 @@ class TestInvariantsSimple:
             [not_op, false_lit],
             assert_=True,
             terminate=False,
+            traits=[],
         )
 
         with pytest.raises(Contradiction):
@@ -1189,7 +1492,7 @@ class TestInvariantsSimple:
             p_op,
             assert_=True,
         )
-        not_op = not_none(not_res.out_operand)
+        not_op = not_none(not_res.out).as_operand.get()
 
         # Test _no_predicate_literals directly with IsSubset(P!, True)
         true_lit = mutator.make_singleton(True).can_be_operand.get()
@@ -1198,6 +1501,7 @@ class TestInvariantsSimple:
             [not_op, true_lit],
             assert_=True,
             terminate=False,
+            traits=[],
         )
 
         # Should return None (expression dropped - no information added)
@@ -1233,8 +1537,10 @@ class TestInvariantsSimple:
         )
 
         # Should be converted to IsSubset with range [5, +∞)
-        assert result.out_operand is not None
-        expr = result.out_operand.get_sibling_trait(F.Expressions.is_expression)
+        assert result.out
+        expr = result.out.as_operand.get().get_sibling_trait(
+            F.Expressions.is_expression
+        )
         expr_obj = fabll.Traits(expr).get_obj_raw()
         assert expr_obj.isinstance(F.Expressions.IsSubset)
 
@@ -1272,8 +1578,8 @@ class TestInvariantsSimple:
         )
 
         # Should be converted to IsSubset with range (-∞, 10]
-        assert result.out_operand is not None
-        expr = result.out_operand.get_sibling_trait(F.Expressions.is_expression)
+        assert result.out
+        expr = result.out.get_sibling_trait(F.Expressions.is_expression)
         expr_obj = fabll.Traits(expr).get_obj_raw()
         assert expr_obj.isinstance(F.Expressions.IsSubset)
 
@@ -1319,9 +1625,9 @@ class TestInvariantsSimple:
 
         # Should be the same expression
         assert (
-            res1.out_operand
-            and res2.out_operand
-            and res1.out_operand.is_same(res2.out_operand)
+            res1.out is not None
+            and res2.out is not None
+            and res1.out.as_operand.get().is_same(res2.out.as_operand.get())
         )
 
     @staticmethod
@@ -1345,8 +1651,10 @@ class TestInvariantsSimple:
             p_op,
             assert_=False,
         )
-        assert res1.out_operand is not None
-        is_pred = res1.out_operand.try_get_sibling_trait(F.Expressions.is_predicate)
+        assert res1.out is not None
+        is_pred = res1.out.as_operand.get().try_get_sibling_trait(
+            F.Expressions.is_predicate
+        )
         assert is_pred is None
 
         # Create Not(p) asserted - should assert the existing one
@@ -1358,7 +1666,11 @@ class TestInvariantsSimple:
         assert not res2.is_new
 
         # The existing expression should now be asserted
-        is_pred = res1.out_operand.try_get_sibling_trait(F.Expressions.is_predicate)
+        is_pred = (
+            not_none(res1.out)
+            .as_operand.get()
+            .try_get_sibling_trait(F.Expressions.is_predicate)
+        )
         assert is_pred is not None
 
     # --- Invariant: minimal subsumption (intersected supersets) ---
@@ -1398,14 +1710,19 @@ class TestInvariantsSimple:
                 [p_op, lit2.can_be_operand.get()],
                 assert_=True,
                 terminate=False,
+                traits=[],
             ),
         )
 
         # Subsumption should return a builder with intersected range
         assert isinstance(subsume_result.most_constrained_expr, ExpressionBuilder)
         new_operands = subsume_result.most_constrained_expr.operands
-        new_superset = new_operands[1].get_sibling_trait(F.Literals.is_literal)
-        new_superset_nums = fabll.Traits(new_superset).get_obj(F.Literals.Numbers)
+        new_superset = (
+            new_operands[1].get_sibling_trait(F.Literals.is_literal).as_operand.get()
+        )
+        new_superset_nums = fabll.Traits(
+            new_superset.get_sibling_trait(F.Literals.is_literal)
+        ).get_obj(F.Literals.Numbers)
         # The intersected range should be [50, 100]
         assert new_superset_nums.get_min_value() == 50
         assert new_superset_nums.get_max_value() == 100
@@ -1445,6 +1762,7 @@ class TestInvariantsSimple:
             [p_op, empty_lit.can_be_operand.get()],
             assert_=True,
             terminate=False,
+            traits=[],
         )
 
         with pytest.raises(Contradiction):
@@ -1521,8 +1839,8 @@ class TestInvariantsSimple:
             p_op,
         )
 
-        assert result.out_operand is not None
-        expr = result.out_operand.get_sibling_trait(F.Expressions.is_expression)
+        assert result.out is not None
+        expr = result.out.get_sibling_trait(F.Expressions.is_expression)
         # Check canonical via is_canonical trait (if the expression type has it)
         canon = expr.as_canonical.try_get()
         # Add has is_canonical trait
@@ -1559,68 +1877,12 @@ class TestInvariantsSimple:
             assert_=True,
         )
 
-        assert is_result.out_operand is not None
-        expr = is_result.out_operand.get_sibling_trait(F.Expressions.is_expression)
+        assert is_result.out is not None
+        expr = is_result.out.get_sibling_trait(F.Expressions.is_expression)
         canon = expr.as_canonical.try_get()
         assert canon is not None
 
     # --- Invariant: no reflexive tautologies ---
-
-    @staticmethod
-    def test_reflexive_is_same_operands():
-        """
-        Invariant: A is A -> True
-        Is expression with same operands should return True literal.
-        """
-        mutator = TestInvariantsSimple._setup_mutator()
-
-        p = (
-            F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
-            .create_instance(mutator.G_out)
-            .setup(is_unit=None, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
-        )
-        p_op = p.can_be_operand.get()
-
-        # Create Is(p, p) - should be dropped and return True
-        result = mutator.create_check_and_insert_expression(
-            F.Expressions.Is,
-            p_op,
-            p_op,
-            assert_=True,
-        )
-
-        # Result should be a True literal (tautology)
-        assert result.out_operand is not None
-        lit = result.out_operand.try_get_sibling_trait(F.Literals.is_literal)
-        assert lit is not None and lit.op_setic_equals_singleton(True)
-
-    @staticmethod
-    def test_reflexive_subset_same_operands():
-        """
-        Invariant: A ss A -> True
-        IsSubset expression with same operands should return True literal.
-        """
-        mutator = TestInvariantsSimple._setup_mutator()
-
-        p = (
-            F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
-            .create_instance(mutator.G_out)
-            .setup(is_unit=None, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
-        )
-        p_op = p.can_be_operand.get()
-
-        # Create IsSubset(p, p) - should be dropped and return True
-        result = mutator.create_check_and_insert_expression(
-            F.Expressions.IsSubset,
-            p_op,
-            p_op,
-            assert_=True,
-        )
-
-        # Result should be a True literal (tautology)
-        assert result.out_operand is not None
-        lit = result.out_operand.try_get_sibling_trait(F.Literals.is_literal)
-        assert lit is not None and lit.op_setic_equals_singleton(True)
 
     @staticmethod
     def test_reflexive_tautology_direct():
@@ -1642,9 +1904,10 @@ class TestInvariantsSimple:
             [p_op, p_op],
             assert_=True,
             terminate=False,
+            traits=[],
         )
 
-        result = _no_reflexive_tautologies(mutator, builder)
+        result = Folds._no_reflexive_tautologies(mutator, builder)
         assert result is None  # Should be dropped (tautology)
 
     # --- Invariant: deduplicate idempotent operands ---
@@ -1676,6 +1939,7 @@ class TestInvariantsSimple:
             [p_op, p_op, q_op],
             assert_=False,
             terminate=False,
+            traits=[],
         )
 
         result = _deduplicate_idempotent_operands(mutator, builder)
@@ -1709,6 +1973,7 @@ class TestInvariantsSimple:
             [p_op, q_op, p_op],
             assert_=False,
             terminate=False,
+            traits=[],
         )
 
         result = _deduplicate_idempotent_operands(mutator, builder)
@@ -1716,60 +1981,6 @@ class TestInvariantsSimple:
         assert len(result.operands) == 2
         assert result.operands[0].is_same(p_op)
         assert result.operands[1].is_same(q_op)
-
-    # --- Invariant: no single operand Is ---
-
-    @staticmethod
-    def test_single_operand_is_asserted():
-        """
-        Invariant: Is!(A) -> drop (True)
-        Is expression with single operand should return True.
-        """
-        mutator = TestInvariantsSimple._setup_mutator()
-
-        p = (
-            F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
-            .create_instance(mutator.G_out)
-            .setup(is_unit=None, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
-        )
-        p_op = p.can_be_operand.get()
-
-        # Test Is(p) directly
-        builder = ExpressionBuilder(
-            F.Expressions.Is,
-            [p_op],
-            assert_=True,
-            terminate=False,
-        )
-
-        result = _no_single_operand_is(mutator, builder)
-        assert result is None  # Should be dropped
-
-    @staticmethod
-    def test_single_operand_is_unasserted():
-        """
-        Invariant: Is(A) -> True
-        Unasserted Is with single operand should also return True.
-        """
-        mutator = TestInvariantsSimple._setup_mutator()
-
-        p = (
-            F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
-            .create_instance(mutator.G_out)
-            .setup(is_unit=None, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
-        )
-        p_op = p.can_be_operand.get()
-
-        # Test Is(p) directly (unasserted)
-        builder = ExpressionBuilder(
-            F.Expressions.Is,
-            [p_op],
-            assert_=False,
-            terminate=False,
-        )
-
-        result = _no_single_operand_is(mutator, builder)
-        assert result is None  # Should be dropped
 
 
 class TestInvariantsCombinations:
@@ -1820,7 +2031,7 @@ class TestInvariantsCombinations:
             p_op,
             assert_=True,
         )
-        pred_op = not_none(not_res.out_operand)
+        pred_op = not_none(not_res.out).as_operand.get()
 
         true_lit = mutator.make_singleton(True).can_be_operand.get()
 
@@ -1830,6 +2041,7 @@ class TestInvariantsCombinations:
             [pred_op, true_lit],
             assert_=False,
             terminate=False,
+            traits=[],
         )
 
         result = _no_predicate_operands(mutator, builder)
@@ -1904,8 +2116,10 @@ class TestInvariantsCombinations:
             assert_=False,
         )
         assert not_res.is_new
-        assert not_res.out_operand is not None
-        is_pred = not_res.out_operand.try_get_sibling_trait(F.Expressions.is_predicate)
+        assert not_res.out is not None
+        is_pred = not_res.out.as_operand.get().try_get_sibling_trait(
+            F.Expressions.is_predicate
+        )
         assert is_pred is None
 
         # Create congruent Not(p) asserted - should assert existing
@@ -1917,7 +2131,9 @@ class TestInvariantsCombinations:
         assert not not_res2.is_new
 
         # Original should now be asserted
-        is_pred = not_res.out_operand.try_get_sibling_trait(F.Expressions.is_predicate)
+        is_pred = not_res.out.as_operand.get().try_get_sibling_trait(
+            F.Expressions.is_predicate
+        )
         assert is_pred is not None
 
     @staticmethod
@@ -1951,9 +2167,13 @@ class TestInvariantsCombinations:
         # Test _no_predicate_operands directly
         builder = ExpressionBuilder(
             F.Expressions.Or,
-            [not_none(not_p.out_operand), not_none(not_q.out_operand)],
+            [
+                not_none(not_p.out).as_operand.get(),
+                not_none(not_q.out).as_operand.get(),
+            ],
             assert_=False,
             terminate=False,
+            traits=[],
         )
 
         result = _no_predicate_operands(mutator, builder)
@@ -1999,6 +2219,7 @@ class TestInvariantsCombinations:
                 [p_op, lit2.can_be_operand.get()],
                 assert_=True,
                 terminate=False,
+                traits=[],
             ),
         )
 
@@ -2035,6 +2256,7 @@ class TestInvariantsCombinations:
             [p_op, lit5.can_be_operand.get()],
             assert_=True,
             terminate=False,
+            traits=[],
         )
 
         result = _no_literal_inequalities(mutator, builder)
@@ -2071,8 +2293,8 @@ class TestInvariantsCombinations:
         )
 
         # Verify expression is canonical
-        assert res1.out_operand is not None
-        expr1 = res1.out_operand.get_sibling_trait(F.Expressions.is_expression)
+        assert res1.out is not None
+        expr1 = res1.out.as_operand.get().get_sibling_trait(F.Expressions.is_expression)
         assert expr1.as_canonical.try_get() is not None
 
     @staticmethod
@@ -2096,7 +2318,7 @@ class TestInvariantsCombinations:
             p.can_be_operand.get(),
             assert_=True,  # Assert it to make it a predicate
         )
-        not_op = not_none(not_res.out_operand)
+        not_op = not_none(not_res.out).as_operand.get()
 
         # Now try to assert IsSubset(Not!(p), True) - should be dropped
         true_lit = mutator.make_singleton(True).can_be_operand.get()
@@ -2105,6 +2327,7 @@ class TestInvariantsCombinations:
             [not_op, true_lit],
             assert_=True,
             terminate=False,
+            traits=[],
         )
 
         # _no_predicate_literals should return None (drop the expression)
@@ -2135,6 +2358,7 @@ class TestInvariantsCombinations:
             [p_op, lit20.can_be_operand.get()],
             assert_=True,
             terminate=False,
+            traits=[],
         )
         result1 = _no_literal_inequalities(mutator, builder1)
         assert result1.factory is F.Expressions.IsSubset
@@ -2150,6 +2374,7 @@ class TestInvariantsCombinations:
             [lit50.can_be_operand.get(), p_op],
             assert_=True,
             terminate=False,
+            traits=[],
         )
         result2 = _no_literal_inequalities(mutator, builder2)
         assert result2.factory is F.Expressions.IsSubset
@@ -2194,8 +2419,8 @@ class TestInvariantsCombinations:
         assert mul_res.is_new
 
         # They should be different expressions
-        assert add_res.out_operand is not None and mul_res.out_operand is not None
-        assert not add_res.out_operand.is_same(mul_res.out_operand)
+        assert add_res.out is not None and mul_res.out is not None
+        assert not add_res.out.as_operand.get().is_same(mul_res.out.as_operand.get())
 
     @staticmethod
     def test_empty_superset_via_intersection():
@@ -2369,6 +2594,7 @@ class TestSubsumptionDetection:
                 ],
                 assert_=True,
                 terminate=False,
+                traits=[],
             )
             return find_subsuming_expression(m, builder)
 
@@ -2444,6 +2670,7 @@ class TestSubsumptionDetection:
                 ],
                 assert_=True,
                 terminate=False,
+                traits=[],
             )
             return find_subsuming_expression(m, builder)
 
@@ -2489,6 +2716,7 @@ class TestSubsumptionDetection:
                 ],
                 assert_=True,
                 terminate=False,
+                traits=[],
             )
             return find_subsuming_expression(m, builder)
 
@@ -2522,6 +2750,7 @@ class TestSubsumptionDetection:
                 ],
                 assert_=True,
                 terminate=False,
+                traits=[],
             )
             return find_subsuming_expression(m, builder)
 
@@ -2556,7 +2785,7 @@ class TestSubsumptionDetection:
             # Build new Or(A, B, C)
             new_operands = [not_none(m.get_copy(op)) for op in [pred_a, pred_b, pred_c]]
             builder = ExpressionBuilder(
-                F.Expressions.Or, new_operands, assert_=True, terminate=False
+                F.Expressions.Or, new_operands, assert_=True, terminate=False, traits=[]
             )
             return find_subsuming_expression(m, builder)
 
@@ -2586,7 +2815,7 @@ class TestSubsumptionDetection:
 
             new_operands = [not_none(m.get_copy(op)) for op in [pred_a, pred_b]]
             builder = ExpressionBuilder(
-                F.Expressions.Or, new_operands, assert_=True, terminate=False
+                F.Expressions.Or, new_operands, assert_=True, terminate=False, traits=[]
             )
             return find_subsuming_expression(m, builder)
 
@@ -2619,7 +2848,7 @@ class TestSubsumptionDetection:
             # Try to find subsumption for Or(A, B)
             new_operands = [not_none(m.get_copy(op)) for op in [pred_a, pred_b]]
             builder = ExpressionBuilder(
-                F.Expressions.Or, new_operands, assert_=True, terminate=False
+                F.Expressions.Or, new_operands, assert_=True, terminate=False, traits=[]
             )
             return find_subsuming_expression(m, builder)
 
@@ -2651,7 +2880,7 @@ class TestSubsumptionDetection:
 
             new_operands = [not_none(m.get_copy(op)) for op in [pred_a, pred_c]]
             builder = ExpressionBuilder(
-                F.Expressions.Or, new_operands, assert_=True, terminate=False
+                F.Expressions.Or, new_operands, assert_=True, terminate=False, traits=[]
             )
             return find_subsuming_expression(m, builder)
 
@@ -2739,6 +2968,7 @@ class TestSubsumptionDetection:
                 ],
                 assert_=True,
                 terminate=False,
+                traits=[],
             )
             return find_subsuming_expression(m, builder)
 
@@ -2803,6 +3033,7 @@ class TestSubsumptionDetection:
                 ],
                 assert_=True,
                 terminate=False,
+                traits=[],
             )
             return find_subsuming_expression(m, builder)
 
@@ -2865,6 +3096,7 @@ class TestSubsumptionDetection:
                 ],
                 assert_=True,
                 terminate=False,
+                traits=[],
             )
             result = find_subsuming_expression(m, builder)
 

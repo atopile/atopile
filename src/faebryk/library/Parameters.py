@@ -1,5 +1,4 @@
 import math
-from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Self, cast
 
@@ -9,35 +8,12 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import (
-    KeyErrorAmbiguous,
-    not_none,
-    once,
-    times,
-)
+from faebryk.libs.util import KeyErrorAmbiguous, not_none, once
 
 if TYPE_CHECKING:
     import faebryk.library.Literals as Literals
     import faebryk.library.Units as Units
     from faebryk.library.NumberDomain import NumberDomain
-
-
-# Cached alphabet/subscript data for compact_repr to avoid per-call allocations.
-_REPR_ALPHABET: tuple[str, ...] = tuple(
-    [chr(ord("A") + i) for i in range(26)]
-    + [chr(ord("a") + i) for i in range(26)]
-    + [chr(ord("α") + i) for i in range(25)]
-)
-_SUBSCRIPT_TRANSLATION = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
-
-
-def _param_id_to_human_str(param_id: int) -> str:
-    assert isinstance(param_id, int)
-    letter = _REPR_ALPHABET[param_id % len(_REPR_ALPHABET)]
-    suffix = param_id // len(_REPR_ALPHABET)
-    if suffix == 0:
-        return letter
-    return letter + str(suffix).translate(_SUBSCRIPT_TRANSLATION)
 
 
 class ContradictingLiterals(Exception):
@@ -75,16 +51,13 @@ class can_be_operand(fabll.Node):
     def pretty(
         self,
         use_name: bool = True,
-        context: "ReprContext | None" = None,
         no_lit_suffix: bool = False,
     ) -> str:
         """Return context-aware string (pretty_str for literals, compact_repr else)."""
         if lit := self.as_literal.try_get():
             return lit.pretty_str()
         if po := self.as_parameter_operatable.try_get():
-            return po.compact_repr(
-                use_name=use_name, context=context, no_lit_suffix=no_lit_suffix
-            )
+            return po.compact_repr(use_full_name=use_name, no_lit_suffix=no_lit_suffix)
         return str(self)
 
     def get_operations[T: "fabll.NodeT"](
@@ -191,6 +164,14 @@ class can_be_operand(fabll.Node):
 
         return root_expressions
 
+    def __rich_repr__(self):
+        """Yield values for rich text display (compact repr and full type name)."""
+        try:
+            yield self.pretty()
+        except Exception as e:
+            yield f"Error in repr: {e}"
+        yield "on " + fabll.Traits(self).get_obj_raw().get_full_name(types=True)
+
 
 class is_parameter_operatable(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
@@ -215,18 +196,21 @@ class is_parameter_operatable(fabll.Node):
 
     def compact_repr(
         self,
-        context: "ReprContext | None" = None,
-        use_name: bool = False,
+        use_full_name: bool = False,
         no_lit_suffix: bool = False,
+        no_class_suffix: bool = False,
     ) -> str:
         """Return compact math representation (delegates to parameter or expression)."""
         if p := self.as_parameter.try_get():
             return p.compact_repr(
-                context=context, use_name=use_name, no_lit_suffix=no_lit_suffix
+                use_full_name=use_full_name,
+                no_lit_suffix=no_lit_suffix,
             )
         if e := self.as_expression.try_get():
             return e.compact_repr(
-                context=context, use_name=use_name, no_lit_suffix=no_lit_suffix
+                use_full_name=use_full_name,
+                no_lit_suffix=no_lit_suffix,
+                no_class_suffix=no_class_suffix,
             )
 
         assert False
@@ -406,30 +390,20 @@ class is_parameter(fabll.Node):
 
     def compact_repr(
         self,
-        context: "ReprContext | None" = None,
-        use_name: bool = False,
+        use_full_name: bool = False,
         no_lit_suffix: bool = False,
     ) -> str:
         """
         Unit only printed if not dimensionless.
-
-        Letters:
-        ```
-        A-Z, a-z, α-ω
-        A₁-Z₁, a₁-z₁, α₁-ω₁
-        A₂-Z₂, a₂-z₂, α₂-ω₂
-        ...
-        ```
         """
 
         obj = fabll.Traits(self).get_obj_raw()
-        if use_name and obj.get_parent() is not None:
-            letter = obj.get_full_name()
-        else:
-            if context is None:
-                context = ReprContext()
 
-            letter = context.get_or_create_name(self)
+        name = (
+            obj.get_full_name()
+            if use_full_name and obj.get_parent() is not None
+            else obj.get_name()
+        )
 
         unitstr = ""
         if numeric_param := obj.try_cast(NumericParameter):
@@ -439,7 +413,7 @@ class is_parameter(fabll.Node):
                 unit_symbol = display_unit.compact_repr()
                 unitstr = f"[{unit_symbol}]"
 
-        out = f"{letter}{unitstr}"
+        out = f"{name}{unitstr}"
         out += (
             self.as_parameter_operatable.get()._get_lit_suffix()
             if not no_lit_suffix
@@ -465,46 +439,21 @@ class is_parameter(fabll.Node):
                 return x
         raise TypeError(f"Unknown parameter type: {obj}")
 
+    def set_name(self, name: str) -> None:
+        from faebryk.library.has_name_override import has_name_override
+
+        obj = fabll.Traits(self).get_obj_raw()
+        has_name = (
+            has_name_override.bind_typegraph(tg=self.tg)
+            .create_instance(g=self.g)
+            .setup(name=name)
+        )
+        fabll.Traits.add_instance_to(node=obj, trait_instance=has_name)
+
 
 class ParameterIsNotConstrainedToLiteral(Exception):
     def __init__(self, parameter: fabll.Node):
         self.parameter = parameter
-
-
-@dataclass
-class ReprContext:
-    @dataclass
-    class VariableMapping:
-        # maps is_parameter.uuid to int
-        mapping: dict[int, int] = field(default_factory=dict)
-        next_id: int = 0
-
-        def try_get_id(self, param: "is_parameter") -> int | None:
-            return self.mapping.get(param.instance.node().get_uuid())
-
-        def set_id(self, param: "is_parameter", id: int) -> None:
-            self.mapping[param.instance.node().get_uuid()] = id
-
-    variable_mapping: VariableMapping = field(default_factory=VariableMapping)
-    override_names: dict[int, str] = field(default_factory=dict)
-
-    def override_name(self, param: "is_parameter", name: str) -> None:
-        self.override_names[param.instance.node().get_uuid()] = name
-
-    def get_or_create_name(self, param: "is_parameter") -> str:
-        if name := self.override_names.get(param.instance.node().get_uuid()):
-            return name
-
-        if (id := self.variable_mapping.try_get_id(param)) is None:
-            next_id = self.variable_mapping.next_id
-            self.variable_mapping.set_id(param, next_id)
-            self.variable_mapping.next_id += 1
-            id = next_id
-
-        return _param_id_to_human_str(id)
-
-    def __hash__(self) -> int:
-        return hash(id(self))
 
 
 # --------------------------------------------------------------------------------------
@@ -1439,174 +1388,117 @@ def test_new_definitions():
     )
 
 
-def test_compact_repr():
+def test_compact_repr_param():
     """
     Test compact_repr for parameters and expressions.
 
     This test verifies that:
-    1. Parameters are assigned letters A, B, C... in order of first use
+    1. Parameters use their explicit names set via set_name()
     2. Expressions are formatted with proper symbols (+, *, ≥, ¬, ∧)
-    3. After exhausting A-Z, a-z, α-ω, it wraps to A₁, B₁, etc.
+    3. Units are shown in brackets for numeric parameters (e.g., A[V])
     """
+    from faebryk.libs.test.boundexpressions import BoundExpressions
 
-    g = fabll.graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-    from faebryk.library.Expressions import Add, And, GreaterOrEqual, Multiply, Not
-    from faebryk.library.Literals import BoundLiteralContext
-    from faebryk.library.Units import Dimensionless, Volt
+    E = BoundExpressions()
 
-    # Create unit instances for Volt and Dimensionless
-    volt_unit = Volt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
-    dimensionless_unit = (
-        Dimensionless.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
-    )
-    literals = BoundLiteralContext(tg=tg, g=g)
+    # Create numeric parameters with Volt unit and explicit names
+    p1_op = E.parameter_op(units=E.U.V, name="A")
+    p2_op = E.parameter_op(units=E.U.V, name="B")
 
-    # Create numeric parameters with Volt unit
-    p1 = (
-        NumericParameter.bind_typegraph(tg=tg)
-        .create_instance(g=g)
-        .setup(is_unit=volt_unit)
-    )
-    p2 = (
-        NumericParameter.bind_typegraph(tg=tg)
-        .create_instance(g=g)
-        .setup(is_unit=volt_unit)
-    )
-
-    context = ReprContext()
-
-    # Create literal: 5 V
-    five_volt = literals.create_numbers_from_singleton(value=5.0, unit=volt_unit)
-
-    # Create literal: 10 (dimensionless scalar)
-    ten_scalar = literals.create_numbers_from_singleton(
-        value=10.0, unit=dimensionless_unit
-    )
+    # Create literals
+    five_volt_op = E.lit_op_single((5.0, E.U.V))
+    ten_scalar_op = E.lit_op_single(10.0)
 
     # Build expression: (p1 + p2 + 5V) * 10
-    # Using .c() methods which return can_be_operand
-    p1_op = p1.can_be_operand.get()
-    p2_op = p2.can_be_operand.get()
-    five_volt_op = five_volt.can_be_operand.get()
-    ten_scalar_op = ten_scalar.can_be_operand.get()
-
     # (p1 + p2)
-    p1_plus_p2 = Add.c(p1_op, p2_op)
+    p1_plus_p2 = E.add(p1_op, p2_op)
     # (p1 + p2 + 5V)
-    sum_with_five = Add.c(p1_plus_p2, five_volt_op)
+    sum_with_five = E.add(p1_plus_p2, five_volt_op)
     # ((p1 + p2 + 5V) * 10)
-    expr = Multiply.c(sum_with_five, ten_scalar_op)
+    expr = E.multiply(sum_with_five, ten_scalar_op)
 
     # Get expression repr
     # Parameters now show their display unit in brackets, e.g., A[V] for Volts
     expr_po = expr.as_parameter_operatable.force_get()
-    exprstr = expr_po.compact_repr(context, no_lit_suffix=True)
+    exprstr = expr_po.compact_repr(no_lit_suffix=True)
     assert exprstr == "((A[V] + B[V]) + 5V) * 10"
-    exprstr_w_lit_suffix = expr_po.compact_repr(context)
+    exprstr_w_lit_suffix = expr_po.compact_repr()
     assert exprstr_w_lit_suffix == "((A[V]⁺ + B[V]⁺) + 5V) * 10"
 
-    # Test p2 + p1 (order matters in repr context - p2 was already assigned 'B')
-    expr2 = Add.c(p2_op, p1_op)
+    # Test p2 + p1 (parameter names are stable)
+    expr2 = E.add(p2_op, p1_op)
     expr2_po = expr2.as_parameter_operatable.force_get()
-    expr2str = expr2_po.compact_repr(context, no_lit_suffix=True)
+    expr2str = expr2_po.compact_repr(no_lit_suffix=True)
     assert expr2str == "B[V] + A[V]"
-    expr2str_w_lit_suffix = expr2_po.compact_repr(context)
+    expr2str_w_lit_suffix = expr2_po.compact_repr()
     assert expr2str_w_lit_suffix == "B[V]⁺ + A[V]⁺"
 
-    # Create a boolean parameter (p3 will be 'D' after A is used for superset literal)
-    p3 = BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    p3_op = p3.can_be_operand.get()
+    # Create a boolean parameter with explicit name
+    p3_op = E.bool_parameter_op(name="C")
 
     # Create Not(p3)
-    expr3 = Not.c(p3_op)
+    expr3 = E.not_(p3_op)
     expr3_po = expr3.as_parameter_operatable.force_get()
-    expr3str = expr3_po.compact_repr(context, no_lit_suffix=True)
+    expr3str = expr3_po.compact_repr(no_lit_suffix=True)
     assert expr3str == "¬C"
-    expr3str_w_lit_suffix = expr3_po.compact_repr(context)
+    expr3str_w_lit_suffix = expr3_po.compact_repr()
     assert expr3str_w_lit_suffix == "¬C"
 
     # Create 10 V literal for comparison
-    ten_volt = literals.create_numbers_from_singleton(value=10.0, unit=volt_unit)
-    ten_volt_op = ten_volt.can_be_operand.get()
+    ten_volt_op = E.lit_op_single((10.0, E.U.V))
 
     # Create expr >= 10V
-    ge_expr = GreaterOrEqual.c(expr, ten_volt_op)
+    ge_expr = E.greater_or_equal(expr, ten_volt_op)
 
     # Create And(Not(p3), expr >= 10V)
-    expr4 = And.c(expr3, ge_expr)
+    expr4 = E.and_(expr3, ge_expr)
     expr4_po = expr4.as_parameter_operatable.force_get()
-    expr4str = expr4_po.compact_repr(context, no_lit_suffix=True)
+    expr4str = expr4_po.compact_repr(no_lit_suffix=True)
     assert expr4str == "¬C ∧ ((((A[V] + B[V]) + 5V) * 10) ≥ 10V)"
-    expr4str_w_lit_suffix = expr4_po.compact_repr(context)
+    expr4str_w_lit_suffix = expr4_po.compact_repr()
     assert expr4str_w_lit_suffix == "¬C ∧ ((((A[V]⁺ + B[V]⁺) + 5V) * 10) ≥ 10V)"
 
-    # Helper to create dimensionless numeric parameters
-    def make_param():
-        return (
-            NumericParameter.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            .setup(is_unit=dimensionless_unit)
-        )
-
-    # Create parameters to exhaust letters E-Z (ord("Z") - ord("D") - 1 = 21)
-    # D is used by p3, A is used by superset literal, B by p2, C by p1
-    manyps = times(ord("Z") - ord("C") - 1, make_param)
-    # Sum them to register in context
-    if manyps:
-        ops = [p.can_be_operand.get() for p in manyps]
-        sum_expr = Add.c(*ops)
-        sum_expr_po = sum_expr.as_parameter_operatable.force_get()
-        sum_expr_po.compact_repr(context)
-
-    # Next parameter should be 'Z'
-    pZ = make_param()
-    pZ_repr = pZ.is_parameter.get().compact_repr(context, no_lit_suffix=True)
+    # Test with explicitly named dimensionless parameters
+    pZ_op = E.parameter_op(name="Z")
+    pZ_repr = pZ_op.as_parameter_operatable.force_get().compact_repr(no_lit_suffix=True)
     assert pZ_repr == "Z"
-    pZ_repr_w_lit_suffix = pZ.is_parameter.get().compact_repr(context)
+    pZ_repr_w_lit_suffix = pZ_op.as_parameter_operatable.force_get().compact_repr()
     assert pZ_repr_w_lit_suffix == "Z⁺"
 
-    # Next should wrap to lowercase 'a'
-    pa = make_param()
-    pa_repr = pa.is_parameter.get().compact_repr(context, no_lit_suffix=True)
+    pa_op = E.parameter_op(name="a")
+    pa_repr = pa_op.as_parameter_operatable.force_get().compact_repr(no_lit_suffix=True)
     assert pa_repr == "a"
-    pa_repr_w_lit_suffix = pa.is_parameter.get().compact_repr(context)
+    pa_repr_w_lit_suffix = pa_op.as_parameter_operatable.force_get().compact_repr()
     assert pa_repr_w_lit_suffix == "a⁺"
 
-    # Create parameters b through z (ord("z") - ord("a") = 25)
-    manyps2 = times(ord("z") - ord("a"), make_param)
-    if manyps2:
-        ops = [p.can_be_operand.get() for p in manyps2]
-        sum_expr2 = Add.c(*ops)
-        sum_expr2_po = sum_expr2.as_parameter_operatable.force_get()
-        sum_expr2_po.compact_repr(context)
-
-    # Next should be Greek alpha
-    palpha = make_param()
-    palpha_repr = palpha.is_parameter.get().compact_repr(context, no_lit_suffix=True)
+    # Test Greek letters
+    palpha_op = E.parameter_op(name="α")
+    palpha_repr = palpha_op.as_parameter_operatable.force_get().compact_repr(
+        no_lit_suffix=True
+    )
     assert palpha_repr == "α"
-    palpha_repr_w_lit_suffix = palpha.is_parameter.get().compact_repr(context)
+    palpha_repr_w_lit_suffix = (
+        palpha_op.as_parameter_operatable.force_get().compact_repr()
+    )
     assert palpha_repr_w_lit_suffix == "α⁺"
 
-    pbeta = make_param()
-    pbeta_repr = pbeta.is_parameter.get().compact_repr(context, no_lit_suffix=True)
+    pbeta_op = E.parameter_op(name="β")
+    pbeta_repr = pbeta_op.as_parameter_operatable.force_get().compact_repr(
+        no_lit_suffix=True
+    )
     assert pbeta_repr == "β"
-    pbeta_repr_w_lit_suffix = pbeta.is_parameter.get().compact_repr(context)
+    pbeta_repr_w_lit_suffix = (
+        pbeta_op.as_parameter_operatable.force_get().compact_repr()
+    )
     assert pbeta_repr_w_lit_suffix == "β⁺"
 
-    # Create parameters γ through ω (ord("ω") - ord("β") = 23)
-    manyps3 = times(ord("ω") - ord("β"), make_param)
-    if manyps3:
-        ops = [p.can_be_operand.get() for p in manyps3]
-        sum_expr3 = Add.c(*ops)
-        sum_expr3_po = sum_expr3.as_parameter_operatable.force_get()
-        sum_expr3_po.compact_repr(context, no_lit_suffix=True)
-
-    # After exhausting all alphabets, should wrap with subscript A₁
-    pAA = make_param()
-    pAA_repr = pAA.is_parameter.get().compact_repr(context, no_lit_suffix=True)
+    # Test subscript names
+    pAA_op = E.parameter_op(name="A₁")
+    pAA_repr = pAA_op.as_parameter_operatable.force_get().compact_repr(
+        no_lit_suffix=True
+    )
     assert pAA_repr == "A₁"
-    pAA_repr_w_lit_suffix = pAA.is_parameter.get().compact_repr(context)
+    pAA_repr_w_lit_suffix = pAA_op.as_parameter_operatable.force_get().compact_repr()
     assert pAA_repr_w_lit_suffix == "A₁⁺"
 
 
@@ -2064,8 +1956,7 @@ def test_display_unit_compact_repr():
     is_param = param.is_parameter.get()
 
     # compact_repr should include the display unit symbol
-    context = ReprContext()
-    repr_str = is_param.compact_repr(context=context, no_lit_suffix=True)
+    repr_str = is_param.compact_repr(no_lit_suffix=True)
 
     # Should show [V] for Volt display unit
     assert "[V]" in repr_str
@@ -2189,8 +2080,7 @@ def test_display_unit_lit_suffix_conversion():
 
     # Get the compact repr with lit suffix
     is_param = param.is_parameter.get()
-    context = ReprContext()
-    repr_str = is_param.compact_repr(context=context)
+    repr_str = is_param.compact_repr()
 
     # The value should be converted to display units (5V = 5000mV)
     assert "5000" in repr_str

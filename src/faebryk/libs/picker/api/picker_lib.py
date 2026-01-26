@@ -1,6 +1,5 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-
 import logging
 import re
 from dataclasses import fields
@@ -14,7 +13,8 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserInfraError
 from faebryk.core import graph
-from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
+from faebryk.core.solver.solver import Solver
+from faebryk.core.solver.utils import LOG_PICK_SOLVE
 from faebryk.libs.http import RequestError
 from faebryk.libs.picker.api.api import ApiHTTPError, get_api_client
 from faebryk.libs.picker.api.models import (
