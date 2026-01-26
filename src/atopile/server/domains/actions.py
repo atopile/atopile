@@ -29,7 +29,7 @@ from atopile.server import path_utils
 from atopile.server.connections import server_state
 from atopile.server.core import projects as core_projects
 from atopile.server.domains import artifacts as artifacts_domain
-from atopile.server.domains import builds as builds_domain
+from atopile.model import builds as builds_domain
 from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import parts as parts_domain
 from atopile.server.domains import projects as projects_domain

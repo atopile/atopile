@@ -14,7 +14,6 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from atopile.dataclasses import (
@@ -799,76 +798,6 @@ _build_settings = {
     "use_default_max_concurrent": True,
     "custom_max_concurrent": _DEFAULT_MAX_CONCURRENT,
 }
-
-
-def _get_state_builds():
-    """
-    Convert _active_builds to StateBuild objects.
-
-    Helper function used by both sync and async state sync functions.
-    """
-    from atopile.dataclasses import (
-        Build as StateBuild,
-    )
-    from atopile.dataclasses import (
-        BuildStage as StateStage,
-    )
-    from atopile.dataclasses import (
-        StageStatus,
-    )
-
-    with _build_lock:
-        state_builds = []
-        for build in _active_builds:
-            # Convert stages if present
-            stages = None
-            if build.stages:
-                stages = [
-                    StateStage(
-                        name=s.get("name", ""),
-                        stage_id=s.get("stage_id", s.get("name", "")),
-                        display_name=s.get("display_name"),
-                        elapsed_seconds=s.get("elapsed_seconds", 0.0),
-                        status=StageStatus(s.get("status", "pending")),
-                        infos=s.get("infos", 0),
-                        warnings=s.get("warnings", 0),
-                        errors=s.get("errors", 0),
-                        alerts=s.get("alerts", 0),
-                    )
-                    for s in build.stages
-                ]
-
-            # Determine display name and build name
-            # name is used by frontend to match builds to targets
-            entry = build.entry
-            target = build.target or "default"
-            if entry:
-                display_name = entry.split(":")[-1] if ":" in entry else entry
-                build_name = display_name
-            else:
-                display_name = target
-                build_name = target
-
-            state_builds.append(
-                StateBuild(
-                    name=build_name,
-                    display_name=display_name,
-                    build_id=build.build_id,
-                    project_name=Path(build.project_root or "").name,
-                    status=build.status,
-                    elapsed_seconds=build.duration,
-                    warnings=build.warnings,
-                    errors=build.errors,
-                    return_code=build.return_code,
-                    error=build.error,
-                    project_root=build.project_root,
-                    target=target,
-                    entry=entry,
-                    started_at=build.started_at,
-                    stages=stages,
-                )
-            )
-        return state_builds
 
 
 def _cleanup_completed_builds():
