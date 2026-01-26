@@ -18,7 +18,6 @@ from typing import Any, ClassVar, Literal, Optional, TypedDict
 from fastapi import WebSocket
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from atopile import sqlite_model
 
 # =============================================================================
 # Enums and Type Aliases
@@ -140,14 +139,7 @@ class HistoricalBuild(BaseBuild):
     Pydantic dataclass used for database persistence.
     """
 
-    __tablename__: ClassVar[str] = "build_history"
-    __indexes__: ClassVar[list[tuple[str, ...]]] = [
-        ("project_root",),
-        ("status",),
-        ("started_at",),
-    ]
-
-    id: Optional[int] = None
+    __tablename__ = "build_history"
 
     # Historical build specific
     completed_at: Optional[float] = None
@@ -175,10 +167,6 @@ class BuildRow:
     """Database model for build metadata in logs database."""
 
     __tablename__ = "builds"
-    __indexes__ = [
-        ("project_path",),
-        ("timestamp",),
-    ]
 
     build_id: str
     project_path: str
@@ -192,21 +180,15 @@ class LogRow:
     """Database model for log entries."""
 
     __tablename__ = "logs"
-    __indexes__ = [
-        ("build_id",),
-        ("stage",),
-        ("level",),
-        ("audience",),
-    ]
 
-    id: int | None = field(default=None, init=False)
-    build_id: str
+    id: int | None = field(default=None, init=False, metadata={"primary_key": True})
+    build_id: str = field(metadata={"index": True})
     timestamp: str
-    stage: str
-    level: str
+    stage: str = field(metadata={"index": True})
+    level: str = field(metadata={"index": True})
     message: str
     logger_name: str = ""
-    audience: str = "developer"
+    audience: str = field(default="developer", metadata={"index": True})
     source_file: str | None = None
     source_line: int | None = None
     ato_traceback: str | None = None
@@ -219,7 +201,6 @@ class TestRunRow:
     """Database model for test run metadata."""
 
     __tablename__ = "test_runs"
-    __indexes__: ClassVar[list[tuple[str, ...]]] = []
 
     test_run_id: str
     created_at: str = ""
@@ -230,15 +211,9 @@ class TestLogRow:
     """Database model for test log entries."""
 
     __tablename__ = "test_logs"
-    __indexes__ = [
-        ("test_run_id",),
-        ("test_name",),
-        ("level",),
-        ("audience",),
-    ]
 
-    id: int | None = field(default=None, init=False)
-    test_run_id: str
+    id: int | None = field(default=None, init=False, metadata={"primary_key": True})
+    test_run_id: str = field(metadata={"index": True})
     timestamp: str
     test_name: str
     level: str
@@ -251,31 +226,6 @@ class TestLogRow:
     python_traceback: str | None = None
     objects: str | None = None
 
-
-def generate_logs_schema() -> str:
-    """Generate the logs database schema (builds + logs tables)."""
-    build_schema = sqlite_model.create_table_sql(BuildRow)
-
-    log_schema = sqlite_model.create_table_sql(LogRow)
-    log_schema = log_schema.replace(
-        "\n);",
-        ",\n    FOREIGN KEY (build_id) REFERENCES builds(build_id)\n);",
-    )
-
-    return build_schema + log_schema
-
-
-def generate_test_logs_schema() -> str:
-    """Generate the test logs database schema."""
-    test_run_schema = sqlite_model.create_table_sql(TestRunRow)
-
-    test_log_schema = sqlite_model.create_table_sql(TestLogRow)
-    test_log_schema = test_log_schema.replace(
-        "\n);",
-        ",\n    FOREIGN KEY (test_run_id) REFERENCES test_runs(test_run_id)\n);",
-    )
-
-    return test_run_schema + test_log_schema
 
 
 # =============================================================================

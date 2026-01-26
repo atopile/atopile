@@ -1,15 +1,26 @@
 """
 SQLite helpers for Pydantic models and Pydantic dataclasses.
+
+Provides:
+- Schema generation from model classes (create_table_sql)
+- Row serialization / deserialization (to_row_dict, from_row)
+- Connection-managed helpers for common DB operations (save, query_all, …)
 """
 
 from __future__ import annotations
 
 import json
+import logging
+import sqlite3
+from contextlib import contextmanager
 from dataclasses import MISSING, fields, is_dataclass
 from enum import Enum
-from typing import Any, ClassVar, get_args, get_origin, get_type_hints
+from pathlib import Path
+from typing import Any, Iterator, get_args, get_origin, get_type_hints
 
 from pydantic import BaseModel, TypeAdapter
+
+log = logging.getLogger(__name__)
 
 _TYPE_MAP: dict[type, str] = {
     int: "INTEGER",
@@ -25,11 +36,11 @@ class _FieldInfo:
         self,
         annotation: Any,
         default: Any,
-        json_schema_extra: dict[str, Any] | None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         self.annotation = annotation
         self.default = default
-        self.json_schema_extra = json_schema_extra
+        self.metadata = metadata or {}
 
 
 def _model_fields(model_cls: type[Any]) -> dict[str, _FieldInfo]:
@@ -38,7 +49,6 @@ def _model_fields(model_cls: type[Any]) -> dict[str, _FieldInfo]:
             name: _FieldInfo(
                 field.annotation,
                 field.default,
-                field.json_schema_extra,  # type: ignore[arg-type]
             )
             for name, field in model_cls.model_fields.items()
         }
@@ -49,11 +59,7 @@ def _model_fields(model_cls: type[Any]) -> dict[str, _FieldInfo]:
         for f in fields(model_cls):
             annotation = hints.get(f.name, f.type)
             default = f.default if f.default is not MISSING else MISSING
-            metadata = f.metadata or {}
-            json_schema_extra = (
-                metadata.get("sqlite") or metadata.get("json_schema_extra")
-            )
-            result[f.name] = _FieldInfo(annotation, default, json_schema_extra)
+            result[f.name] = _FieldInfo(annotation, default, dict(f.metadata) if f.metadata else None)
         return result
 
     raise TypeError(f"Unsupported model type: {model_cls!r}")
@@ -84,7 +90,26 @@ def _get_tablename(model_cls: type[Any]) -> str:
 
 
 def _get_indexes(model_cls: type[Any]) -> list[tuple[str, ...]]:
-    return getattr(model_cls, "__indexes__", [])
+    """Extract index definitions from field metadata.
+
+    Fields with ``metadata={"index": True}`` get single-column indexes.
+    Fields with ``metadata={"index": "group_name"}`` sharing the same group
+    form a composite index (ordered by field declaration order).
+    """
+    if not is_dataclass(model_cls):
+        return []
+
+    single: list[tuple[str, ...]] = []
+    composite: dict[str, list[str]] = {}
+
+    for f in fields(model_cls):
+        index = (f.metadata or {}).get("index")
+        if index is True:
+            single.append((f.name,))
+        elif isinstance(index, str):
+            composite.setdefault(index, []).append(f.name)
+
+    return single + [tuple(cols) for cols in composite.values()]
 
 
 def create_table_sql(model_cls: type[Any]) -> str:
@@ -97,16 +122,8 @@ def create_table_sql(model_cls: type[Any]) -> str:
 
         col_def = f"{field_name} {sqlite_type}"
 
-        json_schema = field_info.json_schema_extra or {}
-        if isinstance(json_schema, dict):
-            if json_schema.get("primary_key"):
-                col_def += " PRIMARY KEY"
-                if json_schema.get("autoincrement"):
-                    col_def += " AUTOINCREMENT"
-            if json_schema.get("unique"):
-                col_def += " UNIQUE"
-            if json_schema.get("not_null"):
-                col_def += " NOT NULL"
+        if field_info.metadata.get("primary_key"):
+            col_def += " PRIMARY KEY"
 
         if field_info.default is not MISSING and not callable(field_info.default):
             if field_info.default is None:
@@ -137,7 +154,11 @@ def create_table_sql(model_cls: type[Any]) -> str:
 def insert_columns(model_cls: type[Any], *, exclude: set[str] | None = None) -> list[str]:
     if exclude is None:
         exclude = set()
-    return [c for c in _model_fields(model_cls).keys() if c not in exclude]
+    return [
+        name
+        for name, info in _model_fields(model_cls).items()
+        if name not in exclude and not info.metadata.get("primary_key")
+    ]
 
 
 def insert_sql(model_cls: type[Any], columns: list[str] | None = None) -> str:
@@ -236,3 +257,122 @@ def to_row_tuple(instance: Any, columns: list[str] | None = None) -> tuple[Any, 
     if columns is None:
         columns = list(_model_fields(type(instance)).keys())
     return tuple(data.get(col) for col in columns)
+
+
+# =============================================================================
+# Connection-managed helpers
+# =============================================================================
+
+
+@contextmanager
+def _connect(db_path: Path, *, timeout: float = 5.0) -> Iterator[sqlite3.Connection]:
+    """Open a SQLite connection, commit on success, close on exit."""
+    conn = sqlite3.connect(str(db_path), timeout=timeout)
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def init_db(db_path: Path, model_cls: type[Any], *, extra_sql: str = "") -> None:
+    """Create the table (and indexes) for *model_cls*, creating parent dirs."""
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with _connect(db_path) as conn:
+        conn.executescript(create_table_sql(model_cls) + extra_sql)
+
+
+def save(
+    db_path: Path,
+    instance: Any,
+    *,
+    exclude: set[str] | None = None,
+    or_replace: bool = True,
+) -> None:
+    """
+    Insert (or replace) a single row into the table for *instance*'s class.
+
+    Args:
+        db_path: Path to the SQLite database file.
+        instance: A model instance whose fields map to the table columns.
+        exclude: Column names to skip. Primary key fields are auto-excluded.
+        or_replace: Use INSERT OR REPLACE instead of plain INSERT.
+    """
+    model_cls = type(instance)
+    cols = insert_columns(model_cls, exclude=exclude or set())
+    sql = insert_or_replace_sql(model_cls, cols) if or_replace else insert_sql(model_cls, cols)
+    values = to_row_tuple(instance, cols)
+    with _connect(db_path) as conn:
+        conn.execute(sql, values)
+
+
+def query_all(
+    db_path: Path,
+    model_cls: type[Any],
+    *,
+    where: str = "",
+    params: tuple[Any, ...] | list[Any] = (),
+    order_by: str = "",
+    limit: int | None = None,
+) -> list[Any]:
+    """
+    Run a SELECT on *model_cls*'s table and return typed model instances.
+
+    Args:
+        db_path: Path to the SQLite database file.
+        model_cls: The model class to deserialize rows into.
+        where: Optional WHERE clause **without** the ``WHERE`` keyword
+               (e.g. ``"status = ? AND project_root = ?"``).
+        params: Bind parameters for the WHERE clause.
+        order_by: Optional ORDER BY clause **without** the keyword
+                  (e.g. ``"started_at DESC"``).
+        limit: Optional row limit.
+    """
+    table = _get_tablename(model_cls)
+    sql = f"SELECT * FROM {table}"
+    if where:
+        sql += f" WHERE {where}"
+    if order_by:
+        sql += f" ORDER BY {order_by}"
+
+    bind: list[Any] = list(params)
+    if limit is not None:
+        sql += " LIMIT ?"
+        bind.append(limit)
+
+    with _connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(sql, bind).fetchall()
+
+    return [from_row(model_cls, r) for r in rows]
+
+
+def query_one(
+    db_path: Path,
+    model_cls: type[Any],
+    *,
+    where: str = "",
+    params: tuple[Any, ...] | list[Any] = (),
+    order_by: str = "",
+) -> Any | None:
+    """Like :func:`query_all` but returns the first result or ``None``."""
+    results = query_all(
+        db_path, model_cls, where=where, params=params, order_by=order_by, limit=1
+    )
+    return results[0] if results else None
+
+
+def execute(
+    db_path: Path,
+    sql: str,
+    params: tuple[Any, ...] | list[Any] = (),
+) -> int:
+    """
+    Execute arbitrary SQL and return the number of affected rows.
+
+    Useful for UPDATE / DELETE statements that don't map to a single model
+    insert.
+    """
+    with _connect(db_path) as conn:
+        cursor = conn.execute(sql, params)
+        return cursor.rowcount

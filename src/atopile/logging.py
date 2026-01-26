@@ -36,13 +36,13 @@ from rich.traceback import Traceback
 import atopile
 import faebryk
 from atopile.dataclasses import (
+    BuildRow,
     Log,
     LogRow,
     StageCompleteEvent,
     StageStatusEvent,
     TestLogRow,
-    generate_logs_schema,
-    generate_test_logs_schema,
+    TestRunRow,
 )
 from atopile import sqlite_model
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
@@ -86,9 +86,11 @@ def _is_serving() -> bool:
 
 def _should_log(record: logging.LogRecord) -> bool:
     """Filter for atopile/faebryk logs, excluding server/http unless serving."""
+    name = record.name
+    if name.startswith("watchdog"):
+        return False
     if _is_serving():
         return True
-    name = record.name
     if name.startswith("httpcore") or name.startswith("atopile.server"):
         return False
     return name.startswith("atopile") or name.startswith("faebryk")
@@ -314,7 +316,7 @@ def _serialize_objects(obj: dict | None) -> str | None:
 
 
 def _log_insert_spec(model: type[Any]) -> tuple[str, list[str]]:
-    columns = sqlite_model.insert_columns(model, exclude={"id"})
+    columns = sqlite_model.insert_columns(model)
     return sqlite_model.insert_sql(model, columns), columns
 
 
@@ -722,7 +724,7 @@ class LoggerForTest(BaseLogger):
             writer = SQLiteLogWriter.get_instance(
                 "test",
                 cls.get_log_db(),
-                generate_test_logs_schema(),
+                sqlite_model.create_table_sql(TestRunRow) + sqlite_model.create_table_sql(TestLogRow),
                 insert_sql,
                 lambda entry, cols=columns: _entry_to_tuple(entry, cols),
             )
@@ -814,7 +816,7 @@ class BuildLogger(BaseLogger):
         writer = SQLiteLogWriter.get_instance(
             "build",
             cls.get_log_db(),
-            generate_logs_schema(),
+            sqlite_model.create_table_sql(BuildRow) + sqlite_model.create_table_sql(LogRow),
             insert_sql,
             lambda entry, cols=columns: _entry_to_tuple(entry, cols),
         )
