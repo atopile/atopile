@@ -7,6 +7,7 @@
 
 import { useStore } from '../store';
 import type { AppState } from '../types/build';
+import { api } from './client';
 import { WS_STATE_URL, getWorkspaceFolders } from './config';
 import { postMessage } from './vscodeApi';
 
@@ -20,6 +21,12 @@ const CONNECTION_TIMEOUT_MS = 5000; // Timeout for connection handshake
 interface StateMessage {
   type: 'state';
   data: AppState;
+}
+
+interface EventMessage {
+  type: 'event';
+  event: string;
+  data?: Record<string, unknown>;
 }
 
 interface ActionResultMessage {
@@ -36,7 +43,7 @@ interface ActionResultMessage {
   error?: string;
 }
 
-type BackendMessage = StateMessage | ActionResultMessage;
+type BackendMessage = StateMessage | ActionResultMessage | EventMessage;
 
 // WebSocket connection state
 let ws: WebSocket | null = null;
@@ -210,6 +217,8 @@ function handleOpen(): void {
     console.log('[WS] Sending workspace folders:', workspaceFolders);
     sendAction('setWorkspaceFolders', { folders: workspaceFolders });
   }
+
+  void refreshProjects();
 }
 
 function handleMessage(event: MessageEvent): void {
@@ -283,12 +292,34 @@ function handleMessage(event: MessageEvent): void {
           );
         }
         break;
+      case 'event':
+        handleEventMessage(message);
+        break;
 
       default:
         console.warn('[WS] Unknown message type:', message);
     }
   } catch (error) {
     console.error('[WS] Failed to parse message:', error, event.data);
+  }
+}
+
+async function refreshProjects(): Promise<void> {
+  try {
+    const response = await api.projects.list();
+    useStore.getState().setProjects(response.projects || []);
+  } catch (error) {
+    console.warn('[WS] Failed to refresh projects:', error);
+  }
+}
+
+function handleEventMessage(message: EventMessage): void {
+  switch (message.event) {
+    case 'projects_changed':
+      void refreshProjects();
+      break;
+    default:
+      break;
   }
 }
 
