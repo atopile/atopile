@@ -1,8 +1,5 @@
 """
 Build history persistence helpers.
-
-Uses sqlite_model helpers for connection management and type-safe
-schema generation / row conversion.
 """
 
 from __future__ import annotations
@@ -17,6 +14,8 @@ log = logging.getLogger(__name__)
 
 _build_history_db: Path | None = None
 
+_table = sqlite_model.historical_builds
+
 
 def init_build_history_db(db_path: Path) -> None:
     """Initialize the build history SQLite database."""
@@ -24,11 +23,10 @@ def init_build_history_db(db_path: Path) -> None:
     _build_history_db = db_path
 
     try:
-        sqlite_model.init_db(db_path, HistoricalBuild)
+        sqlite_model.init_db(db_path, "build_history.sql")
         log.info(f"Initialized build history database: {db_path}")
     except Exception as exc:
         log.error(f"Failed to initialize build history database: {exc}")
-
 
 
 def load_recent_builds_from_history(limit: int = 50) -> list[HistoricalBuild]:
@@ -37,9 +35,8 @@ def load_recent_builds_from_history(limit: int = 50) -> list[HistoricalBuild]:
         return []
 
     try:
-        return sqlite_model.query_all(
+        return _table.query_all(
             _build_history_db,
-            HistoricalBuild,
             order_by="started_at DESC",
             limit=limit,
         )
@@ -64,9 +61,8 @@ def get_build_info_by_id(build_id: str) -> HistoricalBuild | None:
         return None
 
     try:
-        return sqlite_model.query_one(
+        return _table.query_one(
             _build_history_db,
-            HistoricalBuild,
             where="build_id = ?",
             params=(build_id,),
         )
@@ -101,9 +97,8 @@ def get_builds_by_project_target(
 
         where = " AND ".join(clauses) if clauses else ""
 
-        return sqlite_model.query_all(
+        return _table.query_all(
             _build_history_db,
-            HistoricalBuild,
             where=where,
             params=params,
             order_by="started_at DESC",
@@ -122,9 +117,8 @@ def get_latest_build_for_target(
         return None
 
     try:
-        return sqlite_model.query_one(
+        return _table.query_one(
             _build_history_db,
-            HistoricalBuild,
             where="project_root = ? AND target = ?",
             params=(project_root, target),
             order_by="started_at DESC",

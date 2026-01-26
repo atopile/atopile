@@ -141,15 +141,8 @@ class ActiveBuild(BaseBuild):
 
 @dataclass
 class HistoricalBuild(BaseBuild):
-    """
-    Build record loaded from the build history database.
+    """Build record loaded from the build history database."""
 
-    Pydantic dataclass used for database persistence.
-    """
-
-    __tablename__ = "build_history"
-
-    # Historical build specific
     completed_at: Optional[float] = None
 
     @property
@@ -174,8 +167,6 @@ class HistoricalBuild(BaseBuild):
 class BuildRow:
     """Database model for build metadata in logs database."""
 
-    __tablename__ = "builds"
-
     build_id: str
     project_path: str
     target: str
@@ -187,16 +178,14 @@ class BuildRow:
 class LogRow:
     """Database model for log entries."""
 
-    __tablename__ = "logs"
-
-    id: int | None = field(default=None, init=False, metadata={"primary_key": True})
-    build_id: str = field(metadata={"index": True})
-    timestamp: str
-    stage: str = field(metadata={"index": True})
-    level: str = field(metadata={"index": True})
-    message: str
+    id: int | None = field(default=None, init=False)
+    build_id: str = ""
+    timestamp: str = ""
+    stage: str = ""
+    level: str = ""
+    message: str = ""
     logger_name: str = ""
-    audience: str = field(default="developer", metadata={"index": True})
+    audience: str = "developer"
     source_file: str | None = None
     source_line: int | None = None
     ato_traceback: str | None = None
@@ -208,8 +197,6 @@ class LogRow:
 class TestRunRow:
     """Database model for test run metadata."""
 
-    __tablename__ = "test_runs"
-
     test_run_id: str
     created_at: str = ""
 
@@ -218,14 +205,12 @@ class TestRunRow:
 class TestLogRow:
     """Database model for test log entries."""
 
-    __tablename__ = "test_logs"
-
-    id: int | None = field(default=None, init=False, metadata={"primary_key": True})
-    test_run_id: str = field(metadata={"index": True})
-    timestamp: str
-    test_name: str
-    level: str
-    message: str
+    id: int | None = field(default=None, init=False)
+    test_run_id: str = ""
+    timestamp: str = ""
+    test_name: str = ""
+    level: str = ""
+    message: str = ""
     logger_name: str = ""
     audience: str = "developer"
     source_file: str | None = None

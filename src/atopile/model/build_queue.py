@@ -610,7 +610,7 @@ class BuildQueue:
                 completed_at=completed_at,
             )
             try:
-                sqlite_model.save(db, row)
+                sqlite_model.historical_builds.save(db, row)
             except Exception:
                 log.exception(
                     f"Failed to save build {msg.build_id} to history"

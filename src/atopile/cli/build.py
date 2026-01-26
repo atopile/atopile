@@ -874,10 +874,10 @@ class ParallelBuildManager:
             )
 
             # Update existing record, or create if first seen
-            if not sqlite_model.update(
+            if not sqlite_model.historical_builds.update(
                 db, row, where="build_id = ?", params=(bp.build_id,)
             ):
-                sqlite_model.save(db, row)
+                sqlite_model.historical_builds.save(db, row)
 
     def run_until_complete(self) -> dict[str, int]:
         """

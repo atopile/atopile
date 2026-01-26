@@ -37,13 +37,9 @@ import atopile
 import faebryk
 from atopile import sqlite_model
 from atopile.dataclasses import (
-    BuildRow,
     Log,
-    LogRow,
     StageCompleteEvent,
     StageStatusEvent,
-    TestLogRow,
-    TestRunRow,
 )
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 from atopile.logging_utils import PLOG, console, error_console
@@ -304,8 +300,6 @@ def _extract_traceback_frames(
     }
 
 
-# SQLite schemas are auto-generated from the Pydantic models at call sites.
-
 def _serialize_objects(obj: dict | None) -> str | None:
     if obj is None:
         return None
@@ -313,11 +307,6 @@ def _serialize_objects(obj: dict | None) -> str | None:
         return json.dumps(obj)
     except (TypeError, ValueError):
         return None
-
-
-def _log_insert_spec(model: type[Any]) -> tuple[str, list[str]]:
-    columns = sqlite_model.insert_columns(model)
-    return sqlite_model.insert_sql(model, columns), columns
 
 
 def _entry_to_tuple(entry: Any, columns: list[str]) -> tuple[Any, ...]:
@@ -720,13 +709,15 @@ class LoggerForTest(BaseLogger):
     @classmethod
     def setup_logging(cls, test_run_id: str, test: str = "") -> "LoggerForTest | None":
         try:
-            insert_sql, columns = _log_insert_spec(TestLogRow)
+            _tl = sqlite_model.test_log_rows
             writer = SQLiteLogWriter.get_instance(
                 "test",
                 cls.get_log_db(),
-                sqlite_model.create_table_sql(TestRunRow) + sqlite_model.create_table_sql(TestLogRow),
-                insert_sql,
-                lambda entry, cols=columns: _entry_to_tuple(entry, cols),
+                sqlite_model.read_schema("test_logs.sql"),
+                _tl.insert_non_pk_sql,
+                lambda entry, cols=_tl.non_pk_columns: _entry_to_tuple(
+                    entry, cols
+                ),
             )
             writer.register_test_run(test_run_id)
 
@@ -812,13 +803,15 @@ class BuildLogger(BaseLogger):
         build_id: str | None = None,
     ) -> "BuildLogger":
         timestamp = timestamp or NOW
-        insert_sql, columns = _log_insert_spec(LogRow)
+        _lr = sqlite_model.log_rows
         writer = SQLiteLogWriter.get_instance(
             "build",
             cls.get_log_db(),
-            sqlite_model.create_table_sql(BuildRow) + sqlite_model.create_table_sql(LogRow),
-            insert_sql,
-            lambda entry, cols=columns: _entry_to_tuple(entry, cols),
+            sqlite_model.read_schema("build_logs.sql"),
+            _lr.insert_non_pk_sql,
+            lambda entry, cols=_lr.non_pk_columns: _entry_to_tuple(
+                entry, cols
+            ),
         )
         build_id = writer.register_build(project_path, target, timestamp, build_id)
 
