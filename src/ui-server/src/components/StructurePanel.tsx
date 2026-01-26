@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { FileCode, Loader2, AlertTriangle, Search, X } from 'lucide-react'
+import { FileCode, Loader2, AlertTriangle, Search, X, RefreshCw } from 'lucide-react'
 import type { ModuleChild, ModuleDefinition, Project } from '../types/build'
 import { sendActionWithResponse } from '../api/websocket'
 import { ModuleTree } from './ModuleTreeNode'
@@ -80,6 +80,7 @@ export function StructurePanel({
 }: StructurePanelProps) {
   const [state, setState] = useState<ExplorerState>({ status: 'idle' })
   const [searchTerm, setSearchTerm] = useState('')
+  const [refreshToken, setRefreshToken] = useState(0)
   const [expandedPathsByModule, setExpandedPathsByModule] = useState<Map<string, Set<string>>>(
     new Map()
   )
@@ -91,7 +92,7 @@ export function StructurePanel({
   const expandedPathsPerFile = useRef<Map<string, Map<string, Set<string>>>>(new Map())
 
   // Dev mode: default file path relative to project root
-  const DEV_DEFAULT_RELATIVE_PATH = 'examples/equations/equations.ato'
+  const DEV_DEFAULT_RELATIVE_PATH = 'equations.ato'
 
   // Determine the effective file to display:
   // - If active file is .ato, use it
@@ -164,6 +165,13 @@ export function StructurePanel({
       return next
     })
   }, [effectiveAtoFile])
+
+  const handleRefresh = useCallback(() => {
+    if (!effectiveAtoFile || !activeProject) return
+    lastRequestKeyRef.current = null
+    setRefreshToken((value) => value + 1)
+    onFetchModules(activeProject.root)
+  }, [effectiveAtoFile, activeProject, onFetchModules])
 
   const handleClearSearch = useCallback(() => {
     setSearchTerm('')
@@ -246,7 +254,7 @@ export function StructurePanel({
         if (requestId !== requestIdRef.current) return
         setState({ status: 'error', message: error.message || 'Failed to load structure' })
       })
-  }, [effectiveAtoFile, activeProject, activeProjectModules, onFetchModules, projects.length])
+  }, [effectiveAtoFile, activeProject, activeProjectModules, onFetchModules, projects.length, refreshToken])
 
   useEffect(() => {
     if (!effectiveAtoFile || state.status !== 'ready') return
@@ -276,6 +284,14 @@ export function StructurePanel({
           <span className="structure-title">Active ATO</span>
           <span className="structure-path" title={displayPath}>{displayPath}</span>
         </div>
+        <button
+          className="structure-refresh-btn"
+          onClick={handleRefresh}
+          title="Refresh structure"
+          disabled={!effectiveAtoFile || !activeProject}
+        >
+          <RefreshCw size={14} />
+        </button>
       </div>
 
       {/* Search bar - only show when we have content */}

@@ -40,6 +40,40 @@
   font-family: var(--font-mono);
 }
 
+.structure-refresh-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.structure-refresh-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.structure-refresh-btn:active {
+  transform: translateY(1px);
+}
+
+.structure-refresh-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.structure-refresh-btn:disabled:hover {
+  background: transparent;
+  color: var(--text-muted);
+}
+
 /* Search bar - using unified search-box pattern */
 .structure-search {
   display: flex;
