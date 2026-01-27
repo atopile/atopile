@@ -177,19 +177,23 @@ export function LogViewer() {
     toggleStreaming();
   }, [connectionState, mode, buildId, testRunId, streaming, toggleStreaming]);
 
-  // Auto-start streaming when a new build_id is provided
+  // Auto-start streaming when a new build_id is provided (or restart if already streaming)
   useEffect(() => {
     const trimmedBuildId = buildId.trim();
     if (mode !== 'build') return;
     if (!trimmedBuildId) return;
     if (connectionState !== 'connected') return;
-    if (streaming) return;
     if (lastAutoBuildIdRef.current === trimmedBuildId) return;
 
+    // Stop current stream (no-op if not streaming), then start with new build ID
+    stopStream();
     autoStartedRef.current = true;
     lastAutoBuildIdRef.current = trimmedBuildId;
-    toggleStreaming();
-  }, [buildId, mode, connectionState, streaming, toggleStreaming]);
+
+    setLogs([]);
+    startBuildStream(buildBuildLogRequest(trimmedBuildId, stage, logLevels, audience));
+    setAutoScroll(true);
+  }, [buildId, mode, connectionState, stage, logLevels, audience, stopStream, startBuildStream, setLogs]);
 
   // Populate build_id from the latest active build when available
   useEffect(() => {
