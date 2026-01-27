@@ -20,6 +20,7 @@ from typing_extensions import Annotated
 
 from atopile.buildutil import generate_build_id
 from atopile.dataclasses import (
+    Build,
     BuildReport,
     BuildStatus,
     ProjectState,
@@ -399,10 +400,8 @@ class BuildProcess:
             return BuildStatus.QUEUED
         elif self.return_code is None:
             return BuildStatus.BUILDING
-        elif self.return_code == 0:
-            return BuildStatus.WARNING if self.warnings > 0 else BuildStatus.SUCCESS
         else:
-            return BuildStatus.FAILED
+            return BuildStatus.from_return_code(self.return_code, self.warnings)
 
     def terminate(self) -> None:
         """Terminate the build process."""
@@ -840,38 +839,34 @@ class ParallelBuildManager:
 
     def _write_live_summary(self) -> None:
         """Write per-target build status to the build history database."""
-        from atopile.model import build_history
+        from atopile.model.sqlite import BuildHistory
 
-        # Skip if DB not initialized (should be initialized before manager creation)
-        if not build_history.get_build_history_db():
-            return
+        _FINISHED = {
+            BuildStatus.SUCCESS,
+            BuildStatus.FAILED,
+            BuildStatus.CANCELLED,
+            BuildStatus.WARNING,
+        }
 
         for bp in self.processes.values():
             if not bp.build_id:
                 continue
 
-            # Get build data
             data = self._get_build_data(bp)
 
-            # Create or update the build record
-            # bp.status is already a BuildStatus enum
-            build_history.create_build_record(
+            row = Build(
                 build_id=bp.build_id,
                 project_root=str(bp.project_root.resolve()),
                 target=bp.name,
-                entry=None,  # Entry not stored in BuildProcess
-                status=bp.status,  # Use BuildStatus enum directly
-                timestamp=self._now,
-            )
-
-            # Update with current state
-            build_history.update_build_status(
-                build_id=bp.build_id,
-                status=bp.status,  # Use BuildStatus enum directly
-                stages=data.get("stages"),
+                status=bp.status,
+                started_at=time.time(),
+                stages=data.get("stages", []),
                 warnings=data.get("warnings", 0),
                 errors=data.get("errors", 0),
+                completed_at=time.time() if bp.status in _FINISHED else None,
             )
+
+            BuildHistory.set(row)
 
     def run_until_complete(self) -> dict[str, int]:
         """
@@ -1332,18 +1327,10 @@ def _build_all_projects(
         jobs,
     )
 
-    # Initialize build history database (central location alongside build_logs.db)
-    from atopile.model import build_history
-    from faebryk.libs.paths import get_log_dir
+    # Initialize build history database
+    from atopile.model.sqlite import BuildHistory
 
-    db_path = os.environ.get("ATO_BUILD_HISTORY_DB")
-    if db_path:
-        build_history.init_build_history_db(Path(db_path))
-    else:
-        # CLI mode: use central log directory
-        default_db_path = get_log_dir() / "build_history.db"
-        default_db_path.parent.mkdir(parents=True, exist_ok=True)
-        build_history.init_build_history_db(default_db_path)
+    BuildHistory.init_db()
 
     # Create and run parallel build manager
     manager = ParallelBuildManager(
@@ -1555,18 +1542,10 @@ def build(
         (name, project_root, None) for name in build_names
     ]
 
-    # Initialize build history database (central location alongside build_logs.db)
-    from atopile.model import build_history
-    from faebryk.libs.paths import get_log_dir
+    # Initialize build history database
+    from atopile.model.sqlite import BuildHistory
 
-    db_path = os.environ.get("ATO_BUILD_HISTORY_DB")
-    if db_path:
-        build_history.init_build_history_db(Path(db_path))
-    else:
-        # CLI mode: use central log directory
-        default_db_path = get_log_dir() / "build_history.db"
-        default_db_path.parent.mkdir(parents=True, exist_ok=True)
-        build_history.init_build_history_db(default_db_path)
+    BuildHistory.init_db()
 
     # Create and run parallel build manager
     manager = ParallelBuildManager(

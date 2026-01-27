@@ -10,18 +10,14 @@ from typing import Optional
 from atopile.buildutil import generate_build_id, generate_build_timestamp
 from atopile.config import ProjectConfig
 from atopile.dataclasses import (
-    ActiveBuild,
     AppContext,
     Build,
     BuildRequest,
     BuildResponse,
-    BuildStage,
     BuildStatus,
     BuildTargetInfo,
     BuildTargetResponse,
-    HistoricalBuild,
     MaxConcurrentRequest,
-    StageStatus,
 )
 from atopile.model import build_history
 from atopile.model.build_queue import (
@@ -41,117 +37,30 @@ from atopile.model.model_state import model_state
 log = logging.getLogger(__name__)
 
 
-def _convert_stage_dicts(stage_dicts: list[dict] | None) -> list[BuildStage] | None:
-    if not stage_dicts:
-        return []
-    stages: list[BuildStage] = []
-    for stage in stage_dicts:
-        if not isinstance(stage, dict):
-            continue
-        try:
-            status = StageStatus(stage.get("status", "pending"))
-        except Exception:
-            status = StageStatus.PENDING
-        stages.append(
-            BuildStage(
-                name=stage.get("name", ""),
-                stage_id=stage.get("stage_id", stage.get("name", "")),
-                display_name=stage.get("display_name"),
-                elapsed_seconds=stage.get("elapsed_seconds", 0.0),
-                status=status,
-                infos=stage.get("infos", 0),
-                warnings=stage.get("warnings", 0),
-                errors=stage.get("errors", 0),
-                alerts=stage.get("alerts", 0),
-            )
-        )
-    return stages
-
-
-def _infer_building_status(
-    status: BuildStatus, stages: list[BuildStage] | None
-) -> BuildStatus:
-    if status != BuildStatus.QUEUED or not stages:
-        return status
-    for stage in stages:
-        if stage.status != StageStatus.PENDING:
-            return BuildStatus.BUILDING
-    return status
-
-
-def _active_build_to_build(build: ActiveBuild) -> Build:
-    """Convert an ActiveBuild to a Build Pydantic model."""
-    completed_statuses = (
+def _compute_active_elapsed(build: Build) -> float:
+    """Compute elapsed seconds for an active build at the current moment."""
+    if build.status in (
         BuildStatus.BUILDING,
         BuildStatus.SUCCESS,
         BuildStatus.FAILED,
         BuildStatus.CANCELLED,
-    )
-    if build.status in completed_statuses:
+    ):
         start_time = build.building_started_at or build.started_at or time.time()
     else:
         start_time = build.started_at or time.time()
-    elapsed = time.time() - start_time
-
-    project_name = Path(build.project_root).name if build.project_root else "unknown"
-    target = build.target or "default"
-
-    stages = _convert_stage_dicts(build.stages)
-    status = _infer_building_status(build.status, stages)
-
-    return Build(
-        build_id=build.build_id,
-        name=target,
-        display_name=f"{project_name}:{target}",
-        project_name=project_name,
-        status=status,
-        elapsed_seconds=elapsed,
-        started_at=build.building_started_at or build.started_at,
-        warnings=build.warnings,
-        errors=build.errors,
-        return_code=build.return_code,
-        project_root=build.project_root,
-        target=target,
-        entry=build.entry,
-        stages=stages,
-        queue_position=None,
-        error=build.error,
-    )
+    return time.time() - start_time
 
 
-def _historical_build_to_build(build: HistoricalBuild) -> Build:
-    """Convert a HistoricalBuild to a Build Pydantic model."""
-    status = build.status
-
-    # Fix interrupted builds (building/queued status from crashed server)
-    error = build.error
-    if status in (BuildStatus.BUILDING, BuildStatus.QUEUED):
-        status = BuildStatus.FAILED
-        error = error or "Build was interrupted"
-
-    stages = _convert_stage_dicts(build.stages)
-    status = _infer_building_status(status, stages)
-
-    return Build(
-        build_id=build.build_id,
-        name=build.target or "default",
-        display_name=build.display_name,
-        project_name=build.project_name,
-        status=status,
-        elapsed_seconds=build.duration,
-        started_at=build.started_at,
-        completed_at=build.completed_at,
-        duration=build.duration,
-        warnings=build.warnings,
-        errors=build.errors,
-        return_code=build.return_code,
-        project_root=build.project_root,
-        target=build.target or "default",
-        entry=build.entry,
-        stages=stages,
-        queue_position=None,
-        error=error,
-    )
+def _fix_interrupted_build(build: Build) -> Build:
+    """Fix builds left in BUILDING/QUEUED from a crashed server."""
+    if build.status in (BuildStatus.BUILDING, BuildStatus.QUEUED):
+        return build.model_copy(
+            update={
+                "status": BuildStatus.FAILED,
+                "error": build.error or "Build was interrupted",
+            }
+        )
+    return build
 
 
 def handle_get_summary(_ctx: AppContext) -> dict:
@@ -160,11 +69,18 @@ def handle_get_summary(_ctx: AppContext) -> dict:
     totals = {"builds": 0, "successful": 0, "failed": 0, "warnings": 0, "errors": 0}
     active_build_ids: set[str] = set()
 
-    # First, add all active builds (in-memory)
+    # First, add all active builds (in-memory) with computed elapsed
     with _build_lock:
         for build in _active_builds:
             active_build_ids.add(build.build_id)
-            all_builds.append(_active_build_to_build(build))
+            elapsed = _compute_active_elapsed(build)
+            all_builds.append(
+                build.model_copy(
+                    update={
+                        "elapsed_seconds": elapsed,
+                    }
+                )
+            )
 
     # Then add historical builds from database (not currently active)
     history_builds = build_history.load_recent_builds_from_history(limit=100)
@@ -173,8 +89,8 @@ def handle_get_summary(_ctx: AppContext) -> dict:
         if build.build_id in active_build_ids:
             continue
 
-        pydantic_build = _historical_build_to_build(build)
-        all_builds.append(pydantic_build)
+        build = _fix_interrupted_build(build)
+        all_builds.append(build)
         totals["warnings"] += build.warnings
         totals["errors"] += build.errors
 
@@ -264,7 +180,7 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
             build_id = generate_build_id(request.project_root, target, timestamp)
             with _build_lock:
                 model_state.add_build(
-                    ActiveBuild(
+                    Build(
                         build_id=build_id,
                         project_root=request.project_root,
                         target=target,
@@ -378,7 +294,7 @@ def handle_get_active_builds() -> dict:
                     "started_at": build.building_started_at or build.started_at,
                     "elapsed_seconds": elapsed,
                     "stages": build.stages,
-                    "queue_position": None,  # Not tracked in ActiveBuild
+                    "queue_position": None,
                     "warnings": build.warnings,
                     "errors": build.errors,
                     "return_code": build.return_code,
@@ -446,11 +362,11 @@ def handle_get_build_history(
     if status:
         builds = [b for b in builds if b.status == status]
 
-    # Convert to Build Pydantic models for consistent API response
-    pydantic_builds = [_historical_build_to_build(b) for b in builds]
+    # Fix interrupted builds for consistent API response
+    fixed_builds = [_fix_interrupted_build(b) for b in builds]
     return {
-        "builds": [b.model_dump(by_alias=True) for b in pydantic_builds],
-        "total": len(pydantic_builds),
+        "builds": [b.model_dump(by_alias=True) for b in fixed_builds],
+        "total": len(fixed_builds),
     }
 
 
@@ -466,7 +382,7 @@ def handle_get_build_info(build_id: str) -> dict | None:
     with _build_lock:
         build = model_state.find_build(build_id)
         if build:
-            pydantic_build = _active_build_to_build(build)
+            updates: dict = {"elapsed_seconds": _compute_active_elapsed(build)}
             # Add completed_at estimation for finished builds
             finished_statuses = (
                 BuildStatus.SUCCESS,
@@ -475,15 +391,16 @@ def handle_get_build_info(build_id: str) -> dict | None:
             )
             if build.status in finished_statuses:
                 start = build.building_started_at or build.started_at
-                pydantic_build.completed_at = start + build.duration
-                pydantic_build.duration = build.duration
+                if start and build.duration:
+                    updates["completed_at"] = start + build.duration
+                updates["duration"] = build.duration
 
-            return pydantic_build.model_dump(by_alias=True)
+            return build.model_copy(update=updates).model_dump(by_alias=True)
 
     # Fall back to build history database
     historical = build_history.get_build_info_by_id(build_id)
     if historical:
-        return _historical_build_to_build(historical).model_dump(by_alias=True)
+        return _fix_interrupted_build(historical).model_dump(by_alias=True)
     return None
 
 
@@ -502,11 +419,11 @@ def handle_get_builds_by_project(
         target=target,
         limit=limit,
     )
-    # Convert to Build Pydantic models for consistent API response
-    pydantic_builds = [_historical_build_to_build(b) for b in builds]
+    # Fix interrupted builds for consistent API response
+    fixed_builds = [_fix_interrupted_build(b) for b in builds]
     return {
-        "builds": [b.model_dump(by_alias=True) for b in pydantic_builds],
-        "total": len(pydantic_builds),
+        "builds": [b.model_dump(by_alias=True) for b in fixed_builds],
+        "total": len(fixed_builds),
     }
 
 

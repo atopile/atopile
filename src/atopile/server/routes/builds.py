@@ -16,7 +16,7 @@ from atopile.dataclasses import (
     BuildTargetResponse,
 )
 from atopile.dataclasses import AppContext
-from atopile.server.domains import builds as builds_domain
+from atopile.model import builds as builds_domain
 from atopile.server.domains.deps import get_ctx
 
 log = logging.getLogger(__name__)

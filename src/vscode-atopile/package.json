@@ -91,6 +91,12 @@
                     "scope": "resource",
                     "type": "boolean",
                     "default": true
+                },
+                "atopile.llm.autoSetup": {
+                    "description": "Automatically create LLM rules and MCP config files (disabled by default)",
+                    "scope": "resource",
+                    "type": "boolean",
+                    "default": false
                 }
             }
         },

@@ -108,7 +108,7 @@ class MusterTarget:
         if not self.virtual:
             import time
 
-            from atopile.dataclasses import CompletedStage
+            from atopile.dataclasses import BuildStage
 
             def record_stage_progress(running_stage: dict | None = None) -> None:
                 if not ctx.build_id:
@@ -179,7 +179,7 @@ class MusterTarget:
                 # Record failed stage
                 elapsed = time.time() - ctx._stage_start_time
                 ctx.completed_stages.append(
-                    CompletedStage(
+                    BuildStage(
                         name=self.description or self.name,
                         stage_id=self.name,
                         elapsed_seconds=round(elapsed, 2),
@@ -192,7 +192,7 @@ class MusterTarget:
             # Record successful stage
             elapsed = time.time() - ctx._stage_start_time
             ctx.completed_stages.append(
-                CompletedStage(
+                BuildStage(
                     name=self.description or self.name,
                     stage_id=self.name,
                     elapsed_seconds=round(elapsed, 2),

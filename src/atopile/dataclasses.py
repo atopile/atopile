@@ -33,6 +33,13 @@ class BuildStatus(str, Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
 
+    @classmethod
+    def from_return_code(cls, return_code: int, warnings: int = 0) -> BuildStatus:
+        """Derive terminal build status from a process return code."""
+        if return_code != 0:
+            return cls.FAILED
+        return cls.WARNING if warnings > 0 else cls.SUCCESS
+
 
 class StageStatus(str, Enum):
     """Stage status states - status of individual build stages."""
@@ -88,95 +95,66 @@ class StageCompleteEvent:
     description: str
 
 
-@dataclass
-class BaseBuild:
-    """Base class for build data structures with common fields."""
+# =============================================================================
+# Logging DB Models
+# =============================================================================
 
-    # Core identification
+
+@dataclass
+class BuildRow:
+    """Database model for build metadata in logs database."""
+
     build_id: str
-    project_root: str
+    project_path: str
     target: str
-
-    # Build configuration
-    entry: Optional[str] = None
-
-    # Status
-    status: BuildStatus = BuildStatus.QUEUED
-    return_code: Optional[int] = None
-    error: Optional[str] = None
-
-    # Timing
-    started_at: float = 0.0
-    duration: float = 0.0
-
-    # Progress
-    stages: list[dict[str, Any]] = field(default_factory=list)
-    warnings: int = 0
-    errors: int = 0
+    timestamp: str
+    created_at: str = ""
 
 
 @dataclass
-class ActiveBuild(BaseBuild):
-    """Internal state for an active (queued/building/completed) build."""
+class LogRow:
+    """Database model for log entries."""
 
-    # Additional identification for active builds
+    id: int | None = field(default=None, init=False)
+    build_id: str = ""
     timestamp: str = ""
-
-    # Build configuration specific to active builds
-    standalone: bool = False
-    frozen: bool = False
-
-    # Additional timing for active builds
-    building_started_at: Optional[float] = None
+    stage: str = ""
+    level: str = ""
+    message: str = ""
+    logger_name: str = ""
+    audience: str = "developer"
+    source_file: str | None = None
+    source_line: int | None = None
+    ato_traceback: str | None = None
+    python_traceback: str | None = None
+    objects: str | None = None
 
 
 @dataclass
-class HistoricalBuild(BaseBuild):
-    """Build record loaded from the build history database."""
+class TestRunRow:
+    """Database model for test run metadata."""
 
-    # Additional timing for historical builds
-    completed_at: Optional[float] = None
+    test_run_id: str
+    created_at: str = ""
 
-    # Build key (timestamp string for backwards compat)
-    build_key: str = ""
 
-    @property
-    def display_name(self) -> str:
-        """Generate display name from project and target."""
-        from pathlib import Path
+@dataclass
+class TestLogRow:
+    """Database model for test log entries."""
 
-        project_name = Path(self.project_root).name if self.project_root else "unknown"
-        target = self.target or "default"
-        return f"{project_name}:{target}"
-
-    @property
-    def project_name(self) -> str:
-        """Get project name from project root path."""
-        from pathlib import Path
-
-        return Path(self.project_root).name if self.project_root else "unknown"
-
-    @classmethod
-    def from_db_row(cls, row: Any) -> "HistoricalBuild":
-        """Construct from a sqlite3.Row. Only JSON/enum conversion needed."""
-        import json
-
-        return cls(
-            build_id=row["build_id"],
-            project_root=row["project_root"],
-            target=row["target"],
-            entry=row["entry"],
-            status=BuildStatus(row["status"]),
-            return_code=row["return_code"],
-            error=row["error"],
-            started_at=row["started_at"],
-            completed_at=row["completed_at"],
-            duration=row["duration"],
-            stages=json.loads(row["stages"]) if row["stages"] else [],
-            warnings=row["warnings"],
-            errors=row["errors"],
-            build_key=row["build_key"],
-        )
+    id: int | None = field(default=None, init=False)
+    test_run_id: str = ""
+    timestamp: str = ""
+    test_name: str = ""
+    level: str = ""
+    message: str = ""
+    logger_name: str = ""
+    audience: str = "developer"
+    source_file: str | None = None
+    source_line: int | None = None
+    ato_traceback: str | None = None
+    python_traceback: str | None = None
+    objects: str | None = None
 
 
 # =============================================================================
@@ -448,7 +426,6 @@ class Build(CamelModel):
     display_name: str
     project_name: Optional[str] = None
     build_id: Optional[str] = None
-    build_key: Optional[str] = None
 
     # Status
     status: BuildStatus = BuildStatus.QUEUED
@@ -466,8 +443,14 @@ class Build(CamelModel):
     completed_at: Optional[float] = None
     duration: Optional[float] = None
 
+    # Active build fields
+    timestamp: Optional[str] = None
+    standalone: bool = False
+    frozen: bool = False
+    building_started_at: Optional[float] = None
+
     # Stages and logs
-    stages: Optional[list[BuildStage]] = None
+    stages: list[dict[str, Any]] = Field(default_factory=list)
     # TODO: Replace this estimate once builds are defined in the graph
     # This is the expected total number of stages for progress calculation
     total_stages: int = 20  # Estimated total stages for progress bar
@@ -1225,20 +1208,6 @@ class InstallPackageError(ErrorResult):
 # =============================================================================
 # Build Steps Dataclasses
 # =============================================================================
-
-
-@dataclass
-class CompletedStage:
-    """A completed build stage with timing and status."""
-
-    name: str
-    stage_id: str
-    elapsed_seconds: float
-    status: StageStatus  # Use StageStatus enum instead of plain string
-    infos: int = 0
-    warnings: int = 0
-    errors: int = 0
-    alerts: int = 0
 
 
 @dataclass
