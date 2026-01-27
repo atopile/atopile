@@ -1459,11 +1459,9 @@ def build(
 
     # Worker mode - run single build directly (no config needed yet)
     if os.environ.get("ATO_BUILD_EVENT_FD"):
-        db_path = os.environ.get("ATO_BUILD_HISTORY_DB")
-        if db_path:
-            from atopile.model import build_history
+        from atopile.model.sqlite import BuildHistory
 
-            build_history.init_build_history_db(Path(db_path))
+        BuildHistory.init_db()
         config.apply_options(
             entry=entry,
             selected_builds=selected_builds,

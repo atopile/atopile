@@ -306,6 +306,7 @@ def _extract_traceback_frames(
 # Log appender singletons
 # =============================================================================
 
+
 def _normalize_db_value(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
@@ -684,14 +685,14 @@ class BuildLogger(BaseLogger):
         return cls._loggers[build_id]
 
     @classmethod
-    def close(cls, build_id: str) -> None:
+    def close_by_id(cls, build_id: str) -> None:
         if build_id in cls._loggers:
             cls._loggers.pop(build_id).close()
 
     @classmethod
     def close_all(cls) -> None:
         for bid in list(cls._loggers):
-            cls.close(bid)
+            cls.close_by_id(bid)
 
     @classmethod
     def setup_logging(
@@ -931,7 +932,6 @@ class LogHandler(RichHandler):
         if hide or not exc_type or not exc_value:
             return None
 
-        # Use console width or None (unlimited) for traceback width to prevent truncation
         width = getattr(self, "tracebacks_width", None) or getattr(
             self.console, "width", None
         )

@@ -172,6 +172,10 @@ export interface PackageInfo {
  * Detailed information about a package from the registry.
  */
 export interface PackageDetails {
+    artifacts?:          PackageArtifact[];
+    authors?:            PackageAuthor[];
+    builds?:             string[] | null;
+    createdAt?:          null | string;
     dependencies?:       PackageDependency[];
     description?:        null | string;
     downloads?:          number | null;
@@ -179,17 +183,41 @@ export interface PackageDetails {
     downloadsThisWeek?:  number | null;
     homepage?:           null | string;
     identifier:          string;
+    importStatements?:   PackageImportStatement[];
     installed?:          boolean;
     installedIn?:        string[];
     installedVersion?:   null | string;
+    layouts?:            PackageLayout[];
     license?:            null | string;
     name:                string;
     publisher:           string;
+    readme?:             null | string;
+    releasedAt?:         null | string;
     repository?:         null | string;
     summary?:            null | string;
     version:             string;
     versionCount?:       number;
     versions?:           VersionElement[];
+    [property: string]: any;
+}
+
+export interface PackageArtifact {
+    buildName?: null | string;
+    filename:   string;
+    hashes:     PackageFileHashes;
+    size:       number;
+    url:        string;
+    [property: string]: any;
+}
+
+export interface PackageFileHashes {
+    sha256: string;
+    [property: string]: any;
+}
+
+export interface PackageAuthor {
+    email?: null | string;
+    name:   string;
     [property: string]: any;
 }
 
@@ -199,6 +227,18 @@ export interface PackageDetails {
 export interface PackageDependency {
     identifier: string;
     version?:   null | string;
+    [property: string]: any;
+}
+
+export interface PackageImportStatement {
+    buildName:       string;
+    importStatement: string;
+    [property: string]: any;
+}
+
+export interface PackageLayout {
+    buildName: string;
+    url:       string;
     [property: string]: any;
 }
 
