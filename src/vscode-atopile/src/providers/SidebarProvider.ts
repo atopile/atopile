@@ -470,7 +470,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   <script>
     window.addEventListener('message', (event) => {
       const data = event && event.data;
-      if (!data || data.type !== 'workspace-root') return;
+      if (!data || (data.type !== 'workspace-root' && data.type !== 'activeFile')) return;
       const iframe = document.querySelector('iframe');
       if (iframe && iframe.contentWindow) {
         iframe.contentWindow.postMessage(data, '*');
