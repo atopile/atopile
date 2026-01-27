@@ -12,8 +12,8 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import get_algorithms
-from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
-from faebryk.core.solver.utils import S_LOG, set_log_level
+from faebryk.core.solver.solver import Solver
+from faebryk.core.solver.utils import LOG_PICK_SOLVE, S_LOG, set_log_level
 from faebryk.libs.picker.picker import (
     NO_PROGRESS_BAR,
     PickError,

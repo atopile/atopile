@@ -1221,13 +1221,17 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def get_root_id(self) -> str:
         return f"0x{self.instance.node().get_uuid():X}"
 
-    def get_name(self, accept_no_parent: bool = True) -> str:
-        parent = self.get_parent()
-        if parent is None:
-            if accept_no_parent:
-                return self.get_root_id()
+    def get_name(self, accept_no_parent: bool = True, with_detail: bool = False) -> str:
+        from faebryk.library.has_name_override import has_name_override
+
+        if self.has_trait(has_name_override):
+            return self.get_trait(has_name_override).get_name(with_detail=with_detail)
+        elif (parent := self.get_parent()) is not None:
+            return parent[1]
+        elif accept_no_parent:
+            return self.get_root_id()
+        else:
             raise FabLLException("Node has no parent")
-        return parent[1]
 
     def get_parent(self) -> tuple["Node", str] | None:
         parent_edge = fbrk.EdgeComposition.get_parent_edge(bound_node=self.instance)

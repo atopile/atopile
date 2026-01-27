@@ -244,40 +244,6 @@ def _strip_outer_braces(value: str) -> str:
     return value
 
 
-def _is_unconstrained_value(value_str: str) -> bool:
-    """
-    Check if a value represents an unconstrained/any value.
-
-    These patterns indicate the parameter wasn't constrained to a specific value:
-    - "any of N" (enum with all options available)
-    - "any" (unconstrained number)
-    - "any ≥0" (unconstrained positive number)
-    - "{any}" or "{any ...}" (unconstrained with units)
-    """
-    if not value_str:
-        return True
-
-    value_lower = value_str.lower().strip()
-
-    # Check for "any of N" pattern (unconstrained enum)
-    if value_lower.startswith("any of "):
-        return True
-
-    # Check for "any" patterns (unconstrained numbers)
-    if value_lower in ("any", "{any}"):
-        return True
-
-    # Check for "any ≥0" or similar
-    if value_lower.startswith("any "):
-        return True
-
-    # Check for "{any ...}" patterns with units
-    if value_lower.startswith("{any"):
-        return True
-
-    return False
-
-
 def _extract_module_data(
     module: fabll.Node,
     solver: Solver,

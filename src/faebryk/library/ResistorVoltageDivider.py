@@ -241,7 +241,7 @@ class TestVdivSolver:
              = {1.69kOhm..8.63kOhm}
         """
         from faebryk.core.solver.solver import Solver
-        from faebryk.libs.picker.picker import pick_part_recursively
+        from faebryk.libs.picker.picker import pick_parts_recursively
         from faebryk.libs.test.boundexpressions import BoundExpressions
 
         E = BoundExpressions()
@@ -281,7 +281,7 @@ class TestVdivSolver:
         # solver.simplify_for(
         #     app.rdiv.get().total_resistance.get().can_be_operand.get(), terminal=True
         # )
-        pick_part_recursively(app, solver)
+        pick_parts_recursively(app, solver)
 
         r_top = (
             app.rdiv.get()
@@ -353,7 +353,7 @@ class TestVdivSolver:
     @staticmethod
     def test_pick_dependency_advanced_1():
         from faebryk.core.solver.solver import Solver
-        from faebryk.libs.picker.picker import pick_part_recursively
+        from faebryk.libs.picker.picker import pick_parts_recursively
         from faebryk.libs.test.boundexpressions import BoundExpressions
 
         E = BoundExpressions()
@@ -373,14 +373,14 @@ class TestVdivSolver:
         )
 
         solver = Solver()
-        pick_part_recursively(rdiv, solver)
+        pick_parts_recursively(rdiv, solver)
 
     @pytest.mark.slow
     @pytest.mark.usefixtures("setup_project_config")
     @staticmethod
     def test_pick_dependency_advanced_2():
         from faebryk.core.solver.solver import Solver
-        from faebryk.libs.picker.picker import pick_part_recursively
+        from faebryk.libs.picker.picker import pick_parts_recursively
         from faebryk.libs.test.boundexpressions import BoundExpressions
 
         E = BoundExpressions()
@@ -405,14 +405,14 @@ class TestVdivSolver:
         )
 
         solver = Solver()
-        pick_part_recursively(rdiv, solver)
+        pick_parts_recursively(rdiv, solver)
 
     @pytest.mark.slow
     @pytest.mark.usefixtures("setup_project_config")
     @staticmethod
     def test_pick_dependency_div_negative():
         from faebryk.core.solver.solver import Solver
-        from faebryk.libs.picker.picker import pick_part_recursively
+        from faebryk.libs.picker.picker import pick_parts_recursively
         from faebryk.libs.test.boundexpressions import BoundExpressions
 
         E = BoundExpressions()
@@ -437,7 +437,7 @@ class TestVdivSolver:
         )
 
         solver = Solver()
-        pick_part_recursively(rdiv, solver)
+        pick_parts_recursively(rdiv, solver)
 
     @pytest.mark.slow
     @pytest.mark.usefixtures("setup_project_config")
@@ -447,7 +447,7 @@ class TestVdivSolver:
 
         from atopile.compiler.build import Linker, StdlibRegistry, build_file
         from faebryk.core.solver.solver import Solver
-        from faebryk.libs.picker.picker import pick_part_recursively
+        from faebryk.libs.picker.picker import pick_parts_recursively
 
         # Note: Using ResistorVoltageDivider directly instead of inheriting
         # because `module VDiv from ResistorVoltageDivider` inheritance
@@ -483,7 +483,7 @@ class TestVdivSolver:
         app_instance = tg.instantiate_node(type_node=app_type, attributes={})
 
         solver = Solver()
-        pick_part_recursively(fabll.Node.bind_instance(app_instance), solver)
+        pick_parts_recursively(fabll.Node.bind_instance(app_instance), solver)
 
         # Check all resistors have parts picked
         vdiv = ResistorVoltageDivider.bind_instance(
@@ -506,7 +506,7 @@ class TestVdivSolver:
 
         from atopile.compiler.build import Linker, StdlibRegistry, build_source
         from faebryk.core.solver.solver import Solver
-        from faebryk.libs.picker.picker import pick_part_recursively
+        from faebryk.libs.picker.picker import pick_parts_recursively
         from faebryk.libs.test.boundexpressions import BoundExpressions
 
         E = BoundExpressions()
@@ -539,7 +539,7 @@ class TestVdivSolver:
         app_instance = tg.instantiate_node(type_node=app_type, attributes={})
 
         solver = Solver()
-        pick_part_recursively(fabll.Node.bind_instance(app_instance), solver)
+        pick_parts_recursively(fabll.Node.bind_instance(app_instance), solver)
 
         # Check all resistors have parts picked
         vdiv = ResistorVoltageDivider.bind_instance(

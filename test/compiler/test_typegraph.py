@@ -3726,9 +3726,7 @@ def _build_mutator(source: str) -> Mutator:
     g, tg, _stdlib, _result, _app_root = build_instance(
         source, root="App", import_path="app.ato"
     )
-    mutation_map = MutationMap.bootstrap(
-        tg=tg, g=g, print_context=F.Parameters.ReprContext()
-    )
+    mutation_map = MutationMap.bootstrap(tg=tg, g=g)
     return Mutator(
         mutation_map=mutation_map,
         algo=transitive_subset,
@@ -3748,9 +3746,7 @@ def _build_numeric_param_mutator() -> tuple[
         .create_instance(g)
         .setup(is_unit=unit)
     )
-    mutation_map = MutationMap.bootstrap(
-        tg=tg, g=g, print_context=F.Parameters.ReprContext()
-    )
+    mutation_map = MutationMap.bootstrap(tg=tg, g=g)
     mutator = Mutator(
         mutation_map=mutation_map,
         algo=transitive_subset,
