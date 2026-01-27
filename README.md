@@ -79,6 +79,7 @@ High-level steps:
 - AI-Pin — Vibe-coded Humane Pin https://github.com/atopile/ai-pin
 - Hyperion — 300K nit display for raves https://github.com/atopile/hyperion
 - Cellsim - 18 channel battery cell simulator https://github.com/atopile/cellsim
+- ESPaper - ESP32 epaper display driver https://github.com/atopile/hivehaus/tree/master/src/products/espaper
 
 ## Packages and parts
 
