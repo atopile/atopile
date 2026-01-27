@@ -532,10 +532,11 @@ class MutationStage:
         )
         for depth, dnodes in sorted(node_by_depth.items(), key=lambda t: t[0]):
             out += f"\n  --Depth {depth}--"
-            for n in dnodes:
-                compact_repr = n.get_trait(
-                    F.Parameters.is_parameter_operatable
-                ).compact_repr()
+            dnode_reprs = [
+                (n, n.get_trait(F.Parameters.is_parameter_operatable).compact_repr())
+                for n in dnodes
+            ]
+            for n, compact_repr in sorted(dnode_reprs, key=lambda t: t[1]):
                 out += f"\n      {compact_repr}"
                 if VERBOSE_TABLE:
                     out += f" {repr(n)}"
