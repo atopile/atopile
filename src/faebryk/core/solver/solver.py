@@ -17,6 +17,7 @@ from faebryk.core.solver.algorithm import SolverAlgorithm
 
 if TYPE_CHECKING:
     import faebryk.library._F as F
+from atopile.logging import scope
 from atopile.logging_utils import NET_LINE_WIDTH
 from faebryk.core.solver.mutator import MutationMap, MutationStage, Mutator
 from faebryk.core.solver.symbolic import (
@@ -102,12 +103,15 @@ class Solver:
         for phase_name, algo in enumerate(algos):
             timings.add("_")
 
+            log_scope = scope()
+
             if PRINT_START:
                 G_in = data.mutation_map.G_out
                 logger.debug(
                     f"START Iteration {iterno} Phase {phase_name}: {algo.name}"
                     f" G_in:{G_in}"
                 )
+                log_scope.__enter__()
 
             mutator = Mutator(
                 data.mutation_map,
@@ -150,6 +154,8 @@ class Solver:
                 f" {'💩' if algo_result.dirty else '🧹'}"
             )
             timings.add(new_name, duration=run_time)
+            if PRINT_START:
+                log_scope.__exit__(None, None, None)
 
         return iteration_state
 

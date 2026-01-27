@@ -55,6 +55,10 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
   );
   const [autoScroll, setAutoScroll] = useState(true);
 
+  // Expand/collapse all state - start collapsed
+  const [allExpanded, setAllExpanded] = useState(false);
+  const [expandKey, setExpandKey] = useState(0);
+
   // Level dropdown
   const [levelDropdownOpen, setLevelDropdownOpen] = useState(false);
   const levelDropdownRef = useRef<HTMLDivElement>(null);
@@ -154,6 +158,16 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
 
   const handleAutoScrollChange = useCallback((value: boolean) => {
     setAutoScroll(value);
+  }, []);
+
+  const handleExpandAll = useCallback(() => {
+    setAllExpanded(true);
+    setExpandKey(k => k + 1);
+  }, []);
+
+  const handleCollapseAll = useCallback(() => {
+    setAllExpanded(false);
+    setExpandKey(k => k + 1);
   }, []);
 
   return (
@@ -306,6 +320,10 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
         onAutoScrollChange={handleAutoScrollChange}
         setLevelFull={setLevelFull}
         setTimeMode={setTimeMode}
+        allExpanded={allExpanded}
+        expandKey={expandKey}
+        onExpandAll={handleExpandAll}
+        onCollapseAll={handleCollapseAll}
       />
     </div>
   );

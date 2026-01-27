@@ -20,6 +20,7 @@ from typing import (
 
 from more_itertools import first, zip_equal
 from rich.table import Table
+from rich.text import Text
 from rich.tree import Tree
 
 import faebryk.core.faebrykpy as fbrk
@@ -139,7 +140,8 @@ class Transformations:
                 logger.error(
                     "DIRTY: non_copy"
                     + indented_container(
-                        {k.compact_repr(): v.compact_repr() for k, v in non_copy}
+                        {k.compact_repr(): v.compact_repr() for k, v in non_copy},
+                        use_repr=False,
                     )
                 )
             if bool(self.removed):
@@ -148,7 +150,9 @@ class Transformations:
             # If a "created" expression existed in G_in (was copied), it's not truly new
             created_preds = list(created_preds)
             if created_preds:
-                x = indented_container(k.compact_repr() for k in created_preds)
+                x = indented_container(
+                    [k.compact_repr() for k in created_preds], use_repr=False
+                )
                 logger.error(f"DIRTY: new preds={x}")
             if bool(self.terminated):
                 logger.error(f"DIRTY: terminated={len(self.terminated)}")
@@ -738,10 +742,13 @@ class MutationStage:
             table.add_column("After")
             for row, count in rows_sorted:
                 count_str = "" if count == 1 else f"{count}x"
+                # Use Text.from_ansi() to parse ANSI color codes so Rich
+                # calculates column widths correctly
+                row_text = tuple(Text.from_ansi(cell) for cell in row)
                 if track_count:
-                    table.add_row(count_str, *row)
+                    table.add_row(count_str, *row_text)
                 else:
-                    table.add_row(*row)
+                    table.add_row(*row_text)
 
             log(rich_to_string(table))
 
@@ -1201,8 +1208,10 @@ class MutationMap:
             flatten_expressions,
             convert_to_canonical_operations,
         ):
+            log_scope = scope()
             if S_LOG:
-                logger.debug(f"Running {algo.name} -------")
+                logger.debug(f"Bootstrap {algo.name}")
+                log_scope.__enter__()
             mutator = Mutator(
                 mut_map,
                 algo,
@@ -2383,7 +2392,27 @@ class Mutator:
         if S_LOG:
             logger.debug(f"Dirty after {self.algo.name}")
             stage.print_mutation_table()
-            stage.print_graph_contents()
+
+            collected = ""
+
+            def _capture_log(x: str):
+                nonlocal collected
+                collected += x + "\n"
+
+            t = Table("G_in", "G_out")
+
+            MutationStage.print_graph_contents_static(
+                self.tg_in, self.G_in, log=_capture_log
+            )
+            g_in_str = Text.from_ansi(collected)
+            collected = ""
+
+            MutationStage.print_graph_contents_static(
+                self.tg_out, self.G_out, log=_capture_log
+            )
+            g_out_str = Text.from_ansi(collected)
+            t.add_row(g_in_str, g_out_str)
+            logger.debug(rich_to_string(t))
 
         return AlgoResult(mutation_stage=stage, dirty=dirty)
 

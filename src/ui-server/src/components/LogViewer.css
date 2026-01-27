@@ -484,6 +484,57 @@
   width: 100%;
 }
 
+/* Display container wraps expand toolbar + content */
+.lv-display-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Expand/Collapse toolbar */
+.lv-expand-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px var(--spacing-sm);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.lv-expand-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.1s ease;
+}
+
+.lv-expand-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+
+.lv-expand-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.lv-expand-icon {
+  font-family: monospace;
+  font-weight: bold;
+}
+
 /* Scrollable log content */
 .lv-content {
   flex: 1;

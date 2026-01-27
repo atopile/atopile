@@ -812,9 +812,13 @@ class is_expression(fabll.Node):
 
         p = p_instance.is_parameter.get()
         e_compact = self.compact_repr(no_lit_suffix=True, no_class_suffix=True)
+        # calculcate ANSII color from uuid
+        uuid = p.instance.node().get_uuid()
+        color = f"\033[38;5;{uuid % 256}m"
+        color_end = "\033[0m"
         p.set_name(
-            f"R0x{p.instance.node().get_uuid():X}",
-            detail=f"(o=`{e_compact}`)",
+            f"{color}R0x{uuid:X}{color_end}",
+            detail=f"[{e_compact}])",
         )
         if alias:
             Is.c(self.as_operand.get(), p.as_operand.get(), assert_=True)

@@ -81,6 +81,7 @@ function TreeNodeRow({
   sourceMode,
   firstTimestamp,
   indentLevel,
+  defaultExpanded,
   setLevelFull,
   setTimeMode,
 }: {
@@ -91,10 +92,11 @@ function TreeNodeRow({
   sourceMode: SourceMode;
   firstTimestamp: number;
   indentLevel: number;
+  defaultExpanded: boolean;
   setLevelFull: (value: boolean) => void;
   setTimeMode: (value: TimeMode) => void;
 }) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const hasChildren = node.children.length > 0;
 
   const { entry, content } = node;
@@ -182,6 +184,7 @@ function TreeNodeRow({
           sourceMode={sourceMode}
           firstTimestamp={firstTimestamp}
           indentLevel={indentLevel + 1}
+          defaultExpanded={defaultExpanded}
           setLevelFull={setLevelFull}
           setTimeMode={setTimeMode}
         />
@@ -198,6 +201,7 @@ function TreeLogGroup({
   timeMode,
   sourceMode,
   firstTimestamp,
+  defaultExpanded,
   setLevelFull,
   setTimeMode,
 }: {
@@ -207,6 +211,7 @@ function TreeLogGroup({
   timeMode: TimeMode;
   sourceMode: SourceMode;
   firstTimestamp: number;
+  defaultExpanded: boolean;
   setLevelFull: (value: boolean) => void;
   setTimeMode: (value: TimeMode) => void;
 }) {
@@ -220,6 +225,7 @@ function TreeLogGroup({
         sourceMode={sourceMode}
         firstTimestamp={firstTimestamp}
         indentLevel={0}
+        defaultExpanded={defaultExpanded}
         setLevelFull={setLevelFull}
         setTimeMode={setTimeMode}
       />
@@ -325,6 +331,11 @@ export interface LogDisplayProps {
   onAutoScrollChange: (value: boolean) => void;
   setLevelFull: (value: boolean) => void;
   setTimeMode: (value: TimeMode) => void;
+  // Expansion control
+  allExpanded: boolean;
+  expandKey: number;
+  onExpandAll: () => void;
+  onCollapseAll: () => void;
 }
 
 export function LogDisplay({
@@ -339,6 +350,10 @@ export function LogDisplay({
   onAutoScrollChange,
   setLevelFull,
   setTimeMode,
+  allExpanded,
+  expandKey,
+  onExpandAll,
+  onCollapseAll,
 }: LogDisplayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(autoScroll);
@@ -381,24 +396,67 @@ export function LogDisplay({
     }
   }, [logs]);
 
+  // Count how many groups have children (foldable)
+  const foldableCount = groups.filter(g => g.type === 'tree' && g.root.children.length > 0).length;
+
   return (
-    <div
-      className="lv-content"
-      ref={containerRef}
-      onScroll={handleScroll}
-    >
-      {filteredLogs.length === 0 ? (
-        <div className="lv-empty">
-          {logs.length === 0 ? (streaming ? 'Waiting for logs...' : 'No logs') : 'No matches'}
+    <div className="lv-display-container">
+      {/* Expand/Collapse toolbar */}
+      {foldableCount > 0 && (
+        <div className="lv-expand-toolbar">
+          <button
+            className="lv-expand-btn"
+            onClick={onExpandAll}
+            disabled={allExpanded}
+            title="Expand all"
+          >
+            <span className="lv-expand-icon">⊞</span>
+          </button>
+          <button
+            className="lv-expand-btn"
+            onClick={onCollapseAll}
+            disabled={!allExpanded}
+            title="Collapse all"
+          >
+            <span className="lv-expand-icon">⊟</span>
+          </button>
         </div>
-      ) : (
-        groups.map((group, groupIdx) => {
-          // Tree groups with children get the collapsible TreeLogGroup
-          if (group.type === 'tree' && group.root.children.length > 0) {
+      )}
+      <div
+        className="lv-content"
+        ref={containerRef}
+        onScroll={handleScroll}
+      >
+        {filteredLogs.length === 0 ? (
+          <div className="lv-empty">
+            {logs.length === 0 ? (streaming ? 'Waiting for logs...' : 'No logs') : 'No matches'}
+          </div>
+        ) : (
+          groups.map((group, groupIdx) => {
+            // Tree groups with children get the collapsible TreeLogGroup
+            if (group.type === 'tree' && group.root.children.length > 0) {
+              return (
+                <TreeLogGroup
+                  key={`${expandKey}-${groupIdx}`}
+                  group={group}
+                  search={search}
+                  levelFull={levelFull}
+                  timeMode={timeMode}
+                  sourceMode={sourceMode}
+                  firstTimestamp={firstTimestamp}
+                  defaultExpanded={allExpanded}
+                  setLevelFull={setLevelFull}
+                  setTimeMode={setTimeMode}
+                />
+              );
+            }
+
+            // Standalone entries render normally
             return (
-              <TreeLogGroup
+              <StandaloneLogRow
                 key={groupIdx}
-                group={group}
+                entry={group.root.entry}
+                content={group.root.content}
                 search={search}
                 levelFull={levelFull}
                 timeMode={timeMode}
@@ -408,25 +466,9 @@ export function LogDisplay({
                 setTimeMode={setTimeMode}
               />
             );
-          }
-
-          // Standalone entries render normally
-          return (
-            <StandaloneLogRow
-              key={groupIdx}
-              entry={group.root.entry}
-              content={group.root.content}
-              search={search}
-              levelFull={levelFull}
-              timeMode={timeMode}
-              sourceMode={sourceMode}
-              firstTimestamp={firstTimestamp}
-              setLevelFull={setLevelFull}
-              setTimeMode={setTimeMode}
-            />
-          );
-        })
-      )}
+          })
+        )}
+      </div>
     </div>
   );
 }
