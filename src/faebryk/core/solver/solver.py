@@ -43,7 +43,6 @@ class Solver:
         # TODO: get order from topo sort
         # and types from decorator
         iterative = [
-            structural.remove_unconstrained,
             expression_groups.idempotent_unpack,
             expression_groups.involutory_fold,
             expression_groups.unary_identity_unpack,
@@ -57,9 +56,13 @@ class Solver:
     @dataclass
     class IterationData:
         mutation_map: MutationMap
+        relevant: list["F.Parameters.can_be_operand"] | None = None
 
         def compressed(self) -> "Solver.IterationData":
-            return Solver.IterationData(mutation_map=self.mutation_map.compressed())
+            return Solver.IterationData(
+                mutation_map=self.mutation_map.compressed(),
+                relevant=self.relevant,
+            )
 
     @dataclass
     class IterationState:
@@ -113,6 +116,10 @@ class Solver:
                 iteration=iterno,
             )
 
+            # If no transformations were made, then relevance won't have changed
+            if iteration_state.dirty:
+                mutator.mark_relevance(data.relevant)
+
             timings.add("setup")
             now = time.perf_counter()
             try:
@@ -159,7 +166,8 @@ class Solver:
             data=Solver.IterationData(
                 mutation_map=MutationMap.bootstrap(
                     tg=tg, g=g, relevant=relevant, initial_state=initial_state
-                )
+                ),
+                relevant=relevant,
             )
         )
 

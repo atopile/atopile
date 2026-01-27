@@ -197,31 +197,6 @@ def _list_to_hack_tree(
     return Tree({m: Tree() for m in modules})
 
 
-def _is_correlation_predicate(expr: "F.Expressions.is_expression") -> bool:
-    """
-    Check if an expression is a Correlated or Not(Correlated(...)) predicate.
-    These indicate statistical correlation, not constraint dependence.
-
-    TODO: method on is_expression to lookup trait on owner's type
-    """
-    if (node := fabll.Traits(expr).get_obj_raw()) is None:
-        return False
-
-    # Correlated(...)
-    if node.isinstance(F.Expressions.Correlated):
-        return True
-
-    # Not(Correlated(...))
-    # FIXME: more general method for compound exprs
-    if node.isinstance(F.Expressions.Not):
-        for op in expr.get_operands():
-            op_node = fabll.Traits(op).get_obj_raw()
-            if op_node is not None and op_node.isinstance(F.Expressions.Correlated):
-                return True
-
-    return False
-
-
 def find_independent_groups(
     modules: Iterable["F.Pickable.is_pickable"],
 ) -> list[set["F.Pickable.is_pickable"]]:
@@ -229,8 +204,8 @@ def find_independent_groups(
     Find groups of modules that are independent of each other.
 
     Independence is determined by transitive closure through predicates involving a
-    module's picked parameters. Picking a module in one component cannot influence the
-    constraints derivable for modules in other components.
+    module's picked parameters. Picking a module in one such graph component cannot
+    influence the constraints derivable for modules in other components.
 
     TODO: more aggressive splitting by examining predicate expressions
     """
@@ -264,7 +239,7 @@ def find_independent_groups(
             continue
 
         # Skip correlation predicates
-        if _is_correlation_predicate(expr):
+        if expr.is_non_constraining():
             continue
 
         params = {

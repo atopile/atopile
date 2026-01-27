@@ -1,8 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-
 import logging
 import math
+import string
 from itertools import pairwise
 from typing import Callable, cast
 
@@ -47,6 +47,13 @@ def _create_letters(
         ]
 
     app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+
+    def generate_letter():
+        yield from string.ascii_uppercase
+
+    for letter, p in zip(generate_letter(), app.params):
+        p.get().is_parameter.get().set_name(letter)
+
     params = [p.get().is_parameter_operatable.get() for p in app.params]
 
     return params
@@ -2664,3 +2671,263 @@ def test_solver_continuation_multi_pick_scenario():
             speedup = initial_time / avg_continuation
             print(f"{'Avg speedup':20s}: {speedup:8.2f}x")
     print("=====================================================\n")
+
+
+def test_inter_algorithm_relevance_filtering():
+    from faebryk.core.solver.algorithm import algorithm
+    from faebryk.core.solver.mutator import Mutator
+
+    E = BoundExpressions()
+
+    # Create two independent parameters with constraints
+    A, B = _create_letters(E, 2, units=E.U.Ohm)
+    A_op, B_op = A.as_operand.get(), B.as_operand.get()
+    E.is_subset(A_op, E.lit_op_range(((1, E.U.Ohm), (2, E.U.Ohm))), assert_=True)
+    B_constraint = E.is_subset(
+        B_op, E.lit_op_range(((3, E.U.Ohm), (4, E.U.Ohm))), assert_=True
+    )
+
+    relevant_pos = [B_op, B_constraint]
+
+    # Get all parameter operatables before filtering
+    all_pos_before = list(
+        fabll.Traits.get_implementors(
+            F.Parameters.is_parameter_operatable.bind_typegraph(E.tg), E.g
+        )
+    )
+
+    @algorithm(name="test")
+    def algo(mutator: Mutator):
+        pass
+
+    mutator = Mutator(
+        MutationMap._with_relevance_set(E.g, E.tg, [B_op], 0),
+        algo,
+        0,
+        False,
+    )
+    mutator.run()
+
+    all_pos_after = mutator.get_parameter_operatables(include_irrelevant=False)
+
+    for po in all_pos_after:
+        for mapped in mutator.mutation_map.map_backward(po):
+            assert mapped.as_operand.get() in relevant_pos, (
+                f"Expected {mapped.compact_repr()} to be in relevant_pos"
+            )
+
+    # Filtered count should be less than initial count
+    assert len(all_pos_after) < len(all_pos_before), (
+        f"Expected fewer operables after filtering. "
+        f"Initial: {len(all_pos_before)}, Filtered: {len(all_pos_after)}"
+    )
+
+
+def test_get_relevant_predicates_skips_non_constraining():
+    """
+    Test that get_relevant_predicates skips Correlated expressions when
+    computing the transitive closure of relevant predicates.
+
+    Correlated expressions indicate statistical correlation, not constraint
+    dependency, so they should not create edges in the relevance graph.
+    """
+    from faebryk.core.solver.utils import MutatorUtils
+
+    E = BoundExpressions()
+    A, B, C = _create_letters(E, 3, units=E.U.Ohm)
+    A_op, B_op, C_op = A.as_operand.get(), B.as_operand.get(), C.as_operand.get()
+
+    # A and B are correlated (non-constraining)
+    E.correlated(A_op, B_op, assert_=True)
+
+    # A has a constraint
+    E.is_subset(A_op, E.lit_op_range(((1, E.U.Ohm), (2, E.U.Ohm))), assert_=True)
+
+    # C = A + B (constraining relationship)
+    C_expr = E.add(A_op, B_op)
+    E.is_(C_op, C_expr, assert_=True)
+
+    # Get relevant predicates starting from A
+    relevant_preds = MutatorUtils.get_relevant_predicates(A_op)
+
+    # The Correlated predicate should NOT be in the relevant set
+    # because it's non-constraining
+    for pred in relevant_preds:
+        expr = pred.as_expression.get()
+        assert not expr.expr_isinstance(F.Expressions.Correlated), (
+            "Correlated should not be in relevant predicates"
+        )
+
+    # But the IsSubset and Is predicates should be there
+    has_is_subset = any(
+        pred.as_expression.get().expr_isinstance(F.Expressions.IsSubset)
+        for pred in relevant_preds
+    )
+    assert has_is_subset, "IsSubset should be in relevant predicates"
+
+
+def test_relevance_filtering_isolates_independent_subgraphs():
+    """
+    Test that relevance filtering correctly isolates independent constraint subgraphs.
+
+    When we have two independent constraint systems (A with its constraints,
+    B with its constraints), marking only A as relevant should mark B's entire
+    subgraph as irrelevant.
+    """
+    from faebryk.core.solver.algorithm import algorithm
+    from faebryk.core.solver.mutator import Mutator, is_irrelevant, is_relevant
+
+    E = BoundExpressions()
+    A, B, A2, B2 = _create_letters(E, 4, units=E.U.Ohm)
+    A_op, B_op, A2_op, B2_op = (
+        A.as_operand.get(),
+        B.as_operand.get(),
+        A2.as_operand.get(),
+        B2.as_operand.get(),
+    )
+
+    # Create independent constraint subgraph for A
+    E.is_subset(A_op, E.lit_op_range(((1, E.U.Ohm), (2, E.U.Ohm))), assert_=True)
+    E.is_(A2_op, E.multiply(A_op, E.lit_op_single((2, E.U.dl))), assert_=True)
+
+    # Create independent constraint subgraph for B
+    E.is_subset(B_op, E.lit_op_range(((3, E.U.Ohm), (4, E.U.Ohm))), assert_=True)
+    E.is_(B2_op, E.multiply(B_op, E.lit_op_single((3, E.U.dl))), assert_=True)
+
+    @algorithm(name="test")
+    def algo(mutator: Mutator):
+        pass
+
+    relevant_pos = [A_op]
+
+    mutator = Mutator(
+        MutationMap._identity(E.tg, E.g, 0),
+        algo,
+        0,
+        False,
+    )
+    mutator.mark_relevance(relevant_pos)
+
+    def _try_get_trait[T: fabll.NodeT](
+        po: F.Parameters.is_parameter_operatable, trait_t: type[T]
+    ) -> T | None:
+        mapped = mutator.mutation_map.map_forward(po).maps_to
+        if mapped is None:
+            return None
+
+        return mapped.try_get_sibling_trait(trait_t)
+
+    # A and A2 should be relevant
+    assert _try_get_trait(A, is_relevant) is not None, "A should be relevant"
+    assert _try_get_trait(A2, is_relevant) is not None, (
+        "A2 should be relevant (connected to A)"
+    )
+    assert _try_get_trait(A, is_irrelevant) is None, "A should NOT be irrelevant"
+    assert _try_get_trait(A2, is_irrelevant) is None, "A2 should NOT be irrelevant"
+
+    # B and B2 should NOT be relevant (independent subgraph)
+    assert _try_get_trait(B, is_relevant) is None, "B should NOT be relevant"
+    assert _try_get_trait(B2, is_relevant) is None, "B2 should NOT be relevant"
+    assert _try_get_trait(B, is_irrelevant) is not None, "B should be irrelevant"
+    assert _try_get_trait(B2, is_irrelevant) is not None, "B2 should be irrelevant"
+
+
+def test_is_irrelevant_trait_filtering_in_queries():
+    """
+    Test that the is_irrelevant trait is correctly used to filter operatables
+    in query operations.
+    """
+    from faebryk.core.solver.mutator import is_irrelevant
+
+    E = BoundExpressions()
+
+    # Create parameters
+    A = E.parameter_op(units=E.U.Ohm)
+    B = E.parameter_op(units=E.U.Ohm)
+
+    # Get parameter operatables
+    A_po = A.as_parameter_operatable.force_get()
+    B_po = B.as_parameter_operatable.force_get()
+
+    # Mark B as irrelevant
+    B_obj = fabll.Traits(B_po).get_obj_raw()
+    fabll.Traits.create_and_add_instance_to(B_obj, is_irrelevant)
+
+    # Verify B has the trait
+    assert B_po.try_get_sibling_trait(is_irrelevant) is not None, (
+        "B should have is_irrelevant trait"
+    )
+
+    # Verify A does NOT have the trait
+    assert A_po.try_get_sibling_trait(is_irrelevant) is None, (
+        "A should NOT have is_irrelevant trait"
+    )
+
+    # Query all parameter operatables with is_irrelevant
+    all_irrelevant = list(
+        fabll.Traits.get_implementor_siblings(
+            is_irrelevant.bind_typegraph(E.tg),
+            F.Parameters.is_parameter_operatable,
+            E.g,
+        )
+    )
+
+    # B should be in the irrelevant set
+    assert B_po in all_irrelevant, "B should be in irrelevant set"
+
+    # A should NOT be in the irrelevant set
+    assert A_po not in all_irrelevant, "A should NOT be in irrelevant set"
+
+    # Test filtering: get all operatables excluding irrelevant
+    all_pos = list(
+        fabll.Traits.get_implementors(
+            F.Parameters.is_parameter_operatable.bind_typegraph(E.tg), E.g
+        )
+    )
+    filtered_pos = [
+        po for po in all_pos if po.try_get_sibling_trait(is_irrelevant) is None
+    ]
+
+    assert A_po in filtered_pos, "A should be in filtered set"
+    assert B_po not in filtered_pos, "B should NOT be in filtered set"
+
+
+def test_is_non_constraining_method():
+    """
+    Test the is_non_constraining method on is_expression trait.
+
+    Correlated(...) and Not(Correlated(...)) should return True.
+    Regular predicates like Is, IsSubset should return False.
+    """
+    E = BoundExpressions()
+
+    A = E.parameter_op()
+    B = E.parameter_op()
+
+    # Create Correlated expression
+    corr = E.correlated(A, B)
+    corr_expr = corr.as_parameter_operatable.force_get().as_expression.force_get()
+    assert corr_expr.is_non_constraining(), "Correlated(...) should be non-constraining"
+
+    # Create Not(Correlated(...)) expression
+    not_corr = E.not_(corr, assert_=False)
+    not_corr_expr = (
+        not_corr.as_parameter_operatable.force_get().as_expression.force_get()
+    )
+    assert not_corr_expr.is_non_constraining(), (
+        "Not(Correlated(...)) should be non-constraining"
+    )
+
+    # Create regular IsSubset predicate - should NOT be non-constraining
+    is_subset_pred = E.is_subset(A, E.lit_op_range((1, 2)), assert_=True)
+    is_subset_expr = (
+        is_subset_pred.as_parameter_operatable.force_get().as_expression.force_get()
+    )
+    assert not is_subset_expr.is_non_constraining(), (
+        "IsSubset should NOT be non-constraining"
+    )
+
+    # Create Is predicate - should NOT be non-constraining
+    is_pred = E.is_(A, B, assert_=True)
+    is_pred_expr = is_pred.as_parameter_operatable.force_get().as_expression.force_get()
+    assert not is_pred_expr.is_non_constraining(), "Is should NOT be non-constraining"

@@ -66,6 +66,19 @@ class is_terminated(fabll.Node):
     is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
 
+class is_relevant(fabll.Node):
+    """
+    Explicitly marks op as relevant for solving (default is presumed-relevant, unless
+    marked otherwise).
+
+    Conflicts with is_irrelevant.
+    """
+
+    is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+    # TODO: check conflicts
+
+
 class is_irrelevant(fabll.Node):
     """
     Marks op as irrelevant for solving.
@@ -74,7 +87,7 @@ class is_irrelevant(fabll.Node):
 
     Used for removing subsumed, but mutated expressions.
     Can also be used for other stuff in the future.
-    TODO: implement in mutator
+    Conflicts with is_relevant.
     """
 
     is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
@@ -681,6 +694,25 @@ class MutationStage:
                 old += "\n\n" + repr(s)
             rows.append((old, "removed"))
 
+        # Detect relevance changes in mutated operatables
+        for s, d in self.transformations.mutated.items():
+            s_relevant = s.try_get_sibling_trait(is_relevant) is not None
+            d_relevant = d.try_get_sibling_trait(is_relevant) is not None
+            s_irrelevant = s.try_get_sibling_trait(is_irrelevant) is not None
+            d_irrelevant = d.try_get_sibling_trait(is_irrelevant) is not None
+
+            if not s_relevant and d_relevant:
+                rows.append(("→ relevant", ___repr_op(d)))
+            if not s_irrelevant and d_irrelevant:
+                rows.append(("→ irrelevant", ___repr_op(d)))
+
+        # Detect relevance on created operatables
+        for op in created_ops:
+            if op.try_get_sibling_trait(is_relevant) is not None:
+                rows.append(("→ relevant", ___repr_op(op)))
+            if op.try_get_sibling_trait(is_irrelevant) is not None:
+                rows.append(("→ irrelevant", ___repr_op(op)))
+
         if rows:
             rows_unique = Counter(rows)
             rows_sorted = sorted(rows_unique.items(), key=lambda t: t[0])
@@ -757,10 +789,6 @@ class MutationStage:
         return Traceback.Stage(
             srcs=srcs, dst=dst, reason=reason, related=related, algo=algo
         )
-
-
-class solver_relevant(fabll.Node):
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class MutationMap:
@@ -1072,16 +1100,15 @@ class MutationMap:
                 continue
 
             if (p_new_p := p_new.as_parameter.try_get()) is not None:
-                p_new_obj = fabll.Traits(p_new_p).get_obj_raw()
-                if not p_new_obj.has_trait(F.has_name_override):
-                    p_old_obj = fabll.Traits(p_old).get_obj_raw()
-                    if has_name := p_old_obj.try_get_trait(F.has_name_override):
-                        fabll.Traits.add_instance_to(
-                            node=p_new_obj, trait_instance=has_name.copy_into(g_out)
-                        )
-                    else:
-                        # Preserve the location-based name before it's lost
-                        p_new_p.set_name(p_old_obj.get_name())
+                p_old_p = p_old.as_parameter.force_get()
+                if not MutatorUtils.copy_trait(
+                    g=g_out,
+                    from_param=p_old_p,
+                    to_param=p_new_p,
+                    trait_t=F.has_name_override,
+                ):
+                    # Preserve the location-based name before it's lost
+                    p_new_p.set_name(p_old_p.get_name())
 
         nodes_uuids = {p.instance.node().get_uuid() for p in relevant}
 
@@ -1091,9 +1118,9 @@ class MutationMap:
                 F.Parameters.can_be_operand.bind_typegraph(tg_out)
             )
             if p.instance.node().get_uuid() in nodes_uuids
-            and not p.has_trait(solver_relevant)
+            and not p.has_trait(is_relevant)
         ):
-            fabll.Traits.create_and_add_instance_to(p_out, solver_relevant)
+            fabll.Traits.create_and_add_instance_to(p_out, is_relevant)
 
         if S_LOG:
             expr_count = len(
@@ -1367,6 +1394,8 @@ class AlgoResult:
 
 _EXPRESSION_BUILDER_TRAIT_ALLOWLIST: list[type[fabll.NodeT]] = [
     F.has_name_override,
+    is_relevant,
+    is_irrelevant,
 ]
 
 
@@ -1596,15 +1625,15 @@ class Mutator:
             )
 
         new_param_p = new_param.as_parameter.force_get()
-        new_param_obj = fabll.Traits(new_param_p).get_obj_raw()
-        if not new_param_obj.has_trait(F.has_name_override):
-            if has_name := param_obj.try_get_trait(F.has_name_override):
-                fabll.Traits.add_instance_to(
-                    node=new_param_obj, trait_instance=has_name.copy_into(self.G_out)
-                )
-            else:
-                # Preserve the location-based name before it's lost
-                new_param_p.set_name(param_obj.get_name())
+        if (
+            MutatorUtils.copy_trait(self.G_out, param, new_param_p, F.has_name_override)
+            is None
+        ):
+            # Preserve the location-based name before it's lost
+            new_param_p.set_name(param_obj.get_name())
+
+        for trait_t in [is_relevant, is_irrelevant]:
+            MutatorUtils.copy_trait(self.G_out, param, new_param_p, trait_t)
 
         return self._mutate(
             p_po,
@@ -1916,12 +1945,87 @@ class Mutator:
         else:
             self.transformations.terminated.add(expr)
 
+    def mark_relevant(self, po: F.Parameters.is_parameter_operatable):
+        if po.try_get_sibling_trait(is_relevant) is not None:
+            return
+        fabll.Traits.create_and_add_instance_to(
+            fabll.Traits(po).get_obj_raw(), is_relevant
+        )
+
     def mark_irrelevant(self, po: F.Parameters.is_parameter_operatable):
+        if po in self.transformations.removed:
+            raise ValueError(f"Cannot mark removed operatable as irrelevant: {po}")
+        if po in self.transformations.mutated:
+            raise ValueError(f"Cannot mark mutated operatable as irrelevant: {po}")
+
         if po.try_get_sibling_trait(is_irrelevant) is not None:
             return
         fabll.Traits.create_and_add_instance_to(
             fabll.Traits(po).get_obj_raw(), is_irrelevant
         )
+
+    def mark_relevance(
+        self, original_relevant: list[F.Parameters.can_be_operand] | None
+    ) -> None:
+        """
+        Compute and mark relevant and irrelevant operatables with is_relevant and
+        is_irrelevant traits.
+
+        Relevance is determined by inclusion in the graph component defined by the
+        transitive closure through predicates from the (forward-mapped) parameters
+        currently being solved for. Called at start of iteration when previous algorithm
+        was dirty.
+        """
+        if original_relevant is None:
+            # Everything is presumed relevant
+            return
+
+        # Map original_relevant parameters forward to current graph
+        current_relevant = [
+            maps_to.as_operand.get()
+            for op in original_relevant
+            if (po := op.as_parameter_operatable.try_get()) is not None
+            and (maps_to := self.mutation_map.map_forward(po).maps_to) is not None
+        ]
+
+        if not current_relevant:
+            return
+
+        relevant_predicates = MutatorUtils.get_relevant_predicates(*current_relevant)
+
+        relevant_pos = (
+            # relevant predicates
+            {
+                pred.as_expression.get().as_parameter_operatable.get()
+                for pred in relevant_predicates
+            }
+            # operands of relevant predicates
+            | {
+                po
+                for pred in relevant_predicates
+                for po in pred.as_expression.get().get_operands_with_trait(
+                    F.Parameters.is_parameter_operatable, recursive=True
+                )
+            }
+            # original relevant parameters
+            | {op.as_parameter_operatable.force_get() for op in current_relevant}
+        )
+
+        irrelevant_pos = (
+            self.get_parameter_operatables(include_terminated=True) - relevant_pos
+        )
+
+        if S_LOG:
+            logger.debug(
+                f"Marking {len(relevant_pos)} relevant operatables, "
+                f"{len(irrelevant_pos)} irrelevant operatables"
+            )
+
+        for po in relevant_pos:
+            self.mark_relevant(po)
+
+        for po in irrelevant_pos:
+            self.mark_irrelevant(po)
 
     # Algorithm Query ------------------------------------------------------------------
     def is_terminated(self, expr: F.Expressions.is_expression) -> bool:
@@ -1931,12 +2035,9 @@ class Mutator:
         )
 
     def get_parameter_operatables(
-        self, include_terminated: bool = False
-    ) -> (
-        list[F.Parameters.is_parameter_operatable]
-        | set[F.Parameters.is_parameter_operatable]
-    ):
-        out = set(
+        self, include_terminated: bool = False, include_irrelevant: bool = False
+    ) -> OrderedSet[F.Parameters.is_parameter_operatable]:
+        out = OrderedSet(
             fabll.Traits.get_implementors(
                 F.Parameters.is_parameter_operatable.bind_typegraph(self.tg_in),
                 self.G_in,
@@ -1950,6 +2051,14 @@ class Mutator:
                 self.G_in,
             )
             out.difference_update(terminated)
+
+        if not include_irrelevant:
+            irrelevant = fabll.Traits.get_implementor_siblings(
+                is_irrelevant.bind_typegraph(self.tg_in),
+                F.Parameters.is_parameter_operatable,
+                self.G_in,
+            )
+            out.difference_update(irrelevant)
 
         return out
 
@@ -1968,6 +2077,7 @@ class Mutator:
         t: type[T] = fabll.Node[Any],
         created_only: bool = False,
         include_terminated: bool = False,
+        include_irrelevant: bool = False,
         required_traits: tuple[type[fabll.NodeT], ...] = (),
         require_literals: bool = False,
         require_non_literals: bool = False,
@@ -2010,6 +2120,13 @@ class Mutator:
                 self.G_in,
             )
             out.difference_update(terminated)
+
+        if not include_irrelevant:
+            irrelevant = fabll.Traits.get_implementor_objects(
+                is_irrelevant.bind_typegraph(self.tg_in),
+                self.G_in,
+            )
+            out.difference_update(irrelevant)
 
         if required_traits and not (t is fabll.Node and len(required_traits) == 1):
             out = OrderedSet(
@@ -2129,8 +2246,8 @@ class Mutator:
 
         self._mutations_since_last_iteration = mutation_map.get_iteration_mutation(algo)
 
-        self._starting_operables = OrderedSet(
-            self.get_parameter_operatables(include_terminated=True)
+        self._starting_operables = self.get_parameter_operatables(
+            include_terminated=True, include_irrelevant=True
         )
 
         self.transformations = Transformations()
@@ -2145,20 +2262,20 @@ class Mutator:
 
     def _copy_unmutated(self):
         touched = self.transformations.mutated.keys() | self.transformations.removed
-        to_copy = [
-            fabll.Traits(p).get_obj_raw()
-            for p in (
-                set(self.get_parameter_operatables(include_terminated=True)) - touched
-            )
-        ]
-        for p in to_copy:
+        presumed_relevant_pos = self.get_parameter_operatables(include_irrelevant=False)
+        to_copy = presumed_relevant_pos - touched
+
+        for p in [fabll.Traits(p).get_obj_raw() for p in to_copy]:
             self.get_copy(p.get_trait(F.Parameters.can_be_operand))
 
     def check_no_illegal_mutations(self):
         # TODO should only run during dev
 
         # Check modifications to original graph
-        post_mut_nodes = set(self.get_parameter_operatables(include_terminated=True))
+        post_mut_nodes = self.get_parameter_operatables(
+            include_terminated=True, include_irrelevant=True
+        )
+
         removed = self._starting_operables.difference(
             post_mut_nodes, self.transformations.removed
         )
@@ -2175,6 +2292,17 @@ class Mutator:
             f"{self.__repr__(exclude_transformations=True)} untracked added "
             f"{indented_container(added_compact)}"
         )
+
+        for po in post_mut_nodes:
+            if po.try_get_sibling_trait(is_irrelevant) is not None:
+                assert po not in self.transformations.mutated, (
+                    f"{self.__repr__(exclude_transformations=True)} "
+                    f"mutated & irrelevant: {po.compact_repr()}"
+                )
+                assert not po.try_get_sibling_trait(is_relevant), (
+                    f"{self.__repr__(exclude_transformations=True)} "
+                    f"irrelevant & relevant: {po.compact_repr()}"
+                )
 
         # TODO check created pos in G_out that are not in mutations.created
 

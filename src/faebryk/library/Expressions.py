@@ -498,6 +498,33 @@ class is_expression(fabll.Node):
     def get_obj_type_node(self) -> graph.BoundNode:
         return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
 
+    def obj_has_trait[T: fabll.NodeT](self, trait: type[T]) -> T | None:
+        return fabll.Traits(self).get_obj_raw().try_get_trait(trait)
+
+    def obj_type_has_trait[T: fabll.NodeT](self, trait: type[T]) -> T | None:
+        return fabll.Traits(self).get_obj_raw().try_get_trait_of_type(trait)
+
+    def is_non_constraining(self) -> bool:
+        """
+        Check if this expression is non-constraining, i.e. does not create a dependency
+        between operands.
+
+        E.g. Correlated(...), Not(Correlated(...)) — these indicate statistical
+        correlation, not constraint dependence.
+        """
+        # Correlated(...)
+        if self.obj_type_has_trait(has_independent_operands):
+            return True
+
+        # e.g. Not(Correlated(...))
+        return all(
+            (is_expr := op.try_get_sibling_trait(is_expression)) is not None
+            and is_expr.obj_type_has_trait(has_independent_operands)
+            for op in self.get_operands()
+        )
+
+        # TODO: recurse to find deeper nesting, e.g. Not(Not(Correlated(...)))
+
     def get_uncorrelatable_literals(self) -> list[Literals.is_literal]:
         """
         Get all literals in this expression's operands that cannot be correlated.
@@ -960,6 +987,14 @@ class is_flattenable(fabll.Node):
 class is_involutory(fabll.Node):
     """
     f(f(x)) == x
+    """
+
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+
+class has_independent_operands(fabll.Node):
+    """
+    f(x, y) does not create a dependency between x and y when used in a predicate
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
@@ -3022,6 +3057,9 @@ class Correlated(fabll.Node):
     is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
     is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
     has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
+    has_independent_operands = fabll.Traits.MakeEdge(
+        has_independent_operands.MakeChild().put_on_type()
+    )
     is_setic = fabll.Traits.MakeEdge(is_setic.MakeChild())
 
     operands = OperandSet.MakeChild()

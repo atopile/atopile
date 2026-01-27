@@ -680,12 +680,10 @@ def test_find_groups_mixed_connected_and_independent():
     assert r3_group != r1_group
 
 
-def test_is_correlation_predicate_detection():
+def test_non_constraining_expr_detection():
     """
-    _is_correlation_predicate should detect Not(Correlated(...)) predicates.
+    is_non_constraining should detect Not(Correlated(...)) predicates.
     """
-    from faebryk.libs.picker.picker import _is_correlation_predicate
-
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     E = BoundExpressions(g=g, tg=tg)
@@ -698,13 +696,13 @@ def test_is_correlation_predicate_detection():
 
     not_expr = not_corr.as_parameter_operatable.force_get().as_expression.force_get()
 
-    assert _is_correlation_predicate(not_expr), (
+    assert not_expr.is_non_constraining(), (
         f"Failed to detect Not(Correlated(...)) predicate. "
         f"Expression type: {type(not_expr)}, operands: {list(not_expr.get_operands())}"
     )
 
     corr_expr = corr.as_parameter_operatable.force_get().as_expression.force_get()
-    assert _is_correlation_predicate(corr_expr), "Failed to detect Correlated predicate"
+    assert corr_expr.is_non_constraining(), "Failed to detect Correlated predicate"
 
 
 def test_find_groups_array_modules_independent():

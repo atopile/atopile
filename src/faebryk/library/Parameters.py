@@ -379,7 +379,15 @@ class is_parameter_operatable(fabll.Node):
         if subset is not None:
             subset_str = f"{{⊇|{format_lit(subset)}}}"
 
-        return f"{subset_str}{superset_str}"
+        from faebryk.core.solver.mutator import is_irrelevant, is_relevant
+
+        relevance_str = ""
+        if self.try_get_sibling_trait(is_relevant) is not None:
+            relevance_str += "★"
+        if self.try_get_sibling_trait(is_irrelevant) is not None:
+            relevance_str += "⊘"
+
+        return f"{subset_str}{superset_str}{relevance_str}"
 
 
 class is_parameter(fabll.Node):

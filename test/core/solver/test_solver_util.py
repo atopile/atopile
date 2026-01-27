@@ -16,6 +16,8 @@ from faebryk.core.solver.mutator import (
     MutationStage,
     Mutator,
     Transformations,
+    is_irrelevant,
+    is_relevant,
 )
 from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import (
@@ -395,6 +397,44 @@ def test_contradiction_message_superset():
 
     with pytest.raises(ContradictionByLiteral, match=r"P!\{⊆\|False\}"):
         solver.simplify(E.tg, E.g, terminal=True)
+
+
+def test_compact_repr_relevance_indicators():
+    """Test that compact_repr shows ★ for is_relevant and ⊘ for is_irrelevant."""
+    E = BoundExpressions()
+    variables = _create_letters(E, 3)
+    p_normal, p_relevant, p_irrelevant = variables
+
+    # Mark p_relevant as relevant
+    fabll.Traits.create_and_add_instance_to(
+        fabll.Traits(p_relevant).get_obj_raw(), is_relevant
+    )
+
+    # Mark p_irrelevant as irrelevant
+    fabll.Traits.create_and_add_instance_to(
+        fabll.Traits(p_irrelevant).get_obj_raw(), is_irrelevant
+    )
+
+    # Check compact_repr output
+    normal_repr = p_normal.compact_repr()
+    relevant_repr = p_relevant.compact_repr()
+    irrelevant_repr = p_irrelevant.compact_repr()
+
+    # Normal should have neither indicator
+    assert "★" not in normal_repr, f"Normal param should not have ★: {normal_repr}"
+    assert "⊘" not in normal_repr, f"Normal param should not have ⊘: {normal_repr}"
+
+    # Relevant should have ★ but not ⊘
+    assert "★" in relevant_repr, f"Relevant param should have ★: {relevant_repr}"
+    assert "⊘" not in relevant_repr, (
+        f"Relevant param should not have ⊘: {relevant_repr}"
+    )
+
+    # Irrelevant should have ⊘ but not ★
+    assert "⊘" in irrelevant_repr, f"Irrelevant param should have ⊘: {irrelevant_repr}"
+    assert "★" not in irrelevant_repr, (
+        f"Irrelevant param should not have ★: {irrelevant_repr}"
+    )
 
 
 if __name__ == "__main__":
