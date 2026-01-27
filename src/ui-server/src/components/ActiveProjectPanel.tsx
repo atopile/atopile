@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Package, CheckCircle2, XCircle, AlertCircle, AlertTriangle, Target } from 'lucide-react'
+import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Package, CheckCircle2, XCircle, AlertCircle, AlertTriangle, Target, ScrollText } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
 import type { QueuedBuild } from '../types/build'
+import { useStore } from '../store'
+import { sendAction } from '../api/websocket'
 import './ActiveProjectPanel.css'
 
 interface NewProjectData {
@@ -80,7 +82,7 @@ function getBuildCounter(buildId?: string): string | null {
   if (!buildId) return null
   const match = buildId.match(/^build-(\d+)-/)
   if (match) return `#${match[1]}`
-  return `#${buildId.slice(0, 8)}`
+  return `#${buildId}`
 }
 
 // Simple fuzzy match for project search
@@ -1344,6 +1346,22 @@ export function ActiveProjectPanel({
           >
             <Layout size={12} />
             <span>Layout</span>
+          </button>
+          <button
+            className="control-btn output-btn"
+            onClick={() => {
+              const targetBuilds = projectBuilds.filter(b => b.target === activeTargetName)
+              const latestBuild = targetBuilds.length > 0 ? targetBuilds[0] : projectBuilds[0]
+              if (latestBuild?.buildId) {
+                useStore.getState().setLogViewerBuildId(latestBuild.buildId)
+                sendAction('setLogViewCurrentId', { buildId: latestBuild.buildId })
+              }
+            }}
+            disabled={!activeProject || projectBuilds.length === 0}
+            title={projectBuilds.length > 0 ? 'View build logs' : 'No builds available'}
+          >
+            <ScrollText size={12} />
+            <span>Logs</span>
           </button>
         </div>
 

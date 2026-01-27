@@ -1246,8 +1246,19 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
         elif action == "toggleTargetExpanded":
             return {"success": False, "error": "toggleTargetExpanded is frontend-only"}
 
-        elif action == "selectBuild":
-            return {"success": False, "error": "selectBuild is frontend-only"}
+        elif action == "setLogViewCurrentId":
+            build_id = payload.get("buildId")
+            server_state.log_view_current_id = build_id
+            await server_state.emit_event(
+                "log_view_current_id_changed", {"buildId": build_id}
+            )
+            return {"success": True}
+
+        elif action == "getLogViewCurrentId":
+            return {
+                "success": True,
+                "buildId": server_state.log_view_current_id,
+            }
 
         elif action == "toggleProblemLevelFilter":
             return {
