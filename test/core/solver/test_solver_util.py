@@ -399,6 +399,76 @@ def test_contradiction_message_superset():
         solver.simplify(E.tg, E.g, terminal=True)
 
 
+def test_name_preserved_through_bootstrap_copy():
+    """Composition-based parameter names (no has_name_override) are preserved
+    when parameters are copied through the bootstrap relevance-set path.
+    """
+    E = BoundExpressions()
+
+    _domain = F.NumberDomain.Args(negative=True)
+
+    class _App(fabll.Node):
+        voltage = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl, domain=_domain)
+        current = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl, domain=_domain)
+
+    app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+    v_po = app.voltage.get().is_parameter_operatable.get()
+    i_po = app.current.get().is_parameter_operatable.get()
+
+    # Precondition: names come from composition, not has_name_override
+    assert not fabll.Traits(v_po).get_obj_raw().has_trait(F.has_name_override)
+    assert fabll.Traits(v_po).get_obj_raw().get_name() == "voltage"
+    assert fabll.Traits(i_po).get_obj_raw().get_name() == "current"
+
+    # Add a constraint so there's a predicate for the relevance set
+    v_op = v_po.as_operand.get()
+    E.is_subset(v_op, E.lit_op_range((1, 5)), assert_=True)
+
+    mutation_map = MutationMap._with_relevance_set(
+        g=E.g, tg=E.tg, relevant=[v_po.as_operand.get()]
+    )
+
+    fwd = mutation_map.map_forward(v_po)
+    assert fwd.maps_to is not None
+    new_p = fwd.maps_to.as_parameter.force_get()
+    actual_name = fabll.Traits(new_p).get_obj_raw().get_name()
+    assert actual_name == "voltage", f"Expected name 'voltage' but got '{actual_name}'"
+
+
+def test_name_preserved_through_mutate_parameter():
+    """Composition-based parameter names are preserved through mutate_parameter."""
+    E = BoundExpressions()
+
+    class _App(fabll.Node):
+        resistance = F.Parameters.NumericParameter.MakeChild(
+            unit=E.U.dl, domain=F.NumberDomain.Args(negative=True)
+        )
+
+    app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+    r_po = app.resistance.get().is_parameter_operatable.get()
+
+    # Precondition: name from composition only
+    assert not fabll.Traits(r_po).get_obj_raw().has_trait(F.has_name_override)
+    assert fabll.Traits(r_po).get_obj_raw().get_name() == "resistance"
+
+    results: dict[str, str] = {}
+
+    @algorithm("test")
+    def algo(mutator: Mutator):
+        r_p = r_po.as_parameter.force_get()
+        new_r = mutator.mutate_parameter(r_p)
+        new_obj = fabll.Traits(new_r).get_obj_raw()
+        results["resistance"] = new_obj.get_name()
+
+    Mutator(
+        MutationMap._identity(E.tg, E.g), algo=algo, iteration=0, terminal=False
+    ).run()
+
+    assert results["resistance"] == "resistance", (
+        f"Expected 'resistance' but got '{results['resistance']}'"
+    )
+
+
 def test_compact_repr_relevance_indicators():
     """Test that compact_repr shows ★ for is_relevant and ⊘ for is_irrelevant."""
     E = BoundExpressions()
