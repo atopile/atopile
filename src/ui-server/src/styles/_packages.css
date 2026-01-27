@@ -12,12 +12,12 @@
   justify-content: center;
   padding: var(--spacing-lg);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-md);
   gap: var(--spacing-xs);
 }
 
 .empty-hint {
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   color: var(--text-muted);
   opacity: 0.7;
 }
@@ -69,12 +69,12 @@
 
 .stdlib-filters .filter-btn.active {
   background: var(--accent);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 .stdlib-filters .filter-btn:not(:first-child).active {
   background: var(--filter-color);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 .stdlib-list {
@@ -329,12 +329,12 @@
 
 .stdlib-action-btn:hover {
   background: var(--accent);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 .stdlib-action-btn.primary {
-  background: var(--ctp-green);
-  color: var(--ctp-crust);
+  background: var(--success);
+  color: var(--text-on-status);
 }
 
 .stdlib-action-btn.primary:hover {

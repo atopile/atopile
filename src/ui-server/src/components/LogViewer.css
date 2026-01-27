@@ -368,6 +368,34 @@
   cursor: not-allowed;
 }
 
+/* ID Row - displays test run ID or build ID */
+.lv-id-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) 0;
+  margin-top: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.lv-id-label {
+  color: var(--text-muted);
+}
+
+.lv-id-value {
+  color: var(--ctp-blue);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Error */
 .lv-error {
   margin-top: var(--spacing-sm);
@@ -931,4 +959,61 @@
 .lv-trace-python .lv-trace-content {
   color: var(--text-muted);
   background: rgba(108, 112, 134, 0.1);
+}
+
+/* Simple log row for TestLogViewer */
+.lv-log-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: 3px var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.lv-log-row:hover {
+  background: var(--bg-secondary);
+}
+
+.lv-log-row:last-child {
+  border-bottom: none;
+}
+
+.lv-log-row.error {
+  background: rgba(243, 139, 168, 0.08);
+}
+
+.lv-log-row.error:hover {
+  background: rgba(243, 139, 168, 0.12);
+}
+
+.lv-log-row.warning {
+  background: rgba(249, 226, 175, 0.05);
+}
+
+.lv-log-row.warning:hover {
+  background: rgba(249, 226, 175, 0.08);
+}
+
+.lv-log-row .lv-ts {
+  flex-shrink: 0;
+  min-width: 50px;
+}
+
+.lv-log-row .lv-level-badge {
+  flex-shrink: 0;
+}
+
+.lv-log-row .lv-source-badge {
+  flex-shrink: 0;
+  max-width: 100px;
+}
+
+.lv-log-row .lv-message {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
 }

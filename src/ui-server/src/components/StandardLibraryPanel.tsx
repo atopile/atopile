@@ -1,24 +1,28 @@
 import { useState } from 'react'
 import {
   ChevronDown, ChevronRight, Search, Box, Zap, Cpu,
-  Cable, Copy, Hash
+  Cable, Hash
 } from 'lucide-react'
+import { CopyableCodeBlock } from './shared'
 
 // Standard library item types
 type StdLibType = 'interface' | 'module' | 'component' | 'trait' | 'parameter'
 
 // Child/field in an interface or module
+// Backend uses to_frontend_dict() which converts snake_case to camelCase
 interface StdLibChild {
   name: string
   type: string  // The type name (e.g., "Electrical", "ElectricLogic")
   itemType?: StdLibType  // Whether it's interface, parameter, etc.
+  item_type?: StdLibType  // Backend may send snake_case.
   children?: StdLibChild[]
   enumValues?: string[] // For EnumParameter types, the possible values
 }
 
 // Helper to get item type from child
 function getChildItemType(child: StdLibChild): StdLibType {
-  return child.itemType || 'interface'
+  // Backend sends camelCase via to_frontend_dict()
+  return child.itemType || child.item_type || 'interface'
 }
 
 const typeConfig: Record<StdLibType, { icon: typeof Box; color: string; label: string }> = {
@@ -64,14 +68,6 @@ function StdLibCard({
   const config = typeConfig[item.type]
   const Icon = config.icon
 
-  const handleCopy = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-    } catch (error) {
-      console.warn('Failed to copy usage text', error)
-    }
-  }
-
   const renderChild = (child: StdLibChild, path: string) => {
     const hasChildren = (child.children?.length ?? 0) > 0
     const isExpanded = expandedPaths.has(path)
@@ -110,22 +106,22 @@ function StdLibCard({
   }
 
   const hasChildren = (item.children?.length ?? 0) > 0
+  const isExpandable = hasChildren || Boolean(item.description || item.usage)
 
   return (
-    <div className={`stdlib-card${isSelected ? ' selected' : ''}`} onClick={onSelect}>
-      <div className="stdlib-card-header">
-        {hasChildren && (
+    <div className={`stdlib-card${isSelected ? ' selected' : ''}`}>
+      <div className="stdlib-card-header" onClick={onSelect}>
+        {isExpandable ? (
           <span className="stdlib-expand-icon">
             {isSelected ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           </span>
+        ) : (
+          <span className="stdlib-expand-spacer" />
         )}
         <span className="stdlib-type-icon" style={{ color: config.color }}>
-          <Icon size={14} />
+          <Icon size={12} />
         </span>
         <span className="stdlib-card-name">{item.name}</span>
-        <span className="stdlib-type-badge" style={{ background: config.color, color: 'var(--ctp-base)' }}>
-          {config.label}
-        </span>
       </div>
 
       {/* Only show details when card is selected (expanded) */}
@@ -141,16 +137,11 @@ function StdLibCard({
 
           {item.usage && (
             <div className="stdlib-card-usage">
-              <div className="usage-header">
-                <span>Usage</span>
-                <button className="copy-btn" onClick={(e) => {
-                  e.stopPropagation()
-                  handleCopy(item.usage || '')
-                }} title="Copy to clipboard">
-                  <Copy size={12} />
-                </button>
-              </div>
-              <pre className="usage-code">{item.usage}</pre>
+              <CopyableCodeBlock
+                label="usage.ato"
+                code={item.usage}
+                highlightAto
+              />
             </div>
           )}
         </>

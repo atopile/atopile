@@ -148,7 +148,14 @@ def _index_module_layouts(tg: fbrk.TypeGraph) -> "dict[graph.BoundNode, set[Path
 
             for build in project_config.builds.values():
                 with atopile.exceptions.downgrade(Exception, logger=logger):
-                    if type_node := modules_by_address.get(AddrStr(build.address)):
+                    # entry_file_path is resolved relative to the package's root.
+                    # We need to make it relative to the main project root to match
+                    # the keys in modules_by_address.
+                    entry_path = build.entry_file_path.relative_to(
+                        config.project.paths.root
+                    )
+                    match_addr = AddrStr.from_parts(entry_path, build.entry_section)
+                    if type_node := modules_by_address.get(match_addr):
                         entries[type_node].add(build.paths.layout)
 
     return entries

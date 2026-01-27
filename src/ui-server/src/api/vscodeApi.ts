@@ -102,9 +102,15 @@ export interface SetAtopileInstallingMessage {
   error?: string | null;
 }
 
+export interface ActiveFileMessage {
+  type: 'activeFile';
+  filePath: string | null;
+}
+
 export type ExtensionToWebviewMessage =
   | TriggerBuildMessage
-  | SetAtopileInstallingMessage;
+  | SetAtopileInstallingMessage
+  | ActiveFileMessage;
 
 // Callback type for extension message handlers
 type ExtensionMessageHandler = (message: ExtensionToWebviewMessage) => void;
@@ -133,7 +139,11 @@ export function initExtensionMessageListener(): void {
     if (!message || typeof message !== 'object') return;
 
     // Handle messages from extension (triggerBuild, setAtopileInstalling, etc.)
-    if (message.type === 'triggerBuild' || message.type === 'setAtopileInstalling') {
+    if (
+      message.type === 'triggerBuild' ||
+      message.type === 'setAtopileInstalling' ||
+      message.type === 'activeFile'
+    ) {
       for (const handler of extensionMessageHandlers) {
         handler(message as ExtensionToWebviewMessage);
       }

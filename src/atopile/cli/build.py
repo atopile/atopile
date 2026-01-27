@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-import pickle
 import queue
-import struct
 import subprocess
 import sys
 import threading
@@ -20,12 +18,12 @@ from typing_extensions import Annotated
 
 from atopile.buildutil import generate_build_id
 from atopile.dataclasses import (
+    Build,
     BuildReport,
     BuildStatus,
     ProjectState,
     StageCompleteEvent,
     StageStatus,
-    StageStatusEvent,
 )
 from atopile.logging import NOW, get_logger
 from atopile.logging_utils import status_rich_icon, status_rich_text
@@ -128,12 +126,7 @@ class BuildProcess:
         self.errors: int = 0
         self._error_reported: bool = False  # Track if error was already printed
         self._stage_history: list[StageCompleteEvent] = []
-        self._stage_start_time: float = 0.0
-        self._current_stage_id: str = ""
         self._stage_finalized: bool = False
-        self._event_rfd: int | None = None
-        self._event_wfd: int | None = None
-        self._event_buffer: bytes = b""
         self._stage_printer: (
             Callable[[StageCompleteEvent, Path | None], None] | None
         ) = None
@@ -141,8 +134,6 @@ class BuildProcess:
 
     def start(self) -> None:
         """Start the build subprocess."""
-        self._setup_event_pipe()
-
         # Build the command - run ato build for just this target
         cmd = [
             sys.executable,
@@ -153,10 +144,9 @@ class BuildProcess:
             self.name,
         ]
 
-        # Copy environment and set IPC channels for worker subprocess
+        # Copy environment and set worker mode
         env = os.environ.copy()
-        if self._event_wfd is not None:
-            env["ATO_BUILD_EVENT_FD"] = str(self._event_wfd)
+        env["ATO_BUILD_WORKER"] = "1"
 
         # Use existing timestamp/build_id if passed from server, otherwise generate
         # This ensures server-triggered builds use consistent IDs across workers
@@ -218,18 +208,16 @@ class BuildProcess:
             cmd,
             cwd=self.project_root,
             env=env,
-            pass_fds=self._get_pass_fds(),
             preexec_fn=preexec_fn,
         )
-        self._close_event_pipe_in_parent()
 
     def poll(self) -> int | None:
         """Check if process has finished. Returns exit code or None if still running."""
         if self.process is None:
             return None
 
-        # Read current stage from event pipe
-        self._read_event_pipe()
+        # Read stage progress from the build history DB
+        self._read_stages_from_db()
 
         ret = self.process.poll()
         if ret is not None and self.return_code is None:
@@ -241,87 +229,45 @@ class BuildProcess:
     def _finalize_stage_history(self) -> None:
         if self._stage_finalized:
             return
-        self._read_event_pipe()
-        if self._event_rfd is not None:
-            try:
-                os.close(self._event_rfd)
-            except OSError:
-                pass
-            self._event_rfd = None
+        self._read_stages_from_db()
         self._stage_finalized = True
 
-    def _setup_event_pipe(self) -> None:
+    def _read_stages_from_db(self) -> None:
+        """Read stage data from the build history database."""
+        if not self.build_id:
+            return
         try:
-            rfd, wfd = os.pipe()
-            os.set_blocking(rfd, False)
-            os.set_inheritable(wfd, True)
-            self._event_rfd = rfd
-            self._event_wfd = wfd
+            from atopile.model.build_history import get_build_info_by_id
+
+            build_info = get_build_info_by_id(self.build_id)
+            if not build_info:
+                return
+            stages = build_info.stages or []
+            if len(stages) <= len(self._stage_history):
+                return  # No new stages
+
+            # Convert new DB stages to StageCompleteEvent objects
+            for stage_dict in stages[len(self._stage_history) :]:
+                event = StageCompleteEvent(
+                    duration=stage_dict.get("elapsed_seconds", 0.0),
+                    status=StageStatus(stage_dict.get("status", "success")),
+                    infos=stage_dict.get("infos", 0),
+                    warnings=stage_dict.get("warnings", 0),
+                    errors=stage_dict.get("errors", 0),
+                    alerts=stage_dict.get("alerts", 0),
+                    log_name=stage_dict.get("stage_id", ""),
+                    description=stage_dict.get("name", ""),
+                )
+                self.warnings += event.warnings
+                self.errors += event.errors
+                self._stage_history.append(event)
+                if self._stage_printer:
+                    self._stage_printer(
+                        event,
+                        self._stage_info_log_path(event.log_name),
+                    )
         except Exception:
-            self._event_rfd = None
-            self._event_wfd = None
-
-    def _get_pass_fds(self) -> tuple[int, ...]:
-        if self._event_wfd is None:
-            return ()
-        return (self._event_wfd,)
-
-    def _close_event_pipe_in_parent(self) -> None:
-        if self._event_wfd is None:
-            return
-        try:
-            os.close(self._event_wfd)
-        except OSError:
-            pass
-        self._event_wfd = None
-
-    def _read_event_pipe(self) -> None:
-        if self._event_rfd is None:
-            return
-        while True:
-            try:
-                chunk = os.read(self._event_rfd, 4096)
-            except BlockingIOError:
-                break
-            except OSError:
-                break
-            if not chunk:
-                break
-            self._event_buffer += chunk
-            while True:
-                if len(self._event_buffer) < 4:
-                    break
-                event_len = struct.unpack(">I", self._event_buffer[:4])[0]
-                if len(self._event_buffer) < 4 + event_len:
-                    break
-                payload = self._event_buffer[4 : 4 + event_len]
-                self._event_buffer = self._event_buffer[4 + event_len :]
-                event = pickle.loads(payload)
-
-                if isinstance(event, StageStatusEvent):
-                    stage_display = event.description
-                    if event.total and event.total > 1:
-                        stage_display = (
-                            f"{event.description} {event.progress}/{event.total}"
-                        )
-
-                    if event.name and event.name != self._current_stage_id:
-                        self._stage_start_time = time.time()
-                        self._current_stage_id = event.name
-
-                    if stage_display and stage_display != self.current_stage:
-                        self.current_stage = stage_display
-                    continue
-
-                if isinstance(event, StageCompleteEvent):
-                    self.warnings += event.warnings
-                    self.errors += event.errors
-                    self._stage_history.append(event)
-                    if self._stage_printer:
-                        self._stage_printer(
-                            event, self._stage_info_log_path(event.log_name)
-                        )
-                    continue
+            pass  # Don't fail polling if DB read fails
 
     def _stage_info_log_path(self, stage_name: str) -> Path | None:
         """Return the log path for a build (central SQLite database)."""
@@ -350,9 +296,9 @@ class BuildProcess:
 
         parts = [_format_stage_entry(e) for e in self._stage_history]
         if include_current and self.is_running and self.current_stage:
-            elapsed = (
-                time.time() - self._stage_start_time if self._stage_start_time else 0.0
-            )
+            # Approximate current stage time from total elapsed minus completed
+            completed_time = sum(e.duration for e in self._stage_history)
+            elapsed = max(0.0, self.elapsed - completed_time)
             icon, color = _STATUS_STYLE[StageStatus.RUNNING]
             parts.append(
                 f"[{color}]{icon} {self.current_stage} [{elapsed:.1f}s][/{color}]"
@@ -399,10 +345,8 @@ class BuildProcess:
             return BuildStatus.QUEUED
         elif self.return_code is None:
             return BuildStatus.BUILDING
-        elif self.return_code == 0:
-            return BuildStatus.WARNING if self.warnings > 0 else BuildStatus.SUCCESS
         else:
-            return BuildStatus.FAILED
+            return BuildStatus.from_return_code(self.return_code, self.warnings)
 
     def terminate(self) -> None:
         """Terminate the build process."""
@@ -840,38 +784,36 @@ class ParallelBuildManager:
 
     def _write_live_summary(self) -> None:
         """Write per-target build status to the build history database."""
-        from atopile.model import build_history
+        from atopile.model.sqlite import BuildHistory
 
-        # Skip if DB not initialized (should be initialized before manager creation)
-        if not build_history.get_build_history_db():
-            return
+        _FINISHED = {
+            BuildStatus.SUCCESS,
+            BuildStatus.FAILED,
+            BuildStatus.CANCELLED,
+            BuildStatus.WARNING,
+        }
 
         for bp in self.processes.values():
             if not bp.build_id:
                 continue
 
-            # Get build data
             data = self._get_build_data(bp)
 
-            # Create or update the build record
-            # bp.status is already a BuildStatus enum
-            build_history.create_build_record(
+            row = Build(
                 build_id=bp.build_id,
+                name=bp.name,
+                display_name=bp.display_name,
                 project_root=str(bp.project_root.resolve()),
                 target=bp.name,
-                entry=None,  # Entry not stored in BuildProcess
-                status=bp.status,  # Use BuildStatus enum directly
-                timestamp=self._now,
-            )
-
-            # Update with current state
-            build_history.update_build_status(
-                build_id=bp.build_id,
-                status=bp.status,  # Use BuildStatus enum directly
-                stages=data.get("stages"),
+                status=bp.status,
+                started_at=bp.start_time or time.time(),
+                stages=data.get("stages", []),
                 warnings=data.get("warnings", 0),
                 errors=data.get("errors", 0),
+                completed_at=time.time() if bp.status in _FINISHED else None,
             )
+
+            BuildHistory.set(row)
 
     def run_until_complete(self) -> dict[str, int]:
         """
@@ -1037,9 +979,11 @@ class ParallelBuildManager:
             build_id_str = f" (build_id= {bp.build_id})" if bp.build_id else ""
             # Add newline after header in verbose mode for cleaner stage output
             newline = "\n" if print_headers else ""
-            console.print(
-                f"[bold cyan]▶ Building {display_name}{build_id_str}[/bold cyan]{newline}"
+            header = (
+                f"[bold cyan]▶ Building {display_name}{build_id_str}[/bold cyan]"
+                f"{newline}"
             )
+            console.print(header)
             if stage_printer is not None:
                 bp.set_stage_printer(stage_printer)
             bp.start()
@@ -1173,11 +1117,13 @@ def _run_single_build() -> None:
     """
     Run a single build target (worker mode).
 
-    This is called when IPC env vars are set by the parent process.
+    This is called when ATO_BUILD_WORKER is set by the parent process.
+    Stages are written to the build history DB as they complete.
     """
     from atopile import buildutil
     from atopile.buildutil import BuildStepContext
     from atopile.config import config
+    from atopile.model.sqlite import BuildHistory
 
     # Get the single build target from config
     build_names = list(config.selected_builds)
@@ -1190,8 +1136,11 @@ def _run_single_build() -> None:
 
     from atopile.cli.excepthook import install_worker_excepthook
 
-    # Read build_id from environment (passed by server subprocess)
+    # Read build_id from environment (passed by parent process)
     build_id = os.environ.get("ATO_BUILD_ID")
+
+    # Initialize build history DB so the worker can write stages
+    BuildHistory.init_db()
 
     # Create build context to track completed stages
     ctx = BuildStepContext(build=None, build_id=build_id)
@@ -1200,46 +1149,10 @@ def _run_single_build() -> None:
         install_worker_excepthook()
         buildutil.build(ctx=ctx)
 
-        # Emit completed stages via IPC
-        _emit_completed_stages(ctx.completed_stages)
-
     # Note: BuildLogger.close_all() is registered as an atexit handler,
     # so logs will be flushed during process shutdown. We don't call it
     # explicitly here because the excepthook needs to log errors AFTER
     # any exceptions occur, and close_all() would close the writer too early.
-
-
-def _emit_completed_stages(stages: list) -> None:
-    """Emit completed stages via IPC to the parent process."""
-    import os
-    import pickle
-    import struct
-
-    event_fd = os.environ.get("ATO_BUILD_EVENT_FD")
-    if not event_fd:
-        return
-
-    try:
-        fd = int(event_fd)
-    except ValueError:
-        return
-
-    for stage in stages:
-        try:
-            event = StageCompleteEvent(
-                duration=stage.elapsed_seconds,
-                status=stage.status,
-                infos=stage.infos,
-                warnings=stage.warnings,
-                errors=stage.errors,
-                alerts=stage.alerts,
-                log_name=stage.stage_id,
-                description=stage.name,
-            )
-            payload = pickle.dumps(event)
-            os.write(fd, struct.pack(">I", len(payload)) + payload)
-        except Exception:
-            pass  # Don't fail the build if we can't emit stages
 
 
 def _build_all_projects(
@@ -1310,18 +1223,10 @@ def _build_all_projects(
         jobs,
     )
 
-    # Initialize build history database (central location alongside build_logs.db)
-    from atopile.model import build_history
-    from faebryk.libs.paths import get_log_dir
+    # Initialize build history database
+    from atopile.model.sqlite import BuildHistory
 
-    db_path = os.environ.get("ATO_BUILD_HISTORY_DB")
-    if db_path:
-        build_history.init_build_history_db(Path(db_path))
-    else:
-        # CLI mode: use central log directory
-        default_db_path = get_log_dir() / "build_history.db"
-        default_db_path.parent.mkdir(parents=True, exist_ok=True)
-        build_history.init_build_history_db(default_db_path)
+    BuildHistory.init_db()
 
     # Create and run parallel build manager
     manager = ParallelBuildManager(
@@ -1449,7 +1354,7 @@ def build(
         faulthandler.enable()
 
     # Worker mode - run single build directly (no config needed yet)
-    if os.environ.get("ATO_BUILD_EVENT_FD"):
+    if os.environ.get("ATO_BUILD_WORKER"):
         config.apply_options(
             entry=entry,
             selected_builds=selected_builds,
@@ -1528,18 +1433,10 @@ def build(
         (name, project_root, None) for name in build_names
     ]
 
-    # Initialize build history database (central location alongside build_logs.db)
-    from atopile.model import build_history
-    from faebryk.libs.paths import get_log_dir
+    # Initialize build history database
+    from atopile.model.sqlite import BuildHistory
 
-    db_path = os.environ.get("ATO_BUILD_HISTORY_DB")
-    if db_path:
-        build_history.init_build_history_db(Path(db_path))
-    else:
-        # CLI mode: use central log directory
-        default_db_path = get_log_dir() / "build_history.db"
-        default_db_path.parent.mkdir(parents=True, exist_ok=True)
-        build_history.init_build_history_db(default_db_path)
+    BuildHistory.init_db()
 
     # Create and run parallel build manager
     manager = ParallelBuildManager(

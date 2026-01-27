@@ -9,7 +9,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.config import BuildType, config
-from atopile.dataclasses import CompletedStage
+from atopile.dataclasses import BuildStage
 from atopile.errors import UserToolNotAvailableError
 from atopile.exceptions import accumulate
 from atopile.logging import get_logger
@@ -66,7 +66,7 @@ class BuildStepContext:
     pcb: F.PCB | None = None
     stage: str | None = None
     build_id: str | None = None  # Build ID from server (via ATO_BUILD_ID env var)
-    completed_stages: list[CompletedStage] = field(default_factory=list)
+    completed_stages: list[BuildStage] = field(default_factory=list)
     _stage_start_time: float = field(default=0.0, repr=False)
 
     def require_build(self) -> BuildContext:
@@ -90,6 +90,29 @@ class BuildStepContext:
         if self.pcb is None:
             raise RuntimeError("PCB is not initialized")
         return self.pcb
+
+    def flush_stages_to_db(self) -> None:
+        """Write current stages to the build history database."""
+        if not self.build_id:
+            return
+        try:
+            from atopile.dataclasses import Build, BuildStatus
+            from atopile.model.sqlite import BuildHistory
+
+            stages = [s.model_dump(by_alias=True) for s in self.completed_stages]
+            BuildHistory.set(
+                Build(
+                    build_id=self.build_id,
+                    name=config.build.name,
+                    display_name=config.build.name,
+                    project_root=str(config.project.paths.root),
+                    target=config.build.name,
+                    status=BuildStatus.BUILDING,
+                    stages=stages,
+                )
+            )
+        except Exception:
+            pass  # Don't fail the build if DB write fails
 
 
 @once

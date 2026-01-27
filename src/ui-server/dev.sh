@@ -137,7 +137,6 @@ summary_file.write_text('{"builds": [], "totals": {}}')
 
 app = create_app(
     summary_file=summary_file,
-    logs_base=Path('/tmp'),
     workspace_path=workspace_path,
 )
 

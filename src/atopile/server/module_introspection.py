@@ -22,10 +22,19 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-# Cache for module TypeGraphs (entry_point -> (g, tg, type_node))
-_module_typegraph_cache: dict[
-    str, tuple["graph.GraphView", "fbrk.TypeGraph", "graph.BoundNode"]
-] = {}
+def _clear_type_caches_for_file(
+    file_path: Path, import_path: str | None = None
+) -> None:
+    """Clear type name cache entries for a file to avoid stale module names."""
+    import faebryk.core.node as fabll
+
+    prefixes = {str(file_path.resolve()) + "::"}
+    if import_path:
+        prefixes.add(import_path + "::")
+
+    for type_id in list(fabll.Node._seen_types):
+        if any(type_id.startswith(prefix) for prefix in prefixes):
+            del fabll.Node._seen_types[type_id]
 
 
 def _get_item_type(
@@ -289,13 +298,6 @@ def introspect_module(
     import faebryk.core.graph as graph
     from atopile.compiler.build import build_file
 
-    cache_key = f"{project_root}:{entry_point}"
-
-    # Check cache
-    if cache_key in _module_typegraph_cache:
-        g, tg, type_node = _module_typegraph_cache[cache_key]
-        return _extract_children_from_typegraph(tg, type_node, max_depth=max_depth)
-
     # Parse entry point
     if ":" not in entry_point:
         log.warning("Invalid entry point format: %s", entry_point)
@@ -307,6 +309,8 @@ def introspect_module(
     if not file_path.exists():
         log.warning("File not found: %s", file_path)
         return None
+
+    _clear_type_caches_for_file(file_path, file_part)
 
     try:
         # Create TypeGraph
@@ -322,12 +326,7 @@ def introspect_module(
         )
 
         # Find the type node for the requested module
-        type_node = None
-        for name, node in result.state.type_roots.items():
-            if name == module_name:
-                type_node = node
-                break
-
+        type_node = result.state.type_roots.get(module_name)
         if type_node is None:
             log.warning("Module %s not found in %s", module_name, file_path)
             return None
@@ -353,9 +352,6 @@ def introspect_module(
             # Linking is optional - continue without it
             log.debug("Import linking skipped: %s", link_exc)
 
-        # Cache the result
-        _module_typegraph_cache[cache_key] = (g, tg, type_node)
-
         # Extract children
         return _extract_children_from_typegraph(tg, type_node, max_depth=max_depth)
 
@@ -366,8 +362,8 @@ def introspect_module(
 
 def clear_module_cache() -> None:
     """Clear the module TypeGraph cache."""
-    global _module_typegraph_cache
-    _module_typegraph_cache = {}
+    # No module-level cache to clear; kept for API compatibility.
+    return
 
 
 def introspect_module_definition(

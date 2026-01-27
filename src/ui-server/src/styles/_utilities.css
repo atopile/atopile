@@ -22,7 +22,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all var(--transition-fast);
   min-width: 80px;
@@ -126,6 +126,12 @@
   overflow: visible !important;
 }
 
+.section-body:has(.projects-panel-v2) {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Ensure the problems panel specifically allows dropdown overflow */
 .collapsible-section:has(.problems-panel) .section-body {
   overflow: visible;
@@ -175,7 +181,7 @@
   background: transparent;
   border: none;
   color: var(--text-primary);
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   outline: none;
 }
 
@@ -213,7 +219,7 @@
   padding: 5px 8px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   transition: background var(--transition-fast);
 }
@@ -237,7 +243,7 @@
 }
 
 .selector-check {
-  color: var(--ctp-green);
+  color: var(--success);
   flex-shrink: 0;
 }
 
@@ -255,7 +261,7 @@
   padding: 4px 6px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   transition: background var(--transition-fast);
 }
@@ -311,17 +317,17 @@
   height: 14px;
   padding: 0 3px;
   border-radius: 7px;
-  font-size: 9px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
 }
 
 .selector-count.error {
-  background: rgba(243, 139, 168, 0.2);
+  background: rgba(var(--ctp-red-rgb), 0.2);
   color: var(--error);
 }
 
 .selector-count.warning {
-  background: rgba(249, 226, 175, 0.2);
+  background: rgba(var(--ctp-yellow-rgb), 0.2);
   color: var(--warning);
 }
 
@@ -340,7 +346,7 @@
   padding: 3px 6px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   transition: background var(--transition-fast);
 }
@@ -359,13 +365,30 @@
   color: var(--text-primary);
 }
 
+.selector-build-project {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  min-width: 80px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .selector-build-entry {
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--font-size-xs);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.selector-build-meta {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  padding-left: 4px;
+  flex-shrink: 0;
 }
 
 /* Status icons */
@@ -374,7 +397,7 @@
 }
 
 .selector-build-row .status-icon.success {
-  color: var(--ctp-green);
+  color: var(--success);
 }
 
 .selector-build-row .status-icon.error {
@@ -400,7 +423,7 @@
   padding: 2px 6px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 9px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   transition: background var(--transition-fast);
 }
@@ -445,7 +468,7 @@
   padding: 12px;
   text-align: center;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-sm);
 }
 
 /* Compact mode */
@@ -464,7 +487,7 @@
   padding: 8px 12px;
   margin: 8px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-md);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -478,4 +501,99 @@
 .connection-status.error {
   background: rgba(243, 139, 168, 0.1);
   color: var(--ctp-red);
+}
+
+/* ==========================================
+   Toast Notifications (Sonner)
+   Styled to match the UI theme
+   ========================================== */
+
+/* Base toast styling */
+[data-sonner-toaster] {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+}
+
+[data-sonner-toast] {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-sm) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 4px 12px var(--shadow-color) !important;
+  padding: var(--spacing-xs) var(--spacing-sm) !important;
+  font-size: var(--font-size-xs) !important;
+  min-height: auto !important;
+}
+
+/* Status-specific left border accent */
+[data-sonner-toast][data-type="success"] {
+  border-left: 3px solid var(--success) !important;
+}
+
+[data-sonner-toast][data-type="error"] {
+  border-left: 3px solid var(--error) !important;
+}
+
+[data-sonner-toast][data-type="warning"] {
+  border-left: 3px solid var(--warning) !important;
+}
+
+[data-sonner-toast][data-type="info"] {
+  border-left: 3px solid var(--info) !important;
+}
+
+/* Toast title */
+[data-sonner-toast] [data-title] {
+  color: var(--text-primary) !important;
+  font-weight: 500 !important;
+  font-size: var(--font-size-sm) !important;
+}
+
+/* Toast description */
+[data-sonner-toast] [data-description] {
+  color: var(--text-secondary) !important;
+  font-size: var(--font-size-xs) !important;
+}
+
+/* Toast icon colors */
+[data-sonner-toast][data-type="success"] [data-icon] {
+  color: var(--success) !important;
+}
+
+[data-sonner-toast][data-type="error"] [data-icon] {
+  color: var(--error) !important;
+}
+
+[data-sonner-toast][data-type="warning"] [data-icon] {
+  color: var(--warning) !important;
+}
+
+[data-sonner-toast][data-type="info"] [data-icon] {
+  color: var(--info) !important;
+}
+
+/* Close button */
+[data-sonner-toast] [data-close-button] {
+  background: transparent !important;
+  border: 1px solid var(--border-subtle) !important;
+  color: var(--text-muted) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+[data-sonner-toast] [data-close-button]:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Action button */
+[data-sonner-toast] [data-button] {
+  background: var(--accent) !important;
+  color: white !important;
+  border-radius: var(--radius-sm) !important;
+  font-size: var(--font-size-xs) !important;
+  padding: var(--spacing-xs) var(--spacing-sm) !important;
+}
+
+[data-sonner-toast] [data-button]:hover {
+  background: var(--accent-hover) !important;
 }

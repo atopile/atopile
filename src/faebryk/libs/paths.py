@@ -9,7 +9,7 @@ from pathlib import Path
 
 import platformdirs
 
-from faebryk.libs.util import once
+from faebryk.libs.util import once, robustly_rm_dir
 
 
 @once
@@ -71,6 +71,14 @@ def get_cache_dir() -> Path:
 
 def get_log_dir() -> Path:
     return Path(platformdirs.user_log_dir("atopile", ensure_exists=True))
+
+
+def remove_log_dir() -> bool:
+    try:
+        robustly_rm_dir(get_log_dir())
+        return True
+    except Exception:
+        return False
 
 
 def get_log_file(name: str) -> Path:

@@ -5,7 +5,6 @@
 
 import { useState, useMemo } from 'react';
 import { AlertCircle, AlertTriangle, FileCode, ChevronDown, ChevronRight, Search, X } from 'lucide-react';
-import { ProjectDropdown, type ProjectOption } from './ProjectDropdown';
 import './ProblemsPanel.css';
 
 interface Problem {
@@ -25,9 +24,6 @@ interface Problem {
 
 interface ProblemsPanelProps {
   problems: Problem[];
-  projects?: ProjectOption[];
-  selectedProjectRoot?: string | null;
-  onSelectProject?: (projectRoot: string | null) => void;
   onProblemClick?: (problem: Problem) => void;
 }
 
@@ -57,9 +53,6 @@ function groupByFile(problems: Problem[]): Map<string, Problem[]> {
 
 export function ProblemsPanel({
   problems,
-  projects = [],
-  selectedProjectRoot,
-  onSelectProject,
   onProblemClick,
 }: ProblemsPanelProps) {
   // Track collapsed file groups
@@ -80,8 +73,6 @@ export function ProblemsPanel({
 
   const errorCount = filteredProblems.filter(p => p.level === 'error').length;
   const grouped = useMemo(() => groupByFile(filteredProblems), [filteredProblems]);
-
-  const hasProjects = projects.length > 0;
 
   const toggleFileCollapse = (file: string) => {
     setCollapsedFiles(prev => {
@@ -132,16 +123,6 @@ export function ProblemsPanel({
           )}
         </div>
 
-        {/* Project dropdown */}
-        {hasProjects && onSelectProject && (
-          <ProjectDropdown
-            projects={projects}
-            selectedProjectRoot={selectedProjectRoot}
-            onSelectProject={onSelectProject}
-            showAllOption={true}
-            allOptionLabel="All projects"
-          />
-        )}
       </div>
     </div>
   );
@@ -153,7 +134,7 @@ export function ProblemsPanel({
         <div className="problems-empty-state">
           <AlertCircle size={24} className="problems-empty-icon" />
           <span className="problems-empty-text">
-            {hasNoMatches ? 'No matching problems' : 'No problems'}
+            {hasNoMatches ? 'No matching problems' : 'No problems for the active project'}
           </span>
         </div>
       </div>

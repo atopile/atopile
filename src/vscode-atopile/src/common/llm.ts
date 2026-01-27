@@ -5,13 +5,22 @@ import { loadResource } from './resources';
 import { dedent, indent } from './utilities';
 import { getAtopileWorkspaceFolders, install_mcp_server, install_rule } from './vscodeapi';
 
-export async function llm_setup_rules_and_mcp_server() {
+const AUTO_SETUP_KEY = 'llm.autoSetup';
+
+function is_auto_setup_enabled(workspace?: vscode.WorkspaceFolder): boolean {
+    return vscode.workspace.getConfiguration('atopile', workspace?.uri).get<boolean>(AUTO_SETUP_KEY, false);
+}
+
+export async function llm_setup_rules_and_mcp_server(workspaces?: readonly vscode.WorkspaceFolder[]) {
     const ato_bin = await getAtoBin();
     if (!ato_bin) {
         return;
     }
 
-    const workspaces = await getAtopileWorkspaceFolders();
+    const target_workspaces = workspaces ?? (await getAtopileWorkspaceFolders());
+    if (!target_workspaces.length) {
+        return;
+    }
 
     traceInfo('Installing ato rule');
     install_rule(
@@ -22,7 +31,7 @@ export async function llm_setup_rules_and_mcp_server() {
             alwaysApply: true,
             text: build_rules(),
         },
-        workspaces,
+        target_workspaces,
     );
 
     traceInfo('Installing atopile MCP server');
@@ -33,7 +42,7 @@ export async function llm_setup_rules_and_mcp_server() {
             args: [...ato_bin.command.slice(1), 'mcp', 'start', '--no-http'],
             env: {},
         },
-        workspaces,
+        target_workspaces,
     );
 }
 
@@ -107,20 +116,44 @@ function build_rules() {
 }
 
 export async function activate(context: vscode.ExtensionContext) {
-    // on-startup
-    await llm_setup_rules_and_mcp_server();
+    const auto_setup_if_enabled = async () => {
+        const workspaces = await getAtopileWorkspaceFolders();
+        const enabled_workspaces = workspaces.filter((workspace) => is_auto_setup_enabled(workspace));
+        if (!enabled_workspaces.length) {
+            traceInfo('LLM auto-setup disabled');
+            return;
+        }
+        await llm_setup_rules_and_mcp_server(enabled_workspaces);
+    };
+
+    // on-startup (only if enabled)
+    await auto_setup_if_enabled();
 
     context.subscriptions.push(
         // on-command
         vscode.commands.registerCommand('atopile.llm.setup', llm_setup_rules_and_mcp_server),
         // if workspace folder added
         vscode.workspace.onDidChangeWorkspaceFolders(async () => {
-            await llm_setup_rules_and_mcp_server();
+            await auto_setup_if_enabled();
         }),
         // if ato.yaml created
         vscode.workspace.onDidCreateFiles(async (e) => {
             if (e.files.some((f) => f.fsPath.endsWith('ato.yaml'))) {
-                await llm_setup_rules_and_mcp_server();
+                const enabled_workspaces = new Set<vscode.WorkspaceFolder>();
+                for (const file of e.files) {
+                    if (!file.fsPath.endsWith('ato.yaml')) {
+                        continue;
+                    }
+                    const workspace = vscode.workspace.getWorkspaceFolder(file);
+                    if (workspace && is_auto_setup_enabled(workspace)) {
+                        enabled_workspaces.add(workspace);
+                    }
+                }
+                if (enabled_workspaces.size) {
+                    await llm_setup_rules_and_mcp_server(Array.from(enabled_workspaces));
+                } else {
+                    traceInfo('LLM auto-setup disabled');
+                }
             }
         }),
     );

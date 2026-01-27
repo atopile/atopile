@@ -30,6 +30,9 @@ class EventType(str, Enum):
     # Configuration changes
     ATOPILE_CONFIG_CHANGED = "atopile_config_changed"
 
+    # Shared UI state
+    LOG_VIEW_CURRENT_ID_CHANGED = "log_view_current_id_changed"
+
     # Action requests (frontend should handle)
     OPEN_LAYOUT = "open_layout"
     OPEN_KICAD = "open_kicad"

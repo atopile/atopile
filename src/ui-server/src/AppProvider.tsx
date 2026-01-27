@@ -11,6 +11,7 @@
  */
 
 import React, { ReactNode, useEffect } from 'react';
+import { Toaster } from 'sonner';
 import { useConnection } from './hooks/useConnection';
 import { sendAction } from './api/websocket';
 import { initUILogger } from './ui-logger';
@@ -28,24 +29,35 @@ export function AppProvider({ children }: AppProviderProps) {
   useEffect(() => {
     initUILogger();
   }, []);
+
+  // Handle workspace folders from VS Code extension
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
-      const data = event?.data as { type?: string; root?: unknown };
-      if (data?.type === 'workspace-root') {
-        const root = typeof data.root === 'string' && data.root.length > 0 ? data.root : null;
-        (window as { __ATOPILE_WORKSPACE_ROOT__?: string }).__ATOPILE_WORKSPACE_ROOT__ =
-          root || undefined;
-        const folders = root ? [root] : [];
-        sendAction('setWorkspaceFolders', { folders });
-        return;
-      }
+      const data = event?.data as { type?: string; folders?: unknown };
+      if (data?.type !== 'workspace-folders') return;
+      if (!Array.isArray(data.folders)) return;
+      // Update injected workspace folders for future reads
+      (window as { __ATOPILE_WORKSPACE_FOLDERS__?: string[] }).__ATOPILE_WORKSPACE_FOLDERS__ =
+        data.folders as string[];
+      sendAction('setWorkspaceFolders', { folders: data.folders as string[] });
     }
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  return <>{children}</>;
+  return (
+    <>
+      <Toaster
+        position="bottom-left"
+        closeButton
+        toastOptions={{
+          duration: 5000,
+        }}
+      />
+      {children}
+    </>
+  );
 }
 
 /**

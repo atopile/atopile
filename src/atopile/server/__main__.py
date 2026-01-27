@@ -9,6 +9,7 @@ Starts the dashboard server for the atopile extension.
 
 import argparse
 import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -43,12 +44,6 @@ def main():
         help="Workspace path to scan for projects (can be specified multiple times)",
     )
     parser.add_argument(
-        "--logs-dir",
-        type=str,
-        default=None,
-        help="Directory for build logs (default: current directory)",
-    )
-    parser.add_argument(
         "--force",
         "-f",
         action="store_true",
@@ -56,13 +51,13 @@ def main():
     )
     args = parser.parse_args()
 
-    # Determine logs directory
-    if args.logs_dir:
-        logs_base = Path(args.logs_dir)
-    else:
-        logs_base = Path.cwd() / "build" / "logs"
-
-    logs_base.mkdir(parents=True, exist_ok=True)
+    repo_root = Path(__file__).resolve().parents[3]
+    gen_script = repo_root / "scripts" / "generate_types.py"
+    ui_server_dir = repo_root / "src" / "ui-server"
+    if gen_script.exists() and ui_server_dir.exists():
+        result = subprocess.run([sys.executable, str(gen_script)], cwd=str(repo_root))
+        if result.returncode != 0:
+            sys.exit(result.returncode)
 
     # Convert workspace path (use first provided or cwd)
     workspace_path = Path(args.workspace[0]) if args.workspace else Path.cwd()
@@ -95,13 +90,11 @@ def main():
 
     # Create and start server
     server = DashboardServer(
-        logs_base=logs_base,
         port=port,
         workspace_path=workspace_path,
     )
 
     print(f"Starting dashboard server on http://localhost:{port}")
-    print(f"Logs directory: {logs_base}")
     print(f"Workspace path: {workspace_path}")
     print("Press Ctrl+C to stop")
 

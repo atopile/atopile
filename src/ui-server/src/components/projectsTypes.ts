@@ -77,6 +77,8 @@ export interface Project {
   // Project-level last build status (aggregate of all targets)
   lastBuildStatus?: 'success' | 'warning' | 'failed' | 'error';
   lastBuildTimestamp?: string;
+  // Usage example content (from usage.ato file if available)
+  usageContent?: string;
 }
 
 // Module definition from API

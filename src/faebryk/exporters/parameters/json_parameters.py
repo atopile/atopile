@@ -12,14 +12,17 @@ import json
 import logging
 import os
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Sequence
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.solver import Solver
 
 logger = logging.getLogger(__name__)
+
+CURRENT_TIME = datetime.now().isoformat(timespec="seconds")
 
 
 # Variable types matching the VariablesPanel.tsx types
@@ -37,6 +40,9 @@ VariableType = Literal[
 
 # Source of the variable value
 VariableSource = Literal["user", "derived", "picked", "datasheet"]
+
+# Export format options
+ExportFormat = Literal["json", "markdown", "txt"]
 
 
 @dataclass
@@ -79,6 +85,124 @@ class JSONVariablesOutput:
 
     def to_json(self, indent: int = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent)
+
+    def _flatten_nodes(
+        self, nodes: list[VariableNode], parent_path: str = ""
+    ) -> list[tuple[str, Variable]]:
+        """
+        Flatten a hierarchical node tree into a list of (path, variable) tuples.
+
+        Args:
+            nodes: List of VariableNode to flatten
+            parent_path: Parent path prefix for building full paths
+
+        Returns:
+            List of (full_path, Variable) tuples
+        """
+        result: list[tuple[str, Variable]] = []
+        for node in nodes:
+            current_path = f"{parent_path}.{node.name}" if parent_path else node.name
+            for var in node.variables:
+                result.append((current_path, var))
+            result.extend(self._flatten_nodes(node.children, current_path))
+        return result
+
+    def to_markdown(self, add_timestamp: bool = True) -> str:
+        """
+        Convert a JSONVariablesOutput to a markdown table string.
+        The table includes columns for: Module, Parameter, Spec, Actual, Unit, Source.
+
+        Returns:
+            A markdown formatted table string
+        """
+        flat = self._flatten_nodes(self.nodes)
+
+        md = "# Variables Report"
+        if add_timestamp:
+            md += f"\n\ngenerated on: {CURRENT_TIME}"
+        if self.build_id:
+            md += f"\n\nbuild_id: {self.build_id}"
+        md += "\n\n"
+        md += "| Module | Parameter | Spec | Actual | Unit | Source |\n"
+        md += "| --- | --- | --- | --- | --- | --- |\n"
+
+        # Group by module path for cleaner output
+        current_module = ""
+        for path, var in sorted(flat, key=lambda x: (x[0], x[1].name)):
+            # Escape pipe characters in values
+            def escape(s: str | None) -> str:
+                return str(s).replace("|", "\\|") if s else ""
+
+            # Build spec string with tolerance
+            spec = escape(var.spec)
+            if var.specTolerance:
+                spec += f" {escape(var.specTolerance)}"
+
+            # Build actual string with tolerance
+            actual = escape(var.actual) if var.actual else ""
+            if var.actualTolerance:
+                actual += f" {escape(var.actualTolerance)}"
+
+            # Show module name only on first parameter of each module
+            module_cell = f"`{escape(path)}`" if path != current_module else ""
+            current_module = path
+
+            md += (
+                f"| {module_cell} | "
+                f"`{escape(var.name)}` | "
+                f"`{spec}` | "
+                f"`{actual}` | "
+                f"`{escape(var.unit)}` | "
+                f"{escape(var.source)} |\n"
+            )
+
+        return md
+
+    def to_txt(self, add_timestamp: bool = True) -> str:
+        """
+        Convert a JSONVariablesOutput to a plain text string.
+        The output is formatted with module paths as headers and indented
+        parameter details below each module.
+
+        Returns:
+            A plain text formatted string
+        """
+        flat = self._flatten_nodes(self.nodes)
+
+        # Group variables by module path
+        by_module: dict[str, list[Variable]] = {}
+        for path, var in flat:
+            if path not in by_module:
+                by_module[path] = []
+            by_module[path].append(var)
+
+        txt = "# Variables Report"
+        if add_timestamp:
+            txt += f"\n\ngenerated on: {CURRENT_TIME}"
+        if self.build_id:
+            txt += f"\nbuild_id: {self.build_id}"
+        txt += "\n\n"
+        for module_path in sorted(by_module.keys()):
+            variables = by_module[module_path]
+            txt += f"{module_path}\n"
+            for var in sorted(variables, key=lambda v: v.name):
+                # Build value string
+                value = var.spec or ""
+                if var.specTolerance:
+                    value += f" {var.specTolerance}"
+                if var.unit and var.unit not in value:
+                    value += f" [{var.unit}]"
+
+                # Add actual value if present and different from spec
+                if var.actual and var.actual != var.spec:
+                    actual_str = var.actual
+                    if var.actualTolerance:
+                        actual_str += f" {var.actualTolerance}"
+                    value += f" (actual: {actual_str})"
+
+                txt += f"    {var.name}: {value}\n"
+
+        return txt
 
 
 def _get_variable_type_from_unit(unit_str: str | None) -> VariableType:
@@ -634,26 +758,43 @@ def make_json_variables(
     return JSONVariablesOutput(build_id=build_id, nodes=pruned_roots)
 
 
-def write_json_variables(
+def write_variables_to_file(
     app: fabll.Node,
     solver: Solver,
     path: Path,
     build_id: str | None = None,
+    formats: Sequence[ExportFormat] = ("json",),
 ) -> None:
-    """Write a JSON variables report to a file.
+    """Write a variables report to file(s) in the specified format(s).
 
     Args:
         app: The application root node
         solver: The solver used for parameter resolution
-        path: Output file path
+        path: Output file path (extension will be replaced based on format)
         build_id: Build ID from server (links to build history)
+        formats: List of export formats to write (json, markdown, txt)
     """
     if not path.parent.exists():
         os.makedirs(path.parent)
 
     output = make_json_variables(app, solver, build_id=build_id)
 
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(output.to_json())
+    # Map formats to file extensions and content generators
+    format_config: dict[ExportFormat, tuple[str, str]] = {
+        "json": (".json", output.to_json()),
+        "markdown": (".md", output.to_markdown()),
+        "txt": (".txt", output.to_txt()),
+    }
 
-    logger.info(f"Wrote JSON variables to {path}")
+    for fmt in formats:
+        if fmt not in format_config:
+            logger.warning(f"Unknown export format: {fmt}")
+            continue
+
+        ext, content = format_config[fmt]
+        output_path = path.with_suffix(ext)
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        logger.info(f"Wrote {fmt} variables to {output_path}")

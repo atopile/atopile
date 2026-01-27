@@ -31,6 +31,12 @@ interface BuildQueuePanelProps {
 
 // Format seconds to human readable duration
 function formatDuration(seconds: number): string {
+  if (seconds < 1) {
+    return `${seconds.toFixed(2)}s`;
+  }
+  if (seconds < 10) {
+    return `${seconds.toFixed(1)}s`;
+  }
   if (seconds < 60) {
     return `${Math.floor(seconds)}s`;
   }

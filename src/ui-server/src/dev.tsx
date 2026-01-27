@@ -5,6 +5,7 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import type { Root } from 'react-dom/client';
 import { AppProvider } from './AppProvider';
 import { Sidebar } from './components/Sidebar';
 import { LogViewer } from './components/LogViewer';
@@ -31,9 +32,13 @@ function DevLayout() {
   );
 }
 
-const root = document.getElementById('root');
-if (root) {
-  ReactDOM.createRoot(root).render(
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  const existingRoot = (window as Window & { __ATOPILE_ROOT_DEV__?: Root })
+    .__ATOPILE_ROOT_DEV__;
+  const root = existingRoot ?? ReactDOM.createRoot(rootElement);
+  (window as Window & { __ATOPILE_ROOT_DEV__?: Root }).__ATOPILE_ROOT_DEV__ = root;
+  root.render(
     <React.StrictMode>
       <AppProvider>
         <DevLayout />

@@ -99,7 +99,7 @@
 .type-filter-btn.active {
   background: var(--ctp-blue);
   border-color: var(--ctp-blue);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 /* BOM type badge */
@@ -307,7 +307,7 @@
 }
 
 .detail-cell-value.in-stock {
-  color: var(--ctp-green);
+  color: var(--success);
 }
 
 .detail-cell-value.out-of-stock {
@@ -365,7 +365,7 @@
 }
 
 .lcsc-link .copy-icon.copied {
-  color: var(--ctp-green);
+  color: var(--success);
   opacity: 1;
 }
 
@@ -458,7 +458,7 @@
 }
 
 .bom-detail-item .copy-icon.copied {
-  color: var(--ctp-green);
+  color: var(--success);
   opacity: 1;
 }
 
@@ -800,7 +800,7 @@
 .source-badge {
   padding: 1px 5px;
   border-radius: 3px;
-  font-size: 8px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   text-transform: uppercase;
   white-space: nowrap;
@@ -808,18 +808,18 @@
 }
 
 .source-badge.picked {
-  background: var(--ctp-green);
-  color: var(--ctp-crust);
+  background: var(--success);
+  color: var(--text-on-status);
 }
 
 .source-badge.specified {
-  background: var(--ctp-blue);
-  color: var(--ctp-crust);
+  background: var(--info);
+  color: var(--text-on-status);
 }
 
 .source-badge.manual {
   background: var(--ctp-mauve);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 /* Where used section */
@@ -1061,8 +1061,8 @@
   align-items: center;
   gap: 4px;
   padding: 6px 12px;
-  background: var(--ctp-green);
-  color: var(--ctp-crust);
+  background: var(--success);
+  color: var(--text-on-status);
   border-radius: var(--radius-md);
   font-size: 11px;
   animation: fadeIn 0.2s ease;

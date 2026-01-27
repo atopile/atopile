@@ -678,24 +678,46 @@ class ProjectDependencies:
                 dep.add_to_manifest()
                 _log_pin_package(dep.identifier, dep.cfg.package.version)
 
+    def _clear_all_installed_packages(self) -> None:
+        """
+        Remove all installed package directories from the modules folder.
+
+        Preserves hidden directories (like .cache) but removes all owner/package
+        directories. This ensures a clean slate for dependency resolution.
+        """
+        module_dir = self.pcfg.paths.modules
+        if not module_dir.exists():
+            return
+
+        for owner_dir in module_dir.iterdir():
+            # Skip hidden directories (e.g., .cache)
+            if owner_dir.name.startswith("."):
+                continue
+            if not owner_dir.is_dir():
+                continue
+            # Remove the entire owner directory (contains all packages from that owner)
+            robustly_rm_dir(owner_dir)
+
     def _update_manifest_versions(self) -> bool:
         """
         Update registry dependency specs in the manifest to their latest
         compatible versions. Returns True if any specs were changed.
 
-        Removes all installed registry dep directories so that
-        resolve_dependencies() downloads fresh copies instead of loading
-        potentially broken old configs.
+        Removes ALL installed package directories (including transitive
+        dependencies) so that resolve_dependencies() downloads fresh copies.
+        This ensures nested dependencies are updated when their parent's
+        required version changes.
         """
+        # Clear all installed packages first - this ensures transitive
+        # dependencies are also removed and will be re-downloaded with
+        # the correct versions required by their updated parents.
+        self._clear_all_installed_packages()
+
         api = PackagesAPIClient()
         dirty = False
         for dep in self.direct_deps:
             if not isinstance(dep.spec, config.RegistryDependencySpec):
                 continue
-            # Remove old installed directory unconditionally — the installed
-            # copy may have a broken config even if the version hasn't changed.
-            if dep.target_path.exists():
-                robustly_rm_dir(dep.target_path)
             # Pass None to get the latest compatible release (fallback behavior)
             latest_version = _select_compatible_registry_release(
                 api, dep.spec.identifier, None

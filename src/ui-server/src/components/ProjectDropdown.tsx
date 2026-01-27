@@ -1,6 +1,6 @@
 /**
  * ProjectDropdown - Reusable project selector dropdown.
- * Used across BOM, Variables, and Problems panels.
+ * Legacy component (no longer used in core panels after UI refactor).
  */
 
 import { useState, useRef, useEffect } from 'react';

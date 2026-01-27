@@ -8,9 +8,10 @@
 import { useState, useEffect } from 'react'
 import { Package, ChevronDown, ChevronRight, X, Loader2 } from 'lucide-react'
 import { ProjectCard } from './ProjectCard'
-import { api } from '../api/client'
+import { sendActionWithResponse } from '../api/websocket'
 import { compareVersionsDesc } from '../utils/packageUtils'
 import type { FileTreeNode } from './FileExplorer'
+import type { BuildTarget as ProjectBuildTarget } from '../types/build'
 import type { Project, Selection } from './projectsTypes'
 import './DependencyCard.css'
 
@@ -24,15 +25,19 @@ export interface ProjectDependency {
   hasUpdate?: boolean;
   isDirect?: boolean;
   via?: string[];
+  installedPath?: string;  // Absolute path where dependency is installed
+  summary?: string;  // Package summary/description from ato.yaml
+  usageContent?: string;  // Content of usage.ato if it exists
+  license?: string;  // License from ato.yaml package section
+  homepage?: string;  // Homepage URL from ato.yaml package section
 }
 
 // Convert a ProjectDependency to a Project for use with ProjectCard
-// parentProjectRoot is used to compute the actual filesystem path for installed dependencies
-function dependencyToProject(dependency: ProjectDependency, parentProjectRoot?: string): Project {
-  // Dependencies are installed at <parent_root>/.ato/modules/<package_id>/
-  const root = parentProjectRoot
-    ? `${parentProjectRoot}/.ato/modules/${dependency.identifier}`
-    : dependency.identifier;
+// Uses installedPath from backend if available, otherwise falls back to identifier
+function dependencyToProject(dependency: ProjectDependency): Project {
+  // Use the actual installed path from the backend
+  // If not installed (installedPath is null), fall back to identifier
+  const root = dependency.installedPath || dependency.identifier;
 
   return {
     id: dependency.identifier,
@@ -43,14 +48,18 @@ function dependencyToProject(dependency: ProjectDependency, parentProjectRoot?: 
     latestVersion: dependency.latestVersion,
     publisher: dependency.publisher,
     repository: dependency.repository,
-    builds: [],  // Will be fetched by ProjectCard
+    summary: dependency.summary,
+    usageContent: dependency.usageContent,
+    license: dependency.license,
+    homepage: dependency.homepage,
+    builds: [],  // Will be fetched via fetchBuilds when expanded
   };
 }
 
 interface DependencyItemProps {
   dependency: ProjectDependency;
-  parentProjectRoot?: string;  // Root path of parent project (for computing dependency path)
   projectFilesByRoot?: Record<string, FileTreeNode[]>;
+  projectBuildsByRoot?: Record<string, ProjectBuildTarget[]>;  // Builds for installed dependencies
   availableVersions?: string[];
   onVersionChange?: (identifier: string, newVersion: string) => void;
   onRemove?: (identifier: string) => void;
@@ -63,8 +72,8 @@ interface DependencyItemProps {
 
 function DependencyItem({
   dependency,
-  parentProjectRoot,
   projectFilesByRoot,
+  projectBuildsByRoot = {},
   availableVersions = [],
   onVersionChange,
   onRemove,
@@ -101,7 +110,7 @@ function DependencyItem({
   };
 
   // Convert dependency to Project for ProjectCard
-  const dependencyAsProject = dependencyToProject(dependency, parentProjectRoot);
+  const dependencyAsProject = dependencyToProject(dependency);
 
   const handleClick = (e: React.MouseEvent) => {
     if (allowExpand) {
@@ -214,6 +223,7 @@ function DependencyItem({
             isExpanded={true}
             onExpandChange={() => {}}
             projectFiles={projectFilesByRoot?.[dependencyAsProject.root] || []}
+            projectBuildsByRoot={projectBuildsByRoot}
             onFileClick={onFileClick ? (_projectId, filePath) => onFileClick(dependencyAsProject.root, filePath) : undefined}
           />
         </div>
@@ -225,8 +235,8 @@ function DependencyItem({
 interface DependencyCardProps {
   dependencies: ProjectDependency[];
   projectId: string;
-  projectRoot?: string;  // Root path of project (for computing dependency paths)
   projectFilesByRoot?: Record<string, FileTreeNode[]>;
+  projectBuildsByRoot?: Record<string, ProjectBuildTarget[]>;  // Builds for installed dependencies
   onVersionChange?: (projectId: string, identifier: string, newVersion: string) => void;
   onRemove?: (projectId: string, identifier: string) => void;
   // Read-only mode for packages: hides version selector and remove button
@@ -235,15 +245,15 @@ interface DependencyCardProps {
   allowExpand?: boolean;
   onProjectExpand?: (projectRoot: string) => void;
   onFileClick?: (projectId: string, filePath: string) => void;
-  // IDs of dependencies currently being updated (format: projectRoot:dependencyId)
+  // IDs of dependencies currently being updated (format: projectId:dependencyId)
   updatingDependencyIds?: string[];
 }
 
 export function DependencyCard({
   dependencies,
   projectId,
-  projectRoot,
   projectFilesByRoot,
+  projectBuildsByRoot = {},
   onVersionChange,
   onRemove,
   readOnly = false,
@@ -280,7 +290,9 @@ export function DependencyCard({
         setLoadingVersions(prev => new Set(prev).add(dep.identifier));
 
         try {
-          const details = await api.packages.details(dep.identifier);
+          const response = await sendActionWithResponse('getPackageDetails', { packageId: dep.identifier });
+          const result = response.result ?? {};
+          const details = (result as { details?: { versions?: { version: string }[] } }).details;
 
           if (details?.versions && details.versions.length > 0) {
             const versions = details.versions
@@ -349,8 +361,8 @@ export function DependencyCard({
               <DependencyItem
                 key={dep.identifier}
                 dependency={dep}
-                parentProjectRoot={projectRoot}
                 projectFilesByRoot={projectFilesByRoot}
+                projectBuildsByRoot={projectBuildsByRoot}
                 availableVersions={fetchedVersions}
                 onVersionChange={(id, v) => onVersionChange?.(projectId, id, v)}
                 onRemove={(id) => onRemove?.(projectId, id)}
@@ -373,8 +385,8 @@ export function DependencyCard({
                 <DependencyItem
                   key={dep.identifier}
                   dependency={dep}
-                  parentProjectRoot={projectRoot}
                   projectFilesByRoot={projectFilesByRoot}
+                  projectBuildsByRoot={projectBuildsByRoot}
                   readOnly={true}
                   allowExpand={allowExpand}
                   onProjectExpand={onProjectExpand}

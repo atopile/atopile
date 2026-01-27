@@ -12,11 +12,11 @@ from typing import Optional
 import yaml
 
 from atopile.dataclasses import (
+    Build,
     BuildStatus,
     BuildTarget,
     BuildTargetStatus,
     FileTreeNode,
-    HistoricalBuild,
     ModuleDefinition,
     Project,
 )
@@ -30,7 +30,7 @@ def _load_last_build_for_target(
 ) -> Optional[BuildTargetStatus]:
     """Load the last build status for a target from build history database."""
     try:
-        build: Optional[HistoricalBuild] = build_history.get_latest_build_for_target(
+        build: Optional[Build] = build_history.get_latest_build_for_target(
             str(project_root), target_name
         )
 

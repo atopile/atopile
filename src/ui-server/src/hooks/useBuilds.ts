@@ -9,12 +9,13 @@ import { sendAction } from '../api/websocket';
 export function useBuilds() {
   const builds = useStore((state) => state.builds);
   const queuedBuilds = useStore((state) => state.queuedBuilds);
+  const buildHistory = useStore((state) => state.buildHistory);
   const selectedBuildName = useStore((state) => state.selectedBuildName);
 
   const selectedBuild = useSelectedBuild();
 
   const selectBuild = useCallback((buildName: string | null) => {
-    useStore.getState().selectBuild(buildName);
+    sendAction('selectBuild', { buildName });
   }, []);
 
   const startBuild = useCallback(
@@ -29,11 +30,12 @@ export function useBuilds() {
   }, []);
 
   // Combined list for UI (active + completed)
-  const allBuilds = [...queuedBuilds, ...builds];
+  const allBuilds = [...queuedBuilds, ...builds, ...buildHistory];
 
   return {
     builds,
     queuedBuilds,
+    buildHistory,
     allBuilds,
     selectedBuild,
     selectedBuildName,

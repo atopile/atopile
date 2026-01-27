@@ -55,7 +55,7 @@
 
 .source-filter-btn {
   padding: 3px 8px;
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   background: none;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
@@ -72,7 +72,7 @@
 .source-filter-btn.active {
   background: var(--ctp-blue);
   border-color: var(--ctp-blue);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 /* Variables tree */
@@ -91,7 +91,7 @@
 .depth-indicator {
   color: var(--text-muted);
   opacity: 0.4;
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   letter-spacing: -1px;
   margin-right: 2px;
 }
@@ -118,8 +118,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  width: var(--icon-size-md);
+  height: var(--icon-size-md);
   padding: 0;
   background: none;
   border: none;
@@ -129,14 +129,14 @@
 }
 
 .variable-node-header .tree-expand-spacer {
-  width: 14px;
+  width: var(--icon-size-md);
   flex-shrink: 0;
 }
 
 .node-type-icon {
   flex-shrink: 0;
-  width: 12px;
-  height: 12px;
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
 }
 
 .node-type-icon.module {
@@ -152,14 +152,14 @@
 }
 
 .variable-node-header .node-name {
-  font-size: 11px;
+  font-size: var(--font-size-base);
   font-weight: 500;
   color: var(--text-primary);
   font-family: var(--font-mono);
 }
 
 .variable-node-header .node-type-name {
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   color: var(--text-muted);
   font-family: var(--font-mono);
   margin-left: 6px;
@@ -171,7 +171,7 @@
 }
 
 .variable-node-header .var-count {
-  font-size: 9px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   background: var(--bg-secondary);
   padding: 0px 4px;
@@ -223,7 +223,7 @@
 .variables-table {
   display: flex;
   flex-direction: column;
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   margin-bottom: var(--spacing-xs);
 }
 
@@ -232,7 +232,7 @@
   grid-template-columns: minmax(80px, 1.2fr) minmax(80px, 1fr) minmax(80px, 1fr) 16px;
   gap: 4px;
   padding: 2px 4px;
-  font-size: 8px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -258,11 +258,11 @@
 }
 
 .variable-table-row.error {
-  background: rgba(243, 139, 168, 0.08);
+  background: rgba(var(--ctp-red-rgb), 0.08);
 }
 
 .variable-table-row.error:hover {
-  background: rgba(243, 139, 168, 0.15);
+  background: rgba(var(--ctp-red-rgb), 0.15);
 }
 
 /* Name column */
@@ -278,7 +278,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: var(--font-size-sm);
 }
 
 /* Spec column */
@@ -289,7 +289,7 @@
   color: var(--text-secondary);
   justify-content: flex-end;
   text-align: right;
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   min-width: 0;
   overflow: hidden;
 }
@@ -310,7 +310,7 @@
   text-align: right;
   padding: 1px 3px;
   border-radius: 2px;
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   min-width: 0;
   overflow: hidden;
 }
@@ -322,8 +322,8 @@
 }
 
 .var-col-actual.ok {
-  background: rgba(166, 227, 161, 0.15);
-  color: var(--ctp-green);
+  background: var(--success-bg);
+  color: var(--success);
 }
 
 .var-col-actual.ok .var-actual-value {
@@ -331,7 +331,7 @@
 }
 
 .var-col-actual.error {
-  background: rgba(243, 139, 168, 0.2);
+  background: rgba(var(--ctp-red-rgb), 0.2);
   color: var(--ctp-red);
 }
 
@@ -341,7 +341,7 @@
 
 /* Tolerance */
 .var-tolerance {
-  font-size: 8px;
+  font-size: var(--font-size-xs);
   opacity: 0.7;
   flex-shrink: 0;
   max-width: 60px;
@@ -353,7 +353,7 @@
 /* Unit column */
 .var-col-unit {
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--font-size-xs);
   text-align: right;
 }
 
@@ -372,11 +372,11 @@
 }
 
 .status-error {
-  color: var(--ctp-red);
+  color: var(--error);
 }
 
 .status-copied {
-  color: var(--ctp-green);
+  color: var(--success);
 }
 
 /* Variables status bar */
@@ -385,7 +385,7 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   color: var(--text-muted);
   border-top: 1px solid var(--border-subtle);
   background: var(--bg-tertiary);
@@ -395,7 +395,7 @@
 .build-id-badge {
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   padding: 1px 4px;
   background: var(--bg-secondary);
   border-radius: var(--radius-sm);
@@ -406,7 +406,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  color: var(--ctp-green);
+  color: var(--success);
   animation: fadeIn 0.2s ease;
 }
 
@@ -424,9 +424,10 @@
   align-items: center;
   justify-content: center;
   gap: var(--spacing-sm);
-  padding: var(--spacing-xl);
+  padding: var(--spacing-xl) var(--spacing-lg);
   color: var(--text-muted);
   text-align: center;
+  min-height: 150px;
 }
 
 .variables-loading .spinner {
@@ -449,7 +450,7 @@
 .variables-error .retry-btn {
   margin-top: var(--spacing-xs);
   padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
@@ -475,7 +476,7 @@
   align-items: center;
   gap: var(--spacing-xs);
   padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
@@ -494,7 +495,7 @@
   background: var(--ato-orange);
   border-color: var(--ato-orange);
   color: var(--bg-primary);
-  font-size: 12px;
+  font-size: var(--font-size-md);
   padding: var(--spacing-sm) var(--spacing-md);
   margin-top: var(--spacing-sm);
 }
@@ -508,10 +509,16 @@
   flex-shrink: 0;
 }
 
-.variables-empty .hint {
-  font-size: 10px;
+.variables-empty .empty-title {
+  font-size: var(--font-size-lg);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.variables-empty .empty-description {
+  font-size: var(--font-size-base);
   color: var(--text-muted);
-  opacity: 0.8;
+  max-width: 200px;
 }
 
 /* Variables Build Selector placement */

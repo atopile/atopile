@@ -105,12 +105,31 @@ export function ModuleTreeNode({
     }
   }
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      if (hasChildren) {
+        onToggle(path)
+      }
+    } else if (e.key === 'ArrowRight' && hasChildren && !isExpanded) {
+      e.preventDefault()
+      onToggle(path)
+    } else if (e.key === 'ArrowLeft' && hasChildren && isExpanded) {
+      e.preventDefault()
+      onToggle(path)
+    }
+  }
+
   return (
     <div className="module-tree-node">
       <div
         className={`module-tree-row ${hasChildren ? 'expandable' : ''}`}
         style={{ paddingLeft: `${depth * 6 + 4}px` }}
         onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
+        role="treeitem"
+        aria-expanded={hasChildren ? isExpanded : undefined}
         title={nameTruncated || typeTruncated ? `${child.name}: ${displayValue}` : undefined}
       >
         {hasChildren ? (
@@ -282,21 +301,33 @@ interface ModuleTreeProps {
   rootName?: string
   rootType?: string
   grouped?: boolean  // Whether to group children by type (default: true)
+  // Optional controlled expansion state (for preserving across file changes)
+  expandedPaths?: Set<string>
+  onExpandedPathsChange?: (paths: Set<string>) => void
 }
 
-export function ModuleTree({ children, rootName, rootType, grouped = true }: ModuleTreeProps) {
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
+export function ModuleTree({
+  children,
+  rootName,
+  rootType,
+  grouped = true,
+  expandedPaths: controlledExpandedPaths,
+  onExpandedPathsChange,
+}: ModuleTreeProps) {
+  const [internalExpandedPaths, setInternalExpandedPaths] = useState<Set<string>>(new Set())
+
+  // Use controlled or uncontrolled expansion state
+  const expandedPaths = controlledExpandedPaths ?? internalExpandedPaths
+  const setExpandedPaths = onExpandedPathsChange ?? setInternalExpandedPaths
 
   const handleToggle = (path: string) => {
-    setExpandedPaths(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(path)) {
-        newSet.delete(path)
-      } else {
-        newSet.add(path)
-      }
-      return newSet
-    })
+    const newSet = new Set(expandedPaths)
+    if (newSet.has(path)) {
+      newSet.delete(path)
+    } else {
+      newSet.add(path)
+    }
+    setExpandedPaths(newSet)
   }
 
   // If there's a root name, show it as the parent
@@ -313,11 +344,28 @@ export function ModuleTree({ children, rootName, rootType, grouped = true }: Mod
       : rootName
     const rootNameTruncated = displayRootName !== rootName
 
+    const handleRootKeyDown = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        handleToggle('__root__')
+      } else if (e.key === 'ArrowRight' && !isRootExpanded) {
+        e.preventDefault()
+        handleToggle('__root__')
+      } else if (e.key === 'ArrowLeft' && isRootExpanded) {
+        e.preventDefault()
+        handleToggle('__root__')
+      }
+    }
+
     return (
-      <div className="module-tree">
+      <div className="module-tree" role="tree">
         <div
           className="module-tree-row expandable root"
           onClick={() => handleToggle('__root__')}
+          onKeyDown={handleRootKeyDown}
+          tabIndex={0}
+          role="treeitem"
+          aria-expanded={isRootExpanded}
           title={rootNameTruncated ? rootName : undefined}
         >
           <button className="module-tree-expand-btn">
@@ -362,7 +410,7 @@ export function ModuleTree({ children, rootName, rootType, grouped = true }: Mod
   // No root name - show children directly (grouped or flat)
   if (grouped) {
     return (
-      <div className="module-tree">
+      <div className="module-tree" role="tree">
         <GroupedChildren
           children={children}
           depth={0}
@@ -375,7 +423,7 @@ export function ModuleTree({ children, rootName, rootType, grouped = true }: Mod
   }
 
   return (
-    <div className="module-tree">
+    <div className="module-tree" role="tree">
       {children.map((child, idx) => (
         <ModuleTreeNode
           key={`${child.name}-${idx}`}

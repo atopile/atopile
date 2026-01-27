@@ -7,7 +7,7 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from atopile.dataclasses import ActiveBuild
+from atopile.dataclasses import Build
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class ModelState:
 
     def __init__(self) -> None:
         self._workspace_path: Optional[Path] = None
-        self._active_builds: list[ActiveBuild] = []
+        self._active_builds: list[Build] = []
         self._build_lock = threading.RLock()  # RLock allows reentrant locking
 
     def set_workspace_path(self, path: Optional[Path]) -> None:
@@ -37,15 +37,15 @@ class ModelState:
         return self._workspace_path
 
     @property
-    def active_builds(self) -> list[ActiveBuild]:
+    def active_builds(self) -> list[Build]:
         """Get the active builds list. Use build_lock for thread-safe access."""
         return self._active_builds
 
-    def find_build(self, build_id: str) -> ActiveBuild | None:
+    def find_build(self, build_id: str) -> Build | None:
         """Find a build by ID. Must be called with build_lock held."""
         return next((b for b in self._active_builds if b.build_id == build_id), None)
 
-    def add_build(self, build: ActiveBuild) -> None:
+    def add_build(self, build: Build) -> None:
         """Add a build. Must be called with build_lock held."""
         self._active_builds.append(build)
 

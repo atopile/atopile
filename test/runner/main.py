@@ -3140,6 +3140,8 @@ def main(
     open_browser: bool = False,
     llm: bool = False,
     keep_open: bool = False,
+    test_run_id: str | None = None,
+    extra_env: dict[str, str] | None = None,
 ):
     global tests_total, commit_info, ci_info, workers
 
@@ -3275,10 +3277,18 @@ def main(
     if "FBRK_LOG_FMT" not in env:
         env["FBRK_LOG_FMT"] = "1"
     # Generate test_run_id once and share across all workers
-    import hashlib
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    test_run_id = hashlib.sha256(f"pytest:{timestamp}".encode()).hexdigest()[:16]
+    # Use provided test_run_id if available, otherwise generate one
+    if test_run_id is None:
+        import hashlib
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        test_run_id = hashlib.sha256(f"pytest:{timestamp}".encode()).hexdigest()[:16]
     env["ATO_TEST_RUN_ID"] = test_run_id
+
+    # Apply extra environment variables (e.g., ConfigFlags from UI)
+    if extra_env:
+        for key, value in extra_env.items():
+            env[key] = value
+        _print(f"Custom env vars: {', '.join(extra_env.keys())}")
 
     # Store test_run_id for HTML template
     if aggregator:

@@ -1,6 +1,8 @@
 import { api } from './client';
 import { useStore } from '../store';
-import type { AtopileState } from '../types/build';
+import type { AppState } from '../types/build';
+
+type AtopileConfig = AppState['atopile'];
 
 function normalizeError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -63,9 +65,7 @@ async function fetchProblems(): Promise<void> {
   const store = useStore.getState();
   store.setLoadingProblems(true);
   try {
-    const result = await api.problems.list({
-      developerMode: store.developerMode,
-    });
+    const result = await api.problems.list({ developerMode: store.developerMode });
     store.setProblems(result.problems);
   } catch (error) {
     console.error('[events] Failed to fetch problems:', error);
@@ -137,10 +137,10 @@ async function fetchVariables(): Promise<void> {
   }
 }
 
-function updateAtopileConfig(update: Partial<AtopileState>): void {
+function updateAtopileConfig(update: Partial<AtopileConfig>): void {
   const cleaned = Object.fromEntries(
     Object.entries(update).filter(([, value]) => value !== undefined)
-  ) as Partial<AtopileState>;
+  ) as Partial<AtopileConfig>;
   if (Object.keys(cleaned).length === 0) {
     return;
   }
@@ -216,7 +216,7 @@ export async function handleEvent(event: string, data: unknown): Promise<void> {
     }
     case 'atopile_config_changed':
       updateAtopileConfig({
-        source: typeof detail.source === 'string' ? detail.source as AtopileState['source'] : undefined,
+        source: typeof detail.source === 'string' ? detail.source as AtopileConfig['source'] : undefined,
         currentVersion: typeof detail.current_version === 'string'
           ? detail.current_version as string
           : typeof detail.currentVersion === 'string'
@@ -239,9 +239,9 @@ export async function handleEvent(event: string, data: unknown): Promise<void> {
             ? detail.availableBranches as string[]
             : undefined,
         detectedInstallations: Array.isArray(detail.detected_installations)
-          ? detail.detected_installations as AtopileState['detectedInstallations']
+          ? detail.detected_installations as AtopileConfig['detectedInstallations']
           : Array.isArray(detail.detectedInstallations)
-            ? detail.detectedInstallations as AtopileState['detectedInstallations']
+            ? detail.detectedInstallations as AtopileConfig['detectedInstallations']
             : undefined,
         isInstalling: typeof detail.is_installing === 'boolean'
           ? detail.is_installing as boolean
@@ -249,9 +249,9 @@ export async function handleEvent(event: string, data: unknown): Promise<void> {
             ? detail.isInstalling as boolean
             : undefined,
         installProgress: typeof detail.install_progress === 'object'
-          ? detail.install_progress as AtopileState['installProgress']
+          ? detail.install_progress as AtopileConfig['installProgress']
           : typeof detail.installProgress === 'object'
-            ? detail.installProgress as AtopileState['installProgress']
+            ? detail.installProgress as AtopileConfig['installProgress']
             : undefined,
         error: typeof detail.error === 'string' ? detail.error as string : undefined,
       });

@@ -419,7 +419,7 @@
 
 .filter-pill.active {
   background: var(--accent);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 .projects-tree {
@@ -609,7 +609,7 @@
 }
 
 .last-build-info .status-icon.success {
-  color: var(--ctp-green);
+  color: var(--success);
 }
 
 .last-build-info .status-icon.warning {
@@ -830,7 +830,7 @@
 
 .action-bar-btn:hover {
   background: var(--accent);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 .tree-expand {
@@ -860,7 +860,7 @@
 }
 
 .project-icon.package {
-  color: var(--ctp-peach);
+  color: var(--accent-secondary);
 }
 
 .project-name {
@@ -938,19 +938,19 @@
 /* Build buttons should be prominent atopile orange */
 .inline-build-btn {
   background: var(--ctp-peach);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 
 .inline-build-btn:hover {
   background: var(--ctp-yellow);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
   transform: scale(1.1);
 }
 
 .inline-detail-btn:hover {
   background: var(--accent);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 /* Build Node - minimal indentation */
@@ -1089,7 +1089,7 @@
 
 .build-target-play-btn:hover {
   background: var(--ato-orange);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 .build-target-play-btn svg {
@@ -1125,7 +1125,7 @@
 
 .build-target-cancel-btn:hover {
   background: var(--ato-orange);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 .build-target-cancel-btn svg {
@@ -1551,7 +1551,7 @@
 }
 
 .status-icon.queued .queue-position {
-  font-size: 8px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   background: var(--bg-tertiary);
   color: var(--text-secondary);
@@ -1651,7 +1651,7 @@
 
 .symbol-play-btn:hover {
   background: var(--ato-orange);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 .symbol-play-btn svg {

@@ -386,7 +386,7 @@ class _PackageValidators:
 
     @staticmethod
     def verify_no_warnings(config: "Config"):
-        from atopile.dataclasses import HistoricalBuild
+        from atopile.dataclasses import Build
         from atopile.model import build_history
 
         project_root = str(config.project.paths.root)
@@ -404,7 +404,7 @@ class _PackageValidators:
             )
 
         # Get the latest build for each target
-        latest_by_target: dict[str, HistoricalBuild] = {}
+        latest_by_target: dict[str, Build] = {}
         for build in builds:
             target = build.target or "default"
             if target not in latest_by_target:

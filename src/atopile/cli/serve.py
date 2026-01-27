@@ -64,9 +64,6 @@ def backend(
         "-w",
         help="Workspace path to scan for projects (can be specified multiple times)",
     ),
-    logs_dir: Optional[Path] = typer.Option(
-        None, help="Directory for build logs (default: ./build/logs)"
-    ),
     force: bool = typer.Option(
         False,
         "--force",
@@ -78,8 +75,6 @@ def backend(
     cmd = [sys.executable, "-m", "atopile.server", "--port", str(port)]
     for path in workspace or []:
         cmd.extend(["--workspace", str(path)])
-    if logs_dir:
-        cmd.extend(["--logs-dir", str(logs_dir)])
     if force:
         cmd.append("--force")
     raise typer.Exit(subprocess.run(cmd).returncode)

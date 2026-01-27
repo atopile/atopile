@@ -4,8 +4,7 @@
 
 import { useCallback, useState } from 'react';
 import { useStore } from '../store';
-import { api } from '../api/client';
-import { sendActionWithResponse } from '../api/websocket';
+import { sendAction, sendActionWithResponse } from '../api/websocket';
 
 export function usePackages() {
   const packages = useStore((state) => state.packages);
@@ -23,15 +22,7 @@ export function usePackages() {
   const [isSearching, setIsSearching] = useState(false);
 
   const refresh = useCallback(async () => {
-    const store = useStore.getState();
-    store.setLoadingPackages(true);
-    store.setPackagesError(null);
-    try {
-      const result = await api.packages.summary();
-      store.setPackages(result.packages);
-    } catch (error) {
-      store.setPackagesError(error instanceof Error ? error.message : String(error));
-    }
+    sendAction('refreshPackages');
   }, []);
 
   const search = useCallback(async (query: string) => {
@@ -43,8 +34,12 @@ export function usePackages() {
 
     setIsSearching(true);
     try {
-      const result = await api.packages.search(query);
-      setSearchResults(result.packages as typeof packages);
+      const response = await sendActionWithResponse('searchPackages', { query });
+      const result = response.result ?? {};
+      const searchPackages = Array.isArray((result as { packages?: unknown }).packages)
+        ? (result as { packages: unknown[] }).packages
+        : [];
+      setSearchResults(searchPackages as typeof packages);
     } catch (error) {
       console.error('Failed to search packages:', error);
       setSearchResults([]);
@@ -53,74 +48,32 @@ export function usePackages() {
     }
   }, []);
 
-  const fetchDetails = useCallback(async (identifier: string) => {
-    return api.packages.details(identifier);
+  const fetchDetails = useCallback(async (identifier: string, version?: string) => {
+    const response = await sendActionWithResponse('getPackageDetails', {
+      packageId: identifier,
+      version,
+    });
+    const result = response.result ?? {};
+    return (result as { details?: unknown }).details as unknown;
   }, []);
 
   const install = useCallback(
     async (identifier: string, projectRoot: string, version?: string) => {
-      const store = useStore.getState();
-      store.addInstallingPackage(identifier);
-      try {
-        const response = await sendActionWithResponse('installPackage', {
-          packageId: identifier,
-          projectRoot,
-          version,
-        });
-        if (!response.result?.success) {
-          store.setInstallError(identifier, String(response.result?.error || 'Install failed'));
-        }
-      } catch (error) {
-        store.setInstallError(
-          identifier,
-          error instanceof Error ? error.message : String(error)
-        );
-      }
+      sendAction('installPackage', { packageId: identifier, projectRoot, version });
     },
     []
   );
 
   const uninstall = useCallback(
     async (identifier: string, projectRoot: string) => {
-      const store = useStore.getState();
-      store.addInstallingPackage(identifier);
-      try {
-        const response = await sendActionWithResponse('removePackage', {
-          packageId: identifier,
-          projectRoot,
-        });
-        if (!response.result?.success) {
-          store.setInstallError(identifier, String(response.result?.error || 'Remove failed'));
-        }
-      } catch (error) {
-        store.setInstallError(
-          identifier,
-          error instanceof Error ? error.message : String(error)
-        );
-      }
+      sendAction('removePackage', { packageId: identifier, projectRoot });
     },
     []
   );
 
   const update = useCallback(
     async (identifier: string, projectRoot: string, version?: string) => {
-      const store = useStore.getState();
-      store.addInstallingPackage(identifier);
-      try {
-        const response = await sendActionWithResponse('installPackage', {
-          packageId: identifier,
-          projectRoot,
-          version,
-        });
-        if (!response.result?.success) {
-          store.setInstallError(identifier, String(response.result?.error || 'Update failed'));
-        }
-      } catch (error) {
-        store.setInstallError(
-          identifier,
-          error instanceof Error ? error.message : String(error)
-        );
-      }
+      sendAction('installPackage', { packageId: identifier, projectRoot, version });
     },
     []
   );

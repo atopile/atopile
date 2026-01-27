@@ -17,6 +17,10 @@
   color: var(--text-muted);
 }
 
+.metadata-bar .meta-item.loading {
+  min-width: 40px;
+}
+
 .metadata-bar .meta-item.link {
   color: var(--ctp-blue);
   text-decoration: none;
@@ -25,4 +29,13 @@
 
 .metadata-bar .meta-item.link:hover {
   text-decoration: underline;
+}
+
+.metadata-bar .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }

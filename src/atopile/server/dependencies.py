@@ -19,12 +19,10 @@ class ServerConfig:
 
     def __init__(
         self,
-        logs_base: Optional[Path] = None,
         workspace_path: Optional[Path] = None,
         port: Optional[int] = None,
         host: str = "127.0.0.1",
     ):
-        self.logs_base = logs_base
         self.workspace_path = workspace_path
         self.port = port
         self.host = host
@@ -74,15 +72,6 @@ class AppDependencies:
             self._server_state = server_state
         return self._server_state
 
-    @property
-    def logs_base(self) -> Optional[Path]:
-        """Get the logs base directory."""
-        # First check config, then server state
-        if self.config.logs_base:
-            return self.config.logs_base
-
-        return None  # logs_base not available via model_state
-
 # Dependency functions for FastAPI
 
 
@@ -106,6 +95,3 @@ def get_server_state(deps: AppDependencies = Depends(get_deps)):
     return deps.server_state
 
 
-def get_logs_base(deps: AppDependencies = Depends(get_deps)) -> Optional[Path]:
-    """FastAPI dependency to get logs base directory."""
-    return deps.logs_base

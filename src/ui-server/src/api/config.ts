@@ -6,7 +6,7 @@
 interface AtopileWindow extends Window {
   __ATOPILE_API_URL__?: string;
   __ATOPILE_WS_URL__?: string;
-  __ATOPILE_WORKSPACE_ROOT__?: string;
+  __ATOPILE_WORKSPACE_FOLDERS__?: string[];
 }
 
 const win = (typeof window !== 'undefined' ? window : {}) as AtopileWindow;
@@ -66,8 +66,9 @@ export const WS_LOGS_URL = `${WS_BASE_URL}/ws/logs`;
 export function getWorkspaceFolders(): string[] {
   if (typeof window === 'undefined') return [];
 
-  if (win.__ATOPILE_WORKSPACE_ROOT__) {
-    return [win.__ATOPILE_WORKSPACE_ROOT__];
+  // Check window variable first (production VS Code)
+  if (win.__ATOPILE_WORKSPACE_FOLDERS__) {
+    return win.__ATOPILE_WORKSPACE_FOLDERS__;
   }
 
   // Check URL query param (dev mode iframe)
@@ -75,7 +76,10 @@ export function getWorkspaceFolders(): string[] {
     const params = new URLSearchParams(window.location.search);
     const workspaceParam = params.get('workspace');
     if (workspaceParam) {
-      return [workspaceParam];
+      const folders = JSON.parse(decodeURIComponent(workspaceParam));
+      if (Array.isArray(folders)) {
+        return folders;
+      }
     }
   } catch (e) {
     console.warn('[Config] Failed to parse workspace folders from URL:', e);

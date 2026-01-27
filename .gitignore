@@ -202,6 +202,7 @@ standalone/
 
 # need to ignore because absolute paths
 .cursor/mcp.json
+.mcp.json
 
 # Example project build and IDE directories
 examples/**/.ato/
@@ -214,11 +215,6 @@ examples/**/parts/
 !examples/i2c/parts/
 !examples/i2c/parts/Texas_Instruments_TCA9548APWR/
 !examples/i2c/parts/Texas_Instruments_TCA9548APWR/**
-
-# vsce writes this all the time
-# might want to make a CLAUDE.md for the repo at some point
-.mcp.json
-CLAUDE.md
 
 # KiCad temporary files
 **/~*.kicad_pcb.lck

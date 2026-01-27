@@ -75,6 +75,11 @@
   color: var(--ctp-green);
 }
 
+.copyable-code-content .ato-comment {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .copyable-code-content .ato-operator {
   color: var(--ctp-sky);
 }
