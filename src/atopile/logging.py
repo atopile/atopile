@@ -683,14 +683,14 @@ class BuildLogger(BaseLogger):
         return cls._loggers[build_id]
 
     @classmethod
-    def close(cls, build_id: str) -> None:
+    def close_logger(cls, build_id: str) -> None:
         if build_id in cls._loggers:
             cls._loggers.pop(build_id).close()
 
     @classmethod
     def close_all(cls) -> None:
         for bid in list(cls._loggers):
-            cls.close(bid)
+            cls.close_logger(bid)
 
     @classmethod
     def setup_logging(

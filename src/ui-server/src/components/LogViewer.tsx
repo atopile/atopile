@@ -58,17 +58,19 @@ export function LogViewer() {
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
 
-  // Build log specific parameters - buildId is in store for cross-component access
-  const storeBuildId = useStore((state) => state.logViewerBuildId) ?? '';
-  const setStoreBuildId = (id: string) => useStore.getState().setLogViewerBuildId(id || null);
-  const [buildId, setBuildIdLocal] = useState(initialParams.buildId || storeBuildId);
+  // Build log specific parameters - buildId lives in the shared store
+  const buildId = useStore((state) => state.logViewerBuildId) ?? '';
+  const setBuildId = useCallback((id: string) => {
+    useStore.getState().setLogViewerBuildId(id || null);
+  }, []);
   const [stage, setStage] = useState('');
 
-  // Sync local buildId with store
-  const setBuildId = useCallback((id: string) => {
-    setBuildIdLocal(id);
-    setStoreBuildId(id);
-  }, []);
+  // Initialize buildId from URL params on mount
+  useEffect(() => {
+    if (initialParams.buildId) {
+      setBuildId(initialParams.buildId);
+    }
+  }, [setBuildId]);
 
   // Test log specific parameters
   const [testRunId, setTestRunId] = useState(initialParams.testRunId);
@@ -206,7 +208,7 @@ export function LogViewer() {
     }
 
     const latestBuildId = latest.buildId ?? '';
-    if (!latestBuildId || latestBuildId === buildId.trim()) return;
+    if (!latestBuildId || buildId.trim()) return;
 
     if (streaming) {
       stopStream();
@@ -235,11 +237,7 @@ export function LogViewer() {
       }
     }
 
-    // Initialize buildId from URL params on mount
-    if (initialParams.buildId && !buildId) {
-      setBuildId(initialParams.buildId);
-    }
-  }, [logLevels, streaming, mode, buildId, testRunId, stage, testName, audience, stopStream, startBuildStream, startTestStream, setLogs, setBuildId]);
+  }, [logLevels, streaming, mode, buildId, testRunId, stage, testName, audience, stopStream, startBuildStream, startTestStream, setLogs]);
 
   const toggleLevel = (level: LogLevel) => {
     setLogLevels(prev =>
