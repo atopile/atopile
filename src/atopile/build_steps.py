@@ -131,6 +131,7 @@ class MusterTarget:
                         status="failed",
                     )
                 )
+                ctx.flush_stages_to_db()
                 raise
 
             # Record successful stage
@@ -143,6 +144,7 @@ class MusterTarget:
                     status="success",
                 )
             )
+            ctx.flush_stages_to_db()
 
         self.success = True
 

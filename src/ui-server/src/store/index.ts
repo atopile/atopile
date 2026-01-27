@@ -220,6 +220,11 @@ interface StoreActions {
 // Combined store type
 type Store = ServerData & UIState & StoreActions;
 
+// Cross-webview sync for shared UI state
+const _channel = typeof BroadcastChannel !== 'undefined'
+  ? new BroadcastChannel('atopile-ui-state')
+  : null;
+
 export const useStore = create<Store>()(
   devtools(
     (set) => ({
@@ -282,7 +287,10 @@ export const useStore = create<Store>()(
         set({ selectedBuildId: buildId, selectedBuildName: buildName }),
 
       // Log viewer
-      setLogViewerBuildId: (buildId) => set({ logViewerBuildId: buildId }),
+      setLogViewerBuildId: (buildId) => {
+        set({ logViewerBuildId: buildId });
+        _channel?.postMessage({ key: 'logViewerBuildId', value: buildId });
+      },
 
       // Packages
       setPackages: (packages) => set({ packages, isLoadingPackages: false }),
@@ -444,6 +452,14 @@ export const useStore = create<Store>()(
     { name: 'atopile-store' }
   )
 );
+
+// Receive cross-webview state updates
+_channel?.addEventListener('message', (event) => {
+  const { key, value } = event.data ?? {};
+  if (key) {
+    useStore.setState({ [key]: value });
+  }
+});
 
 // Selectors for common derived state
 export const useSelectedProject = () =>
