@@ -91,29 +91,6 @@ class BuildStepContext:
             raise RuntimeError("PCB is not initialized")
         return self.pcb
 
-    def flush_stages_to_db(self) -> None:
-        """Write current stages to the build history database."""
-        if not self.build_id:
-            return
-        try:
-            from atopile.dataclasses import Build, BuildStatus
-            from atopile.model.sqlite import BuildHistory
-
-            stages = [s.model_dump(by_alias=True) for s in self.completed_stages]
-            BuildHistory.set(
-                Build(
-                    build_id=self.build_id,
-                    name=config.build.name,
-                    display_name=config.build.name,
-                    project_root=str(config.project.paths.root),
-                    target=config.build.name,
-                    status=BuildStatus.BUILDING,
-                    stages=stages,
-                )
-            )
-        except Exception:
-            pass  # Don't fail the build if DB write fails
-
 
 @once
 def _check_kicad_cli() -> bool:

@@ -21,7 +21,6 @@ from atopile.dataclasses import (
     BuildStatus,
     StageStatus,
 )
-from atopile.model import build_history
 from atopile.model.model_state import model_state
 from atopile.model.sqlite import BUILD_HISTORY_DB, BuildHistory
 from atopile.server.events import event_bus
@@ -198,7 +197,7 @@ def _run_build_subprocess(
                 result_q.put(BuildCancelledMsg(build_id=build_id))
                 return
 
-            build_info = build_history.get_build_info_by_id(build_id)
+            build_info = BuildHistory.get(build_id)
             current_stages = build_info.stages if build_info else []
 
             if current_stages != last_stages:
@@ -217,7 +216,7 @@ def _run_build_subprocess(
 
         return_code = process.returncode
 
-        build_info = build_history.get_build_info_by_id(build_id)
+        build_info = BuildHistory.get(build_id)
         if build_info:
             final_stages = build_info.stages
 
@@ -578,10 +577,7 @@ class BuildQueue:
                 errors=errors,
                 completed_at=completed_at,
             )
-            try:
-                BuildHistory.set(row)
-            except Exception:
-                log.exception(f"Failed to save build {msg.build_id} to history")
+            BuildHistory.set(row)
 
         # Refresh project data for frontend
         with _build_lock:

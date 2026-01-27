@@ -13,29 +13,6 @@ from atopile.model.sqlite import BuildHistory
 log = logging.getLogger(__name__)
 
 
-def load_recent_builds_from_history(limit: int = 50) -> list:
-    """Load recent builds from the history database."""
-    try:
-        return BuildHistory.get_all(limit=limit)
-    except Exception as exc:
-        log.error(f"Failed to load build history: {exc}")
-        return []
-
-
-def get_build_info_by_id(build_id: str):
-    """
-    Get build info by build_id.
-
-    Returns build record or None if not found.
-    This provides translation from build_id -> (project, target, timestamp).
-    """
-    try:
-        return BuildHistory.get(build_id)
-    except Exception as exc:
-        log.error(f"Failed to get build info by id: {exc}")
-        return None
-
-
 def get_builds_by_project_target(
     project_root: str | None = None,
     target: str | None = None,
