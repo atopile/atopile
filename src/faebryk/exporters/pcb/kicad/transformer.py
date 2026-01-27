@@ -211,7 +211,9 @@ class PCB_Transformer:
         def get_transformer(self):
             return self.transformer
 
-    def __init__(self, pcb: PCB, graph: Graph, app: Module) -> None:
+    def __init__(
+        self, pcb: PCB, graph: Graph, app: Module, noattach: bool = False
+    ) -> None:
         self.pcb = pcb
         self.app = app
 
@@ -233,7 +235,8 @@ class PCB_Transformer:
 
         self.default_component_insert_point = kicad.pcb.Xyr(x=0, y=0, r=0)
 
-        self.attach()
+        if not noattach:
+            self.attach()
 
     @property
     def graph(self):
@@ -1522,10 +1525,14 @@ class PCB_Transformer:
         LEFT = auto()
         RIGHT = auto()
 
-    def hide_all_designators(
+    def hide_hidden_designators(
         self,
     ) -> None:
-        for _, fp in self.get_all_footprints():
+        from faebryk.library.has_hidden_designator import has_hidden_designator
+
+        for mod, fp in self.get_all_footprints():
+            if not mod.has_trait(has_hidden_designator):
+                continue
             Property.get_property_obj(fp.propertys, "Reference").hide = True
 
             for txt in [txt for txt in fp.fp_texts if txt.text == "${REFERENCE}"]:

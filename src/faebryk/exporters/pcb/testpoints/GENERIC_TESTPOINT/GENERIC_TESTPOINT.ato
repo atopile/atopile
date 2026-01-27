@@ -1,0 +1,11 @@
+#pragma experiment("TRAITS")
+import has_designator_prefix
+import has_part_removed
+import is_atomic_part
+
+component GENERIC_TESTPOINT:
+    trait is_atomic_part<manufacturer="Generic", partnumber="TESTPOINT", footprint="TestPoint_THTPad_D1.0mm_Drill0.5mm.kicad_mod", symbol="CC0603KRX7R9BB562.kicad_sym">
+    trait has_designator_prefix<prefix="TP">
+    trait has_part_removed
+    # pins
+    signal contact ~ pin 1
