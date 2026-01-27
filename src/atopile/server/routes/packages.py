@@ -67,9 +67,7 @@ def _content_type_for_filename(filename: str | None) -> str | None:
 @router.get("/api/registry/search", response_model=RegistrySearchResponse)
 async def search_registry(
     query: str = Query("", description="Search query. Empty returns popular packages."),
-    path: Optional[str] = Query(
-        None, description="Path to check installed packages."
-    ),
+    path: Optional[str] = Query(None, description="Path to check installed packages."),
     ctx: AppContext = Depends(get_ctx),
 ):
     scan_path = packages_domain.resolve_scan_path(ctx, path)

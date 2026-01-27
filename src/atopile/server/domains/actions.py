@@ -1102,9 +1102,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Entry file not found: {entry_path}",
                 }
 
-            await server_state.emit_event(
-                "open_file", {"path": str(entry_path)}
-            )
+            await server_state.emit_event("open_file", {"path": str(entry_path)})
             return {"success": True}
 
         if action == "openLayout":
@@ -1178,7 +1176,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             return {"success": False, "error": "selectBuild is frontend-only"}
 
         elif action == "toggleProblemLevelFilter":
-            return {"success": False, "error": "toggleProblemLevelFilter is frontend-only"}
+            return {
+                "success": False,
+                "error": "toggleProblemLevelFilter is frontend-only",
+            }
 
         elif action == "setDeveloperMode":
             return {"success": False, "error": "setDeveloperMode is frontend-only"}

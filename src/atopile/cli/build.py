@@ -401,9 +401,7 @@ class BuildProcess:
         elif self.return_code is None:
             return BuildStatus.BUILDING
         else:
-            return BuildStatus.from_return_code(
-                self.return_code, self.warnings
-            )
+            return BuildStatus.from_return_code(self.return_code, self.warnings)
 
     def terminate(self) -> None:
         """Terminate the build process."""

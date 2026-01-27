@@ -8,16 +8,9 @@ type UILogEntry = {
 };
 
 const MAX_LOGS = 200;
-const MAX_MESSAGE_CHARS = 2000;
 let initialized = false;
 // Guard against infinite recursion when console methods call sendAction
 let isRecording = false;
-
-function truncate(value: string | undefined, maxChars: number): string | undefined {
-  if (!value) return value;
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars)}… (truncated)`;
-}
 
 function pushLog(entry: UILogEntry) {
   if (typeof window === 'undefined') return;
@@ -47,8 +40,8 @@ function record(level: UILogEntry['level'], message: string, stack?: string) {
     const entry: UILogEntry = {
       ts: new Date().toISOString(),
       level,
-      message: truncate(message, MAX_MESSAGE_CHARS) || '',
-      stack: truncate(stack, MAX_MESSAGE_CHARS),
+      message,
+      stack,
     };
     pushLog(entry);
     void postLog(entry);

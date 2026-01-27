@@ -34,9 +34,7 @@ class BuildStatus(str, Enum):
     CANCELLED = "cancelled"
 
     @classmethod
-    def from_return_code(
-        cls, return_code: int, warnings: int = 0
-    ) -> BuildStatus:
+    def from_return_code(cls, return_code: int, warnings: int = 0) -> BuildStatus:
         """Derive terminal build status from a process return code."""
         if return_code != 0:
             return cls.FAILED
@@ -157,6 +155,7 @@ class TestLogRow:
     ato_traceback: str | None = None
     python_traceback: str | None = None
     objects: str | None = None
+
 
 # =============================================================================
 # Log-related Data Structures
@@ -567,6 +566,7 @@ class ProjectsResponse(CamelModel):
 
     projects: list[Project]
     total: int
+
 
 class ModuleChild(BaseModel):
     """A child field within a module (interface, parameter, nested module, etc.)."""
@@ -1117,6 +1117,7 @@ class AtopileConfig(BaseModel):
     is_installing: bool = False
     install_progress: Optional[InstallProgress] = None
     error: Optional[str] = None
+
 
 # =============================================================================
 # WebSocket State Manager Dataclass
