@@ -2954,6 +2954,8 @@ class Is(fabll.Node):
     ) -> Self:
         if any(op.try_get_sibling_trait(Literals.is_literal) for op in operands):
             raise ValueError("Is expression cannot have literal operands")
+        if not operands:
+            raise ValueError("Is expression cannot have no operands")
 
         self.operands.get().append(*operands)
         if assert_:

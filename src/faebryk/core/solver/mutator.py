@@ -124,10 +124,12 @@ class Transformations:
         if S_LOG and not self._no_log:
             non_copy = list(non_copy)
             if bool(non_copy):
-                for k, v in non_copy:
-                    logger.error(
-                        f"DIRTY: non_copy: {k.compact_repr()} -> {v.compact_repr()}"
+                logger.error(
+                    "DIRTY: non_copy"
+                    + indented_container(
+                        {k.compact_repr(): v.compact_repr() for k, v in non_copy}
                     )
+                )
             if bool(self.removed):
                 logger.error(f"DIRTY: removed={len(self.removed)}")
             # Filter created to only include truly new expressions

@@ -432,6 +432,8 @@ def _create_alias_parameter_for_expression(
         if mutator.has_been_mutated((k_po := k.as_parameter_operatable.get()))
     }
 
+    is_expr_old: F.Expressions.Is | None = None
+
     if mutated:
         assert len(mutated) == 1
         p = next(iter(mutated.values())).as_parameter.force_get()
@@ -442,9 +444,20 @@ def _create_alias_parameter_for_expression(
     elif existing_params:
         p_old = next(iter(existing_params))
         p = mutator.mutate_parameter(p_old)
+        is_old = {
+            is_
+            for is_ in p_old.as_parameter_operatable.get().get_operations(
+                F.Expressions.Is, predicates_only=True
+            )
+            if expr.as_parameter_operatable.get()
+            in is_.is_expression.get().get_operand_operatables()
+        }
+        if is_old:
+            is_expr_old = next(iter(is_old))
         if S_LOG:
             logger.debug(
-                f"Using and mutating {p.compact_repr()} for {expr_repr}"  # pyright: ignore[reportPossiblyUnboundVariable]
+                f"Using and mutating {p.compact_repr()} for {expr_repr}:"  # pyright: ignore[reportPossiblyUnboundVariable]
+                f" Reusing {is_expr_old.is_expression.get().compact_repr() if is_expr_old else 'no old is'}"  # noqa: E501
             )
     else:
         p = mutator.register_created_parameter(
@@ -455,6 +468,7 @@ def _create_alias_parameter_for_expression(
             logger.debug(
                 f"Using created {p.compact_repr()} for {expr_repr}"  # pyright: ignore[reportPossiblyUnboundVariable]
             )
+
     is_expr = mutator._create_and_insert_expression(
         ExpressionBuilder(
             F.Expressions.Is,
@@ -464,7 +478,15 @@ def _create_alias_parameter_for_expression(
             traits=[],
         )
     )
-    mutator.transformations.created[is_expr.is_parameter_operatable.get()] = [expr_po]
+    is_expr_po = is_expr.is_parameter_operatable.get()
+    if is_expr_old:
+        is_expr_old_po = is_expr_old.is_parameter_operatable.get()
+        mutator._mutate(is_expr_old_po, is_expr_po)
+        # only if no change mark as copy
+        if mutator.is_terminated(is_expr_old.is_expression.get()):
+            mutator.transformations.copied.add(is_expr_old_po)
+    else:
+        mutator.transformations.created[is_expr_po] = [expr_po]
 
     for p_old in existing_params:
         p_old_po = p_old.as_parameter_operatable.get()
@@ -582,7 +604,10 @@ def flatten_expressions(mutator: Mutator):
                 ExpressionBuilder.from_e(e).with_(operands=operands)
             ).is_parameter_operatable.get(),
         ).as_expression.force_get()
-        if original_operands == operands:
+        if all(
+            o1.is_same(o2, allow_different_graph=True)
+            for o1, o2 in zip(original_operands, operands)
+        ):
             mutator.transformations.copied.add(e_po)
 
         aliases = e_op.get_operations(F.Expressions.Is, predicates_only=True)
