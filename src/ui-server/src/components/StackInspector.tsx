@@ -50,9 +50,18 @@ function truncatePath(filename: string, segments: number = 2): string {
 
 /**
  * Check if a serialized value is a container type
+ * Also treats namedtuples (which have a custom type name but dict-like value) as containers
  */
 function isContainer(info: SerializedValue): boolean {
-  return ['dict', 'list', 'tuple', 'set', 'frozenset'].includes(info.type);
+  if (['dict', 'list', 'tuple', 'set', 'frozenset'].includes(info.type)) {
+    return true;
+  }
+  // Namedtuples have custom type names but dict-like value structure
+  // Detect them by checking if value is a plain object (not array)
+  if (info.value && typeof info.value === 'object' && !Array.isArray(info.value) && info.length !== undefined) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -68,6 +77,7 @@ function ContainerViewer({ value, name, depth = 0 }: { value: SerializedValue; n
     const displayValue = value.repr ?? (
       value.value === null ? 'None' :
       typeof value.value === 'string' ? `"${value.value}"` :
+      typeof value.value === 'object' ? JSON.stringify(value.value) :
       String(value.value)
     );
 
@@ -83,11 +93,14 @@ function ContainerViewer({ value, name, depth = 0 }: { value: SerializedValue; n
 
   // For containers, render collapsible
   const items = value.value as SerializedValue[] | Record<string, SerializedValue>;
-  const isDict = value.type === 'dict';
+  // Treat as dict-like if type is 'dict' OR if value is a plain object (namedtuples)
+  const isDictLike = value.type === 'dict' || (typeof items === 'object' && !Array.isArray(items));
   const itemCount = value.length ?? (Array.isArray(items) ? items.length : Object.keys(items).length);
 
-  // Collapsed preview
-  const brackets = isDict ? ['{', '}'] :
+  // Collapsed preview - namedtuples get () brackets, dicts get {}
+  const isNamedTuple = isDictLike && value.type !== 'dict';
+  const brackets = isNamedTuple ? ['(', ')'] :
+    isDictLike ? ['{', '}'] :
     value.type === 'set' || value.type === 'frozenset' ? ['{', '}'] :
     value.type === 'tuple' ? ['(', ')'] : ['[', ']'];
 
@@ -103,8 +116,8 @@ function ContainerViewer({ value, name, depth = 0 }: { value: SerializedValue; n
       </button>
       {isExpanded && (
         <div className="cv-children">
-          {isDict ? (
-            // Dict entries
+          {isDictLike ? (
+            // Dict/namedtuple entries
             Object.entries(items as Record<string, SerializedValue>).map(([key, val]) => (
               <div key={key} className="cv-entry">
                 <ContainerViewer value={val} name={key} depth={depth + 1} />

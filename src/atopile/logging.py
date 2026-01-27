@@ -145,6 +145,7 @@ def _serialize_local_var(
 
     Containers (dict, list, set, tuple) are serialized recursively with their
     structure preserved. Non-container values use pretty_repr/repr for display.
+    Objects with __rich_repr__ are always serialized using pretty repr.
     """
     type_name = type(value).__name__
     max_depth = 5  # Prevent infinite recursion
@@ -163,6 +164,12 @@ def _serialize_local_var(
             }
         return {"type": type_name, "value": value}
 
+    # Objects with __rich_repr__ should use pretty repr instead of container serialization
+    # This handles custom classes that may be iterable but have a preferred repr
+    if hasattr(value, "__rich_repr__"):
+        repr_str = _get_pretty_repr(value, max_repr_len)
+        return {"type": type_name, "repr": repr_str}
+
     # Handle containers recursively (if not too deep)
     if depth < max_depth:
         if isinstance(value, dict):
@@ -180,6 +187,22 @@ def _serialize_local_var(
                 "length": len(value),
             }
             if len(value) > max_container_items:
+                result["truncated"] = True
+            return result
+
+        # Namedtuples: serialize as dict with field names for readability
+        if isinstance(value, tuple) and hasattr(value, "_fields"):
+            serialized = {}
+            for field in value._fields[:max_container_items]:
+                serialized[field] = _serialize_local_var(
+                    getattr(value, field), max_repr_len, max_container_items, depth + 1
+                )
+            result = {
+                "type": type_name,
+                "value": serialized,
+                "length": len(value._fields),
+            }
+            if len(value._fields) > max_container_items:
                 result["truncated"] = True
             return result
 
