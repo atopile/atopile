@@ -156,6 +156,12 @@ def process_required_names(
 
             longest_hierarchy = max(hierarchies, key=len)
 
+            # TODO: get all names from all hierarchies and collect all expected
+            # If any hierarchies which are not the longest give a suggestion,
+            # log a debug message about a skipped hierarchy
+            # Only respect the longest hierarchy's suggestions
+            # raise exception upon matching expected names (already done)
+
             names: list[tuple[fabll.Node, str]] = []
             for node, _ in longest_hierarchy:
                 if node.has_trait(fabll.is_interface):
