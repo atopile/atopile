@@ -706,18 +706,25 @@ class MutatorUtils:
         return out
 
     @staticmethod
-    def copy_trait[T: fabll.NodeT](
+    def try_copy_trait[T: fabll.NodeT](
         g: graph.GraphView,
         from_param: F.Parameters.is_parameter,
         to_param: F.Parameters.is_parameter,
         trait_t: type[T],
     ) -> T | None:
+        """
+        Copies the specified trait from the from_param to the to_param.
+
+        Returns the trait if copied or if already present. Returns None if the trait
+        is not present on the from_param.
+        """
         from_param_obj = fabll.Traits(from_param).get_obj_raw()
         to_param_obj = fabll.Traits(to_param).get_obj_raw()
-        if not to_param_obj.has_trait(trait_t):
-            if trait := from_param_obj.try_get_trait(trait_t):
-                return trait_t.bind_instance(
-                    instance=fabll.Traits.add_instance_to(
-                        node=to_param_obj, trait_instance=trait.copy_into(g)
-                    )
+        if to_param_obj.has_trait(trait_t):
+            return to_param_obj.get_trait(trait_t)
+        if trait := from_param_obj.try_get_trait(trait_t):
+            return trait_t.bind_instance(
+                instance=fabll.Traits.add_instance_to(
+                    node=to_param_obj, trait_instance=trait.copy_into(g)
                 )
+            )

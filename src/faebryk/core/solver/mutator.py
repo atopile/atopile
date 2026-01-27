@@ -1102,14 +1102,15 @@ class MutationMap:
 
             if (p_new_p := p_new.as_parameter.try_get()) is not None:
                 p_old_p = p_old.as_parameter.force_get()
-                if not MutatorUtils.copy_trait(
+                if not MutatorUtils.try_copy_trait(
                     g=g_out,
                     from_param=p_old_p,
                     to_param=p_new_p,
                     trait_t=F.has_name_override,
                 ):
                     # Preserve the location-based name before it's lost
-                    p_new_p.set_name(p_old_p.get_name())
+                    p_old_obj = fabll.Traits(p_old_p).get_obj_raw()
+                    p_new_p.set_name(p_old_obj.get_name())
 
         nodes_uuids = {p.instance.node().get_uuid() for p in relevant}
 
@@ -1628,14 +1629,16 @@ class Mutator:
 
         new_param_p = new_param.as_parameter.force_get()
         if (
-            MutatorUtils.copy_trait(self.G_out, param, new_param_p, F.has_name_override)
+            MutatorUtils.try_copy_trait(
+                self.G_out, param, new_param_p, F.has_name_override
+            )
             is None
         ):
             # Preserve the location-based name before it's lost
             new_param_p.set_name(param_obj.get_name())
 
         for trait_t in [is_relevant, is_irrelevant]:
-            MutatorUtils.copy_trait(self.G_out, param, new_param_p, trait_t)
+            MutatorUtils.try_copy_trait(self.G_out, param, new_param_p, trait_t)
 
         return self._mutate(
             p_po,
