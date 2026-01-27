@@ -54,12 +54,10 @@ def _compute_active_elapsed(build: Build) -> float:
 def _fix_interrupted_build(build: Build) -> Build:
     """Fix builds left in BUILDING/QUEUED from a crashed server."""
     if build.status in (BuildStatus.BUILDING, BuildStatus.QUEUED):
-        return build.model_copy(
-            update={
-                "status": BuildStatus.FAILED,
-                "error": build.error or "Build was interrupted",
-            }
-        )
+        return build.model_copy(update={
+            "status": BuildStatus.FAILED,
+            "error": build.error or "Build was interrupted",
+        })
     return build
 
 
@@ -74,13 +72,9 @@ def handle_get_summary(_ctx: AppContext) -> dict:
         for build in _active_builds:
             active_build_ids.add(build.build_id)
             elapsed = _compute_active_elapsed(build)
-            all_builds.append(
-                build.model_copy(
-                    update={
-                        "elapsed_seconds": elapsed,
-                    }
-                )
-            )
+            all_builds.append(build.model_copy(update={
+                "elapsed_seconds": elapsed,
+            }))
 
     # Then add historical builds from database (not currently active)
     history_builds = build_history.load_recent_builds_from_history(limit=100)

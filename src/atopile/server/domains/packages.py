@@ -43,7 +43,6 @@ def _get_api() -> PackagesAPIClient:
     """Get a fresh API client instance."""
     return PackagesAPIClient()
 
-
 log = logging.getLogger(__name__)
 
 # Registry cache

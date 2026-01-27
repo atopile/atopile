@@ -401,7 +401,9 @@ class BuildProcess:
         elif self.return_code is None:
             return BuildStatus.BUILDING
         else:
-            return BuildStatus.from_return_code(self.return_code, self.warnings)
+            return BuildStatus.from_return_code(
+                self.return_code, self.warnings
+            )
 
     def terminate(self) -> None:
         """Terminate the build process."""
@@ -1033,8 +1035,7 @@ class ParallelBuildManager:
             # Add newline after header in verbose mode for cleaner stage output
             newline = "\n" if print_headers else ""
             console.print(
-                "[bold cyan]▶ Building "
-                f"{display_name}{build_id_str}[/bold cyan]{newline}"
+                f"[bold cyan]▶ Building {display_name}{build_id_str}[/bold cyan]{newline}"
             )
             if stage_printer is not None:
                 bp.set_stage_printer(stage_printer)

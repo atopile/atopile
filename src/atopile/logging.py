@@ -306,7 +306,6 @@ def _extract_traceback_frames(
 # Log appender singletons
 # =============================================================================
 
-
 def _normalize_db_value(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
@@ -932,6 +931,7 @@ class LogHandler(RichHandler):
         if hide or not exc_type or not exc_value:
             return None
 
+        # Use console width or None (unlimited) for traceback width to prevent truncation
         width = getattr(self, "tracebacks_width", None) or getattr(
             self.console, "width", None
         )

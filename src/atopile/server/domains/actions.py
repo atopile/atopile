@@ -602,14 +602,13 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                         )
                         loop = event_bus._event_loop
                         if loop and loop.is_running():
-                            error_payload = {
-                                "error": f"Failed to install {pkg_spec}: {error_msg}",
-                                "package_id": package_id,
-                            }
                             asyncio.run_coroutine_threadsafe(
                                 server_state.emit_event(
                                     "packages_changed",
-                                    error_payload,
+                                    {
+                                        "error": f"Failed to install {pkg_spec}: {error_msg}",
+                                        "package_id": package_id,
+                                    },
                                 ),
                                 loop,
                             )
@@ -1103,7 +1102,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Entry file not found: {entry_path}",
                 }
 
-            await server_state.emit_event("open_file", {"path": str(entry_path)})
+            await server_state.emit_event(
+                "open_file", {"path": str(entry_path)}
+            )
             return {"success": True}
 
         if action == "openLayout":
@@ -1177,10 +1178,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             return {"success": False, "error": "selectBuild is frontend-only"}
 
         elif action == "toggleProblemLevelFilter":
-            return {
-                "success": False,
-                "error": "toggleProblemLevelFilter is frontend-only",
-            }
+            return {"success": False, "error": "toggleProblemLevelFilter is frontend-only"}
 
         elif action == "setDeveloperMode":
             return {"success": False, "error": "setDeveloperMode is frontend-only"}
