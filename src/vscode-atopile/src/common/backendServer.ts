@@ -302,20 +302,6 @@ class BackendServerManager implements vscode.Disposable {
             { label: '', kind: vscode.QuickPickItemKind.Separator, action: 'none' },
         ];
 
-        if (this._isConnected || this._serverState === 'running') {
-            items.push({
-                label: '$(debug-restart) Restart Backend Server',
-                description: 'Stop and restart the backend server',
-                action: 'restart',
-            });
-        } else {
-            items.push({
-                label: '$(play) Start Backend Server',
-                description: 'Start the backend server',
-                action: 'start',
-            });
-        }
-
         items.push({
             label: '$(output) Show Server Logs',
             description: 'Show the backend server output',
@@ -330,12 +316,6 @@ class BackendServerManager implements vscode.Disposable {
         if (!selected || selected.action === 'none') return;
 
         switch (selected.action) {
-            case 'restart':
-                await this.restartServer();
-                break;
-            case 'start':
-                await this.startServer();
-                break;
             case 'show_logs':
                 this.showLogs();
                 break;

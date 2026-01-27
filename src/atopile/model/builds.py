@@ -33,6 +33,7 @@ from atopile.model.build_queue import (
     cancel_build,
 )
 from atopile.model.model_state import model_state
+from atopile.model.sqlite import BuildHistory
 
 log = logging.getLogger(__name__)
 
@@ -83,7 +84,7 @@ def handle_get_summary(_ctx: AppContext) -> dict:
             )
 
     # Then add historical builds from database (not currently active)
-    history_builds = build_history.load_recent_builds_from_history(limit=100)
+    history_builds = BuildHistory.get_all(limit=100)
     for build in history_builds:
         # Skip if this build is currently active
         if build.build_id in active_build_ids:
@@ -355,7 +356,7 @@ def handle_get_build_history(
     limit: int = 50,
 ) -> dict:
     """Get build history with optional filters."""
-    builds = build_history.load_recent_builds_from_history(limit=limit)
+    builds = BuildHistory.get_all(limit=limit)
 
     if project_root:
         builds = [b for b in builds if b.project_root == project_root]
@@ -398,7 +399,7 @@ def handle_get_build_info(build_id: str) -> dict | None:
             return build.model_copy(update=updates).model_dump(by_alias=True)
 
     # Fall back to build history database
-    historical = build_history.get_build_info_by_id(build_id)
+    historical = BuildHistory.get(build_id)
     if historical:
         return _fix_interrupted_build(historical).model_dump(by_alias=True)
     return None

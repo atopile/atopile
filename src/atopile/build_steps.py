@@ -108,7 +108,8 @@ class MusterTarget:
         if not self.virtual:
             import time
 
-            from atopile.dataclasses import BuildStage
+            from atopile.dataclasses import Build, BuildStage, BuildStatus
+            from atopile.model.sqlite import BuildHistory
 
             try:
                 # Set up logging for this build stage
@@ -131,7 +132,16 @@ class MusterTarget:
                         status="failed",
                     )
                 )
-                ctx.flush_stages_to_db()
+                if ctx.build_id:
+                    BuildHistory.set(Build(
+                        build_id=ctx.build_id,
+                        name=config.build.name,
+                        display_name=config.build.name,
+                        project_root=str(config.project.paths.root),
+                        target=config.build.name,
+                        status=BuildStatus.BUILDING,
+                        stages=[s.model_dump(by_alias=True) for s in ctx.completed_stages],
+                    ))
                 raise
 
             # Record successful stage
@@ -144,7 +154,16 @@ class MusterTarget:
                     status="success",
                 )
             )
-            ctx.flush_stages_to_db()
+            if ctx.build_id:
+                BuildHistory.set(Build(
+                    build_id=ctx.build_id,
+                    name=config.build.name,
+                    display_name=config.build.name,
+                    project_root=str(config.project.paths.root),
+                    target=config.build.name,
+                    status=BuildStatus.BUILDING,
+                    stages=[s.model_dump(by_alias=True) for s in ctx.completed_stages],
+                ))
 
         self.success = True
 
