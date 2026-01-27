@@ -88,34 +88,38 @@ export interface BuildTargetBuildTargetStatus {
  * A build (active, queued, or completed).
  */
 export interface Build {
-    buildId?:        null | string;
-    completedAt?:    number | null;
-    displayName:     string;
-    duration?:       number | null;
-    elapsedSeconds?: number;
-    entry?:          null | string;
-    error?:          null | string;
-    errors?:         number;
-    logDir?:         null | string;
-    logFile?:        null | string;
-    name:            string;
-    projectName?:    null | string;
-    projectRoot?:    null | string;
-    queuePosition?:  number | null;
-    returnCode?:     number | null;
-    stages?:         StageElement[] | null;
-    startedAt?:      number | null;
-    status?:         BuildStatus;
-    target?:         null | string;
-    totalStages?:    number;
-    warnings?:       number;
+    buildId?:           null | string;
+    buildingStartedAt?: number | null;
+    completedAt?:       number | null;
+    displayName:        string;
+    duration?:          number | null;
+    elapsedSeconds?:    number;
+    entry?:             null | string;
+    error?:             null | string;
+    errors?:            number;
+    frozen?:            boolean;
+    logDir?:            null | string;
+    logFile?:           null | string;
+    name:               string;
+    projectName?:       null | string;
+    projectRoot?:       null | string;
+    queuePosition?:     number | null;
+    returnCode?:        number | null;
+    stages?:            { [key: string]: any }[];
+    standalone?:        boolean;
+    startedAt?:         number | null;
+    status?:            BuildStatus;
+    target?:            null | string;
+    timestamp?:         null | string;
+    totalStages?:       number;
+    warnings?:          number;
     [property: string]: any;
 }
 
 /**
  * A stage within a build.
  */
-export interface StageElement {
+export interface BuildStage {
     alerts?:         number;
     displayName?:    null | string;
     elapsedSeconds?: number;
@@ -139,22 +143,6 @@ export enum StageStatus {
     Skipped = "skipped",
     Success = "success",
     Warning = "warning",
-}
-
-/**
- * A stage within a build.
- */
-export interface BuildStage {
-    alerts?:         number;
-    displayName?:    null | string;
-    elapsedSeconds?: number;
-    errors?:         number;
-    infos?:          number;
-    name:            string;
-    stageId?:        string;
-    status?:         StageStatus;
-    warnings?:       number;
-    [property: string]: any;
 }
 
 /**

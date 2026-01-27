@@ -264,66 +264,6 @@
   },
   "Build": {
     "$defs": {
-      "BuildStage": {
-        "description": "A stage within a build.",
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "stageId": {
-            "default": "",
-            "title": "Stageid",
-            "type": "string"
-          },
-          "displayName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Displayname"
-          },
-          "elapsedSeconds": {
-            "default": 0.0,
-            "title": "Elapsedseconds",
-            "type": "number"
-          },
-          "status": {
-            "$ref": "#/$defs/StageStatus",
-            "default": "pending"
-          },
-          "infos": {
-            "default": 0,
-            "title": "Infos",
-            "type": "integer"
-          },
-          "warnings": {
-            "default": 0,
-            "title": "Warnings",
-            "type": "integer"
-          },
-          "errors": {
-            "default": 0,
-            "title": "Errors",
-            "type": "integer"
-          },
-          "alerts": {
-            "default": 0,
-            "title": "Alerts",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "title": "BuildStage",
-        "type": "object"
-      },
       "BuildStatus": {
         "description": "Build status states - overall status of a build.",
         "enum": [
@@ -335,20 +275,6 @@
           "cancelled"
         ],
         "title": "BuildStatus",
-        "type": "string"
-      },
-      "StageStatus": {
-        "description": "Stage status states - status of individual build stages.",
-        "enum": [
-          "pending",
-          "running",
-          "success",
-          "warning",
-          "failed",
-          "error",
-          "skipped"
-        ],
-        "title": "StageStatus",
         "type": "string"
       }
     },
@@ -501,20 +427,47 @@
         "default": null,
         "title": "Duration"
       },
-      "stages": {
+      "timestamp": {
         "anyOf": [
           {
-            "items": {
-              "$ref": "#/$defs/BuildStage"
-            },
-            "type": "array"
+            "type": "string"
           },
           {
             "type": "null"
           }
         ],
         "default": null,
-        "title": "Stages"
+        "title": "Timestamp"
+      },
+      "standalone": {
+        "default": false,
+        "title": "Standalone",
+        "type": "boolean"
+      },
+      "frozen": {
+        "default": false,
+        "title": "Frozen",
+        "type": "boolean"
+      },
+      "buildingStartedAt": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Buildingstartedat"
+      },
+      "stages": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Stages",
+        "type": "array"
       },
       "totalStages": {
         "default": 20,

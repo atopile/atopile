@@ -217,6 +217,7 @@ class Logs:
         audience: str | None = None,
         after_id: int = 0,
         count: int = 1000,
+        order: str = "ASC",
     ) -> tuple[list[dict[str, Any]], int]:
         if not BUILD_LOGS_DB.exists():
             return [], after_id
@@ -236,13 +237,14 @@ class Logs:
             where.append("audience = ?")
             params.append(audience)
         params.append(min(count, 5000))
+        order_dir = "DESC" if order.upper() == "DESC" else "ASC"
 
         with sqlite3.connect(BUILD_LOGS_DB, timeout=30.0) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM logs"
                 " WHERE " + " AND ".join(where) +
-                " ORDER BY id ASC LIMIT ?",
+                f" ORDER BY id {order_dir} LIMIT ?",
                 params,
             ).fetchall()
 
@@ -356,6 +358,7 @@ class TestLogs:
         audience: str | None = None,
         after_id: int = 0,
         count: int = 1000,
+        order: str = "ASC",
     ) -> tuple[list[dict[str, Any]], int]:
         if not TEST_LOGS_DB.exists():
             return [], after_id
@@ -375,13 +378,14 @@ class TestLogs:
             where.append("audience = ?")
             params.append(audience)
         params.append(min(count, 5000))
+        order_dir = "DESC" if order.upper() == "DESC" else "ASC"
 
         with sqlite3.connect(TEST_LOGS_DB, timeout=30.0) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM test_logs"
                 " WHERE " + " AND ".join(where) +
-                " ORDER BY id ASC LIMIT ?",
+                f" ORDER BY id {order_dir} LIMIT ?",
                 params,
             ).fetchall()
 
@@ -441,5 +445,4 @@ class Tests:
         assert len(rows) == 1
         assert rows[0]["message"] == "passed"
         assert last_id > 0
-
 
