@@ -1219,7 +1219,6 @@ class BuildReport:
 @dataclass
 class AppContext:
     summary_file: Optional[Path] = None
-    logs_base: Optional[Path] = None
     workspace_path: Optional[Path] = None
 
 

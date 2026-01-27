@@ -16,15 +16,15 @@ export function useProjects() {
   const selectedProject = useSelectedProject();
 
   const selectProject = useCallback((projectRoot: string | null) => {
-    sendAction('selectProject', { projectRoot });
+    useStore.getState().selectProject(projectRoot);
   }, []);
 
   const toggleTarget = useCallback((targetName: string) => {
-    sendAction('toggleTarget', { targetName });
+    useStore.getState().toggleTarget(targetName);
   }, []);
 
   const toggleTargetExpanded = useCallback((targetName: string) => {
-    sendAction('toggleTargetExpanded', { targetName });
+    useStore.getState().toggleTargetExpanded(targetName);
   }, []);
 
   const refresh = useCallback(async () => {

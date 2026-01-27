@@ -27,6 +27,7 @@ from atopile.model.build_queue import (
 )
 from atopile.model.model_state import model_state
 from atopile.server import path_utils
+from atopile.server.client_state import client_state
 from atopile.server.connections import server_state
 from atopile.server.core import projects as core_projects
 from atopile.server.domains import artifacts as artifacts_domain
@@ -1233,30 +1234,19 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             await server_state.emit_event("open_3d", {"path": str(target)})
             return {"success": True}
 
-        # Frontend-only actions (selection/filter state now local to UI)
-        elif action == "selectProject":
-            return {"success": False, "error": "selectProject is frontend-only"}
+        elif action == "setLogViewCurrentId":
+            build_id = payload.get("buildId")
+            client_state.log_view_current_id = build_id
+            await server_state.emit_event(
+                "log_view_current_id_changed", {"buildId": build_id}
+            )
+            return {"success": True}
 
-        elif action == "setSelectedTargets":
-            return {"success": False, "error": "setSelectedTargets is frontend-only"}
-
-        elif action == "toggleTarget":
-            return {"success": False, "error": "toggleTarget is frontend-only"}
-
-        elif action == "toggleTargetExpanded":
-            return {"success": False, "error": "toggleTargetExpanded is frontend-only"}
-
-        elif action == "selectBuild":
-            return {"success": False, "error": "selectBuild is frontend-only"}
-
-        elif action == "toggleProblemLevelFilter":
+        elif action == "getLogViewCurrentId":
             return {
-                "success": False,
-                "error": "toggleProblemLevelFilter is frontend-only",
+                "success": True,
+                "buildId": client_state.log_view_current_id,
             }
-
-        elif action == "setDeveloperMode":
-            return {"success": False, "error": "setDeveloperMode is frontend-only"}
 
         elif action == "setAtopileSource":
             await server_state.emit_event(

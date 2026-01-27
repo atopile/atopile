@@ -14,6 +14,7 @@ import type { Selection, BuildTarget, BuildStage, ModuleDefinition } from './pro
 import { NameValidationDropdown } from './NameValidationDropdown';
 import { validateName } from '../utils/nameValidation';
 import { useStore } from '../store';
+import { sendAction } from '../api/websocket';
 import './BuildNode.css';
 
 // Timer component for running stages - isolated to prevent parent re-renders
@@ -666,6 +667,7 @@ export const BuildNode = memo(function BuildNode({
                 const id = build.buildId || build.lastBuild?.buildId;
                 if (id) {
                   useStore.getState().setLogViewerBuildId(id);
+                  sendAction('setLogViewCurrentId', { buildId: id });
                 }
               }}
               title="Click to view logs for this build"

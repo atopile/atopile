@@ -220,6 +220,7 @@ function handleOpen(): void {
 
   void refreshProjects();
   void refreshBuilds();
+  void fetchLogViewCurrentId();
 }
 
 function handleMessage(event: MessageEvent): void {
@@ -289,6 +290,19 @@ function handleMessage(event: MessageEvent): void {
         }
         if (message.action === 'build' || message.action === 'cancelBuild') {
           void refreshBuilds();
+        }
+        // Auto-switch log viewer to the newly queued build
+        if (message.action === 'build' && result.success) {
+          const r = result as Record<string, unknown>;
+          const singleId = r.build_id ?? r.buildId;
+          const multiIds = r.build_ids ?? r.buildIds;
+          const buildId = typeof singleId === 'string'
+            ? singleId
+            : (Array.isArray(multiIds) && typeof multiIds[0] === 'string' ? multiIds[0] : null);
+          if (buildId) {
+            useStore.getState().setLogViewerBuildId(buildId);
+            sendAction('setLogViewCurrentId', { buildId });
+          }
         }
         if (typeof window !== 'undefined') {
           window.dispatchEvent(
@@ -567,6 +581,20 @@ async function refreshBuilds(): Promise<void> {
   }
 }
 
+async function fetchLogViewCurrentId(): Promise<void> {
+  try {
+    const response = await sendActionWithResponse('getLogViewCurrentId');
+    const buildId = typeof response.result?.buildId === 'string'
+      ? response.result.buildId
+      : null;
+    if (buildId) {
+      useStore.getState().setLogViewerBuildId(buildId);
+    }
+  } catch (error) {
+    console.warn('[WS] Failed to fetch log view current ID:', error);
+  }
+}
+
 function handleEventMessage(message: EventMessage): void {
   const data = message.data ?? {};
   const projectRoot =
@@ -601,6 +629,12 @@ function handleEventMessage(message: EventMessage): void {
       break;
     case 'atopile_config_changed':
       updateAtopileConfig(data);
+      break;
+    case 'log_view_current_id_changed':
+      {
+        const buildId = typeof data.buildId === 'string' ? data.buildId : null;
+        useStore.getState().setLogViewerBuildId(buildId);
+      }
       break;
     default:
       break;
