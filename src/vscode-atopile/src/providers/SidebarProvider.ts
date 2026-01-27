@@ -16,6 +16,8 @@ import { traceInfo, traceError } from '../common/log/logging';
 import { openPcb } from '../common/kicad';
 import { setCurrentPCB } from '../common/pcb';
 import { setCurrentThreeDModel } from '../common/3dmodel';
+import { setProjectRoot, setSelectedTargets } from '../common/target';
+import { loadBuilds, getBuilds } from '../common/manifest';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openModelViewerPreview } from '../ui/modelviewer';
 
@@ -45,7 +47,17 @@ interface AtopileSettingsMessage {
   };
 }
 
-type WebviewMessage = OpenSignalsMessage | ConnectionStatusMessage | AtopileSettingsMessage;
+interface SelectionChangedMessage {
+  type: 'selectionChanged';
+  projectRoot: string | null;
+  targetNames: string[];
+}
+
+type WebviewMessage =
+  | OpenSignalsMessage
+  | ConnectionStatusMessage
+  | AtopileSettingsMessage
+  | SelectionChangedMessage;
 
 /**
  * Check if we're running in development mode.
@@ -280,9 +292,25 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'atopileSettings':
         this._handleAtopileSettings(message.atopile);
         break;
+      case 'selectionChanged':
+        void this._handleSelectionChanged(message);
+        break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
     }
+  }
+
+  private async _handleSelectionChanged(message: SelectionChangedMessage): Promise<void> {
+    const projectRoot = message.projectRoot ?? null;
+    setProjectRoot(projectRoot ?? undefined);
+
+    await loadBuilds();
+    const builds = getBuilds();
+    const projectBuilds = projectRoot ? builds.filter((build) => build.root === projectRoot) : [];
+    const selectedBuilds = message.targetNames.length
+      ? projectBuilds.filter((build) => message.targetNames.includes(build.name))
+      : [];
+    setSelectedTargets(selectedBuilds);
   }
 
   /**

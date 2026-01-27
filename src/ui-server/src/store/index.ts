@@ -6,7 +6,8 @@
  */
 
 import { create } from 'zustand';
-import { devtools } from 'zustand/middleware';
+import { devtools, subscribeWithSelector } from 'zustand/middleware';
+import { postMessage } from '../api/vscodeApi';
 import type {
   AppState,
   Project,
@@ -34,6 +35,11 @@ let variablesErrorTimeout: ReturnType<typeof setTimeout> | null = null;
 let packageDetailsErrorTimeout: ReturnType<typeof setTimeout> | null = null;
 let projectsErrorTimeout: ReturnType<typeof setTimeout> | null = null;
 let atopileErrorTimeout: ReturnType<typeof setTimeout> | null = null;
+
+const arraysEqual = (a: string[], b: string[]) => {
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
+};
 
 // Initial state for the store
 const initialState: AppState = {
@@ -246,9 +252,10 @@ interface StoreActions {
 type Store = AppState & StoreActions;
 
 export const useStore = create<Store>()(
-  devtools(
-    (set) => ({
-      ...initialState,
+  subscribeWithSelector(
+    devtools(
+      (set) => ({
+        ...initialState,
 
       // Connection
       setConnected: (connected) => set({ isConnected: connected }),
@@ -650,11 +657,43 @@ export const useStore = create<Store>()(
 
       // Reset
       reset: () => set(initialState),
-    }),
-    { name: 'atopile-store' }
+      }),
+      { name: 'atopile-store' }
+    )
   )
 );
 
+<<<<<<< HEAD
+=======
+// Receive cross-webview state updates
+_channel?.addEventListener('message', (event) => {
+  const { key, value } = event.data ?? {};
+  if (key) {
+    useStore.setState({ [key]: value });
+  }
+});
+
+useStore.subscribe(
+  (state) => ({
+    projectRoot: state.selectedProjectRoot,
+    targetNames: state.selectedTargetNames,
+  }),
+  (current, previous) => {
+    if (
+      current.projectRoot === previous.projectRoot &&
+      arraysEqual(current.targetNames, previous.targetNames)
+    ) {
+      return;
+    }
+    postMessage({
+      type: 'selectionChanged',
+      projectRoot: current.projectRoot,
+      targetNames: current.targetNames,
+    });
+  }
+);
+
+>>>>>>> 5ec6e6d4b (update layout/3d views to selected build)
 // Selectors for common derived state
 export const useSelectedProject = () =>
   useStore((state) => {
