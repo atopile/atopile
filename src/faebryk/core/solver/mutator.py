@@ -611,17 +611,27 @@ class MutationStage:
             key = "new"
             key_from_ops = " \n  ".join(___repr_op(o) for o in from_ops)
             value = ___repr_op(op)
-            if (op_e := op.as_expression.try_get()) and (
-                MutatorUtils.is_set_literal_expression(op)
+            if (op_e := op.as_expression.try_get()) and op_e.try_get_sibling_trait(
+                F.Expressions.is_predicate
             ):
-                expr = next(iter(op_e.get_operand_operatables()))
-                lits = op_e.get_operand_literals()
-                lit = next(iter(lits.values()))
-                if not SHOW_SS_IS and expr in created_ops:
-                    continue
-                alias_type = "superset" if lits.keys() == {1} else "subset"
-                key = f"new_{alias_type}\n{lit.pretty_str()}"
-                value = ___repr_op(expr)
+                if MutatorUtils.is_set_literal_expression(op):
+                    expr = next(iter(op_e.get_operand_operatables()))
+                    lits = op_e.get_operand_literals()
+                    lit = next(iter(lits.values()))
+                    if not SHOW_SS_IS and expr in created_ops:
+                        continue
+                    alias_type = "superset" if lits.keys() == {1} else "subset"
+                    value = f"new {alias_type}\n{lit.pretty_str()}"
+                    key = expr.compact_repr(no_lit_suffix=True)
+                elif fabll.Traits(op).get_obj_raw().isinstance(F.Expressions.Is):
+                    expr = next(
+                        iter(op_e.get_operands_with_trait(F.Expressions.is_expression))
+                    )
+                    param = next(
+                        iter(op_e.get_operands_with_trait(F.Parameters.is_parameter))
+                    )
+                    key = expr.compact_repr(no_class_suffix=True)
+                    value = f"new alias\n{param.compact_repr(with_detail=False)}"
             if key_from_ops:
                 key = f"{key} from\n  {key_from_ops}"
             rows.append((key, value))
