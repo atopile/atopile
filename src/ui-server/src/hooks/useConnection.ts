@@ -39,10 +39,15 @@ export function useConnection() {
             error: message.error,
           });
           break;
-        case 'activeFile':
-          // Notify backend so it can track lastAtoFile
-          sendAction('setActiveEditorFile', { filePath: message.filePath ?? null });
+        case 'activeFile': {
+          const filePath = message.filePath ?? null;
+          const store = useStore.getState();
+          store.setActiveEditorFile(filePath);
+          if (filePath && filePath.toLowerCase().endsWith('.ato')) {
+            store.setLastAtoFile(filePath);
+          }
           break;
+        }
       }
     });
 
