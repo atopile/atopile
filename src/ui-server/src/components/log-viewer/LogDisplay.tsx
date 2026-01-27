@@ -431,5 +431,4 @@ export function LogDisplay({
   );
 }
 
-// Export sub-components for advanced usage
-export { ChevronDown, TraceDetails, TreeNodeRow, TreeLogGroup, StandaloneLogRow };
+export { ChevronDown };

@@ -979,9 +979,11 @@ class ParallelBuildManager:
             build_id_str = f" (build_id= {bp.build_id})" if bp.build_id else ""
             # Add newline after header in verbose mode for cleaner stage output
             newline = "\n" if print_headers else ""
-            console.print(
-                f"[bold cyan]▶ Building {display_name}{build_id_str}[/bold cyan]{newline}"
+            header = (
+                f"[bold cyan]▶ Building {display_name}{build_id_str}[/bold cyan]"
+                f"{newline}"
             )
+            console.print(header)
             if stage_printer is not None:
                 bp.set_stage_printer(stage_printer)
             bp.start()

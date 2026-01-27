@@ -581,10 +581,10 @@ class LoggerForTest(BaseLogger):
     @classmethod
     def flush_all(cls) -> None:
         """Flush pending logs without closing the writer."""
-        with SQLiteLogWriter._lock:
-            writer = SQLiteLogWriter._instances.get("test")
-            if writer:
-                writer.flush()
+        for h in logging.getLogger().handlers:
+            if isinstance(h, LogHandler) and h._test_logger:
+                h._test_logger.flush()
+                break
 
     @classmethod
     def setup_logging(cls, test_run_id: str, test: str = "") -> "LoggerForTest | None":
@@ -684,14 +684,14 @@ class BuildLogger(BaseLogger):
         return cls._loggers[build_id]
 
     @classmethod
-    def close(cls, build_id: str) -> None:
+    def close_logger(cls, build_id: str) -> None:
         if build_id in cls._loggers:
             cls._loggers.pop(build_id).close()
 
     @classmethod
     def close_all(cls) -> None:
         for bid in list(cls._loggers):
-            cls.close(bid)
+            cls.close_logger(bid)
 
     @classmethod
     def setup_logging(
@@ -931,7 +931,7 @@ class LogHandler(RichHandler):
         if hide or not exc_type or not exc_value:
             return None
 
-        # Use console width or None (unlimited) for traceback width to prevent truncation
+        # Use console width or None (unlimited) to avoid truncating tracebacks
         width = getattr(self, "tracebacks_width", None) or getattr(
             self.console, "width", None
         )
