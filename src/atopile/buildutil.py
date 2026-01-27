@@ -1,6 +1,5 @@
 import contextlib
 import hashlib
-import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -118,15 +117,6 @@ class BuildStepContext:
 
 @once
 def _check_kicad_cli() -> bool:
-    # Allow forcing KiCad CLI unavailable for testing.
-    if os.environ.get("ATOPILE_DISABLE_KICAD_CLI") in {
-        "1",
-        "true",
-        "TRUE",
-        "yes",
-        "YES",
-    }:
-        return False
     with contextlib.suppress(Exception):
         from kicadcliwrapper.generated.kicad_cli import kicad_cli
 
