@@ -1,14 +1,15 @@
 /**
- * WebSocket client for event notifications from the Python backend.
+ * WebSocket client for real-time state updates from the Python backend.
  *
- * The backend emits lightweight events; this client triggers REST fetches
- * and updates the Zustand store locally.
+ * The backend broadcasts full state on every change. This client connects
+ * to the WebSocket endpoint and updates the Zustand store.
  */
 
 import { useStore } from '../store';
+import type { AppState, Build, BuildStatus } from '../types/build';
+import { api } from './client';
 import { WS_STATE_URL, getWorkspaceFolders } from './config';
 import { postMessage } from './vscodeApi';
-import { fetchInitialData, handleEvent } from './eventHandler';
 
 // Reconnection settings
 const RECONNECT_DELAY_MS = 1000;
@@ -17,10 +18,15 @@ const RECONNECT_BACKOFF_MULTIPLIER = 1.5;
 const CONNECTION_TIMEOUT_MS = 5000; // Timeout for connection handshake
 
 // Message types from backend
+interface StateMessage {
+  type: 'state';
+  data: AppState;
+}
+
 interface EventMessage {
   type: 'event';
   event: string;
-  data?: unknown;
+  data?: Record<string, unknown>;
 }
 
 interface ActionResultMessage {
@@ -37,7 +43,7 @@ interface ActionResultMessage {
   error?: string;
 }
 
-type BackendMessage = EventMessage | ActionResultMessage;
+type BackendMessage = StateMessage | ActionResultMessage | EventMessage;
 
 // WebSocket connection state
 let ws: WebSocket | null = null;
@@ -212,7 +218,8 @@ function handleOpen(): void {
     sendAction('setWorkspaceFolders', { folders: workspaceFolders });
   }
 
-  void fetchInitialData();
+  void refreshProjects();
+  void refreshBuilds();
 }
 
 function handleMessage(event: MessageEvent): void {
@@ -220,83 +227,45 @@ function handleMessage(event: MessageEvent): void {
     const message = JSON.parse(event.data) as BackendMessage;
 
     switch (message.type) {
-      case 'event': {
-        const eventName = message.event;
-        const payload = message.data;
+      case 'state':
+        // Full state replacement from backend
+        // Note: Backend's to_frontend_dict() converts all keys to camelCase
+        {
+          const state = message.data as AppState;
 
-        if (eventName === 'open_file' && payload && typeof payload === 'object') {
-          const data = payload as { path?: string; line?: number; column?: number };
-          if (data.path) {
-            postMessage({
-              type: 'openSignals',
-              openFile: data.path,
-              openFileLine: data.line ?? null,
-              openFileColumn: data.column ?? null,
-              openLayout: null,
-              openKicad: null,
-              open3d: null,
-            });
-          }
-        }
-        if (eventName === 'open_layout' && payload && typeof payload === 'object') {
-          const data = payload as { path?: string };
-          if (data.path) {
-            postMessage({
-              type: 'openSignals',
-              openFile: null,
-              openFileLine: null,
-              openFileColumn: null,
-              openLayout: data.path,
-              openKicad: null,
-              open3d: null,
-            });
-          }
-        }
-        if (eventName === 'open_kicad' && payload && typeof payload === 'object') {
-          const data = payload as { path?: string };
-          if (data.path) {
-            postMessage({
-              type: 'openSignals',
-              openFile: null,
-              openFileLine: null,
-              openFileColumn: null,
-              openLayout: null,
-              openKicad: data.path,
-              open3d: null,
-            });
-          }
-        }
-        if (eventName === 'open_3d' && payload && typeof payload === 'object') {
-          const data = payload as { path?: string };
-          if (data.path) {
-            postMessage({
-              type: 'openSignals',
-              openFile: null,
-              openFileLine: null,
-              openFileColumn: null,
-              openLayout: null,
-              openKicad: null,
-              open3d: data.path,
-            });
-          }
-        }
+          // Extract one-shot open signals before replacing state
+          const { openFile, openFileLine, openFileColumn, openLayout, openKicad, open3D, ...stateWithoutSignals } = state;
 
-        void handleEvent(eventName, payload).then(() => {
-          if (eventName === 'atopile_config_changed') {
-            const atopile = useStore.getState().atopile;
+          // Update store with state (excluding one-shot signals)
+          useStore.getState().replaceState(stateWithoutSignals);
+
+          // Forward open signals to VS Code extension (one-shot actions)
+          if (openFile || openLayout || openKicad || open3D) {
+            postMessage({
+              type: 'openSignals',
+              openFile: openFile ?? null,
+              openFileLine: openFileLine ?? null,
+              openFileColumn: openFileColumn ?? null,
+              openLayout: openLayout ?? null,
+              openKicad: openKicad ?? null,
+              open3d: open3D ?? null,
+            });
+          }
+
+          // Forward atopile settings changes to VS Code extension
+          if (state.atopile) {
             postMessage({
               type: 'atopileSettings',
               atopile: {
-                source: atopile.source,
-                currentVersion: atopile.currentVersion,
-                branch: atopile.branch,
-                localPath: atopile.localPath,
+                source: state.atopile.source,
+                currentVersion: state.atopile.currentVersion,
+                branch: state.atopile.branch,
+                localPath: state.atopile.localPath,
               },
             });
           }
-        });
+        }
         break;
-      }
 
       case 'action_result':
         // Action response (success/failure)
@@ -318,11 +287,17 @@ function handleMessage(event: MessageEvent): void {
         if (!result.success) {
           console.error(`[WS] Action failed: ${message.action}`, result.error);
         }
+        if (message.action === 'build' || message.action === 'cancelBuild') {
+          void refreshBuilds();
+        }
         if (typeof window !== 'undefined') {
           window.dispatchEvent(
             new CustomEvent('atopile:action_result', { detail: message })
           );
         }
+        break;
+      case 'event':
+        handleEventMessage(message);
         break;
 
       default:
@@ -330,6 +305,305 @@ function handleMessage(event: MessageEvent): void {
     }
   } catch (error) {
     console.error('[WS] Failed to parse message:', error, event.data);
+  }
+}
+
+async function refreshProjects(): Promise<void> {
+  try {
+    const response = await api.projects.list();
+    useStore.getState().setProjects(response.projects || []);
+  } catch (error) {
+    console.warn('[WS] Failed to refresh projects:', error);
+  }
+}
+
+function getSelectedTargetName(): string | null {
+  const state = useStore.getState();
+  if (!state.selectedProjectRoot) return null;
+  if (state.selectedTargetNames?.length) return state.selectedTargetNames[0] ?? null;
+  const project = state.projects.find((p) => p.root === state.selectedProjectRoot);
+  return project?.targets?.[0]?.name ?? null;
+}
+
+async function refreshDependencies(projectRoot?: string | null): Promise<void> {
+  const root = projectRoot || useStore.getState().selectedProjectRoot;
+  if (!root) return;
+  try {
+    const response = await api.dependencies.list(root);
+    useStore.getState().setProjectDependencies(root, response.dependencies || []);
+  } catch (error) {
+    console.warn('[WS] Failed to refresh dependencies:', error);
+  }
+}
+
+async function refreshBom(): Promise<void> {
+  const state = useStore.getState();
+  if (!state.selectedProjectRoot) return;
+  const targetName = getSelectedTargetName();
+  if (!targetName) return;
+  try {
+    state.setLoadingBom(true);
+    const response = await api.bom.get(state.selectedProjectRoot, targetName);
+    state.setBomData(response || null);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch BOM';
+    state.setBomError(message);
+  }
+}
+
+async function refreshVariables(): Promise<void> {
+  const state = useStore.getState();
+  if (!state.selectedProjectRoot) return;
+  const targetName = getSelectedTargetName();
+  if (!targetName) return;
+  try {
+    state.setLoadingVariables(true);
+    const response = await api.variables.get(state.selectedProjectRoot, targetName);
+    state.setVariablesData(response || null);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Failed to fetch variables';
+    state.setVariablesError(message);
+  }
+}
+
+async function refreshPackages(): Promise<void> {
+  const state = useStore.getState();
+  try {
+    state.setLoadingPackages(true);
+    const response = await api.packages.summary();
+    state.setPackages(response.packages || []);
+  } catch (error) {
+    console.warn('[WS] Failed to refresh packages:', error);
+    state.setPackages([]);
+  }
+}
+
+async function refreshStdlib(): Promise<void> {
+  const state = useStore.getState();
+  try {
+    state.setLoadingStdlib(true);
+    const response = await api.stdlib.list();
+    state.setStdlibItems(response.items || []);
+  } catch (error) {
+    console.warn('[WS] Failed to refresh stdlib:', error);
+    state.setStdlibItems([]);
+  }
+}
+
+async function refreshProblems(): Promise<void> {
+  const state = useStore.getState();
+  try {
+    state.setLoadingProblems(true);
+    const response = await api.problems.list();
+    state.setProblems(response.problems || []);
+  } catch (error) {
+    console.warn('[WS] Failed to refresh problems:', error);
+    state.setProblems([]);
+  }
+}
+
+function normalizeStage(stage: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...stage,
+    stageId:
+      (stage.stageId as string | undefined) ??
+      (stage.stage_id as string | undefined),
+    displayName:
+      (stage.displayName as string | undefined) ??
+      (stage.display_name as string | undefined),
+    elapsedSeconds:
+      (stage.elapsedSeconds as number | undefined) ??
+      (stage.elapsed_seconds as number | undefined),
+  };
+}
+
+function normalizeBuild(raw: Build | Record<string, unknown>): Build {
+  const rawData = raw as Record<string, unknown>;
+  const stages = Array.isArray(rawData.stages)
+    ? rawData.stages.map((stage) =>
+      normalizeStage(stage as Record<string, unknown>)
+    )
+    : rawData.stages;
+
+  const name =
+    (rawData.name as string | undefined) ??
+    (rawData.build_name as string | undefined) ??
+    (rawData.buildName as string | undefined) ??
+    (rawData.target as string | undefined) ??
+    'unknown';
+  const displayName =
+    (rawData.displayName as string | undefined) ??
+    (rawData.display_name as string | undefined) ??
+    name;
+  const projectName =
+    (rawData.projectName as string | null | undefined) ??
+    (rawData.project_name as string | null | undefined) ??
+    null;
+  const status =
+    (rawData.status as BuildStatus | undefined) ??
+    'queued';
+  const elapsedSeconds =
+    (rawData.elapsedSeconds as number | undefined) ??
+    (rawData.elapsed_seconds as number | undefined) ??
+    0;
+  const warnings =
+    (rawData.warnings as number | undefined) ??
+    0;
+  const errors =
+    (rawData.errors as number | undefined) ??
+    0;
+  const returnCode =
+    (rawData.returnCode as number | null | undefined) ??
+    (rawData.return_code as number | null | undefined) ??
+    null;
+  const error =
+    (rawData.error as string | undefined) ??
+    (rawData.error_message as string | undefined) ??
+    (rawData.errorMessage as string | undefined);
+
+  return {
+    name,
+    displayName,
+    projectName,
+    status,
+    elapsedSeconds,
+    warnings,
+    errors,
+    returnCode,
+    error,
+    buildId:
+      (rawData.buildId as string | undefined) ??
+      (rawData.build_id as string | undefined),
+    projectRoot:
+      (rawData.projectRoot as string | undefined) ??
+      (rawData.project_root as string | undefined),
+    target:
+      (rawData.target as string | undefined),
+    entry:
+      (rawData.entry as string | undefined),
+    startedAt:
+      (rawData.startedAt as number | undefined) ??
+      (rawData.started_at as number | undefined),
+    totalStages:
+      (rawData.totalStages as number | undefined) ??
+      (rawData.total_stages as number | undefined),
+    logDir:
+      (rawData.logDir as string | undefined) ??
+      (rawData.log_dir as string | undefined),
+    logFile:
+      (rawData.logFile as string | undefined) ??
+      (rawData.log_file as string | undefined),
+    queuePosition:
+      (rawData.queuePosition as number | undefined) ??
+      (rawData.queue_position as number | undefined),
+    stages: stages as Build['stages'],
+  };
+}
+
+function getBuildKey(build: Build): string {
+  const project = build.projectRoot || build.projectName || 'unknown';
+  const target = build.target || build.name || 'default';
+  return `${project}:${target}`;
+}
+
+async function refreshBuilds(): Promise<void> {
+  const state = useStore.getState();
+  try {
+    const previousBuildsById = new Map<string, Build>();
+    for (const build of [...state.builds, ...state.queuedBuilds]) {
+      if (build.buildId) {
+        previousBuildsById.set(build.buildId, build);
+      }
+    }
+
+    const [active, history] = await Promise.all([
+      api.builds.active(),
+      api.builds.history(),
+    ]);
+    const activeBuilds = (active.builds || []).map((build) =>
+      normalizeBuild(build)
+    );
+    const smoothedActiveBuilds = activeBuilds.map((build) => {
+      if (!build.buildId) return build;
+      const previous = previousBuildsById.get(build.buildId);
+      const hasStages = Array.isArray(build.stages) && build.stages.length > 0;
+      const hadStages =
+        Array.isArray(previous?.stages) && previous.stages.length > 0;
+      if (!hasStages && hadStages && previous?.stages) {
+        return {
+          ...build,
+          stages: previous.stages,
+        };
+      }
+      return build;
+    });
+    const historyBuilds = (history.builds || []).map((build) =>
+      normalizeBuild(build)
+    );
+
+    const activeKeys = new Set(smoothedActiveBuilds.map(getBuildKey));
+    const recentHistoryByKey = new Map<string, Build>();
+    const sortedHistory = [...historyBuilds].sort((a, b) => {
+      const aTime = (a.startedAt ?? 0) as number;
+      const bTime = (b.startedAt ?? 0) as number;
+      return bTime - aTime;
+    });
+    for (const build of sortedHistory) {
+      if (build.status === 'queued' || build.status === 'building') continue;
+      const key = getBuildKey(build);
+      if (activeKeys.has(key) || recentHistoryByKey.has(key)) continue;
+      recentHistoryByKey.set(key, build);
+    }
+    const recentHistoryBuilds = [...recentHistoryByKey.values()];
+    const queuedBuilds = [...smoothedActiveBuilds, ...recentHistoryBuilds];
+
+    // Use active builds for queued display since /api/builds/queue is status-only.
+    state.setBuilds(smoothedActiveBuilds);
+    state.setQueuedBuilds(queuedBuilds);
+    state.setBuildHistory(historyBuilds);
+  } catch (error) {
+    console.warn('[WS] Failed to refresh builds:', error);
+  }
+}
+
+function handleEventMessage(message: EventMessage): void {
+  const data = message.data ?? {};
+  const projectRoot =
+    (typeof data.projectRoot === 'string' && data.projectRoot) ||
+    (typeof data.project_root === 'string' && data.project_root) ||
+    null;
+
+  switch (message.event) {
+    case 'projects_changed':
+      void refreshProjects();
+      break;
+    case 'builds_changed':
+      void refreshBuilds();
+      break;
+    case 'project_dependencies_changed':
+      void refreshDependencies(projectRoot);
+      break;
+    case 'bom_changed':
+      void refreshBom();
+      break;
+    case 'variables_changed':
+      void refreshVariables();
+      break;
+    case 'packages_changed':
+      void refreshPackages();
+      break;
+    case 'stdlib_changed':
+      void refreshStdlib();
+      break;
+    case 'problems_changed':
+      void refreshProblems();
+      break;
+    case 'atopile_config_changed':
+      updateAtopileConfig(data);
+      break;
+    default:
+      break;
   }
 }
 
@@ -357,6 +631,76 @@ function handleError(event: Event): void {
   // will be handled by handleClose. However, if the WebSocket is still in
   // CONNECTING state after an error (edge case), the connection timeout
   // will handle cleanup and reconnection.
+}
+
+function updateAtopileConfig(data: Record<string, unknown>): void {
+  const update: Partial<AppState['atopile']> = {};
+
+  if (typeof data.source === 'string') {
+    update.source = data.source as AppState['atopile']['source'];
+  }
+
+  const currentVersion =
+    (typeof data.current_version === 'string' && data.current_version) ||
+    (typeof data.currentVersion === 'string' && data.currentVersion) ||
+    null;
+  if (currentVersion !== null) {
+    update.currentVersion = currentVersion;
+  }
+
+  if (typeof data.branch === 'string') {
+    update.branch = data.branch;
+  }
+
+  const localPath =
+    (typeof data.local_path === 'string' && data.local_path) ||
+    (typeof data.localPath === 'string' && data.localPath) ||
+    null;
+  if (localPath !== null) {
+    update.localPath = localPath;
+  }
+
+  if (Array.isArray(data.available_versions)) {
+    update.availableVersions = data.available_versions as string[];
+  } else if (Array.isArray(data.availableVersions)) {
+    update.availableVersions = data.availableVersions as string[];
+  }
+
+  if (Array.isArray(data.available_branches)) {
+    update.availableBranches = data.available_branches as string[];
+  } else if (Array.isArray(data.availableBranches)) {
+    update.availableBranches = data.availableBranches as string[];
+  }
+
+  if (Array.isArray(data.detected_installations)) {
+    update.detectedInstallations =
+      data.detected_installations as AppState['atopile']['detectedInstallations'];
+  } else if (Array.isArray(data.detectedInstallations)) {
+    update.detectedInstallations =
+      data.detectedInstallations as AppState['atopile']['detectedInstallations'];
+  }
+
+  if (typeof data.is_installing === 'boolean') {
+    update.isInstalling = data.is_installing as boolean;
+  } else if (typeof data.isInstalling === 'boolean') {
+    update.isInstalling = data.isInstalling as boolean;
+  }
+
+  if (data.install_progress && typeof data.install_progress === 'object') {
+    update.installProgress =
+      data.install_progress as AppState['atopile']['installProgress'];
+  } else if (data.installProgress && typeof data.installProgress === 'object') {
+    update.installProgress =
+      data.installProgress as AppState['atopile']['installProgress'];
+  }
+
+  if (typeof data.error === 'string') {
+    update.error = data.error;
+  }
+
+  if (Object.keys(update).length > 0) {
+    useStore.getState().setAtopileConfig(update);
+  }
 }
 
 function scheduleReconnect(): void {

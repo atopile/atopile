@@ -1,0 +1,181 @@
+.structure-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+/* Subtle header - JetBrains-inspired minimal design */
+.structure-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 2px 4px;
+  color: var(--text-muted);
+}
+
+.structure-header svg {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.structure-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.structure-title {
+  display: none; /* Hide the label, just show path */
+}
+
+.structure-path {
+  font-size: var(--font-size-base);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.structure-refresh-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.structure-refresh-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.structure-refresh-btn:active {
+  transform: translateY(1px);
+}
+
+.structure-refresh-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.structure-refresh-btn:disabled:hover {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+/* Search bar - using unified search-box pattern */
+.structure-search {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 4px var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid transparent;
+  transition: all var(--transition-fast);
+}
+
+.structure-search:hover {
+  border-color: var(--border-subtle);
+}
+
+.structure-search:focus-within {
+  border-color: var(--accent);
+  background: var(--bg-secondary);
+}
+
+.structure-search-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.structure-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  min-width: 0;
+}
+
+.structure-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.structure-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.structure-search-clear:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Body - minimal framing, full-width feel */
+.structure-body {
+  flex: 1;
+  overflow: auto;
+  min-height: 60px;
+}
+
+.structure-modules {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.structure-module {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.structure-loading,
+.structure-empty,
+.structure-error {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  font-size: var(--font-size-md);
+  color: var(--text-muted);
+}
+
+.structure-error {
+  color: var(--error);
+}
+
+/* Spin animation for loader */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

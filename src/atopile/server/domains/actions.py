@@ -17,8 +17,8 @@ from atopile.buildutil import generate_build_id, generate_build_timestamp
 from atopile.config import ProjectConfig
 from atopile.dataclasses import AppContext, Build, BuildStatus, Log
 from atopile.logging import BuildLogger
+from atopile.model import builds as builds_domain
 from atopile.model.build_queue import (
-    _active_builds,
     _build_lock,
     _build_queue,
     _is_duplicate_build,
@@ -30,7 +30,6 @@ from atopile.server import path_utils
 from atopile.server.connections import server_state
 from atopile.server.core import projects as core_projects
 from atopile.server.domains import artifacts as artifacts_domain
-from atopile.model import builds as builds_domain
 from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import parts as parts_domain
 from atopile.server.domains import projects as projects_domain
@@ -349,7 +348,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             if not build_id:
                 return {"success": False, "error": "Missing buildId"}
 
-            if build_id not in _active_builds:
+            if not model_state.find_build(build_id):
                 return {"success": False, "error": f"Build not found: {build_id}"}
 
             success = cancel_build(build_id)
@@ -379,12 +378,55 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 return {"success": True, **response.model_dump(by_alias=True)}
             return {"success": False, "error": "No modules found"}
 
+        if action == "checkEntry":
+            project_root = payload.get("project_root") or payload.get("projectRoot", "")
+            entry = payload.get("entry") or payload.get("entryPoint") or ""
+            if not project_root or not entry:
+                return {
+                    "success": False,
+                    "error": "Missing project_root or entry",
+                }
+
+            project_path = Path(project_root)
+            if not await asyncio.to_thread(project_path.exists):
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            file_part = entry.split(":", 1)[0]
+            file_exists = False
+            if file_part:
+                file_path = (project_path / file_part).resolve()
+                file_exists = await asyncio.to_thread(file_path.exists)
+
+            module_exists = False
+            try:
+                response = await asyncio.to_thread(
+                    projects_domain.handle_get_modules, project_root
+                )
+                modules = response.modules if response else []
+                module_exists = any(m.entry == entry for m in modules)
+            except Exception:
+                module_exists = False
+
+            return {
+                "success": True,
+                "file_exists": file_exists,
+                "module_exists": module_exists,
+            }
+
         if action == "getPackageDetails":
             package_id = payload.get("packageId", "")
+            version = payload.get("version")
             if package_id:
                 # Run blocking registry fetch in thread pool
                 details = await asyncio.to_thread(
-                    packages_domain.get_package_details_from_registry, package_id
+                    packages_domain.handle_get_package_details,
+                    package_id,
+                    ctx.workspace_path,
+                    ctx,
+                    version,
                 )
                 if details:
                     return {
@@ -561,11 +603,12 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                         )
                         loop = event_bus._event_loop
                         if loop and loop.is_running():
+                            error_detail = f"Failed to install {pkg_spec}: {error_msg}"
                             asyncio.run_coroutine_threadsafe(
                                 server_state.emit_event(
                                     "packages_changed",
                                     {
-                                        "error": f"Failed to install {pkg_spec}: {error_msg}",
+                                        "error": error_detail,
                                         "package_id": package_id,
                                     },
                                 ),
@@ -578,11 +621,12 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     )
                     loop = event_bus._event_loop
                     if loop and loop.is_running():
+                        error_detail = f"Failed to install {pkg_spec}: {exc}"
                         asyncio.run_coroutine_threadsafe(
                             server_state.emit_event(
                                 "packages_changed",
                                 {
-                                    "error": f"Failed to install {pkg_spec}: {exc}",
+                                    "error": error_detail,
                                     "package_id": package_id,
                                 },
                             ),
@@ -777,7 +821,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             file_tree = await asyncio.to_thread(
                 core_projects.build_file_tree, project_path, project_path
             )
-            return {"success": True, "files": file_tree}
+            return {
+                "success": True,
+                "files": [node.model_dump(by_alias=True) for node in file_tree],
+            }
 
         if action == "fetchDependencies":
             project_root = payload.get("projectRoot", "")
@@ -796,6 +843,41 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             dependencies = await asyncio.to_thread(_build_dependencies, project_path)
             return {"success": True, "dependencies": dependencies}
+
+        if action == "fetchBuilds":
+            project_root = payload.get("projectRoot", "")
+            if not project_root:
+                return {"success": True, "info": "No project specified"}
+
+            project_path = Path(project_root)
+            if not await asyncio.to_thread(project_path.exists):
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            data, _ = core_projects._load_ato_yaml(project_path)
+            builds = []
+            for name, config in (data.get("builds") or {}).items():
+                if isinstance(config, dict):
+                    entry = config.get("entry", "")
+                else:
+                    entry = str(config)
+                last_build = core_projects._load_last_build_for_target(
+                    project_path, name
+                )
+                builds.append(
+                    {
+                        "name": name,
+                        "entry": entry,
+                        "root": project_root,
+                        "lastBuild": last_build.model_dump(by_alias=True)
+                        if last_build
+                        else None,
+                    }
+                )
+
+            return {"success": True, "builds": builds}
 
         if action == "getModuleChildren":
             project_root = payload.get("projectRoot", "")
@@ -817,6 +899,50 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             return {
                 "success": True,
                 "children": [child.model_dump(by_alias=True) for child in result],
+            }
+
+        if action == "getModuleChildrenForFile":
+            project_root = payload.get("projectRoot", "")
+            file_path = payload.get("filePath", "")
+            max_depth = int(payload.get("maxDepth", 2))
+            if not project_root or not file_path:
+                return {"success": False, "error": "Missing projectRoot or filePath"}
+
+            project_path = Path(project_root)
+            if not await asyncio.to_thread(project_path.exists):
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            from atopile.server.module_introspection import (
+                introspect_module_definition,
+            )
+
+            max_depth = max(0, min(5, max_depth))
+            file_rel = None
+            try:
+                file_rel = str(Path(file_path).resolve().relative_to(project_path))
+            except Exception:
+                file_rel = None
+
+            response = await asyncio.to_thread(
+                projects_domain.handle_get_modules, project_root
+            )
+            modules = response.modules if response else []
+            if file_rel:
+                modules = [m for m in modules if m.file == file_rel]
+            else:
+                modules = [m for m in modules if m.file and file_path.endswith(m.file)]
+
+            enriched = [
+                introspect_module_definition(project_path, module, max_depth)
+                for module in modules
+            ]
+
+            return {
+                "success": True,
+                "modules": [module.model_dump(by_alias=True) for module in enriched],
             }
 
         if action == "getBuildsByProject":
@@ -929,10 +1055,14 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             # Generate test_run_id upfront so we can return it immediately
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            test_run_id = hashlib.sha256(f"pytest:{timestamp}".encode()).hexdigest()[:16]
+            hash_input = f"pytest:{timestamp}"
+            test_run_id = hashlib.sha256(hash_input.encode()).hexdigest()[:16]
 
             # Get workspace path for running tests
-            workspace_path = str(model_state.workspace_path) if model_state.workspace_path else os.getcwd()
+            if model_state.workspace_path:
+                workspace_path = str(model_state.workspace_path)
+            else:
+                workspace_path = os.getcwd()
 
             def run_tests_background():
                 try:
@@ -985,7 +1115,25 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
         if action == "uiLog":
             level = payload.get("level", "info")
             message = payload.get("message", "")
+            lowered = message.lower()
+            if any(
+                token in lowered
+                for token in (
+                    "kicanvas:parser",
+                    "kicanvas:project",
+                    ".kicad_pcb",
+                    ".kicad_sch",
+                    ".kicad_pro",
+                    "model-viewer",
+                    ".glb",
+                    "gltf",
+                    "three.js",
+                )
+            ):
+                return {"success": True}
             log_method = getattr(log, level, log.info)
+            if len(message) > 1000:
+                message = f"{message[:1000]}… (truncated)"
             log_method(f"[ui] {message}")
             return {"success": True}
 
@@ -1028,9 +1176,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Entry file not found: {entry_path}",
                 }
 
-            await server_state.emit_event(
-                "open_file", {"path": str(entry_path)}
-            )
+            await server_state.emit_event("open_file", {"path": str(entry_path)})
             return {"success": True}
 
         if action == "openLayout":
@@ -1104,7 +1250,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             return {"success": False, "error": "selectBuild is frontend-only"}
 
         elif action == "toggleProblemLevelFilter":
-            return {"success": False, "error": "toggleProblemLevelFilter is frontend-only"}
+            return {
+                "success": False,
+                "error": "toggleProblemLevelFilter is frontend-only",
+            }
 
         elif action == "setDeveloperMode":
             return {"success": False, "error": "setDeveloperMode is frontend-only"}

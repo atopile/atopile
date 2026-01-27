@@ -481,13 +481,206 @@ DependencyCard (inside ProjectCard)
 
 | Source | Target | Location | Notes |
 |--------|--------|----------|-------|
-| `ProjectDependency` | `Project` | `DependencyCard.tsx` | `dependencyToProject(dep, parentRoot)` |
+| `ProjectDependency` | `Project` | `DependencyCard.tsx` | `dependencyToProject(dep)` uses `installedPath` from backend |
 | `PackageBuildTarget[]` | `BuildTarget[]` | `ProjectCard.tsx` | Inline conversion for packages |
 
-**Path Resolution:**
-- For packages, `builds` are sourced from `packageDetails.builds` (fetched async) rather than `project.builds` (empty for packages).
-- For dependencies, the actual filesystem path is computed as: `<parentProjectRoot>/.ato/modules/<dependency.identifier>/`
-- This path is passed via `projectRoot` prop to DependencyCard, enabling module introspection for installed dependencies.
+---
+
+## Dependency Data Lifecycle (Comprehensive Trace)
+
+### Where Packages Live on Disk
+
+```
+my-project/
+├── ato.yaml                      # Lists direct dependencies
+└── .ato/
+    └── modules/
+        └── {publisher}/{package}/  # e.g., adi/ad1938
+            ├── ato.yaml           # Package config (builds, version)
+            └── *.ato              # Source files
+```
+
+### When Packages Get Installed
+
+| Command | Effect |
+|---------|--------|
+| `ato build` | Auto-installs missing deps before building |
+| `ato sync` | Explicitly installs/updates all deps |
+| `ato add <pkg>` | Adds to ato.yaml and installs |
+| `git clone` | **Nothing** - user must build/sync first |
+
+---
+
+### Data Fetch Trace for Expanded Dependency
+
+When a dependency is clicked to expand in the UI, here's what happens for each piece of data:
+
+#### 1. Dependency List (shown before expand)
+
+```
+TRIGGER: Project card expands, calls onProjectExpand(project.root)
+         └─> handleProjectExpand() in useSidebarHandlers.ts
+
+BACKEND ACTION: fetchDependencies
+  └─> src/atopile/server/domains/actions.py (line ~830)
+      └─> _build_dependencies() in projects.py
+          ├─ Reads ato.yaml for direct deps
+          ├─ Scans .ato/modules/ for installed packages
+          ├─ Checks each dep path exists: modules_root / identifier
+          └─ Returns DependencyInfo[] with installed_path set
+
+STATE UPDATE: server_state.set_project_dependencies(projectRoot, deps)
+  └─> Broadcasts via WebSocket
+
+FRONTEND: projectDependencies[projectRoot] in store
+  └─> DependencyCard receives dependencies prop
+      └─> Each dep has installedPath from backend
+```
+
+**Key Fields in DependencyInfo:**
+- `identifier`: e.g., "adi/ad1938"
+- `installed_path`: e.g., "/Users/foo/project/.ato/modules/adi/ad1938" (NEW)
+- `version`, `name`, `publisher`, etc.
+
+#### 2. Files (✅ WORKS)
+
+```
+TRIGGER: DependencyItem.handleClick() when expanding
+  └─> onProjectExpand(dependencyAsProject.root)
+      └─> dependencyAsProject.root = dependency.installedPath || dependency.identifier
+
+BACKEND ACTION: fetchFiles
+  └─> src/atopile/server/domains/actions.py (line ~800)
+      └─> Reads file tree from projectRoot path
+
+STATE UPDATE: server_state.set_project_files(projectRoot, files)
+  └─> Broadcasts via WebSocket
+
+FRONTEND: projectFiles[projectRoot] in store
+  └─> Passed to ProjectCard via projectFilesByRoot prop
+      └─> FileExplorer receives projectFiles prop
+```
+
+**Why it works:** The path resolution is correct and fetchFiles works.
+
+#### 3. Builds (❌ MAY NOT WORK)
+
+```
+TRIGGER: DependencyItem.handleClick() when expanding
+  └─> onProjectExpand(dependencyAsProject.root)
+
+BACKEND ACTION: fetchBuilds (line 860 in actions.py)
+  └─> Reads ato.yaml from projectRoot
+      └─> ProjectConfig.from_path(project_path)
+      └─> Returns builds[] with {id, name, entry, root}
+
+STATE UPDATE: server_state.set_project_builds(projectRoot, builds)
+  └─> Broadcasts via WebSocket
+
+FRONTEND: projectBuilds[projectRoot] in store
+  └─> Passed to ProjectCard via projectBuildsByRoot prop
+      └─> ProjectCard computes: localBuilds = projectBuildsByRoot[project.root]
+          └─> BuildsCard receives builds prop
+          └─> ProjectExplorerCard receives builds prop
+```
+
+**Potential Issues:**
+1. **Key mismatch**: The `projectRoot` used in fetch might differ from `project.root` in lookup
+2. **installedPath not set**: If backend doesn't return `installed_path`, `dependency.installedPath` is undefined, and `project.root` becomes `dependency.identifier` (not a valid path)
+3. **State not broadcast**: Check if `set_project_builds` actually broadcasts
+
+#### 4. Explorer/Module Tree (❌ MAY NOT WORK)
+
+```
+TRIGGER: ProjectExplorerCard mounts with builds
+  └─> For each build, calls getModuleChildren when expanded
+
+BACKEND ACTION: getModuleChildren (line 898 in actions.py)
+  └─> Requires valid projectRoot and entryPoint
+      └─> Parses .ato files to build module tree
+
+FRONTEND: ModuleTree renders children
+
+**Depends on:** Builds being loaded first (provides entry points)
+```
+
+**Why it might fail:** If builds array is empty, no module children are fetched.
+
+#### 5. Metadata (downloads, license, versions)
+
+```
+TRIGGER: ProjectCard expanded with readOnly=true
+  └─> useEffect fetches packageDetails
+
+BACKEND ACTION: getPackageDetails
+  └─> Fetches from REMOTE REGISTRY (packages.atopileapi.com)
+      └─> Returns downloads, license, versions, etc.
+
+FRONTEND: packageDetails state in ProjectCard
+  └─> MetadataBar receives downloads, license, versionCount
+```
+
+**Note:** This is the only data that requires network fetch. All other data should be local.
+
+---
+
+### Debug Checklist
+
+When dependency expansion doesn't show data:
+
+| Check | How to Verify |
+|-------|---------------|
+| 1. Is `installedPath` set? | Console log `dependency` in DependencyItem |
+| 2. Is `onProjectExpand` called? | Console log in handleClick |
+| 3. Is `fetchBuilds` called? | Check Network/WS tab for action message |
+| 4. Does backend find ato.yaml? | Check server logs for "No ato.yaml found" |
+| 5. Is state broadcast? | Check WS message for `projectBuilds` key |
+| 6. Is key correct? | Compare `projectRoot` in fetch vs `project.root` in lookup |
+
+### Known Gaps & Likely Issues
+
+1. **Backend not restarted**: After code changes, the Python server must be restarted for changes to take effect. The `fetchBuilds` action and `installedPath` field were added recently.
+
+2. **installedPath undefined**: If `dependency.installedPath` is undefined, `project.root` becomes `dependency.identifier` (e.g., "adi/ad1938") which is NOT a valid path. This causes:
+   - `fetchBuilds({ projectRoot: "adi/ad1938" })` → fails with "Project not found"
+   - `projectBuildsByRoot["adi/ad1938"]` → undefined (no data)
+
+3. **Key mismatch between fetch and lookup**:
+   - Fetch uses: `onProjectExpand(dependencyAsProject.root)`
+   - Lookup uses: `projectBuildsByRoot[project.root]`
+   - If `project.root` differs from what was used in fetch, lookup returns undefined
+
+### Quick Debug Steps
+
+Add these console.logs to trace the issue:
+
+**In DependencyCard.tsx, `dependencyToProject()`:**
+```tsx
+console.log('[DEP] dependency.installedPath:', dependency.installedPath);
+console.log('[DEP] computed root:', root);
+```
+
+**In DependencyItem, `handleClick()`:**
+```tsx
+console.log('[EXPAND] Calling onProjectExpand with:', dependencyAsProject.root);
+```
+
+**In ProjectCard.tsx, builds computation:**
+```tsx
+console.log('[BUILDS] project.root:', project.root);
+console.log('[BUILDS] projectBuildsByRoot keys:', Object.keys(projectBuildsByRoot));
+console.log('[BUILDS] localBuilds:', localBuilds);
+```
+
+### Expected vs Actual
+
+| Field | Expected Value | If undefined, means... |
+|-------|----------------|------------------------|
+| `dependency.installedPath` | `/path/to/.ato/modules/adi/ad1938` | Backend not returning it |
+| `project.root` | Same as installedPath | Falls back to identifier |
+| `projectBuildsByRoot[path]` | `BuildTarget[]` | Fetch didn't run or failed |
+
+---
 
 ### Remaining TODOs (Low Priority)
 

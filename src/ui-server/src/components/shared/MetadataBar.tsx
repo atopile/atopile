@@ -2,7 +2,7 @@
  * MetadataBar - Displays package metadata (downloads, versions, license).
  */
 
-import { Download, ExternalLink } from 'lucide-react'
+import { Download, ExternalLink, Loader2 } from 'lucide-react'
 import { formatDownloads } from '../../utils/packageUtils'
 import './MetadataBar.css'
 
@@ -15,14 +15,34 @@ interface MetadataBarProps {
   license?: string | null
   /** Homepage URL */
   homepage?: string | null
+  /** Whether metadata is loading */
+  isLoading?: boolean
 }
 
 export function MetadataBar({
   downloads,
   versionCount,
   license,
-  homepage
+  homepage,
+  isLoading
 }: MetadataBarProps) {
+  // If loading, show placeholder bar with spinners
+  if (isLoading) {
+    return (
+      <div className="metadata-bar">
+        <span className="meta-item loading">
+          <Loader2 size={11} className="spin" />
+        </span>
+        <span className="meta-item loading">
+          <Loader2 size={11} className="spin" />
+        </span>
+        <span className="meta-item loading">
+          <Loader2 size={11} className="spin" />
+        </span>
+      </div>
+    )
+  }
+
   const hasContent = (downloads && downloads > 0) || (versionCount && versionCount > 0) || license || homepage
 
   if (!hasContent) return null

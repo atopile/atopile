@@ -3,8 +3,7 @@
  */
 
 import { useMemo } from 'react';
-import type { QueuedBuild } from '../BuildQueuePanel';
-import { type Selection, type StageFilter } from './sidebarUtils';
+import type { QueuedBuild } from '../../types/build';
 
 // Local helper functions that work with any build structure
 function findBuildForTarget(
@@ -83,19 +82,16 @@ type SidebarState = any;
 
 interface UseSidebarDataParams {
   state: SidebarState | null;
-  selection: Selection;
-  activeStageFilter: StageFilter | null;
 }
 
-export function useSidebarData({ state, selection, activeStageFilter }: UseSidebarDataParams) {
+export function useSidebarData({ state }: UseSidebarDataParams) {
   // Transform state projects - KEEP: expensive nested map operations
   const transformedProjects = useMemo((): any[] => {
     if (!state?.projects?.length) return [];
 
-    const activeBuilds = [
-      ...(state?.queuedBuilds || []),
-      ...(state?.builds || []),
-    ];
+    const activeBuilds = (state?.builds || []).filter((b: any) =>
+      b.status === 'queued' || b.status === 'building'
+    );
 
     return state.projects.map((p: any) => {
       const projectModules = state.projectModules?.[p.root] || [];
@@ -267,92 +263,16 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
     else projectCount++;
   }
 
-  // Queued builds - NO MEMO: just property access with default
-  const queuedBuilds: QueuedBuild[] = (state?.queuedBuilds || []) as QueuedBuild[];
-
-  // Index projects by ID - KEEP: creates Map for O(1) lookups used in filtering
-  const projectsById = useMemo(() => {
-    return new Map(projects.map(p => [p.id, p]));
-  }, [projects]);
-
-  // Problems - NO MEMO: just property access with default
-  const problems = state?.problems || [];
-
-  // Filtered problems - KEEP: complex filtering logic
-  const filteredProblems = useMemo(() => {
-    const filter = state?.problemFilter;
-
-    const normalizeStage = (name: string): string => {
-      return name.toLowerCase().replace(/[-_\s]+/g, '');
-    };
-
-    const stageMatches = (filterStage: string, problemStage: string): boolean => {
-      if (filterStage === problemStage) return true;
-      const normFilter = normalizeStage(filterStage);
-      const normProblem = normalizeStage(problemStage);
-      if (normFilter === normProblem) return true;
-      if (normFilter.includes(normProblem) || normProblem.includes(normFilter)) return true;
-      return false;
-    };
-
-    return problems.filter((p: any) => {
-      if (activeStageFilter) {
-        if (activeStageFilter.stageName) {
-          if (!p.stage) return false;
-          if (!stageMatches(activeStageFilter.stageName, p.stage)) return false;
-        }
-        if (activeStageFilter.buildId && p.buildName) {
-          if (p.buildName !== activeStageFilter.buildId) return false;
-        }
-        if (activeStageFilter.projectId && p.projectName) {
-          const selectedProject = projectsById.get(activeStageFilter.projectId);
-          if (selectedProject && p.projectName !== selectedProject.name) {
-            return false;
-          }
-        }
-        return true;
-      }
-
-      if (selection.type === 'project' && selection.projectId) {
-        const selectedProject = projectsById.get(selection.projectId);
-        if (selectedProject && p.projectName && p.projectName !== selectedProject.name) {
-          return false;
-        }
-      } else if (selection.type === 'build' && selection.projectId && selection.buildId) {
-        const selectedProject = projectsById.get(selection.projectId);
-        if (selectedProject && p.projectName && p.projectName !== selectedProject.name) {
-          return false;
-        }
-        if (p.buildName && p.buildName !== selection.buildId) {
-          return false;
-        }
-      }
-
-      if (!filter) return true;
-      if (filter.levels && filter.levels.length > 0 && !filter.levels.includes(p.level)) return false;
-      if (filter.buildNames && filter.buildNames.length > 0 && p.buildName && !filter.buildNames.includes(p.buildName)) return false;
-      if (filter.stageIds && filter.stageIds.length > 0 && p.stage && !filter.stageIds.includes(p.stage)) return false;
-      return true;
-    });
-  }, [problems, state?.problemFilter, activeStageFilter, selection, projectsById]);
-
-  // Count errors/warnings - NO MEMO: trivial loop
-  let totalErrors = 0;
-  let totalWarnings = 0;
-  for (const p of filteredProblems) {
-    if (p.level === 'error') totalErrors++;
-    else if (p.level === 'warning') totalWarnings++;
-  }
+  // Queued builds + recent completed builds for display in Build Queue
+  // Combines active builds with recently completed ones for quick review
+  const queuedBuilds = useMemo((): QueuedBuild[] => {
+    return (state?.queuedBuilds || []) as QueuedBuild[];
+  }, [state?.queuedBuilds]);
 
   return {
     projects,
     projectCount,
     packageCount,
     queuedBuilds,
-    projectsById,
-    problems,
-    filteredProblems,
-    totalErrors,
-    totalWarnings,
   };
 }

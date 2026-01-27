@@ -34,9 +34,7 @@ class BuildStatus(str, Enum):
     CANCELLED = "cancelled"
 
     @classmethod
-    def from_return_code(
-        cls, return_code: int, warnings: int = 0
-    ) -> BuildStatus:
+    def from_return_code(cls, return_code: int, warnings: int = 0) -> BuildStatus:
         """Derive terminal build status from a process return code."""
         if return_code != 0:
             return cls.FAILED
@@ -149,7 +147,6 @@ class TestLogRow:
     ato_traceback: str | None = None
     python_traceback: str | None = None
     objects: str | None = None
-
 
 
 # =============================================================================
@@ -562,6 +559,7 @@ class ProjectsResponse(CamelModel):
     projects: list[Project]
     total: int
 
+
 class ModuleChild(BaseModel):
     """A child field within a module (interface, parameter, nested module, etc.)."""
 
@@ -717,7 +715,7 @@ class UpdateDependencyVersionResponse(BaseModel):
 # =============================================================================
 
 
-class PackageInfo(BaseModel):
+class PackageInfo(CamelModel):
     """Information about a package."""
 
     identifier: str  # e.g., "atopile/bosch-bme280"
@@ -739,7 +737,7 @@ class PackageInfo(BaseModel):
     keywords: Optional[list[str]] = None
 
 
-class PackageVersion(BaseModel):
+class PackageVersion(CamelModel):
     """Information about a package version/release."""
 
     version: str
@@ -748,20 +746,50 @@ class PackageVersion(BaseModel):
     size: Optional[int] = None
 
 
-class PackageDependency(BaseModel):
+class PackageDependency(CamelModel):
     """A package dependency."""
 
     identifier: str
     version: Optional[str] = None  # Required version/release
 
 
-class PackageDetails(BaseModel):
+class PackageFileHashes(CamelModel):
+    sha256: str
+
+
+class PackageAuthor(CamelModel):
+    name: str
+    email: Optional[str] = None
+
+
+class PackageArtifact(CamelModel):
+    filename: str
+    url: str
+    size: int
+    hashes: PackageFileHashes
+    build_name: Optional[str] = None
+
+
+class PackageLayout(CamelModel):
+    build_name: str
+    url: str
+
+
+class PackageImportStatement(CamelModel):
+    build_name: str
+    import_statement: str
+
+
+class PackageDetails(CamelModel):
     """Detailed information about a package from the registry."""
 
     identifier: str
     name: str
     publisher: str
     version: str  # Latest version
+    created_at: Optional[str] = None
+    released_at: Optional[str] = None
+    authors: list[PackageAuthor] = Field(default_factory=list)
     summary: Optional[str] = None
     description: Optional[str] = None
     homepage: Optional[str] = None
@@ -774,6 +802,12 @@ class PackageDetails(BaseModel):
     # Versions
     versions: list[PackageVersion] = Field(default_factory=list)
     version_count: int = 0
+    # Readme + build outputs
+    readme: Optional[str] = None
+    builds: Optional[list[str]] = None
+    artifacts: list[PackageArtifact] = Field(default_factory=list)
+    layouts: list[PackageLayout] = Field(default_factory=list)
+    import_statements: list[PackageImportStatement] = Field(default_factory=list)
     # Installation status
     installed: bool = False
     installed_version: Optional[str] = None
@@ -815,21 +849,21 @@ class PackageSummaryItem(BaseModel):
     keywords: list[str] = Field(default_factory=list)
 
 
-class RegistryStatus(BaseModel):
+class RegistryStatus(CamelModel):
     """Status of the registry connection for error visibility."""
 
     available: bool
     error: Optional[str] = None
 
 
-class PackagesResponse(BaseModel):
+class PackagesResponse(CamelModel):
     """Response for /api/packages endpoint."""
 
     packages: list[PackageInfo]
     total: int
 
 
-class PackagesSummaryResponse(BaseModel):
+class PackagesSummaryResponse(CamelModel):
     """Response for /api/packages/summary endpoint."""
 
     packages: list[PackageSummaryItem]
@@ -838,7 +872,7 @@ class PackagesSummaryResponse(BaseModel):
     registry_status: RegistryStatus
 
 
-class RegistrySearchResponse(BaseModel):
+class RegistrySearchResponse(CamelModel):
     """Response for /api/registry/search endpoint."""
 
     packages: list[PackageInfo]
@@ -846,7 +880,7 @@ class RegistrySearchResponse(BaseModel):
     query: str
 
 
-class PackageActionRequest(BaseModel):
+class PackageActionRequest(CamelModel):
     """Request to install/update/remove a package."""
 
     package_identifier: str
@@ -854,7 +888,7 @@ class PackageActionRequest(BaseModel):
     version: Optional[str] = None  # If None, installs latest
 
 
-class PackageActionResponse(BaseModel):
+class PackageActionResponse(CamelModel):
     """Response from package action."""
 
     success: bool
@@ -862,7 +896,7 @@ class PackageActionResponse(BaseModel):
     action: str  # 'install', 'update', 'remove'
 
 
-class PackageInfoVeryBrief(BaseModel):
+class PackageInfoVeryBrief(CamelModel):
     identifier: str
     version: str
     summary: str
@@ -1075,7 +1109,6 @@ class AtopileConfig(BaseModel):
     is_installing: bool = False
     install_progress: Optional[InstallProgress] = None
     error: Optional[str] = None
-
 
 
 # =============================================================================

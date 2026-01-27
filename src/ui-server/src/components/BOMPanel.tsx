@@ -8,11 +8,9 @@ import type {
   BOMComponent as BOMComponentAPI,
   BOMData,
   BOMComponentType,
-  Project,
   LcscPartData
 } from '../types/build'
-import { api } from '../api/client'
-import { ProjectDropdown, type ProjectOption } from './ProjectDropdown'
+import { sendActionWithResponse } from '../api/websocket'
 
 // Component types (local type alias for UI)
 type ComponentType = BOMComponentType
@@ -415,11 +413,8 @@ interface BOMPanelProps {
   isLoading?: boolean
   error?: string | null
   onGoToSource?: (path: string, line?: number) => void
-  projects?: Project[]
   selectedProjectRoot?: string | null
   selectedTargetNames?: string[]
-  onSelectProject?: (projectRoot: string | null) => void
-  onSelectTarget?: (projectRoot: string, targetName: string) => void
 }
 
 export function BOMPanel({
@@ -427,83 +422,23 @@ export function BOMPanel({
   isLoading = false,
   error = null,
   onGoToSource: externalGoToSource,
-  projects,
   selectedProjectRoot,
   selectedTargetNames,
-  onSelectProject,
-  onSelectTarget,
 }: BOMPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [copiedValue, setCopiedValue] = useState<string | null>(null)
-  const [bomTargetsByProject, setBomTargetsByProject] = useState<Record<string, string[]>>({})
   const [lcscParts, setLcscParts] = useState<Record<string, LcscPartData | null>>({})
   const [lcscLoadingIds, setLcscLoadingIds] = useState<Set<string>>(new Set())
   const [latestBuildInfo, setLatestBuildInfo] = useState<{
-    buildId?: string
-    startedAt?: number
-    completedAt?: number
+    build_id?: string
+    started_at?: number
+    completed_at?: number
   } | null>(null)
   const [forceRefreshBuildId, setForceRefreshBuildId] = useState<string | null>(null)
   const lcscRequestIdRef = useRef(0)
   const lastLcscRefreshBuildIdRef = useRef<string | null>(null)
   const selectedTargetName = selectedTargetNames?.[0] ?? null
-
-  useEffect(() => {
-    if (!projects || projects.length === 0) {
-      setBomTargetsByProject({})
-      return
-    }
-
-    let cancelled = false
-    Promise.all(
-      projects.map(async (project) => {
-        try {
-          const result = await api.bom.targets(project.root)
-          const targets = Array.isArray(result.targets) ? result.targets : []
-          return [project.root, targets] as const
-        } catch {
-          return [project.root, [] as string[]] as const
-        }
-      })
-    ).then((entries) => {
-      if (cancelled) return
-      const next: Record<string, string[]> = {}
-      for (const [root, targets] of entries) {
-        next[root] = [...targets]
-      }
-      setBomTargetsByProject(next)
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [projects])
-
-  const sortedProjects = useMemo(() => {
-    if (!projects) return []
-    return [...projects].sort((a, b) => {
-      const aHasBom = (bomTargetsByProject[a.root]?.length ?? 0) > 0
-      const bHasBom = (bomTargetsByProject[b.root]?.length ?? 0) > 0
-      if (aHasBom !== bHasBom) return aHasBom ? -1 : 1
-      return a.name.localeCompare(b.name)
-    })
-  }, [projects, bomTargetsByProject])
-
-  // Transform projects for ProjectDropdown
-  const projectOptions: ProjectOption[] = useMemo(() => {
-    return sortedProjects.map((project) => {
-      const hasBom = (bomTargetsByProject[project.root]?.length ?? 0) > 0
-      return {
-        id: project.root,
-        name: project.name,
-        root: project.root,
-        targets: project.targets?.map((target) => ({ name: target.name })) ?? [],
-        badge: hasBom ? undefined : 'no BOM',
-        badgeMuted: true,
-      }
-    })
-  }, [sortedProjects, bomTargetsByProject])
 
   useEffect(() => {
     if (!selectedProjectRoot) {
@@ -513,16 +448,22 @@ export function BOMPanel({
       return
     }
 
-    api.builds
-      .byProject(selectedProjectRoot, selectedTargetName ?? undefined, 1)
-      .then((result) => {
-        const build = Array.isArray(result.builds) ? result.builds[0] : null
+    sendActionWithResponse('getBuildsByProject', {
+      projectRoot: selectedProjectRoot,
+      target: selectedTargetName ?? undefined,
+      limit: 1,
+    })
+      .then((response) => {
+        const result = response.result ?? {}
+        const build = Array.isArray((result as { builds?: unknown }).builds)
+          ? (result as { builds: any[] }).builds[0]
+          : null
         setLatestBuildInfo(build ? {
-          buildId: build.buildId,
-          startedAt: build.startedAt,
-          completedAt: build.startedAt && build.elapsedSeconds
-            ? build.startedAt + build.elapsedSeconds
-            : undefined,
+          build_id: build.build_id,
+          started_at: build.started_at,
+          completed_at: build.completed_at ?? (
+            build.started_at && build.duration ? build.started_at + build.duration : undefined
+          ),
         } : null)
       })
       .catch((error) => {
@@ -533,14 +474,14 @@ export function BOMPanel({
 
   // Check if build is stale (older than 24 hours) to trigger LCSC refresh
   useEffect(() => {
-    if (!latestBuildInfo?.buildId) return
-    const timestamp = latestBuildInfo.completedAt ?? latestBuildInfo.startedAt
+    if (!latestBuildInfo?.build_id) return
+    const timestamp = latestBuildInfo.completed_at ?? latestBuildInfo.started_at
     if (!timestamp) return
     const ageSeconds = Date.now() / 1000 - timestamp
     const isBuildStale = ageSeconds > 24 * 60 * 60
     if (!isBuildStale) return
-    if (lastLcscRefreshBuildIdRef.current === latestBuildInfo.buildId) return
-    setForceRefreshBuildId(latestBuildInfo.buildId)
+    if (lastLcscRefreshBuildIdRef.current === latestBuildInfo.build_id) return
+    setForceRefreshBuildId(latestBuildInfo.build_id)
   }, [latestBuildInfo])
 
   const lcscIds = useMemo(() => {
@@ -579,14 +520,15 @@ export function BOMPanel({
       for (const id of missing) next.add(id)
       return next
     })
-    api.parts
-      .lcsc(missing, {
-        projectRoot: selectedProjectRoot ?? undefined,
-        target: selectedTargetName ?? undefined,
-      })
-      .then((result) => {
+    sendActionWithResponse('fetchLcscParts', {
+      lcscIds: missing,
+      projectRoot: selectedProjectRoot ?? undefined,
+      target: selectedTargetName ?? undefined,
+    })
+      .then((response) => {
         if (requestId !== lcscRequestIdRef.current) return
-        const parts = result.parts || {}
+        const result = response.result ?? {}
+        const parts = (result as { parts?: Record<string, LcscPartData | null> }).parts || {}
         setLcscParts((prev) => ({ ...prev, ...parts }))
       })
       .catch((error) => {
@@ -599,8 +541,8 @@ export function BOMPanel({
           for (const id of missing) next.delete(id)
           return next
         })
-        if (forceRefresh && latestBuildInfo?.buildId) {
-          lastLcscRefreshBuildIdRef.current = latestBuildInfo.buildId
+        if (forceRefresh && latestBuildInfo?.build_id) {
+          lastLcscRefreshBuildIdRef.current = latestBuildInfo.build_id
           setForceRefreshBuildId(null)
         }
       })
@@ -689,15 +631,6 @@ export function BOMPanel({
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <ProjectDropdown
-            projects={projectOptions}
-            selectedProjectRoot={selectedProjectRoot}
-            selectedTargetName={selectedTargetNames?.[0] || null}
-            onSelectProject={onSelectProject || (() => {})}
-            onSelectTarget={onSelectTarget}
-            showAllOption={false}
-            placeholder="Select project"
-          />
         </div>
       </div>
   )
@@ -760,6 +693,17 @@ export function BOMPanel({
     )
   }
 
+  // Helper for empty state description
+  const getEmptyDescription = () => {
+    if (selectedTargetName) {
+      return `Run a build for "${selectedTargetName}" to generate the Bill of Materials`
+    }
+    if (selectedProjectRoot) {
+      return 'Select a target and run a build to generate the Bill of Materials'
+    }
+    return 'Select a project and target, then run a build'
+  }
+
   // Error state - but make 404 errors more user-friendly
   if (error) {
     const is404 = error.includes('404') || error.includes('not found') || error.includes("Run 'ato build'")
@@ -770,9 +714,7 @@ export function BOMPanel({
           {is404 ? (
             <>
               <span className="empty-title">No BOM data available</span>
-              <span className="empty-description">
-                Run a build to generate the Bill of Materials
-              </span>
+              <span className="empty-description">{getEmptyDescription()}</span>
             </>
           ) : (
             <>
@@ -792,9 +734,7 @@ export function BOMPanel({
         {toolbar}
         <div className="bom-empty-state">
           <span className="empty-title">No BOM data available</span>
-          <span className="empty-description">
-            Select a project and run a build to generate the Bill of Materials
-          </span>
+          <span className="empty-description">{getEmptyDescription()}</span>
         </div>
       </div>
     )

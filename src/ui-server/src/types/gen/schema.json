@@ -631,7 +631,7 @@
           }
         ],
         "default": null,
-        "title": "Latest Version"
+        "title": "Latestversion"
       },
       "description": {
         "anyOf": [
@@ -702,12 +702,12 @@
         "items": {
           "type": "string"
         },
-        "title": "Installed In",
+        "title": "Installedin",
         "type": "array"
       },
       "hasUpdate": {
         "default": false,
-        "title": "Has Update",
+        "title": "Hasupdate",
         "type": "boolean"
       },
       "downloads": {
@@ -732,7 +732,7 @@
           }
         ],
         "default": null,
-        "title": "Version Count"
+        "title": "Versioncount"
       },
       "keywords": {
         "anyOf": [
@@ -760,6 +760,70 @@
   },
   "PackageDetails": {
     "$defs": {
+      "PackageArtifact": {
+        "properties": {
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "hashes": {
+            "$ref": "#/$defs/PackageFileHashes"
+          },
+          "buildName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Buildname"
+          }
+        },
+        "required": [
+          "filename",
+          "url",
+          "size",
+          "hashes"
+        ],
+        "title": "PackageArtifact",
+        "type": "object"
+      },
+      "PackageAuthor": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Email"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "PackageAuthor",
+        "type": "object"
+      },
       "PackageDependency": {
         "description": "A package dependency.",
         "properties": {
@@ -786,6 +850,55 @@
         "title": "PackageDependency",
         "type": "object"
       },
+      "PackageFileHashes": {
+        "properties": {
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sha256"
+        ],
+        "title": "PackageFileHashes",
+        "type": "object"
+      },
+      "PackageImportStatement": {
+        "properties": {
+          "buildName": {
+            "title": "Buildname",
+            "type": "string"
+          },
+          "importStatement": {
+            "title": "Importstatement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "buildName",
+          "importStatement"
+        ],
+        "title": "PackageImportStatement",
+        "type": "object"
+      },
+      "PackageLayout": {
+        "properties": {
+          "buildName": {
+            "title": "Buildname",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "buildName",
+          "url"
+        ],
+        "title": "PackageLayout",
+        "type": "object"
+      },
       "PackageVersion": {
         "description": "Information about a package version/release.",
         "properties": {
@@ -803,7 +916,7 @@
               }
             ],
             "default": null,
-            "title": "Released At"
+            "title": "Releasedat"
           },
           "requiresAtopile": {
             "anyOf": [
@@ -815,7 +928,7 @@
               }
             ],
             "default": null,
-            "title": "Requires Atopile"
+            "title": "Requiresatopile"
           },
           "size": {
             "anyOf": [
@@ -854,6 +967,37 @@
       "version": {
         "title": "Version",
         "type": "string"
+      },
+      "createdAt": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Createdat"
+      },
+      "releasedAt": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Releasedat"
+      },
+      "authors": {
+        "items": {
+          "$ref": "#/$defs/PackageAuthor"
+        },
+        "title": "Authors",
+        "type": "array"
       },
       "summary": {
         "anyOf": [
@@ -937,7 +1081,7 @@
           }
         ],
         "default": null,
-        "title": "Downloads This Week"
+        "title": "Downloadsthisweek"
       },
       "downloadsThisMonth": {
         "anyOf": [
@@ -949,7 +1093,7 @@
           }
         ],
         "default": null,
-        "title": "Downloads This Month"
+        "title": "Downloadsthismonth"
       },
       "versions": {
         "items": {
@@ -960,8 +1104,56 @@
       },
       "versionCount": {
         "default": 0,
-        "title": "Version Count",
+        "title": "Versioncount",
         "type": "integer"
+      },
+      "readme": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Readme"
+      },
+      "builds": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Builds"
+      },
+      "artifacts": {
+        "items": {
+          "$ref": "#/$defs/PackageArtifact"
+        },
+        "title": "Artifacts",
+        "type": "array"
+      },
+      "layouts": {
+        "items": {
+          "$ref": "#/$defs/PackageLayout"
+        },
+        "title": "Layouts",
+        "type": "array"
+      },
+      "importStatements": {
+        "items": {
+          "$ref": "#/$defs/PackageImportStatement"
+        },
+        "title": "Importstatements",
+        "type": "array"
       },
       "installed": {
         "default": false,
@@ -978,13 +1170,13 @@
           }
         ],
         "default": null,
-        "title": "Installed Version"
+        "title": "Installedversion"
       },
       "installedIn": {
         "items": {
           "type": "string"
         },
-        "title": "Installed In",
+        "title": "Installedin",
         "type": "array"
       },
       "dependencies": {
@@ -1021,7 +1213,7 @@
           }
         ],
         "default": null,
-        "title": "Released At"
+        "title": "Releasedat"
       },
       "requiresAtopile": {
         "anyOf": [
@@ -1033,7 +1225,7 @@
           }
         ],
         "default": null,
-        "title": "Requires Atopile"
+        "title": "Requiresatopile"
       },
       "size": {
         "anyOf": [
