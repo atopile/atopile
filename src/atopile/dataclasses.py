@@ -78,14 +78,6 @@ class ProjectState:
 
 
 @dataclass(frozen=True)
-class StageStatusEvent:
-    name: str
-    description: str
-    progress: int
-    total: int | None
-
-
-@dataclass(frozen=True)
 class StageCompleteEvent:
     duration: float
     status: StageStatus  # Use StageStatus enum instead of plain string

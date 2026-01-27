@@ -12,8 +12,6 @@ import io
 import json
 import logging
 import os
-import pickle
-import struct
 import sys
 import threading
 import time
@@ -39,8 +37,6 @@ import faebryk
 from atopile.dataclasses import (
     Log,
     LogRow,
-    StageCompleteEvent,
-    StageStatusEvent,
     TestLogRow,
 )
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
@@ -660,15 +656,6 @@ class BuildLogger(BaseLogger):
 
         return get_log_dir() / "build_logs.db"
 
-    @staticmethod
-    def _emit_event(fd: int, event: "StageStatusEvent | StageCompleteEvent") -> None:
-        payload = pickle.dumps(event, protocol=pickle.HIGHEST_PROTOCOL)
-        header = struct.pack(">I", len(payload))
-        data = header + payload
-        offset = 0
-        while offset < len(data):
-            offset += os.write(fd, data[offset:])
-
     @classmethod
     def get(
         cls,
@@ -1079,7 +1066,7 @@ class LogHandler(RichHandler):
 
         # Workers suppress console except errors (unless verbose mode)
         if (
-            os.environ.get("ATO_BUILD_EVENT_FD")
+            os.environ.get("ATO_BUILD_WORKER")
             and not os.environ.get("ATO_VERBOSE")
             and self.console.file in (sys.stdout, sys.stderr)
             and record.levelno < logging.ERROR
