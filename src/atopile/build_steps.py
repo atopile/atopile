@@ -949,6 +949,7 @@ def generate_datasheets(ctx: BuildStepContext) -> None:
     aliases=["__default__"],  # for backwards compatibility
     dependencies=[
         generate_bom,
+        generate_glb,
         generate_manifest,
         generate_variable_report,
         # generate_power_tree,

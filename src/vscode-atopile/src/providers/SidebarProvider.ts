@@ -13,6 +13,11 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
 import { traceInfo, traceError } from '../common/log/logging';
+import { openPcb } from '../common/kicad';
+import { setCurrentPCB } from '../common/pcb';
+import { setCurrentThreeDModel } from '../common/3dmodel';
+import { openKiCanvasPreview } from '../ui/kicanvas';
+import { openModelViewerPreview } from '../ui/modelviewer';
 
 // Message types from the webview
 interface OpenSignalsMessage {
@@ -288,13 +293,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       this._openFile(msg.openFile, msg.openFileLine ?? undefined, msg.openFileColumn ?? undefined);
     }
     if (msg.openLayout) {
-      this._openWithVSCode(msg.openLayout);
+      this._openLayoutPreview(msg.openLayout);
     }
     if (msg.openKicad) {
-      this._openWithSystem(msg.openKicad);
+      this._openWithKicad(msg.openKicad);
     }
     if (msg.open3d) {
-      this._openWithSystem(msg.open3d);
+      this._open3dPreview(msg.open3d);
     }
   }
 
@@ -325,6 +330,73 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _openWithVSCode(filePath: string): void {
     traceInfo(`[SidebarProvider] Opening with VS Code: ${filePath}`);
     vscode.commands.executeCommand('vscode.open', vscode.Uri.file(filePath));
+  }
+
+  private _findFirstFileByExt(dirPath: string, ext: string): string | null {
+    try {
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isFile() && entry.name.toLowerCase().endsWith(ext)) {
+          return path.join(dirPath, entry.name);
+        }
+      }
+    } catch (error) {
+      traceError(`[SidebarProvider] Failed to read directory ${dirPath}: ${error}`);
+    }
+    return null;
+  }
+
+  private _resolveFilePath(filePath: string, ext: string): string | null {
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    try {
+      const stat = fs.statSync(filePath);
+      if (stat.isFile()) {
+        return filePath.toLowerCase().endsWith(ext) ? filePath : null;
+      }
+      if (stat.isDirectory()) {
+        return this._findFirstFileByExt(filePath, ext);
+      }
+    } catch (error) {
+      traceError(`[SidebarProvider] Failed to stat ${filePath}: ${error}`);
+    }
+    return null;
+  }
+
+  private _openLayoutPreview(filePath: string): void {
+    const pcbPath = this._resolveFilePath(filePath, '.kicad_pcb');
+    if (!pcbPath) {
+      traceError(`[SidebarProvider] Layout file not found: ${filePath}`);
+      vscode.window.showErrorMessage('Layout file not found. Run a build to generate it.');
+      return;
+    }
+    setCurrentPCB({ path: pcbPath, exists: true });
+    void openKiCanvasPreview();
+  }
+
+  private _openWithKicad(filePath: string): void {
+    const pcbPath = this._resolveFilePath(filePath, '.kicad_pcb');
+    if (!pcbPath) {
+      traceError(`[SidebarProvider] KiCad layout file not found: ${filePath}`);
+      vscode.window.showErrorMessage('KiCad layout file not found. Run a build to generate it.');
+      return;
+    }
+    void openPcb(pcbPath).catch((error) => {
+      traceError(`[SidebarProvider] Failed to open KiCad: ${error}`);
+      vscode.window.showErrorMessage(`Failed to open KiCad: ${error instanceof Error ? error.message : error}`);
+    });
+  }
+
+  private _open3dPreview(filePath: string): void {
+    const modelPath = this._resolveFilePath(filePath, '.glb');
+    if (!modelPath) {
+      traceError(`[SidebarProvider] 3D model not found: ${filePath}`);
+      vscode.window.showErrorMessage('3D model not found. Run a build to generate it.');
+      return;
+    }
+    setCurrentThreeDModel({ path: modelPath, exists: true });
+    void openModelViewerPreview();
   }
 
   /**
