@@ -6,6 +6,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useStore } from '../store';
+import { sendAction } from '../api/websocket';
 import {
   LOG_LEVELS,
   AUDIENCES,
@@ -62,6 +63,7 @@ export function LogViewer() {
   const buildId = useStore((state) => state.logViewerBuildId) ?? '';
   const setBuildId = useCallback((id: string) => {
     useStore.getState().setLogViewerBuildId(id || null);
+    sendAction('setLogViewCurrentId', { buildId: id || null });
   }, []);
   const [stage, setStage] = useState('');
 

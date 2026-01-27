@@ -34,8 +34,6 @@ export function useSidebarHandlers({
         const defaultTarget = coreProject?.targets?.[0]?.name ?? null;
         const targetNames = defaultTarget ? [defaultTarget] : [];
         useStore.getState().setSelectedTargets(targetNames);
-        action('setSelectedTargets', { targetNames });
-        action('selectProject', { projectRoot });
       }
     }
   };
@@ -46,15 +44,11 @@ export function useSidebarHandlers({
     const targetNames = defaultTarget ? [defaultTarget] : [];
     useStore.getState().selectProject(projectRoot);
     useStore.getState().setSelectedTargets(targetNames);
-    action('selectProject', { projectRoot });
-    action('setSelectedTargets', { targetNames });
   };
 
   const handleSelectTarget = (projectRoot: string, targetName: string) => {
     useStore.getState().selectProject(projectRoot);
     useStore.getState().setSelectedTargets([targetName]);
-    action('selectProject', { projectRoot });
-    action('setSelectedTargets', { targetNames: [targetName] });
   };
 
   const handleBuild = (level: 'project' | 'build' | 'symbol', id: string, label: string) => {
