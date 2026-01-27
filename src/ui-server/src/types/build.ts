@@ -499,6 +499,17 @@ export interface AppState {
   openLayout?: string | null;
   openKicad?: string | null;
   open3D?: string | null;
+
+  // Test Explorer
+  collectedTests: TestItem[];
+  isLoadingTests: boolean;
+  testsError: string | null;
+  testCollectionErrors: Record<string, string>;
+  selectedTestNodeIds: string[];
+  testRun: TestRun;
+  testFilter: string;
+  testPaths: string;
+  testMarkers: string;
 }
 
 // --- Problem Types ---
@@ -580,4 +591,19 @@ export interface VariablesData {
   version: string;
   build_id?: string;  // Build ID that produced this variables data (links to build history)
   nodes: VariableNode[];
+}
+
+// --- Test Explorer Types ---
+
+export interface TestItem {
+  node_id: string;       // Full pytest node ID: "test/foo.py::TestClass::test_method"
+  file: string;          // File path: "test/foo.py"
+  class_name: string | null;  // Class name if test is in a class
+  method_name: string;   // Test function/method name
+  display_name: string;  // Human-readable display name
+}
+
+export interface TestRun {
+  testRunId: string | null;
+  isRunning: boolean;
 }

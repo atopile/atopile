@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -602,11 +603,12 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                         )
                         loop = event_bus._event_loop
                         if loop and loop.is_running():
+                            error_detail = f"Failed to install {pkg_spec}: {error_msg}"
                             asyncio.run_coroutine_threadsafe(
                                 server_state.emit_event(
                                     "packages_changed",
                                     {
-                                        "error": f"Failed to install {pkg_spec}: {error_msg}",
+                                        "error": error_detail,
                                         "package_id": package_id,
                                     },
                                 ),
@@ -619,11 +621,12 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     )
                     loop = event_bus._event_loop
                     if loop and loop.is_running():
+                        error_detail = f"Failed to install {pkg_spec}: {exc}"
                         asyncio.run_coroutine_threadsafe(
                             server_state.emit_event(
                                 "packages_changed",
                                 {
-                                    "error": f"Failed to install {pkg_spec}: {exc}",
+                                    "error": error_detail,
                                     "package_id": package_id,
                                 },
                             ),
@@ -1037,6 +1040,77 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 return {"success": True, **result.model_dump(by_alias=True)}
             except Exception as exc:
                 return {"success": False, "error": str(exc)}
+
+        if action == "runTests":
+            import hashlib
+            import os
+            from datetime import datetime
+
+            test_node_ids = payload.get("testNodeIds", [])
+            pytest_args = payload.get("pytestArgs", "")
+            env_vars = payload.get("env", {})  # Custom env vars (e.g., ConfigFlags)
+
+            if not test_node_ids:
+                return {"success": False, "error": "No tests specified"}
+
+            # Generate test_run_id upfront so we can return it immediately
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            hash_input = f"pytest:{timestamp}"
+            test_run_id = hashlib.sha256(hash_input.encode()).hexdigest()[:16]
+
+            # Get workspace path for running tests
+            if model_state.workspace_path:
+                workspace_path = str(model_state.workspace_path)
+            else:
+                workspace_path = os.getcwd()
+
+            def run_tests_background():
+                try:
+                    # Change to workspace directory for test runner
+                    original_cwd = os.getcwd()
+                    os.chdir(workspace_path)
+
+                    # Add workspace to sys.path for imports
+                    if workspace_path not in sys.path:
+                        sys.path.insert(0, workspace_path)
+
+                    # Import and run the test runner
+                    from test.runner.main import main as test_runner_main
+
+                    # Build args: pytest args + test node IDs
+                    args = []
+                    if pytest_args.strip():
+                        args.extend(pytest_args.strip().split())
+                    args.extend(test_node_ids)
+
+                    log.info(f"Starting test run {test_run_id} with args: {args}")
+                    if env_vars:
+                        log.info(f"Custom env vars: {list(env_vars.keys())}")
+
+                    # Run the test runner with the pre-generated test_run_id
+                    test_runner_main(
+                        args=args,
+                        test_run_id=test_run_id,
+                        extra_env=env_vars if env_vars else None,
+                    )
+
+                except Exception as exc:
+                    log.exception(f"Test run {test_run_id} failed: {exc}")
+                finally:
+                    # Restore original working directory
+                    try:
+                        os.chdir(original_cwd)
+                    except Exception:
+                        pass
+
+            # Run tests in background thread
+            threading.Thread(target=run_tests_background, daemon=True).start()
+
+            return {
+                "success": True,
+                "message": f"Started test run with {len(test_node_ids)} tests",
+                "test_run_id": test_run_id,
+            }
 
         if action == "uiLog":
             level = payload.get("level", "info")

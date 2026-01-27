@@ -21,6 +21,8 @@ import type {
   FileTreeNode,
   ProjectDependency,
   VariablesData,
+  TestItem,
+  TestRun,
 } from '../types/build';
 
 const ERROR_TIMEOUT_MS = 8000;
@@ -131,6 +133,20 @@ const initialState: AppState = {
   currentVariablesData: null,
   isLoadingVariables: false,
   variablesError: null,
+
+  // Test Explorer
+  collectedTests: [] as TestItem[],
+  isLoadingTests: false,
+  testsError: null as string | null,
+  testCollectionErrors: {} as Record<string, string>,
+  selectedTestNodeIds: [] as string[],
+  testRun: {
+    testRunId: null,
+    isRunning: false,
+  } as TestRun,
+  testFilter: '',
+  testPaths: 'test src',
+  testMarkers: '',
 };
 
 // Store actions interface
@@ -207,6 +223,20 @@ interface StoreActions {
   setLoadingModules: (loading: boolean) => void;
   setLoadingFiles: (loading: boolean) => void;
   setLoadingDependencies: (loading: boolean) => void;
+
+  // Test Explorer
+  setCollectedTests: (tests: TestItem[]) => void;
+  setLoadingTests: (loading: boolean) => void;
+  setTestsError: (error: string | null) => void;
+  setTestCollectionErrors: (errors: Record<string, string>) => void;
+  setTestFilter: (filter: string) => void;
+  setTestPaths: (paths: string) => void;
+  setTestMarkers: (markers: string) => void;
+  toggleTestSelected: (nodeId: string) => void;
+  selectAllTests: () => void;
+  clearTestSelection: () => void;
+  startTestRun: (testRunId: string) => void;
+  completeTestRun: () => void;
 
   // Reset
   reset: () => void;
@@ -578,6 +608,45 @@ export const useStore = create<Store>()(
       setLoadingModules: (loading) => set({ isLoadingModules: loading }),
       setLoadingFiles: (loading) => set({ isLoadingFiles: loading }),
       setLoadingDependencies: (loading) => set({ isLoadingDependencies: loading }),
+
+      // Test Explorer
+      setCollectedTests: (tests) =>
+        set({ collectedTests: tests, isLoadingTests: false, testsError: null }),
+
+      setLoadingTests: (loading) => set({ isLoadingTests: loading }),
+
+      setTestsError: (error) =>
+        set({ testsError: error, isLoadingTests: false }),
+
+      setTestCollectionErrors: (errors) => set({ testCollectionErrors: errors }),
+
+      setTestFilter: (filter) => set({ testFilter: filter }),
+
+      setTestPaths: (paths) => set({ testPaths: paths }),
+
+      setTestMarkers: (markers) => set({ testMarkers: markers }),
+
+      toggleTestSelected: (nodeId) =>
+        set((state) => {
+          const selected = state.selectedTestNodeIds;
+          if (selected.includes(nodeId)) {
+            return { selectedTestNodeIds: selected.filter((id) => id !== nodeId) };
+          }
+          return { selectedTestNodeIds: [...selected, nodeId] };
+        }),
+
+      selectAllTests: () =>
+        set((state) => ({
+          selectedTestNodeIds: state.collectedTests.map((t) => t.node_id),
+        })),
+
+      clearTestSelection: () => set({ selectedTestNodeIds: [] }),
+
+      startTestRun: (testRunId) =>
+        set({ testRun: { testRunId, isRunning: true } }),
+
+      completeTestRun: () =>
+        set((state) => ({ testRun: { ...state.testRun, isRunning: false } })),
 
       // Reset
       reset: () => set(initialState),
