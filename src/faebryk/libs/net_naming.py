@@ -339,6 +339,21 @@ def _get_hierarchy_depth(processable_net: ProcessableNet) -> int:
     return len(full_path.split(".")) if full_path else 0
 
 
+def _get_conflict_sort_key(processable_net: ProcessableNet) -> tuple[int, str]:
+    """
+    Get a deterministic sort key for conflict resolution.
+
+    Returns tuple to sort by hierarchy_depth, then electrical_name
+    """
+    depth = _get_hierarchy_depth(processable_net)
+    # Use the first electrical's name as secondary key for determinism
+    if processable_net.electricals:
+        name = processable_net.electricals[0].name or ""
+    else:
+        name = ""
+    return (depth, name)
+
+
 def _get_parent_interface_name(processable_net: ProcessableNet) -> str | None:
     """
     Get the immediate parent interface name for prefixing.
@@ -405,9 +420,7 @@ def resolve_name_conflicts(
 
         # Process each conflict group
         for _, conflict_group in conflicting_groups.items():
-            # TODO: Add secondary sort key (e.g., base_name) for fully deterministic
-            # ordering when nets have the same hierarchy depth
-            conflict_group_sorted = sorted(conflict_group, key=_get_hierarchy_depth)
+            conflict_group_sorted = sorted(conflict_group, key=_get_conflict_sort_key)
 
             # Keep the first net (lowest in hierarchy) unchanged
             # For remaining nets, try prefixing with parent interface name
@@ -427,8 +440,7 @@ def resolve_name_conflicts(
 
         # Apply numeric suffixes for remaining conflicts (identical paths)
         for _, conflict_group in remaining_conflicts.items():
-            # TODO: Add secondary sort key for fully deterministic ordering
-            conflict_group_sorted = sorted(conflict_group, key=_get_hierarchy_depth)
+            conflict_group_sorted = sorted(conflict_group, key=_get_conflict_sort_key)
 
             # Apply suffixes starting from 1 (skip first net, keep it unchanged)
             for i, net in enumerate(conflict_group_sorted[1:], start=1):
