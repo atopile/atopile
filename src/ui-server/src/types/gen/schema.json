@@ -631,7 +631,7 @@
           }
         ],
         "default": null,
-        "title": "Latest Version"
+        "title": "Latestversion"
       },
       "description": {
         "anyOf": [
@@ -702,12 +702,12 @@
         "items": {
           "type": "string"
         },
-        "title": "Installed In",
+        "title": "Installedin",
         "type": "array"
       },
       "hasUpdate": {
         "default": false,
-        "title": "Has Update",
+        "title": "Hasupdate",
         "type": "boolean"
       },
       "downloads": {
@@ -732,7 +732,7 @@
           }
         ],
         "default": null,
-        "title": "Version Count"
+        "title": "Versioncount"
       },
       "keywords": {
         "anyOf": [

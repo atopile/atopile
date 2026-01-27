@@ -154,12 +154,14 @@ describe('Sidebar', () => {
   });
 
   describe('section collapsing', () => {
-    it('starts with all sections collapsed by default', () => {
+    it('starts with projects expanded and all other sections collapsed by default', () => {
       const { container } = render(<Sidebar />);
 
-      // All sections should be collapsed by default (usePanelSizing behavior)
-      const sections = container.querySelectorAll('.collapsible-section');
-      sections.forEach(section => {
+      const projectsSection = container.querySelector('[data-section-id="projects"]');
+      expect(projectsSection).not.toHaveClass('collapsed');
+
+      const otherSections = container.querySelectorAll('.collapsible-section:not([data-section-id="projects"])');
+      otherSections.forEach(section => {
         expect(section).toHaveClass('collapsed');
       });
     });

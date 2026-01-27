@@ -24,8 +24,8 @@ export const PANEL_CONFIGS: Record<string, PanelConfig> = {
   structure: {
     id: 'structure',
     minHeight: 80,
-    preferredHeight: 180,
-    maxHeight: 360,
+    preferredHeight: 200,
+    maxHeight: 400,
     priority: 'normal',
     collapseWhenEmpty: true,
   },
@@ -40,16 +40,16 @@ export const PANEL_CONFIGS: Record<string, PanelConfig> = {
   stdlib: {
     id: 'stdlib',
     minHeight: 80,
-    preferredHeight: 180,
-    maxHeight: 300,
+    preferredHeight: 200,
+    maxHeight: 400,
     priority: 'low',
     collapseWhenEmpty: false,
   },
   variables: {
     id: 'variables',
     minHeight: 80,
-    preferredHeight: 150,
-    maxHeight: 300,
+    preferredHeight: 200,
+    maxHeight: 400,
     priority: 'normal',
     collapseWhenEmpty: true,
   },
@@ -76,4 +76,4 @@ export const PANEL_IDS = [
 export type PanelId = typeof PANEL_IDS[number];
 
 // Title bar height when collapsed (px)
-export const COLLAPSED_HEIGHT = 32;
+export const COLLAPSED_HEIGHT = 36;

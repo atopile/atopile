@@ -638,18 +638,6 @@
   min-height: 0;
 }
 
-.panel-sections.projects-pinned .collapsible-section[data-section-id="structure"] {
-  margin-top: auto;
-  border-top: none;
-}
-
-.panel-sections.projects-pinned .collapsible-section[data-section-id="projects"] {
-  border-bottom: none;
-}
-
-.panel-sections.projects-pinned .collapsible-section[data-section-id="structure"] .section-title-bar {
-  border-top: 1px solid var(--border-color);
-}
 
 /* Detail Panel Container (slides in from right) */
 .detail-panel-container {

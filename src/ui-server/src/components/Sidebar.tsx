@@ -244,10 +244,7 @@ export function Sidebar() {
         atopile={atopile}
       />
 
-      <div
-        className={`panel-sections ${panels.isCollapsed('projects') ? '' : 'projects-pinned'}`}
-        ref={containerRef}
-      >
+      <div className="panel-sections" ref={containerRef}>
         {/* Projects Section */}
         <CollapsibleSection
           id="projects"
