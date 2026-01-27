@@ -34,7 +34,6 @@ from faebryk.core.solver.utils import (
     SHOW_SS_IS,
     VERBOSE_TABLE,
     MutatorUtils,
-    pretty_expr,
 )
 from faebryk.libs.util import (
     OrderedSet,
@@ -1412,7 +1411,7 @@ class ExpressionBuilder[
         return self.indexed_ops_with_trait(F.Parameters.is_parameter_operatable)
 
     def __repr__(self) -> str:
-        return pretty_expr(self)
+        return self.compact_repr()
 
     def __str__(self) -> str:
         traits = ", ".join(
@@ -1482,6 +1481,43 @@ class ExpressionBuilder[
             assert_ if assert_ is not None else self.assert_,
             terminate if terminate is not None else self.terminate,
             traits if traits is not None else self.traits,
+        )
+
+    def __rich_repr__(self):
+        yield self.compact_repr()
+
+    def compact_repr(
+        self,
+        use_full_name: bool = False,
+        no_lit_suffix: bool = False,
+        no_class_suffix: bool = False,
+    ) -> str:
+        if self.operands:
+            tg = self.operands[0].tg
+        else:
+            g = graph.GraphView.create()
+            tg = fbrk.TypeGraph.create(g=g)
+
+        factory_type = fabll.TypeNodeBoundTG(tg, self.factory)
+        is_expr_type = factory_type.try_get_type_trait(F.Expressions.is_expression_type)
+        if is_expr_type is None:
+            raise ValueError(f"Factory {self.factory} has no is_expression_type trait")
+        repr_style = is_expr_type.get_repr_style()
+
+        return F.Expressions.is_expression._compact_repr(
+            style=repr_style,
+            symbol=repr_style.symbol
+            if repr_style.symbol is not None
+            else self.factory.__name__,
+            is_predicate=bool(self.assert_),
+            is_terminated=bool(self.terminate),
+            lit_suffix="",
+            class_suffix="",
+            use_full_name=use_full_name,
+            expr_name=self.factory.__name__,
+            operands=self.operands or [],
+            no_lit_suffix=no_lit_suffix,
+            no_class_suffix=no_class_suffix,
         )
 
 
@@ -1642,9 +1678,7 @@ class Mutator:
         from_ops = list(set(from_ops or []))
         s = scope()
         if S_LOG:
-            logger.debug(
-                f"Create expression from builder: {pretty_expr(builder, self)}"
-            )
+            logger.debug(f"Create expression from builder: {builder.compact_repr()}")
             s.__enter__()
 
         res = invariants.wrap_insert_expression(
@@ -1738,7 +1772,7 @@ class Mutator:
         if S_LOG:
             logger.debug(
                 f"Try mutate `{expr.compact_repr()}` with builder"
-                f" `{pretty_expr(builder, self)}`"
+                f" `{builder.compact_repr()}`"
             )
             s.__enter__()
 

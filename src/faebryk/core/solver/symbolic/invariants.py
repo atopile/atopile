@@ -20,7 +20,6 @@ from faebryk.core.solver.utils import (
     S_LOG,
     Contradiction,
     ContradictionByLiteral,
-    pretty_expr,
 )
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.util import ConfigFlag, OrderedSet, indented_container, not_none
@@ -404,7 +403,7 @@ class SubsumptionCheck:
             terminate=False,
             traits=[],
         )
-        logger.debug(f"New alias: {pretty_expr(builder, mutator)}")
+        logger.debug(f"New alias: {builder.compact_repr()}")
         return SubsumptionCheck.Result(
             builder,
             subsumed=[alias.is_expression.get() for alias in existing_aliases],
@@ -556,9 +555,7 @@ def _no_predicate_literals(
         # P!{⊆/⊇|True} -> P!
         if any(op.get_with_trait(F.Expressions.is_predicate) for op in class_ops):
             if I_LOG:
-                logger.debug(
-                    f"Remove predicate literal {pretty_expr(builder, mutator)}"
-                )
+                logger.debug(f"Remove predicate literal {builder.compact_repr()}")
             return None
         # P {⊆|True} -> P!
         a_class = class_ops[0]
@@ -623,8 +620,7 @@ def _no_literal_inequalities(
 
     if I_LOG:
         logger.debug(
-            f"Converting {pretty_expr(builder, mutator)} ->"
-            f" {pretty_expr(new_builder, mutator)}"
+            f"Converting {builder.compact_repr()} -> {new_builder.compact_repr()}"
         )
     return new_builder
 
@@ -657,8 +653,7 @@ def _no_predicate_operands(
 
     if I_LOG and new_operands != builder.operands:
         logger.debug(
-            f"Predicate operands: {pretty_expr(builder, mutator)} ->"
-            f" {pretty_expr(new_builder, mutator)}"
+            f"Predicate operands: {builder.compact_repr()} -> {new_builder.compact_repr()}"
         )
 
     return new_builder
@@ -749,9 +744,7 @@ class Folds:
 
         # Reflexive expression with same operands -> always True, drop
         if I_LOG:
-            logger.debug(
-                f"Reflexive tautology dropped: {pretty_expr(builder, mutator)}"
-            )
+            logger.debug(f"Reflexive tautology dropped: {builder.compact_repr()}")
 
         return mutator.make_singleton(True).is_literal.get()
 
@@ -813,8 +806,7 @@ def _fold(
 
     if I_LOG:
         logger.debug(
-            f"Folded `{pretty_expr(builder, mutator)}` "
-            f"to literal `{lit_fold.pretty_str()}`"
+            f"Folded `{builder.compact_repr()}` to literal `{lit_fold.pretty_str()}`"
         )
     if force_replacable_by_literal or lit_fold.op_setic_is_singleton():
         return lit_fold, True
@@ -843,12 +835,10 @@ def _no_literal_aliases(
     }
     has_non_correlatable = len(correlatable) < len(lits)
     if has_non_correlatable:
-        raise ValueError(
-            f"Is with literal not allowed: {pretty_expr(builder, mutator)}"
-        )
+        raise ValueError(f"Is with literal not allowed: {builder.compact_repr()}")
     if len(correlatable) > 1:
         raise ValueError(
-            f"Is with multiple literals not allowed: {pretty_expr(builder, mutator)}"
+            f"Is with multiple literals not allowed: {builder.compact_repr()}"
         )
     assert len(correlatable) == 1
     lit = next(iter(correlatable.values()))
@@ -856,7 +846,7 @@ def _no_literal_aliases(
     # TODO handle lit,lit; op,lit, lit,op etc, multi lit
     if len(non_lit) > 1:
         raise NotImplementedError(
-            f"Is with multiple operands not allowed: {pretty_expr(builder, mutator)}"
+            f"Is with multiple operands not allowed: {builder.compact_repr()}"
         )
     assert len(non_lit) == 1
     non_lit_op = next(iter(non_lit.values())).as_operand.get()
@@ -899,8 +889,7 @@ def _no_singleton_supersets(
     out = builder.with_(operands=mapped_operands)
     if I_LOG:
         logger.debug(
-            f"No singleton supersets: {pretty_expr(builder, mutator)} -> "
-            f"{pretty_expr(out, mutator)}"
+            f"No singleton supersets: {builder.compact_repr()} -> {out.compact_repr()}"
         )
     return out
 
@@ -931,8 +920,8 @@ def _deduplicate_idempotent_operands(
 
     if len(out.operands) != len(builder.operands) and I_LOG:
         logger.debug(
-            f"Deduplicated idempotent operands: {pretty_expr(builder, mutator)} -> "
-            f"{pretty_expr(out, mutator)}"
+            f"Deduplicated idempotent operands: {builder.compact_repr()} -> "
+            f"{out.compact_repr()}"
         )
 
     return out
@@ -954,7 +943,7 @@ def _ss_lits_available(mutator: Mutator):
         if ss_t_e.get_operands_with_trait(F.Expressions.is_expression):
             continue
         if S_LOG:
-            logger.debug(f"Copying ss lit: {pretty_expr(ss_t_e, mutator)}")
+            logger.debug(f"Copying ss lit: {ss_t_e.compact_repr()}")
         mutator.get_copy(ss_t.can_be_operand.get())
 
 
@@ -1144,7 +1133,7 @@ def insert_expression(
 
         if I_LOG:
             logger.debug(
-                f"Found congruent expression for {pretty_expr(builder, mutator)}:"
+                f"Found congruent expression for {builder.compact_repr()}:"
                 f" {congruent_op.pretty()}"
             )
         return InsertExpressionResult(congruent_expr, False)
@@ -1168,8 +1157,8 @@ def insert_expression(
             match most_constrained:
                 case F.Expressions.is_expression():
                     if I_LOG:
-                        orig = pretty_expr(builder, mutator)
-                        new = pretty_expr(most_constrained, mutator)
+                        orig = builder.compact_repr()
+                        new = most_constrained.compact_repr()
                         if new == orig:
                             new = "congruent"
                         logger.debug(f"Subsume replaced: {orig} -> {new}")
@@ -1177,12 +1166,10 @@ def insert_expression(
                 case ExpressionBuilder():
                     builder = most_constrained
                     if I_LOG:
-                        logger.debug(f"Subsume adjust {pretty_expr(builder, mutator)}")
+                        logger.debug(f"Subsume adjust {builder.compact_repr()}")
                 case SubsumptionCheck.Result._DISCARD():
                     if I_LOG:
-                        logger.debug(
-                            f"Subsume discard: {pretty_expr(builder, mutator)}"
-                        )
+                        logger.debug(f"Subsume discard: {builder.compact_repr()}")
                     return InsertExpressionResult(None, False)
 
     # * no empty supersets
@@ -1213,7 +1200,7 @@ def insert_expression(
         and not builder.indexed_ops_with_trait(F.Parameters.is_parameter)
     ):
         if I_LOG:
-            logger.debug(f"Terminate ss lit: {pretty_expr(builder, mutator)}")
+            logger.debug(f"Terminate ss lit: {builder.compact_repr()}")
         builder = builder.with_(terminate=True)
 
     # * terminate A is! B
@@ -1224,7 +1211,7 @@ def insert_expression(
         and not builder.terminate
     ):
         if I_LOG:
-            logger.debug(f"Terminate is!: {pretty_expr(builder, mutator)}")
+            logger.debug(f"Terminate is!: {builder.compact_repr()}")
         builder = builder.with_(terminate=True)
 
     # * canonical (covered by create)
@@ -1288,7 +1275,7 @@ def wrap_insert_expression(
     s = scope()
     if I_LOG:
         logger.warning(
-            f"Processing: {pretty_expr(builder, mutator)},"
+            f"Processing: {builder.compact_repr()},"
             f" alias: {alias.compact_repr() if alias else None}"
         )
         s.__enter__()
@@ -1303,7 +1290,7 @@ def wrap_insert_expression(
     if not I_LOG:
         return res
 
-    src_dbg = f"`{pretty_expr(builder, mutator)}`"
+    src_dbg = f"`{builder.compact_repr()}`"
     if res.out is None:
         target_dbg = "Dropped"
     else:
