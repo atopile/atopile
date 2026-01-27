@@ -23,16 +23,6 @@ class ServerConnections:
     def __init__(self) -> None:
         self._clients: dict[str, ConnectedClient] = {}
         self._lock = asyncio.Lock()
-        self._log_view_current_id: Optional[str] = None
-
-    @property
-    def log_view_current_id(self) -> Optional[str]:
-        """The currently selected log viewer build ID."""
-        return self._log_view_current_id
-
-    @log_view_current_id.setter
-    def log_view_current_id(self, value: Optional[str]) -> None:
-        self._log_view_current_id = value
 
     async def connect_client(self, websocket: WebSocket) -> str:
         """Accept a WebSocket connection and return client ID."""
