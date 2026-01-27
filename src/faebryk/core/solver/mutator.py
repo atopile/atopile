@@ -1717,6 +1717,11 @@ class Mutator:
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
         allow_uncorrelated_congruence_match: bool = False,
     ) -> "InsertExpressionResult":
+        # NOTE: no point in checking congruence against old G to detect dirty
+        # because during copy_unmutated we will copy the potentially existing congruent
+        # expression, which will trigger the override mechanism.
+        # We can consider in the future to add a shortcut for performance reasons.
+
         import faebryk.core.solver.symbolic.invariants as invariants
 
         from_ops = list(set(from_ops or []))
@@ -1737,6 +1742,8 @@ class Mutator:
             res_po = res.out.as_parameter_operatable.get()
             if S_LOG:
                 logger.error(f"Mark new expr: {res_po.compact_repr()}")
+            # This might get reverted later on by an old congruent expression
+            # so totally fine to be eager with marking this as new.
             self.transformations.created[res_po] = from_ops
 
         if S_LOG:
@@ -1962,6 +1969,7 @@ class Mutator:
             self.transformations.terminated.add(expr)
 
     def mark_relevant(self, po: F.Parameters.is_parameter_operatable):
+        assert not po.try_get_sibling_trait(is_irrelevant)
         if po.try_get_sibling_trait(is_relevant) is not None:
             return
         fabll.Traits.create_and_add_instance_to(
@@ -2278,7 +2286,10 @@ class Mutator:
 
     def _copy_unmutated(self):
         touched = self.transformations.mutated.keys() | self.transformations.removed
-        presumed_relevant_pos = self.get_parameter_operatables(include_irrelevant=False)
+        presumed_relevant_pos = self.get_parameter_operatables(
+            include_terminated=True,
+            include_irrelevant=False,
+        )
         to_copy = presumed_relevant_pos - touched
 
         for p in [fabll.Traits(p).get_obj_raw() for p in to_copy]:

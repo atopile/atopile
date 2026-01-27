@@ -32,6 +32,11 @@ def transitive_subset(mutator: Mutator):
     ```
     """
 
+    # NOTE: if we hit X ss! A ss! Y, it will create X ss! Y which is only useful
+    #   for contradiction checking.
+    # The invariant helper will make sure to terminate that expression and keep it
+    #  in the graph so we don't keep on creating it.
+
     # for all A ss! B | B not lit
     for ss in mutator.get_typed_expressions(
         F.Expressions.IsSubset,
