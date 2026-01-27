@@ -465,10 +465,11 @@ def find_congruent_expression[T: F.Expressions.ExpressionNodes](
             return next(iter(lit_ops))
         return None
 
-    parents = [
-        non_lit.get_operations(F.Expressions.is_expression) for non_lit in non_lits
+    parents = [non_lit.get_operations() for non_lit in non_lits]
+    common = [
+        e.get_trait(F.Expressions.is_expression)
+        for e in reduce(lambda x, y: x & y, parents)
     ]
-    common = reduce(lambda x, y: x & y, parents)
 
     for c in common:
         if c.is_congruent_to_factory(
@@ -972,7 +973,14 @@ def _operands_mutated_and_expressions_flat(
         copied = mutator.get_copy(op)
         # if builder is alias expr operands might not have a repr yet,
         # so need to allow stub classes
-        representative = AliasClass.of(copied, allow_non_repr=is_alias).representative()
+        # TODO does this make sense?
+        # representative = AliasClass.of(copied, allow_non_repr=is_alias).representative()
+        if is_alias:
+            representative = copied
+        else:
+            representative = AliasClass.of(
+                copied, allow_non_repr=False
+            ).representative()
 
         return representative
 
@@ -986,9 +994,9 @@ def _operands_mutated_and_expressions_flat(
 
 
 def _operands_classes(builder: ExpressionBuilder) -> list["AliasClass"]:
-    return [
-        AliasClass.of(op, allow_non_repr=builder.is_alias()) for op in builder.operands
-    ]
+    if builder.factory is F.Expressions.Is:
+        return [AliasClassStub(op, allow_non_repr=True) for op in builder.operands]
+    return [AliasClass.of(op, allow_non_repr=False) for op in builder.operands]
 
 
 def _merge_alias(
@@ -1224,6 +1232,7 @@ def insert_expression(
     # transfer/create alias for new expr
     if alias:
         # TODO find alias in old graph and copy it over if it exists
+        # for now try to do this by adding is during copy_unmutated and congruence match it
         alias = (
             mutator.get_copy(alias.as_operand.get())
             .as_parameter_operatable.force_get()
@@ -1232,7 +1241,10 @@ def insert_expression(
         mutator.create_check_and_insert_expression_from_builder(
             ExpressionBuilder(
                 F.Expressions.Is,
-                [alias.as_operand.get(), expr.can_be_operand.get()],
+                [
+                    expr.can_be_operand.get(),
+                    alias.as_operand.get(),
+                ],
                 assert_=True,
                 terminate=True,
                 traits=[],

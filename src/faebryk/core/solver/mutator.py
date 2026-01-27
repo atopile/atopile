@@ -127,11 +127,11 @@ class Transformations:
             if k not in self.copied and not k.is_same(v, allow_different_graph=True)
         )
 
-        created_preds = {
+        created_preds = (
             k
             for k in self.created
             if k.try_get_sibling_trait(F.Expressions.is_predicate)
-        }
+        )
 
         if S_LOG and not self._no_log:
             non_copy = list(non_copy)
@@ -146,6 +146,7 @@ class Transformations:
                 logger.error(f"DIRTY: removed={len(self.removed)}")
             # Filter created to only include truly new expressions
             # If a "created" expression existed in G_in (was copied), it's not truly new
+            created_preds = list(created_preds)
             if created_preds:
                 x = indented_container(k.compact_repr() for k in created_preds)
                 logger.error(f"DIRTY: new preds={x}")
@@ -157,7 +158,7 @@ class Transformations:
         return bool(
             self.removed
             or next(iter(non_copy), None) is not None
-            or created_preds
+            or next(iter(created_preds), None) is not None
             or self.terminated
             or self.asserted
         )
@@ -1206,6 +1207,7 @@ class MutationMap:
                     MutationStage.print_graph_contents_static(
                         mutator.tg_in, mutator.G_in, log=logger.error
                     )
+                    logger.error(mutator.transformations)
                     logger.error("G_out")
                     MutationStage.print_graph_contents_static(
                         mutator.tg_out, mutator.G_out, log=logger.error
@@ -1767,8 +1769,9 @@ class Mutator:
 
         assert_ = bool(expr.try_get_sibling_trait(F.Expressions.is_predicate))
         # aliases should be copied manually
-        if expression_factory is F.Expressions.Is and assert_:
-            return self.make_singleton(True).can_be_operand.get()
+        # TODO currently trying disabling, because want to congruence match
+        # if expression_factory is F.Expressions.Is and assert_:
+        #     return self.make_singleton(True).can_be_operand.get()
 
         e_operands = expr.get_operands()
         operands = operands or e_operands
@@ -2322,7 +2325,9 @@ class Mutator:
         if S_LOG:
             logger.debug("Copying unmutated")
             # TODO remove log
-            self.mutation_map.last_stage.print_graph_contents()
+            MutationStage.print_graph_contents_static(
+                self.tg_out, self.G_out, log=logger.debug
+            )
         self._copy_unmutated()
         self.G_transient.destroy()
 

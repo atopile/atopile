@@ -565,6 +565,7 @@ def flatten_expressions(mutator: Mutator):
 
     # We never auto-copy an Is!, its never nested, so not triggered outside of copy_unmutated
     # - all is! have to be manually copied
+    # Attention: Changed this. Is! just go through the same invariant mechanism now
 
     exprs = F.Expressions.is_expression.sort_by_depth_expr(mutator.get_expressions())
 
