@@ -371,7 +371,7 @@ async function refreshPackages(): Promise<void> {
   const state = useStore.getState();
   try {
     state.setLoadingPackages(true);
-    const response = await api.packages.list();
+    const response = await api.packages.summary();
     state.setPackages(response.packages || []);
   } catch (error) {
     console.warn('[WS] Failed to refresh packages:', error);

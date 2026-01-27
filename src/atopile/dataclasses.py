@@ -584,6 +584,7 @@ class ProjectsResponse(CamelModel):
     projects: list[Project]
     total: int
 
+
 class ModuleChild(BaseModel):
     """A child field within a module (interface, parameter, nested module, etc.)."""
 
@@ -761,7 +762,7 @@ class PackageInfo(BaseModel):
     keywords: Optional[list[str]] = None
 
 
-class PackageVersion(BaseModel):
+class PackageVersion(CamelModel):
     """Information about a package version/release."""
 
     version: str
@@ -770,20 +771,50 @@ class PackageVersion(BaseModel):
     size: Optional[int] = None
 
 
-class PackageDependency(BaseModel):
+class PackageDependency(CamelModel):
     """A package dependency."""
 
     identifier: str
     version: Optional[str] = None  # Required version/release
 
 
-class PackageDetails(BaseModel):
+class PackageFileHashes(CamelModel):
+    sha256: str
+
+
+class PackageAuthor(CamelModel):
+    name: str
+    email: Optional[str] = None
+
+
+class PackageArtifact(CamelModel):
+    filename: str
+    url: str
+    size: int
+    hashes: PackageFileHashes
+    build_name: Optional[str] = None
+
+
+class PackageLayout(CamelModel):
+    build_name: str
+    url: str
+
+
+class PackageImportStatement(CamelModel):
+    build_name: str
+    import_statement: str
+
+
+class PackageDetails(CamelModel):
     """Detailed information about a package from the registry."""
 
     identifier: str
     name: str
     publisher: str
     version: str  # Latest version
+    created_at: Optional[str] = None
+    released_at: Optional[str] = None
+    authors: list[PackageAuthor] = Field(default_factory=list)
     summary: Optional[str] = None
     description: Optional[str] = None
     homepage: Optional[str] = None
@@ -796,6 +827,12 @@ class PackageDetails(BaseModel):
     # Versions
     versions: list[PackageVersion] = Field(default_factory=list)
     version_count: int = 0
+    # Readme + build outputs
+    readme: Optional[str] = None
+    builds: Optional[list[str]] = None
+    artifacts: list[PackageArtifact] = Field(default_factory=list)
+    layouts: list[PackageLayout] = Field(default_factory=list)
+    import_statements: list[PackageImportStatement] = Field(default_factory=list)
     # Installation status
     installed: bool = False
     installed_version: Optional[str] = None
@@ -1097,7 +1134,6 @@ class AtopileConfig(BaseModel):
     is_installing: bool = False
     install_progress: Optional[InstallProgress] = None
     error: Optional[str] = None
-
 
 
 # =============================================================================

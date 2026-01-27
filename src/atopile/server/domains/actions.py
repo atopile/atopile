@@ -417,10 +417,15 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
         if action == "getPackageDetails":
             package_id = payload.get("packageId", "")
+            version = payload.get("version")
             if package_id:
                 # Run blocking registry fetch in thread pool
                 details = await asyncio.to_thread(
-                    packages_domain.get_package_details_from_registry, package_id
+                    packages_domain.handle_get_package_details,
+                    package_id,
+                    ctx.workspace_path,
+                    ctx,
+                    version,
                 )
                 if details:
                     return {
@@ -1037,7 +1042,25 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
         if action == "uiLog":
             level = payload.get("level", "info")
             message = payload.get("message", "")
+            lowered = message.lower()
+            if any(
+                token in lowered
+                for token in (
+                    "kicanvas:parser",
+                    "kicanvas:project",
+                    ".kicad_pcb",
+                    ".kicad_sch",
+                    ".kicad_pro",
+                    "model-viewer",
+                    ".glb",
+                    "gltf",
+                    "three.js",
+                )
+            ):
+                return {"success": True}
             log_method = getattr(log, level, log.info)
+            if len(message) > 1000:
+                message = f"{message[:1000]}… (truncated)"
             log_method(f"[ui] {message}")
             return {"success": True}
 

@@ -48,9 +48,10 @@ export function usePackages() {
     }
   }, []);
 
-  const fetchDetails = useCallback(async (identifier: string) => {
+  const fetchDetails = useCallback(async (identifier: string, version?: string) => {
     const response = await sendActionWithResponse('getPackageDetails', {
       packageId: identifier,
+      version,
     });
     const result = response.result ?? {};
     return (result as { details?: unknown }).details as unknown;

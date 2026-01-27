@@ -658,6 +658,9 @@
   max-width: 600px;
   border-left: 1px solid var(--border-color);
   background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 /* Isolated view: when package detail is open, hide sections and expand detail */

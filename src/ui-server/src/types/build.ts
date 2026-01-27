@@ -162,6 +162,33 @@ export interface PackageVersion {
   size?: number;
 }
 
+export interface PackageFileHashes {
+  sha256: string;
+}
+
+export interface PackageAuthor {
+  name: string;
+  email?: string | null;
+}
+
+export interface PackageArtifact {
+  filename: string;
+  url: string;
+  size: number;
+  hashes: PackageFileHashes;
+  buildName?: string;
+}
+
+export interface PackageLayout {
+  buildName: string;
+  url: string;
+}
+
+export interface PackageImportStatement {
+  buildName: string;
+  importStatement: string;
+}
+
 // Package dependency info
 export interface PackageDependency {
   identifier: string;
@@ -180,12 +207,16 @@ export interface PackageDetails {
   name: string;
   publisher: string;
   version: string;  // Latest version
+  createdAt?: string | null;
+  releasedAt?: string | null;
+  authors?: PackageAuthor[];
   summary?: string;
   description?: string;
   homepage?: string;
   repository?: string;
   license?: string;
   usageContent?: string;
+  readme?: string;
   // Stats
   downloads?: number;
   downloadsThisWeek?: number;
@@ -193,14 +224,17 @@ export interface PackageDetails {
   // Versions
   versions: PackageVersion[];
   versionCount: number;
+  // Build outputs
+  builds?: Array<string | PackageBuildTarget> | null;
+  artifacts?: PackageArtifact[];
+  layouts?: PackageLayout[];
+  importStatements?: PackageImportStatement[];
   // Installation status
   installed: boolean;
   installedVersion?: string;
   installedIn: string[];
   // Dependencies
   dependencies?: PackageDependency[];
-  // Builds (from package's ato.yaml - may not always be available)
-  builds?: PackageBuildTarget[];
 }
 
 // --- Package Summary Types (from /api/packages/summary) ---

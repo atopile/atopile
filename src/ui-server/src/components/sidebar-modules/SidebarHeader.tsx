@@ -40,10 +40,9 @@ interface AtopileState {
 
 interface SidebarHeaderProps {
   atopile?: AtopileState;
-  developerMode?: boolean;
 }
 
-export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
+export function SidebarHeader({ atopile }: SidebarHeaderProps) {
   const iconUrl =
     typeof window !== 'undefined'
       ? (window as Window & { __ATOPILE_ICON_URL__?: string }).__ATOPILE_ICON_URL__
@@ -565,29 +564,6 @@ export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
                       </div>
                     )}
                   </div>
-                </div>
-              </div>
-
-              <div className="settings-divider" />
-
-              {/* Developer Settings */}
-              <div className="settings-section-header">Developer</div>
-              <div className="settings-group">
-                <div className="settings-row">
-                  <span className="settings-label-title">Show all problems</span>
-                  <div className="settings-inline-control">
-                    <label className="settings-toggle">
-                      <input
-                        type="checkbox"
-                        checked={developerMode || false}
-                        onChange={(e) => action('setDeveloperMode', { enabled: e.target.checked })}
-                      />
-                      <span className="settings-toggle-slider" />
-                    </label>
-                  </div>
-                </div>
-                <div className="settings-hint">
-                  Show internal developer messages in Problems panel
                 </div>
               </div>
 

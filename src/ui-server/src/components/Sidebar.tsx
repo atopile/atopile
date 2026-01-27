@@ -6,7 +6,6 @@
 import { useState, useRef, useMemo, useCallback } from 'react';
 import { CollapsibleSection } from './CollapsibleSection';
 import { ActiveProjectPanel } from './ActiveProjectPanel';
-import { ProblemsPanel } from './ProblemsPanel';
 import { StandardLibraryPanel } from './StandardLibraryPanel';
 import { VariablesPanel } from './VariablesPanel';
 import { BOMPanel } from './BOMPanel';
@@ -23,11 +22,10 @@ import {
   useSidebarHandlers,
   type Selection,
   type SelectedPackage,
-  type StageFilter,
 } from './sidebar-modules';
 import './Sidebar.css';
 import '../styles.css';
-import type { VariableNode, Problem } from '../types/build';
+import type { VariableNode } from '../types/build';
 
 // Send action to backend via WebSocket (no VS Code dependency)
 const action = (name: string, data?: Record<string, unknown>) => {
@@ -76,7 +74,6 @@ export function Sidebar() {
   const projectModules = useStore((s) => s.projectModules);
   const projectDependencies = useStore((s) => s.projectDependencies);
   const atopile = useStore((s) => s.atopile);
-  const developerMode = useStore((s) => s.developerMode);
   const activeEditorFile = useStore((s) => s.activeEditorFile);
   const lastAtoFile = useStore((s) => s.lastAtoFile);
   const packages = useStore((s) => s.packages);
@@ -93,9 +90,8 @@ export function Sidebar() {
   }, [selectedProjectRoot, selectedTargetNames, projects]);
 
   // Local UI state
-  const [selection, setSelection] = useState<Selection>({ type: 'none' });
+  const [, setSelection] = useState<Selection>({ type: 'none' });
   const [selectedPackage, setSelectedPackage] = useState<SelectedPackage | null>(null);
-  const [activeStageFilter, setActiveStageFilter] = useState<StageFilter | null>(null);
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
@@ -117,10 +113,7 @@ export function Sidebar() {
     projectCount,
     packageCount,
     queuedBuilds,
-    filteredProblems,
-    totalErrors,
-    totalWarnings,
-  } = useSidebarData({ state, selection, activeStageFilter });
+  } = useSidebarData({ state });
 
   // Unified panel sizing - all panels start collapsed, auto-expand on events
   const panels = usePanelSizing({
@@ -140,10 +133,8 @@ export function Sidebar() {
   const handlers = useSidebarHandlers({
     projects: sidebarProjects,
     state,
-    panels,
     setSelection,
     setSelectedPackage,
-    setActiveStageFilter,
     action,
   });
 
@@ -216,12 +207,6 @@ export function Sidebar() {
     }
   }, []);
 
-  const handleProblemClick = useCallback((problem: Problem) => {
-    if (problem.file) {
-      action('openFile', { file: problem.file, line: problem.line, column: problem.column });
-    }
-  }, []);
-
   const handleRefreshStdlib = useCallback(() => {
     action('refreshStdlib');
   }, []);
@@ -257,7 +242,6 @@ export function Sidebar() {
       {/* Header with settings */}
       <SidebarHeader
         atopile={atopile}
-        developerMode={developerMode}
       />
 
       <div
@@ -350,26 +334,6 @@ export function Sidebar() {
             selectedProjectRoot={selectedProjectRoot}
             installError={installError}
             onOpenPackageDetail={handlers.handleOpenPackageDetail}
-          />
-        </CollapsibleSection>
-
-        {/* Problems Section */}
-        <CollapsibleSection
-          id="problems"
-          title={activeStageFilter ? `Problems: ${activeStageFilter.stageName || activeStageFilter.buildId || 'Filtered'}` : 'Problems'}
-          badge={activeStageFilter ? filteredProblems.length : (totalErrors + totalWarnings)}
-          badgeType={activeStageFilter ? 'filter' : 'count'}
-          errorCount={activeStageFilter ? undefined : totalErrors}
-          warningCount={activeStageFilter ? undefined : totalWarnings}
-          collapsed={panels.isCollapsed('problems')}
-          onToggle={() => panels.togglePanel('problems')}
-          onClearFilter={activeStageFilter ? handlers.clearStageFilter : undefined}
-          height={panels.calculatedHeights['problems']}
-          onResizeStart={(e) => panels.handleResizeStart('problems', e)}
-        >
-          <ProblemsPanel
-            problems={filteredProblems}
-            onProblemClick={handleProblemClick}
           />
         </CollapsibleSection>
 

@@ -5,32 +5,21 @@
 
 import { sendActionWithResponse } from '../../api/websocket';
 import { useStore } from '../../store';
-import type { Selection, SelectedPackage, StageFilter } from './sidebarUtils';
-import type { PanelId } from '../../utils/panelConfig';
-
-interface PanelControls {
-  expandPanel: (id: PanelId) => void;
-  collapsePanel: (id: PanelId) => void;
-  togglePanel: (id: PanelId) => void;
-}
+import type { Selection, SelectedPackage } from './sidebarUtils';
 
 interface UseSidebarHandlersProps {
   projects: any[];
   state: any;
-  panels: PanelControls;
   setSelection: React.Dispatch<React.SetStateAction<Selection>>;
   setSelectedPackage: React.Dispatch<React.SetStateAction<SelectedPackage | null>>;
-  setActiveStageFilter: React.Dispatch<React.SetStateAction<StageFilter | null>>;
   action: (name: string, data?: Record<string, unknown>) => void;
 }
 
 export function useSidebarHandlers({
   projects,
   state,
-  panels,
   setSelection,
   setSelectedPackage,
-  setActiveStageFilter,
   action,
 }: UseSidebarHandlersProps) {
 
@@ -80,24 +69,25 @@ export function useSidebarHandlers({
     action('cancelBuild', { buildId: build_id });
   };
 
-  const handleStageFilter = (stageName: string, buildId?: string, projectId?: string) => {
-    setActiveStageFilter({
-      stageName: stageName || undefined,
-      buildId,
-      projectId
-    });
-
-    // Expand problems panel when filtering
-    panels.expandPanel('problems');
-  };
-
-  const clearStageFilter = () => {
-    setActiveStageFilter(null);
-  };
-
-  const handleOpenPackageDetail = (pkg: SelectedPackage) => {
+  const handleOpenPackageDetail = async (pkg: SelectedPackage) => {
     setSelectedPackage(pkg);
-    action('getPackageDetails', { packageId: pkg.fullName });
+    const requestedVersion = pkg.latestVersion || pkg.version;
+    const store = useStore.getState();
+    store.setLoadingPackageDetails(true);
+    store.setPackageDetails(null);
+    useStore.setState({ packageDetailsError: null });
+    try {
+      const response = await sendActionWithResponse('getPackageDetails', {
+        packageId: pkg.fullName,
+        version: requestedVersion,
+      });
+      const result = response.result ?? {};
+      const details = (result as { details?: unknown }).details || null;
+      store.setPackageDetails(details as any);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load package details';
+      useStore.setState({ packageDetailsError: message, isLoadingPackageDetails: false });
+    }
   };
 
   const handlePackageInstall = (packageId: string, projectRoot: string, version?: string) => {
@@ -266,8 +256,6 @@ export function useSidebarHandlers({
     handleBuild,
     handleCancelBuild,
     handleCancelQueuedBuild,
-    handleStageFilter,
-    clearStageFilter,
     handleOpenPackageDetail,
     handlePackageInstall,
     handleCreateProject,

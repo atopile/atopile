@@ -512,13 +512,17 @@ export const ProjectCard = memo(function ProjectCard({
         }))
       // Fall back to remote packageDetails if local not available yet
       : packageDetails?.builds
-        ? packageDetails.builds.map((b, idx) => ({
-            id: b.name || `build-${idx}`,
-            name: b.name || 'default',
-            entry: b.entry || '',
+        ? packageDetails.builds.map((build, idx) => {
+            const name = typeof build === 'string' ? build : build.name
+            const entry = typeof build === 'string' ? '' : build.entry
+            return {
+              id: name || `build-${idx}`,
+              name: name || 'default',
+              entry: entry || '',
             root: packagePath,
             status: 'idle' as const,
-          }))
+          }
+        })
         : []
     : project.builds
 

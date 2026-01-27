@@ -10,8 +10,8 @@ import logging
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
-from ..domains.actions import handle_data_action
 from ..connections import ServerConnections, get_server_state
+from ..domains.actions import handle_data_action
 
 log = logging.getLogger(__name__)
 
@@ -25,8 +25,16 @@ async def _safe_send_json(websocket: WebSocket, payload: dict) -> bool:
     try:
         await websocket.send_json(payload)
         return True
-    except RuntimeError as exc:
-        if "close message has been sent" in str(exc).lower():
+    except Exception as exc:
+        message = str(exc).lower()
+        if isinstance(exc, WebSocketDisconnect):
+            log.debug("WebSocket send skipped: client disconnected")
+            return False
+        if (
+            "close message has been sent" in message
+            or "not connected" in message
+            or "client disconnected" in message
+        ):
             log.debug("WebSocket send skipped: close already sent")
             return False
         raise

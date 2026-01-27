@@ -31,7 +31,7 @@ export function useSidebarEffects({
     const store = useStore.getState();
     store.setLoadingPackages(true);
     try {
-      const response = await api.packages.list();
+      const response = await api.packages.summary();
       store.setPackages(response.packages || []);
     } catch (error) {
       console.warn('[UI] Failed to fetch packages', error);
@@ -48,18 +48,6 @@ export function useSidebarEffects({
     } catch (error) {
       console.warn('[UI] Failed to fetch stdlib', error);
       store.setStdlibItems([]);
-    }
-  };
-
-  const fetchProblems = async () => {
-    const store = useStore.getState();
-    store.setLoadingProblems(true);
-    try {
-      const response = await api.problems.list();
-      store.setProblems(response.problems || []);
-    } catch (error) {
-      console.warn('[UI] Failed to fetch problems', error);
-      store.setProblems([]);
     }
   };
 
@@ -128,7 +116,6 @@ export function useSidebarEffects({
   // Initial data refresh after mount
   useEffect(() => {
     const timer = setTimeout(() => {
-      void fetchProblems();
       void fetchPackages();
       void fetchStdlib();
     }, 100);

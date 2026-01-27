@@ -17,12 +17,6 @@ vi.mock('../components/ProjectsPanel', () => ({
   )),
 }));
 
-vi.mock('../components/ProblemsPanel', () => ({
-  ProblemsPanel: vi.fn(({ problems }) => (
-    <div data-testid="problems-panel">ProblemsPanel ({problems?.length || 0} problems)</div>
-  )),
-}));
-
 vi.mock('../components/StandardLibraryPanel', () => ({
   StandardLibraryPanel: vi.fn(() => <div data-testid="stdlib-panel">StandardLibraryPanel</div>),
 }));
@@ -143,7 +137,6 @@ describe('Sidebar', () => {
       expect(screen.getByText('Projects')).toBeInTheDocument();
       expect(screen.getByText('Build Queue')).toBeInTheDocument();
       expect(screen.getByText('Packages')).toBeInTheDocument();
-      expect(screen.getByText('Problems')).toBeInTheDocument();
       expect(screen.getByText('Standard Library')).toBeInTheDocument();
       expect(screen.getByText('Variables')).toBeInTheDocument();
       expect(screen.getByText('BOM')).toBeInTheDocument();
@@ -174,14 +167,14 @@ describe('Sidebar', () => {
     it('toggles section when title bar clicked', () => {
       const { container } = render(<Sidebar />);
 
-      const problemsSection = container.querySelector('[data-section-id="problems"]');
-      expect(problemsSection).toHaveClass('collapsed');
+      const stdlibSection = container.querySelector('[data-section-id="stdlib"]');
+      expect(stdlibSection).toHaveClass('collapsed');
 
       // Click to expand
-      const problemsTitleBar = container.querySelector('[data-section-id="problems"] .section-title-bar');
-      fireEvent.click(problemsTitleBar!);
+      const stdlibTitleBar = container.querySelector('[data-section-id="stdlib"] .section-title-bar');
+      fireEvent.click(stdlibTitleBar!);
 
-      expect(problemsSection).not.toHaveClass('collapsed');
+      expect(stdlibSection).not.toHaveClass('collapsed');
     });
 
     it('expands then collapses section on double click', () => {
@@ -201,16 +194,6 @@ describe('Sidebar', () => {
   });
 
   describe('panel content rendering when expanded', () => {
-    it('renders ProblemsPanel when problems section is expanded', () => {
-      const { container } = render(<Sidebar />);
-
-      // Expand the Problems section
-      const problemsTitleBar = container.querySelector('[data-section-id="problems"] .section-title-bar');
-      fireEvent.click(problemsTitleBar!);
-
-      expect(screen.getByTestId('problems-panel')).toBeInTheDocument();
-    });
-
     it('renders StandardLibraryPanel when stdlib section is expanded', () => {
       const { container } = render(<Sidebar />);
 
@@ -245,7 +228,6 @@ describe('Sidebar', () => {
       mockApi.builds.history.mockResolvedValueOnce({ builds: [] });
       mockApi.builds.active.mockResolvedValueOnce({ builds: [] });
       mockApi.packages.summary.mockResolvedValueOnce({ packages: [] });
-      mockApi.problems.list.mockResolvedValueOnce({ problems: [] });
       mockApi.stdlib.list.mockResolvedValueOnce({ items: [] });
 
       render(<Sidebar />);
@@ -255,7 +237,6 @@ describe('Sidebar', () => {
         expect(mockApi.builds.history).toHaveBeenCalled();
         expect(mockApi.builds.active).toHaveBeenCalled();
         expect(mockApi.packages.summary).toHaveBeenCalled();
-        expect(mockApi.problems.list).toHaveBeenCalled();
         expect(mockApi.stdlib.list).toHaveBeenCalled();
       }, { timeout: 200 });
     });

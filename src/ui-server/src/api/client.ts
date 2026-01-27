@@ -9,6 +9,7 @@ import type {
   Project,
   Build,
   PackageInfo,
+  PackagesSummaryResponse,
   PackageDetails,
   StdLibItem,
   BOMData,
@@ -202,7 +203,7 @@ export const api = {
   packages: {
     list: () => fetchJSON<PackagesResponse>('/api/packages'),
 
-    summary: () => fetchJSON<{ packages: PackageInfo[]; total: number }>('/api/packages/summary'),
+    summary: () => fetchJSON<PackagesSummaryResponse>('/api/packages/summary'),
 
     search: (query: string) =>
       fetchJSON<{ packages: PackageInfo[]; total: number; query: string }>(
