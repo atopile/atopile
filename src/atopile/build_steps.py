@@ -59,6 +59,7 @@ from faebryk.libs.app.erc import needs_erc_check
 from faebryk.libs.app.keep_picked_parts import load_part_info_from_pcb
 from faebryk.libs.app.pcb import (
     check_net_names,
+    ensure_board_appearance,
     load_net_names,
 )
 from faebryk.libs.app.picking import save_part_info_to_pcb
@@ -644,6 +645,9 @@ def update_pcb(ctx: BuildStepContext) -> None:
     original_pcb = kicad.copy(pcb.pcb_file)
     pcb.transformer.apply_design()
     pcb.transformer.check_unattached_fps()
+
+    # Ensure proper board appearance (matte black soldermask, ENIG copper finish)
+    ensure_board_appearance(pcb.pcb_file.kicad_pcb)
 
     # set layout
     if config.build.hide_designators:
