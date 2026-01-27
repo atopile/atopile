@@ -14,6 +14,7 @@ import type { Selection, BuildTarget, BuildStage, ModuleDefinition } from './pro
 import { NameValidationDropdown } from './NameValidationDropdown';
 import { validateName } from '../utils/nameValidation';
 import { useStore } from '../store';
+import { sendAction } from '../api/websocket';
 import './BuildNode.css';
 
 // Timer component for running stages - isolated to prevent parent re-renders
@@ -32,6 +33,12 @@ function StageTimer() {
 
 // Format time in mm:ss or hh:mm:ss
 export function formatBuildTime(seconds: number): string {
+  if (seconds >= 0 && seconds < 1) {
+    return `${seconds.toFixed(2)}s`;
+  }
+  if (seconds > 0 && seconds < 10) {
+    return `${seconds.toFixed(1)}s`;
+  }
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
@@ -660,25 +667,26 @@ export const BuildNode = memo(function BuildNode({
                 const id = build.buildId || build.lastBuild?.buildId;
                 if (id) {
                   useStore.getState().setLogViewerBuildId(id);
+                  sendAction('setLogViewCurrentId', { buildId: id });
                 }
               }}
               title="Click to view logs for this build"
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
+                gap: 'var(--spacing-sm)',
                 padding: '4px 8px 4px 24px',
-                fontSize: '10px',
-                color: '#6c7086',
+                fontSize: 'var(--font-size-xs)',
+                color: 'var(--text-muted)',
                 cursor: 'pointer',
               }}
             >
               <span
                 style={{
-                  fontFamily: 'monospace',
-                  background: 'rgba(108, 112, 134, 0.2)',
+                  fontFamily: 'var(--font-mono)',
+                  background: 'var(--bg-tertiary)',
                   padding: '1px 6px',
-                  borderRadius: '4px',
+                  borderRadius: 'var(--radius-sm)',
                 }}
               >
                 {(build.buildId || build.lastBuild?.buildId)?.slice(0, 8)}

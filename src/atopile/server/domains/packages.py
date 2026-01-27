@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import subprocess
 import threading
 import time
@@ -14,11 +15,17 @@ from typing import Optional
 from fastapi import BackgroundTasks, HTTPException
 
 from atopile.dataclasses import (
+    AppContext,
     PackageActionRequest,
     PackageActionResponse,
+    PackageArtifact,
+    PackageAuthor,
     PackageDependency,
     PackageDetails,
+    PackageFileHashes,
+    PackageImportStatement,
     PackageInfo,
+    PackageLayout,
     PackagesResponse,
     PackagesSummaryResponse,
     PackageSummaryItem,
@@ -26,7 +33,6 @@ from atopile.dataclasses import (
     RegistrySearchResponse,
     RegistryStatus,
 )
-from atopile.dataclasses import AppContext
 from atopile.model.model_state import model_state
 from atopile.server.connections import server_state
 from atopile.server.core import packages as core_packages
@@ -37,12 +43,15 @@ def _get_api() -> PackagesAPIClient:
     """Get a fresh API client instance."""
     return PackagesAPIClient()
 
+
 log = logging.getLogger(__name__)
 
 # Registry cache
 _registry_cache: dict[str, list[PackageInfo]] = {}
 _registry_cache_time: float = 0.0
 _REGISTRY_CACHE_TTL = int(os.getenv("ATOPILE_REGISTRY_CACHE_TTL", "0"))
+
+_SEMVER_RE = re.compile(r"^v?\d+\.\d+\.\d+(?:[-+].*)?$")
 
 # Lock to prevent concurrent refresh_packages_state calls
 _refresh_lock: asyncio.Lock | None = None
@@ -154,6 +163,17 @@ def search_registry_packages(query: str) -> list[PackageInfo]:
     Uses the PackagesAPIClient to query the registry API.
     Results are cached for 5 minutes.
     """
+    if not query.strip():
+        cache_key = "all"
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            log.debug(f"[registry] Cache HIT for all-packages: {len(cached)} packages")
+            return cached
+
+        packages = get_all_registry_packages()
+        _cache_set(cache_key, packages)
+        return packages
+
     cache_key = f"search:{query}"
     cached = _cache_get(cache_key)
     if cached is not None:
@@ -287,7 +307,9 @@ async def enrich_packages_with_registry_async(
     return enriched
 
 
-def get_package_details_from_registry(identifier: str) -> PackageDetails | None:
+def get_package_details_from_registry(
+    identifier: str, version: str | None = None
+) -> PackageDetails | None:
     """
     Get detailed package information from the registry.
 
@@ -296,13 +318,15 @@ def get_package_details_from_registry(identifier: str) -> PackageDetails | None:
     - List of releases (versions)
     - Dependencies
     """
+    if version and not _SEMVER_RE.match(version):
+        version = None
+
     try:
         api = _get_api()
-        pkg_response = api.get_package(identifier)
+        pkg_response = api.get_package(identifier, version=version)
+        releases = api.get_package_releases(identifier)
         pkg_info = pkg_response.info
-
-        releases_response = api._get(f"/v1/package/{identifier}/releases").json()
-        releases = releases_response.get("releases", [])
+        readme = getattr(pkg_response, "readme", None)
 
         parts = identifier.split("/")
         if len(parts) == 2:
@@ -313,20 +337,15 @@ def get_package_details_from_registry(identifier: str) -> PackageDetails | None:
 
         versions = []
         for rel in releases:
-            released_at = rel.get("released_at")
-            if isinstance(released_at, str):
-                pass
-            elif hasattr(released_at, "isoformat"):
+            released_at = getattr(rel, "released_at", None)
+            if hasattr(released_at, "isoformat"):
                 released_at = released_at.isoformat()
-            else:
-                released_at = None
-
             versions.append(
                 PackageVersion(
-                    version=rel.get("version", "unknown"),
-                    released_at=released_at,
-                    requires_atopile=rel.get("requires_atopile"),
-                    size=rel.get("size"),
+                    version=getattr(rel, "version", "unknown"),
+                    released_at=released_at if isinstance(released_at, str) else None,
+                    requires_atopile=getattr(rel, "requires_atopile", None),
+                    size=getattr(rel, "size", None),
                 )
             )
 
@@ -336,21 +355,71 @@ def get_package_details_from_registry(identifier: str) -> PackageDetails | None:
 
         # Extract dependencies from the package info
         dependencies = []
-        if hasattr(pkg_info, "dependencies") and pkg_info.dependencies:
-            requires = getattr(pkg_info.dependencies, "requires", [])
-            for dep in requires:
-                dependencies.append(
-                    PackageDependency(
-                        identifier=dep.identifier,
-                        version=getattr(dep, "release", None),
-                    )
+        requires = getattr(getattr(pkg_info, "dependencies", None), "requires", [])
+        for dep in requires or []:
+            dependencies.append(
+                PackageDependency(
+                    identifier=dep.identifier,
+                    version=getattr(dep, "release", None),
                 )
+            )
+
+        authors = []
+        for author in getattr(pkg_info, "authors", []) or []:
+            authors.append(
+                PackageAuthor(
+                    name=getattr(author, "name", ""),
+                    email=getattr(author, "email", None),
+                )
+            )
+
+        artifacts = []
+        artifacts_info = getattr(pkg_info, "artifacts", None)
+        for artifact in getattr(artifacts_info, "artifacts", []) or []:
+            artifacts.append(
+                PackageArtifact(
+                    filename=artifact.filename,
+                    url=artifact.url,
+                    size=artifact.size,
+                    hashes=PackageFileHashes(sha256=artifact.hashes.sha256),
+                    build_name=getattr(artifact, "build_name", None),
+                )
+            )
+
+        layouts = []
+        layouts_info = getattr(pkg_info, "layouts", None)
+        for layout in getattr(layouts_info, "layouts", []) or []:
+            layouts.append(
+                PackageLayout(
+                    build_name=layout.build_name,
+                    url=layout.url,
+                )
+            )
+
+        import_statements = []
+        for stmt in getattr(pkg_info, "import_statements", []) or []:
+            import_statements.append(
+                PackageImportStatement(
+                    build_name=stmt.build_name,
+                    import_statement=stmt.import_statement,
+                )
+            )
+
+        created_at = getattr(pkg_info, "created_at", None)
+        if hasattr(created_at, "isoformat"):
+            created_at = created_at.isoformat()
+        released_at = getattr(pkg_info, "released_at", None)
+        if hasattr(released_at, "isoformat"):
+            released_at = released_at.isoformat()
 
         return PackageDetails(
             identifier=identifier,
             name=name,
             publisher=publisher,
             version=pkg_info.version,
+            created_at=created_at if isinstance(created_at, str) else None,
+            released_at=released_at if isinstance(released_at, str) else None,
+            authors=authors,
             summary=pkg_info.summary,
             description=pkg_info.summary,
             homepage=pkg_info.homepage,
@@ -362,6 +431,11 @@ def get_package_details_from_registry(identifier: str) -> PackageDetails | None:
             versions=versions,
             version_count=len(versions),
             dependencies=dependencies,
+            readme=readme,
+            builds=getattr(pkg_info, "builds", None),
+            artifacts=artifacts,
+            layouts=layouts,
+            import_statements=import_statements,
         )
 
     except Exception as exc:
@@ -532,9 +606,7 @@ async def refresh_installed_packages_state(
         await server_state.emit_event("packages_changed")
         return
 
-    await asyncio.to_thread(
-        core_packages.get_all_installed_packages, [scan_path]
-    )
+    await asyncio.to_thread(core_packages.get_all_installed_packages, [scan_path])
     await server_state.emit_event("packages_changed")
 
 
@@ -672,8 +744,9 @@ def handle_get_package_details(
     package_id: str,
     scan_path: Path | None,
     ctx: AppContext,
+    version: str | None = None,
 ) -> PackageDetails:
-    details = get_package_details_from_registry(package_id)
+    details = get_package_details_from_registry(package_id, version=version)
 
     if not details:
         raise HTTPException(

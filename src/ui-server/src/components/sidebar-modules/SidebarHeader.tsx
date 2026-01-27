@@ -5,9 +5,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Settings, ChevronDown, FolderOpen, Loader2, AlertCircle, Check, GitBranch, Package, Search, X } from 'lucide-react';
 import { sendAction } from '../../api/websocket';
-import { handleEvent } from '../../api/eventHandler';
-import { useStore } from '../../store';
-import type { AtopileState } from '../../types/build';
 
 // Send action to backend via WebSocket
 const action = (name: string, data?: Record<string, unknown>) => {
@@ -21,12 +18,31 @@ const action = (name: string, data?: Record<string, unknown>) => {
   sendAction(name, data);
 };
 
-interface SidebarHeaderProps {
-  atopile?: AtopileState;
-  developerMode?: boolean;
+interface AtopileState {
+  isInstalling?: boolean;
+  installProgress?: {
+    message?: string;
+    percent?: number;
+  } | null;
+  error?: string | null;
+  source?: 'release' | 'branch' | 'local';
+  currentVersion?: string;
+  availableVersions?: string[];
+  branch?: string | null;
+  availableBranches?: string[];
+  localPath?: string | null;
+  detectedInstallations?: Array<{
+    path: string;
+    source: string;
+    version?: string | null;
+  }>;
 }
 
-export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
+interface SidebarHeaderProps {
+  atopile?: AtopileState;
+}
+
+export function SidebarHeader({ atopile }: SidebarHeaderProps) {
   const iconUrl =
     typeof window !== 'undefined'
       ? (window as Window & { __ATOPILE_ICON_URL__?: string }).__ATOPILE_ICON_URL__
@@ -121,6 +137,14 @@ export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
       action('getMaxConcurrentSetting');
     }
   }, [showSettings]);
+
+  // Fetch branches only when settings open and branch source is selected
+  useEffect(() => {
+    if (!showSettings) return;
+    if (atopile?.source !== 'branch') return;
+    if (atopile?.availableBranches && atopile.availableBranches.length > 0) return;
+    action('refreshAtopileBranches');
+  }, [showSettings, atopile?.source, atopile?.availableBranches]);
 
   // Close branch dropdown when clicking outside
   useEffect(() => {
@@ -540,32 +564,6 @@ export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
                       </div>
                     )}
                   </div>
-                </div>
-              </div>
-
-              <div className="settings-divider" />
-
-              {/* Developer Settings */}
-              <div className="settings-section-header">Developer</div>
-              <div className="settings-group">
-                <div className="settings-row">
-                  <span className="settings-label-title">Show all problems</span>
-                  <div className="settings-inline-control">
-                    <label className="settings-toggle">
-                      <input
-                        type="checkbox"
-                        checked={developerMode || false}
-                        onChange={(e) => {
-                          useStore.getState().setDeveloperMode(e.target.checked);
-                          void handleEvent('problems_changed', {});
-                        }}
-                      />
-                      <span className="settings-toggle-slider" />
-                    </label>
-                  </div>
-                </div>
-                <div className="settings-hint">
-                  Show internal developer messages in Problems panel
                 </div>
               </div>
 

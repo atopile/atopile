@@ -19,8 +19,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from atopile.dataclasses import AppContext
-from atopile.model import build_history
 from atopile.model.model_state import model_state
+from atopile.model.sqlite import BuildHistory
 from atopile.server.connections import server_state
 from atopile.server.core import projects as core_projects
 from atopile.server.domains import packages as packages_domain
@@ -36,8 +36,6 @@ PACKAGES_REFRESH_MIN_INTERVAL_S = float(
 )
 _debounce_tasks: dict[str, asyncio.Task] = {}
 _last_packages_registry_refresh: float = 0.0
-
-init_build_history_db = build_history.init_build_history_db
 
 
 async def _load_projects_background(ctx: AppContext) -> None:
@@ -64,9 +62,7 @@ async def _refresh_projects_state() -> None:
         return
 
     try:
-        await asyncio.to_thread(
-            core_projects.discover_projects_in_path, workspace_path
-        )
+        await asyncio.to_thread(core_projects.discover_projects_in_path, workspace_path)
         await server_state.emit_event("projects_changed")
     except Exception as exc:
         log.error(f"[background] Failed to refresh projects: {exc}")
@@ -302,13 +298,6 @@ async def _load_atopile_install_options() -> None:
         )
         log.info(f"[background] Loaded {len(versions)} PyPI versions")
 
-        # Fetch available branches from GitHub
-        branches = await atopile_install.fetch_available_branches()
-        await server_state.emit_event(
-            "atopile_config_changed", {"available_branches": branches}
-        )
-        log.info(f"[background] Loaded {len(branches)} GitHub branches")
-
         # Detect local installations
         installations = await asyncio.to_thread(
             atopile_install.detect_local_installations
@@ -324,7 +313,6 @@ async def _load_atopile_install_options() -> None:
 
 def create_app(
     summary_file: Optional[Path] = None,
-    logs_base: Optional[Path] = None,
     workspace_path: Optional[Path] = None,
 ) -> FastAPI:
     """
@@ -345,17 +333,12 @@ def create_app(
 
     ctx = AppContext(
         summary_file=summary_file,
-        logs_base=logs_base,
         workspace_path=workspace_path,
     )
     app.state.ctx = ctx
 
-    # Initialize build history database in central log directory
-    from faebryk.libs.paths import get_log_dir
-
-    build_history_db_path = get_log_dir() / "build_history.db"
-    build_history_db_path.parent.mkdir(parents=True, exist_ok=True)
-    init_build_history_db(build_history_db_path)
+    # Initialize build history database
+    BuildHistory.init_db()
 
     @app.on_event("startup")
     async def on_startup():
@@ -423,6 +406,9 @@ def create_app(
         projects as projects_routes,
     )
     from atopile.server.routes import (
+        tests as tests_routes,
+    )
+    from atopile.server.routes import (
         websocket as ws_routes,
     )
 
@@ -434,6 +420,7 @@ def create_app(
     app.include_router(parts_routes.router)
     app.include_router(problems_routes.router)
     app.include_router(packages_routes.router)
+    app.include_router(tests_routes.router)
 
     return app
 
@@ -498,14 +485,12 @@ class DashboardServer:
 
     def __init__(
         self,
-        logs_base: Path,
         port: Optional[int] = None,
         workspace_path: Optional[Path] = None,
     ):
-        self.logs_base = logs_base
         self.port = port or find_free_port()
         self.workspace_path = workspace_path
-        self.app = create_app(logs_base=logs_base, workspace_path=self.workspace_path)
+        self.app = create_app(workspace_path=self.workspace_path)
         self._server: Optional[uvicorn.Server] = None
         self._thread: Optional[threading.Thread] = None
 
@@ -546,7 +531,6 @@ class DashboardServer:
 
 
 def start_dashboard_server(
-    logs_base: Path,
     port: Optional[int] = None,
     workspace_path: Optional[Path] = None,
 ) -> tuple[DashboardServer, str]:
@@ -554,13 +538,12 @@ def start_dashboard_server(
     Start the dashboard server.
 
     Args:
-        logs_base: Base directory for logs
         port: Port to use (defaults to a free port)
         workspace_path: Workspace path to scan for projects
 
     Returns:
         Tuple of (DashboardServer, url)
     """
-    server = DashboardServer(logs_base, port, workspace_path)
+    server = DashboardServer(port=port, workspace_path=workspace_path)
     server.start()
     return server, server.url

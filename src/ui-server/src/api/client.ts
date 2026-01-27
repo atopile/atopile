@@ -9,6 +9,7 @@ import type {
   Project,
   Build,
   PackageInfo,
+  PackagesSummaryResponse,
   PackageDetails,
   StdLibItem,
   BOMData,
@@ -104,6 +105,12 @@ interface ProblemsResponse {
   problems: Problem[];
 }
 
+interface LogBuildId {
+  build_id: string;
+  last_timestamp: string | null;
+  log_count: number;
+}
+
 interface ModulesResponse {
   modules: ModuleDefinition[];
 }
@@ -137,7 +144,7 @@ export const api = {
     queue: () => fetchJSON<{ queue: Build[] }>('/api/builds/queue'),
 
     status: (buildId: string) =>
-      fetchJSON<{ buildId: string; target: string; status: string; projectRoot: string; returnCode: number | null; error: string | null }>(
+      fetchJSON<{ build_id: string; target: string; status: string; project_root: string; return_code: number | null; error: string | null }>(
         `/api/build/${buildId}/status`
       ),
 
@@ -145,11 +152,11 @@ export const api = {
       fetchJSON<{
         success: boolean;
         message: string;
-        buildTargets: { target: string; buildId: string }[];
+        build_targets: { target: string; build_id: string }[];
       }>('/api/build', {
         method: 'POST',
         body: JSON.stringify({
-          projectRoot,
+          project_root: projectRoot,
           targets,
           ...options,
         }),
@@ -160,7 +167,17 @@ export const api = {
 
     // Build-ID based lookups
     info: (buildId: string) =>
-      fetchJSON<Build>(`/api/build/${buildId}/info`),
+      fetchJSON<{
+        build_id: string;
+        project_root: string;
+        target: string;
+        started_at: number;
+        completed_at: number | null;
+        status: string;
+        duration: number | null;
+        warnings: number;
+        errors: number;
+      }>(`/api/build/${buildId}/info`),
 
     byProject: (projectRoot?: string, target?: string, limit: number = 50) => {
       const params = new URLSearchParams();
@@ -176,11 +193,17 @@ export const api = {
     variables: (buildId: string) => fetchJSON<VariablesData>(`/api/build/${buildId}/variables`),
   },
 
+  // Logs
+  logs: {
+    buildIds: (limit: number = 200) =>
+      fetchJSON<{ builds: LogBuildId[] }>(`/api/logs/build-ids?limit=${limit}`),
+  },
+
   // Packages
   packages: {
     list: () => fetchJSON<PackagesResponse>('/api/packages'),
 
-    summary: () => fetchJSON<{ packages: PackageInfo[]; total: number }>('/api/packages/summary'),
+    summary: () => fetchJSON<PackagesSummaryResponse>('/api/packages/summary'),
 
     search: (query: string) =>
       fetchJSON<{ packages: PackageInfo[]; total: number; query: string }>(
@@ -224,7 +247,7 @@ export const api = {
       if (options?.projectRoot) params.set('project_root', options.projectRoot);
       if (options?.buildName) params.set('build_name', options.buildName);
       if (options?.level) params.set('level', options.level);
-      if (typeof options?.developerMode === 'boolean') {
+      if (options?.developerMode !== undefined) {
         params.set('developer_mode', String(options.developerMode));
       }
       return fetchJSON<ProblemsResponse>(`/api/problems?${params}`);
@@ -306,6 +329,49 @@ export const api = {
           new_version: newVersion,
         }),
       }),
+  },
+
+  // Tests
+  tests: {
+    collect: (paths: string = 'test src', filter: string = '', markers: string = '') => {
+      const params = new URLSearchParams();
+      params.set('paths', paths);
+      if (filter) params.set('filter', filter);
+      if (markers) params.set('markers', markers);
+      return fetchJSON<{
+        success: boolean;
+        tests: Array<{
+          node_id: string;
+          file: string;
+          class_name: string | null;
+          method_name: string;
+          display_name: string;
+        }>;
+        errors: Record<string, string>;
+        error: string | null;
+      }>(`/api/tests/collect?${params}`);
+    },
+
+    lastRun: (testName: string) =>
+      fetchJSON<{
+        found: boolean;
+        test_run_id: string | null;
+        timestamp: string | null;
+      }>(`/api/tests/last-run?test_name=${encodeURIComponent(testName)}`),
+
+    flags: () =>
+      fetchJSON<{
+        success: boolean;
+        flags: Array<{
+          env_name: string;
+          kind: string;
+          python_name: string | null;
+          default: string | null;
+          current: string | null;
+          description: string | null;
+        }>;
+        error: string | null;
+      }>('/api/tests/flags'),
   },
 
   // Build targets
