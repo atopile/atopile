@@ -306,6 +306,7 @@ def _extract_traceback_frames(
 # Log appender singletons
 # =============================================================================
 
+
 def _normalize_db_value(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value

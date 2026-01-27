@@ -250,9 +250,7 @@ class BuildProcess:
             for stage_dict in stages[len(self._stage_history) :]:
                 event = StageCompleteEvent(
                     duration=stage_dict.get("elapsed_seconds", 0.0),
-                    status=StageStatus(
-                        stage_dict.get("status", "success")
-                    ),
+                    status=StageStatus(stage_dict.get("status", "success")),
                     infos=stage_dict.get("infos", 0),
                     warnings=stage_dict.get("warnings", 0),
                     errors=stage_dict.get("errors", 0),
@@ -348,9 +346,7 @@ class BuildProcess:
         elif self.return_code is None:
             return BuildStatus.BUILDING
         else:
-            return BuildStatus.from_return_code(
-                self.return_code, self.warnings
-            )
+            return BuildStatus.from_return_code(self.return_code, self.warnings)
 
     def terminate(self) -> None:
         """Terminate the build process."""
@@ -1155,7 +1151,6 @@ def _run_single_build() -> None:
     # so logs will be flushed during process shutdown. We don't call it
     # explicitly here because the excepthook needs to log errors AFTER
     # any exceptions occur, and close_all() would close the writer too early.
-
 
 
 def _build_all_projects(

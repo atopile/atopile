@@ -723,7 +723,7 @@ class UpdateDependencyVersionResponse(BaseModel):
 # =============================================================================
 
 
-class PackageInfo(BaseModel):
+class PackageInfo(CamelModel):
     """Information about a package."""
 
     identifier: str  # e.g., "atopile/bosch-bme280"
@@ -857,21 +857,21 @@ class PackageSummaryItem(BaseModel):
     keywords: list[str] = Field(default_factory=list)
 
 
-class RegistryStatus(BaseModel):
+class RegistryStatus(CamelModel):
     """Status of the registry connection for error visibility."""
 
     available: bool
     error: Optional[str] = None
 
 
-class PackagesResponse(BaseModel):
+class PackagesResponse(CamelModel):
     """Response for /api/packages endpoint."""
 
     packages: list[PackageInfo]
     total: int
 
 
-class PackagesSummaryResponse(BaseModel):
+class PackagesSummaryResponse(CamelModel):
     """Response for /api/packages/summary endpoint."""
 
     packages: list[PackageSummaryItem]
@@ -880,7 +880,7 @@ class PackagesSummaryResponse(BaseModel):
     registry_status: RegistryStatus
 
 
-class RegistrySearchResponse(BaseModel):
+class RegistrySearchResponse(CamelModel):
     """Response for /api/registry/search endpoint."""
 
     packages: list[PackageInfo]
@@ -888,7 +888,7 @@ class RegistrySearchResponse(BaseModel):
     query: str
 
 
-class PackageActionRequest(BaseModel):
+class PackageActionRequest(CamelModel):
     """Request to install/update/remove a package."""
 
     package_identifier: str
@@ -896,7 +896,7 @@ class PackageActionRequest(BaseModel):
     version: Optional[str] = None  # If None, installs latest
 
 
-class PackageActionResponse(BaseModel):
+class PackageActionResponse(CamelModel):
     """Response from package action."""
 
     success: bool
@@ -904,7 +904,7 @@ class PackageActionResponse(BaseModel):
     action: str  # 'install', 'update', 'remove'
 
 
-class PackageInfoVeryBrief(BaseModel):
+class PackageInfoVeryBrief(CamelModel):
     identifier: str
     version: str
     summary: str

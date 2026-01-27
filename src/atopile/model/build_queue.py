@@ -55,9 +55,7 @@ class BuildCancelledMsg:
     build_id: str
 
 
-BuildResultMsg = (
-    BuildStartedMsg | BuildStageMsg | BuildCompletedMsg | BuildCancelledMsg
-)
+BuildResultMsg = BuildStartedMsg | BuildStageMsg | BuildCompletedMsg | BuildCancelledMsg
 
 log = logging.getLogger(__name__)
 
@@ -129,16 +127,17 @@ def _run_build_subprocess(
 
     try:
         # Build the command (prefer explicit binary, then PATH, then module)
-        ato_binary = (
-            os.environ.get("ATO_BINARY")
-            or os.environ.get("ATO_BINARY_PATH")
-        )
+        ato_binary = os.environ.get("ATO_BINARY") or os.environ.get("ATO_BINARY_PATH")
         resolved_ato = ato_binary or shutil.which("ato")
         if resolved_ato:
             cmd = [resolved_ato, "build", "--verbose"]
         else:
             cmd = [
-                sys.executable, "-m", "atopile", "build", "--verbose",
+                sys.executable,
+                "-m",
+                "atopile",
+                "build",
+                "--verbose",
             ]
 
         # Determine target for monitoring
@@ -204,13 +203,14 @@ def _run_build_subprocess(
 
             if current_stages != last_stages:
                 log.debug(
-                    f"Build {build_id}: stage update "
-                    f"- {len(current_stages)} stages"
+                    f"Build {build_id}: stage update - {len(current_stages)} stages"
                 )
-                result_q.put(BuildStageMsg(
-                    build_id=build_id,
-                    stages=current_stages,
-                ))
+                result_q.put(
+                    BuildStageMsg(
+                        build_id=build_id,
+                        stages=current_stages,
+                    )
+                )
                 last_stages = current_stages
 
             time.sleep(poll_interval)
@@ -228,12 +228,14 @@ def _run_build_subprocess(
         error_msg = str(exc)
         return_code = -1
 
-    result_q.put(BuildCompletedMsg(
-        build_id=build_id,
-        return_code=return_code,
-        error=error_msg,
-        stages=final_stages,
-    ))
+    result_q.put(
+        BuildCompletedMsg(
+            build_id=build_id,
+            return_code=return_code,
+            error=error_msg,
+            stages=final_stages,
+        )
+    )
 
 
 class BuildQueue:
@@ -519,16 +521,12 @@ class BuildQueue:
         completed_at = time.time()
 
         warnings = sum(
-            1 for s in msg.stages
-            if s.get("status") == StageStatus.WARNING.value
+            1 for s in msg.stages if s.get("status") == StageStatus.WARNING.value
         )
         errors = sum(
-            1 for s in msg.stages
-            if s.get("status") == StageStatus.ERROR.value
+            1 for s in msg.stages if s.get("status") == StageStatus.ERROR.value
         )
-        status = BuildStatus.from_return_code(
-            msg.return_code, warnings
-        )
+        status = BuildStatus.from_return_code(msg.return_code, warnings)
 
         # Update the active build record
         started_at = completed_at
@@ -538,9 +536,7 @@ class BuildQueue:
             build = model_state.find_build(msg.build_id)
             if build:
                 started_at = (
-                    build.building_started_at
-                    or build.started_at
-                    or completed_at
+                    build.building_started_at or build.started_at or completed_at
                 )
                 duration = completed_at - started_at
 
@@ -562,6 +558,7 @@ class BuildQueue:
         from atopile.server.module_introspection import (
             clear_module_cache,
         )
+
         clear_module_cache()
 
         # Save to history
@@ -584,9 +581,7 @@ class BuildQueue:
             try:
                 BuildHistory.set(row)
             except Exception:
-                log.exception(
-                    f"Failed to save build {msg.build_id} to history"
-                )
+                log.exception(f"Failed to save build {msg.build_id} to history")
 
         # Refresh project data for frontend
         with _build_lock:
@@ -595,10 +590,7 @@ class BuildQueue:
             _refresh_project_last_build(build)
             _refresh_bom_for_selected(build)
 
-        log.info(
-            f"BuildQueue: Build {msg.build_id} completed "
-            f"with status {status}"
-        )
+        log.info(f"BuildQueue: Build {msg.build_id} completed with status {status}")
 
     def _dispatch_next(self) -> None:
         """Dispatch next pending build if capacity available."""
@@ -796,9 +788,7 @@ def _cleanup_completed_builds():
             if status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
                 # Build is completed (success, failed, cancelled)
                 duration = build.duration
-                completed_at = (
-                    started_at + duration if started_at and duration else 0
-                )
+                completed_at = started_at + duration if started_at and duration else 0
 
                 if completed_at and (now - completed_at) > cleanup_delay:
                     to_remove.append(build.build_id)
