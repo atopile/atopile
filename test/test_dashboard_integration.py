@@ -45,8 +45,6 @@ def dashboard_server(tmp_path: Path, quickstart_project: Path):
         str(SERVER_PORT),
         "--workspace",
         str(quickstart_project.parent),
-        "--logs-dir",
-        str(tmp_path),
     ]
 
     proc = subprocess.Popen(
