@@ -12,6 +12,7 @@ import json
 import logging
 import os
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Literal, Sequence
 
@@ -20,6 +21,8 @@ import faebryk.library._F as F
 from faebryk.core.solver.solver import Solver
 
 logger = logging.getLogger(__name__)
+
+CURRENT_TIME = datetime.now().isoformat(timespec="seconds")
 
 
 # Variable types matching the VariablesPanel.tsx types
@@ -104,7 +107,7 @@ class JSONVariablesOutput:
             result.extend(self._flatten_nodes(node.children, current_path))
         return result
 
-    def to_markdown(self) -> str:
+    def to_markdown(self, add_timestamp: bool = True) -> str:
         """
         Convert a JSONVariablesOutput to a markdown table string.
         The table includes columns for: Module, Parameter, Spec, Actual, Unit, Source.
@@ -114,7 +117,12 @@ class JSONVariablesOutput:
         """
         flat = self._flatten_nodes(self.nodes)
 
-        md = "# Variables Report\n\n"
+        md = "# Variables Report"
+        if add_timestamp:
+            md += f"\n\ngenerated on: {CURRENT_TIME}"
+        if self.build_id:
+            md += f"\n\nbuild_id: {self.build_id}"
+        md += "\n\n"
         md += "| Module | Parameter | Spec | Actual | Unit | Source |\n"
         md += "| --- | --- | --- | --- | --- | --- |\n"
 
@@ -150,7 +158,7 @@ class JSONVariablesOutput:
 
         return md
 
-    def to_txt(self) -> str:
+    def to_txt(self, add_timestamp: bool = True) -> str:
         """
         Convert a JSONVariablesOutput to a plain text string.
         The output is formatted with module paths as headers and indented
@@ -168,7 +176,12 @@ class JSONVariablesOutput:
                 by_module[path] = []
             by_module[path].append(var)
 
-        txt = ""
+        txt = "# Variables Report"
+        if add_timestamp:
+            txt += f"\n\ngenerated on: {CURRENT_TIME}"
+        if self.build_id:
+            txt += f"\nbuild_id: {self.build_id}"
+        txt += "\n\n"
         for module_path in sorted(by_module.keys()):
             variables = by_module[module_path]
             txt += f"{module_path}\n"
