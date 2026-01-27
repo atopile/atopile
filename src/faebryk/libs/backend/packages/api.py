@@ -217,6 +217,22 @@ class _Schemas:
     class PackageReleases:
         releases: list["_Schemas.PackageReleaseInfo"]
 
+    @dataclass_json
+    @dataclass(frozen=True)
+    class ReportBuildStatusRequest:
+        identifier: str
+        version: str
+        atopile_release: str
+        atopile_githash: str
+        builder_metadata: dict
+        is_building: bool
+        built_at: str
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class SuccessResponse:
+        status: Literal["ok"] = "ok"
+
 
 class _Endpoints:
     class PackageReleases:
@@ -295,6 +311,16 @@ class _Endpoints:
 
         Request = _Schemas.UploadCompleteRequest
         Response = _Schemas.PublishCompletedResponse
+
+    class ReportBuildStatus:
+        TYPE = _Type.POST
+
+        @staticmethod
+        def url(request: "_Endpoints.ReportBuildStatus.Request") -> str:
+            return f"/v1/package/{request.identifier}/releases/{request.version}/build-status"
+
+        Request = _Schemas.ReportBuildStatusRequest
+        Response = _Schemas.SuccessResponse
 
 
 class Errors:
@@ -662,3 +688,41 @@ class PackagesAPIClient:
     def query_packages(self, query: str) -> _Endpoints.Packages.Response:
         r = self._get(_Endpoints.Packages.url(_Endpoints.Packages.Request(query)))
         return _Endpoints.Packages.Response.from_dict(r.json())  # type: ignore
+
+    def report_build_status(
+        self,
+        identifier: str,
+        version: str,
+        atopile_release: str,
+        atopile_githash: str,
+        builder_metadata: dict,
+        is_building: bool,
+        built_at: datetime,
+        skip_auth: bool = False,
+    ) -> _Endpoints.ReportBuildStatus.Response:
+        """
+        Report build status to the package registry.
+        """
+        request = _Endpoints.ReportBuildStatus.Request(
+            identifier=identifier,
+            version=version,
+            atopile_release=atopile_release,
+            atopile_githash=atopile_githash,
+            is_building=is_building,
+            builder_metadata=builder_metadata,
+            built_at=built_at.isoformat(),
+        )
+        try:
+            r = self._post(
+                _Endpoints.ReportBuildStatus.url(request=request),
+                data=request.to_dict(),  # type: ignore
+                skip_auth=skip_auth,
+            )
+        except Errors.PackagesApiHTTPError as e:
+            if e.code == 409:
+                raise Errors.ReleaseAlreadyExistsError.from_http(e) from e
+            raise
+
+        response = _Endpoints.ReportBuildStatus.Response.from_dict(r.json())  # type: ignore
+
+        return response
