@@ -311,7 +311,7 @@ def test_pick_resistor_by_params():
         .resistance.get()
         .force_extract_subset()
         .op_setic_is_subset_of(
-            F.Literals.Numbers(resistance_op.get_raw_obj().instance),
+            F.Literals.Numbers(resistance_op.get_obj_raw().instance),
             g=g,
             tg=tg,
         )

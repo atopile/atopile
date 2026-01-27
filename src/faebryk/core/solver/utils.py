@@ -27,7 +27,7 @@ from faebryk.libs.util import (
 )
 
 if TYPE_CHECKING:
-    from faebryk.core.solver.mutator import ExpressionBuilder, Mutator
+    from faebryk.core.solver.mutator import Mutator
 
 
 logger = logging.getLogger(__name__)
@@ -442,6 +442,8 @@ class MutatorUtils:
     def get_relevant_predicates(
         *op: F.Parameters.can_be_operand,
     ) -> OrderedSet[F.Expressions.is_predicate]:
+        from faebryk.core.solver.mutator import is_irrelevant
+
         if not op:
             return OrderedSet()
 
@@ -465,10 +467,10 @@ class MutatorUtils:
                     for e in F.Parameters.can_be_operand.get_root_operands(
                         *leaves, predicates_only=True
                     )
-                    # Skip non-constraining predicates (Correlated, Not(Correlated))
                     if not e.get_sibling_trait(
                         F.Expressions.is_expression
                     ).is_non_constraining()
+                    and not e.try_get_sibling_trait(is_irrelevant)
                 )
                 - roots
             )

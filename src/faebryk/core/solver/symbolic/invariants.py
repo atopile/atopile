@@ -15,7 +15,12 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.logging import scope
 from faebryk.core.solver.algorithm import SolverAlgorithm
-from faebryk.core.solver.mutator import ExpressionBuilder, MutationMap, Mutator
+from faebryk.core.solver.mutator import (
+    ExpressionBuilder,
+    MutationMap,
+    Mutator,
+    is_monotone,
+)
 from faebryk.core.solver.utils import (
     S_LOG,
     Contradiction,
@@ -224,7 +229,11 @@ class SubsumptionCheck:
                     [subset_op.as_operand.get(), merged_superset.as_operand.get()],
                     assert_=True,
                     terminate=False,
-                    traits=[],
+                    traits=[
+                        t
+                        for t in builder.traits
+                        if t is not None and t.has_trait(is_monotone)
+                    ],
                 ),
                 subsumed=[superset_ss.is_expression.get()],
             )
@@ -263,7 +272,11 @@ class SubsumptionCheck:
                     [merged_subset.as_operand.get(), superset_op.as_operand.get()],
                     assert_=True,
                     terminate=False,
-                    traits=[],
+                    traits=[
+                        t
+                        for t in builder.traits
+                        if t is not None and t.has_trait(is_monotone)
+                    ],
                 ),
                 subsumed=[subset_ss.is_expression.get()],
             )
@@ -401,7 +414,9 @@ class SubsumptionCheck:
             list(ops),
             assert_=True,
             terminate=False,
-            traits=[],
+            traits=[
+                t for t in builder.traits if t is not None and t.has_trait(is_monotone)
+            ],
         )
         logger.debug(f"New alias: {builder.compact_repr()}")
         return SubsumptionCheck.Result(
@@ -1019,6 +1034,41 @@ def _merge_alias(
     raise NotImplementedError("TODO merge mutated parameter")
 
 
+def _merge_monotone_traits(
+    mutator: Mutator,
+    builder: ExpressionBuilder,
+    po: F.Parameters.is_parameter_operatable,
+):
+    monotone_traits = [
+        (t, type_node)
+        for t in builder.traits
+        if t is not None
+        and fabll.Node.bind_instance(
+            type_node := not_none(t.get_type_node())
+        ).has_trait(is_monotone)
+    ]
+
+    if not monotone_traits:
+        return
+
+    out_op = mutator.get_copy(po.as_operand.get())
+    target_node = out_op.get_obj_raw()
+
+    for trait, type_node_in in monotone_traits:
+        fbrk.TypeGraph.copy_node_into(
+            start_node=type_node_in, target_graph=mutator.G_out
+        )
+        type_node_out = mutator.G_out.bind(node=type_node_in.node())
+
+        if (
+            fbrk.Trait.try_get_trait(
+                target=target_node.instance, trait_type=type_node_out
+            )
+            is None
+        ):
+            fabll.Traits.add_to(target_node, fabll.Node.bind_instance(type_node_out))
+
+
 def insert_expression(
     mutator: Mutator,
     builder: ExpressionBuilder,
@@ -1139,6 +1189,8 @@ def insert_expression(
             ):
                 mutator.transformations.asserted.remove(congruent_assertable)
 
+        _merge_monotone_traits(mutator, builder, congruent_po)
+
         if I_LOG:
             logger.debug(
                 f"Found congruent expression for {builder.compact_repr()}:"
@@ -1170,6 +1222,11 @@ def insert_expression(
                         if new == orig:
                             new = "congruent"
                         logger.debug(f"Subsume replaced: {orig} -> {new}")
+
+                    _merge_monotone_traits(
+                        mutator, builder, most_constrained.as_parameter_operatable.get()
+                    )
+
                     return InsertExpressionResult(most_constrained, False)
                 case ExpressionBuilder():
                     builder = most_constrained

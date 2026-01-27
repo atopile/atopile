@@ -2209,6 +2209,7 @@ class Traits:
         def force_get(self) -> T:
             raise ValueError("SiblingField is not bound to a node")
 
+        @deprecated("Use try_get or force_get instead")
         def get(self) -> T:
             raise ValueError("Unhandled conditional, use try_get or force_get instead")
 

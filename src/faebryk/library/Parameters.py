@@ -45,7 +45,7 @@ class can_be_operand(fabll.Node):
     def get_obj_type_node(self) -> graph.BoundNode:
         return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
 
-    def get_raw_obj(self) -> fabll.Node:
+    def get_obj_raw(self) -> fabll.Node:
         return fabll.Traits(self).get_obj_raw()
 
     def pretty(
@@ -1028,7 +1028,7 @@ class NumericParameter(fabll.Node):
 
             param_unit = -1
             for operand_op in constraining_operands:
-                op_obj = operand_op.get_raw_obj()
+                op_obj = operand_op.get_obj_raw()
                 operand_unit_node = resolve_unit_expression(
                     g=param.g, tg=param.tg, expr=op_obj.instance
                 )
@@ -1085,7 +1085,7 @@ class NumericParameter(fabll.Node):
             # Resolve units for each operand
             operand_units: list[tuple[can_be_operand, is_unit | None]] = []
             for operand in operands:
-                op_obj = operand.get_raw_obj()
+                op_obj = operand.get_obj_raw()
                 try:
                     unit_node = resolve_unit_expression(
                         g=root.g, tg=root.tg, expr=op_obj.instance

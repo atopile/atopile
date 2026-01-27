@@ -2798,15 +2798,13 @@ def test_relevance_filtering_isolates_independent_subgraphs():
     def algo(mutator: Mutator):
         pass
 
-    relevant_pos = [A_op]
-
     mutator = Mutator(
-        MutationMap._identity(E.tg, E.g, 0),
+        MutationMap._with_relevance_set(E.g, E.tg, [A_op], 0),
         algo,
         0,
         False,
     )
-    mutator.mark_relevance(relevant_pos)
+    mutator.mark_relevance()
 
     def _try_get_trait[T: fabll.NodeT](
         po: F.Parameters.is_parameter_operatable, trait_t: type[T]
@@ -2817,19 +2815,23 @@ def test_relevance_filtering_isolates_independent_subgraphs():
 
         return mapped.try_get_sibling_trait(trait_t)
 
-    # A and A2 should be relevant
+    # A should be is_relevant (originally specified)
     assert _try_get_trait(A, is_relevant) is not None, "A should be relevant"
-    assert _try_get_trait(A2, is_relevant) is not None, (
-        "A2 should be relevant (connected to A)"
-    )
     assert _try_get_trait(A, is_irrelevant) is None, "A should NOT be irrelevant"
+
+    # A2 is transitively connected to A: not is_relevant, but not is_irrelevant either
+    assert _try_get_trait(A2, is_relevant) is None, (
+        "A2 should NOT be is_relevant (not originally specified)"
+    )
     assert _try_get_trait(A2, is_irrelevant) is None, "A2 should NOT be irrelevant"
 
-    # B and B2 should NOT be relevant (independent subgraph)
-    assert _try_get_trait(B, is_relevant) is None, "B should NOT be relevant"
-    assert _try_get_trait(B2, is_relevant) is None, "B2 should NOT be relevant"
-    assert _try_get_trait(B, is_irrelevant) is not None, "B should be irrelevant"
-    assert _try_get_trait(B2, is_irrelevant) is not None, "B2 should be irrelevant"
+    # B and B2 should not be in the output graph at all
+    assert mutator.mutation_map.map_forward(B).maps_to is None, (
+        "B should not be mapped (independent subgraph)"
+    )
+    assert mutator.mutation_map.map_forward(B2).maps_to is None, (
+        "B2 should not be mapped (independent subgraph)"
+    )
 
 
 def test_is_irrelevant_trait_filtering_in_queries():

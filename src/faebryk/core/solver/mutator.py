@@ -57,6 +57,10 @@ Is = F.Expressions.Is
 IsSubset = F.Expressions.IsSubset
 
 
+class is_monotone(fabll.Node):
+    is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+
 class is_terminated(fabll.Node):
     """
     Mark expression as terminated.
@@ -76,8 +80,7 @@ class is_relevant(fabll.Node):
     """
 
     is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
-
-    # TODO: check conflicts
+    is_monotone = fabll.Traits.MakeEdge(is_monotone.MakeChild().put_on_type())
 
 
 class is_irrelevant(fabll.Node):
@@ -92,6 +95,7 @@ class is_irrelevant(fabll.Node):
     """
 
     is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+    is_monotone = fabll.Traits.MakeEdge(is_monotone.MakeChild().put_on_type())
 
 
 @dataclass
@@ -1171,9 +1175,9 @@ class MutationMap:
                 F.Parameters.can_be_operand.bind_typegraph(tg_out)
             )
             if p.instance.node().get_uuid() in nodes_uuids
-            and not p.has_trait(is_relevant)
+            and not p.try_get_sibling_trait(is_relevant)
         ):
-            fabll.Traits.create_and_add_instance_to(p_out, is_relevant)
+            fabll.Traits.create_and_add_instance_to(p_out.get_obj_raw(), is_relevant)
 
         if S_LOG:
             expr_count = len(
@@ -1224,13 +1228,7 @@ class MutationMap:
         )
 
         mut_map = (
-            MutationMap._with_relevance_set(
-                g,
-                tg,
-                relevant,
-                iteration,
-                initial_state,
-            )
+            MutationMap._with_relevance_set(g, tg, relevant, iteration, initial_state)
             if relevant
             else MutationMap._identity(tg, g, iteration)
         )
@@ -2008,14 +2006,11 @@ class Mutator:
             self.transformations.terminated.add(expr)
 
     def mark_relevant(self, po: F.Parameters.is_parameter_operatable):
-        # FIXME get rid of this once sam fixed relevant marking
-        # `is_irrelevant` is sticky (append-only graphs). If a node was later
-        # determined to be irrelevant (e.g. subsumed), it may still carry an
-        # earlier `is_relevant` marker. Treat `is_irrelevant` as dominant.
-        if po.try_get_sibling_trait(is_irrelevant) is not None:
-            return
+        assert not po.try_get_sibling_trait(is_irrelevant)
+
         if po.try_get_sibling_trait(is_relevant) is not None:
             return
+
         fabll.Traits.create_and_add_instance_to(
             fabll.Traits(po).get_obj_raw(), is_relevant
         )
@@ -2032,68 +2027,89 @@ class Mutator:
             fabll.Traits(po).get_obj_raw(), is_irrelevant
         )
 
-    def mark_relevance(
-        self, original_relevant: list[F.Parameters.can_be_operand] | None
-    ) -> None:
+    def mark_relevance(self):
         """
         Compute and mark relevant and irrelevant operatables with is_relevant and
-        is_irrelevant traits.
+        is_irrelevant traits, to enable mark-and-sweep removal of irrelevant
+        operatables.
 
-        Relevance is determined by inclusion in the graph component defined by the
-        transitive closure through predicates from the (forward-mapped) parameters
-        currently being solved for. Called at start of iteration when previous algorithm
-        was dirty.
+        Inclusion or descent from the originally-provided set of relevant parameters
+        determines definite relevance (marked with is_relevant and carried forward
+        through iterations).
+
+        Potential relevance (not marked) is determined by inclusion in the graph
+        component defined by the transitive closure through predicates from the
+        known-relevant operatables.
+
+        Anything outside of these categories is definitely irrelevant (marked with
+        is_irrelevant).
+
+        Called at start of each iteration, and after each algorithm that results in
+        graph mutations.
         """
-        if original_relevant is None:
-            # Everything is presumed relevant
-            return
-
-        # Map original_relevant parameters forward to current graph
         current_relevant = [
-            maps_to.as_operand.get()
-            for op in original_relevant
-            if (po := op.as_parameter_operatable.try_get()) is not None
-            and (maps_to := self.mutation_map.map_forward(po).maps_to) is not None
+            op
+            for op in fabll.Traits.get_implementor_siblings(
+                is_relevant.bind_typegraph(self.tg_in),
+                F.Parameters.can_be_operand,
+                self.G_in,
+            )
         ]
 
         if not current_relevant:
             return
 
-        relevant_predicates = MutatorUtils.get_relevant_predicates(*current_relevant)
+        maybe_relevant_predicates = MutatorUtils.get_relevant_predicates(
+            *current_relevant
+        )
 
-        relevant_pos = (
+        maybe_relevant_pos = (
+            # known relevant parameters
+            {op.as_parameter_operatable.force_get() for op in current_relevant}
             # relevant predicates
-            {
+            | {
                 pred.as_expression.get().as_parameter_operatable.get()
-                for pred in relevant_predicates
+                for pred in maybe_relevant_predicates
             }
             # operands of relevant predicates
             | {
                 po
-                for pred in relevant_predicates
+                for pred in maybe_relevant_predicates
                 for po in pred.as_expression.get().get_operands_with_trait(
                     F.Parameters.is_parameter_operatable, recursive=True
                 )
             }
-            # original relevant parameters
-            | {op.as_parameter_operatable.force_get() for op in current_relevant}
         )
 
         irrelevant_pos = (
-            self.get_parameter_operatables(include_terminated=True) - relevant_pos
+            self.get_parameter_operatables(include_terminated=True) - maybe_relevant_pos
         )
 
         if S_LOG:
             logger.debug(
-                f"Marking {len(relevant_pos)} relevant operatables, "
+                f"Marking {len(list(current_relevant))} relevant operatables, "
                 f"{len(irrelevant_pos)} irrelevant operatables"
             )
 
-        for po in relevant_pos:
-            self.mark_relevant(po)
+        for po in current_relevant:
+            assert po.try_get_sibling_trait(is_irrelevant) is None, (
+                f"Relevant operatable is irrelevant: {po}"
+            )
+
+            if po.try_get_sibling_trait(is_relevant) is None:
+                fabll.Traits.create_and_add_instance_to(
+                    fabll.Traits(po).get_obj_raw(), is_relevant
+                )
 
         for po in irrelevant_pos:
-            self.mark_irrelevant(po)
+            assert po.try_get_sibling_trait(is_relevant) is None, (
+                f"Irrelevant operatable is relevant: {po}"
+            )
+
+            if po.try_get_sibling_trait(is_irrelevant) is None:
+                fabll.Traits.create_and_add_instance_to(
+                    fabll.Traits(po).get_obj_raw(), is_irrelevant
+                )
 
     # Algorithm Query ------------------------------------------------------------------
     def is_terminated(self, expr: F.Expressions.is_expression) -> bool:
@@ -2325,7 +2341,10 @@ class Mutator:
     def tg_out(self) -> fbrk.TypeGraph:
         return self.tg_in.copy_into(target_graph=self.G_out, minimal=False)
 
-    def _run(self):
+    def _run(self, mark_relevance: bool):
+        if mark_relevance:
+            self.mark_relevance()
+
         self.algo(self)
 
     def _copy_unmutated(self):
@@ -2427,8 +2446,8 @@ class Mutator:
 
         return AlgoResult(mutation_stage=stage, dirty=dirty)
 
-    def run(self):
-        self._run()
+    def run(self, mark_relevance: bool = False):
+        self._run(mark_relevance=mark_relevance)
         return self.close()
 
     # Debug Interface ------------------------------------------------------------------

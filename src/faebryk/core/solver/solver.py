@@ -57,13 +57,9 @@ class Solver:
     @dataclass
     class IterationData:
         mutation_map: MutationMap
-        relevant: list["F.Parameters.can_be_operand"] | None = None
 
         def compressed(self) -> "Solver.IterationData":
-            return Solver.IterationData(
-                mutation_map=self.mutation_map.compressed(),
-                relevant=self.relevant,
-            )
+            return Solver.IterationData(mutation_map=self.mutation_map.compressed())
 
     @dataclass
     class IterationState:
@@ -120,14 +116,10 @@ class Solver:
                 iteration=iterno,
             )
 
-            # If no transformations were made, then relevance won't have changed
-            if iteration_state.dirty:
-                mutator.mark_relevance(data.relevant)
-
             timings.add("setup")
             now = time.perf_counter()
             try:
-                mutator._run()
+                mutator._run(mark_relevance=phase_name == 0 or iteration_state.dirty)
                 run_time = time.perf_counter() - now
                 timings.add("_")
                 algo_result = mutator.close()
@@ -167,7 +159,6 @@ class Solver:
                 mutation_map=MutationMap.bootstrap(
                     tg=tg, g=g, relevant=relevant, initial_state=initial_state
                 ),
-                relevant=relevant,
             )
         )
 
