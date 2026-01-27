@@ -5,14 +5,14 @@
 
 import { useState, useRef, useMemo, useCallback } from 'react';
 import { CollapsibleSection } from './CollapsibleSection';
-import { ProjectsPanel } from './ProjectsPanel';
-import { ProblemsPanel } from './ProblemsPanel';
+import { ActiveProjectPanel } from './ActiveProjectPanel';
 import { StandardLibraryPanel } from './StandardLibraryPanel';
 import { VariablesPanel } from './VariablesPanel';
 import { BOMPanel } from './BOMPanel';
 import { PackageDetailPanel } from './PackageDetailPanel';
-import { BuildQueuePanel } from './BuildQueuePanel';
-import { sendAction } from '../api/websocket';
+import { StructurePanel } from './StructurePanel';
+import { PackagesPanel } from './PackagesPanel';
+import { sendAction, sendActionWithResponse } from '../api/websocket';
 import { useStore } from '../store';
 import { usePanelSizing } from '../hooks/usePanelSizing';
 import {
@@ -22,11 +22,10 @@ import {
   useSidebarHandlers,
   type Selection,
   type SelectedPackage,
-  type StageFilter,
 } from './sidebar-modules';
 import './Sidebar.css';
 import '../styles.css';
-import type { VariableNode, Problem } from '../types/build';
+import type { VariableNode } from '../types/build';
 
 // Send action to backend via WebSocket (no VS Code dependency)
 const action = (name: string, data?: Record<string, unknown>) => {
@@ -73,11 +72,11 @@ export function Sidebar() {
   const isLoadingPackageDetails = useStore((s) => s.isLoadingPackageDetails);
   const packageDetailsError = useStore((s) => s.packageDetailsError);
   const projectModules = useStore((s) => s.projectModules);
-  const projectFiles = useStore((s) => s.projectFiles);
   const projectDependencies = useStore((s) => s.projectDependencies);
-  const updatingDependencyIds = useStore((s) => s.updatingDependencyIds);
   const atopile = useStore((s) => s.atopile);
-  const developerMode = useStore((s) => s.developerMode);
+  const activeEditorFile = useStore((s) => s.activeEditorFile);
+  const lastAtoFile = useStore((s) => s.lastAtoFile);
+  const packages = useStore((s) => s.packages);
 
   // Reconstruct state object for hooks that still need it
   // TODO: Refactor useSidebarData/useSidebarHandlers to use granular selectors
@@ -91,9 +90,8 @@ export function Sidebar() {
   }, [selectedProjectRoot, selectedTargetNames, projects]);
 
   // Local UI state
-  const [selection, setSelection] = useState<Selection>({ type: 'none' });
+  const [, setSelection] = useState<Selection>({ type: 'none' });
   const [selectedPackage, setSelectedPackage] = useState<SelectedPackage | null>(null);
-  const [activeStageFilter, setActiveStageFilter] = useState<StageFilter | null>(null);
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
@@ -109,26 +107,17 @@ export function Sidebar() {
     return bomData.components.filter(c => c.stock !== null && c.stock === 0).length;
   }, [bomData]);
 
-  const projectsForProblems = useMemo(
-    () => projects?.map(p => ({ id: p.root, name: p.name, root: p.root })) || [],
-    [projects]
-  );
-
   // Use data transformation hook
   const {
     projects: sidebarProjects,
     projectCount,
     packageCount,
     queuedBuilds,
-    filteredProblems,
-    totalErrors,
-    totalWarnings,
-  } = useSidebarData({ state, selection, activeStageFilter });
+  } = useSidebarData({ state });
 
   // Unified panel sizing - all panels start collapsed, auto-expand on events
   const panels = usePanelSizing({
     containerRef,
-    hasActiveBuilds: queuedBuilds.length > 0,
     hasProjectSelected: !!selectedProjectRoot,
   });
 
@@ -137,36 +126,84 @@ export function Sidebar() {
     selectedProjectRoot,
     selectedTargetName,
     panels,
+    action,
   });
 
   // Use handlers hook for event handlers
   const handlers = useSidebarHandlers({
     projects: sidebarProjects,
     state,
-    panels,
     setSelection,
     setSelectedPackage,
-    setActiveStageFilter,
     action,
   });
 
   // Memoized callbacks for event handlers (avoid new function references each render)
-  const handleFileClick = useCallback((projectId: string, filePath: string) => {
-    const project = sidebarProjects?.find(p => p.id === projectId);
-    const projectRoot = project?.root || (projectId.startsWith('/') ? projectId : null);
-    if (projectRoot) {
-      const fullPath = `${projectRoot}/${filePath}`;
-      action('openFile', { file: fullPath });
-    }
-  }, [sidebarProjects]);
-
-  const handleRemoveDependency = useCallback((projectId: string, identifier: string) => {
-    action('removePackage', { projectRoot: projectId, packageId: identifier });
+  const handleBuildTarget = useCallback((projectRoot: string, targetName: string) => {
+    action('build', { projectRoot, targets: [targetName] });
   }, []);
 
-  const handleProblemClick = useCallback((problem: Problem) => {
-    if (problem.file) {
-      action('openFile', { file: problem.file, line: problem.line, column: problem.column });
+  const handleBuildAllTargets = useCallback((projectRoot: string, projectName: string) => {
+    action('build', { level: 'project', id: projectRoot, label: projectName, targets: [] });
+  }, []);
+
+  // Generate manufacturing data - triggers a build which includes manufacturing outputs
+  const handleGenerateManufacturingData = useCallback((projectRoot: string, targetName: string) => {
+    // Manufacturing data is generated as part of the build process
+    // The build outputs include gerbers, BOM, and pick-and-place files
+    action('build', { projectRoot, targets: [targetName] });
+  }, []);
+
+  const handleOpenOutput = useCallback(async (
+    output: 'openKiCad' | 'open3D' | 'openLayout',
+    projectRoot: string,
+    targetName: string
+  ) => {
+    const outputNames: Record<string, string> = {
+      openKiCad: 'KiCad',
+      open3D: '3D view',
+      openLayout: 'Layout',
+    };
+    const outputName = outputNames[output] || output;
+
+    try {
+      const response = await sendActionWithResponse('getBuildsByProject', {
+        projectRoot,
+        target: targetName,
+        limit: 1,
+      });
+      const result = response.result ?? {};
+      const build = Array.isArray((result as { builds?: unknown }).builds)
+        ? (result as { builds: any[] }).builds[0]
+        : null;
+
+      if (!build?.build_id) {
+        // No build found - log to UI with helpful message
+        action('uiLog', {
+          level: 'warning',
+          message: `Cannot open ${outputName}: No build found for target "${targetName}". Build the target first.`,
+        });
+        console.warn(`No build found for target "${targetName}". Build first to generate output files.`);
+        return;
+      }
+
+      // Check if build was successful
+      if (build.status === 'failed' || build.status === 'cancelled') {
+        action('uiLog', {
+          level: 'warning',
+          message: `Cannot open ${outputName}: Last build for "${targetName}" ${build.status}. Run a successful build first.`,
+        });
+        console.warn(`Last build for target "${targetName}" ${build.status}.`);
+        return;
+      }
+
+      action(output, { projectId: projectRoot, buildId: build.build_id });
+    } catch (error) {
+      console.warn('Failed to open output', error);
+      action('uiLog', {
+        level: 'error',
+        message: `Failed to open ${outputName}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      });
     }
   }, []);
 
@@ -195,18 +232,6 @@ export function Sidebar() {
     }
   }, [selectedPackage, selectedProjectRoot, sidebarProjects]);
 
-  const handlePackageBuild = useCallback((entry?: string) => {
-    if (!selectedPackage) return;
-    const projectRoot = selectedProjectRoot || sidebarProjects?.[0]?.root;
-    if (projectRoot) {
-      action('buildPackage', {
-        packageId: selectedPackage.fullName,
-        projectRoot,
-        entry
-      });
-    }
-  }, [selectedPackage, selectedProjectRoot, sidebarProjects]);
-
   // Loading state
   if (!state) {
     return <div className="sidebar loading">Loading...</div>;
@@ -217,7 +242,6 @@ export function Sidebar() {
       {/* Header with settings */}
       <SidebarHeader
         atopile={atopile}
-        developerMode={developerMode}
       />
 
       <div className="panel-sections" ref={containerRef}>
@@ -232,49 +256,62 @@ export function Sidebar() {
           height={panels.calculatedHeights['projects']}
           onResizeStart={(e) => panels.handleResizeStart('projects', e)}
         >
-          <ProjectsPanel
-            selection={selection}
-            onSelect={handlers.handleSelect}
-            onBuild={handlers.handleBuild}
-            onCancelBuild={handlers.handleCancelBuild}
-            onStageFilter={handlers.handleStageFilter}
+          <ActiveProjectPanel
+            projects={projects || []}
+            selectedProjectRoot={selectedProjectRoot}
+            selectedTargetName={selectedTargetName}
+            projectModules={selectedProjectRoot ? projectModules?.[selectedProjectRoot] : undefined}
+            onSelectProject={handlers.handleSelectProject}
+            onSelectTarget={handlers.handleSelectTarget}
+            onBuildTarget={handleBuildTarget}
+            onBuildAllTargets={handleBuildAllTargets}
+            onOpenKiCad={(projectRoot, targetName) => handleOpenOutput('openKiCad', projectRoot, targetName)}
+            onOpen3D={(projectRoot, targetName) => handleOpenOutput('open3D', projectRoot, targetName)}
+            onOpenLayout={(projectRoot, targetName) => handleOpenOutput('openLayout', projectRoot, targetName)}
             onCreateProject={handlers.handleCreateProject}
-            onProjectExpand={handlers.handleProjectExpand}
-            onOpenSource={handlers.handleOpenSource}
-            onOpenKiCad={handlers.handleOpenKiCad}
-            onOpenLayout={handlers.handleOpenLayout}
-            onOpen3D={handlers.handleOpen3D}
-            onFileClick={handleFileClick}
-            onAddBuild={handlers.handleAddBuild}
-            onUpdateBuild={handlers.handleUpdateBuild}
-            onDeleteBuild={handlers.handleDeleteBuild}
-            filterType="projects"
-            projects={sidebarProjects}
-            projectModules={projectModules || {}}
-            projectFiles={projectFiles || {}}
-            projectDependencies={projectDependencies || {}}
-            onDependencyVersionChange={handlers.handleDependencyVersionChange}
-            onRemoveDependency={handleRemoveDependency}
-            updatingDependencyIds={updatingDependencyIds || []}
-          />
-        </CollapsibleSection>
-
-        {/* Build Queue Section */}
-        <CollapsibleSection
-          id="buildQueue"
-          title="Build Queue"
-          badge={queuedBuilds.length > 0 ? queuedBuilds.length : undefined}
-          badgeType="count"
-          collapsed={panels.isCollapsed('buildQueue')}
-          onToggle={() => panels.togglePanel('buildQueue')}
-          height={panels.calculatedHeights['buildQueue']}
-          onResizeStart={(e) => panels.handleResizeStart('buildQueue', e)}
-        >
-          <BuildQueuePanel
-            builds={queuedBuilds}
+            onCreateTarget={async (projectRoot, data) => {
+              try {
+                const response = await sendActionWithResponse('addBuildTarget', {
+                  project_root: projectRoot,
+                  name: data.name,
+                  entry: data.entry,
+                });
+                if (response.result?.success) {
+                  action('refreshProjects');
+                }
+              } catch (error) {
+                action('uiLog', {
+                  level: 'error',
+                  message: `Failed to add target: ${
+                    error instanceof Error ? error.message : 'Unknown error'
+                  }`,
+                });
+              }
+            }}
+            onGenerateManufacturingData={handleGenerateManufacturingData}
+            queuedBuilds={queuedBuilds}
             onCancelBuild={handlers.handleCancelQueuedBuild}
           />
         </CollapsibleSection>
+
+        {/* Structure Section */}
+        <CollapsibleSection
+          id="structure"
+          title="Structure"
+          collapsed={panels.isCollapsed('structure')}
+          onToggle={() => panels.togglePanel('structure')}
+          height={panels.calculatedHeights['structure']}
+          onResizeStart={(e) => panels.handleResizeStart('structure', e)}
+        >
+          <StructurePanel
+            activeFilePath={activeEditorFile}
+            lastAtoFile={lastAtoFile}
+            projects={projects || []}
+            onRefreshStructure={handlers.handleStructureRefresh}
+          />
+        </CollapsibleSection>
+
+        {/* Build Queue is now integrated into Projects panel above */}
 
         {/* Packages Section */}
         <CollapsibleSection
@@ -288,44 +325,12 @@ export function Sidebar() {
           height={panels.calculatedHeights['packages']}
           onResizeStart={(e) => panels.handleResizeStart('packages', e)}
         >
-          <ProjectsPanel
-            selection={selection}
-            onSelect={handlers.handleSelect}
-            onBuild={handlers.handleBuild}
-            onCancelBuild={handlers.handleCancelBuild}
-            onStageFilter={handlers.handleStageFilter}
-            onOpenPackageDetail={handlers.handleOpenPackageDetail}
-            onPackageInstall={handlers.handlePackageInstall}
-            onOpenSource={handlers.handleOpenSource}
-            onOpenKiCad={handlers.handleOpenKiCad}
-            onOpenLayout={handlers.handleOpenLayout}
-            onOpen3D={handlers.handleOpen3D}
-            filterType="packages"
-            projects={sidebarProjects}
-            installingPackageIds={installingPackageIds}
-          />
-        </CollapsibleSection>
-
-        {/* Problems Section */}
-        <CollapsibleSection
-          id="problems"
-          title={activeStageFilter ? `Problems: ${activeStageFilter.stageName || activeStageFilter.buildId || 'Filtered'}` : 'Problems'}
-          badge={activeStageFilter ? filteredProblems.length : (totalErrors + totalWarnings)}
-          badgeType={activeStageFilter ? 'filter' : 'count'}
-          errorCount={activeStageFilter ? undefined : totalErrors}
-          warningCount={activeStageFilter ? undefined : totalWarnings}
-          collapsed={panels.isCollapsed('problems')}
-          onToggle={() => panels.togglePanel('problems')}
-          onClearFilter={activeStageFilter ? handlers.clearStageFilter : undefined}
-          height={panels.calculatedHeights['problems']}
-          onResizeStart={(e) => panels.handleResizeStart('problems', e)}
-        >
-          <ProblemsPanel
-            problems={filteredProblems}
-            projects={projectsForProblems}
+          <PackagesPanel
+            packages={packages || []}
+            installedDependencies={selectedProjectRoot ? (projectDependencies?.[selectedProjectRoot] || []) : []}
             selectedProjectRoot={selectedProjectRoot}
-            onSelectProject={handlers.handleSelectProject}
-            onProblemClick={handleProblemClick}
+            installError={installError}
+            onOpenPackageDetail={handlers.handleOpenPackageDetail}
           />
         </CollapsibleSection>
 
@@ -360,11 +365,8 @@ export function Sidebar() {
             variablesData={currentVariablesData}
             isLoading={isLoadingVariables}
             error={variablesError}
-            projects={projects}
-            selectedProjectRoot={selectedProjectRoot}
-            selectedTargetNames={selectedTargetNames}
-            onSelectProject={handlers.handleSelectProject}
-            onSelectTarget={handlers.handleSelectTarget}
+            selectedTargetName={selectedTargetName}
+            hasActiveProject={!!selectedProjectRoot}
           />
         </CollapsibleSection>
 
@@ -383,11 +385,8 @@ export function Sidebar() {
             bomData={bomData}
             isLoading={isLoadingBom}
             error={bomError}
-            projects={projects}
             selectedProjectRoot={selectedProjectRoot}
             selectedTargetNames={selectedTargetNames}
-            onSelectProject={handlers.handleSelectProject}
-            onSelectTarget={handlers.handleSelectTarget}
             onGoToSource={handleGoToSource}
           />
         </CollapsibleSection>
@@ -405,7 +404,6 @@ export function Sidebar() {
             error={packageDetailsError || null}
             onClose={handlePackageClose}
             onInstall={handlePackageInstall}
-            onBuild={handlePackageBuild}
           />
         </div>
       )}

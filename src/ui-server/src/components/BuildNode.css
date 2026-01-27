@@ -27,7 +27,7 @@
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--ctp-red);
+  color: var(--error);
   cursor: pointer;
   transition: all var(--transition-fast);
   flex-shrink: 0;
@@ -35,8 +35,13 @@
 }
 
 .build-target-delete-btn:hover {
-  background: rgba(243, 139, 168, 0.2);
+  background: var(--error-bg);
   opacity: 1;
+}
+
+.build-target-delete-btn:focus-visible {
+  outline: 1px solid var(--error);
+  outline-offset: 1px;
 }
 
 /* Delete confirmation dialog */
@@ -46,13 +51,13 @@
   justify-content: space-between;
   gap: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-sm);
-  background: rgba(243, 139, 168, 0.1);
-  border-top: 1px solid var(--ctp-red);
+  background: var(--error-bg);
+  border-top: 1px solid var(--error);
 }
 
 .delete-confirm-text {
   font-size: var(--font-size-xs);
-  color: var(--ctp-red);
+  color: var(--error);
   font-weight: 500;
 }
 
@@ -82,14 +87,13 @@
 }
 
 .delete-confirm-btn.confirm {
-  background: var(--ctp-red);
-  border: 1px solid var(--ctp-red);
-  color: var(--ctp-base);
+  background: var(--error);
+  border: 1px solid var(--error);
+  color: var(--text-on-status);
 }
 
 .delete-confirm-btn.confirm:hover {
-  background: #e67a99;
-  border-color: #e67a99;
+  filter: brightness(1.05);
 }
 
 /* Duplicate entry warning dialog */
@@ -99,14 +103,14 @@
   gap: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-sm);
   background: var(--bg-secondary);
-  border-top: 1px solid var(--ctp-yellow);
+  border-top: 1px solid var(--warning);
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .duplicate-warning-icon {
   display: flex;
   align-items: center;
-  color: var(--ctp-yellow);
+  color: var(--warning);
   flex-shrink: 0;
 }
 
@@ -144,14 +148,13 @@
 }
 
 .duplicate-warning-btn.confirm {
-  background: var(--ctp-yellow);
-  border: 1px solid var(--ctp-yellow);
-  color: var(--ctp-base);
+  background: var(--warning);
+  border: 1px solid var(--warning);
+  color: var(--text-on-status);
 }
 
 .duplicate-warning-btn.confirm:hover {
-  background: #e5c566;
-  border-color: #e5c566;
+  filter: brightness(1.05);
 }
 
 /* Loading and error states for module tree */
@@ -166,7 +169,7 @@
 
 .build-card-symbols.loading .spinner {
   animation: spin 1s linear infinite;
-  color: var(--ctp-blue);
+  color: var(--info);
 }
 
 @keyframes spin {
@@ -180,7 +183,7 @@
 }
 
 .build-card-symbols.error .error-text {
-  color: var(--ctp-red);
+  color: var(--error);
   opacity: 0.8;
 }
 

@@ -4,7 +4,7 @@
 
 import { useCallback } from 'react';
 import { useStore, useSelectedProject } from '../store';
-import { api } from '../api/client';
+import { sendAction } from '../api/websocket';
 
 export function useProjects() {
   const projects = useStore((state) => state.projects);
@@ -16,27 +16,19 @@ export function useProjects() {
   const selectedProject = useSelectedProject();
 
   const selectProject = useCallback((projectRoot: string | null) => {
-    useStore.getState().selectProject(projectRoot);
+    sendAction('selectProject', { projectRoot });
   }, []);
 
   const toggleTarget = useCallback((targetName: string) => {
-    useStore.getState().toggleTarget(targetName);
+    sendAction('toggleTarget', { targetName });
   }, []);
 
   const toggleTargetExpanded = useCallback((targetName: string) => {
-    useStore.getState().toggleTargetExpanded(targetName);
+    sendAction('toggleTargetExpanded', { targetName });
   }, []);
 
   const refresh = useCallback(async () => {
-    const store = useStore.getState();
-    store.setLoadingProjects(true);
-    store.setProjectsError(null);
-    try {
-      const result = await api.projects.list();
-      store.setProjects(result.projects);
-    } catch (error) {
-      store.setProjectsError(error instanceof Error ? error.message : String(error));
-    }
+    sendAction('refreshProjects');
   }, []);
 
   return {

@@ -50,7 +50,7 @@
 }
 
 .project-card-name-row .project-icon.package {
-  color: var(--ato-orange);
+  color: var(--accent-secondary);
 }
 
 .project-card-name {

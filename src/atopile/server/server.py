@@ -37,6 +37,7 @@ PACKAGES_REFRESH_MIN_INTERVAL_S = float(
 _debounce_tasks: dict[str, asyncio.Task] = {}
 _last_packages_registry_refresh: float = 0.0
 
+
 async def _load_projects_background(ctx: AppContext) -> None:
     """Background task to load projects without blocking startup."""
     if not ctx.workspace_path:
@@ -61,9 +62,7 @@ async def _refresh_projects_state() -> None:
         return
 
     try:
-        await asyncio.to_thread(
-            core_projects.discover_projects_in_path, workspace_path
-        )
+        await asyncio.to_thread(core_projects.discover_projects_in_path, workspace_path)
         await server_state.emit_event("projects_changed")
     except Exception as exc:
         log.error(f"[background] Failed to refresh projects: {exc}")
@@ -298,13 +297,6 @@ async def _load_atopile_install_options() -> None:
             "atopile_config_changed", {"available_versions": versions}
         )
         log.info(f"[background] Loaded {len(versions)} PyPI versions")
-
-        # Fetch available branches from GitHub
-        branches = await atopile_install.fetch_available_branches()
-        await server_state.emit_event(
-            "atopile_config_changed", {"available_branches": branches}
-        )
-        log.info(f"[background] Loaded {len(branches)} GitHub branches")
 
         # Detect local installations
         installations = await asyncio.to_thread(
