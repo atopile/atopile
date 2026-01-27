@@ -12,8 +12,6 @@ import io
 import json
 import logging
 import os
-import pickle
-import struct
 import sys
 import threading
 import time
@@ -39,8 +37,6 @@ import faebryk
 from atopile.dataclasses import (
     Log,
     LogRow,
-    StageCompleteEvent,
-    StageStatusEvent,
     TestLogRow,
 )
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
@@ -91,7 +87,11 @@ def _should_log(record: logging.LogRecord) -> bool:
         return True
     if name.startswith("httpcore") or name.startswith("atopile.server"):
         return False
-    return name.startswith("atopile") or name.startswith("faebryk")
+    return (
+        name.startswith("atopile")
+        or name.startswith("faebryk")
+        or name.startswith("test")
+    )
 
 
 class AtoLogger(logging.Logger):
@@ -305,7 +305,6 @@ def _extract_traceback_frames(
 # =============================================================================
 # Log appender singletons
 # =============================================================================
-
 
 def _normalize_db_value(value: Any) -> Any:
     if isinstance(value, Enum):
@@ -579,6 +578,14 @@ class LoggerForTest(BaseLogger):
                 h._test_logger.close()
 
     @classmethod
+    def flush_all(cls) -> None:
+        """Flush pending logs without closing the writer."""
+        with SQLiteLogWriter._lock:
+            writer = SQLiteLogWriter._instances.get("test")
+            if writer:
+                writer.flush()
+
+    @classmethod
     def setup_logging(cls, test_run_id: str, test: str = "") -> "LoggerForTest | None":
         try:
             from atopile.model.sqlite import TestLogs
@@ -649,15 +656,6 @@ class BuildLogger(BaseLogger):
 
         return get_log_dir() / "build_logs.db"
 
-    @staticmethod
-    def _emit_event(fd: int, event: "StageStatusEvent | StageCompleteEvent") -> None:
-        payload = pickle.dumps(event, protocol=pickle.HIGHEST_PROTOCOL)
-        header = struct.pack(">I", len(payload))
-        data = header + payload
-        offset = 0
-        while offset < len(data):
-            offset += os.write(fd, data[offset:])
-
     @classmethod
     def get(
         cls,
@@ -685,14 +683,14 @@ class BuildLogger(BaseLogger):
         return cls._loggers[build_id]
 
     @classmethod
-    def close_by_id(cls, build_id: str) -> None:
+    def close(cls, build_id: str) -> None:
         if build_id in cls._loggers:
             cls._loggers.pop(build_id).close()
 
     @classmethod
     def close_all(cls) -> None:
         for bid in list(cls._loggers):
-            cls.close_by_id(bid)
+            cls.close(bid)
 
     @classmethod
     def setup_logging(
@@ -1068,7 +1066,7 @@ class LogHandler(RichHandler):
 
         # Workers suppress console except errors (unless verbose mode)
         if (
-            os.environ.get("ATO_BUILD_EVENT_FD")
+            os.environ.get("ATO_BUILD_WORKER")
             and not os.environ.get("ATO_VERBOSE")
             and self.console.file in (sys.stdout, sys.stderr)
             and record.levelno < logging.ERROR

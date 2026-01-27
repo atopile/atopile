@@ -55,7 +55,9 @@ class BuildCancelledMsg:
     build_id: str
 
 
-BuildResultMsg = BuildStartedMsg | BuildStageMsg | BuildCompletedMsg | BuildCancelledMsg
+BuildResultMsg = (
+    BuildStartedMsg | BuildStageMsg | BuildCompletedMsg | BuildCancelledMsg
+)
 
 log = logging.getLogger(__name__)
 
@@ -127,17 +129,16 @@ def _run_build_subprocess(
 
     try:
         # Build the command (prefer explicit binary, then PATH, then module)
-        ato_binary = os.environ.get("ATO_BINARY") or os.environ.get("ATO_BINARY_PATH")
+        ato_binary = (
+            os.environ.get("ATO_BINARY")
+            or os.environ.get("ATO_BINARY_PATH")
+        )
         resolved_ato = ato_binary or shutil.which("ato")
         if resolved_ato:
             cmd = [resolved_ato, "build", "--verbose"]
         else:
             cmd = [
-                sys.executable,
-                "-m",
-                "atopile",
-                "build",
-                "--verbose",
+                sys.executable, "-m", "atopile", "build", "--verbose",
             ]
 
         # Determine target for monitoring
@@ -163,6 +164,10 @@ def _run_build_subprocess(
 
         env["ATO_BUILD_HISTORY_DB"] = str(BUILD_HISTORY_DB)
 
+        # Tell the child to run as a direct worker (no grandchild
+        # subprocesses via ParallelBuildManager).
+        env["ATO_BUILD_WORKER"] = "1"
+
         log.info(
             f"Build {build_id}: starting subprocess - "
             f"cmd={' '.join(cmd)}, "
@@ -170,31 +175,15 @@ def _run_build_subprocess(
             f"monitor_target={monitor_target}"
         )
 
+        # Worker writes all logs to the build DB; no need to capture
+        # stdout/stderr here.
         process = subprocess.Popen(
             cmd,
             cwd=project_root,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
+            stderr=subprocess.DEVNULL,
             env=env,
         )
-
-        # Drain stderr in a background thread to prevent pipe buffer
-        # deadlock. Without this, the subprocess blocks when the OS pipe
-        # buffer (~64 KB) fills because the parent only reads stderr
-        # after the child exits.
-        stderr_chunks: list[str] = []
-
-        def _drain_stderr() -> None:
-            assert process.stderr is not None
-            try:
-                for line in process.stderr:
-                    stderr_chunks.append(line)
-            except ValueError:
-                pass  # pipe closed
-
-        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
-        stderr_thread.start()
 
         # Poll for completion while monitoring the DB for stage updates
         last_stages: list[dict[str, Any]] = []
@@ -207,7 +196,6 @@ def _run_build_subprocess(
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     process.kill()
-                stderr_thread.join(timeout=2)
                 result_q.put(BuildCancelledMsg(build_id=build_id))
                 return
 
@@ -216,49 +204,36 @@ def _run_build_subprocess(
 
             if current_stages != last_stages:
                 log.debug(
-                    f"Build {build_id}: stage update - {len(current_stages)} stages"
+                    f"Build {build_id}: stage update "
+                    f"- {len(current_stages)} stages"
                 )
-                result_q.put(
-                    BuildStageMsg(
-                        build_id=build_id,
-                        stages=current_stages,
-                    )
-                )
+                result_q.put(BuildStageMsg(
+                    build_id=build_id,
+                    stages=current_stages,
+                ))
                 last_stages = current_stages
 
             time.sleep(poll_interval)
 
-        # Process completed – join the stderr drain thread so all
-        # output is captured before we read it.
-        stderr_thread.join(timeout=5)
         return_code = process.returncode
-        stderr_output = "".join(stderr_chunks)
-        if len(stderr_output) > 5000:
-            stderr_output = stderr_output[-5000:]
 
         build_info = build_history.get_build_info_by_id(build_id)
         if build_info:
             final_stages = build_info.stages
 
         if return_code != 0:
-            error_msg = (
-                stderr_output[:500]
-                if stderr_output
-                else f"Build failed with code {return_code}"
-            )
+            error_msg = f"Build failed with code {return_code}"
 
     except Exception as exc:
         error_msg = str(exc)
         return_code = -1
 
-    result_q.put(
-        BuildCompletedMsg(
-            build_id=build_id,
-            return_code=return_code,
-            error=error_msg,
-            stages=final_stages,
-        )
-    )
+    result_q.put(BuildCompletedMsg(
+        build_id=build_id,
+        return_code=return_code,
+        error=error_msg,
+        stages=final_stages,
+    ))
 
 
 class BuildQueue:
@@ -544,12 +519,16 @@ class BuildQueue:
         completed_at = time.time()
 
         warnings = sum(
-            1 for s in msg.stages if s.get("status") == StageStatus.WARNING.value
+            1 for s in msg.stages
+            if s.get("status") == StageStatus.WARNING.value
         )
         errors = sum(
-            1 for s in msg.stages if s.get("status") == StageStatus.ERROR.value
+            1 for s in msg.stages
+            if s.get("status") == StageStatus.ERROR.value
         )
-        status = BuildStatus.from_return_code(msg.return_code, warnings)
+        status = BuildStatus.from_return_code(
+            msg.return_code, warnings
+        )
 
         # Update the active build record
         started_at = completed_at
@@ -559,7 +538,9 @@ class BuildQueue:
             build = model_state.find_build(msg.build_id)
             if build:
                 started_at = (
-                    build.building_started_at or build.started_at or completed_at
+                    build.building_started_at
+                    or build.started_at
+                    or completed_at
                 )
                 duration = completed_at - started_at
 
@@ -581,7 +562,6 @@ class BuildQueue:
         from atopile.server.module_introspection import (
             clear_module_cache,
         )
-
         clear_module_cache()
 
         # Save to history
@@ -604,7 +584,9 @@ class BuildQueue:
             try:
                 BuildHistory.set(row)
             except Exception:
-                log.exception(f"Failed to save build {msg.build_id} to history")
+                log.exception(
+                    f"Failed to save build {msg.build_id} to history"
+                )
 
         # Refresh project data for frontend
         with _build_lock:
@@ -613,7 +595,10 @@ class BuildQueue:
             _refresh_project_last_build(build)
             _refresh_bom_for_selected(build)
 
-        log.info(f"BuildQueue: Build {msg.build_id} completed with status {status}")
+        log.info(
+            f"BuildQueue: Build {msg.build_id} completed "
+            f"with status {status}"
+        )
 
     def _dispatch_next(self) -> None:
         """Dispatch next pending build if capacity available."""
@@ -811,7 +796,9 @@ def _cleanup_completed_builds():
             if status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
                 # Build is completed (success, failed, cancelled)
                 duration = build.duration
-                completed_at = started_at + duration if started_at else 0
+                completed_at = (
+                    started_at + duration if started_at and duration else 0
+                )
 
                 if completed_at and (now - completed_at) > cleanup_delay:
                     to_remove.append(build.build_id)

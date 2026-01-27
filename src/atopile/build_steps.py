@@ -110,44 +110,6 @@ class MusterTarget:
 
             from atopile.dataclasses import BuildStage
 
-            def record_stage_progress(running_stage: dict | None = None) -> None:
-                if not ctx.build_id:
-                    return
-                try:
-                    from atopile.dataclasses import BuildStatus
-                    from atopile.model import build_history
-
-                    stages = [
-                        {
-                            "name": stage.name,
-                            "stage_id": stage.stage_id,
-                            "display_name": stage.name,
-                            "elapsed_seconds": stage.elapsed_seconds,
-                            "status": stage.status.value
-                            if hasattr(stage.status, "value")
-                            else str(stage.status),
-                            "infos": stage.infos,
-                            "warnings": stage.warnings,
-                            "errors": stage.errors,
-                            "alerts": stage.alerts,
-                        }
-                        for stage in ctx.completed_stages
-                    ]
-                    if running_stage:
-                        stages.append(running_stage)
-                    warnings = sum(stage.warnings for stage in ctx.completed_stages)
-                    errors = sum(stage.errors for stage in ctx.completed_stages)
-                    build_history.update_build_status(
-                        build_id=ctx.build_id,
-                        status=BuildStatus.BUILDING,
-                        stages=stages,
-                        warnings=warnings,
-                        errors=errors,
-                    )
-                except Exception:
-                    # Best-effort stage updates for UI progress.
-                    pass
-
             try:
                 # Set up logging for this build stage
                 ctx.stage = self.name
@@ -155,23 +117,6 @@ class MusterTarget:
                 from atopile.logging import BuildLogger
 
                 BuildLogger.update_stage(self.name)
-                try:
-                    from atopile.dataclasses import StageStatus
-
-                    running_stage = {
-                        "name": self.description or self.name,
-                        "stage_id": self.name,
-                        "display_name": self.description or self.name,
-                        "elapsed_seconds": 0.0,
-                        "status": StageStatus.RUNNING.value,
-                        "infos": 0,
-                        "warnings": 0,
-                        "errors": 0,
-                        "alerts": 0,
-                    }
-                except Exception:
-                    running_stage = None
-                record_stage_progress(running_stage)
 
                 self.func(ctx)
             except Exception:
@@ -186,7 +131,7 @@ class MusterTarget:
                         status="failed",
                     )
                 )
-                record_stage_progress()
+                ctx.flush_stages_to_db()
                 raise
 
             # Record successful stage
@@ -199,7 +144,7 @@ class MusterTarget:
                     status="success",
                 )
             )
-            record_stage_progress()
+            ctx.flush_stages_to_db()
 
         self.success = True
 
