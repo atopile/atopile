@@ -164,6 +164,10 @@ def _run_build_subprocess(
 
         env["ATO_BUILD_HISTORY_DB"] = str(BUILD_HISTORY_DB)
 
+        # Tell the child to run as a direct worker (no grandchild
+        # subprocesses via ParallelBuildManager).
+        env["ATO_BUILD_WORKER"] = "1"
+
         log.info(
             f"Build {build_id}: starting subprocess - "
             f"cmd={' '.join(cmd)}, "
@@ -171,33 +175,15 @@ def _run_build_subprocess(
             f"monitor_target={monitor_target}"
         )
 
+        # Worker writes all logs to the build DB; no need to capture
+        # stdout/stderr here.
         process = subprocess.Popen(
             cmd,
             cwd=project_root,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
+            stderr=subprocess.DEVNULL,
             env=env,
         )
-
-        # Drain stderr in a background thread to prevent pipe buffer
-        # deadlock. Without this, the subprocess blocks when the OS pipe
-        # buffer (~64 KB) fills because the parent only reads stderr
-        # after the child exits.
-        stderr_chunks: list[str] = []
-
-        def _drain_stderr() -> None:
-            assert process.stderr is not None
-            try:
-                for line in process.stderr:
-                    stderr_chunks.append(line)
-            except ValueError:
-                pass  # pipe closed
-
-        stderr_thread = threading.Thread(
-            target=_drain_stderr, daemon=True
-        )
-        stderr_thread.start()
 
         # Poll for completion while monitoring the DB for stage updates
         last_stages: list[dict[str, Any]] = []
@@ -210,7 +196,6 @@ def _run_build_subprocess(
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     process.kill()
-                stderr_thread.join(timeout=2)
                 result_q.put(BuildCancelledMsg(build_id=build_id))
                 return
 
@@ -230,22 +215,14 @@ def _run_build_subprocess(
 
             time.sleep(poll_interval)
 
-        # Process completed – join the stderr drain thread so all
-        # output is captured before we read it.
-        stderr_thread.join(timeout=5)
         return_code = process.returncode
-        stderr_output = "".join(stderr_chunks)
 
         build_info = build_history.get_build_info_by_id(build_id)
         if build_info:
             final_stages = build_info.stages
 
         if return_code != 0:
-            error_msg = (
-                stderr_output[:500]
-                if stderr_output
-                else f"Build failed with code {return_code}"
-            )
+            error_msg = f"Build failed with code {return_code}"
 
     except Exception as exc:
         error_msg = str(exc)

@@ -128,16 +128,6 @@ export interface LogTreeGroup {
   root: TreeNode;
 }
 
-// --- Display Settings ---
-
-export interface LogDisplaySettings {
-  levelFull: boolean;
-  timeMode: TimeMode;
-  sourceMode: SourceMode;
-  search: string;
-  sourceFilter: string;
-}
-
 // --- Request Payload Types ---
 
 export interface BuildLogRequest {

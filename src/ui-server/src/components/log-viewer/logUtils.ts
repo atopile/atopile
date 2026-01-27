@@ -222,20 +222,6 @@ export function filterLogs(
   });
 }
 
-// Get initial log levels from localStorage
-export function getStoredLogLevels(): string[] {
-  const stored = localStorage.getItem('lv-logLevels');
-  if (stored) {
-    try {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        return parsed;
-      }
-    } catch { /* ignore */ }
-  }
-  return ['INFO', 'WARNING', 'ERROR', 'ALERT'];
-}
-
 // Get stored display setting with default
 export function getStoredSetting<T>(key: string, defaultValue: T, validator?: (v: unknown) => boolean): T {
   const stored = localStorage.getItem(key);
