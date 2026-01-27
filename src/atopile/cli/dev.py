@@ -2,10 +2,8 @@ import json
 import os
 import subprocess
 import tempfile
-import time
 import webbrowser
 from collections import Counter
-from dataclasses import dataclass
 from pathlib import Path
 
 import typer
@@ -160,7 +158,8 @@ def install():
     if not cli_info:
         typer.secho(
             "Could not find VS Code or Cursor CLI.\n"
-            "Install 'code' command: Open VS Code, Cmd+Shift+P, 'Shell Command: Install code command in PATH'",
+            "Install 'code' command: Open VS Code, Cmd+Shift+P, 'Shell Command: "
+            "Install code command in PATH'",
             fg=typer.colors.RED,
         )
         raise typer.Exit(1)
@@ -751,3 +750,16 @@ def profile(
 
     sys.argv = ["", *ctx.args]
     app()
+
+
+@dev_app.command()
+def clear_logs(
+    ctx: typer.Context,
+):
+    """Remove all log databases."""
+    from faebryk.libs.paths import remove_log_dir
+
+    if remove_log_dir():
+        typer.echo("🧹 Log databases removed 🧹")
+    else:
+        typer.echo("❌ Could not remove log databases")
