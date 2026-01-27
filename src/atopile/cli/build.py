@@ -20,9 +20,9 @@ from typing_extensions import Annotated
 
 from atopile.buildutil import generate_build_id
 from atopile.dataclasses import (
+    Build,
     BuildReport,
     BuildStatus,
-    HistoricalBuild,
     ProjectState,
     StageCompleteEvent,
     StageStatus,
@@ -856,7 +856,7 @@ class ParallelBuildManager:
 
             data = self._get_build_data(bp)
 
-            row = HistoricalBuild(
+            row = Build(
                 build_id=bp.build_id,
                 project_root=str(bp.project_root.resolve()),
                 target=bp.name,

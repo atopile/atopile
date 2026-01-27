@@ -17,9 +17,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from atopile.dataclasses import (
-    ActiveBuild,
+    Build,
     BuildStatus,
-    HistoricalBuild,
     StageStatus,
 )
 from atopile.model import build_history
@@ -590,7 +589,7 @@ class BuildQueue:
 
         # Save to history
         if build:
-            row = HistoricalBuild(
+            row = Build(
                 build_id=msg.build_id,
                 project_root=build.project_root or "",
                 target=build.target or "default",
@@ -855,7 +854,7 @@ def _sync_builds_to_state():
     event_bus.emit_sync("builds_changed")
 
 
-def _refresh_bom_for_selected(build: ActiveBuild) -> None:
+def _refresh_bom_for_selected(build: Build) -> None:
     """Emit BOM changed event after a build completes."""
     if not build.project_root:
         return
@@ -867,7 +866,7 @@ def _refresh_bom_for_selected(build: ActiveBuild) -> None:
     event_bus.emit_sync("bom_changed", payload)
 
 
-def _refresh_project_last_build(build: ActiveBuild) -> None:
+def _refresh_project_last_build(build: Build) -> None:
     """
     Refresh project target lastBuild data after a build completes.
 

@@ -97,67 +97,6 @@ class StageCompleteEvent:
     description: str
 
 
-@dataclass
-class BaseBuild:
-    """Base class for build data structures with common fields."""
-
-    # Core identification
-    build_id: str
-    project_root: str
-    target: str
-
-    # Build configuration
-    entry: Optional[str] = None
-
-    # Status
-    status: BuildStatus = BuildStatus.QUEUED
-    return_code: Optional[int] = None
-    error: Optional[str] = None
-
-    # Timing
-    started_at: float = 0.0
-    duration: float = 0.0
-
-    # Progress
-    stages: list[dict[str, Any]] = field(default_factory=list)
-    warnings: int = 0
-    errors: int = 0
-
-
-@dataclass
-class ActiveBuild(BaseBuild):
-    """Internal state for an active (queued/building/completed) build."""
-
-    # Additional identification for active builds
-    timestamp: str = ""
-
-    # Build configuration specific to active builds
-    standalone: bool = False
-    frozen: bool = False
-
-    # Additional timing for active builds
-    building_started_at: Optional[float] = None
-
-
-@dataclass
-class HistoricalBuild(BaseBuild):
-    """Build record loaded from the build history database."""
-
-    completed_at: Optional[float] = None
-
-    @property
-    def display_name(self) -> str:
-        """Generate display name from project and target."""
-        project_name = Path(self.project_root).name if self.project_root else "unknown"
-        target = self.target or "default"
-        return f"{project_name}:{target}"
-
-    @property
-    def project_name(self) -> str:
-        """Get project name from project root path."""
-        return Path(self.project_root).name if self.project_root else "unknown"
-
-
 # =============================================================================
 # Logging DB Models
 # =============================================================================
@@ -507,8 +446,14 @@ class Build(CamelModel):
     completed_at: Optional[float] = None
     duration: Optional[float] = None
 
+    # Active build fields
+    timestamp: Optional[str] = None
+    standalone: bool = False
+    frozen: bool = False
+    building_started_at: Optional[float] = None
+
     # Stages and logs
-    stages: Optional[list[BuildStage]] = None
+    stages: list[dict[str, Any]] = Field(default_factory=list)
     # TODO: Replace this estimate once builds are defined in the graph
     # This is the expected total number of stages for progress calculation
     total_stages: int = 20  # Estimated total stages for progress bar
@@ -1230,20 +1175,6 @@ class InstallPackageError(ErrorResult):
 # =============================================================================
 # Build Steps Dataclasses
 # =============================================================================
-
-
-@dataclass
-class CompletedStage:
-    """A completed build stage with timing and status."""
-
-    name: str
-    stage_id: str
-    elapsed_seconds: float
-    status: StageStatus  # Use StageStatus enum instead of plain string
-    infos: int = 0
-    warnings: int = 0
-    errors: int = 0
-    alerts: int = 0
 
 
 @dataclass

@@ -14,7 +14,7 @@ from pathlib import Path
 
 from atopile.buildutil import generate_build_id, generate_build_timestamp
 from atopile.config import ProjectConfig
-from atopile.dataclasses import ActiveBuild, AppContext, BuildStatus, Log
+from atopile.dataclasses import AppContext, Build, BuildStatus, Log
 from atopile.logging import BuildLogger
 from atopile.model.build_queue import (
     _active_builds,
@@ -165,7 +165,7 @@ def _handle_build_sync(payload: dict) -> dict:
                                 project_root, target_name, timestamp
                             )
                             model_state.add_build(
-                                ActiveBuild(
+                                Build(
                                     build_id=build_id,
                                     project_root=project_root,
                                     target=target_name,
@@ -215,7 +215,7 @@ def _handle_build_sync(payload: dict) -> dict:
             build_id = generate_build_id(project_root, target_name, timestamp)
             log.info(f"Allocated build_id={build_id}")
             model_state.add_build(
-                ActiveBuild(
+                Build(
                     build_id=build_id,
                     project_root=project_root,
                     target=target_name,
