@@ -8,11 +8,10 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import type {
-  ServerData,
-  UIState,
-  AtopileState,
+  AppState,
   Project,
   Build,
+  BuildTarget,
   PackageInfo,
   PackageDetails,
   StdLibItem,
@@ -22,10 +21,24 @@ import type {
   FileTreeNode,
   ProjectDependency,
   VariablesData,
+  TestItem,
+  TestRun,
 } from '../types/build';
 
+const ERROR_TIMEOUT_MS = 8000;
+
+let installErrorTimeout: ReturnType<typeof setTimeout> | null = null;
+let packagesErrorTimeout: ReturnType<typeof setTimeout> | null = null;
+let bomErrorTimeout: ReturnType<typeof setTimeout> | null = null;
+let variablesErrorTimeout: ReturnType<typeof setTimeout> | null = null;
+let packageDetailsErrorTimeout: ReturnType<typeof setTimeout> | null = null;
+let projectsErrorTimeout: ReturnType<typeof setTimeout> | null = null;
+let atopileErrorTimeout: ReturnType<typeof setTimeout> | null = null;
+
 // Initial state for the store
-const initialState: ServerData & UIState = {
+const initialState: AppState = {
+  // Connection
+  isConnected: false,
 
   // Projects
   projects: [],
@@ -37,6 +50,7 @@ const initialState: ServerData & UIState = {
   // Builds
   builds: [],
   queuedBuilds: [],
+  buildHistory: [],
 
   // Packages
   packages: [],
@@ -70,6 +84,8 @@ const initialState: ServerData & UIState = {
 
   // Sidebar UI
   expandedTargets: [],
+  activeEditorFile: null,
+  lastAtoFile: null,
 
   // Atopile configuration
   atopile: {
@@ -109,20 +125,37 @@ const initialState: ServerData & UIState = {
   projectDependencies: {},
   isLoadingDependencies: false,
 
+  // Project builds (for installed dependencies)
+  projectBuilds: {},
+  isLoadingBuilds: false,
+
   // Variables
   currentVariablesData: null,
   isLoadingVariables: false,
   variablesError: null,
 
-  // Connection
-  isConnected: false,
+  // Test Explorer
+  collectedTests: [] as TestItem[],
+  isLoadingTests: false,
+  testsError: null as string | null,
+  testCollectionErrors: {} as Record<string, string>,
+  selectedTestNodeIds: [] as string[],
+  testRun: {
+    testRunId: null,
+    isRunning: false,
+  } as TestRun,
+  testFilter: '',
+  testPaths: 'test src',
+  testMarkers: '',
 };
 
 // Store actions interface
 interface StoreActions {
   // Connection
   setConnected: (connected: boolean) => void;
-  setAtopileConfig: (config: Partial<AtopileState>) => void;
+
+  // Full state replacement (from WebSocket)
+  replaceState: (state: Partial<AppState>) => void;
 
   // Projects
   setProjects: (projects: Project[]) => void;
@@ -136,11 +169,16 @@ interface StoreActions {
   // Builds
   setBuilds: (builds: Build[]) => void;
   setQueuedBuilds: (builds: Build[]) => void;
+  setBuildHistory: (builds: Build[]) => void;
   selectBuild: (buildName: string | null) => void;
   selectBuildById: (buildId: string | null, buildName?: string | null) => void;
 
   // Log viewer
   setLogViewerBuildId: (buildId: string | null) => void;
+
+  // Active editor file (from VS Code)
+  setActiveEditorFile: (filePath: string | null) => void;
+  setLastAtoFile: (filePath: string | null) => void;
 
   // Packages
   setPackages: (packages: PackageInfo[]) => void;
@@ -148,11 +186,10 @@ interface StoreActions {
   setPackagesError: (error: string | null) => void;
   setPackageDetails: (details: PackageDetails | null) => void;
   setLoadingPackageDetails: (loading: boolean) => void;
-  setPackageDetailsError: (error: string | null) => void;
   addInstallingPackage: (packageId: string) => void;
   removeInstallingPackage: (packageId: string) => void;
-  setInstallError: (packageId: string, error: string | null) => void;
   clearInstallingPackages: () => void;
+  setInstallError: (packageId: string, error: string | null) => void;
   addUpdatingDependency: (projectRoot: string, dependencyId: string) => void;
   removeUpdatingDependency: (projectRoot: string, dependencyId: string) => void;
 
@@ -175,20 +212,38 @@ interface StoreActions {
   setLoadingVariables: (loading: boolean) => void;
   setVariablesError: (error: string | null) => void;
 
+  // Atopile config
+  setAtopileConfig: (update: Partial<AppState['atopile']>) => void;
+
   // Project data
   setProjectModules: (projectRoot: string, modules: ModuleDefinition[]) => void;
-  setLoadingModules: (loading: boolean) => void;
   setProjectFiles: (projectRoot: string, files: FileTreeNode[]) => void;
-  setLoadingFiles: (loading: boolean) => void;
   setProjectDependencies: (projectRoot: string, deps: ProjectDependency[]) => void;
+  setProjectBuilds: (projectRoot: string, builds: BuildTarget[]) => void;
+  setLoadingModules: (loading: boolean) => void;
+  setLoadingFiles: (loading: boolean) => void;
   setLoadingDependencies: (loading: boolean) => void;
+
+  // Test Explorer
+  setCollectedTests: (tests: TestItem[]) => void;
+  setLoadingTests: (loading: boolean) => void;
+  setTestsError: (error: string | null) => void;
+  setTestCollectionErrors: (errors: Record<string, string>) => void;
+  setTestFilter: (filter: string) => void;
+  setTestPaths: (paths: string) => void;
+  setTestMarkers: (markers: string) => void;
+  toggleTestSelected: (nodeId: string) => void;
+  selectAllTests: () => void;
+  clearTestSelection: () => void;
+  startTestRun: (testRunId: string) => void;
+  completeTestRun: () => void;
 
   // Reset
   reset: () => void;
 }
 
 // Combined store type
-type Store = ServerData & UIState & StoreActions;
+type Store = AppState & StoreActions;
 
 export const useStore = create<Store>()(
   devtools(
@@ -198,17 +253,123 @@ export const useStore = create<Store>()(
       // Connection
       setConnected: (connected) => set({ isConnected: connected }),
 
-      setAtopileConfig: (config) =>
+      // Full state replacement (from WebSocket broadcast)
+      replaceState: (newState) => {
+        if (packagesErrorTimeout) {
+          clearTimeout(packagesErrorTimeout);
+          packagesErrorTimeout = null;
+        }
+        if (bomErrorTimeout) {
+          clearTimeout(bomErrorTimeout);
+          bomErrorTimeout = null;
+        }
+        if (variablesErrorTimeout) {
+          clearTimeout(variablesErrorTimeout);
+          variablesErrorTimeout = null;
+        }
+        if (packageDetailsErrorTimeout) {
+          clearTimeout(packageDetailsErrorTimeout);
+          packageDetailsErrorTimeout = null;
+        }
+        if (projectsErrorTimeout) {
+          clearTimeout(projectsErrorTimeout);
+          projectsErrorTimeout = null;
+        }
+        if (atopileErrorTimeout) {
+          clearTimeout(atopileErrorTimeout);
+          atopileErrorTimeout = null;
+        }
+
         set((state) => ({
-          atopile: { ...state.atopile, ...config },
-        })),
+          ...state,
+          ...newState,
+          isConnected: true,
+        }));
+
+        if (newState.packagesError) {
+          const error = newState.packagesError;
+          packagesErrorTimeout = setTimeout(() => {
+            set((state) =>
+              state.packagesError === error ? { packagesError: null } : {}
+            );
+            packagesErrorTimeout = null;
+          }, ERROR_TIMEOUT_MS);
+        }
+        if (newState.bomError) {
+          const error = newState.bomError;
+          bomErrorTimeout = setTimeout(() => {
+            set((state) =>
+              state.bomError === error ? { bomError: null } : {}
+            );
+            bomErrorTimeout = null;
+          }, ERROR_TIMEOUT_MS);
+        }
+        if (newState.variablesError) {
+          const error = newState.variablesError;
+          variablesErrorTimeout = setTimeout(() => {
+            set((state) =>
+              state.variablesError === error ? { variablesError: null } : {}
+            );
+            variablesErrorTimeout = null;
+          }, ERROR_TIMEOUT_MS);
+        }
+        if (newState.packageDetailsError) {
+          const error = newState.packageDetailsError;
+          packageDetailsErrorTimeout = setTimeout(() => {
+            set((state) =>
+              state.packageDetailsError === error
+                ? { packageDetailsError: null }
+                : {}
+            );
+            packageDetailsErrorTimeout = null;
+          }, ERROR_TIMEOUT_MS);
+        }
+        if (newState.projectsError) {
+          const error = newState.projectsError;
+          projectsErrorTimeout = setTimeout(() => {
+            set((state) =>
+              state.projectsError === error ? { projectsError: null } : {}
+            );
+            projectsErrorTimeout = null;
+          }, ERROR_TIMEOUT_MS);
+        }
+        if (newState.atopile?.error) {
+          const error = newState.atopile.error;
+          atopileErrorTimeout = setTimeout(() => {
+            set((state) =>
+              state.atopile.error === error
+                ? { atopile: { ...state.atopile, error: null } }
+                : {}
+            );
+            atopileErrorTimeout = null;
+          }, ERROR_TIMEOUT_MS);
+        }
+      },
 
       // Projects
-      setProjects: (projects) =>
-        set({ projects, isLoadingProjects: false, projectsError: null }),
+      setProjects: (projects) => set({ projects, isLoadingProjects: false }),
+
       setLoadingProjects: (loading) => set({ isLoadingProjects: loading }),
-      setProjectsError: (error) =>
-        set({ projectsError: error, isLoadingProjects: false }),
+
+      setProjectsError: (error) => {
+        if (projectsErrorTimeout) {
+          clearTimeout(projectsErrorTimeout);
+          projectsErrorTimeout = null;
+        }
+        set(
+          error
+            ? { projectsError: error, isLoadingProjects: false }
+            : { projectsError: null }
+        );
+        if (error) {
+          projectsErrorTimeout = setTimeout(() => {
+            set((state) =>
+              state.projectsError === error ? { projectsError: null } : {}
+            );
+            projectsErrorTimeout = null;
+          }, ERROR_TIMEOUT_MS);
+        }
+      },
 
       selectProject: (projectRoot) => set({ selectedProjectRoot: projectRoot }),
 
@@ -241,10 +402,12 @@ export const useStore = create<Store>()(
           };
         }),
 
-      // Builds
-      setBuilds: (builds) => set({ builds }),
+  // Builds
+  setBuilds: (builds) => set({ builds }),
 
-      setQueuedBuilds: (queuedBuilds) => set({ queuedBuilds }),
+  setQueuedBuilds: (queuedBuilds) => set({ queuedBuilds }),
+
+  setBuildHistory: (buildHistory) => set({ buildHistory }),
 
       selectBuild: (buildName) => set({ selectedBuildName: buildName }),
 
@@ -254,48 +417,78 @@ export const useStore = create<Store>()(
       // Log viewer
       setLogViewerBuildId: (buildId) => set({ logViewerBuildId: buildId }),
 
+      // Active editor file - just store what's provided, backend handles lastAtoFile
+      setActiveEditorFile: (filePath) => set({ activeEditorFile: filePath }),
+
+      setLastAtoFile: (filePath) => set({ lastAtoFile: filePath }),
+
       // Packages
       setPackages: (packages) => set({ packages, isLoadingPackages: false }),
 
       setLoadingPackages: (loading) => set({ isLoadingPackages: loading }),
 
-      setPackagesError: (error) =>
-        set({ packagesError: error, isLoadingPackages: false }),
+      setPackagesError: (error) => {
+        if (packagesErrorTimeout) {
+          clearTimeout(packagesErrorTimeout);
+          packagesErrorTimeout = null;
+        }
+        set({ packagesError: error, isLoadingPackages: false });
+        if (error) {
+          packagesErrorTimeout = setTimeout(() => {
+            set((state) =>
+              state.packagesError === error ? { packagesError: null } : {}
+            );
+            packagesErrorTimeout = null;
+          }, ERROR_TIMEOUT_MS);
+        }
+      },
 
       setPackageDetails: (details) =>
         set({
           selectedPackageDetails: details,
           isLoadingPackageDetails: false,
-          packageDetailsError: null,
         }),
 
       setLoadingPackageDetails: (loading) =>
         set({ isLoadingPackageDetails: loading }),
 
-      setPackageDetailsError: (error) =>
-        set({ packageDetailsError: error, isLoadingPackageDetails: false }),
-
-      addInstallingPackage: (packageId) =>
+      addInstallingPackage: (packageId) => {
+        if (installErrorTimeout) {
+          clearTimeout(installErrorTimeout);
+          installErrorTimeout = null;
+        }
         set((state) => ({
           installingPackageIds: state.installingPackageIds.includes(packageId)
             ? state.installingPackageIds
             : [...state.installingPackageIds, packageId],
           installError: null,
-        })),
+        }));
+      },
 
       removeInstallingPackage: (packageId) =>
         set((state) => ({
           installingPackageIds: state.installingPackageIds.filter((id) => id !== packageId),
         })),
 
-      setInstallError: (packageId, error) =>
+      clearInstallingPackages: () =>
+        set({ installingPackageIds: [], installError: null }),
+
+      setInstallError: (packageId, error) => {
+        if (installErrorTimeout) {
+          clearTimeout(installErrorTimeout);
+          installErrorTimeout = null;
+        }
         set((state) => ({
           installError: error,
           installingPackageIds: state.installingPackageIds.filter((id) => id !== packageId),
-        })),
-
-      clearInstallingPackages: () =>
-        set({ installingPackageIds: [], installError: null }),
+        }));
+        if (error) {
+          installErrorTimeout = setTimeout(() => {
+            set({ installError: null });
+            installErrorTimeout = null;
+          }, ERROR_TIMEOUT_MS);
+        }
+      },
 
       addUpdatingDependency: (projectRoot, dependencyId) =>
         set((state) => {
@@ -329,14 +522,51 @@ export const useStore = create<Store>()(
       setBomData: (data) => set({ bomData: data, isLoadingBom: false, bomError: null }),
 
       setLoadingBom: (loading) => set({ isLoadingBom: loading }),
-      setBomError: (error) => set({ bomError: error, isLoadingBom: false }),
+      setBomError: (error) => {
+        if (bomErrorTimeout) {
+          clearTimeout(bomErrorTimeout);
+          bomErrorTimeout = null;
+        }
+        set({ bomError: error, isLoadingBom: false });
+        if (error) {
+          bomErrorTimeout = setTimeout(() => {
+            set((state) =>
+              state.bomError === error ? { bomError: null } : {}
+            );
+            bomErrorTimeout = null;
+          }, ERROR_TIMEOUT_MS);
+        }
+      },
 
       // Variables
       setVariablesData: (data) =>
         set({ currentVariablesData: data, isLoadingVariables: false, variablesError: null }),
 
       setLoadingVariables: (loading) => set({ isLoadingVariables: loading }),
-      setVariablesError: (error) => set({ variablesError: error, isLoadingVariables: false }),
+      setVariablesError: (error) => {
+        if (variablesErrorTimeout) {
+          clearTimeout(variablesErrorTimeout);
+          variablesErrorTimeout = null;
+        }
+        set({ variablesError: error, isLoadingVariables: false });
+        if (error) {
+          variablesErrorTimeout = setTimeout(() => {
+            set((state) =>
+              state.variablesError === error ? { variablesError: null } : {}
+            );
+            variablesErrorTimeout = null;
+          }, ERROR_TIMEOUT_MS);
+        }
+      },
+
+      // Atopile config
+      setAtopileConfig: (update) =>
+        set((state) => ({
+          atopile: {
+            ...state.atopile,
+            ...update,
+          },
+        })),
 
       // Project data
       setProjectModules: (projectRoot, modules) =>
@@ -347,7 +577,6 @@ export const useStore = create<Store>()(
           },
           isLoadingModules: false,
         })),
-      setLoadingModules: (loading) => set({ isLoadingModules: loading }),
 
       setProjectFiles: (projectRoot, files) =>
         set((state) => ({
@@ -357,7 +586,6 @@ export const useStore = create<Store>()(
           },
           isLoadingFiles: false,
         })),
-      setLoadingFiles: (loading) => set({ isLoadingFiles: loading }),
 
       setProjectDependencies: (projectRoot, deps) =>
         set((state) => ({
@@ -367,7 +595,58 @@ export const useStore = create<Store>()(
           },
           isLoadingDependencies: false,
         })),
+
+      setProjectBuilds: (projectRoot, builds) =>
+        set((state) => ({
+          projectBuilds: {
+            ...state.projectBuilds,
+            [projectRoot]: builds,
+          },
+          isLoadingBuilds: false,
+        })),
+
+      setLoadingModules: (loading) => set({ isLoadingModules: loading }),
+      setLoadingFiles: (loading) => set({ isLoadingFiles: loading }),
       setLoadingDependencies: (loading) => set({ isLoadingDependencies: loading }),
+
+      // Test Explorer
+      setCollectedTests: (tests) =>
+        set({ collectedTests: tests, isLoadingTests: false, testsError: null }),
+
+      setLoadingTests: (loading) => set({ isLoadingTests: loading }),
+
+      setTestsError: (error) =>
+        set({ testsError: error, isLoadingTests: false }),
+
+      setTestCollectionErrors: (errors) => set({ testCollectionErrors: errors }),
+
+      setTestFilter: (filter) => set({ testFilter: filter }),
+
+      setTestPaths: (paths) => set({ testPaths: paths }),
+
+      setTestMarkers: (markers) => set({ testMarkers: markers }),
+
+      toggleTestSelected: (nodeId) =>
+        set((state) => {
+          const selected = state.selectedTestNodeIds;
+          if (selected.includes(nodeId)) {
+            return { selectedTestNodeIds: selected.filter((id) => id !== nodeId) };
+          }
+          return { selectedTestNodeIds: [...selected, nodeId] };
+        }),
+
+      selectAllTests: () =>
+        set((state) => ({
+          selectedTestNodeIds: state.collectedTests.map((t) => t.node_id),
+        })),
+
+      clearTestSelection: () => set({ selectedTestNodeIds: [] }),
+
+      startTestRun: (testRunId) =>
+        set({ testRun: { testRunId, isRunning: true } }),
+
+      completeTestRun: () =>
+        set((state) => ({ testRun: { ...state.testRun, isRunning: false } })),
 
       // Reset
       reset: () => set(initialState),

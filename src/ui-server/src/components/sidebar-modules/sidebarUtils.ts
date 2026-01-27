@@ -97,20 +97,12 @@ export interface SelectedPackage {
   name: string;
   fullName: string;
   version?: string;
+  latestVersion?: string;
   description?: string;
   installed?: boolean;
   availableVersions?: { version: string; released: string }[];
   homepage?: string;
   repository?: string;
-}
-
-/**
- * Stage filter for problems panel.
- */
-export interface StageFilter {
-  stageName?: string;
-  buildId?: string;
-  projectId?: string;
 }
 
 /**

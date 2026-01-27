@@ -3,9 +3,10 @@ import { Search, Plus } from 'lucide-react'
 import { type ProjectDependency } from './DependencyCard'
 import { type FileTreeNode } from './FileExplorer'
 import { ProjectCard } from './ProjectCard'
+import type { BuildTarget as ProjectBuildTarget } from '../types/build'
 import type {
   Selection,
-  BuildTarget,
+  BuildTarget as UiBuildTarget,
   Project,
   ModuleDefinition,
   AvailableProject,
@@ -35,18 +36,19 @@ interface ProjectsPanelProps {
   onDependencyVersionChange?: (projectId: string, identifier: string, newVersion: string) => void  // Change dependency version
   onRemoveDependency?: (projectId: string, identifier: string) => void  // Remove a dependency
   onAddBuild?: (projectId: string) => void  // Add a new build target
-  onUpdateBuild?: (projectId: string, buildId: string, updates: Partial<BuildTarget>) => void  // Update build target (rename/entry)
+  onUpdateBuild?: (projectId: string, buildId: string, updates: Partial<UiBuildTarget>) => void  // Update build target (rename/entry)
   onDeleteBuild?: (projectId: string, buildId: string) => void  // Delete a build target
   filterType?: 'all' | 'projects' | 'packages'
   projects?: Project[]  // Optional - defaults to empty list
   projectModules?: Record<string, ModuleDefinition[]>  // Modules for each project root
   projectFiles?: Record<string, FileTreeNode[]>  // File tree for each project root
   projectDependencies?: Record<string, ProjectDependency[]>  // Dependencies for each project root
+  projectBuilds?: Record<string, ProjectBuildTarget[]>  // Builds for each project root (for installed dependencies)
   installingPackageIds?: string[]  // IDs of packages currently being installed
   updatingDependencyIds?: string[]  // IDs of dependencies currently being updated (format: projectRoot:dependencyId)
 }
 
-export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail: _onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, onDependencyVersionChange, onRemoveDependency, onAddBuild, onUpdateBuild, onDeleteBuild, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {}, projectDependencies = {}, installingPackageIds = [], updatingDependencyIds = [] }: ProjectsPanelProps) {
+export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail: _onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, onDependencyVersionChange, onRemoveDependency, onAddBuild, onUpdateBuild, onDeleteBuild, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {}, projectDependencies = {}, projectBuilds = {}, installingPackageIds = [], updatingDependencyIds = [] }: ProjectsPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
   const projects = externalProjects && externalProjects.length > 0 ? externalProjects : []
@@ -79,7 +81,7 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
   }
 
   // Handler to update a build
-  const handleUpdateBuild = (projectId: string, buildId: string, updates: Partial<BuildTarget>) => {
+  const handleUpdateBuild = (projectId: string, buildId: string, updates: Partial<UiBuildTarget>) => {
     // If external callback is provided, use it
     if (onUpdateBuild) {
       onUpdateBuild(projectId, buildId, updates)
@@ -241,6 +243,7 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
                 availableModules={projectModules[project.root] || []}
                 projectFiles={projectFiles[project.root] || []}
                 projectFilesByRoot={projectFiles}
+                projectBuildsByRoot={projectBuilds}
                 projectDependencies={projectDependencies[project.root] || []}
                 updatingDependencyIds={updatingDependencyIds}
                 // Package mode props

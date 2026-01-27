@@ -33,6 +33,13 @@ class BuildStatus(str, Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
 
+    @classmethod
+    def from_return_code(cls, return_code: int, warnings: int = 0) -> BuildStatus:
+        """Derive terminal build status from a process return code."""
+        if return_code != 0:
+            return cls.FAILED
+        return cls.WARNING if warnings > 0 else cls.SUCCESS
+
 
 class StageStatus(str, Enum):
     """Stage status states - status of individual build stages."""
@@ -69,14 +76,6 @@ class ProjectState:
 
 
 @dataclass(frozen=True)
-class StageStatusEvent:
-    name: str
-    description: str
-    progress: int
-    total: int | None
-
-
-@dataclass(frozen=True)
 class StageCompleteEvent:
     duration: float
     status: StageStatus  # Use StageStatus enum instead of plain string
@@ -88,95 +87,66 @@ class StageCompleteEvent:
     description: str
 
 
-@dataclass
-class BaseBuild:
-    """Base class for build data structures with common fields."""
+# =============================================================================
+# Logging DB Models
+# =============================================================================
 
-    # Core identification
+
+@dataclass
+class BuildRow:
+    """Database model for build metadata in logs database."""
+
     build_id: str
-    project_root: str
+    project_path: str
     target: str
-
-    # Build configuration
-    entry: Optional[str] = None
-
-    # Status
-    status: BuildStatus = BuildStatus.QUEUED
-    return_code: Optional[int] = None
-    error: Optional[str] = None
-
-    # Timing
-    started_at: float = 0.0
-    duration: float = 0.0
-
-    # Progress
-    stages: list[dict[str, Any]] = field(default_factory=list)
-    warnings: int = 0
-    errors: int = 0
+    timestamp: str
+    created_at: str = ""
 
 
 @dataclass
-class ActiveBuild(BaseBuild):
-    """Internal state for an active (queued/building/completed) build."""
+class LogRow:
+    """Database model for log entries."""
 
-    # Additional identification for active builds
+    id: int | None = field(default=None, init=False)
+    build_id: str = ""
     timestamp: str = ""
-
-    # Build configuration specific to active builds
-    standalone: bool = False
-    frozen: bool = False
-
-    # Additional timing for active builds
-    building_started_at: Optional[float] = None
+    stage: str = ""
+    level: str = ""
+    message: str = ""
+    logger_name: str = ""
+    audience: str = "developer"
+    source_file: str | None = None
+    source_line: int | None = None
+    ato_traceback: str | None = None
+    python_traceback: str | None = None
+    objects: str | None = None
 
 
 @dataclass
-class HistoricalBuild(BaseBuild):
-    """Build record loaded from the build history database."""
+class TestRunRow:
+    """Database model for test run metadata."""
 
-    # Additional timing for historical builds
-    completed_at: Optional[float] = None
+    test_run_id: str
+    created_at: str = ""
 
-    # Build key (timestamp string for backwards compat)
-    build_key: str = ""
 
-    @property
-    def display_name(self) -> str:
-        """Generate display name from project and target."""
-        from pathlib import Path
+@dataclass
+class TestLogRow:
+    """Database model for test log entries."""
 
-        project_name = Path(self.project_root).name if self.project_root else "unknown"
-        target = self.target or "default"
-        return f"{project_name}:{target}"
-
-    @property
-    def project_name(self) -> str:
-        """Get project name from project root path."""
-        from pathlib import Path
-
-        return Path(self.project_root).name if self.project_root else "unknown"
-
-    @classmethod
-    def from_db_row(cls, row: Any) -> "HistoricalBuild":
-        """Construct from a sqlite3.Row. Only JSON/enum conversion needed."""
-        import json
-
-        return cls(
-            build_id=row["build_id"],
-            project_root=row["project_root"],
-            target=row["target"],
-            entry=row["entry"],
-            status=BuildStatus(row["status"]),
-            return_code=row["return_code"],
-            error=row["error"],
-            started_at=row["started_at"],
-            completed_at=row["completed_at"],
-            duration=row["duration"],
-            stages=json.loads(row["stages"]) if row["stages"] else [],
-            warnings=row["warnings"],
-            errors=row["errors"],
-            build_key=row["build_key"],
-        )
+    id: int | None = field(default=None, init=False)
+    test_run_id: str = ""
+    timestamp: str = ""
+    test_name: str = ""
+    level: str = ""
+    message: str = ""
+    logger_name: str = ""
+    audience: str = "developer"
+    source_file: str | None = None
+    source_line: int | None = None
+    ato_traceback: str | None = None
+    python_traceback: str | None = None
+    objects: str | None = None
 
 
 # =============================================================================
@@ -448,7 +418,6 @@ class Build(CamelModel):
     display_name: str
     project_name: Optional[str] = None
     build_id: Optional[str] = None
-    build_key: Optional[str] = None
 
     # Status
     status: BuildStatus = BuildStatus.QUEUED
@@ -466,8 +435,14 @@ class Build(CamelModel):
     completed_at: Optional[float] = None
     duration: Optional[float] = None
 
+    # Active build fields
+    timestamp: Optional[str] = None
+    standalone: bool = False
+    frozen: bool = False
+    building_started_at: Optional[float] = None
+
     # Stages and logs
-    stages: Optional[list[BuildStage]] = None
+    stages: list[dict[str, Any]] = Field(default_factory=list)
     # TODO: Replace this estimate once builds are defined in the graph
     # This is the expected total number of stages for progress calculation
     total_stages: int = 20  # Estimated total stages for progress bar
@@ -583,6 +558,7 @@ class ProjectsResponse(CamelModel):
 
     projects: list[Project]
     total: int
+
 
 class ModuleChild(BaseModel):
     """A child field within a module (interface, parameter, nested module, etc.)."""
@@ -739,7 +715,7 @@ class UpdateDependencyVersionResponse(BaseModel):
 # =============================================================================
 
 
-class PackageInfo(BaseModel):
+class PackageInfo(CamelModel):
     """Information about a package."""
 
     identifier: str  # e.g., "atopile/bosch-bme280"
@@ -761,7 +737,7 @@ class PackageInfo(BaseModel):
     keywords: Optional[list[str]] = None
 
 
-class PackageVersion(BaseModel):
+class PackageVersion(CamelModel):
     """Information about a package version/release."""
 
     version: str
@@ -770,20 +746,50 @@ class PackageVersion(BaseModel):
     size: Optional[int] = None
 
 
-class PackageDependency(BaseModel):
+class PackageDependency(CamelModel):
     """A package dependency."""
 
     identifier: str
     version: Optional[str] = None  # Required version/release
 
 
-class PackageDetails(BaseModel):
+class PackageFileHashes(CamelModel):
+    sha256: str
+
+
+class PackageAuthor(CamelModel):
+    name: str
+    email: Optional[str] = None
+
+
+class PackageArtifact(CamelModel):
+    filename: str
+    url: str
+    size: int
+    hashes: PackageFileHashes
+    build_name: Optional[str] = None
+
+
+class PackageLayout(CamelModel):
+    build_name: str
+    url: str
+
+
+class PackageImportStatement(CamelModel):
+    build_name: str
+    import_statement: str
+
+
+class PackageDetails(CamelModel):
     """Detailed information about a package from the registry."""
 
     identifier: str
     name: str
     publisher: str
     version: str  # Latest version
+    created_at: Optional[str] = None
+    released_at: Optional[str] = None
+    authors: list[PackageAuthor] = Field(default_factory=list)
     summary: Optional[str] = None
     description: Optional[str] = None
     homepage: Optional[str] = None
@@ -796,6 +802,12 @@ class PackageDetails(BaseModel):
     # Versions
     versions: list[PackageVersion] = Field(default_factory=list)
     version_count: int = 0
+    # Readme + build outputs
+    readme: Optional[str] = None
+    builds: Optional[list[str]] = None
+    artifacts: list[PackageArtifact] = Field(default_factory=list)
+    layouts: list[PackageLayout] = Field(default_factory=list)
+    import_statements: list[PackageImportStatement] = Field(default_factory=list)
     # Installation status
     installed: bool = False
     installed_version: Optional[str] = None
@@ -837,21 +849,21 @@ class PackageSummaryItem(BaseModel):
     keywords: list[str] = Field(default_factory=list)
 
 
-class RegistryStatus(BaseModel):
+class RegistryStatus(CamelModel):
     """Status of the registry connection for error visibility."""
 
     available: bool
     error: Optional[str] = None
 
 
-class PackagesResponse(BaseModel):
+class PackagesResponse(CamelModel):
     """Response for /api/packages endpoint."""
 
     packages: list[PackageInfo]
     total: int
 
 
-class PackagesSummaryResponse(BaseModel):
+class PackagesSummaryResponse(CamelModel):
     """Response for /api/packages/summary endpoint."""
 
     packages: list[PackageSummaryItem]
@@ -860,7 +872,7 @@ class PackagesSummaryResponse(BaseModel):
     registry_status: RegistryStatus
 
 
-class RegistrySearchResponse(BaseModel):
+class RegistrySearchResponse(CamelModel):
     """Response for /api/registry/search endpoint."""
 
     packages: list[PackageInfo]
@@ -868,7 +880,7 @@ class RegistrySearchResponse(BaseModel):
     query: str
 
 
-class PackageActionRequest(BaseModel):
+class PackageActionRequest(CamelModel):
     """Request to install/update/remove a package."""
 
     package_identifier: str
@@ -876,7 +888,7 @@ class PackageActionRequest(BaseModel):
     version: Optional[str] = None  # If None, installs latest
 
 
-class PackageActionResponse(BaseModel):
+class PackageActionResponse(CamelModel):
     """Response from package action."""
 
     success: bool
@@ -884,7 +896,7 @@ class PackageActionResponse(BaseModel):
     action: str  # 'install', 'update', 'remove'
 
 
-class PackageInfoVeryBrief(BaseModel):
+class PackageInfoVeryBrief(CamelModel):
     identifier: str
     version: str
     summary: str
@@ -1099,7 +1111,6 @@ class AtopileConfig(BaseModel):
     error: Optional[str] = None
 
 
-
 # =============================================================================
 # WebSocket State Manager Dataclass
 # =============================================================================
@@ -1192,20 +1203,6 @@ class InstallPackageError(ErrorResult):
 
 
 @dataclass
-class CompletedStage:
-    """A completed build stage with timing and status."""
-
-    name: str
-    stage_id: str
-    elapsed_seconds: float
-    status: StageStatus  # Use StageStatus enum instead of plain string
-    infos: int = 0
-    warnings: int = 0
-    errors: int = 0
-    alerts: int = 0
-
-
-@dataclass
 class BuildReport:
     name: str
     status: BuildStatus  # Use BuildStatus enum instead of Status
@@ -1222,7 +1219,6 @@ class BuildReport:
 @dataclass
 class AppContext:
     summary_file: Optional[Path] = None
-    logs_base: Optional[Path] = None
     workspace_path: Optional[Path] = None
 
 

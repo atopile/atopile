@@ -37,22 +37,27 @@
 }
 
 .server-status.connected {
-  background: rgba(46, 160, 67, 0.15);
-  color: var(--color-success, #2ea043);
+  background: var(--success-bg);
+  color: var(--success);
 }
 
 .server-status.connected:hover {
-  background: rgba(46, 160, 67, 0.25);
+  background: color-mix(in srgb, var(--success) 20%, transparent);
 }
 
 .server-status.disconnected {
-  background: rgba(248, 81, 73, 0.15);
-  color: var(--color-error, #f85149);
+  background: var(--error-bg);
+  color: var(--error);
 }
 
 .server-status.disconnected:hover {
-  background: rgba(248, 81, 73, 0.3);
-  color: #ff6b6b;
+  background: color-mix(in srgb, var(--error) 20%, transparent);
+  color: var(--error);
+}
+
+.server-status:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .status-dot {
@@ -76,16 +81,16 @@
 }
 
 .card:hover {
-  border-color: var(--ctp-surface2);
+  border-color: var(--border-color);
 }
 
 .card.selected {
-  border-color: var(--ato-orange);
-  background: var(--ato-orange-subtle);
+  border-color: var(--accent);
+  background: var(--accent-subtle);
 }
 
 .card.expanded {
-  border-color: var(--ctp-surface2);
+  border-color: var(--border-color);
 }
 
 .card-flex {
@@ -285,21 +290,26 @@
   height: 24px;
   padding: 0;
   background: transparent;
-  border: 1px solid var(--ato-orange);
+  border: 1px solid var(--accent);
   border-radius: 50%;
   cursor: pointer;
-  color: var(--ato-orange);
+  color: var(--accent);
   transition: all var(--transition-normal);
 }
 
 .build-play-button:hover:not(:disabled) {
-  background: var(--ato-orange);
-  color: var(--ctp-crust);
+  background: var(--accent);
+  color: var(--text-on-accent);
 }
 
 .build-play-button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.build-play-button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .build-play-button svg {

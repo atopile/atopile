@@ -107,6 +107,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this._postToWebview(message);
       })
     );
+    // Track active editor changes and notify webview
+    this._disposables.push(
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
+        this._postActiveFile(editor);
+      })
+    );
   }
 
   dispose(): void {
@@ -199,6 +205,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._lastApiUrl = backendServer.apiUrl;
     this._lastWsUrl = backendServer.wsUrl;
     this._postWorkspaceRoot();
+    // Send current active file to webview
+    this._postActiveFile(vscode.window.activeTextEditor);
 
     // Listen for messages from webview
     this._disposables.push(
@@ -228,6 +236,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     this._lastWorkspaceRoot = root;
     this._view.webview.postMessage({ type: 'workspace-root', root });
+  }
+
+  /**
+   * Post the active file to the webview so the Structure panel can track it.
+   */
+  private _postActiveFile(editor?: vscode.TextEditor): void {
+    if (!this._view) {
+      return;
+    }
+    const filePath = editor?.document?.uri?.fsPath ?? null;
+    traceInfo(`[SidebarProvider] Posting active file: ${filePath}`);
+    this._view.webview.postMessage({ type: 'activeFile', filePath });
   }
 
   /**
@@ -450,7 +470,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   <script>
     window.addEventListener('message', (event) => {
       const data = event && event.data;
-      if (!data || data.type !== 'workspace-root') return;
+      if (!data || (data.type !== 'workspace-root' && data.type !== 'activeFile')) return;
       const iframe = document.querySelector('iframe');
       if (iframe && iframe.contentWindow) {
         iframe.contentWindow.postMessage(data, '*');
