@@ -1088,7 +1088,8 @@ class MutationMap:
                             no_lit_suffix=True, use_full_name=True
                         )
                         for p in relevant_root_predicates
-                    ]
+                    ],
+                    use_repr=False,
                 )
             )
 
@@ -2125,9 +2126,14 @@ class Mutator:
         }
 
         if S_LOG:
+            relevant_str = indented_container(
+                [op.pretty() for op in current_relevant], use_repr=False
+            )
+            irrelevant_str = indented_container(
+                [op.compact_repr() for op in irrelevant_pos], use_repr=False
+            )
             logger.debug(
-                f"Marking {len(list(current_relevant))} relevant operatables, "
-                f"{len(irrelevant_pos)} irrelevant operatables"
+                f"Marking relevant {relevant_str}, irrelevant {irrelevant_str}"
             )
 
         for po in current_relevant:
