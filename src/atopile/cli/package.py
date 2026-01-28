@@ -388,6 +388,7 @@ class _PackageValidators:
     def verify_no_warnings(config: "Config"):
         from atopile.dataclasses import Build
         from atopile.model import build_history
+        from atopile.model.sqlite import BuildHistory
 
         project_root = str(config.project.paths.root)
 
@@ -419,7 +420,7 @@ class _PackageValidators:
                 build_warnings = build.warnings
                 if build_warnings > 0:
                     # Get full build info for stage details
-                    build_info = build_history.get_build_info_by_id(build.build_id)
+                    build_info = BuildHistory.get(build.build_id)
                     if build_info:
                         stages_with_warnings = [
                             f"  - {stage['name']}: {stage['warnings']} warning(s)"

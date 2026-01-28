@@ -44,6 +44,7 @@ MODELS_TO_EXPORT = [
     "AtopileConfig",
     "DetectedInstallation",
     "InstallProgress",
+    "EventMessage",
 ]
 
 

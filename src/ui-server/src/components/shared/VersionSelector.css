@@ -79,7 +79,7 @@
 }
 
 .version-option .latest-tag {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   padding: 1px 4px;
   background: var(--ctp-green);
   color: var(--ctp-base);

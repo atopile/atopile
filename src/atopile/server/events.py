@@ -4,39 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from enum import Enum
 from typing import Any, Callable, Coroutine, Optional
 
+from atopile.dataclasses import EventType
+
 log = logging.getLogger(__name__)
-
-
-class EventType(str, Enum):
-    """Event types emitted to WebSocket clients."""
-
-    # Data state changes - client should refetch
-    PROJECTS_CHANGED = "projects_changed"
-    PACKAGES_CHANGED = "packages_changed"
-    STDLIB_CHANGED = "stdlib_changed"
-    BOM_CHANGED = "bom_changed"
-    VARIABLES_CHANGED = "variables_changed"
-    BUILDS_CHANGED = "builds_changed"
-    PROBLEMS_CHANGED = "problems_changed"
-
-    # File watcher notifications
-    PROJECT_FILES_CHANGED = "project_files_changed"
-    PROJECT_MODULES_CHANGED = "project_modules_changed"
-    PROJECT_DEPENDENCIES_CHANGED = "project_dependencies_changed"
-
-    # Configuration changes
-    ATOPILE_CONFIG_CHANGED = "atopile_config_changed"
-
-    # Shared UI state
-    LOG_VIEW_CURRENT_ID_CHANGED = "log_view_current_id_changed"
-
-    # Action requests (frontend should handle)
-    OPEN_LAYOUT = "open_layout"
-    OPEN_KICAD = "open_kicad"
-    OPEN_3D = "open_3d"
 
 
 # Callback for emitting events (registered by server at startup)

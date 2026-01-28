@@ -7,7 +7,6 @@ on:
   push:
     branches:
       - main
-      - feature/fabll_part2
   release:
     types:
       - published

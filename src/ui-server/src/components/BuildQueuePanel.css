@@ -15,7 +15,7 @@
   justify-content: center;
   padding: var(--spacing-md);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
 }
 
 /* Individual queue item */
@@ -27,7 +27,7 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   transition: border-color 0.15s ease;
 }
 
@@ -110,7 +110,7 @@
 
 .queue-item-stage {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -129,7 +129,7 @@
   align-items: center;
   gap: 3px;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -208,7 +208,7 @@
 /* Error message */
 .queue-item-error {
   color: var(--ctp-red);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

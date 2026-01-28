@@ -76,10 +76,27 @@ export interface AtopileSettingsMessage {
   };
 }
 
+export interface SelectionChangedMessage {
+  type: 'selectionChanged';
+  projectRoot: string | null;
+  targetNames: string[];
+}
+
+export interface ShowLogsMessage {
+  type: 'showLogs';
+}
+
+export interface ShowBackendMenuMessage {
+  type: 'showBackendMenu';
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
-  | AtopileSettingsMessage;
+  | AtopileSettingsMessage
+  | SelectionChangedMessage
+  | ShowLogsMessage
+  | ShowBackendMenuMessage;
 
 /**
  * Type-safe helper to post messages to the extension.

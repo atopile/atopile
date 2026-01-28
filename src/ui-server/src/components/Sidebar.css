@@ -322,3 +322,101 @@
   display: flex;
   flex-direction: column;
 }
+
+/* Disconnected Overlay */
+.disconnected-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+  opacity: 0.95;
+}
+
+.disconnected-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+  text-align: center;
+  padding: var(--spacing-xl);
+}
+
+.disconnected-icon {
+  width: 32px;
+  height: 32px;
+  color: var(--warning);
+  margin-bottom: var(--spacing-sm);
+}
+
+.disconnected-title {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.disconnected-message {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.disconnected-message p {
+  margin: 0;
+}
+
+.disconnected-message code {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  background: var(--bg-tertiary);
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  user-select: all;
+  cursor: text;
+}
+
+.disconnected-menu-button {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border: none;
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  margin-bottom: var(--spacing-sm);
+}
+
+.disconnected-menu-button:hover {
+  background: var(--accent-hover);
+}
+
+.disconnected-discord {
+  margin-top: var(--spacing-xs);
+}
+
+.disconnected-discord a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.disconnected-discord a:hover {
+  text-decoration: underline;
+}
+
+.disconnected-troubleshooting {
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.disconnected-troubleshooting-header {
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-xs);
+}

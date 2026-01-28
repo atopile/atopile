@@ -12,6 +12,7 @@ class ClientState:
 
     def __init__(self) -> None:
         self.log_view_current_id: str | None = None
+        self.log_view_current_stage: str | None = None
 
 
 client_state = ClientState()

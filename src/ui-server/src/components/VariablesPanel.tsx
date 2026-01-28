@@ -455,8 +455,8 @@ export function VariablesPanel({
                   {selectedTargetName
                     ? `Run a build for "${selectedTargetName}" to generate variable data`
                     : hasActiveProject
-                      ? 'Select a target and run a build to generate variable data'
-                      : 'Select a project and target, then run a build'}
+                      ? 'Select a build and run it to generate variable data'
+                      : 'Select a project and build, then run it'}
                 </span>
               </div>
             );
@@ -476,8 +476,8 @@ export function VariablesPanel({
               {selectedTargetName
                 ? `Run a build for "${selectedTargetName}" to generate variable data`
                 : hasActiveProject
-                  ? 'Select a target and run a build to generate variable data'
-                  : 'Select a project and target, then run a build'}
+                  ? 'Select a build and run it to generate variable data'
+                  : 'Select a project and build, then run it'}
             </span>
           </div>
         )}

@@ -13,6 +13,7 @@ import { PackageDetailPanel } from './PackageDetailPanel';
 import { StructurePanel } from './StructurePanel';
 import { PackagesPanel } from './PackagesPanel';
 import { sendAction, sendActionWithResponse } from '../api/websocket';
+import { postMessage, isVsCodeWebview } from '../api/vscodeApi';
 import { useStore } from '../store';
 import { usePanelSizing } from '../hooks/usePanelSizing';
 import {
@@ -52,6 +53,7 @@ function countVariables(nodes: VariableNode[] | undefined): number {
 
 export function Sidebar() {
   // Granular selectors - only re-render when specific state changes
+  const isConnected = useStore((s) => s.isConnected);
   const projects = useStore((s) => s.projects);
   const selectedProjectRoot = useStore((s) => s.selectedProjectRoot) ?? null;
   const selectedTargetNames = useStore((s) => s.selectedTargetNames) ?? [];
@@ -167,37 +169,21 @@ export function Sidebar() {
     const outputName = outputNames[output] || output;
 
     try {
-      const response = await sendActionWithResponse('getBuildsByProject', {
-        projectRoot,
-        target: targetName,
-        limit: 1,
+      const response = await sendActionWithResponse(output, {
+        projectId: projectRoot,
+        targetName,
       });
-      const result = response.result ?? {};
-      const build = Array.isArray((result as { builds?: unknown }).builds)
-        ? (result as { builds: any[] }).builds[0]
-        : null;
-
-      if (!build?.build_id) {
-        // No build found - log to UI with helpful message
+      if (!response.result?.success) {
+        const error =
+          typeof response.result?.error === 'string'
+            ? response.result.error
+            : `Failed to open ${outputName}.`;
         action('uiLog', {
           level: 'warning',
-          message: `Cannot open ${outputName}: No build found for target "${targetName}". Build the target first.`,
+          message: error,
         });
-        console.warn(`No build found for target "${targetName}". Build first to generate output files.`);
         return;
       }
-
-      // Check if build was successful
-      if (build.status === 'failed' || build.status === 'cancelled') {
-        action('uiLog', {
-          level: 'warning',
-          message: `Cannot open ${outputName}: Last build for "${targetName}" ${build.status}. Run a successful build first.`,
-        });
-        console.warn(`Last build for target "${targetName}" ${build.status}.`);
-        return;
-      }
-
-      action(output, { projectId: projectRoot, buildId: build.build_id });
     } catch (error) {
       console.warn('Failed to open output', error);
       action('uiLog', {
@@ -220,15 +206,34 @@ export function Sidebar() {
     action('clearPackageDetails');
   }, []);
 
-  const handlePackageInstall = useCallback((version?: string) => {
+  const handlePackageInstall = useCallback(async (version?: string) => {
     if (!selectedPackage) return;
     const projectRoot = selectedProjectRoot || sidebarProjects?.[0]?.root;
-    if (projectRoot) {
-      action('installPackage', {
-        packageId: selectedPackage.fullName,
+    if (!projectRoot) return;
+
+    const packageId = selectedPackage.fullName;
+    const store = useStore.getState();
+
+    // Set installing state immediately for UI feedback
+    store.addInstallingPackage(packageId);
+
+    try {
+      const response = await sendActionWithResponse('installPackage', {
+        packageId,
         projectRoot,
         version
       });
+
+      // The backend returns success immediately, but install runs async.
+      // The installing state will be cleared when we receive the
+      // project_dependencies_changed event (on success) or packages_changed
+      // event with error (on failure).
+      if (!response.result?.success) {
+        store.setInstallError(packageId, response.result?.error || 'Install failed');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Install failed';
+      store.setInstallError(packageId, message);
     }
   }, [selectedPackage, selectedProjectRoot, sidebarProjects]);
 
@@ -270,23 +275,16 @@ export function Sidebar() {
             onOpenLayout={(projectRoot, targetName) => handleOpenOutput('openLayout', projectRoot, targetName)}
             onCreateProject={handlers.handleCreateProject}
             onCreateTarget={async (projectRoot, data) => {
-              try {
-                const response = await sendActionWithResponse('addBuildTarget', {
-                  project_root: projectRoot,
-                  name: data.name,
-                  entry: data.entry,
-                });
-                if (response.result?.success) {
-                  action('refreshProjects');
-                }
-              } catch (error) {
-                action('uiLog', {
-                  level: 'error',
-                  message: `Failed to add target: ${
-                    error instanceof Error ? error.message : 'Unknown error'
-                  }`,
-                });
+              const response = await sendActionWithResponse('addBuildTarget', {
+                project_root: projectRoot,
+                name: data.name,
+                entry: data.entry,
+              });
+              if (!response.result?.success) {
+                const errorMsg = response.result?.error || 'Failed to add build';
+                throw new Error(errorMsg);
               }
+              action('refreshProjects');
             }}
             onGenerateManufacturingData={handleGenerateManufacturingData}
             queuedBuilds={queuedBuilds}
@@ -405,6 +403,38 @@ export function Sidebar() {
             onClose={handlePackageClose}
             onInstall={handlePackageInstall}
           />
+        </div>
+      )}
+
+      {/* Disconnected overlay - covers sidebar when backend is down */}
+      {!isConnected && (
+        <div className="disconnected-overlay">
+          <div className="disconnected-content">
+            <svg className="disconnected-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <div className="disconnected-title">Internal Server Error</div>
+            <div className="disconnected-message">
+              {isVsCodeWebview() && (
+                <button
+                  className="disconnected-menu-button"
+                  onClick={() => postMessage({ type: 'showBackendMenu' })}
+                >
+                  Open Troubleshooting Menu
+                </button>
+              )}
+              <p className="disconnected-discord">
+                Need help? <a href="https://discord.gg/CRe5xaDBr3" target="_blank" rel="noopener noreferrer">Join our Discord</a>
+              </p>
+              <div className="disconnected-troubleshooting">
+                <p className="disconnected-troubleshooting-header">Troubleshooting Steps</p>
+                <p>Use <code>Clear Logs</code> from the menu above</p>
+                <p>Use <code>Restart Extension Host</code> from the menu above</p>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

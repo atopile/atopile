@@ -125,7 +125,7 @@ export function ProjectExplorerCard({ builds, projectRoot, defaultExpanded = fal
           {isLoading && (!builds || builds.length === 0) && (
             <div className="project-explorer-loading">
               <Loader2 size={12} className="spin" />
-              <span>Loading build targets...</span>
+              <span>Loading builds...</span>
             </div>
           )}
           {builds.map((build) => {

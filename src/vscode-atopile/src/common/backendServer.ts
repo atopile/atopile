@@ -67,6 +67,14 @@ function getWorkspaceRoot(): string | undefined {
 }
 
 /**
+ * Get all workspace root paths.
+ */
+function getWorkspaceRoots(): string[] {
+    const folders = vscode.workspace.workspaceFolders;
+    return folders ? folders.map(f => f.uri.fsPath) : [];
+}
+
+/**
  * Build the WebSocket URL from a port number.
  */
 /**
@@ -302,25 +310,31 @@ class BackendServerManager implements vscode.Disposable {
             { label: '', kind: vscode.QuickPickItemKind.Separator, action: 'none' },
         ];
 
-        if (this._isConnected || this._serverState === 'running') {
-            items.push({
-                label: '$(debug-restart) Restart Backend Server',
-                description: 'Stop and restart the backend server',
-                action: 'restart',
-            });
-        } else {
-            items.push({
-                label: '$(play) Start Backend Server',
-                description: 'Start the backend server',
-                action: 'start',
-            });
-        }
-
         items.push({
             label: '$(output) Show Server Logs',
             description: 'Show the backend server output',
             action: 'show_logs',
         });
+
+        // Add troubleshooting section when disconnected
+        if (!this._isConnected) {
+            items.push({ label: '', kind: vscode.QuickPickItemKind.Separator, action: 'none' });
+            items.push({
+                label: '$(terminal) Clear Logs',
+                description: 'Run "ato dev clear-logs" in terminal',
+                action: 'clear_logs',
+            });
+            items.push({
+                label: '$(refresh) Restart Extension Host',
+                description: 'Restart VS Code extension host',
+                action: 'restart_extension_host',
+            });
+            items.push({
+                label: '$(comment-discussion) Join Discord',
+                description: 'Get help from the community',
+                action: 'open_discord',
+            });
+        }
 
         const selected = await vscode.window.showQuickPick(items, {
             placeHolder: 'Backend Server Configuration',
@@ -330,14 +344,19 @@ class BackendServerManager implements vscode.Disposable {
         if (!selected || selected.action === 'none') return;
 
         switch (selected.action) {
-            case 'restart':
-                await this.restartServer();
-                break;
-            case 'start':
-                await this.startServer();
-                break;
             case 'show_logs':
                 this.showLogs();
+                break;
+            case 'clear_logs':
+                const terminal = vscode.window.createTerminal('atopile');
+                terminal.show();
+                terminal.sendText('ato dev clear-logs');
+                break;
+            case 'restart_extension_host':
+                void vscode.commands.executeCommand('workbench.action.restartExtensionHost');
+                break;
+            case 'open_discord':
+                void vscode.env.openExternal(vscode.Uri.parse('https://discord.gg/CRe5xaDBr3'));
                 break;
         }
     }
@@ -426,7 +445,8 @@ class BackendServerManager implements vscode.Disposable {
         this._updateStatusBar();
 
         try {
-            const workspaceRoot = getWorkspaceRoot();
+            const workspaceRoots = getWorkspaceRoots();
+            const workspaceRoot = workspaceRoots[0]; // Use first for cwd
             const resolved = await resolveAtoBinForWorkspace();
             if (!resolved) {
                 this._lastError = 'ato binary not found';
@@ -444,14 +464,15 @@ class BackendServerManager implements vscode.Disposable {
             const port = await getAvailablePort();
             this._setPort(port);
 
-            // Build command args: ato serve backend --port <port> [--workspace <path>]
+            // Build command args: ato serve backend --port <port> [--workspace <path>...]
             const args = [
                 ...atoBin.command.slice(1),
                 'serve', 'backend',
                 '--port', String(this.port),
             ];
-            if (workspaceRoot) {
-                args.push('--workspace', workspaceRoot);
+            // Pass all workspace roots to the backend
+            for (const root of workspaceRoots) {
+                args.push('--workspace', root);
             }
 
             const command = atoBin.command[0];

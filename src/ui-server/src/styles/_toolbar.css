@@ -44,7 +44,7 @@
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--font-size-md);
   transition: all var(--transition-fast);
 }
 
@@ -116,7 +116,7 @@
   border: none;
   background: transparent;
   color: var(--text-primary);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   outline: none;
 }
 
@@ -165,7 +165,7 @@
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   border-radius: var(--radius-sm);
   cursor: pointer;

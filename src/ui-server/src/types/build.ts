@@ -95,6 +95,7 @@ export interface QueuedBuild {
   elapsedSeconds?: number;
   stages?: Array<{
     name: string;
+    stageId?: string;
     displayName?: string;
     status: string;
     elapsedSeconds?: number;
@@ -123,6 +124,7 @@ export interface ProjectDependency {
 export interface Project {
   root: string;
   name: string;
+  displayPath?: string;  // Relative path for display (e.g., "packages/proj")
   description?: string;  // Project description from ato.yaml
   targets: BuildTarget[];
   dependencies?: ProjectDependency[];  // Project dependencies from ato.yaml

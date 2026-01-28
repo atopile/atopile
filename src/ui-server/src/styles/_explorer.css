@@ -65,13 +65,13 @@
 
 .section-label {
   flex: 1;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-secondary);
 }
 
 .section-count {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   padding: 2px 6px;
@@ -127,7 +127,7 @@
 }
 
 .package-name {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -135,7 +135,7 @@
 }
 
 .package-version {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   font-family: var(--font-mono);
   background: var(--bg-tertiary);
@@ -149,7 +149,7 @@
 }
 
 .package-description {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   padding: var(--spacing-xs) 0;
   font-style: italic;
@@ -219,7 +219,7 @@
 }
 
 .symbol-name {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-family: var(--font-mono);
   color: var(--text-primary);
 }
@@ -340,13 +340,13 @@
 
 .vendor-name {
   flex: 1;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-secondary);
 }
 
 .vendor-count {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   padding: 2px 6px;
@@ -391,14 +391,14 @@
 }
 
 .package-detail-name {
-  font-size: 12px;
+  font-size: var(--font-size-md);
   font-weight: 600;
   color: var(--text-primary);
   font-family: var(--font-mono);
 }
 
 .installed-badge {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   font-weight: 600;
   color: var(--ctp-green);
   background: rgba(166, 227, 161, 0.15);
@@ -416,7 +416,7 @@
 }
 
 .package-detail-description {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   line-height: 1.5;
   margin-bottom: var(--spacing-md);
@@ -436,7 +436,7 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-family: var(--font-mono);
   cursor: pointer;
   outline: none;
@@ -460,7 +460,7 @@
   border: none;
   border-radius: var(--radius-sm);
   color: var(--text-on-accent);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -488,7 +488,7 @@
 }
 
 .symbols-header {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -509,14 +509,14 @@
 
 .type-colon {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
 }
 
 .type-link {
   border: none;
   background: transparent;
   color: var(--ctp-teal);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-family: var(--font-mono);
   padding: 0;
   cursor: pointer;
@@ -610,6 +610,7 @@
    ============================================ */
 
 .unified-layout {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;

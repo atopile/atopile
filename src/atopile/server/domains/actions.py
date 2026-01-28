@@ -19,11 +19,7 @@ from atopile.dataclasses import AppContext, Build, BuildStatus, Log
 from atopile.logging import BuildLogger
 from atopile.model import builds as builds_domain
 from atopile.model.build_queue import (
-    _build_lock,
     _build_queue,
-    _is_duplicate_build,
-    _sync_builds_to_state_async,
-    cancel_build,
 )
 from atopile.model.model_state import model_state
 from atopile.server import path_utils
@@ -42,8 +38,7 @@ log = logging.getLogger(__name__)
 def _handle_build_sync(payload: dict) -> dict:
     """
     Sync helper for build action - handles all blocking I/O and lock operations.
-    Returns a result dict. If successful and needs_state_sync is True, caller should
-    call _sync_builds_to_state_async().
+    Returns a result dict.
     """
     log.info(f"_handle_build_sync called with payload: {payload}")
     project_root = payload.get("projectRoot") or payload.get("project_root", "")
@@ -153,36 +148,35 @@ def _handle_build_sync(payload: dict) -> dict:
                 if all_targets:
                     build_ids = []
                     for target_name in all_targets:
-                        existing_id = _is_duplicate_build(
+                        existing_id = _build_queue.is_duplicate(
                             project_root, target_name, entry
                         )
                         if existing_id:
                             build_ids.append(existing_id)
                             continue
 
-                        with _build_lock:
-                            timestamp = generate_build_timestamp()
-                            build_id = generate_build_id(
-                                project_root, target_name, timestamp
+                        timestamp = generate_build_timestamp()
+                        build_id = generate_build_id(
+                            project_root, target_name, timestamp
+                        )
+
+                        _build_queue.enqueue(
+                            Build(
+                                build_id=build_id,
+                                project_root=project_root,
+                                target=target_name,
+                                timestamp=timestamp,
+                                entry=entry,
+                                standalone=standalone,
+                                frozen=frozen,
+                                status=BuildStatus.QUEUED,
+                                started_at=time.time(),
                             )
-                            model_state.add_build(
-                                Build(
-                                    build_id=build_id,
-                                    project_root=project_root,
-                                    target=target_name,
-                                    timestamp=timestamp,
-                                    entry=entry,
-                                    standalone=standalone,
-                                    frozen=frozen,
-                                    status=BuildStatus.QUEUED,
-                                    started_at=time.time(),
-                                )
-                            )
+                        )
 
                         log.info(
                             f"Enqueueing build {build_id} for target {target_name}"
                         )
-                        _build_queue.enqueue(build_id)
                         build_ids.append(build_id)
 
                     log.info(f"All {len(build_ids)} builds enqueued successfully")
@@ -191,7 +185,6 @@ def _handle_build_sync(payload: dict) -> dict:
                         "message": f"Queued {len(build_ids)} builds for all targets",
                         "build_ids": build_ids,
                         "targets": all_targets,
-                        "needs_state_sync": True,
                     }
                 targets = ["default"]
             except Exception as exc:
@@ -206,31 +199,29 @@ def _handle_build_sync(payload: dict) -> dict:
     timestamp = generate_build_timestamp()
 
     for target_name in targets:
-        existing_build_id = _is_duplicate_build(project_root, target_name, entry)
+        existing_build_id = _build_queue.is_duplicate(project_root, target_name, entry)
         if existing_build_id:
             build_ids.append(existing_build_id)
             continue
 
         log.info(f"Creating build for target={target_name}, entry={entry}")
-        with _build_lock:
-            build_id = generate_build_id(project_root, target_name, timestamp)
-            log.info(f"Allocated build_id={build_id}")
-            model_state.add_build(
-                Build(
-                    build_id=build_id,
-                    project_root=project_root,
-                    target=target_name,
-                    timestamp=timestamp,
-                    entry=entry,
-                    standalone=standalone,
-                    frozen=frozen,
-                    status=BuildStatus.QUEUED,
-                    started_at=time.time(),
-                )
+        build_id = generate_build_id(project_root, target_name, timestamp)
+        log.info(f"Allocated build_id={build_id}")
+        _build_queue.enqueue(
+            Build(
+                build_id=build_id,
+                project_root=project_root,
+                target=target_name,
+                timestamp=timestamp,
+                entry=entry,
+                standalone=standalone,
+                frozen=frozen,
+                status=BuildStatus.QUEUED,
+                started_at=time.time(),
             )
+        )
 
         log.info(f"Enqueueing build {build_id}")
-        _build_queue.enqueue(build_id)
         build_ids.append(build_id)
 
     log.info(f"All {len(build_ids)} builds enqueued successfully")
@@ -240,15 +231,37 @@ def _handle_build_sync(payload: dict) -> dict:
             "success": True,
             "message": f"Build queued for {build_label}",
             "build_id": build_ids[0],
-            "needs_state_sync": True,
         }
     else:
         return {
             "success": True,
             "message": f"Queued {len(build_ids)} builds for {build_label}",
             "build_ids": build_ids,
-            "needs_state_sync": True,
         }
+
+
+def _resolve_build_target(
+    project_root: str, build_id: str, payload: dict
+) -> tuple[str | None, str | None]:
+    target_name = payload.get("targetName") or payload.get("target")
+    resolved_project_root = project_root
+
+    if build_id:
+        build_info = builds_domain.handle_get_build_info(build_id)
+        if isinstance(build_info, dict):
+            target_name = (
+                target_name
+                or build_info.get("target")
+                or build_info.get("name")
+                or build_info.get("build_name")
+            )
+            resolved_project_root = (
+                resolved_project_root
+                or build_info.get("project_root")
+                or build_info.get("projectRoot")
+            )
+
+    return target_name, resolved_project_root
 
 
 async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dict:
@@ -331,14 +344,6 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 result = await asyncio.to_thread(_handle_build_sync, payload)
                 log.info(f"_handle_build_sync returned: {result}")
 
-                # Sync state if build was queued (async operation)
-                if result.get("needs_state_sync"):
-                    log.info("Syncing builds to state...")
-                    await _sync_builds_to_state_async()
-                    log.info("State sync complete")
-
-                # Remove internal flag before returning
-                result.pop("needs_state_sync", None)
                 return result
             except Exception as build_exc:
                 log.exception(f"Build action failed with exception: {build_exc}")
@@ -349,10 +354,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             if not build_id:
                 return {"success": False, "error": "Missing buildId"}
 
-            if not model_state.find_build(build_id):
+            if not _build_queue.find_build(build_id):
                 return {"success": False, "error": f"Build not found: {build_id}"}
 
-            success = cancel_build(build_id)
+            success = _build_queue.cancel_build(build_id)
             if success:
                 return {"success": True, "message": f"Build {build_id} cancelled"}
             return {
@@ -1184,15 +1189,21 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             project_root = payload.get("projectId", "")
             build_id = payload.get("buildId", "")
 
-            if not project_root or not build_id:
-                return {"success": False, "error": "Missing projectId or buildId"}
+            target_name, resolved_project_root = _resolve_build_target(
+                project_root, build_id, payload
+            )
+            if not resolved_project_root or not target_name:
+                return {
+                    "success": False,
+                    "error": "Missing projectId or buildId/target",
+                }
 
-            project_path = Path(project_root)
-            target = path_utils.resolve_layout_path(project_path, build_id)
+            project_path = Path(resolved_project_root)
+            target = path_utils.resolve_layout_path(project_path, target_name)
             if not target or not target.exists():
                 return {
                     "success": False,
-                    "error": f"Layout not found for build: {build_id}",
+                    "error": f"Layout not found for target: {target_name}",
                 }
 
             await server_state.emit_event("open_layout", {"path": str(target)})
@@ -1202,15 +1213,21 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             project_root = payload.get("projectId", "")
             build_id = payload.get("buildId", "")
 
-            if not project_root or not build_id:
-                return {"success": False, "error": "Missing projectId or buildId"}
+            target_name, resolved_project_root = _resolve_build_target(
+                project_root, build_id, payload
+            )
+            if not resolved_project_root or not target_name:
+                return {
+                    "success": False,
+                    "error": "Missing projectId or buildId/target",
+                }
 
-            project_path = Path(project_root)
-            target = path_utils.resolve_layout_path(project_path, build_id)
+            project_path = Path(resolved_project_root)
+            target = path_utils.resolve_layout_path(project_path, target_name)
             if not target or not target.exists():
                 return {
                     "success": False,
-                    "error": f"Layout not found for build: {build_id}",
+                    "error": f"Layout not found for target: {target_name}",
                 }
 
             await server_state.emit_event("open_kicad", {"path": str(target)})
@@ -1220,15 +1237,21 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             project_root = payload.get("projectId", "")
             build_id = payload.get("buildId", "")
 
-            if not project_root or not build_id:
-                return {"success": False, "error": "Missing projectId or buildId"}
+            target_name, resolved_project_root = _resolve_build_target(
+                project_root, build_id, payload
+            )
+            if not resolved_project_root or not target_name:
+                return {
+                    "success": False,
+                    "error": "Missing projectId or buildId/target",
+                }
 
-            project_path = Path(project_root)
-            target = path_utils.resolve_3d_path(project_path, build_id)
+            project_path = Path(resolved_project_root)
+            target = path_utils.resolve_3d_path(project_path, target_name)
             if not target or not target.exists():
                 return {
                     "success": False,
-                    "error": f"3D view not found for build: {build_id}",
+                    "error": f"3D view not found for target: {target_name}",
                 }
 
             await server_state.emit_event("open_3d", {"path": str(target)})
@@ -1236,9 +1259,12 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
         elif action == "setLogViewCurrentId":
             build_id = payload.get("buildId")
+            stage = payload.get("stage")
             client_state.log_view_current_id = build_id
+            client_state.log_view_current_stage = stage
             await server_state.emit_event(
-                "log_view_current_id_changed", {"buildId": build_id}
+                "log_view_current_id_changed",
+                {"buildId": build_id, "stage": stage},
             )
             return {"success": True}
 
@@ -1246,6 +1272,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             return {
                 "success": True,
                 "buildId": client_state.log_view_current_id,
+                "stage": client_state.log_view_current_stage,
             }
 
         elif action == "setAtopileSource":

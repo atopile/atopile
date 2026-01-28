@@ -59,8 +59,10 @@ def main():
         if result.returncode != 0:
             sys.exit(result.returncode)
 
-    # Convert workspace path (use first provided or cwd)
-    workspace_path = Path(args.workspace[0]) if args.workspace else Path.cwd()
+    # Convert workspace paths (use all provided or cwd)
+    workspace_paths = (
+        [Path(p) for p in args.workspace] if args.workspace else [Path.cwd()]
+    )
 
     # Check if port is already in use
     port = args.port
@@ -73,7 +75,7 @@ def main():
                 print(f"Failed to stop process on port {port}")
                 sys.exit(1)
         elif is_atopile_server_running(port):
-            print(f"Atopile server already running on port {port}")
+            print(f"atopile server already running on port {port}")
             print(f"Dashboard available at http://localhost:{port}")
             print("Use --force to restart, or --port to use a different port")
             sys.exit(0)
@@ -91,11 +93,11 @@ def main():
     # Create and start server
     server = DashboardServer(
         port=port,
-        workspace_path=workspace_path,
+        workspace_paths=workspace_paths,
     )
 
     print(f"Starting dashboard server on http://localhost:{port}")
-    print(f"Workspace path: {workspace_path}")
+    print(f"Workspace paths: {', '.join(str(p) for p in workspace_paths)}")
     print("Press Ctrl+C to stop")
 
     server.start()

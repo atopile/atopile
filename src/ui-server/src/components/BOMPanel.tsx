@@ -433,7 +433,7 @@ export function BOMPanel({
   const [latestBuildInfo, setLatestBuildInfo] = useState<{
     build_id?: string
     started_at?: number
-    completed_at?: number
+    elapsed_seconds?: number
   } | null>(null)
   const [forceRefreshBuildId, setForceRefreshBuildId] = useState<string | null>(null)
   const lcscRequestIdRef = useRef(0)
@@ -461,9 +461,7 @@ export function BOMPanel({
         setLatestBuildInfo(build ? {
           build_id: build.build_id,
           started_at: build.started_at,
-          completed_at: build.completed_at ?? (
-            build.started_at && build.duration ? build.started_at + build.duration : undefined
-          ),
+          elapsed_seconds: build.elapsed_seconds,
         } : null)
       })
       .catch((error) => {
@@ -475,7 +473,9 @@ export function BOMPanel({
   // Check if build is stale (older than 24 hours) to trigger LCSC refresh
   useEffect(() => {
     if (!latestBuildInfo?.build_id) return
-    const timestamp = latestBuildInfo.completed_at ?? latestBuildInfo.started_at
+    const timestamp = latestBuildInfo.started_at && latestBuildInfo.elapsed_seconds
+      ? latestBuildInfo.started_at + latestBuildInfo.elapsed_seconds
+      : latestBuildInfo.started_at
     if (!timestamp) return
     const ageSeconds = Date.now() / 1000 - timestamp
     const isBuildStale = ageSeconds > 24 * 60 * 60
@@ -699,9 +699,9 @@ export function BOMPanel({
       return `Run a build for "${selectedTargetName}" to generate the Bill of Materials`
     }
     if (selectedProjectRoot) {
-      return 'Select a target and run a build to generate the Bill of Materials'
+      return 'Select a build and run it to generate the Bill of Materials'
     }
-    return 'Select a project and target, then run a build'
+    return 'Select a project and build, then run it'
   }
 
   // Error state - but make 404 errors more user-friendly

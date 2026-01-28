@@ -361,21 +361,9 @@ export const ProjectCard = memo(function ProjectCard({
   // Live timer for building state
   const buildingBuilds = project.builds.filter(b => b.status === 'building')
   const maxElapsedFromBuilds = buildingBuilds.length > 0
-    ? Math.max(...buildingBuilds.map(b => b.elapsedSeconds || 0))
+    ? Math.max(...buildingBuilds.map(b => b.elapsedSeconds ?? 0))
     : 0
-  const [displayElapsed, setDisplayElapsed] = useState(maxElapsedFromBuilds)
-
-  useEffect(() => {
-    if (!isBuilding) {
-      setDisplayElapsed(0)
-      return
-    }
-    setDisplayElapsed(maxElapsedFromBuilds)
-    const interval = setInterval(() => {
-      setDisplayElapsed(prev => prev + 1)
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [isBuilding, maxElapsedFromBuilds])
+  const displayElapsed = isBuilding ? maxElapsedFromBuilds : 0
 
   const formatBuildTime = (seconds: number): string => {
     const hrs = Math.floor(seconds / 3600)

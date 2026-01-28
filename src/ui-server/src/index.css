@@ -113,7 +113,7 @@
   background: transparent;
   border: none;
   color: var(--text-secondary);
-  font-size: calc(var(--font-size-base) * 0.9);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   letter-spacing: 0.15px;
   text-align: left;

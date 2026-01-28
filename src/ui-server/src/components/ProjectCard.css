@@ -100,7 +100,7 @@
 
 /* Publisher badge (package mode) */
 .package-publisher-tag {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: var(--text-muted);
   opacity: 0.7;
@@ -279,7 +279,7 @@
   height: 28px;
   padding: 0 8px;
   width: 100%;
-  font-size: 11px;
+  font-size: var(--font-size-base);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
@@ -328,7 +328,7 @@
   height: 28px;
   padding: 0 8px;
   width: 100%;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
@@ -386,7 +386,7 @@
 }
 
 .version-option .latest-tag {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   padding: 1px 4px;
   border-radius: var(--radius-sm);
   background: rgba(166, 227, 161, 0.15);
@@ -407,7 +407,7 @@
   gap: 6px;
   height: 28px;
   padding: 0 16px;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
@@ -589,7 +589,7 @@
   gap: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-sm);
   margin-bottom: var(--spacing-sm);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);

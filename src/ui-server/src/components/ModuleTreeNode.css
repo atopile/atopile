@@ -90,7 +90,7 @@
 
 .module-tree-type {
   margin-left: auto;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   opacity: 0.7;
   white-space: nowrap;
 }
@@ -115,7 +115,7 @@
 
 .module-tree-count {
   margin-left: auto;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   padding: 0 6px;
@@ -137,11 +137,11 @@
 
 .module-tree-group-label {
   font-weight: 600;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
 }
 
 .module-tree-group-count {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   margin-left: 4px;
 }

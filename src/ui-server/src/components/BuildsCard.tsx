@@ -154,7 +154,7 @@ export function BuildsCard({
                 e.stopPropagation();
                 onAddBuild?.(projectId);
               }}
-              title="Add new build target"
+              title="Add build"
             >
               <Plus size={12} />
               <span>Add build</span>

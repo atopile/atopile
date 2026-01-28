@@ -172,9 +172,8 @@ export const api = {
         project_root: string;
         target: string;
         started_at: number;
-        completed_at: number | null;
         status: string;
-        duration: number | null;
+        elapsed_seconds: number | null;
         warnings: number;
         errors: number;
       }>(`/api/build/${buildId}/info`),

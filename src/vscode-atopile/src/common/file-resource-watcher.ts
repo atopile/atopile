@@ -105,6 +105,9 @@ export abstract class FileResourceWatcher<T extends FileResource> {
     protected abstract getResourceForBuild(build: Build | undefined): T | undefined;
 
     public getCurrent(): T | undefined {
+        if (this.current) {
+            return this.current;
+        }
         const build = getBuildTarget();
         if (!build) {
             return undefined;

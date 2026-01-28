@@ -92,7 +92,7 @@
 }
 
 .dependency-section-count {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   padding: 1px 6px;
@@ -152,7 +152,7 @@
 }
 
 .dependency-via {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   padding: 1px 6px;

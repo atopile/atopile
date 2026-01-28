@@ -25,7 +25,7 @@
   padding: var(--spacing-xs) var(--spacing-sm);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -79,7 +79,7 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.4px;
@@ -95,7 +95,7 @@
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
   color: var(--text-muted);
   background: var(--bg-tertiary);
@@ -205,7 +205,7 @@
 }
 
 .build-entry {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   font-family: var(--font-mono);
   white-space: nowrap;
@@ -217,7 +217,7 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-family: var(--font-mono);
 }
 
@@ -255,7 +255,7 @@
   align-items: center;
   gap: 4px;
   padding: 4px 8px;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   border: none;
   background: var(--bg-secondary);
   color: var(--text-secondary);
@@ -381,7 +381,7 @@
 .stage-labels {
   display: flex;
   justify-content: space-between;
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
 }
 
@@ -406,7 +406,7 @@
   align-items: center;
   gap: var(--spacing-xs);
   margin-top: var(--spacing-sm);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--info);
 }
 

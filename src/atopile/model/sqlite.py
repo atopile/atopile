@@ -1,16 +1,18 @@
 import json
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
 
 from atopile.dataclasses import Build, BuildStatus, LogRow, TestLogRow
+from atopile.logging import get_logger
 from faebryk.libs.paths import get_log_dir
 
 BUILD_HISTORY_DB = get_log_dir() / Path("build_history.db")
 TEST_LOGS_DB = get_log_dir() / Path("test_logs.db")
 BUILD_LOGS_DB = get_log_dir() / Path("build_logs.db")
 
-
+logger = get_logger(__name__)
 
 # build_history.db -> build_history schema helper
 class BuildHistory:
@@ -31,8 +33,6 @@ class BuildHistory:
                     return_code      INTEGER,
                     error            TEXT,
                     started_at       REAL,
-                    completed_at     REAL,
-                    duration         REAL,
                     elapsed_seconds  REAL,
                     stages           TEXT,
                     warnings         INTEGER,
@@ -57,8 +57,6 @@ class BuildHistory:
             return_code=row["return_code"],
             error=row["error"],
             started_at=row["started_at"],
-            completed_at=row["completed_at"],
-            duration=row["duration"],
             elapsed_seconds=row["elapsed_seconds"] or 0.0,
             stages=json.loads(row["stages"]) if row["stages"] else [],
             warnings=row["warnings"],
@@ -70,62 +68,81 @@ class BuildHistory:
 
     @staticmethod
     def set(build: Build) -> None:
-        with sqlite3.connect(BUILD_HISTORY_DB) as conn:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO build_history
-                    (build_id, name, display_name, project_name,
-                     project_root, target, entry, status,
-                     return_code, error, started_at, completed_at,
-                     duration, elapsed_seconds, stages, warnings,
-                     errors, timestamp, standalone, frozen)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    build.build_id,
-                    build.name,
-                    build.display_name,
-                    build.project_name,
-                    build.project_root,
-                    build.target,
-                    build.entry,
-                    build.status.value,
-                    build.return_code,
-                    build.error,
-                    build.started_at,
-                    build.completed_at,
-                    build.duration,
-                    build.elapsed_seconds,
-                    json.dumps(build.stages),
-                    build.warnings,
-                    build.errors,
-                    build.timestamp,
-                    int(build.standalone),
-                    int(build.frozen),
-                ),
+        """Persist a Build record to the history database. Exits on error."""
+        try:
+            with sqlite3.connect(BUILD_HISTORY_DB) as conn:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO build_history
+                        (build_id, name, display_name, project_name,
+                         project_root, target, entry, status,
+                         return_code, error, started_at,
+                         elapsed_seconds, stages, warnings,
+                         errors, timestamp, standalone, frozen)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        build.build_id,
+                        build.name,
+                        build.display_name,
+                        build.project_name,
+                        build.project_root,
+                        build.target,
+                        build.entry,
+                        build.status.value,
+                        build.return_code,
+                        build.error,
+                        build.started_at,
+                        build.elapsed_seconds,
+                        json.dumps(build.stages),
+                        build.warnings,
+                        build.errors,
+                        build.timestamp,
+                        int(bool(build.standalone)),
+                        int(bool(build.frozen)),
+                    ),
+                )
+        except Exception:
+            logger.exception(
+                f"Failed to save build {build.build_id} to history. Try running 'ato dev clear_logs'."
             )
+            os._exit(1)
 
     @staticmethod
     def get(build_id: str) -> Build | None:
-        with sqlite3.connect(BUILD_HISTORY_DB) as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT * FROM build_history WHERE build_id = ?",
-                (build_id,),
-            ).fetchone()
-        if row is None:
-            return None
-        return BuildHistory._from_row(row)
+        """Get a build by ID. Returns None if missing, exits on error."""
+        try:
+            with sqlite3.connect(BUILD_HISTORY_DB) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(
+                    "SELECT * FROM build_history WHERE build_id = ?",
+                    (build_id,),
+                ).fetchone()
+            if row is None:
+                return None
+            return BuildHistory._from_row(row)
+        except Exception:
+            logger.exception(
+                f"Failed to get build {build_id} from history. Try running 'ato dev clear_logs'."
+            )
+            os._exit(1)
 
     @staticmethod
     def get_all(limit: int = 50) -> list[Build]:
-        with sqlite3.connect(BUILD_HISTORY_DB) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT * FROM build_history ORDER BY started_at DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-        return [BuildHistory._from_row(r) for r in rows]
+        """Get recent builds. Exits on error."""
+        try:
+            with sqlite3.connect(BUILD_HISTORY_DB) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    "SELECT * FROM build_history ORDER BY started_at DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            return [BuildHistory._from_row(r) for r in rows]
+        except Exception:
+            logger.exception(
+                "Failed to load build history. Try running 'ato dev clear_logs'."
+            )
+            os._exit(1)
 
 
 # build_logs.db -> logs table helper
@@ -445,4 +462,3 @@ class Tests:
         assert len(rows) == 1
         assert rows[0]["message"] == "passed"
         assert last_id > 0
-

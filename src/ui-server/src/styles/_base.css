@@ -19,7 +19,7 @@ html, body {
 
 body {
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: var(--font-size-base);
   line-height: 1.4;
   color: var(--text-primary);
   background: var(--bg-primary);
@@ -108,7 +108,7 @@ body {
   align-items: center;
   gap: var(--spacing-sm);
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--font-size-md);
   color: var(--text-primary);
   text-transform: lowercase;
   letter-spacing: 0.5px;
@@ -152,7 +152,7 @@ body {
 /* Version badge in header - don't push to far right */
 .header-title .version-badge {
   margin-left: 0;
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   padding: 1px 5px;
   background: var(--accent-subtle);
   color: var(--accent);
