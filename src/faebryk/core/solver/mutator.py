@@ -1138,13 +1138,17 @@ class MutationMap:
             for pred in relevant_root_predicates:
                 pred.copy_into(g_out)
 
-        mapping = {
-            F.Parameters.is_parameter_operatable.bind_instance(
-                g.bind(node=op.instance.node())
-            ): op
-            for op in F.Parameters.is_parameter_operatable.bind_typegraph(
-                tg_out
-            ).get_instances(g=g_out)
+        out_pos = F.Parameters.is_parameter_operatable.bind_typegraph(
+            tg_out
+        ).get_instances(g=g_out)
+
+        forward_mapping = {
+            F.Parameters.is_parameter_operatable.bind_instance(bound): po
+            for po in out_pos
+            # only if po exists in source graph
+            if fbrk.EdgeTrait.get_owner_node_of(
+                bound_node=(bound := g.bind(node=po.instance.node()))
+            )
         }
 
         if initial_state is not None:
@@ -1155,11 +1159,11 @@ class MutationMap:
                 for k, v in initial_state.compressed_mapping_forwards_complete.items()
                 if v.is_in_graph(g_out)
             }
-            mapping |= forwarded_pos
+            forward_mapping |= forwarded_pos
         else:
             forwarded_pos = None
 
-        for p_old, p_new in mapping.items():
+        for p_old, p_new in forward_mapping.items():
             if forwarded_pos is not None and p_old in forwarded_pos:
                 continue
 
@@ -1215,7 +1219,7 @@ class MutationMap:
                 tg_out=tg_out,
                 algorithm="bootstrap_relevant_preds",
                 iteration=iteration,
-                transformations=Transformations(mutated=mapping),
+                transformations=Transformations(mutated=forward_mapping),
                 G_in=g,
                 G_out=g_out,
                 _processed_predicate_uuids=current_pred_uuids,
