@@ -1036,7 +1036,7 @@ def _merge_monotone_traits(
     po: F.Parameters.is_parameter_operatable,
 ):
     monotone_traits = [
-        (t, type_node)
+        type_node
         for t in builder.traits
         if t is not None
         and fabll.Node.bind_instance(
@@ -1047,22 +1047,12 @@ def _merge_monotone_traits(
     if not monotone_traits:
         return
 
-    out_op = mutator.get_copy(po.as_operand.get())
-    target_node = out_op.get_obj_raw()
-
-    for trait, type_node_in in monotone_traits:
+    for type_node_in in monotone_traits:
         fbrk.TypeGraph.copy_node_into(
             start_node=type_node_in, target_graph=mutator.G_out
         )
         type_node_out = mutator.G_out.bind(node=type_node_in.node())
-
-        if (
-            fbrk.Trait.try_get_trait(
-                target=target_node.instance, trait_type=type_node_out
-            )
-            is None
-        ):
-            fabll.Traits.add_to(target_node, fabll.Node.bind_instance(type_node_out))
+        mutator.try_add_trait_to_owner(po, type_node_out)
 
 
 def insert_expression(

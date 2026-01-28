@@ -120,6 +120,9 @@ class Transformations:
     asserted: OrderedSet[F.Expressions.is_assertable] = field(
         default_factory=OrderedSet[F.Expressions.is_assertable]
     )
+    marked: OrderedSet[F.Parameters.is_parameter_operatable] = field(
+        default_factory=OrderedSet[F.Parameters.is_parameter_operatable]
+    )
 
     _no_log: bool = False
 
@@ -169,6 +172,7 @@ class Transformations:
             or next(iter(created_preds), None) is not None
             or self.terminated
             or self.asserted
+            or self.marked
         )
 
     @property
@@ -178,6 +182,7 @@ class Transformations:
             and all(k is v for k, v in self.mutated.items())
             and not self.created
             and not self.terminated
+            and not self.marked
         )
 
     @staticmethod
@@ -220,12 +225,14 @@ class Transformations:
         # )
         copied = len(self.copied)
         terminated = len(self.terminated)
+        marked = len(self.marked)
         return (
             f"mutated={mutated}"
             f", created={created}"
             f", removed={removed}"
             f", copied={copied}"
             f", terminated={terminated}"
+            f", marked={marked}"
         )
 
     def get_new_predicates(
@@ -1959,6 +1966,28 @@ class Mutator:
 
         assert False, "Unreachable"
 
+    def try_add_trait_to_owner(
+        self, po: F.Parameters.is_parameter_operatable, trait_type_node: graph.BoundNode
+    ):
+        """
+        Adds a trait to the owner of the parameter operatable, if not already present.
+        `trait_type_node` must exist in the same typegraph as `po`.
+        """
+        assert po.is_in_graph(trait_type_node.g()), (
+            "Parameter operatable not in same graph as trait type node"
+        )
+        owner = po.get_obj()
+
+        if (
+            fbrk.Trait.try_get_trait(target=owner.instance, trait_type=trait_type_node)
+            is not None
+        ):
+            return False
+
+        fabll.Traits.add_to(owner, fabll.Node.bind_instance(trait_type_node))
+        self.transformations.marked.add(po)
+        return True
+
     def remove(
         self, *po: F.Parameters.is_parameter_operatable, no_check_roots: bool = False
     ):
@@ -2020,8 +2049,8 @@ class Mutator:
         if po.try_get_sibling_trait(is_relevant) is not None:
             return
 
-        fabll.Traits.create_and_add_instance_to(
-            fabll.Traits(po).get_obj_raw(), is_relevant
+        self.try_add_trait_to_owner(
+            po, is_relevant.bind_typegraph(self.tg_out).get_or_create_type()
         )
 
     def mark_irrelevant(self, po: F.Parameters.is_parameter_operatable):
@@ -2029,11 +2058,10 @@ class Mutator:
             raise ValueError(f"Cannot mark removed operatable as irrelevant: {po}")
         if po in self.transformations.mutated:
             raise ValueError(f"Cannot mark mutated operatable as irrelevant: {po}")
-
         if po.try_get_sibling_trait(is_irrelevant) is not None:
             return
-        fabll.Traits.create_and_add_instance_to(
-            fabll.Traits(po).get_obj_raw(), is_irrelevant
+        self.try_add_trait_to_owner(
+            po, is_irrelevant.bind_typegraph(self.tg_out).get_or_create_type()
         )
 
     def mark_relevance(self):
