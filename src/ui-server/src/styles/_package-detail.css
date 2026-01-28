@@ -929,3 +929,109 @@
 .explorer-panel.compact .explorer-content {
   flex: 1;
 }
+
+/* ============================================
+   KiCanvas Theme Overrides
+   Override kicanvas internal CSS variables to match atopile theme
+   These cascade into the Shadow DOM of the kicanvas-embed web component
+   ============================================ */
+kicanvas-embed {
+  /* Board canvas colors are set on :root in _variables.css (read by patched kicanvas.js via document.documentElement) */
+
+  /* Base UI colors - replace kicanvas defaults with theme colors */
+  --bg: var(--bg-primary);
+  --fg: var(--text-primary);
+
+  /* Remove gradients - use solid colors instead */
+  --gradient-purple-green-light: var(--bg-secondary);
+  --gradient-purple-blue-medium: var(--bg-tertiary);
+  --gradient-purple-blue-dark: var(--bg-primary);
+  --gradient-cyan-blue-light: var(--accent);
+  --gradient-purple-green-highlight: var(--bg-hover);
+  --gradient-purple-red: var(--accent);
+  --gradient-purple-red-highlight: var(--accent-hover);
+
+  /* Activity bar (sidebar) */
+  --activity-bar-bg: var(--bg-secondary);
+  --activity-bar-fg: var(--text-primary);
+  --activity-bar-active-bg: var(--bg-primary);
+  --activity-bar-active-fg: var(--text-primary);
+
+  /* Panel styling */
+  --panel-bg: var(--bg-primary);
+  --panel-fg: var(--text-primary);
+  --panel-border: 1px solid var(--border-subtle);
+  --panel-title-bg: var(--bg-secondary);
+  --panel-title-fg: var(--text-primary);
+  --panel-title-border: 1px solid var(--border-subtle);
+  --panel-title-button-bg: transparent;
+  --panel-title-button-fg: var(--text-secondary);
+  --panel-title-button-hover-bg: var(--accent);
+  --panel-title-button-hover-fg: var(--text-on-accent);
+  --panel-title-button-disabled-fg: var(--text-muted);
+  --panel-subtitle-bg: var(--bg-tertiary);
+  --panel-subtitle-fg: var(--text-primary);
+
+  /* Resizer */
+  --resizer-bg: var(--border-color);
+  --resizer-active-bg: var(--accent);
+
+  /* Scrollbars */
+  --scrollbar-bg: var(--bg-primary);
+  --scrollbar-fg: var(--scrollbar-thumb);
+  --scrollbar-hover-fg: var(--accent);
+  --scrollbar-active-fg: var(--accent);
+
+  /* Buttons */
+  --button-bg: var(--accent);
+  --button-fg: var(--text-on-accent);
+  --button-hover-bg: var(--accent-hover);
+  --button-hover-fg: var(--text-on-accent);
+  --button-focus-outline: 1px solid var(--accent);
+  --button-selected-bg: var(--accent);
+  --button-selected-fg: var(--text-on-accent);
+  --button-disabled-bg: var(--bg-tertiary);
+  --button-disabled-fg: var(--text-muted);
+
+  /* Toolbar buttons */
+  --button-toolbar-bg: var(--bg-secondary);
+  --button-toolbar-fg: var(--text-primary);
+  --button-toolbar-hover-bg: var(--bg-hover);
+  --button-toolbar-hover-fg: var(--text-primary);
+  --button-toolbar-disabled-bg: var(--bg-primary);
+  --button-toolbar-disabled-fg: var(--text-muted);
+
+  /* Menu buttons */
+  --button-menu-bg: transparent;
+  --button-menu-fg: var(--text-primary);
+  --button-menu-hover-bg: transparent;
+  --button-menu-hover-fg: var(--accent);
+
+  /* Dropdowns */
+  --dropdown-bg: var(--bg-secondary);
+  --dropdown-fg: var(--text-primary);
+  --dropdown-hover-bg: var(--bg-hover);
+  --dropdown-hover-fg: var(--text-primary);
+
+  /* Inputs */
+  --input-bg: var(--bg-tertiary);
+  --input-fg: var(--text-primary);
+  --input-accent: var(--accent);
+  --input-focus-outline: 1px solid var(--accent);
+  --input-placeholder: var(--text-muted);
+
+  /* List items */
+  --list-item-bg: var(--bg-primary);
+  --list-item-fg: var(--text-primary);
+  --list-item-active-bg: var(--bg-active);
+  --list-item-hover-bg: var(--bg-hover);
+  --list-item-hover-fg: var(--text-primary);
+
+  /* Grid */
+  --grid-outline: var(--border-subtle);
+
+  /* Tooltip */
+  --tooltip-bg: var(--bg-tertiary);
+  --tooltip-fg: var(--text-primary);
+  --tooltip-border: 1px solid var(--border-color);
+}

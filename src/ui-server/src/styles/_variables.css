@@ -18,6 +18,10 @@
   --ato-navy: #070a23;
   --ato-navy-light: #0d1233;
 
+  /* KiCanvas Board canvas colors - read by patched kicanvas.js via document.documentElement */
+  --kicanvas-board-bg: var(--bg-primary, #1e1e2e);
+  --kicanvas-board-grid: var(--bg-primary, #1e1e2e);
+
   /* Spacing - tighter for sleeker look */
   --spacing-xs: 3px;
   --spacing-sm: 6px;
