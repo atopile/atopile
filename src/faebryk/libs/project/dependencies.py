@@ -494,27 +494,10 @@ class ProjectDependencies:
                 and dep.spec.release != existing_dep.spec.release
             ):
                 if existing_dep not in self.direct_deps:
-                    parents = self.dag.all_parents(existing_dep)
-                    direct_parents = parents & self.direct_deps
-                    parent_list = (
-                        md_list([dep.identifier for dep in direct_parents])
-                        if direct_parents
-                        else "unknown"
-                    )
-                    existing_version = (
-                        existing_dep.spec.release
-                        or (existing_dep.dist.version if existing_dep.dist else None)
-                        or (
-                            existing_dep.cfg.package.version
-                            if existing_dep.cfg and existing_dep.cfg.package
-                            else None
-                        )
-                        or "unknown"
-                    )
                     raise errors.UserException(
                         f"Cannot install {identifier} as it is already installed "
                         f"with a different version from a transitive dependency: "
-                        f"{existing_version}\n\nRequired by:\n{parent_list}"
+                        f"{existing_dep.spec.release}"
                     )
                 if not upgrade:
                     raise errors.UserException(
