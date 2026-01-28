@@ -73,6 +73,7 @@ export interface AtopileSettingsMessage {
     currentVersion?: string;
     branch?: string | null;
     localPath?: string | null;
+    clearSettings?: boolean;  // Clear both ato and from to use default uv
   };
 }
 
