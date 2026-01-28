@@ -324,9 +324,12 @@ def _run_single_build() -> None:
     This is called when ATO_BUILD_WORKER is set by the parent process.
     Stages are written to the build history DB as they complete.
     """
+    import sys
+
     from atopile import buildutil
     from atopile.buildutil import BuildStepContext
     from atopile.config import config
+    from atopile.errors import UserException, iter_leaf_exceptions
     from atopile.model.sqlite import BuildHistory
 
     # Get the single build target from config
@@ -338,8 +341,6 @@ def _run_single_build() -> None:
 
     build_name = build_names[0]
 
-    from atopile.cli.excepthook import install_worker_excepthook
-
     # Read build_id from environment (passed by parent process)
     build_id = os.environ.get("ATO_BUILD_ID")
 
@@ -349,14 +350,19 @@ def _run_single_build() -> None:
     # Create build context to track completed stages
     ctx = BuildStepContext(build=None, build_id=build_id)
 
-    with config.select_build(build_name):
-        install_worker_excepthook()
-        buildutil.build(ctx=ctx)
+    try:
+        with config.select_build(build_name):
+            buildutil.build(ctx=ctx)
+    except (UserException, ExceptionGroup) as exc:
+        for e in iter_leaf_exceptions(exc):
+            logger.error(e, exc_info=e)
+        sys.exit(1)
+    except Exception as exc:
+        logger.exception("Uncaught exception in worker", exc_info=exc)
+        sys.exit(1)
 
     # Note: BuildLogger.close_all() is registered as an atexit handler,
-    # so logs will be flushed during process shutdown. We don't call it
-    # explicitly here because the excepthook needs to log errors AFTER
-    # any exceptions occur, and close_all() would close the writer too early.
+    # so logs will be flushed during process shutdown.
 
 
 def _build_all_projects(
@@ -726,7 +732,7 @@ def _report_build_results(
 ) -> int:
     """Report build results and return exit code (0 for success, 1 for failure)."""
     if failed:
-        from atopile.cli.excepthook import log_discord_banner
+        from atopile.errors import log_discord_banner
 
         log_discord_banner()
         logger.error("Build failed! %d of %d targets failed", len(failed), total)

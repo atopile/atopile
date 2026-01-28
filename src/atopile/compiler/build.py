@@ -28,7 +28,7 @@ from atopile.compiler.gentypegraph import ImportRef
 from atopile.compiler.parse import parse_file, parse_text_as_file
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.config import find_project_dir
-from atopile.exceptions import accumulate
+from atopile.errors import accumulate
 from faebryk.libs.util import import_from_path, once, unique
 
 

@@ -64,7 +64,7 @@ class Test:
         import pytest
 
         import faebryk.core.faebrykpy as fbrk
-        from atopile.exceptions import UserDesignCheckException
+        from atopile.errors import UserDesignCheckException
         from faebryk.libs.app.checks import check_design
 
         g = fabll.graph.GraphView.create()

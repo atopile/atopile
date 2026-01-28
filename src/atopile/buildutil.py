@@ -10,8 +10,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.config import BuildType, config
 from atopile.dataclasses import BuildStage
-from atopile.errors import UserToolNotAvailableError
-from atopile.exceptions import accumulate
+from atopile.errors import UserToolNotAvailableError, accumulate
 from atopile.logging import get_logger
 from faebryk.core.solver.solver import Solver
 from faebryk.libs.util import once
