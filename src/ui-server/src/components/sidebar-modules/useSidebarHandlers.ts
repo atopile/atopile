@@ -106,6 +106,32 @@ export function useSidebarHandlers({
 
       // Notify VS Code extension to select this project
       postMessage({ type: 'selectProject', projectRoot });
+
+      // Wait for the project to appear in the projects list, then select it
+      // Poll for up to 5 seconds (50 attempts * 100ms)
+      const maxAttempts = 50;
+      const pollInterval = 100;
+
+      const waitForProjectAndSelect = async () => {
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, pollInterval));
+          const currentProjects = useStore.getState().projects;
+          const project = currentProjects.find((p: { root: string }) => p.root === projectRoot);
+          if (project) {
+            // Project found - select it
+            const defaultTarget = project.targets?.[0]?.name ?? null;
+            const targetNames = defaultTarget ? [defaultTarget] : [];
+            useStore.getState().selectProject(projectRoot);
+            useStore.getState().setSelectedTargets(targetNames);
+            return;
+          }
+        }
+        // Timeout - select anyway (the project may appear later)
+        useStore.getState().selectProject(projectRoot);
+      };
+
+      // Start polling in background (don't await to avoid blocking)
+      waitForProjectAndSelect();
     }
 
     // Return the project root so the caller can select it after projects are refreshed

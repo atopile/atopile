@@ -1180,23 +1180,17 @@ export function ActiveProjectPanel({
     setCreateProjectError(null)
 
     try {
-      const projectRoot = await onCreateProject(data)
+      await onCreateProject(data)
       // Success - close form
+      // The handler now takes care of waiting for the project and selecting it
       setShowNewProjectForm(false)
-
-      // Select the new project after a short delay to allow projects list to refresh
-      if (projectRoot) {
-        setTimeout(() => {
-          onSelectProject(projectRoot)
-        }, 500)
-      }
     } catch (error) {
       // Display error to user
       setCreateProjectError(error instanceof Error ? error.message : 'Failed to create project')
     } finally {
       setIsCreatingProject(false)
     }
-  }, [onCreateProject, onSelectProject])
+  }, [onCreateProject])
 
   // Reset errors when forms are opened
   useEffect(() => {
