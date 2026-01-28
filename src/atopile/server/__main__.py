@@ -59,14 +59,6 @@ def main():
         if result.returncode != 0:
             sys.exit(result.returncode)
 
-    # Determine logs directory
-    if args.logs_dir:
-        logs_base = Path(args.logs_dir)
-    else:
-        logs_base = Path.cwd() / "build" / "logs"
-
-    logs_base.mkdir(parents=True, exist_ok=True)
-
     # Convert workspace paths (use all provided or cwd)
     workspace_paths = (
         [Path(p) for p in args.workspace] if args.workspace else [Path.cwd()]
@@ -105,7 +97,6 @@ def main():
     )
 
     print(f"Starting dashboard server on http://localhost:{port}")
-    print(f"Logs directory: {logs_base}")
     print(f"Workspace paths: {', '.join(str(p) for p in workspace_paths)}")
     print("Press Ctrl+C to stop")
 

@@ -317,7 +317,6 @@ async def _load_atopile_install_options() -> None:
 
 def create_app(
     summary_file: Optional[Path] = None,
-    logs_base: Optional[Path] = None,
     workspace_paths: Optional[list[Path]] = None,
 ) -> FastAPI:
     """
@@ -338,7 +337,6 @@ def create_app(
 
     ctx = AppContext(
         summary_file=summary_file,
-        logs_base=logs_base,
         workspace_paths=workspace_paths or [],
     )
     app.state.ctx = ctx
@@ -496,7 +494,7 @@ class DashboardServer:
     ):
         self.port = port or find_free_port()
         self.workspace_paths = workspace_paths or []
-        self.app = create_app(logs_base=logs_base, workspace_paths=self.workspace_paths)
+        self.app = create_app(workspace_paths=self.workspace_paths)
         self._server: Optional[uvicorn.Server] = None
         self._thread: Optional[threading.Thread] = None
 
