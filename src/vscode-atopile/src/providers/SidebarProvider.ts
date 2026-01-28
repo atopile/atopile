@@ -45,6 +45,7 @@ interface AtopileSettingsMessage {
     currentVersion?: string;
     branch?: string | null;
     localPath?: string | null;
+    clearSettings?: boolean;  // Clear both ato and from to use default uv
   };
 }
 
@@ -553,6 +554,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       currentVersion: atopile.currentVersion,
       branch: atopile.branch,
       localPath: atopile.localPath,
+      clearSettings: atopile.clearSettings,
     });
 
     // Skip if nothing changed - this is called on every state update
@@ -567,7 +569,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const target = hasWorkspace ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
 
     try {
-      if (atopile.source === 'local' && atopile.localPath) {
+      if (atopile.clearSettings) {
+        // Clear both settings to fall back to extension-managed uv
+        traceInfo(`[SidebarProvider] Clearing atopile.ato and atopile.from (using uv fallback)`);
+        await config.update('ato', undefined, target);
+        await config.update('from', undefined, target);
+      } else if (atopile.source === 'local' && atopile.localPath) {
         // For local mode, set the 'ato' setting directly (it overrides 'from')
         traceInfo(`[SidebarProvider] Setting atopile.ato = ${atopile.localPath}`);
         await config.update('ato', atopile.localPath, target);
