@@ -323,10 +323,10 @@
   flex-direction: column;
 }
 
-/* Disconnected Overlay - positioned below header so settings remain accessible */
+/* Disconnected Overlay - covers entire sidebar */
 .disconnected-overlay {
   position: absolute;
-  top: 40px; /* Below the header */
+  top: 0;
   left: 0;
   right: 0;
   bottom: 0;
