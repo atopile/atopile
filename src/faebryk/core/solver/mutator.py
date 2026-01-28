@@ -1894,16 +1894,12 @@ class Mutator:
             if S_LOG:
                 s.__exit__(None, None, None)
                 logger.debug("Dropped and replaced with True")
-        if (new_expr_e := res.out) is None:
             return self.make_singleton(True).can_be_operand.get()
 
-        assert not self.has_been_mutated(expr_po), (
-            "Expression was mutated during wrap_insert_expression"
-        )
-        # TODO i dont see why this would happen
         # Re-check if mutated during wrap_insert_expression (via _ss_lits_available)
-        # if self.has_been_mutated(expr_po):
-        #     return self.get_mutated(expr_po).as_operand.get()
+        if self.has_been_mutated(expr_po):
+            assert builder.factory is F.Expressions.IsSubset and builder.assert_
+            return self.get_mutated(expr_po).as_operand.get()
 
         new_expr_po = new_expr_e.as_parameter_operatable.get()
         self._mutate(expr_po, new_expr_po)
