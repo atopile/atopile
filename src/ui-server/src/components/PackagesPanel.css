@@ -95,7 +95,7 @@
 }
 
 .section-title {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -103,7 +103,7 @@
 
 .section-count {
   margin-left: auto;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   padding: 1px 6px;
@@ -167,7 +167,7 @@
 }
 
 .marketplace-package-summary {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   line-height: 1.4;
   display: -webkit-box;

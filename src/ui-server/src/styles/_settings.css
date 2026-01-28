@@ -35,13 +35,13 @@
 }
 
 .settings-label-title {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-primary);
 }
 
 .settings-label-desc {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   line-height: 1.3;
 }
@@ -49,7 +49,7 @@
 .settings-input {
   width: 100%;
   padding: 6px 8px;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-family: var(--font-mono);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
@@ -91,7 +91,7 @@
 /* Clickable value button (shows current value, click to edit) */
 .settings-value-btn {
   padding: 4px 10px;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-family: var(--font-mono);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
@@ -115,7 +115,7 @@
 
 .settings-reset-btn {
   padding: 4px 8px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   background: transparent;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
@@ -131,7 +131,7 @@
 
 /* Settings Section Title */
 .settings-section-title {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -147,7 +147,7 @@
 .settings-select {
   width: 100%;
   padding: 6px 28px 6px 8px;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
@@ -194,7 +194,7 @@
   justify-content: center;
   gap: 4px;
   padding: 6px 8px;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
@@ -228,7 +228,7 @@
 /* Settings hint text */
 .settings-hint {
   display: block;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   margin-top: 4px;
   word-break: break-all;
@@ -257,7 +257,7 @@
 .branch-search-input {
   width: 100%;
   padding: 6px 8px 6px 26px;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
@@ -282,7 +282,7 @@
 .branch-current-value {
   position: absolute;
   left: 26px;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   pointer-events: none;
 }
@@ -308,7 +308,7 @@
   gap: 6px;
   width: 100%;
   padding: 6px 8px;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   background: transparent;
   border: none;
   color: var(--text-secondary);
@@ -341,7 +341,7 @@
 .branch-tag {
   margin-left: auto;
   padding: 1px 4px;
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   background: var(--bg-tertiary);
   border-radius: 2px;
   color: var(--text-muted);
@@ -349,7 +349,7 @@
 
 .branch-no-results {
   padding: 8px;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--text-muted);
   text-align: center;
 }
@@ -398,7 +398,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   margin-bottom: 6px;
 }
@@ -437,7 +437,7 @@
   border: 1px solid var(--ctp-red);
   border-radius: var(--radius-sm);
   margin-bottom: var(--spacing-sm);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--ctp-red);
 }
 
@@ -451,7 +451,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   padding: var(--spacing-xs) 0;
 }
@@ -475,7 +475,7 @@
 }
 
 .detected-label {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   margin-right: 2px;
 }
@@ -485,7 +485,7 @@
   align-items: center;
   gap: 4px;
   padding: 2px 6px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
@@ -513,7 +513,7 @@
 
 .detected-version {
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
 }
 
 .detected-item.active .detected-version {
@@ -664,7 +664,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   padding: 4px 0;
   color: var(--text-muted);
 }
@@ -699,7 +699,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--ato-orange);
   padding: 6px 0 2px;
 }

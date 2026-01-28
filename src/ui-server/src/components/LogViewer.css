@@ -844,7 +844,7 @@
 
 .lv-tree-toggle-icon {
   display: inline-block;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   transition: transform 0.15s ease;
 }
 
@@ -858,7 +858,7 @@
 
 /* Child count badge when collapsed */
 .lv-tree-child-count {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   border-radius: 3px;
