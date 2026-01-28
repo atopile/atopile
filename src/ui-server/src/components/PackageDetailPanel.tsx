@@ -462,7 +462,7 @@ export function PackageDetailPanel({
                   className={`selector-trigger ${buildDropdownOpen ? 'open' : ''}`}
                   onClick={() => setBuildDropdownOpen(!buildDropdownOpen)}
                 >
-                  <span className="selector-label">{selectedBuildTarget || 'Select target'}</span>
+                  <span className="selector-label">{selectedBuildTarget || 'Select build'}</span>
                   <ChevronDown className={`selector-chevron ${buildDropdownOpen ? 'rotated' : ''}`} />
                 </button>
                 {buildDropdownOpen && (
