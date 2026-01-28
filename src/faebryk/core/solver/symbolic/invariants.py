@@ -811,7 +811,7 @@ class Folds:
             return res
 
         # Check if factory has is_reflexive trait
-        if not builder.factory.bind_typegraph(
+        if builder.factory.bind_typegraph(
             mutator.tg_in
         ).check_if_instance_of_type_has_trait(F.Expressions.is_reflexive):
             res = Folds._no_reflexive_tautologies(mutator, builder)
