@@ -581,13 +581,22 @@ export const useStore = create<Store>()(
       },
 
       // Atopile config
-      setAtopileConfig: (update) =>
-        set((state) => ({
-          atopile: {
+      setAtopileConfig: (update) => {
+        console.log('[Store] setAtopileConfig update:', update);
+        set((state) => {
+          const newAtopile = {
             ...state.atopile,
             ...update,
-          },
-        })),
+          };
+          console.log('[Store] setAtopileConfig new state:', {
+            actualBinaryPath: newAtopile.actualBinaryPath,
+            localPath: newAtopile.localPath,
+            source: newAtopile.source,
+            actualVersion: newAtopile.actualVersion,
+          });
+          return { atopile: newAtopile };
+        });
+      },
 
       // Project data
       setProjectModules: (projectRoot, modules) =>

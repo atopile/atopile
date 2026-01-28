@@ -940,60 +940,39 @@
   color: var(--text-muted);
 }
 
-/* Restart button - shown when settings changed and restart needed */
-.atopile-restart-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  background: rgba(250, 179, 135, 0.15);
-  border: 1px solid var(--ctp-peach);
-  color: var(--ctp-peach);
-}
-
-.atopile-restart-button:hover {
-  background: rgba(250, 179, 135, 0.25);
-  transform: translateY(-1px);
-}
-
-.atopile-restart-button:active {
-  transform: translateY(0);
-}
-
-.atopile-restart-button svg {
-  flex-shrink: 0;
-  color: var(--ctp-peach);
-}
-
-/* Health status: restart-needed (red warning) */
+/* Health status: restart-needed (yellow warning) */
 .atopile-health-status.health-restart-needed {
-  background: rgba(243, 139, 168, 0.1);
-  border: 1px solid var(--ctp-red);
-  color: var(--ctp-red);
+  background: rgba(249, 226, 175, 0.15);
+  border: 1px solid var(--ctp-yellow);
+  color: var(--ctp-yellow);
 }
 
 .atopile-health-status.health-restart-needed svg {
-  color: var(--ctp-red);
+  color: var(--ctp-yellow);
 }
 
-/* Restart container - stacks warning message and button */
-.atopile-restart-container {
+/* Health message container for multi-line messages */
+.health-message-container {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
 }
 
-.atopile-restart-container .atopile-health-status {
-  padding: 8px 10px;
+.health-message-path {
+  font-size: 10px;
+  opacity: 0.8;
+  word-break: break-all;
 }
 
-.atopile-restart-container .atopile-restart-button {
-  padding: 8px 12px;
+/* Validation success with resolved path */
+.validation-success {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.validation-success .resolved-path {
+  font-size: 10px;
+  opacity: 0.8;
+  word-break: break-all;
 }

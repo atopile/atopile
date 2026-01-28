@@ -669,6 +669,7 @@ function handleEventMessage(message: EventMessage): void {
       void refreshProblems();
       break;
     case 'atopile_config_changed':
+      console.log('[WS] Received atopile_config_changed raw data:', JSON.stringify(data, null, 2));
       updateAtopileConfig(data);
       break;
     case 'log_view_current_id_changed':
@@ -730,6 +731,22 @@ function updateAtopileConfig(data: Record<string, unknown>): void {
   if (actualSource !== null) {
     update.actualSource = actualSource;
   }
+
+  const actualBinaryPath =
+    (typeof data.actual_binary_path === 'string' && data.actual_binary_path) ||
+    (typeof data.actualBinaryPath === 'string' && data.actualBinaryPath) ||
+    null;
+  if (actualBinaryPath !== null) {
+    update.actualBinaryPath = actualBinaryPath;
+  }
+
+  console.log('[WS] updateAtopileConfig received:', {
+    actualVersion,
+    actualSource,
+    actualBinaryPath,
+    source: data.source,
+    localPath: data.local_path || data.localPath,
+  });
 
   // User's selection in the dropdown
   if (typeof data.source === 'string') {
@@ -796,21 +813,9 @@ function updateAtopileConfig(data: Record<string, unknown>): void {
 
   if (Object.keys(update).length > 0) {
     useStore.getState().setAtopileConfig(update);
-
-    // Forward atopile settings changes to VS Code extension
-    // This triggers the extension to update VS Code settings and restart the backend if needed
-    const atopile = useStore.getState().atopile;
-    if (atopile) {
-      postMessage({
-        type: 'atopileSettings',
-        atopile: {
-          source: atopile.source,
-          currentVersion: atopile.currentVersion,
-          branch: atopile.branch,
-          localPath: atopile.localPath,
-        },
-      });
-    }
+    // NOTE: Don't forward backend state to VS Code settings here.
+    // Settings are only saved when the user explicitly changes them in SidebarHeader.
+    // The backend state is informational (what's currently running), not the user's preference.
   }
 }
 

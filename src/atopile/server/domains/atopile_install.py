@@ -198,6 +198,11 @@ async def validate_local_path(path: str) -> dict:
     else:
         return {"valid": False, "version": None, "error": "Invalid path type"}  # noqa: E501
 
+    # Get the resolved binary path (first element of command, or second if using python)
+    resolved_path = (
+        command[-1] if len(command) > 1 and command[0] == sys.executable else command[0]
+    )
+
     # Try to get version using self-check (fastest)
     try:
         result = await asyncio.to_thread(
@@ -210,7 +215,12 @@ async def validate_local_path(path: str) -> dict:
         )
         if result.returncode == 0:
             version = result.stdout.strip()
-            return {"valid": True, "version": version, "error": None}
+            return {
+                "valid": True,
+                "version": version,
+                "error": None,
+                "resolved_path": resolved_path,
+            }
 
         # If self-check fails, try --version
         result = await asyncio.to_thread(
@@ -223,18 +233,34 @@ async def validate_local_path(path: str) -> dict:
         )
         if result.returncode == 0:
             version = result.stdout.strip()
-            return {"valid": True, "version": version, "error": None}
+            return {
+                "valid": True,
+                "version": version,
+                "error": None,
+                "resolved_path": resolved_path,
+            }
 
         error_msg = result.stderr.strip() or result.stdout.strip() or "Unknown error"
         return {
             "valid": False,
             "version": None,
             "error": f"Command failed: {error_msg[:100]}",
+            "resolved_path": None,
         }
     except subprocess.TimeoutExpired:
-        return {"valid": False, "version": None, "error": "Command timed out"}
+        return {
+            "valid": False,
+            "version": None,
+            "error": "Command timed out",
+            "resolved_path": None,
+        }
     except Exception as e:
-        return {"valid": False, "version": None, "error": str(e)[:100]}
+        return {
+            "valid": False,
+            "version": None,
+            "error": str(e)[:100],
+            "resolved_path": None,
+        }
 
 
 def detect_local_installations(
