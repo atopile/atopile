@@ -116,7 +116,7 @@ def get_remote_tracking_branch() -> Optional[str]:
     return None
 
 
-def fetch_remote_report(commit_hash: Optional[str] = None) -> RemoteBaseline:
+def fetch_remote_report(commit_hash: Optional[str] = None, use_cache: bool = True) -> RemoteBaseline:
     """
     Fetch a test report from GitHub Actions.
 
@@ -125,7 +125,14 @@ def fetch_remote_report(commit_hash: Optional[str] = None) -> RemoteBaseline:
     (falling back to 'main' if no runs exist for the current branch).
 
     Uses the `gh` CLI to download artifacts from workflow runs.
+    Caches downloaded baselines for faster subsequent access.
     """
+    # Check cache first if commit_hash is provided and caching is enabled
+    if commit_hash and use_cache:
+        cached = load_cached_remote_baseline(commit_hash)
+        if cached:
+            return cached
+
     baseline = RemoteBaseline()
 
     # Check gh CLI is available and we're in a valid repo
@@ -319,6 +326,10 @@ def fetch_remote_report(commit_hash: Optional[str] = None) -> RemoteBaseline:
             if not baseline.branch and report_data.get("baseline", {}).get("branch"):
                 baseline.branch = report_data.get("baseline", {}).get("branch")
 
+            # Cache the baseline if successfully loaded
+            if baseline.loaded and baseline.commit_hash and use_cache:
+                cache_remote_baseline(baseline.commit_hash, baseline)
+
         except Exception as e:
             baseline.error = f"Error downloading/parsing artifact: {e}"
             return baseline
@@ -428,8 +439,298 @@ def save_local_baseline(report: dict[str, Any], name: str) -> Path:
     return baseline_file
 
 
+def fetch_remote_commits(branch: str, limit: int = 20) -> list[dict[str, Any]]:
+    """
+    Fetch a list of recent commits from git, marking which ones have workflow runs.
+
+    Strategy:
+    1. Use git log to get all recent commits on the branch
+    2. Use gh run list to get workflow runs
+    3. Match them up to mark which commits have test results available
+
+    Returns a list of commits with metadata including:
+    - commit_hash: Short commit hash (8 chars)
+    - commit_hash_full: Full commit hash
+    - commit_message: First line of commit message
+    - commit_author: Author name
+    - commit_time: Commit timestamp
+    - branch: Branch name
+    - run_id: GitHub Actions run ID (if workflow run exists)
+    - created_at: Workflow run timestamp (if exists)
+    - conclusion: Workflow conclusion (if exists)
+    - has_artifact: Whether test-report.json artifact exists
+    - has_workflow_run: Whether this commit has any workflow run
+    """
+    commits = []
+
+    # First, get all recent commits from git log
+    try:
+        # Try remote branch first, fall back to local branch
+        git_ref = f"origin/{branch}"
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", git_ref],
+            capture_output=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            # Remote branch doesn't exist, use local
+            git_ref = branch
+
+        result = subprocess.run(
+            [
+                "git",
+                "log",
+                git_ref,
+                "--format=%H|%h|%s|%an|%ai",
+                f"-{limit}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return commits
+
+        # Parse git log output
+        git_commits = {}
+        for line in result.stdout.strip().split("\n"):
+            if not line:
+                continue
+            parts = line.split("|", 4)
+            if len(parts) == 5:
+                full_hash, short_hash, message, author, timestamp = parts
+                git_commits[full_hash] = {
+                    "commit_hash": short_hash[:8],
+                    "commit_hash_full": full_hash,
+                    "commit_message": message,
+                    "commit_author": author,
+                    "commit_time": timestamp,
+                    "branch": branch,
+                    "run_id": None,
+                    "created_at": "",
+                    "conclusion": "",
+                    "has_artifact": False,
+                    "has_workflow_run": False,
+                }
+    except Exception as e:
+        print(f"Warning: Could not fetch git commits: {e}")
+        return commits
+
+    # Check if gh CLI is available
+    gh_available = True
+    try:
+        subprocess.run(
+            ["gh", "--version"],
+            capture_output=True,
+            timeout=5,
+        )
+    except (FileNotFoundError, Exception):
+        gh_available = False
+
+    # Now fetch workflow runs and match them with git commits
+    if gh_available:
+        try:
+            # Fetch more workflow runs than commits to increase chance of matches
+            result = subprocess.run(
+                [
+                    "gh",
+                    "run",
+                    "list",
+                    "--branch",
+                    branch,
+                    "--workflow",
+                    "pytest.yml",
+                    "--limit",
+                    str(limit * 3),  # Fetch 3x to cover commits without runs
+                    "--json",
+                    "databaseId,headSha,headBranch,createdAt,conclusion,status",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0:
+                runs = json.loads(result.stdout)
+
+                # Create a map of commit hash -> workflow run
+                run_map = {}
+                for run in runs:
+                    commit_hash_full = run.get("headSha", "")
+                    if commit_hash_full and commit_hash_full not in run_map:
+                        # Keep only the most recent run for each commit
+                        run_map[commit_hash_full] = run
+
+                # Match workflow runs with git commits
+                for full_hash, commit_data in git_commits.items():
+                    if full_hash in run_map:
+                        run = run_map[full_hash]
+                        commit_data["has_workflow_run"] = True
+                        commit_data["run_id"] = run.get("databaseId")
+                        commit_data["created_at"] = run.get("createdAt", "")
+                        commit_data["conclusion"] = run.get("conclusion", "")
+                        commit_data["status"] = run.get("status", "")
+
+                        # Don't check artifacts during initial fetch - too slow
+                        # Artifact checking will happen lazily when user selects baseline
+                        # For now, assume completed runs have artifacts
+                        if run.get("status") == "completed":
+                            commit_data["has_artifact"] = True  # Optimistic assumption
+        except Exception as e:
+            print(f"Warning: Could not fetch workflow runs: {e}")
+
+    # Convert to list and return
+    commits = list(git_commits.values())
+    return commits
+
+
+def check_artifact_exists(run_id: int) -> bool:
+    """Check if test-report.json artifact exists for a given run."""
+    try:
+        # Try to download the artifact without actually saving it
+        # If the artifact exists, gh will succeed; otherwise it will fail
+        result = subprocess.run(
+            [
+                "gh",
+                "api",
+                f"repos/{{owner}}/{{repo}}/actions/runs/{run_id}/artifacts",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return False
+
+        data = json.loads(result.stdout)
+        artifacts = data.get("artifacts", [])
+        # Check if test-report.json artifact exists and is not expired
+        for artifact in artifacts:
+            if artifact.get("name") == "test-report.json" and not artifact.get("expired", True):
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def cache_remote_baseline(commit_hash: str, baseline: RemoteBaseline) -> None:
+    """
+    Cache a remote baseline to disk.
+    Baselines are stored as: artifacts/baselines/remote/<commit_hash>.json
+    """
+    if not baseline.loaded or not baseline.tests:
+        return
+
+    # Create cache directory
+    REMOTE_BASELINES_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Build cache data structure (similar to test report format)
+    cache_data = {
+        "commit": {
+            "hash": baseline.commit_hash_full,
+            "short_hash": baseline.commit_hash,
+            "author": baseline.commit_author,
+            "message": baseline.commit_message,
+            "time": baseline.commit_time,
+        },
+        "baseline": {
+            "branch": baseline.branch,
+        },
+        "tests": [
+            {
+                "nodeid": nodeid,
+                "outcome": test_data["outcome"],
+                "duration_s": test_data.get("duration_s"),
+                "memory_usage_mb": test_data.get("memory_usage_mb", 0.0),
+                "memory_peak_mb": test_data.get("memory_peak_mb", 0.0),
+            }
+            for nodeid, test_data in baseline.tests.items()
+        ],
+    }
+
+    # Write cache file
+    cache_file = REMOTE_BASELINES_DIR / f"{commit_hash}.json"
+    cache_file.write_text(json.dumps(cache_data, indent=2), encoding="utf-8")
+
+    # Update cache index
+    update_remote_cache_index(commit_hash, baseline)
+
+
+def update_remote_cache_index(commit_hash: str, baseline: RemoteBaseline) -> None:
+    """Update the remote baseline cache index."""
+    index_data: dict[str, Any] = {"version": "1", "cached_commits": []}
+
+    if REMOTE_BASELINES_INDEX.exists():
+        try:
+            index_data = json.loads(REMOTE_BASELINES_INDEX.read_text())
+        except Exception:
+            pass
+
+    # Remove existing entry for this commit
+    cached = [c for c in index_data.get("cached_commits", []) if c.get("commit_hash") != commit_hash]
+
+    # Add new entry
+    cached.insert(0, {
+        "commit_hash": commit_hash,
+        "commit_hash_full": baseline.commit_hash_full,
+        "branch": baseline.branch,
+        "cached_at": datetime.now().isoformat(),
+        "test_count": len(baseline.tests),
+    })
+
+    index_data["cached_commits"] = cached
+    REMOTE_BASELINES_INDEX.write_text(json.dumps(index_data, indent=2), encoding="utf-8")
+
+
+def load_cached_remote_baseline(commit_hash: str) -> Optional[RemoteBaseline]:
+    """
+    Load a cached remote baseline from disk.
+    Returns None if not cached.
+    """
+    cache_file = REMOTE_BASELINES_DIR / f"{commit_hash}.json"
+    if not cache_file.exists():
+        return None
+
+    try:
+        data = json.loads(cache_file.read_text())
+        baseline = RemoteBaseline()
+
+        # Parse tests
+        tests = {}
+        for t in data.get("tests", []):
+            nodeid = t.get("nodeid")
+            outcome = t.get("outcome")
+            if not nodeid or not outcome:
+                continue
+            tests[nodeid] = {
+                "outcome": str(outcome).lower(),
+                "duration_s": t.get("duration_s"),
+                "memory_usage_mb": t.get("memory_usage_mb", 0.0),
+                "memory_peak_mb": t.get("memory_peak_mb", 0.0),
+            }
+        baseline.tests = tests
+        baseline.loaded = True
+
+        # Parse metadata
+        commit_data = data.get("commit", {})
+        baseline.commit_hash = commit_data.get("short_hash", commit_hash)
+        baseline.commit_hash_full = commit_data.get("hash")
+        baseline.commit_author = commit_data.get("author")
+        baseline.commit_message = commit_data.get("message")
+        baseline.commit_time = commit_data.get("time")
+        baseline.branch = data.get("baseline", {}).get("branch")
+
+        return baseline
+    except Exception as e:
+        print(f"Warning: Failed to load cached baseline for {commit_hash}: {e}")
+        return None
+
+
 # Global baseline (fetched once at startup)
 remote_baseline: RemoteBaseline = RemoteBaseline()
+
+# Global state for remote commits (populated in background)
+remote_commits: list[dict[str, Any]] = []
+remote_commits_lock = threading.Lock()
 
 
 @dataclass
@@ -701,6 +1002,12 @@ REPORT_HTML_PATH = Path("artifacts/test-report.html")
 # Local baselines config
 BASELINES_DIR = Path("artifacts/baselines")
 BASELINES_INDEX = BASELINES_DIR / "index.json"
+
+# Remote baselines cache config
+REMOTE_BASELINES_DIR = Path("artifacts/baselines/remote")
+REMOTE_BASELINES_INDEX = REMOTE_BASELINES_DIR / "index.json"
+REMOTE_COMMIT_LIMIT = int(os.getenv("FBRK_TEST_REMOTE_COMMIT_LIMIT", "50"))
+SKIP_REMOTE_BASELINES = os.getenv("FBRK_TEST_SKIP_REMOTE_BASELINES", "").lower() in ("1", "true", "yes")
 
 # Output truncation config (0 = no truncation)
 OUTPUT_MAX_BYTES = int(os.getenv("FBRK_TEST_OUTPUT_MAX_BYTES", "0"))
@@ -2336,6 +2643,11 @@ class TestAggregator:
             local_baselines = list_local_baselines()
             baselines_json = json.dumps(local_baselines)
 
+            # Get remote commits for dropdown
+            with remote_commits_lock:
+                remote_commits_list = list(remote_commits)
+            remote_commits_json = json.dumps(remote_commits_list)
+
             # Determine current baseline identifier and info for dropdown
             current_baseline = ""
             current_baseline_info = "-- No baseline --"
@@ -2351,6 +2663,7 @@ class TestAggregator:
                     # Remote baseline from GitHub
                     commit = baseline.get("commit_hash") or "unknown"
                     branch = baseline.get("branch") or ""
+                    current_baseline = f"remote:{commit}"
                     if branch:
                         current_baseline_info = f"Remote: {commit} ({branch})"
                     else:
@@ -2388,6 +2701,7 @@ class TestAggregator:
                 ci_info_html=ci_info_html,
                 baseline_info_html=baseline_info_html,
                 baselines_json=baselines_json,
+                remote_commits_json=remote_commits_json,
                 current_baseline=current_baseline,
                 current_baseline_info=current_baseline_info,
                 test_run_id=self._test_run_id or "",
@@ -2847,9 +3161,13 @@ async def change_baseline(request: Request):
             # Load local baseline
             name = baseline_name[6:]  # Remove "local:" prefix
             new_baseline = load_local_baseline(name)
-        else:
+        elif baseline_name.startswith("remote:"):
             # Fetch remote baseline by commit hash
-            new_baseline = fetch_remote_report(commit_hash=baseline_name)
+            commit_hash = baseline_name[7:]  # Remove "remote:" prefix
+            new_baseline = fetch_remote_report(commit_hash=commit_hash, use_cache=True)
+        else:
+            # Legacy support: assume it's a commit hash
+            new_baseline = fetch_remote_report(commit_hash=baseline_name, use_cache=True)
 
         if not new_baseline.loaded:
             return {"error": new_baseline.error or "Failed to load baseline"}
@@ -2866,6 +3184,56 @@ async def change_baseline(request: Request):
         return {"success": True, "baseline": baseline_name}
     except Exception as e:
         return {"error": str(e)}
+
+
+@app.get("/api/remote-commits")
+async def get_remote_commits(branch: Optional[str] = None):
+    """
+    Get list of recent commits with workflow runs from GitHub.
+    Returns cached commit list populated during test startup.
+    """
+    with remote_commits_lock:
+        commits_list = list(remote_commits)
+
+    # Get current commit for comparison
+    current_commit = None
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short=8", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            current_commit = result.stdout.strip()
+    except Exception:
+        pass
+
+    # Mark cached commits
+    for commit in commits_list:
+        commit_hash = commit.get("commit_hash", "")
+        cache_file = REMOTE_BASELINES_DIR / f"{commit_hash}.json"
+        commit["cached"] = cache_file.exists()
+
+    return {
+        "commits": commits_list,
+        "current_commit": current_commit,
+    }
+
+
+@app.get("/api/baseline-status")
+async def get_baseline_status(commit: str):
+    """
+    Check the status of a baseline (cached, downloading, error).
+    """
+    cache_file = REMOTE_BASELINES_DIR / f"{commit}.json"
+    cached = cache_file.exists()
+
+    return {
+        "cached": cached,
+        "downloading": False,  # Could track this in future with background download tasks
+        "error": None,
+    }
 
 
 # Mount the existing logs WebSocket router from atopile.server
@@ -3212,6 +3580,36 @@ def main(
             _print(f"Fetching baseline for commit {baseline_commit} (background)...")
         else:
             _print("Fetching baseline from GitHub (background)...")
+
+    # Start fetching remote commits list in background (for dropdown)
+    def fetch_remote_commits_background():
+        global remote_commits
+        if SKIP_REMOTE_BASELINES:
+            return
+        try:
+            branch = get_current_branch() or "main"
+            commits = fetch_remote_commits(branch, limit=REMOTE_COMMIT_LIMIT)
+            with remote_commits_lock:
+                remote_commits.clear()
+                remote_commits.extend(commits)
+
+            # Download HEAD baseline to cache if not already cached
+            if commits and not baseline_commit and not local_baseline_name:
+                head_commit = commits[0]
+                if head_commit.get("has_artifact"):
+                    commit_hash = head_commit["commit_hash"]
+                    cache_file = REMOTE_BASELINES_DIR / f"{commit_hash}.json"
+                    if not cache_file.exists():
+                        # Download and cache HEAD baseline
+                        fetch_remote_report(commit_hash=commit_hash, use_cache=True)
+        except Exception as e:
+            print(f"Warning: Could not fetch remote commits: {e}")
+
+    if not local_baseline_name:
+        commits_thread = threading.Thread(
+            target=fetch_remote_commits_background, daemon=True
+        )
+        commits_thread.start()
 
     # Initialize aggregator with loaded baseline (for local) or empty (for remote fetch)
     global aggregator

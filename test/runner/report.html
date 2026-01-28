@@ -1255,6 +1255,7 @@
 
       // Baseline selector functionality
       var availableBaselines = [[baselines_json]];
+      var remoteCommits = [[remote_commits_json]];
       var currentBaseline = "[[current_baseline]]";
       var currentBaselineInfo = "[[current_baseline_info]]";
 
@@ -1275,6 +1276,56 @@
           defaultOption.selected = true;
         }
         select.appendChild(defaultOption);
+
+        // Add remote commits (HEAD)
+        if (remoteCommits && remoteCommits.length > 0) {
+          var remoteGroup = document.createElement("optgroup");
+          remoteGroup.label = "Remote Commits (Recent)";
+
+          remoteCommits.forEach(function (commit) {
+            var option = document.createElement("option");
+            var commitHash = commit.commit_hash || "unknown";
+            option.value = "remote:" + commitHash;
+
+            // Get first line of commit message or fallback
+            var message = "";
+            if (commit.commit_message) {
+              message = commit.commit_message.split("\n")[0];
+              if (message.length > 50) {
+                message = message.substring(0, 47) + "...";
+              }
+            }
+
+            // Format option text
+            var text = commitHash;
+            if (message) {
+              text += " - " + message;
+            }
+
+            // Grey out commits without workflow runs
+            if (!commit.has_workflow_run) {
+              text += " (no CI run)";
+              option.disabled = true;
+              option.style.color = "#999";
+            } else if (!commit.has_artifact) {
+              text += " (no artifact)";
+              option.disabled = true;
+              option.style.color = "#999";
+            } else if (commit.status && commit.status !== "completed") {
+              text += " (" + commit.status + ")";
+              option.disabled = true;
+              option.style.color = "#999";
+            }
+
+            option.textContent = text;
+            if (currentBaseline === "remote:" + commitHash) {
+              option.selected = true;
+            }
+            remoteGroup.appendChild(option);
+          });
+
+          select.appendChild(remoteGroup);
+        }
 
         // Add local baselines
         if (availableBaselines && availableBaselines.length > 0) {
@@ -1312,6 +1363,29 @@
         }
       }
 
+      async function loadRemoteCommits() {
+        try {
+          var response = await fetch("/api/remote-commits");
+          var data = await response.json();
+          if (data.commits) {
+            remoteCommits = data.commits;
+            populateBaselineDropdown();
+          }
+        } catch (e) {
+          console.log("Could not load remote commits (likely static file)", e);
+        }
+      }
+
+      async function checkBaselineStatus(commitHash) {
+        try {
+          var response = await fetch("/api/baseline-status?commit=" + commitHash);
+          var data = await response.json();
+          return data;
+        } catch (e) {
+          return { cached: false, downloading: false, error: null };
+        }
+      }
+
       async function changeBaseline() {
         var select = document.getElementById("baselineSelect");
         var status = document.getElementById("baselineStatus");
@@ -1321,9 +1395,27 @@
           return;
         }
 
+        // Check if this is a remote baseline
+        var isRemote = value.startsWith("remote:");
+        var commitHash = isRemote ? value.substring(7) : null;
+
+        // Show initial status
         if (status) {
-          status.textContent = "Loading...";
-          status.className = "baseline-status loading";
+          if (isRemote && commitHash) {
+            status.textContent = "⏳ Checking cache...";
+            status.className = "baseline-status loading";
+          } else {
+            status.textContent = "⏳ Loading...";
+            status.className = "baseline-status loading";
+          }
+        }
+
+        // For remote baselines, check if we need to download
+        if (isRemote && commitHash) {
+          var statusData = await checkBaselineStatus(commitHash);
+          if (!statusData.cached && status) {
+            status.textContent = "⏳ Downloading from GitHub...";
+          }
         }
 
         try {
@@ -1336,7 +1428,7 @@
 
           if (data.success) {
             if (status) {
-              status.textContent = "Reloading...";
+              status.textContent = "✓ Loaded";
               status.className = "baseline-status success";
             }
             // Reload the page to show updated report
@@ -1345,13 +1437,13 @@
             }, 500);
           } else {
             if (status) {
-              status.textContent = data.error || "Error";
+              status.textContent = "✗ " + (data.error || "Error");
               status.className = "baseline-status error";
             }
           }
         } catch (e) {
           if (status) {
-            status.textContent = "Failed to change baseline";
+            status.textContent = "✗ Failed to change baseline";
             status.className = "baseline-status error";
           }
           console.error("Failed to change baseline", e);
@@ -1362,6 +1454,7 @@
       document.addEventListener("DOMContentLoaded", function () {
         populateBaselineDropdown();
         loadBaselines();
+        loadRemoteCommits();
       });
     </script>
   </head>
