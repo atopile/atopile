@@ -1330,6 +1330,17 @@ def insert_expression(
             logger.debug(f"Terminate is!: {builder.compact_repr()}")
         builder = builder.with_(terminate=True)
 
+    # * all in G_out
+    # needed because we might have created lits as operands in G_transient
+    builder = builder.with_(
+        operands=[
+            mutator.get_copy(op)
+            if op.try_get_sibling_trait(F.Literals.is_literal)
+            else op
+            for op in builder.operands
+        ]
+    )
+
     # * canonical (covered by create)
     expr = mutator._create_and_insert_expression(builder)
 
