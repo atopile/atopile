@@ -16,7 +16,8 @@ import pytest
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
-from faebryk.core.solver.mutator import Mutator
+from faebryk.core.solver.mutator import ExpressionBuilder, Mutator
+from faebryk.core.solver.symbolic.invariants import AliasClass
 from faebryk.library.Expressions import is_predicate
 from faebryk.libs.util import not_none
 
@@ -32,6 +33,22 @@ Add = F.Expressions.Add
 Multiply = F.Expressions.Multiply
 Power = F.Expressions.Power
 Is = F.Expressions.Is
+
+
+def _insert_result_operand(res) -> F.Parameters.can_be_operand | None:
+    """
+    Convert an invariants.InsertExpressionResult into the canonical operand to use
+    as input for subsequent expression builders.
+
+    - For non-predicate expressions: return their alias representative parameter.
+    - For predicate expressions: return the expression operand itself.
+    """
+    out = getattr(res, "out", None)
+    if out is None:
+        return None
+    if out.try_get_sibling_trait(F.Expressions.is_predicate) is not None:
+        return out.as_operand.get()
+    return AliasClass.of(out.as_operand.get()).representative()
 
 
 @dataclass
@@ -55,16 +72,59 @@ def _contains_variable(
     operand: F.Parameters.can_be_operand,
     target: F.Parameters.is_parameter_operatable,
 ) -> bool:
-    """Check if an operand contains the target variable (recursively)."""
-    # Check if operand IS the target
-    if po := operand.as_parameter_operatable.try_get():
-        if po.is_same(target):
-            return True
-        # If it's an expression, check leaves recursively
-        if expr := po.as_expression.try_get():
-            leaves = expr.get_operand_leaves_operatable()
-            return any(leaf.is_same(target) for leaf in leaves)
-    return False
+    """Check if an operand contains the target variable (recursively).
+
+    Note: the solver's alias invariant means most expression operands are
+    representatives (parameters), not direct expression nodes. We follow the
+    representative's alias to traverse the underlying expression tree.
+    """
+
+    def _uuid(op: F.Parameters.can_be_operand) -> int:
+        return fabll.Traits(op).get_obj_raw().instance.node().get_uuid()
+
+    def _try_get_expr(
+        op: F.Parameters.can_be_operand,
+    ) -> F.Expressions.is_expression | None:
+        if direct := op.try_get_sibling_trait(F.Expressions.is_expression):
+            return direct
+
+        # Only parameters can be alias representatives; avoid AliasClass.of(...)
+        # on plain parameters, which may participate in multiple Is predicates.
+        if op.try_get_sibling_trait(F.Parameters.is_parameter) is None:
+            return None
+
+        for is_ in op.get_operations(F.Expressions.Is, predicates_only=True):
+            try:
+                alias = AliasClass.of(is_)
+            except AssertionError:
+                continue
+
+            rep = alias.representative()
+            if _uuid(rep) != _uuid(op):
+                continue
+
+            exprs = alias.get_with_trait(F.Expressions.is_expression)
+            if len(exprs) == 1:
+                return next(iter(exprs))
+
+        return None
+
+    def _rec(op: F.Parameters.can_be_operand, visited: set[int]) -> bool:
+        op_uuid = _uuid(op)
+        if op_uuid in visited:
+            return False
+        visited.add(op_uuid)
+
+        if po := op.as_parameter_operatable.try_get():
+            if po.is_same(target):
+                return True
+
+        if expr := _try_get_expr(op):
+            return any(_rec(inner, visited) for inner in expr.get_operands())
+
+        return False
+
+    return _rec(operand, set())
 
 
 def _get_expression_type(
@@ -94,44 +154,68 @@ def _find_path_to_variable(
     - Variable appears multiple times (non-linear)
     - Expression type is not invertible
     """
-    # Base case: root IS the variable
-    if po := root.as_parameter_operatable.try_get():
-        if po.is_same(target):
-            return VariablePath(segments=[], variable=target)
+    def _uuid(op: F.Parameters.can_be_operand) -> int:
+        return fabll.Traits(op).get_obj_raw().instance.node().get_uuid()
 
-        # Check if it's an expression we can traverse
-        expr = po.as_expression.try_get()
-        if expr is None:
-            # It's a parameter but not our target
+    def _try_get_expr(op: F.Parameters.can_be_operand) -> F.Expressions.is_expression | None:
+        if direct := op.try_get_sibling_trait(F.Expressions.is_expression):
+            return direct
+
+        if op.try_get_sibling_trait(F.Parameters.is_parameter) is None:
             return None
 
-        # Get expression type for inversion
+        for is_ in op.get_operations(F.Expressions.Is, predicates_only=True):
+            try:
+                alias = AliasClass.of(is_)
+            except AssertionError:
+                continue
+
+            rep = alias.representative()
+            if _uuid(rep) != _uuid(op):
+                continue
+
+            exprs = alias.get_with_trait(F.Expressions.is_expression)
+            if len(exprs) == 1:
+                return next(iter(exprs))
+
+        return None
+
+    def _rec(
+        op: F.Parameters.can_be_operand, visited: set[int]
+    ) -> VariablePath | None:
+        op_uuid = _uuid(op)
+        if op_uuid in visited:
+            return None
+        visited.add(op_uuid)
+
+        if po := op.as_parameter_operatable.try_get():
+            if po.is_same(target):
+                return VariablePath(segments=[], variable=target)
+
+        expr = _try_get_expr(op)
+        if expr is None:
+            return None
+
         expr_type = _get_expression_type(expr)
         if expr_type is None:
-            return None  # Not an invertible expression
+            return None
 
-        # Check which operand(s) contain the variable
         operands = expr.get_operands()
-        var_operand_indices = []
+        var_operand_indices = [
+            i for i, inner in enumerate(operands) if _contains_variable(inner, target)
+        ]
 
-        for i, op in enumerate(operands):
-            if _contains_variable(op, target):
-                var_operand_indices.append(i)
-
-        # Non-linear: variable in multiple operands
         if len(var_operand_indices) != 1:
             return None
 
         var_index = var_operand_indices[0]
         var_operand = operands[var_index]
-        other_operands = [op for i, op in enumerate(operands) if i != var_index]
+        other_operands = [inner for i, inner in enumerate(operands) if i != var_index]
 
-        # Recursively find path in the operand containing variable
-        sub_path = _find_path_to_variable(var_operand, target)
+        sub_path = _rec(var_operand, visited)
         if sub_path is None:
             return None
 
-        # Prepend this segment
         segment = PathSegment(
             expr_type=expr_type,
             operand_index=var_index,
@@ -142,8 +226,7 @@ def _find_path_to_variable(
             variable=sub_path.variable,
         )
 
-    # Literal - can't contain variable
-    return None
+    return _rec(root, set())
 
 
 def _apply_inverse_operations(
@@ -171,6 +254,172 @@ def _apply_inverse_operations(
             return None
 
     return result
+
+
+def _insert_expression_with_alias(
+    mutator: Mutator,
+    expr_factory: type[F.Expressions.ExpressionNodes],
+    *operands: F.Parameters.can_be_operand,
+    alias: F.Parameters.is_parameter,
+    from_ops: list[F.Parameters.is_parameter_operatable],
+    allow_uncorrelated_congruence_match: bool,
+) -> "F.Expressions.is_expression | None":
+    import faebryk.core.solver.symbolic.invariants as invariants
+
+    res = invariants.wrap_insert_expression(
+        mutator,
+        ExpressionBuilder(
+            expr_factory,
+            list(operands),
+            assert_=False,
+            terminate=False,
+            traits=[],
+        ),
+        alias=alias,
+        expr_already_exists_in_old_graph=False,
+        allow_uncorrelated_congruence_match=allow_uncorrelated_congruence_match,
+    )
+
+    if res.out is None:
+        return None
+
+    # Best-effort: keep mutation traceability in line with Mutator.create_* APIs.
+    if res.is_new:
+        mutator.transformations.created[res.out.as_parameter_operatable.get()] = list(
+            set(from_ops)
+        )
+
+    return res.out
+
+
+def _alias_is_for_expression(
+    expr: F.Expressions.is_expression,
+    alias_param: F.Parameters.is_parameter,
+    *,
+    mutator: Mutator,
+) -> Is | None:
+    """
+    Find the Is! alias predicate linking `expr` to `alias_param`.
+
+    Note: invariants may copy/merge alias parameters during insertion, so we
+    always resolve `alias_param` into `mutator.G_out` before searching.
+    """
+    alias_out = (
+        mutator.get_copy(alias_param.as_operand.get())
+        .as_parameter_operatable.force_get()
+        .as_parameter.force_get()
+    )
+    alias_uuid = alias_out.instance.node().get_uuid()
+    expr_uuid = expr.instance.node().get_uuid()
+
+    for is_ in alias_out.as_operand.get().get_operations(Is, predicates_only=True):
+        e = is_.is_expression.get()
+        exprs = e.get_operands_with_trait(F.Expressions.is_expression)
+        params = e.get_operands_with_trait(F.Parameters.is_parameter)
+        if any(ex.instance.node().get_uuid() == expr_uuid for ex in exprs) and any(
+            p.instance.node().get_uuid() == alias_uuid for p in params
+        ):
+            return is_
+
+    return None
+
+
+def _apply_inverse_operations_alias_to_variable(
+    mutator: Mutator,
+    other_side: F.Parameters.can_be_operand,
+    path: VariablePath,
+    from_ops: list[F.Parameters.is_parameter_operatable],
+    alias: F.Parameters.is_parameter,
+) -> Is | None:
+    """
+    Like _apply_inverse_operations, but aliases the final resulting expression to
+    `alias` (a parameter), and returns the created Is! alias expression.
+
+    This avoids creating Is!(param, param) which currently triggers unsupported
+    subsumption paths in invariants.
+    """
+    assert path.segments
+    current = other_side
+
+    for i, segment in enumerate(path.segments):
+        is_last = i == len(path.segments) - 1
+        if not is_last:
+            current = not_none(_apply_single_inverse(mutator, current, segment, from_ops))
+            continue
+
+        if segment.expr_type is Add:
+            neg_operands: list[F.Parameters.can_be_operand] = []
+            for other in segment.other_operands:
+                minus_one = mutator.make_singleton(-1.0).can_be_operand.get()
+                neg_result = mutator.create_check_and_insert_expression(
+                    Multiply,
+                    other,
+                    minus_one,
+                    from_ops=from_ops,
+                )
+                neg_operands.append(not_none(_insert_result_operand(neg_result)))
+
+            expr_out = _insert_expression_with_alias(
+                mutator,
+                Add,
+                current,
+                *neg_operands,
+                alias=alias,
+                from_ops=from_ops,
+                allow_uncorrelated_congruence_match=True,
+            )
+        elif segment.expr_type is Multiply:
+            inv_operands: list[F.Parameters.can_be_operand] = []
+            for other in segment.other_operands:
+                minus_one = mutator.make_singleton(-1.0).can_be_operand.get()
+                inv_result = mutator.create_check_and_insert_expression(
+                    Power,
+                    other,
+                    minus_one,
+                    from_ops=from_ops,
+                )
+                inv_operands.append(not_none(_insert_result_operand(inv_result)))
+
+            expr_out = _insert_expression_with_alias(
+                mutator,
+                Multiply,
+                current,
+                *inv_operands,
+                alias=alias,
+                from_ops=from_ops,
+                allow_uncorrelated_congruence_match=True,
+            )
+        elif segment.expr_type is Power:
+            if segment.operand_index != 0 or len(segment.other_operands) != 1:
+                return None
+            exponent = segment.other_operands[0]
+            minus_one = mutator.make_singleton(-1.0).can_be_operand.get()
+            inv_exp_result = mutator.create_check_and_insert_expression(
+                Power,
+                exponent,
+                minus_one,
+                from_ops=from_ops,
+            )
+            inv_exp = not_none(_insert_result_operand(inv_exp_result))
+
+            expr_out = _insert_expression_with_alias(
+                mutator,
+                Power,
+                current,
+                inv_exp,
+                alias=alias,
+                from_ops=from_ops,
+                allow_uncorrelated_congruence_match=True,
+            )
+        else:
+            return None
+
+        if expr_out is None:
+            return None
+
+        return _alias_is_for_expression(expr_out, alias, mutator=mutator)
+
+    return None
 
 
 def _apply_single_inverse(
@@ -201,7 +450,7 @@ def _apply_single_inverse(
                 minus_one,
                 from_ops=from_ops,
             )
-            neg_operands.append(neg_result.out_operand)
+            neg_operands.append(not_none(_insert_result_operand(neg_result)))
 
         add_result = mutator.create_check_and_insert_expression(
             Add,
@@ -209,7 +458,7 @@ def _apply_single_inverse(
             *neg_operands,
             from_ops=from_ops,
         )
-        return add_result.out_operand
+        return not_none(_insert_result_operand(add_result))
 
     elif segment.expr_type is Multiply:
         # current = original * others
@@ -224,7 +473,7 @@ def _apply_single_inverse(
                 minus_one,
                 from_ops=from_ops,
             )
-            inv_operands.append(inv_result.out_operand)
+            inv_operands.append(not_none(_insert_result_operand(inv_result)))
 
         mul_result = mutator.create_check_and_insert_expression(
             Multiply,
@@ -232,7 +481,7 @@ def _apply_single_inverse(
             *inv_operands,
             from_ops=from_ops,
         )
-        return mul_result.out_operand
+        return not_none(_insert_result_operand(mul_result))
 
     elif segment.expr_type is Power:
         if segment.operand_index == 0:
@@ -252,10 +501,10 @@ def _apply_single_inverse(
             pow_result = mutator.create_check_and_insert_expression(
                 Power,
                 current,
-                inv_exp_result.out_operand,
+                not_none(_insert_result_operand(inv_exp_result)),
                 from_ops=from_ops,
             )
-            return pow_result.out_operand
+            return not_none(_insert_result_operand(pow_result))
         else:
             # Power(base, var) = current  ->  var = log_base(current)
             # TODO
@@ -295,24 +544,70 @@ def rewrite_equation_for_variable(
     expr = is_expr.is_expression.get()
     operands = expr.get_operands()
 
-    if len(operands) != 2:
+    if len(operands) < 2:
         return RewriteResult.CANNOT_ISOLATE
-    left, right = operands
+    left, right = operands[0], operands[1]
 
-    # Step 1: Find which side has the variable
-    match (_contains_variable(left, variable), _contains_variable(right, variable)):
-        case (True, True):
-            # Variable on both sides - cannot isolate simply
+    # Step 1: Determine which side to rewrite.
+    #
+    # If the Is! is a representative link (exactly one expression operand, exactly
+    # one parameter operand), rewrite from the expression side. The parameter
+    # side must not be expanded through this same Is!, otherwise every variable
+    # inside the expression would appear on both sides and we would block valid
+    # isolation (e.g. (A+B) is! C -> A is! (C-B)).
+    expr_ops = list(expr.get_operands_with_trait(F.Expressions.is_expression))
+    param_ops = list(expr.get_operands_with_trait(F.Parameters.is_parameter))
+
+    # Multi-operand Is!: treat this as an n-ary equality class. Prefer rewriting
+    # between *expression* operands, and ignore representative parameters that
+    # may also be present in the class.
+    if len(expr_ops) >= 2:
+        var_expr_ops = [op for op in expr_ops if _contains_variable(op.as_operand.get(), variable)]
+        if len(var_expr_ops) != 1:
             return RewriteResult.CANNOT_ISOLATE
-        case (False, False):
-            # Variable not found
+        var_side = var_expr_ops[0].as_operand.get()
+
+        other_candidates = [
+            op.as_operand.get()
+            for op in expr_ops
+            if op is not var_expr_ops[0]
+            and not _contains_variable(op.as_operand.get(), variable)
+        ]
+        if not other_candidates:
             return RewriteResult.CANNOT_ISOLATE
-        case (True, False):
-            var_side = left
-            other_side = right
-        case (False, True):
-            var_side = right
-            other_side = left
+        other_side = other_candidates[0]
+
+    elif len(expr_ops) == 1 and len(param_ops) == 1 and len(operands) == 2:
+        expr_side = next(iter(expr_ops)).as_operand.get()
+        rep_side = next(iter(param_ops)).as_operand.get()
+
+        # If the requested variable is the representative parameter itself, it
+        # is already isolated.
+        if (
+            (var_op := variable.as_operand.get())
+            and var_op.is_same(rep_side, allow_different_graph=True)
+        ):
+            return RewriteResult.ALREADY_ISOLATED
+
+        if not _contains_variable(expr_side, variable):
+            return RewriteResult.CANNOT_ISOLATE
+
+        var_side = expr_side
+        other_side = rep_side
+    else:
+        match (_contains_variable(left, variable), _contains_variable(right, variable)):
+            case (True, True):
+                # Variable on both sides - cannot isolate simply
+                return RewriteResult.CANNOT_ISOLATE
+            case (False, False):
+                # Variable not found
+                return RewriteResult.CANNOT_ISOLATE
+            case (True, False):
+                var_side = left
+                other_side = right
+            case (False, True):
+                var_side = right
+                other_side = left
 
     # Step 2: Find path to variable
     path = _find_path_to_variable(var_side, variable)
@@ -327,24 +622,16 @@ def rewrite_equation_for_variable(
     from_ops = [expr.as_parameter_operatable.get()]
 
     # Step 4: Apply inverse operations to other side
-    transformed_other = _apply_inverse_operations(mutator, other_side, path, from_ops)
-    if transformed_other is None:
+    alias_param = variable.as_parameter.try_get()
+    if alias_param is None:
+        return RewriteResult.CANNOT_ISOLATE
+    out_is = _apply_inverse_operations_alias_to_variable(
+        mutator, other_side, path, from_ops, alias=alias_param
+    )
+    if out_is is None:
         return RewriteResult.CANNOT_ISOLATE
 
-    # Step 5: Create new Is expression: var is! transformed_other
-    result = mutator.create_check_and_insert_expression(
-        Is,
-        variable.as_operand.get(),
-        transformed_other,
-        from_ops=from_ops,
-        assert_=expr.try_get_sibling_trait(F.Expressions.is_predicate) is not None,
-        allow_uncorrelated_congruence_match=True,
-    )
-
-    return (
-        fabll.Traits(result.out_operand).get_obj_raw().try_cast(Is)
-        or RewriteResult.CANNOT_ISOLATE
-    )
+    return out_is
 
 
 @algorithm("permutate equation operands", terminal=False)
@@ -385,7 +672,12 @@ class RewriteTestCase:
     # Builds expected "other side" operand for success cases
     expected_builder: (
         Callable[
-            [Mutator, dict[str, F.Parameters.can_be_operand]],
+            [
+                Mutator,
+                dict[str, F.Parameters.can_be_operand],
+                Is,
+                F.Parameters.is_parameter_operatable,
+            ],
             F.Parameters.can_be_operand,
         ]
         | None
@@ -397,200 +689,246 @@ class RewriteTestCase:
 
 
 def _build_expected_add_isolate_first(
-    m: Mutator, p: dict[str, F.Parameters.can_be_operand]
+    m: Mutator,
+    p: dict[str, F.Parameters.can_be_operand],
+    _canon_is: Is,
+    _target_var: F.Parameters.is_parameter_operatable,
 ) -> F.Parameters.can_be_operand:
     """A + B is C, isolate A -> A is C + (B * -1)"""
-    neg_b = m.create_check_and_insert_expression(
-        Multiply,
-        m.get_copy(p["B"]),
-        m.make_singleton(-1.0).can_be_operand.get(),
-        allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert neg_b is not None
-    result = m.create_check_and_insert_expression(
+    neg_b = not_none(
+        _insert_result_operand(
+            m.create_check_and_insert_expression(
+                Multiply,
+                m.get_copy(p["B"]),
+                m.make_singleton(-1.0).can_be_operand.get(),
+                allow_uncorrelated_congruence_match=True,
+            )
+        )
+    )
+    res = m.create_check_and_insert_expression(
         Add,
         m.get_copy(p["C"]),
         neg_b,
         allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert result is not None
-    return result
+    )
+    return not_none(res.out).as_operand.get()
 
 
 def _build_expected_add_isolate_second(
-    m: Mutator, p: dict[str, F.Parameters.can_be_operand]
+    m: Mutator,
+    p: dict[str, F.Parameters.can_be_operand],
+    _canon_is: Is,
+    _target_var: F.Parameters.is_parameter_operatable,
 ) -> F.Parameters.can_be_operand:
     """A + B is C, isolate B -> B is C + (A * -1)"""
-    neg_a = m.create_check_and_insert_expression(
-        Multiply,
-        m.get_copy(p["A"]),
-        m.make_singleton(-1.0).can_be_operand.get(),
-        allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert neg_a is not None
-    result = m.create_check_and_insert_expression(
+    neg_a = not_none(
+        _insert_result_operand(
+            m.create_check_and_insert_expression(
+                Multiply,
+                m.get_copy(p["A"]),
+                m.make_singleton(-1.0).can_be_operand.get(),
+                allow_uncorrelated_congruence_match=True,
+            )
+        )
+    )
+    res = m.create_check_and_insert_expression(
         Add,
         m.get_copy(p["C"]),
         neg_a,
         allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert result is not None
-    return result
+    )
+    return not_none(res.out).as_operand.get()
 
 
 def _build_expected_multiply_isolate(
-    m: Mutator, p: dict[str, F.Parameters.can_be_operand]
+    m: Mutator,
+    p: dict[str, F.Parameters.can_be_operand],
+    _canon_is: Is,
+    _target_var: F.Parameters.is_parameter_operatable,
 ) -> F.Parameters.can_be_operand:
     """A * B is C, isolate A -> A is C * (B ^ -1)"""
-    inv_b = m.create_check_and_insert_expression(
-        Power,
-        m.get_copy(p["B"]),
-        m.make_singleton(-1.0).can_be_operand.get(),
-        allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert inv_b is not None
-    result = m.create_check_and_insert_expression(
+    inv_b = not_none(
+        _insert_result_operand(
+            m.create_check_and_insert_expression(
+                Power,
+                m.get_copy(p["B"]),
+                m.make_singleton(-1.0).can_be_operand.get(),
+                allow_uncorrelated_congruence_match=True,
+            )
+        )
+    )
+    res = m.create_check_and_insert_expression(
         Multiply,
         m.get_copy(p["C"]),
         inv_b,
         allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert result is not None
-    return result
+    )
+    return not_none(res.out).as_operand.get()
 
 
 def _build_expected_power_base_isolate(
-    m: Mutator, p: dict[str, F.Parameters.can_be_operand]
+    m: Mutator,
+    p: dict[str, F.Parameters.can_be_operand],
+    _canon_is: Is,
+    _target_var: F.Parameters.is_parameter_operatable,
 ) -> F.Parameters.can_be_operand:
     """A ^ 2 is B, isolate A -> A is B ^ 0.5"""
     # Note: 2^-1 may be folded to 0.5 literal
-    result = m.create_check_and_insert_expression(
+    res = m.create_check_and_insert_expression(
         Power,
         m.get_copy(p["B"]),
         m.make_singleton(0.5).can_be_operand.get(),
         allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert result is not None
-    return result
+    )
+    return not_none(res.out).as_operand.get()
 
 
 def _build_expected_lit_factor_isolate(
-    m: Mutator, p: dict[str, F.Parameters.can_be_operand]
+    m: Mutator,
+    p: dict[str, F.Parameters.can_be_operand],
+    _canon_is: Is,
+    _target_var: F.Parameters.is_parameter_operatable,
 ) -> F.Parameters.can_be_operand:
     """A * 2 is B, isolate A -> A is B * 0.5"""
-    result = m.create_check_and_insert_expression(
+    res = m.create_check_and_insert_expression(
         Multiply,
         m.get_copy(p["B"]),
         m.make_singleton(0.5).can_be_operand.get(),
         allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert result is not None
-    return result
+    )
+    return not_none(res.out).as_operand.get()
 
 
 def _build_expected_nested(
-    m: Mutator, p: dict[str, F.Parameters.can_be_operand]
+    m: Mutator,
+    p: dict[str, F.Parameters.can_be_operand],
+    canon_is: Is,
+    target_var: F.Parameters.is_parameter_operatable,
 ) -> F.Parameters.can_be_operand:
     """X + (Y * A) is (B + C), isolate B -> B is (X + (Y * A)) + (C * -1)"""
-    # Build X + (Y * A)
-    y_times_a = m.create_check_and_insert_expression(
-        Multiply,
-        m.get_copy(p["Y"]),
-        m.get_copy(p["A"]),
-        allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert y_times_a is not None
-    x_plus_ya = m.create_check_and_insert_expression(
-        Add,
-        m.get_copy(p["X"]),
-        y_times_a,
-        allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert x_plus_ya is not None
+    expr_ops = list(
+        canon_is.is_expression.get().get_operands_with_trait(F.Expressions.is_expression)
+    )
+    assert len(expr_ops) >= 2
+    var_exprs = [
+        e for e in expr_ops if _contains_variable(e.as_operand.get(), target_var)
+    ]
+    assert len(var_exprs) == 1
+    other_expr = next(e for e in expr_ops if e is not var_exprs[0])
+    other_rep_in = AliasClass.of(
+        other_expr.as_operand.get(), allow_non_repr=True
+    ).representative()
+    other_rep = m.get_copy(other_rep_in)
     # Build (C * -1)
-    neg_c = m.create_check_and_insert_expression(
-        Multiply,
-        m.get_copy(p["C"]),
-        m.make_singleton(-1.0).can_be_operand.get(),
-        allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert neg_c is not None
+    neg_c = not_none(
+        _insert_result_operand(
+            m.create_check_and_insert_expression(
+                Multiply,
+                m.get_copy(p["C"]),
+                m.make_singleton(-1.0).can_be_operand.get(),
+                allow_uncorrelated_congruence_match=True,
+            )
+        )
+    )
     # Combine
-    result = m.create_check_and_insert_expression(
+    res = m.create_check_and_insert_expression(
         Add,
-        x_plus_ya,
+        other_rep,
         neg_c,
         allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert result is not None
-    return result
+    )
+    return not_none(res.out).as_operand.get()
 
 
 def _build_expected_add_isolate_second_side(
-    m: Mutator, p: dict[str, F.Parameters.can_be_operand]
+    m: Mutator,
+    p: dict[str, F.Parameters.can_be_operand],
+    _canon_is: Is,
+    _target_var: F.Parameters.is_parameter_operatable,
 ) -> F.Parameters.can_be_operand:
     """(A + B) is (A + C), isolate B -> B is (A + C) + (A * -1)"""
-    neg_a = m.create_check_and_insert_expression(
-        Multiply,
-        m.get_copy(p["A"]),
-        m.make_singleton(-1.0).can_be_operand.get(),
-        allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert neg_a is not None
-    result = m.create_check_and_insert_expression(
+    neg_a = not_none(
+        _insert_result_operand(
+            m.create_check_and_insert_expression(
+                Multiply,
+                m.get_copy(p["A"]),
+                m.make_singleton(-1.0).can_be_operand.get(),
+                allow_uncorrelated_congruence_match=True,
+            )
+        )
+    )
+    a_plus_c = not_none(
+        _insert_result_operand(
+            m.create_check_and_insert_expression(
+                Add,
+                m.get_copy(p["A"]),
+                m.get_copy(p["C"]),
+                allow_uncorrelated_congruence_match=True,
+            )
+        )
+    )
+    res = m.create_check_and_insert_expression(
         Add,
-        m.create_check_and_insert_expression(
-            Add,
-            m.get_copy(p["A"]),
-            m.get_copy(p["C"]),
-            allow_uncorrelated_congruence_match=True,
-        ).out_operand,
+        a_plus_c,
         neg_a,
         allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert result is not None
-    return result
+    )
+    return not_none(res.out).as_operand.get()
 
 
 def _build_expected_nary_add(
-    m: Mutator, p: dict[str, F.Parameters.can_be_operand]
+    m: Mutator,
+    p: dict[str, F.Parameters.can_be_operand],
+    _canon_is: Is,
+    _target_var: F.Parameters.is_parameter_operatable,
 ) -> F.Parameters.can_be_operand:
     """A + B + C + D is E, isolate B -> B is E + (A * -1) + (C * -1) + (D * -1)"""
-    neg_a = m.create_check_and_insert_expression(
-        Multiply,
-        m.get_copy(p["A"]),
-        m.make_singleton(-1.0).can_be_operand.get(),
-        allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert neg_a is not None
-    neg_c = m.create_check_and_insert_expression(
-        Multiply,
-        m.get_copy(p["C"]),
-        m.make_singleton(-1.0).can_be_operand.get(),
-        allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert neg_c is not None
-    neg_d = m.create_check_and_insert_expression(
-        Multiply,
-        m.get_copy(p["D"]),
-        m.make_singleton(-1.0).can_be_operand.get(),
-        allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert neg_d is not None
-    result = m.create_check_and_insert_expression(
+    neg_a = not_none(
+        _insert_result_operand(
+            m.create_check_and_insert_expression(
+                Multiply,
+                m.get_copy(p["A"]),
+                m.make_singleton(-1.0).can_be_operand.get(),
+                allow_uncorrelated_congruence_match=True,
+            )
+        )
+    )
+    neg_c = not_none(
+        _insert_result_operand(
+            m.create_check_and_insert_expression(
+                Multiply,
+                m.get_copy(p["C"]),
+                m.make_singleton(-1.0).can_be_operand.get(),
+                allow_uncorrelated_congruence_match=True,
+            )
+        )
+    )
+    neg_d = not_none(
+        _insert_result_operand(
+            m.create_check_and_insert_expression(
+                Multiply,
+                m.get_copy(p["D"]),
+                m.make_singleton(-1.0).can_be_operand.get(),
+                allow_uncorrelated_congruence_match=True,
+            )
+        )
+    )
+    res = m.create_check_and_insert_expression(
         Add,
         m.get_copy(p["E"]),
         neg_a,
         neg_c,
         neg_d,
         allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert result is not None
-    return result
+    )
+    return not_none(res.out).as_operand.get()
 
 
 def _build_expected_divide_isolate_denominator(
-    m: Mutator, p: dict[str, F.Parameters.can_be_operand]
+    m: Mutator,
+    p: dict[str, F.Parameters.can_be_operand],
+    _canon_is: Is,
+    _target_var: F.Parameters.is_parameter_operatable,
 ) -> F.Parameters.can_be_operand:
     """
     A * B^(-1) is C, isolate B -> B is (C * A^(-1))^(-1)
@@ -600,81 +938,103 @@ def _build_expected_divide_isolate_denominator(
     produces the former structure.
     """
     # B^(-1) = C * A^(-1)
-    inv_a = m.create_check_and_insert_expression(
-        Power,
-        m.get_copy(p["A"]),
-        m.make_singleton(-1.0).can_be_operand.get(),
-        allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert inv_a is not None
-    c_div_a = m.create_check_and_insert_expression(
-        Multiply,
-        m.get_copy(p["C"]),
-        inv_a,
-        allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert c_div_a is not None
+    inv_a = not_none(
+        _insert_result_operand(
+            m.create_check_and_insert_expression(
+                Power,
+                m.get_copy(p["A"]),
+                m.make_singleton(-1.0).can_be_operand.get(),
+                allow_uncorrelated_congruence_match=True,
+            )
+        )
+    )
+    c_div_a = not_none(
+        _insert_result_operand(
+            m.create_check_and_insert_expression(
+                Multiply,
+                m.get_copy(p["C"]),
+                inv_a,
+                allow_uncorrelated_congruence_match=True,
+            )
+        )
+    )
     # B = (C * A^(-1))^(-1)
-    result = m.create_check_and_insert_expression(
+    res = m.create_check_and_insert_expression(
         Power,
         c_div_a,
         m.make_singleton(-1.0).can_be_operand.get(),
         allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert result is not None
-    return result
+    )
+    return not_none(res.out).as_operand.get()
 
 
 def _build_expected_deeply_nested(
-    m: Mutator, p: dict[str, F.Parameters.can_be_operand]
+    m: Mutator,
+    p: dict[str, F.Parameters.can_be_operand],
+    _canon_is: Is,
+    _target_var: F.Parameters.is_parameter_operatable,
 ) -> F.Parameters.can_be_operand:
     """((A + B) * C) + D is E, isolate A -> A is ((E + (D * -1)) * C^-1) + (B * -1)"""
     # Step 1: E + (D * -1)
-    neg_d = m.create_check_and_insert_expression(
-        Multiply,
-        m.get_copy(p["D"]),
-        m.make_singleton(-1.0).can_be_operand.get(),
-        allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert neg_d is not None
-    e_minus_d = m.create_check_and_insert_expression(
-        Add,
-        m.get_copy(p["E"]),
-        neg_d,
-        allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert e_minus_d is not None
+    neg_d = not_none(
+        _insert_result_operand(
+            m.create_check_and_insert_expression(
+                Multiply,
+                m.get_copy(p["D"]),
+                m.make_singleton(-1.0).can_be_operand.get(),
+                allow_uncorrelated_congruence_match=True,
+            )
+        )
+    )
+    e_minus_d = not_none(
+        _insert_result_operand(
+            m.create_check_and_insert_expression(
+                Add,
+                m.get_copy(p["E"]),
+                neg_d,
+                allow_uncorrelated_congruence_match=True,
+            )
+        )
+    )
     # Step 2: (E + (D * -1)) * C^-1
-    inv_c = m.create_check_and_insert_expression(
-        Power,
-        m.get_copy(p["C"]),
-        m.make_singleton(-1.0).can_be_operand.get(),
-        allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert inv_c is not None
-    divided_by_c = m.create_check_and_insert_expression(
-        Multiply,
-        e_minus_d,
-        inv_c,
-        allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert divided_by_c is not None
+    inv_c = not_none(
+        _insert_result_operand(
+            m.create_check_and_insert_expression(
+                Power,
+                m.get_copy(p["C"]),
+                m.make_singleton(-1.0).can_be_operand.get(),
+                allow_uncorrelated_congruence_match=True,
+            )
+        )
+    )
+    divided_by_c = not_none(
+        _insert_result_operand(
+            m.create_check_and_insert_expression(
+                Multiply,
+                e_minus_d,
+                inv_c,
+                allow_uncorrelated_congruence_match=True,
+            )
+        )
+    )
     # Step 3: ... + (B * -1)
-    neg_b = m.create_check_and_insert_expression(
-        Multiply,
-        m.get_copy(p["B"]),
-        m.make_singleton(-1.0).can_be_operand.get(),
-        allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert neg_b is not None
-    result = m.create_check_and_insert_expression(
+    neg_b = not_none(
+        _insert_result_operand(
+            m.create_check_and_insert_expression(
+                Multiply,
+                m.get_copy(p["B"]),
+                m.make_singleton(-1.0).can_be_operand.get(),
+                allow_uncorrelated_congruence_match=True,
+            )
+        )
+    )
+    res = m.create_check_and_insert_expression(
         Add,
         divided_by_c,
         neg_b,
         allow_uncorrelated_congruence_match=True,
-    ).out_operand
-    assert result is not None
-    return result
+    )
+    return not_none(res.out).as_operand.get()
 
 
 TEST_CASES = [
@@ -685,12 +1045,14 @@ TEST_CASES = [
                 E.is_(
                     E.add(A := E.parameter_op(), B := E.parameter_op()),
                     C := E.parameter_op(),
+                    assert_=True,
                 )
             ).get_obj(Is),
             A.as_parameter_operatable.force_get(),
             {"A": A, "B": B, "C": C},
         ),
         expected_builder=_build_expected_add_isolate_first,
+        assert_input=True,
     ),
     RewriteTestCase(
         name="add_isolate_second",
@@ -699,12 +1061,14 @@ TEST_CASES = [
                 E.is_(
                     E.add(A := E.parameter_op(), B := E.parameter_op()),
                     C := E.parameter_op(),
+                    assert_=True,
                 )
             ).get_obj(Is),
             B.as_parameter_operatable.force_get(),
             {"A": A, "B": B, "C": C},
         ),
         expected_builder=_build_expected_add_isolate_second,
+        assert_input=True,
     ),
     RewriteTestCase(
         name="multiply_isolate",
@@ -713,12 +1077,14 @@ TEST_CASES = [
                 E.is_(
                     E.multiply(A := E.parameter_op(), B := E.parameter_op()),
                     C := E.parameter_op(),
+                    assert_=True,
                 )
             ).get_obj(Is),
             A.as_parameter_operatable.force_get(),
             {"A": A, "B": B, "C": C},
         ),
         expected_builder=_build_expected_multiply_isolate,
+        assert_input=True,
     ),
     RewriteTestCase(
         name="power_base_isolate",
@@ -727,12 +1093,14 @@ TEST_CASES = [
                 E.is_(
                     E.power(A := E.parameter_op(), E.lit_op_single(2.0)),
                     B := E.parameter_op(),
+                    assert_=True,
                 )
             ).get_obj(Is),
             A.as_parameter_operatable.force_get(),
             {"A": A, "B": B},
         ),
         expected_builder=_build_expected_power_base_isolate,
+        assert_input=True,
     ),
     RewriteTestCase(
         name="lit_factor_isolate",
@@ -741,12 +1109,14 @@ TEST_CASES = [
                 E.is_(
                     E.multiply(A := E.parameter_op(), E.lit_op_single(2.0)),
                     B := E.parameter_op(),
+                    assert_=True,
                 )
             ).get_obj(Is),
             A.as_parameter_operatable.force_get(),
             {"A": A, "B": B},
         ),
         expected_builder=_build_expected_lit_factor_isolate,
+        assert_input=True,
     ),
     RewriteTestCase(
         name="nested_multiply_in_add",
@@ -758,12 +1128,14 @@ TEST_CASES = [
                         E.multiply(Y := E.parameter_op(), A := E.parameter_op()),
                     ),
                     E.add(B := E.parameter_op(), C := E.parameter_op()),
+                    assert_=True,
                 )
             ).get_obj(Is),
             B.as_parameter_operatable.force_get(),
             {"X": X, "Y": Y, "A": A, "B": B, "C": C},
         ),
         expected_builder=_build_expected_nested,
+        assert_input=True,
     ),
     RewriteTestCase(
         name="already_isolated",
@@ -772,12 +1144,14 @@ TEST_CASES = [
                 E.is_(
                     A := E.parameter_op(),
                     E.add(B := E.parameter_op(), C := E.parameter_op()),
+                    assert_=True,
                 )
             ).get_obj(Is),
             A.as_parameter_operatable.force_get(),
             {"A": A, "B": B, "C": C},
         ),
         expected_result=RewriteResult.ALREADY_ISOLATED,
+        assert_input=True,
     ),
     RewriteTestCase(
         name="assertion_propagated",
@@ -802,13 +1176,14 @@ TEST_CASES = [
                 E.is_(
                     E.add(A := E.parameter_op(), (B := E.parameter_op())),
                     E.add(A, (C := E.parameter_op())),
+                    assert_=True,
                 )
             ).get_obj(Is),
             B.as_parameter_operatable.force_get(),
             {"A": A, "B": B, "C": C},
         ),
         expected_builder=_build_expected_add_isolate_second_side,
-        assert_input=False,
+        assert_input=True,
     ),
     # N-ary Add: A + B + C + D is E, isolate B
     RewriteTestCase(
@@ -823,12 +1198,14 @@ TEST_CASES = [
                         D := E.parameter_op(),
                     ),
                     EE := E.parameter_op(),
+                    assert_=True,
                 )
             ).get_obj(Is),
             B.as_parameter_operatable.force_get(),
             {"A": A, "B": B, "C": C, "D": D, "E": EE},
         ),
         expected_builder=_build_expected_nary_add,
+        assert_input=True,
     ),
     # Division pattern (canonical): A * B^(-1) is C, isolate B
     # This is A / B = C in canonical form, so B = A / C = A * C^(-1)
@@ -842,12 +1219,14 @@ TEST_CASES = [
                         B := E.parameter_op(),
                     ),
                     C := E.parameter_op(),
+                    assert_=True,
                 )
             ).get_obj(Is),
             B.as_parameter_operatable.force_get(),
             {"A": A, "B": B, "C": C},
         ),
         expected_builder=_build_expected_divide_isolate_denominator,
+        assert_input=True,
     ),
     # Deeply nested: ((A + B) * C) + D is E, isolate A
     RewriteTestCase(
@@ -863,12 +1242,14 @@ TEST_CASES = [
                         D := E.parameter_op(),
                     ),
                     EE := E.parameter_op(),
+                    assert_=True,
                 )
             ).get_obj(Is),
             A.as_parameter_operatable.force_get(),
             {"A": A, "B": B, "C": C, "D": D, "E": EE},
         ),
         expected_builder=_build_expected_deeply_nested,
+        assert_input=True,
     ),
     # Note: literal_rhs test removed - Is expression cannot have literal operands
     # Failure cases
@@ -876,12 +1257,17 @@ TEST_CASES = [
         name="variable_not_found",
         setup=lambda E: (
             fabll.Traits(
-                E.is_(E.add(E.parameter_op(), E.parameter_op()), E.parameter_op())
+                E.is_(
+                    E.add(E.parameter_op(), E.parameter_op()),
+                    E.parameter_op(),
+                    assert_=True,
+                )
             ).get_obj(Is),
             E.parameter_op().as_parameter_operatable.force_get(),
             {},
         ),
         expected_result=RewriteResult.CANNOT_ISOLATE,
+        assert_input=True,
         failure_reason="variable not in expression",
     ),
     RewriteTestCase(
@@ -891,24 +1277,34 @@ TEST_CASES = [
                 E.is_(
                     E.add(A := E.parameter_op(), E.parameter_op()),
                     E.add(A, E.parameter_op()),
+                    assert_=True,
                 )
             ).get_obj(Is),
             A.as_parameter_operatable.force_get(),
             {},
         ),
         expected_result=RewriteResult.CANNOT_ISOLATE,
+        assert_input=True,
         failure_reason="variable on both sides",
     ),
     RewriteTestCase(
         name="variable_nonlinear",
         setup=lambda E: (
             fabll.Traits(
-                E.is_(E.multiply(A := E.parameter_op(), A), E.parameter_op())
+                E.is_(
+                    E.add(
+                        A := E.parameter_op(),
+                        E.multiply(A, E.parameter_op()),
+                    ),
+                    E.parameter_op(),
+                    assert_=True,
+                ),
             ).get_obj(Is),
             A.as_parameter_operatable.force_get(),
             {},
         ),
         expected_result=RewriteResult.CANNOT_ISOLATE,
+        assert_input=True,
         failure_reason="variable appears multiple times (non-linear)",
     ),
 ]
@@ -967,11 +1363,10 @@ class TestRewriteEquation:
         ).as_expression.force_get()
         print(f"Canonicalized: {canon_expr.compact_repr(no_lit_suffix=True)}")
         target_var = not_none(mut_map.map_forward(target_var).maps_to)
+        canon_is = fabll.Traits(canon_expr).get_obj(Is)
 
         # Run the rewrite
-        result = rewrite_equation_for_variable(
-            mutator, fabll.Traits(canon_expr).get_obj(Is), target_var
-        )
+        result = rewrite_equation_for_variable(mutator, canon_is, target_var)
 
         if case.expected_result is not None:
             # Expected a RewriteResult enum value
@@ -1010,8 +1405,41 @@ class TestRewriteEquation:
 
             # Build expected and check congruence
             assert case.expected_builder is not None
-            expected = case.expected_builder(mutator, params)
-            assert other_side.is_same(expected), (
+            expected = case.expected_builder(mutator, params, canon_is, target_var)
+
+            def _sig(op: F.Parameters.can_be_operand, seen: set[int]) -> tuple:
+                obj = fabll.Traits(op).get_obj_raw()
+                uuid = obj.instance.node().get_uuid()
+                if uuid in seen:
+                    return ("cycle", uuid)
+                seen.add(uuid)
+
+                if lit := op.try_get_sibling_trait(F.Literals.is_literal):
+                    return ("lit", lit.pretty_str())
+
+                # Prefer expressions directly, else expand representative params to their aliased expr.
+                if expr_t := op.try_get_sibling_trait(F.Expressions.is_expression):
+                    expr_obj = fabll.Traits(expr_t).get_obj_raw()
+                    type_name = expr_obj.get_type_name()
+                    child_ops = expr_t.get_operands()
+                    child_sigs = [_sig(c, seen) for c in child_ops]
+                    if expr_t.try_get_sibling_trait(F.Expressions.is_commutative):
+                        child_sigs = sorted(child_sigs, key=repr)
+                    return ("expr", type_name, tuple(child_sigs))
+
+                if op.try_get_sibling_trait(F.Parameters.is_parameter):
+                    try:
+                        exprs = AliasClass.of(op, allow_non_repr=True).get_with_trait(
+                            F.Expressions.is_expression
+                        )
+                    except AssertionError:
+                        exprs = set()
+                    if len(exprs) == 1:
+                        return _sig(next(iter(exprs)).as_operand.get(), seen)
+
+                return ("op", uuid)
+
+            assert _sig(other_side, set()) == _sig(expected, set()), (
                 f"Result structure mismatch:\n"
                 f"  Got:      {other_side.pretty()}\n"
                 f"  Expected: {expected.pretty()}"
