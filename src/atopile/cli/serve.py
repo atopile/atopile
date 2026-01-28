@@ -80,6 +80,11 @@ def backend(
         "--ato-ui-source",
         help="UI source type (e.g., 'release', 'branch', 'local')",
     ),
+    ato_binary_path: Optional[str] = typer.Option(
+        None,
+        "--ato-binary-path",
+        help="Actual resolved path to the ato binary being used",
+    ),
 ) -> None:
     """Start the backend server in the current terminal."""
     cmd = [sys.executable, "-m", "atopile.server", "--port", str(port)]
@@ -91,6 +96,8 @@ def backend(
         cmd.extend(["--ato-source", ato_source])
     if ato_ui_source:
         cmd.extend(["--ato-ui-source", ato_ui_source])
+    if ato_binary_path:
+        cmd.extend(["--ato-binary-path", ato_binary_path])
     raise typer.Exit(subprocess.run(cmd).returncode)
 
 

@@ -216,6 +216,23 @@ export async function handleEvent(event: string, data: unknown): Promise<void> {
     }
     case 'atopile_config_changed':
       updateAtopileConfig({
+        // Actual running atopile info (source of truth)
+        actualVersion: typeof detail.actual_version === 'string'
+          ? detail.actual_version as string
+          : typeof detail.actualVersion === 'string'
+            ? detail.actualVersion as string
+            : undefined,
+        actualSource: typeof detail.actual_source === 'string'
+          ? detail.actual_source as string
+          : typeof detail.actualSource === 'string'
+            ? detail.actualSource as string
+            : undefined,
+        actualBinaryPath: typeof detail.actual_binary_path === 'string'
+          ? detail.actual_binary_path as string
+          : typeof detail.actualBinaryPath === 'string'
+            ? detail.actualBinaryPath as string
+            : undefined,
+        // User selection state
         source: typeof detail.source === 'string' ? detail.source as AtopileConfig['source'] : undefined,
         currentVersion: typeof detail.current_version === 'string'
           ? detail.current_version as string

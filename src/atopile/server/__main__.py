@@ -61,6 +61,18 @@ def main():
         default=None,
         help="UI source type (e.g., 'release', 'branch', 'local')",
     )
+    parser.add_argument(
+        "--ato-local-path",
+        type=str,
+        default=None,
+        help="Path to local atopile installation (for display in UI)",
+    )
+    parser.add_argument(
+        "--ato-binary-path",
+        type=str,
+        default=None,
+        help="Actual resolved path to the ato binary being used",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[3]
@@ -106,6 +118,10 @@ def main():
     server = DashboardServer(
         port=port,
         workspace_paths=workspace_paths,
+        ato_source=args.ato_source,
+        ato_ui_source=args.ato_ui_source,
+        ato_local_path=args.ato_local_path,
+        ato_binary_path=args.ato_binary_path,
     )
 
     print(f"Starting dashboard server on http://localhost:{port}")

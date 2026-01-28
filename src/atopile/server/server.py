@@ -309,11 +309,14 @@ async def _load_atopile_install_options(ctx: AppContext) -> None:
                 {
                     "actual_version": actual_version,
                     "actual_source": actual_source,
-                    "source": ui_source,  # Sets the active dropdown button
+                    "actual_binary_path": ctx.ato_binary_path,  # Actual binary path
+                    "source": ui_source,  # Sets the active toggle state
+                    "local_path": ctx.ato_local_path,  # Path for display in UI
                 },
             )
             log.info(
-                f"[background] Actual atopile: {actual_version} from {actual_source} (UI: {ui_source})"  # noqa: E501
+                f"[background] Actual atopile: {actual_version} from {actual_source} "
+                f"(binary: {ctx.ato_binary_path}, UI: {ui_source})"
             )
         except Exception as e:
             log.warning(f"[background] Could not detect actual version: {e}")
@@ -348,6 +351,10 @@ async def _load_atopile_install_options(ctx: AppContext) -> None:
 def create_app(
     summary_file: Optional[Path] = None,
     workspace_paths: Optional[list[Path]] = None,
+    ato_source: Optional[str] = None,
+    ato_ui_source: Optional[str] = None,
+    ato_local_path: Optional[str] = None,
+    ato_binary_path: Optional[str] = None,
 ) -> FastAPI:
     """
     Create the FastAPI application with API routes for the dashboard.
@@ -368,6 +375,10 @@ def create_app(
     ctx = AppContext(
         summary_file=summary_file,
         workspace_paths=workspace_paths or [],
+        ato_source=ato_source,
+        ato_ui_source=ato_ui_source,
+        ato_local_path=ato_local_path,
+        ato_binary_path=ato_binary_path,
     )
     app.state.ctx = ctx
 
@@ -521,10 +532,20 @@ class DashboardServer:
         self,
         port: Optional[int] = None,
         workspace_paths: Optional[list[Path]] = None,
+        ato_source: Optional[str] = None,
+        ato_ui_source: Optional[str] = None,
+        ato_local_path: Optional[str] = None,
+        ato_binary_path: Optional[str] = None,
     ):
         self.port = port or find_free_port()
         self.workspace_paths = workspace_paths or []
-        self.app = create_app(workspace_paths=self.workspace_paths)
+        self.app = create_app(
+            workspace_paths=self.workspace_paths,
+            ato_source=ato_source,
+            ato_ui_source=ato_ui_source,
+            ato_local_path=ato_local_path,
+            ato_binary_path=ato_binary_path,
+        )
         self._server: Optional[uvicorn.Server] = None
         self._thread: Optional[threading.Thread] = None
 

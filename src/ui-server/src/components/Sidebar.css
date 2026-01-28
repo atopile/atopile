@@ -323,10 +323,13 @@
   flex-direction: column;
 }
 
-/* Disconnected Overlay */
+/* Disconnected Overlay - positioned below header so settings remain accessible */
 .disconnected-overlay {
   position: absolute;
-  inset: 0;
+  top: 40px; /* Below the header */
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: var(--z-modal);
   display: flex;
   align-items: center;

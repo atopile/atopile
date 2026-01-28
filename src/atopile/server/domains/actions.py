@@ -1314,7 +1314,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
         elif action == "setAtopileLocalPath":
             await server_state.emit_event(
                 "atopile_config_changed",
-                {"local_path": payload.get("path")},
+                {
+                    "local_path": payload.get("path"),
+                    "source": "local",  # Also set source to 'local' so the UI knows
+                },
             )
             return {"success": True}
 
@@ -1361,8 +1364,13 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
         elif action == "refreshDetectedInstallations":
             from atopile.server.domains import atopile_install
 
+            # Get workspace paths from context
+            workspace_paths = (
+                [str(p) for p in ctx.workspace_paths] if ctx.workspace_paths else []
+            )
+
             installations = await asyncio.to_thread(
-                atopile_install.detect_local_installations
+                atopile_install.detect_local_installations, workspace_paths
             )
             await server_state.emit_event(
                 "atopile_config_changed",

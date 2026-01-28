@@ -15,7 +15,6 @@ import axios from 'axios';
 import * as net from 'net';
 import { traceInfo, traceError, traceVerbose } from './log/logging';
 import { resolveAtoBinForWorkspace } from './findbin';
-import { getAtopileWorkspaceFolders } from './vscodeapi';
 
 const BACKEND_HOST = '127.0.0.1';
 const SERVER_STARTUP_TIMEOUT_MS = 30000; // 30 seconds to wait for server startup
@@ -60,22 +59,7 @@ async function getAvailablePort(): Promise<number> {
 }
 
 /**
- * Get all workspace root paths that contain atopile projects.
- */
-async function getWorkspaceRoots(): Promise<string[]> {
-    // Get workspace folders that contain atopile projects (ato.yaml)
-    const atopileWorkspaces = await getAtopileWorkspaceFolders();
-    if (atopileWorkspaces.length > 0) {
-        return atopileWorkspaces.map(w => w.uri.fsPath);
-    }
-
-    // Fall back to all workspace folders
-    const folders = vscode.workspace.workspaceFolders;
-    return folders ? folders.map(f => f.uri.fsPath) : [];
-}
-
-/**
- * Get all workspace root paths.
+ * Get all workspace root paths (synchronous version for spawn calls).
  */
 function getWorkspaceRoots(): string[] {
     const folders = vscode.workspace.workspaceFolders;
@@ -111,6 +95,7 @@ class BackendServerManager implements vscode.Disposable {
     private _isConnected: boolean = false;
     private _serverReady: boolean = false;
     private _startupPromise: Promise<boolean> | null = null;
+    private _restartPromise: Promise<boolean> | null = null;
     private _disposables: vscode.Disposable[] = [];
     private _statusBarItem: vscode.StatusBarItem | undefined;
     private _lastError: string | undefined;
@@ -422,18 +407,42 @@ class BackendServerManager implements vscode.Disposable {
         this._serverReady = false;
         this._updateStatusBar();
 
+        // Send initial progress update
+        this._onWebviewMessage.fire({
+            type: 'atopileInstalling',
+            message: 'Looking for atopile...',
+        });
+        traceInfo('[BackendServer] Starting server initialization...');
+
         try {
+            // Get a port to use - prefer the provided port, or get an available one
+            const port = preferredPort || await getAvailablePort();
+            this._setPort(port);
+            traceInfo(`[BackendServer] Using port: ${port}`);
+
             const workspaceRoots = getWorkspaceRoots();
-            const workspaceRoot = workspaceRoots[0]; // Use first for cwd
+            traceInfo(`[BackendServer] Workspace roots: ${workspaceRoots.join(', ') || '(none)'}`);
+
+            // Send progress update: resolving ato binary
+            this._onWebviewMessage.fire({
+                type: 'atopileInstalling',
+                message: 'Resolving atopile binary...',
+            });
+
             const resolved = await resolveAtoBinForWorkspace();
             if (!resolved) {
-                this._lastError = 'ato binary not found';
-                traceError(`BackendServer: Cannot start server - ${this._lastError}`);
+                this._lastError = 'ato binary not found. Check that atopile is installed in .venv/bin/ato or configure atopile.ato in settings.';
+                traceError(`[BackendServer] Cannot start server - ${this._lastError}`);
                 this._serverState = 'error';
                 this._updateStatusBar();
+                this._onWebviewMessage.fire({
+                    type: 'atopileInstallError',
+                    error: this._lastError,
+                });
                 return false;
             }
             const { settings, atoBin } = resolved;
+            traceInfo(`[BackendServer] Found ato binary: ${atoBin.command.join(' ')} (source: ${atoBin.source})`);
 
             if (this._process) {
                 await this.stopServer();
@@ -442,8 +451,21 @@ class BackendServerManager implements vscode.Disposable {
             // Send progress update: starting server
             this._onWebviewMessage.fire({
                 type: 'atopileInstalling',
-                message: 'Starting backend server...',
+                message: `Starting backend server (${atoBin.source})...`,
             });
+
+            // Determine UI source type from settings and atoBin source
+            // 'local' if using local installation (settings.ato or workspace-venv),
+            // 'branch' if from starts with 'git+', else 'release'
+            let uiSourceType = 'release';
+            if (settings.ato || atoBin.source === 'workspace-venv' || atoBin.source === 'settings') {
+                uiSourceType = 'local';
+            } else if (settings.from?.startsWith('git+')) {
+                uiSourceType = 'branch';
+            }
+
+            // Get the actual binary path (first element of the command)
+            const atoBinaryPath = atoBin.command[0];
 
             // Build command args: ato serve backend --port <port> [--workspace <path>...]
             const args = [
@@ -452,6 +474,7 @@ class BackendServerManager implements vscode.Disposable {
                 '--port', String(this.port),
                 '--ato-source', atoBin.source,
                 '--ato-ui-source', uiSourceType,
+                '--ato-binary-path', atoBinaryPath,
             ];
             // Pass all workspace roots to the backend
             for (const root of workspaceRoots) {
@@ -600,6 +623,21 @@ class BackendServerManager implements vscode.Disposable {
      * Reuses the same port so the webview's WebSocket can reconnect.
      */
     async restartServer(): Promise<boolean> {
+        // If already restarting, wait for that to complete
+        if (this._restartPromise) {
+            traceInfo('BackendServer: Restart already in progress, waiting...');
+            return this._restartPromise;
+        }
+
+        this._restartPromise = this._doRestartServer();
+        try {
+            return await this._restartPromise;
+        } finally {
+            this._restartPromise = null;
+        }
+    }
+
+    private async _doRestartServer(): Promise<boolean> {
         traceInfo('BackendServer: Restarting server...');
         this._log('info', 'server: Restarting...');
 

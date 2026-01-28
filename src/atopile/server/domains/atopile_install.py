@@ -237,24 +237,18 @@ async def validate_local_path(path: str) -> dict:
         return {"valid": False, "version": None, "error": str(e)[:100]}
 
 
-def detect_local_installations() -> list[dict]:
+def detect_local_installations(
+    workspace_paths: Optional[list[str]] = None,
+) -> list[dict]:
     """
-    Detect existing atopile installations on the system.
+    Detect existing atopile installations on the system and in workspaces.
     Returns list of DetectedInstallation dicts.
+
+    Args:
+        workspace_paths: Optional list of workspace root paths to check for local
+                        atopile installations (e.g., monorepo development).
     """
     installations = []
-
-    # Check common locations
-    locations_to_check = [  # noqa
-        # User's PATH
-        ("which", "path"),
-        # Common venv locations
-        (".venv/bin/ato", "venv"),
-        ("venv/bin/ato", "venv"),
-        # Common dev locations
-        ("~/projects/atopile/src/atopile", "path"),
-        ("~/dev/atopile/src/atopile", "path"),
-    ]
 
     # Check PATH first
     try:
@@ -277,26 +271,79 @@ def detect_local_installations() -> list[dict]:
     except Exception:
         pass
 
-    # Check workspace venvs
+    # Check workspace venvs and detect atopile monorepo
     workspace_root = os.environ.get("WORKSPACE_ROOT", os.getcwd())
-    for venv_name in [".venv", "venv"]:
-        venv_ato = Path(workspace_root) / venv_name / "bin" / "ato"
-        if venv_ato.exists():
-            version = _get_version(str(venv_ato))
-            installations.append(
-                {
-                    "path": str(venv_ato),
-                    "version": version,
-                    "source": "venv",
-                }
-            )
+    workspace_roots = [workspace_root]
+    if workspace_paths:
+        workspace_roots.extend(workspace_paths)
 
-    # Deduplicate by path
+    for ws_root in workspace_roots:
+        ws_path = Path(ws_root)
+
+        # Check for venv installations
+        for venv_name in [".venv", "venv"]:
+            venv_ato = ws_path / venv_name / "bin" / "ato"
+            if venv_ato.exists():
+                version = _get_version(str(venv_ato))
+                installations.append(
+                    {
+                        "path": str(venv_ato),
+                        "version": version,
+                        "source": "venv",
+                    }
+                )
+
+        # Check if this workspace IS the atopile monorepo
+        # Look for characteristic files that indicate this is the atopile source
+        monorepo_indicators = [
+            ws_path / "src" / "atopile" / "cli" / "cli.py",
+            ws_path / "src" / "atopile" / "__init__.py",
+            ws_path / "pyproject.toml",
+        ]
+        is_atopile_monorepo = all(
+            indicator.exists() for indicator in monorepo_indicators
+        )
+
+        if is_atopile_monorepo:
+            # Check if there's a pyproject.toml with atopile
+            pyproject = ws_path / "pyproject.toml"
+            if pyproject.exists():
+                try:
+                    content = pyproject.read_text()
+                    if 'name = "atopile"' in content or "name = 'atopile'" in content:
+                        # This is the atopile monorepo - add it as a workspace detection
+                        # The path we return is the venv's ato binary if it exists,
+                        # otherwise the source directory
+                        venv_ato = ws_path / ".venv" / "bin" / "ato"
+                        if venv_ato.exists():
+                            version = _get_version(str(venv_ato))
+                            installations.append(
+                                {
+                                    "path": str(venv_ato),
+                                    "version": version,
+                                    "source": "workspace",
+                                }
+                            )
+                        else:
+                            # Return workspace root - validation finds the binary
+                            installations.append(
+                                {
+                                    "path": str(ws_path),
+                                    "version": None,
+                                    "source": "workspace",
+                                }
+                            )
+                except Exception:
+                    pass
+
+    # Deduplicate by path (keep first occurrence)
     seen_paths = set()
     unique_installations = []
     for inst in installations:
-        if inst["path"] not in seen_paths:
-            seen_paths.add(inst["path"])
+        # Normalize path for deduplication
+        norm_path = str(Path(inst["path"]).resolve())
+        if norm_path not in seen_paths:
+            seen_paths.add(norm_path)
             unique_installations.append(inst)
 
     return unique_installations

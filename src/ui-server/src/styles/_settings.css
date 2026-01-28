@@ -19,7 +19,8 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 1000;
+  /* Ensure settings dropdown is above disconnected overlay */
+  z-index: calc(var(--z-modal) + 200);
   padding: var(--spacing-sm);
 }
 
@@ -529,29 +530,36 @@
 
 .detected-installations {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  align-items: center;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .detected-label {
-  font-size: var(--font-size-xxs);
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
-  margin-right: 2px;
+  font-weight: 500;
+}
+
+.detected-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .detected-item {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  font-size: var(--font-size-xs);
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: var(--font-size-sm);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
+  text-align: left;
 }
 
 .detected-item:hover {
@@ -565,6 +573,11 @@
   color: var(--ato-orange);
 }
 
+.detected-project {
+  font-weight: 500;
+  font-family: var(--font-mono);
+}
+
 .detected-source {
   font-weight: 500;
   text-transform: uppercase;
@@ -573,7 +586,8 @@
 
 .detected-version {
   color: var(--text-muted);
-  font-size: var(--font-size-xxs);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
 }
 
 .detected-item.active .detected-version {
@@ -794,4 +808,192 @@
   background: var(--bg-tertiary);
   color: var(--text-primary);
   opacity: 1;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  transition: all 0.2s ease;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 2px;
+  bottom: 2px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--ato-orange);
+  border-color: var(--ato-orange);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  background: white;
+  transform: translateX(16px);
+}
+
+.toggle-switch:hover .toggle-slider {
+  border-color: var(--ato-orange);
+}
+
+.toggle-switch input:focus + .toggle-slider {
+  box-shadow: 0 0 0 2px rgba(249, 80, 21, 0.2);
+}
+
+/* Settings Toggle Row (label + toggle inline) */
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+/* Atopile Health Status Indicator */
+.atopile-health-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  transition: all 0.2s ease;
+}
+
+.atopile-health-status svg {
+  flex-shrink: 0;
+}
+
+.health-message {
+  flex: 1;
+  line-height: 1.3;
+}
+
+/* Health status: healthy (green) */
+.atopile-health-status.health-healthy {
+  background: rgba(166, 227, 161, 0.1);
+  border: 1px solid var(--success);
+  color: var(--success);
+}
+
+.atopile-health-status.health-healthy svg {
+  color: var(--success);
+}
+
+/* Health status: unhealthy/error (red) */
+.atopile-health-status.health-unhealthy {
+  background: rgba(243, 139, 168, 0.1);
+  border: 1px solid var(--ctp-red);
+  color: var(--ctp-red);
+}
+
+.atopile-health-status.health-unhealthy svg {
+  color: var(--ctp-red);
+}
+
+/* Health status: installing (blue with spinner) */
+.atopile-health-status.health-installing {
+  background: rgba(137, 180, 250, 0.1);
+  border: 1px solid var(--ctp-blue);
+  color: var(--ctp-blue);
+}
+
+.atopile-health-status.health-installing svg {
+  color: var(--ctp-blue);
+}
+
+/* Health status: unknown/checking (neutral with spinner) */
+.atopile-health-status.health-unknown {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+}
+
+.atopile-health-status.health-unknown svg {
+  color: var(--text-muted);
+}
+
+/* Restart button - shown when settings changed and restart needed */
+.atopile-restart-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: rgba(250, 179, 135, 0.15);
+  border: 1px solid var(--ctp-peach);
+  color: var(--ctp-peach);
+}
+
+.atopile-restart-button:hover {
+  background: rgba(250, 179, 135, 0.25);
+  transform: translateY(-1px);
+}
+
+.atopile-restart-button:active {
+  transform: translateY(0);
+}
+
+.atopile-restart-button svg {
+  flex-shrink: 0;
+  color: var(--ctp-peach);
+}
+
+/* Health status: restart-needed (red warning) */
+.atopile-health-status.health-restart-needed {
+  background: rgba(243, 139, 168, 0.1);
+  border: 1px solid var(--ctp-red);
+  color: var(--ctp-red);
+}
+
+.atopile-health-status.health-restart-needed svg {
+  color: var(--ctp-red);
+}
+
+/* Restart container - stacks warning message and button */
+.atopile-restart-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.atopile-restart-container .atopile-health-status {
+  padding: 8px 10px;
+}
+
+.atopile-restart-container .atopile-restart-button {
+  padding: 8px 12px;
 }

@@ -82,11 +82,26 @@ export interface SelectionChangedMessage {
   targetNames: string[];
 }
 
+export interface BrowseAtopilePathMessage {
+  type: 'browseAtopilePath';
+}
+
+export interface ReloadWindowMessage {
+  type: 'reloadWindow';
+}
+
+export interface RestartExtensionMessage {
+  type: 'restartExtension';
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
   | AtopileSettingsMessage
-  | SelectionChangedMessage;
+  | SelectionChangedMessage
+  | BrowseAtopilePathMessage
+  | ReloadWindowMessage
+  | RestartExtensionMessage;
 
 /**
  * Type-safe helper to post messages to the extension.

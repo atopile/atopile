@@ -20,6 +20,7 @@ import { setProjectRoot, setSelectedTargets } from '../common/target';
 import { loadBuilds, getBuilds } from '../common/manifest';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openModelViewerPreview } from '../ui/modelviewer';
+import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
 // Message types from the webview
 interface OpenSignalsMessage {
@@ -53,11 +54,26 @@ interface SelectionChangedMessage {
   targetNames: string[];
 }
 
+interface BrowseAtopilePathMessage {
+  type: 'browseAtopilePath';
+}
+
+interface ReloadWindowMessage {
+  type: 'reloadWindow';
+}
+
+interface RestartExtensionMessage {
+  type: 'restartExtension';
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
   | AtopileSettingsMessage
-  | SelectionChangedMessage;
+  | SelectionChangedMessage
+  | BrowseAtopilePathMessage
+  | ReloadWindowMessage
+  | RestartExtensionMessage;
 
 /**
  * Check if we're running in development mode.
@@ -319,6 +335,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'selectionChanged':
         void this._handleSelectionChanged(message);
         break;
+      case 'reloadWindow':
+        // Reload the VS Code window to apply new atopile settings
+        vscode.commands.executeCommand('workbench.action.reloadWindow');
+        break;
+      case 'restartExtension':
+        // Restart only the atopile backend server (not the entire VS Code window)
+        this._handleRestartExtension().catch((error) => {
+          traceError(`[SidebarProvider] Error restarting extension: ${error}`);
+        });
+        break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
     }
@@ -499,7 +525,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   /**
    * Handle atopile settings changes from the UI.
-   * Syncs atopile settings to VS Code configuration and restarts the backend if needed.
+   * Syncs atopile settings to VS Code configuration.
+   * Note: Does NOT restart the server - user must click the restart button.
    */
   private async _handleAtopileSettings(atopile: AtopileSettingsMessage['atopile']): Promise<void> {
     if (!atopile) return;
@@ -517,7 +544,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    const isFirstLoad = this._lastAtopileSettingsKey === null;
     this._lastAtopileSettingsKey = settingsKey;
 
     const config = vscode.workspace.getConfiguration('atopile');
@@ -537,29 +563,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         await config.update('from', fromValue, target);
         await config.update('ato', undefined, target);
       }
-
-      // Restart the backend server to use the new atopile binary
-      // Skip restart on first load - the server is already using the correct binary
-      if (!isFirstLoad) {
-        traceInfo(`[SidebarProvider] Atopile settings changed, restarting backend server`);
-
-        // Notify UI that we're installing/switching to a new version
-        const versionDescription = atopile.source === 'local'
-          ? 'local atopile'
-          : atopile.source === 'branch'
-            ? `branch ${atopile.branch || 'main'}`
-            : `atopile v${atopile.currentVersion || 'latest'}`;
-
-        backendServer.sendToWebview({
-          type: 'atopileInstalling',
-          message: `Switching to ${versionDescription}...`,
-          source: atopile.source,
-          version: atopile.currentVersion,
-          branch: atopile.branch,
-        });
-
-        await backendServer.restartServer();
-      }
+      // Settings saved - user will click "Restart" button to apply
+      traceInfo(`[SidebarProvider] Atopile settings saved. User must restart to apply.`);
     } catch (error) {
       traceError(`[SidebarProvider] Failed to update atopile settings: ${error}`);
 
@@ -567,6 +572,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       backendServer.sendToWebview({
         type: 'atopileInstallError',
         error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Restart the atopile backend server without reloading the entire VS Code window.
+   * This applies new atopile settings by restarting just the backend process.
+   */
+  private async _handleRestartExtension(): Promise<void> {
+    traceInfo('[SidebarProvider] Restarting atopile backend...');
+
+    // Restart the backend server - this will pick up new settings
+    const success = await backendServer.restartServer();
+
+    if (success) {
+      traceInfo('[SidebarProvider] Backend restarted successfully');
+      // The webview will reconnect automatically via WebSocket
+    } else {
+      traceError('[SidebarProvider] Failed to restart backend');
+      // Notify the webview of the error
+      backendServer.sendToWebview({
+        type: 'atopileInstallError',
+        error: 'Failed to restart atopile backend. Try reloading the window.',
       });
     }
   }
