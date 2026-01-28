@@ -134,6 +134,18 @@
         },
         "title": "Targets",
         "type": "array"
+      },
+      "displayPath": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Display Path"
       }
     },
     "required": [
