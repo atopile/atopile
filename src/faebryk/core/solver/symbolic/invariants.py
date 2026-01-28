@@ -1310,23 +1310,21 @@ def insert_expression(
             )
         )
 
-    if super_lit:
-        target = alias or expr.is_expression.get()
+    if super_lit and alias:
         mutator.create_check_and_insert_expression_from_builder(
             ExpressionBuilder(
                 F.Expressions.IsSubset,
-                [target.as_operand.get(), super_lit.as_operand.get()],
+                [alias.as_operand.get(), super_lit.as_operand.get()],
                 assert_=True,
                 terminate=True,
                 traits=[],
             )
         )
-    if sub_lit:
-        target = alias or expr.is_expression.get()
+    if sub_lit and alias:
         mutator.create_check_and_insert_expression_from_builder(
             ExpressionBuilder(
                 F.Expressions.IsSubset,
-                [sub_lit.as_operand.get(), target.as_operand.get()],
+                [sub_lit.as_operand.get(), alias.as_operand.get()],
                 assert_=True,
                 terminate=True,
                 traits=[],
