@@ -6,7 +6,8 @@
  */
 
 import { create } from 'zustand';
-import { devtools } from 'zustand/middleware';
+import { devtools, subscribeWithSelector } from 'zustand/middleware';
+import { postMessage } from '../api/vscodeApi';
 import type {
   AppState,
   Project,
@@ -34,6 +35,20 @@ let variablesErrorTimeout: ReturnType<typeof setTimeout> | null = null;
 let packageDetailsErrorTimeout: ReturnType<typeof setTimeout> | null = null;
 let projectsErrorTimeout: ReturnType<typeof setTimeout> | null = null;
 let atopileErrorTimeout: ReturnType<typeof setTimeout> | null = null;
+
+const arraysEqual = (a: string[], b: string[]) => {
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
+};
+
+// BroadcastChannel for cross-webview state synchronization
+const _channel: BroadcastChannel | null = (() => {
+  try {
+    return new BroadcastChannel('atopile-store');
+  } catch {
+    return null;
+  }
+})();
 
 // Initial state for the store
 const initialState: AppState = {
@@ -245,15 +260,11 @@ interface StoreActions {
 // Combined store type
 type Store = AppState & StoreActions;
 
-// Cross-webview sync for shared UI state
-const _channel = typeof BroadcastChannel !== 'undefined'
-  ? new BroadcastChannel('atopile-ui-state')
-  : null;
-
 export const useStore = create<Store>()(
-  devtools(
-    (set) => ({
-      ...initialState,
+  subscribeWithSelector(
+    devtools(
+      (set) => ({
+        ...initialState,
 
       // Connection
       setConnected: (connected) => set({ isConnected: connected }),
@@ -420,10 +431,7 @@ export const useStore = create<Store>()(
         set({ selectedBuildId: buildId, selectedBuildName: buildName }),
 
       // Log viewer
-      setLogViewerBuildId: (buildId) => {
-        set({ logViewerBuildId: buildId });
-        _channel?.postMessage({ key: 'logViewerBuildId', value: buildId });
-      },
+      setLogViewerBuildId: (buildId) => set({ logViewerBuildId: buildId }),
 
       // Active editor file - just store what's provided, backend handles lastAtoFile
       setActiveEditorFile: (filePath) => set({ activeEditorFile: filePath }),
@@ -658,19 +666,39 @@ export const useStore = create<Store>()(
 
       // Reset
       reset: () => set(initialState),
-    }),
-    { name: 'atopile-store' }
+      }),
+      { name: 'atopile-store' }
+    )
   )
 );
 
 // Receive cross-webview state updates
-_channel?.addEventListener('message', (event) => {
+_channel?.addEventListener('message', (event: MessageEvent) => {
   const { key, value } = event.data ?? {};
   if (key) {
     useStore.setState({ [key]: value });
   }
 });
 
+useStore.subscribe(
+  (state) => ({
+    projectRoot: state.selectedProjectRoot,
+    targetNames: state.selectedTargetNames,
+  }),
+  (current, previous) => {
+    if (
+      current.projectRoot === previous.projectRoot &&
+      arraysEqual(current.targetNames, previous.targetNames)
+    ) {
+      return;
+    }
+    postMessage({
+      type: 'selectionChanged',
+      projectRoot: current.projectRoot,
+      targetNames: current.targetNames,
+    });
+  }
+);
 // Selectors for common derived state
 export const useSelectedProject = () =>
   useStore((state) => {

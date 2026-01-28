@@ -44,12 +44,6 @@ def main():
         help="Workspace path to scan for projects (can be specified multiple times)",
     )
     parser.add_argument(
-        "--logs-dir",
-        type=str,
-        default=None,
-        help="Directory for build logs (default: current directory)",
-    )
-    parser.add_argument(
         "--force",
         "-f",
         action="store_true",
@@ -106,7 +100,6 @@ def main():
 
     # Create and start server
     server = DashboardServer(
-        logs_base=logs_base,
         port=port,
         workspace_paths=workspace_paths,
     )

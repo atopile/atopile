@@ -269,7 +269,7 @@
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: var(--font-size-lg);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.1s ease;

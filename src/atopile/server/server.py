@@ -491,11 +491,9 @@ class DashboardServer:
 
     def __init__(
         self,
-        logs_base: Path,
         port: Optional[int] = None,
         workspace_paths: Optional[list[Path]] = None,
     ):
-        self.logs_base = logs_base
         self.port = port or find_free_port()
         self.workspace_paths = workspace_paths or []
         self.app = create_app(logs_base=logs_base, workspace_paths=self.workspace_paths)
@@ -539,7 +537,6 @@ class DashboardServer:
 
 
 def start_dashboard_server(
-    logs_base: Path,
     port: Optional[int] = None,
     workspace_path: Optional[Path] = None,
 ) -> tuple[DashboardServer, str]:
@@ -547,13 +544,12 @@ def start_dashboard_server(
     Start the dashboard server.
 
     Args:
-        logs_base: Base directory for logs
         port: Port to use (defaults to a free port)
         workspace_path: Workspace path to scan for projects
 
     Returns:
         Tuple of (DashboardServer, url)
     """
-    server = DashboardServer(logs_base, port, workspace_path)
+    server = DashboardServer(port=port, workspace_path=workspace_path)
     server.start()
     return server, server.url

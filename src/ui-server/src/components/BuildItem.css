@@ -158,7 +158,7 @@
   gap: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-sm);
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-base);
   text-align: left;
   width: 100%;
 }
@@ -192,7 +192,7 @@
 }
 
 .stage-stats .stat {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   padding: 0 var(--spacing-xs);
   border-radius: var(--radius-sm);

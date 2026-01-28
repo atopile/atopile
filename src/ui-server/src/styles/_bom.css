@@ -24,7 +24,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
 }
 
 .bom-summary-item .summary-value {
@@ -56,12 +56,12 @@
 
 .bom-summary-item.muted .summary-value {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
 }
 
 .bom-summary-item.muted .summary-label {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
 }
 
 /* Toolbar */
@@ -82,7 +82,7 @@
   align-items: center;
   gap: 3px;
   padding: 3px 8px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   background: none;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
@@ -104,7 +104,7 @@
 
 /* BOM type badge */
 .bom-type-badge {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   font-weight: 600;
   padding: 2px 5px;
   border-radius: 3px;
@@ -163,7 +163,7 @@
 }
 
 .bom-mpn {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   font-family: var(--font-mono);
   max-width: 90px;
@@ -237,7 +237,7 @@
 .component-icon.other { color: var(--text-muted); }
 
 .bom-value {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-primary);
   flex: 1;
@@ -247,7 +247,7 @@
 }
 
 .bom-quantity {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--ctp-blue);
   font-weight: 500;
   font-family: var(--font-mono);
@@ -255,7 +255,7 @@
 }
 
 .bom-cost {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--ctp-green);
   font-family: var(--font-mono);
   flex-shrink: 0;
@@ -278,7 +278,7 @@
   width: 100%;
   border-collapse: collapse;
   margin-bottom: var(--spacing-sm);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
 }
 
 .bom-detail-table td {
@@ -292,7 +292,7 @@
 
 .detail-cell-label {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   width: 80px;
   white-space: nowrap;
 }
@@ -373,7 +373,7 @@
   display: inline-block;
   padding: 2px 6px;
   border-radius: var(--radius-sm);
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
 }
 
@@ -398,7 +398,7 @@
   grid-template-columns: repeat(3, 1fr);
   gap: 4px 8px;
   margin-bottom: var(--spacing-sm);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
 }
 
 .bom-detail-item {
@@ -409,7 +409,7 @@
 
 .bom-detail-item .detail-label {
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
 }
 
 .bom-detail-item .detail-value {
@@ -489,7 +489,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   margin-bottom: var(--spacing-xs);
 }
@@ -497,7 +497,7 @@
 .usages-header span:first-child {
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
 }
 
 .usages-count {
@@ -540,14 +540,14 @@
 }
 
 .usage-module-name {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   font-weight: 500;
   flex: 1;
 }
 
 .usage-count-badge {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--ctp-blue);
   font-family: var(--font-mono);
   background: color-mix(in srgb, var(--ctp-blue) 10%, transparent);
@@ -579,7 +579,7 @@
 }
 
 .usage-designator {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   font-family: var(--font-mono);
   color: var(--ctp-peach);
@@ -587,7 +587,7 @@
 }
 
 .usage-leaf {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   flex: 1;
@@ -610,7 +610,7 @@
 }
 
 .usage-module-path {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   flex: 1;
@@ -634,34 +634,34 @@
 
 /* Legacy usage styles */
 .usage-parent-path {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   flex: 1;
 }
 
 .usage-count {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--ctp-blue);
   font-family: var(--font-mono);
 }
 
 .instance-path {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   flex: 1;
 }
 
 .usage-path {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   flex: 1;
 }
 
 .bom-cost-item .cost-value {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-primary);
   font-family: var(--font-mono);
@@ -669,12 +669,12 @@
 
 .bom-cost-item .cost-value.out-of-stock {
   color: var(--error);
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
 }
 
 /* Parameters */
 .bom-params-label {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   margin-bottom: 4px;
   text-transform: uppercase;
@@ -693,7 +693,7 @@
   padding: 3px 6px;
   background: var(--bg-secondary);
   border-radius: var(--radius-sm);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
 }
 
 .bom-param .param-name {
@@ -729,12 +729,12 @@
 .bom-param .param-constraint .constraint-arrow {
   color: var(--text-muted);
   opacity: 0.4;
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
 }
 
 .bom-param .param-constraint .constraint-text {
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   opacity: 0.7;
 }
 
@@ -754,7 +754,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
 
@@ -838,7 +838,7 @@
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition: all var(--transition-fast);
@@ -867,7 +867,7 @@
   align-items: center;
   gap: 6px;
   padding: 3px 6px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -902,7 +902,7 @@
 .usage-line {
   font-family: var(--font-mono);
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
 }
 
 .usage-goto {
@@ -920,7 +920,7 @@
   gap: var(--spacing-xs);
   padding: var(--spacing-lg);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-md);
 }
 
 /* Empty state - when no BOM data available */
@@ -942,13 +942,13 @@
 }
 
 .bom-empty-state .empty-title {
-  font-size: 13px;
+  font-size: var(--font-size-base);
   font-weight: 500;
   color: var(--text-secondary);
 }
 
 .bom-empty-state .empty-description {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--text-muted);
   max-width: 200px;
 }
@@ -963,7 +963,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -998,7 +998,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   line-height: 1;
 }
@@ -1040,7 +1040,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -1064,7 +1064,7 @@
   background: var(--success);
   color: var(--text-on-status);
   border-radius: var(--radius-md);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   animation: fadeIn 0.2s ease;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }

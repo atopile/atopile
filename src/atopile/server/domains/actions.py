@@ -27,6 +27,7 @@ from atopile.model.build_queue import (
 )
 from atopile.model.model_state import model_state
 from atopile.server import path_utils
+from atopile.server.client_state import client_state
 from atopile.server.connections import server_state
 from atopile.server.core import projects as core_projects
 from atopile.server.domains import artifacts as artifacts_domain
@@ -248,6 +249,30 @@ def _handle_build_sync(payload: dict) -> dict:
             "build_ids": build_ids,
             "needs_state_sync": True,
         }
+
+
+def _resolve_build_target(
+    project_root: str, build_id: str, payload: dict
+) -> tuple[str | None, str | None]:
+    target_name = payload.get("targetName") or payload.get("target")
+    resolved_project_root = project_root
+
+    if build_id:
+        build_info = builds_domain.handle_get_build_info(build_id)
+        if isinstance(build_info, dict):
+            target_name = (
+                target_name
+                or build_info.get("target")
+                or build_info.get("name")
+                or build_info.get("build_name")
+            )
+            resolved_project_root = (
+                resolved_project_root
+                or build_info.get("project_root")
+                or build_info.get("projectRoot")
+            )
+
+    return target_name, resolved_project_root
 
 
 async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dict:
@@ -1183,15 +1208,21 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             project_root = payload.get("projectId", "")
             build_id = payload.get("buildId", "")
 
-            if not project_root or not build_id:
-                return {"success": False, "error": "Missing projectId or buildId"}
+            target_name, resolved_project_root = _resolve_build_target(
+                project_root, build_id, payload
+            )
+            if not resolved_project_root or not target_name:
+                return {
+                    "success": False,
+                    "error": "Missing projectId or buildId/target",
+                }
 
-            project_path = Path(project_root)
-            target = path_utils.resolve_layout_path(project_path, build_id)
+            project_path = Path(resolved_project_root)
+            target = path_utils.resolve_layout_path(project_path, target_name)
             if not target or not target.exists():
                 return {
                     "success": False,
-                    "error": f"Layout not found for build: {build_id}",
+                    "error": f"Layout not found for target: {target_name}",
                 }
 
             await server_state.emit_event("open_layout", {"path": str(target)})
@@ -1201,15 +1232,21 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             project_root = payload.get("projectId", "")
             build_id = payload.get("buildId", "")
 
-            if not project_root or not build_id:
-                return {"success": False, "error": "Missing projectId or buildId"}
+            target_name, resolved_project_root = _resolve_build_target(
+                project_root, build_id, payload
+            )
+            if not resolved_project_root or not target_name:
+                return {
+                    "success": False,
+                    "error": "Missing projectId or buildId/target",
+                }
 
-            project_path = Path(project_root)
-            target = path_utils.resolve_layout_path(project_path, build_id)
+            project_path = Path(resolved_project_root)
+            target = path_utils.resolve_layout_path(project_path, target_name)
             if not target or not target.exists():
                 return {
                     "success": False,
-                    "error": f"Layout not found for build: {build_id}",
+                    "error": f"Layout not found for target: {target_name}",
                 }
 
             await server_state.emit_event("open_kicad", {"path": str(target)})
@@ -1219,44 +1256,39 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             project_root = payload.get("projectId", "")
             build_id = payload.get("buildId", "")
 
-            if not project_root or not build_id:
-                return {"success": False, "error": "Missing projectId or buildId"}
+            target_name, resolved_project_root = _resolve_build_target(
+                project_root, build_id, payload
+            )
+            if not resolved_project_root or not target_name:
+                return {
+                    "success": False,
+                    "error": "Missing projectId or buildId/target",
+                }
 
-            project_path = Path(project_root)
-            target = path_utils.resolve_3d_path(project_path, build_id)
+            project_path = Path(resolved_project_root)
+            target = path_utils.resolve_3d_path(project_path, target_name)
             if not target or not target.exists():
                 return {
                     "success": False,
-                    "error": f"3D view not found for build: {build_id}",
+                    "error": f"3D view not found for target: {target_name}",
                 }
 
             await server_state.emit_event("open_3d", {"path": str(target)})
             return {"success": True}
 
-        # Frontend-only actions (selection/filter state now local to UI)
-        elif action == "selectProject":
-            return {"success": False, "error": "selectProject is frontend-only"}
+        elif action == "setLogViewCurrentId":
+            build_id = payload.get("buildId")
+            client_state.log_view_current_id = build_id
+            await server_state.emit_event(
+                "log_view_current_id_changed", {"buildId": build_id}
+            )
+            return {"success": True}
 
-        elif action == "setSelectedTargets":
-            return {"success": False, "error": "setSelectedTargets is frontend-only"}
-
-        elif action == "toggleTarget":
-            return {"success": False, "error": "toggleTarget is frontend-only"}
-
-        elif action == "toggleTargetExpanded":
-            return {"success": False, "error": "toggleTargetExpanded is frontend-only"}
-
-        elif action == "selectBuild":
-            return {"success": False, "error": "selectBuild is frontend-only"}
-
-        elif action == "toggleProblemLevelFilter":
+        elif action == "getLogViewCurrentId":
             return {
-                "success": False,
-                "error": "toggleProblemLevelFilter is frontend-only",
+                "success": True,
+                "buildId": client_state.log_view_current_id,
             }
-
-        elif action == "setDeveloperMode":
-            return {"success": False, "error": "setDeveloperMode is frontend-only"}
 
         elif action == "setAtopileSource":
             await server_state.emit_event(

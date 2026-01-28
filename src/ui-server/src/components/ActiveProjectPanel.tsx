@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Package, CheckCircle2, XCircle, AlertCircle, AlertTriangle, Target } from 'lucide-react'
+import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Package, CheckCircle2, XCircle, AlertCircle, AlertTriangle, Target, ScrollText } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
 import type { QueuedBuild } from '../types/build'
+import { useStore } from '../store'
+import { sendAction } from '../api/websocket'
 import './ActiveProjectPanel.css'
 
 interface NewProjectData {
@@ -23,8 +25,8 @@ interface ActiveProjectPanelProps {
   onOpenKiCad: (projectRoot: string, targetName: string) => void
   onOpen3D: (projectRoot: string, targetName: string) => void
   onOpenLayout: (projectRoot: string, targetName: string) => void
-  onCreateProject?: (data?: NewProjectData) => void
-  onCreateTarget?: (projectRoot: string, data: NewTargetData) => void
+  onCreateProject?: (data?: NewProjectData) => Promise<void>
+  onCreateTarget?: (projectRoot: string, data: NewTargetData) => Promise<void>
   onGenerateManufacturingData?: (projectRoot: string, targetName: string) => void
   queuedBuilds?: QueuedBuild[]
   onCancelBuild?: (buildId: string) => void
@@ -80,7 +82,7 @@ function getBuildCounter(buildId?: string): string | null {
   if (!buildId) return null
   const match = buildId.match(/^build-(\d+)-/)
   if (match) return `#${match[1]}`
-  return `#${buildId.slice(0, 8)}`
+  return `#${buildId}`
 }
 
 // Simple fuzzy match for project search
@@ -348,12 +350,12 @@ function TargetSelector({
   if (targets.length === 0) {
     return (
       <div className="target-selector-empty">
-        <span>No targets defined</span>
+        <span>No builds defined</span>
         {onCreateTarget && (
           <button
             className="create-target-btn"
             onClick={onCreateTarget}
-            title="Create new target"
+            title="Create new build"
           >
             <Plus size={12} />
           </button>
@@ -375,7 +377,7 @@ function TargetSelector({
           aria-expanded={isOpen}
         >
           <Target size={12} className="target-icon" />
-          <span className="target-trigger-name">{activeTarget?.name || 'Select target'}</span>
+          <span className="target-trigger-name">{activeTarget?.name || 'Select build'}</span>
           {activeTarget?.entry && (
             <span className="target-trigger-entry">{activeTarget.entry.split(':').pop()}</span>
           )}
@@ -415,7 +417,7 @@ function TargetSelector({
         <button
           className="create-target-btn"
           onClick={onCreateTarget}
-          title="Create new target"
+          title="Create new build"
           disabled={disabled}
         >
           <Plus size={12} />
@@ -611,7 +613,7 @@ function NewTargetForm({
   return (
     <form className="new-target-form" onSubmit={handleSubmit} onKeyDown={handleKeyDown}>
       <div className="form-header">
-        <span className="form-title">New Target{projectName ? ` in ${projectName}` : ''}</span>
+        <span className="form-title">New Build{projectName ? ` in ${projectName}` : ''}</span>
         <button
           type="button"
           className="form-close-btn"
@@ -1108,24 +1110,22 @@ export function ActiveProjectPanel({
   const [createProjectError, setCreateProjectError] = useState<string | null>(null)
   const [createTargetError, setCreateTargetError] = useState<string | null>(null)
 
-  const handleCreateProject = useCallback((data?: NewProjectData) => {
+  const handleCreateProject = useCallback(async (data?: NewProjectData) => {
     if (!onCreateProject) return
     setIsCreatingProject(true)
     setCreateProjectError(null)
 
-    // Call the create project handler
-    onCreateProject(data)
-
-    // For now, close form after a delay since we don't have async feedback yet
-    // In the future, this should be async with proper success/error handling
-    setTimeout(() => {
+    try {
+      await onCreateProject(data)
+      // Success - close form
+      setShowNewProjectForm(false)
+    } catch (error) {
+      // Display error to user
+      setCreateProjectError(error instanceof Error ? error.message : 'Failed to create project')
+    } finally {
       setIsCreatingProject(false)
-      // Only close if no error was set
-      if (!createProjectError) {
-        setShowNewProjectForm(false)
-      }
-    }, 1000)
-  }, [onCreateProject, createProjectError])
+    }
+  }, [onCreateProject])
 
   // Reset errors when forms are opened
   useEffect(() => {
@@ -1154,19 +1154,21 @@ export function ActiveProjectPanel({
     return activeProject.targets?.[0]?.name ?? null
   }, [activeProject, selectedTargetName])
 
-  const handleCreateTarget = useCallback((data: NewTargetData) => {
+  const handleCreateTarget = useCallback(async (data: NewTargetData) => {
     if (!onCreateTarget || !activeProject) return
     setIsCreatingTarget(true)
     setCreateTargetError(null)
 
-    // Call the create target handler with project root and data
-    onCreateTarget(activeProject.root, data)
-
-    // For now, close form after a delay since we don't have async feedback yet
-    setTimeout(() => {
-      setIsCreatingTarget(false)
+    try {
+      await onCreateTarget(activeProject.root, data)
+      // Success - close form
       setShowNewTargetForm(false)
-    }, 1000)
+    } catch (error) {
+      // Display error to user
+      setCreateTargetError(error instanceof Error ? error.message : 'Failed to create build')
+    } finally {
+      setIsCreatingTarget(false)
+    }
   }, [onCreateTarget, activeProject])
 
   // Filter builds for active project
@@ -1196,7 +1198,7 @@ export function ActiveProjectPanel({
   // Tooltip text based on state
   const getOutputTooltip = (action: string) => {
     if (!activeProject) return 'Select a project first'
-    if (!activeTargetName) return 'Select a target first'
+    if (!activeTargetName) return 'Select a build first'
     return `Open ${action} for ${activeTargetName}`
   }
 
@@ -1246,7 +1248,7 @@ export function ActiveProjectPanel({
 
       <div className="builds-section">
         <div className="builds-header">
-          <span className="section-label">Targets</span>
+          <span className="section-label">Builds</span>
         </div>
 
         <div className="build-targets">
@@ -1271,7 +1273,7 @@ export function ActiveProjectPanel({
               onBuildTarget(activeProject.root, activeTargetName)
             }}
             disabled={!activeProject || !activeTargetName}
-            title={activeTargetName ? `Build ${activeTargetName}` : 'Select a target to build'}
+            title={activeTargetName ? `Build ${activeTargetName}` : 'Select a build first'}
           >
             <Play size={12} />
             <span>Build</span>
@@ -1283,7 +1285,7 @@ export function ActiveProjectPanel({
               onBuildAllTargets(activeProject.root, activeProject.name)
             }}
             disabled={!activeProject}
-            title={activeProject ? `Build all targets in ${activeProject.name}` : 'Select a project first'}
+            title={activeProject ? `Build all in ${activeProject.name}` : 'Select a project first'}
           >
             <Layers size={12} />
             <span>Build All</span>
@@ -1299,7 +1301,7 @@ export function ActiveProjectPanel({
               title={
                 activeProject && activeTargetName
                   ? `Generate manufacturing files for ${activeTargetName}`
-                  : 'Build a target first to generate manufacturing data'
+                  : 'Run a build first to generate manufacturing data'
               }
             >
               <Package size={12} />
@@ -1344,6 +1346,22 @@ export function ActiveProjectPanel({
           >
             <Layout size={12} />
             <span>Layout</span>
+          </button>
+          <button
+            className="control-btn output-btn"
+            onClick={() => {
+              const targetBuilds = projectBuilds.filter(b => b.target === activeTargetName)
+              const latestBuild = targetBuilds.length > 0 ? targetBuilds[0] : projectBuilds[0]
+              if (latestBuild?.buildId) {
+                useStore.getState().setLogViewerBuildId(latestBuild.buildId)
+                sendAction('setLogViewCurrentId', { buildId: latestBuild.buildId })
+              }
+            }}
+            disabled={!activeProject || projectBuilds.length === 0}
+            title={projectBuilds.length > 0 ? 'View build logs' : 'No builds available'}
+          >
+            <ScrollText size={12} />
+            <span>Logs</span>
           </button>
         </div>
 

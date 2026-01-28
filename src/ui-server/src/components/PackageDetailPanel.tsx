@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   ArrowLeft, Package, Download, ExternalLink,
   CheckCircle, FileCode,
-  Loader2, AlertCircle, Layers, Cuboid, ChevronDown
+  Loader2, AlertCircle, Layers, Cuboid, ChevronDown, ChevronRight
 } from 'lucide-react'
 import type { PackageDetails } from '../types/build'
 import MarkdownRenderer from './MarkdownRenderer'
@@ -113,6 +113,7 @@ export function PackageDetailPanel({
   onClose,
   onInstall,
 }: PackageDetailProps) {
+  const [infoCollapsed, setInfoCollapsed] = useState(true)
   // Use details from API if available, fallback to basic package info
   const details = packageDetails
 
@@ -337,12 +338,23 @@ export function PackageDetailPanel({
         </section>
 
         {/* Information */}
-        <section className="detail-section">
+        <section className={`detail-section detail-section-collapsible ${infoCollapsed ? 'collapsed' : ''}`}>
           <div className="detail-section-header">
-            <h3 className="detail-section-title">
-              <Package size={14} />
-              Information
-            </h3>
+            <div className="detail-section-header-left">
+              <button
+                type="button"
+                className="detail-collapse-toggle"
+                onClick={() => setInfoCollapsed((prev) => !prev)}
+                aria-expanded={!infoCollapsed}
+                aria-label={infoCollapsed ? 'Expand information' : 'Collapse information'}
+              >
+                {infoCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+              </button>
+              <h3 className="detail-section-title">
+                <Package size={14} />
+                Information
+              </h3>
+            </div>
             {(details?.homepage || pkg.homepage) && (
               <a
                 href={details?.homepage || pkg.homepage}
@@ -355,7 +367,8 @@ export function PackageDetailPanel({
               </a>
             )}
           </div>
-          <dl className="detail-info-list">
+          {!infoCollapsed && (
+            <dl className="detail-info-list">
             {details?.publisher && (
               <div className="detail-info-row">
                 <dt>Publisher</dt>
@@ -420,7 +433,8 @@ export function PackageDetailPanel({
                 {formatBytes(selectedVersionInfo?.size)}
               </dd>
             </div>
-          </dl>
+            </dl>
+          )}
         </section>
 
         {/* Visuals */}
@@ -448,7 +462,7 @@ export function PackageDetailPanel({
                   className={`selector-trigger ${buildDropdownOpen ? 'open' : ''}`}
                   onClick={() => setBuildDropdownOpen(!buildDropdownOpen)}
                 >
-                  <span className="selector-label">{selectedBuildTarget || 'Select target'}</span>
+                  <span className="selector-label">{selectedBuildTarget || 'Select build'}</span>
                   <ChevronDown className={`selector-chevron ${buildDropdownOpen ? 'rotated' : ''}`} />
                 </button>
                 {buildDropdownOpen && (

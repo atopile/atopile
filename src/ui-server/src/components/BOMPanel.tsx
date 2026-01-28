@@ -699,9 +699,9 @@ export function BOMPanel({
       return `Run a build for "${selectedTargetName}" to generate the Bill of Materials`
     }
     if (selectedProjectRoot) {
-      return 'Select a target and run a build to generate the Bill of Materials'
+      return 'Select a build and run it to generate the Bill of Materials'
     }
-    return 'Select a project and target, then run a build'
+    return 'Select a project and build, then run it'
   }
 
   // Error state - but make 404 errors more user-friendly

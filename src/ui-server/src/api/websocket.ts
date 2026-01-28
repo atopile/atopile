@@ -220,6 +220,7 @@ function handleOpen(): void {
 
   void refreshProjects();
   void refreshBuilds();
+  void fetchLogViewCurrentId();
 }
 
 function handleMessage(event: MessageEvent): void {
@@ -289,6 +290,19 @@ function handleMessage(event: MessageEvent): void {
         }
         if (message.action === 'build' || message.action === 'cancelBuild') {
           void refreshBuilds();
+        }
+        // Auto-switch log viewer to the newly queued build
+        if (message.action === 'build' && result.success) {
+          const r = result as Record<string, unknown>;
+          const singleId = r.build_id ?? r.buildId;
+          const multiIds = r.build_ids ?? r.buildIds;
+          const buildId = typeof singleId === 'string'
+            ? singleId
+            : (Array.isArray(multiIds) && typeof multiIds[0] === 'string' ? multiIds[0] : null);
+          if (buildId) {
+            useStore.getState().setLogViewerBuildId(buildId);
+            sendAction('setLogViewCurrentId', { buildId });
+          }
         }
         if (typeof window !== 'undefined') {
           window.dispatchEvent(
@@ -567,6 +581,20 @@ async function refreshBuilds(): Promise<void> {
   }
 }
 
+async function fetchLogViewCurrentId(): Promise<void> {
+  try {
+    const response = await sendActionWithResponse('getLogViewCurrentId');
+    const buildId = typeof response.result?.buildId === 'string'
+      ? response.result.buildId
+      : null;
+    if (buildId) {
+      useStore.getState().setLogViewerBuildId(buildId);
+    }
+  } catch (error) {
+    console.warn('[WS] Failed to fetch log view current ID:', error);
+  }
+}
+
 function handleEventMessage(message: EventMessage): void {
   const data = message.data ?? {};
   const projectRoot =
@@ -575,6 +603,36 @@ function handleEventMessage(message: EventMessage): void {
     null;
 
   switch (message.event) {
+    case 'open_layout': {
+      const path = typeof data.path === 'string' ? data.path : null;
+      postMessage({
+        type: 'openSignals',
+        openLayout: path,
+        openKicad: null,
+        open3d: null,
+      });
+      break;
+    }
+    case 'open_kicad': {
+      const path = typeof data.path === 'string' ? data.path : null;
+      postMessage({
+        type: 'openSignals',
+        openLayout: null,
+        openKicad: path,
+        open3d: null,
+      });
+      break;
+    }
+    case 'open_3d': {
+      const path = typeof data.path === 'string' ? data.path : null;
+      postMessage({
+        type: 'openSignals',
+        openLayout: null,
+        openKicad: null,
+        open3d: path,
+      });
+      break;
+    }
     case 'projects_changed':
       void refreshProjects();
       break;
@@ -582,6 +640,8 @@ function handleEventMessage(message: EventMessage): void {
       void refreshBuilds();
       break;
     case 'project_dependencies_changed':
+      // Clear all installing packages - a dependency change means install completed
+      useStore.getState().clearInstallingPackages();
       void refreshDependencies(projectRoot);
       break;
     case 'bom_changed':
@@ -591,6 +651,12 @@ function handleEventMessage(message: EventMessage): void {
       void refreshVariables();
       break;
     case 'packages_changed':
+      // Check if this is an install error event
+      if (data.error && data.package_id) {
+        const packageId = data.package_id as string;
+        const errorMsg = data.error as string;
+        useStore.getState().setInstallError(packageId, errorMsg);
+      }
       void refreshPackages();
       break;
     case 'stdlib_changed':
@@ -601,6 +667,12 @@ function handleEventMessage(message: EventMessage): void {
       break;
     case 'atopile_config_changed':
       updateAtopileConfig(data);
+      break;
+    case 'log_view_current_id_changed':
+      {
+        const buildId = typeof data.buildId === 'string' ? data.buildId : null;
+        useStore.getState().setLogViewerBuildId(buildId);
+      }
       break;
     default:
       break;

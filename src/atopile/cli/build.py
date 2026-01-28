@@ -237,9 +237,9 @@ class BuildProcess:
         if not self.build_id:
             return
         try:
-            from atopile.model.build_history import get_build_info_by_id
+            from atopile.model.sqlite import BuildHistory
 
-            build_info = get_build_info_by_id(self.build_id)
+            build_info = BuildHistory.get(self.build_id)
             if not build_info:
                 return
             stages = build_info.stages or []

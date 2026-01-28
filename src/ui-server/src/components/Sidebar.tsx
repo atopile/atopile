@@ -52,6 +52,7 @@ function countVariables(nodes: VariableNode[] | undefined): number {
 
 export function Sidebar() {
   // Granular selectors - only re-render when specific state changes
+  const isConnected = useStore((s) => s.isConnected);
   const projects = useStore((s) => s.projects);
   const selectedProjectRoot = useStore((s) => s.selectedProjectRoot) ?? null;
   const selectedTargetNames = useStore((s) => s.selectedTargetNames) ?? [];
@@ -167,37 +168,21 @@ export function Sidebar() {
     const outputName = outputNames[output] || output;
 
     try {
-      const response = await sendActionWithResponse('getBuildsByProject', {
-        projectRoot,
-        target: targetName,
-        limit: 1,
+      const response = await sendActionWithResponse(output, {
+        projectId: projectRoot,
+        targetName,
       });
-      const result = response.result ?? {};
-      const build = Array.isArray((result as { builds?: unknown }).builds)
-        ? (result as { builds: any[] }).builds[0]
-        : null;
-
-      if (!build?.build_id) {
-        // No build found - log to UI with helpful message
+      if (!response.result?.success) {
+        const error =
+          typeof response.result?.error === 'string'
+            ? response.result.error
+            : `Failed to open ${outputName}.`;
         action('uiLog', {
           level: 'warning',
-          message: `Cannot open ${outputName}: No build found for target "${targetName}". Build the target first.`,
+          message: error,
         });
-        console.warn(`No build found for target "${targetName}". Build first to generate output files.`);
         return;
       }
-
-      // Check if build was successful
-      if (build.status === 'failed' || build.status === 'cancelled') {
-        action('uiLog', {
-          level: 'warning',
-          message: `Cannot open ${outputName}: Last build for "${targetName}" ${build.status}. Run a successful build first.`,
-        });
-        console.warn(`Last build for target "${targetName}" ${build.status}.`);
-        return;
-      }
-
-      action(output, { projectId: projectRoot, buildId: build.build_id });
     } catch (error) {
       console.warn('Failed to open output', error);
       action('uiLog', {
@@ -220,15 +205,34 @@ export function Sidebar() {
     action('clearPackageDetails');
   }, []);
 
-  const handlePackageInstall = useCallback((version?: string) => {
+  const handlePackageInstall = useCallback(async (version?: string) => {
     if (!selectedPackage) return;
     const projectRoot = selectedProjectRoot || sidebarProjects?.[0]?.root;
-    if (projectRoot) {
-      action('installPackage', {
-        packageId: selectedPackage.fullName,
+    if (!projectRoot) return;
+
+    const packageId = selectedPackage.fullName;
+    const store = useStore.getState();
+
+    // Set installing state immediately for UI feedback
+    store.addInstallingPackage(packageId);
+
+    try {
+      const response = await sendActionWithResponse('installPackage', {
+        packageId,
         projectRoot,
         version
       });
+
+      // The backend returns success immediately, but install runs async.
+      // The installing state will be cleared when we receive the
+      // project_dependencies_changed event (on success) or packages_changed
+      // event with error (on failure).
+      if (!response.result?.success) {
+        store.setInstallError(packageId, response.result?.error || 'Install failed');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Install failed';
+      store.setInstallError(packageId, message);
     }
   }, [selectedPackage, selectedProjectRoot, sidebarProjects]);
 
@@ -270,23 +274,16 @@ export function Sidebar() {
             onOpenLayout={(projectRoot, targetName) => handleOpenOutput('openLayout', projectRoot, targetName)}
             onCreateProject={handlers.handleCreateProject}
             onCreateTarget={async (projectRoot, data) => {
-              try {
-                const response = await sendActionWithResponse('addBuildTarget', {
-                  project_root: projectRoot,
-                  name: data.name,
-                  entry: data.entry,
-                });
-                if (response.result?.success) {
-                  action('refreshProjects');
-                }
-              } catch (error) {
-                action('uiLog', {
-                  level: 'error',
-                  message: `Failed to add target: ${
-                    error instanceof Error ? error.message : 'Unknown error'
-                  }`,
-                });
+              const response = await sendActionWithResponse('addBuildTarget', {
+                project_root: projectRoot,
+                name: data.name,
+                entry: data.entry,
+              });
+              if (!response.result?.success) {
+                const errorMsg = response.result?.error || 'Failed to add build';
+                throw new Error(errorMsg);
               }
+              action('refreshProjects');
             }}
             onGenerateManufacturingData={handleGenerateManufacturingData}
             queuedBuilds={queuedBuilds}
@@ -405,6 +402,28 @@ export function Sidebar() {
             onClose={handlePackageClose}
             onInstall={handlePackageInstall}
           />
+        </div>
+      )}
+
+      {/* Disconnected overlay - covers sidebar when backend is down */}
+      {!isConnected && (
+        <div className="disconnected-overlay">
+          <div className="disconnected-content">
+            <svg className="disconnected-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 1l22 22" />
+              <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" />
+              <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" />
+              <path d="M10.71 5.05A16 16 0 0 1 22.56 9" />
+              <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" />
+              <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+              <line x1="12" y1="20" x2="12.01" y2="20" />
+            </svg>
+            <div className="disconnected-title">Backend Disconnected</div>
+            <div className="disconnected-message">
+              <p>Run <code>ato dev clear-logs</code> in terminal</p>
+              <p>Run <code>Restart Extension Host</code> in VS Code command palette</p>
+            </div>
+          </div>
         </div>
       )}
     </div>

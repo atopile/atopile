@@ -59,6 +59,7 @@ from faebryk.libs.app.erc import needs_erc_check
 from faebryk.libs.app.keep_picked_parts import load_part_info_from_pcb
 from faebryk.libs.app.pcb import (
     check_net_names,
+    ensure_board_appearance,
     load_net_names,
 )
 from faebryk.libs.app.picking import save_part_info_to_pcb
@@ -108,7 +109,8 @@ class MusterTarget:
         if not self.virtual:
             import time
 
-            from atopile.dataclasses import BuildStage
+            from atopile.dataclasses import Build, BuildStage, BuildStatus
+            from atopile.model.sqlite import BuildHistory
 
             try:
                 # Set up logging for this build stage
@@ -131,7 +133,16 @@ class MusterTarget:
                         status="failed",
                     )
                 )
-                ctx.flush_stages_to_db()
+                if ctx.build_id:
+                    BuildHistory.set(Build(
+                        build_id=ctx.build_id,
+                        name=config.build.name,
+                        display_name=config.build.name,
+                        project_root=str(config.project.paths.root),
+                        target=config.build.name,
+                        status=BuildStatus.BUILDING,
+                        stages=[s.model_dump(by_alias=True) for s in ctx.completed_stages],
+                    ))
                 raise
 
             # Record successful stage
@@ -144,7 +155,16 @@ class MusterTarget:
                     status="success",
                 )
             )
-            ctx.flush_stages_to_db()
+            if ctx.build_id:
+                BuildHistory.set(Build(
+                    build_id=ctx.build_id,
+                    name=config.build.name,
+                    display_name=config.build.name,
+                    project_root=str(config.project.paths.root),
+                    target=config.build.name,
+                    status=BuildStatus.BUILDING,
+                    stages=[s.model_dump(by_alias=True) for s in ctx.completed_stages],
+                ))
 
         self.success = True
 
@@ -645,6 +665,10 @@ def update_pcb(ctx: BuildStepContext) -> None:
     pcb.transformer.apply_design()
     pcb.transformer.check_unattached_fps()
 
+    # Ensure proper board appearance (matte black soldermask, ENIG copper finish)
+    # This will overwrite user settings in the KiCad PCB file!
+    ensure_board_appearance(pcb.pcb_file.kicad_pcb)
+
     # set layout
     if config.build.hide_designators:
         pcb.transformer.hide_all_designators()
@@ -949,6 +973,7 @@ def generate_datasheets(ctx: BuildStepContext) -> None:
     aliases=["__default__"],  # for backwards compatibility
     dependencies=[
         generate_bom,
+        generate_glb,
         generate_manifest,
         generate_variable_report,
         # generate_power_tree,
