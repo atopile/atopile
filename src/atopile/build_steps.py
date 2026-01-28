@@ -17,7 +17,7 @@ from atopile import buildutil, layout
 from atopile.buildutil import BuildContext, BuildStepContext
 from atopile.compiler import format_message
 from atopile.compiler.build import build_stage_2
-from atopile.config import BuildType, config
+from atopile.config import PROJECT_CONFIG_FILENAME, BuildType, config
 from atopile.errors import (
     UserBadParameterError,
     UserException,
@@ -134,15 +134,20 @@ class MusterTarget:
                     )
                 )
                 if ctx.build_id:
-                    BuildHistory.set(Build(
-                        build_id=ctx.build_id,
-                        name=config.build.name,
-                        display_name=config.build.name,
-                        project_root=str(config.project.paths.root),
-                        target=config.build.name,
-                        status=BuildStatus.BUILDING,
-                        stages=[s.model_dump(by_alias=True) for s in ctx.completed_stages],
-                    ))
+                    BuildHistory.set(
+                        Build(
+                            build_id=ctx.build_id,
+                            name=config.build.name,
+                            display_name=config.build.name,
+                            project_root=str(config.project.paths.root),
+                            target=config.build.name,
+                            status=BuildStatus.BUILDING,
+                            stages=[
+                                s.model_dump(by_alias=True)
+                                for s in ctx.completed_stages
+                            ],
+                        )
+                    )
                 raise
 
             # Record successful stage
@@ -156,15 +161,19 @@ class MusterTarget:
                 )
             )
             if ctx.build_id:
-                BuildHistory.set(Build(
-                    build_id=ctx.build_id,
-                    name=config.build.name,
-                    display_name=config.build.name,
-                    project_root=str(config.project.paths.root),
-                    target=config.build.name,
-                    status=BuildStatus.BUILDING,
-                    stages=[s.model_dump(by_alias=True) for s in ctx.completed_stages],
-                ))
+                BuildHistory.set(
+                    Build(
+                        build_id=ctx.build_id,
+                        name=config.build.name,
+                        display_name=config.build.name,
+                        project_root=str(config.project.paths.root),
+                        target=config.build.name,
+                        status=BuildStatus.BUILDING,
+                        stages=[
+                            s.model_dump(by_alias=True) for s in ctx.completed_stages
+                        ],
+                    )
+                )
 
         self.success = True
 
@@ -276,15 +285,48 @@ def init_build_context_step(ctx: BuildStepContext) -> None:
 
             stdlib = StdlibRegistry(tg)
             linker = Linker(config, stdlib, tg)
+
+            entry_file_path = config.build.entry_file_path
+            if not entry_file_path.exists():
+                config_file = (config.project_dir / PROJECT_CONFIG_FILENAME).resolve()
+                raise UserException(
+                    f"Entry file not found: `{entry_file_path.name}`\n\n"
+                    f"Expected at:\n{entry_file_path.resolve()}\n\n"
+                    f"Check the entry path in your config:\n{config_file}"
+                )
+
             result = build_file(
                 g=g,
                 tg=tg,
-                import_path=config.build.entry_file_path.name,
-                path=config.build.entry_file_path,
+                import_path=entry_file_path.name,
+                path=entry_file_path,
             )
             build_stage_2(g=g, tg=tg, linker=linker, result=result)
 
-            app_type = result.state.type_roots[config.build.entry_section]
+            entry_section = config.build.entry_section
+            if entry_section not in result.state.type_roots:
+                available_modules = sorted(result.state.type_roots.keys())
+                entry_file = config.build.entry_file_path.resolve()
+                config_file = (config.project_dir / PROJECT_CONFIG_FILENAME).resolve()
+
+                if available_modules:
+                    modules_list = "\n".join(f"  - `{m}`" for m in available_modules)
+                    raise UserException(
+                        f"Entry point `{entry_section}` not found in "
+                        f"`{entry_file.name}`.\n\n"
+                        f"**Available modules in this file:**\n{modules_list}\n\n"
+                        f"Check the entry point in your config:\n{config_file}"
+                    )
+                else:
+                    raise UserException(
+                        f"Entry point `{entry_section}` not found in "
+                        f"`{entry_file.name}`.\n\n"
+                        f"No modules, components, or interfaces were found "
+                        f"in this file.\n\n"
+                        f"Check the entry point in your config:\n{config_file}"
+                    )
+
+            app_type = result.state.type_roots[entry_section]
             ctx.build = BuildContext(
                 g=g,
                 tg=tg,
