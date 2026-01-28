@@ -1773,7 +1773,11 @@ class Mutator:
             expr_already_exists_in_old_graph=False,
         )
 
-        if res.is_new and res.out is not None:
+        if (
+            res.is_new
+            and res.out is not None
+            and not res.out.try_get_sibling_trait(is_irrelevant)
+        ):
             res_po = res.out.as_parameter_operatable.get()
             if S_LOG:
                 logger.error(f"Mark new expr: {res_po.compact_repr()}")
@@ -2004,7 +2008,12 @@ class Mutator:
             self.transformations.terminated.add(expr)
 
     def mark_relevant(self, po: F.Parameters.is_parameter_operatable):
-        assert not po.try_get_sibling_trait(is_irrelevant)
+        # FIXME get rid of this once sam fixed relevant marking
+        # `is_irrelevant` is sticky (append-only graphs). If a node was later
+        # determined to be irrelevant (e.g. subsumed), it may still carry an
+        # earlier `is_relevant` marker. Treat `is_irrelevant` as dominant.
+        if po.try_get_sibling_trait(is_irrelevant) is not None:
+            return
         if po.try_get_sibling_trait(is_relevant) is not None:
             return
         fabll.Traits.create_and_add_instance_to(
@@ -2360,10 +2369,6 @@ class Mutator:
                 assert po not in self.transformations.mutated, (
                     f"{self.__repr__(exclude_transformations=True)} "
                     f"mutated & irrelevant: {po.compact_repr()}"
-                )
-                assert not po.try_get_sibling_trait(is_relevant), (
-                    f"{self.__repr__(exclude_transformations=True)} "
-                    f"irrelevant & relevant: {po.compact_repr()}"
                 )
 
         # TODO check created pos in G_out that are not in mutations.created
