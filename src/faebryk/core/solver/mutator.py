@@ -2431,6 +2431,21 @@ class Mutator:
         )
         to_copy = presumed_relevant_pos - touched
 
+        # Algorithms are reponsible for ensuring entire expression tree is removed
+        for po in to_copy:
+            if (e := po.as_expression.try_get()) is None:
+                continue
+            if removed_ops := [
+                op_po
+                for op_po in e.get_operand_operatables()
+                if op_po in self.transformations.removed
+            ]:
+                raise ValueError(
+                    f"Expression {po.compact_repr()} has removed operand(s) "
+                    f"{[op.compact_repr() for op in removed_ops]} but was not "
+                    f"itself removed"
+                )
+
         for p in [fabll.Traits(p).get_obj_raw() for p in to_copy]:
             self.get_copy(p.get_trait(F.Parameters.can_be_operand))
 
@@ -2843,7 +2858,12 @@ def test_mutation_map_compressed_with_removals():
 
     @algorithm("remove_expr", force_copy=True)
     def algo_remove(mutator: Mutator):
-        mutator.remove(add_expr_mapped, no_check_roots=True)
+        # Must also remove expressions that depend on the removed operand
+        dependent_pos = {
+            dep.get_trait(F.Parameters.is_parameter_operatable)
+            for dep in add_expr_mapped.as_operand.get().get_operations()
+        }
+        mutator.remove(add_expr_mapped, *dependent_pos, no_check_roots=True)
 
     result = Mutator(mut_map, algo_remove, iteration=0, terminal=False).run()
     mut_map = mut_map.extend(result.mutation_stage)
