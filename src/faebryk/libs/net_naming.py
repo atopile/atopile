@@ -495,6 +495,10 @@ def _get_parent_interface_name(processable_net: ProcessableNet) -> str | None:
     skipping any parent whose name matches the current base name
     (to avoid producing names like "signal_a.signal_a").
 
+    Priority:
+    1. first distinct name from parents with `is_module` trait
+    2. first distinct name from parents with `is_interface` trait
+
     Returns:
         The first distinct parent interface name, or None if not available.
     """
@@ -502,21 +506,29 @@ def _get_parent_interface_name(processable_net: ProcessableNet) -> str | None:
         return None
 
     electrical = electricals[0].electrical
-    full_path = _get_full_hierarchy_path(electrical)
+    base_name = (processable_net.net_name.base_name or "").lower()
 
-    if not full_path:
+    try:
+        hierarchy = electrical.get_hierarchy()
+    except fabll.NodeNoParent:
         return None
 
-    parts = full_path.split(".")
-    if len(parts) < 2:
-        return None
+    # Exclude the leaf (electrical itself)
+    parents = hierarchy[:-1]
 
-    base_name = processable_net.net_name.base_name
+    # Priority 1: first distinct name from parents with is_module trait
+    for node, _ in reversed(parents):
+        if node.has_trait(fabll.is_module):
+            name = node.get_name(accept_no_parent=True)
+            if name.lower() != base_name:
+                return name
 
-    # Walk from immediate parent toward root, skip names matching the base
-    for part in reversed(parts[:-1]):
-        if part.lower() != (base_name or "").lower():
-            return part
+    # Priority 2: first distinct name from parents with is_interface trait
+    for node, _ in reversed(parents):
+        if node.has_trait(fabll.is_interface):
+            name = node.get_name(accept_no_parent=True)
+            if name.lower() != base_name:
+                return name
 
     return None
 
@@ -988,6 +1000,142 @@ class TestNetNaming:
             "level1_interface.level0_interface",
             "net",
             "PRE_dup_with_affix",
+        ]
+
+    def test_module_prefix_priority_over_interface(self):
+        """
+        Test that conflict resolution prefers is_module parents over is_interface
+        parents when selecting a prefix.
+
+        Hierarchy:
+        - AppModule (is_module)
+          - inner_module (InnerModule, is_module)
+            - inner_interface (InnerInterface, is_interface)
+              - second (SecondInterface, is_interface)
+                - base (BaseInterface, is_interface)
+                  - sig_a, sig_b (F.Electrical)
+        """
+        import faebryk.core.node as fabll
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        class ModPrioBaseIface(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            sig_a = F.Electrical.MakeChild()
+            sig_b = F.Electrical.MakeChild()
+
+        class ModPrioSecondIface(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            base_a = ModPrioBaseIface.MakeChild()
+            base_b = ModPrioBaseIface.MakeChild()
+            sig_a = F.Electrical.MakeChild()
+            sig_b = F.Electrical.MakeChild()
+
+        class ModPrioInnerIface(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            second = ModPrioSecondIface.MakeChild()
+
+        class ModPrioInnerModule(fabll.Node):
+            _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+            inner_interface = ModPrioInnerIface.MakeChild()
+
+        class ModPrioAppModule(fabll.Node):
+            _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+            inner_module = ModPrioInnerModule.MakeChild()
+            sig_a = F.Electrical.MakeChild()
+            sig_b = F.Electrical.MakeChild()
+
+        app = ModPrioAppModule.bind_typegraph(tg=tg).create_instance(g=g)
+
+        all_electricals = app.get_children(direct_only=False, types=F.Electrical)
+        nets = self._bind_nets_for_test(
+            electricals=all_electricals,
+            tg=tg,
+            g=g,
+        )
+        attach_net_names(nets)
+
+        net_names = sorted(
+            [net_name for net in nets if (net_name := net.get_name()) is not None],
+            key=lambda name: name.lower(),
+        )
+
+        print(f"net_names: {net_names}")
+
+        # Conflicts should be resolved using is_module parent (inner_module)
+        # not is_interface parents (base_a, base_b, second, inner_interface)
+        assert net_names == [
+            "inner_module.sig_a",
+            "inner_module.sig_a-1",
+            "inner_module.sig_a-2",
+            "inner_module.sig_b",
+            "inner_module.sig_b-1",
+            "inner_module.sig_b-2",
+            "sig_a",
+            "sig_b",
+        ]
+
+    def test_interface_prefix_fallback(self):
+        """
+        Test that conflict resolution falls back to is_interface parents
+        when no is_module parents are available.
+
+        Hierarchy (all is_interface, no is_module):
+        - IfaceFallbackApp (no trait - root app)
+          - outer (IfaceFallbackOuter, is_interface)
+            - inner_a (IfaceFallbackInner, is_interface)
+              - sig (F.Electrical)
+            - inner_b (IfaceFallbackInner, is_interface)
+              - sig (F.Electrical)
+        """
+        import faebryk.core.node as fabll
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        class IfaceFallbackInner(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            sig = F.Electrical.MakeChild()
+
+        class IfaceFallbackOuter(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            inner_a = IfaceFallbackInner.MakeChild()
+            inner_b = IfaceFallbackInner.MakeChild()
+            sig = F.Electrical.MakeChild()
+
+        class IfaceFallbackApp(fabll.Node):
+            outer_a = IfaceFallbackOuter.MakeChild()
+            outer_b = IfaceFallbackOuter.MakeChild()
+            sig = F.Electrical.MakeChild()
+
+        app = IfaceFallbackApp.bind_typegraph(tg=tg).create_instance(g=g)
+
+        all_electricals = app.get_children(direct_only=False, types=F.Electrical)
+        nets = self._bind_nets_for_test(
+            electricals=all_electricals,
+            tg=tg,
+            g=g,
+        )
+        attach_net_names(nets)
+
+        net_names = sorted(
+            [net_name for net in nets if (net_name := net.get_name()) is not None],
+            key=lambda name: name.lower(),
+        )
+
+        print(f"net_names: {net_names}")
+
+        # With no is_module parents, conflicts should be resolved using
+        # is_interface parents (inner_a, inner_b)
+        assert net_names == [
+            "inner_a.sig",
+            "inner_a.sig-1",
+            "inner_b.sig",
+            "inner_b.sig-1",
+            "outer_a.sig",
+            "outer_b.sig",
+            "sig",
         ]
 
     def test_fail_on_multiple_required_names(self):
