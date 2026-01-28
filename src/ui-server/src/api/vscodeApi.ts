@@ -86,12 +86,17 @@ export interface ShowLogsMessage {
   type: 'showLogs';
 }
 
+export interface ShowBackendMenuMessage {
+  type: 'showBackendMenu';
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
   | AtopileSettingsMessage
   | SelectionChangedMessage
-  | ShowLogsMessage;
+  | ShowLogsMessage
+  | ShowBackendMenuMessage;
 
 /**
  * Type-safe helper to post messages to the extension.

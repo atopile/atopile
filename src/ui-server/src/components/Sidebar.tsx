@@ -13,6 +13,7 @@ import { PackageDetailPanel } from './PackageDetailPanel';
 import { StructurePanel } from './StructurePanel';
 import { PackagesPanel } from './PackagesPanel';
 import { sendAction, sendActionWithResponse } from '../api/websocket';
+import { postMessage, isVsCodeWebview } from '../api/vscodeApi';
 import { useStore } from '../store';
 import { usePanelSizing } from '../hooks/usePanelSizing';
 import {
@@ -410,18 +411,28 @@ export function Sidebar() {
         <div className="disconnected-overlay">
           <div className="disconnected-content">
             <svg className="disconnected-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M1 1l22 22" />
-              <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" />
-              <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" />
-              <path d="M10.71 5.05A16 16 0 0 1 22.56 9" />
-              <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" />
-              <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
-              <line x1="12" y1="20" x2="12.01" y2="20" />
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
             </svg>
-            <div className="disconnected-title">Backend Disconnected</div>
+            <div className="disconnected-title">Internal Server Error</div>
             <div className="disconnected-message">
-              <p>Run <code>ato dev clear-logs</code> in terminal</p>
-              <p>Run <code>Restart Extension Host</code> in VS Code command palette</p>
+              {isVsCodeWebview() && (
+                <button
+                  className="disconnected-menu-button"
+                  onClick={() => postMessage({ type: 'showBackendMenu' })}
+                >
+                  Open Troubleshooting Menu
+                </button>
+              )}
+              <p className="disconnected-discord">
+                Need help? <a href="https://discord.gg/CRe5xaDBr3" target="_blank" rel="noopener noreferrer">Join our Discord</a>
+              </p>
+              <div className="disconnected-troubleshooting">
+                <p className="disconnected-troubleshooting-header">Troubleshooting Steps</p>
+                <p>Use <code>Clear Logs</code> from the menu above</p>
+                <p>Use <code>Restart Extension Host</code> from the menu above</p>
+              </div>
             </div>
           </div>
         </div>
