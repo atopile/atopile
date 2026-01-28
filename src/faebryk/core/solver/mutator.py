@@ -1897,6 +1897,7 @@ class Mutator:
             if S_LOG:
                 s.__exit__(None, None, None)
                 logger.debug("Dropped and replaced with True")
+            # Do not remove, because predicate is still important
             return self.make_singleton(True).can_be_operand.get()
 
         # Re-check if mutated during wrap_insert_expression (via _ss_lits_available)
@@ -2336,6 +2337,8 @@ class Mutator:
     def try_get_mutated(
         self, po: F.Parameters.is_parameter_operatable
     ) -> F.Parameters.is_parameter_operatable | None:
+        if po.is_in_graph(self.G_out):
+            return po
         return self.transformations.mutated.get(po)
 
     def get_operations[T: fabll.NodeT](

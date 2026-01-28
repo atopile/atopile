@@ -537,7 +537,9 @@ def _no_empty_superset(
 
 
 def _no_predicate_literals(
-    mutator: Mutator, builder: ExpressionBuilder[Any]
+    mutator: Mutator,
+    builder: ExpressionBuilder[Any],
+    alias: F.Parameters.is_parameter | None = None,
 ) -> ExpressionBuilder | None:
     """
     P!{⊆/⊇|False} -> Contradiction
@@ -545,40 +547,69 @@ def _no_predicate_literals(
     P! ss! True / True ss! P! -> Drop (carries no information)
     """
 
-    if not (builder.factory is F.Expressions.IsSubset and builder.assert_):
-        return builder
+    if builder.factory is F.Expressions.IsSubset and builder.assert_:
+        if not (lits := builder.indexed_lits()):
+            return builder
 
-    if not (lits := builder.indexed_lits()):
-        return builder
+        class_ops = _operands_classes(builder)
 
-    class_ops = _operands_classes(builder)
+        # P!{⊆/⊇|False} -> Contradiction
+        if class_ops[0].get_with_trait(F.Expressions.is_predicate) and any(
+            lit.op_setic_equals_singleton(False) for lit in lits.values()
+        ):
+            raise Contradiction(
+                "P!{S/P|False}",
+                involved=[],
+                mutator=mutator,
+            )
 
-    # P!{⊆/⊇|False} -> Contradiction
-    if class_ops[0].get_with_trait(F.Expressions.is_predicate) and any(
-        lit.op_setic_equals_singleton(False) for lit in lits.values()
-    ):
-        raise Contradiction(
-            "P!{S/P|False}",
-            involved=[],
-            mutator=mutator,
+        if any(lit.op_setic_equals_singleton(True) for lit in lits.values()):
+            # P!{⊆/⊇|True} -> P!
+            if any(op.get_with_trait(F.Expressions.is_predicate) for op in class_ops):
+                if I_LOG:
+                    logger.debug(f"Remove predicate literal {builder.compact_repr()}")
+                return None
+            # P {⊆|True} -> P!
+            a_class = class_ops[0]
+            for pred in a_class.get_with_trait(F.Expressions.is_assertable):
+                if I_LOG:
+                    before = pred.as_expression.get().compact_repr()
+                    mutator.assert_(pred)
+                    after = pred.as_expression.get().compact_repr()
+                    logger.debug(f"Assert implicit predicate `{before}` -> `{after}`")
+                else:
+                    mutator.assert_(pred)
+
+    # TODO this feels very shortcut-ty to me, but I don't know how else to handle this
+    # ss with lits are always copied first, so generally the expr won't be copied yet
+    # and thus the alias class won't trigger
+    if (
+        alias
+        and (alias_po := mutator.try_get_mutated(alias.as_parameter_operatable.get()))
+        and (
+            ss := cast(
+                F.Literals.is_literal,
+                alias_po.try_extract_superset(),
+            )
         )
-
-    if any(lit.op_setic_equals_singleton(True) for lit in lits.values()):
-        # P!{⊆/⊇|True} -> P!
-        if any(op.get_with_trait(F.Expressions.is_predicate) for op in class_ops):
-            if I_LOG:
-                logger.debug(f"Remove predicate literal {builder.compact_repr()}")
-            return None
+        and ss.op_setic_is_singleton()
+        and builder.factory.bind_typegraph(
+            mutator.tg_in
+        ).check_if_instance_of_type_has_trait(F.Expressions.is_assertable)
+    ):
+        # P!{⊆/⊇|False} -> Contradiction
+        # TODO ⊇
+        if builder.assert_ and ss.op_setic_equals_singleton(False):
+            raise Contradiction(
+                "Predicate literal to false",
+                involved=[],
+                mutator=mutator,
+            )
         # P {⊆|True} -> P!
-        a_class = class_ops[0]
-        for pred in a_class.get_with_trait(F.Expressions.is_assertable):
+        if ss.op_setic_equals_singleton(True) and not builder.assert_:
+            builder = builder.with_(assert_=True)
             if I_LOG:
-                before = pred.as_expression.get().compact_repr()
-                mutator.assert_(pred)
-                after = pred.as_expression.get().compact_repr()
-                logger.debug(f"Assert implicit predicate `{before}` -> `{after}`")
-            else:
-                mutator.assert_(pred)
+                logger.debug(f"Assert implicit predicate `{builder.compact_repr()}`")
 
     return builder
 
@@ -947,19 +978,32 @@ def _ss_lits_available(mutator: Mutator):
         return
     setattr(mutator, "_ss_lits_available", True)
 
-    ss_ts = mutator.get_typed_expressions(
-        F.Expressions.IsSubset,
-        required_traits=(F.Expressions.is_predicate,),
-        require_literals=True,
-        require_non_literals=True,
+    ss_es = [
+        e_e
+        for e in mutator.get_typed_expressions(
+            F.Expressions.IsSubset,
+            required_traits=(F.Expressions.is_predicate,),
+            require_literals=True,
+            require_non_literals=True,
+        )
+        if not (e_e := e.is_expression.get()).get_operands_with_trait(
+            F.Expressions.is_expression
+        )
+    ]
+
+    # singletons first, else can't replace in other ones the operand
+    ss_es = sorted(
+        ss_es,
+        key=lambda x: (
+            bool(lits := x.get_operands_with_trait(F.Literals.is_literal)),
+            not any(lit.op_setic_is_singleton() for lit in lits),
+        ),
     )
-    for ss_t in ss_ts:
-        ss_t_e = ss_t.is_expression.get()
-        if ss_t_e.get_operands_with_trait(F.Expressions.is_expression):
-            continue
+
+    for ss_e in ss_es:
         if S_LOG:
-            logger.debug(f"Copying ss lit: {ss_t_e.compact_repr()}")
-        mutator.get_copy(ss_t.can_be_operand.get())
+            logger.debug(f"Copying ss lit: {ss_e.compact_repr()}")
+        mutator.get_copy(ss_e.as_operand.get())
 
 
 def _operands_mutated_and_expressions_flat(
@@ -1122,7 +1166,7 @@ def insert_expression(
     builder = _no_predicate_operands(mutator, builder)
 
     # P!{⊆|False} -> Contradiction, P!{⊆|True} -> P!, P {⊆|True} -> P!
-    builder_ = _no_predicate_literals(mutator, builder)
+    builder_ = _no_predicate_literals(mutator, builder, alias=alias)
     if builder_ is None:
         return InsertExpressionResult(None, False)
     builder = builder_
