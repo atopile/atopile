@@ -350,12 +350,12 @@ function TargetSelector({
   if (targets.length === 0) {
     return (
       <div className="target-selector-empty">
-        <span>No targets defined</span>
+        <span>No builds defined</span>
         {onCreateTarget && (
           <button
             className="create-target-btn"
             onClick={onCreateTarget}
-            title="Create new target"
+            title="Create new build"
           >
             <Plus size={12} />
           </button>
@@ -377,7 +377,7 @@ function TargetSelector({
           aria-expanded={isOpen}
         >
           <Target size={12} className="target-icon" />
-          <span className="target-trigger-name">{activeTarget?.name || 'Select target'}</span>
+          <span className="target-trigger-name">{activeTarget?.name || 'Select build'}</span>
           {activeTarget?.entry && (
             <span className="target-trigger-entry">{activeTarget.entry.split(':').pop()}</span>
           )}
@@ -417,7 +417,7 @@ function TargetSelector({
         <button
           className="create-target-btn"
           onClick={onCreateTarget}
-          title="Create new target"
+          title="Create new build"
           disabled={disabled}
         >
           <Plus size={12} />
@@ -613,7 +613,7 @@ function NewTargetForm({
   return (
     <form className="new-target-form" onSubmit={handleSubmit} onKeyDown={handleKeyDown}>
       <div className="form-header">
-        <span className="form-title">New Target{projectName ? ` in ${projectName}` : ''}</span>
+        <span className="form-title">New Build{projectName ? ` in ${projectName}` : ''}</span>
         <button
           type="button"
           className="form-close-btn"
@@ -1165,7 +1165,7 @@ export function ActiveProjectPanel({
       setShowNewTargetForm(false)
     } catch (error) {
       // Display error to user
-      setCreateTargetError(error instanceof Error ? error.message : 'Failed to create target')
+      setCreateTargetError(error instanceof Error ? error.message : 'Failed to create build')
     } finally {
       setIsCreatingTarget(false)
     }
@@ -1198,7 +1198,7 @@ export function ActiveProjectPanel({
   // Tooltip text based on state
   const getOutputTooltip = (action: string) => {
     if (!activeProject) return 'Select a project first'
-    if (!activeTargetName) return 'Select a target first'
+    if (!activeTargetName) return 'Select a build first'
     return `Open ${action} for ${activeTargetName}`
   }
 
@@ -1248,7 +1248,7 @@ export function ActiveProjectPanel({
 
       <div className="builds-section">
         <div className="builds-header">
-          <span className="section-label">Targets</span>
+          <span className="section-label">Builds</span>
         </div>
 
         <div className="build-targets">
@@ -1273,7 +1273,7 @@ export function ActiveProjectPanel({
               onBuildTarget(activeProject.root, activeTargetName)
             }}
             disabled={!activeProject || !activeTargetName}
-            title={activeTargetName ? `Build ${activeTargetName}` : 'Select a target to build'}
+            title={activeTargetName ? `Build ${activeTargetName}` : 'Select a build first'}
           >
             <Play size={12} />
             <span>Build</span>
@@ -1285,7 +1285,7 @@ export function ActiveProjectPanel({
               onBuildAllTargets(activeProject.root, activeProject.name)
             }}
             disabled={!activeProject}
-            title={activeProject ? `Build all targets in ${activeProject.name}` : 'Select a project first'}
+            title={activeProject ? `Build all in ${activeProject.name}` : 'Select a project first'}
           >
             <Layers size={12} />
             <span>Build All</span>
@@ -1301,7 +1301,7 @@ export function ActiveProjectPanel({
               title={
                 activeProject && activeTargetName
                   ? `Generate manufacturing files for ${activeTargetName}`
-                  : 'Build a target first to generate manufacturing data'
+                  : 'Run a build first to generate manufacturing data'
               }
             >
               <Package size={12} />
