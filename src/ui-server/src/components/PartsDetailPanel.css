@@ -1,0 +1,138 @@
+/**
+ * PartsDetailPanel styles
+ */
+
+.parts-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--spacing-lg);
+  min-width: 0;
+}
+
+.parts-detail-panel {
+  overflow-x: hidden;
+}
+
+.parts-detail-panel .detail-panel-content {
+  overflow-x: hidden;
+}
+
+.parts-detail-section {
+  padding: 0;
+}
+
+.parts-detail-section-title {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: var(--spacing-sm);
+}
+
+.parts-detail-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  min-width: 0;
+}
+
+.parts-image {
+  width: 100%;
+  height: auto;
+  max-height: 320px;
+  object-fit: contain;
+  display: block;
+}
+
+.parts-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.parts-detail-row span:first-child {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.parts-detail-row span:last-child {
+  min-width: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.parts-detail-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-primary);
+  font-size: var(--font-size-sm);
+  text-decoration: none;
+}
+
+.parts-detail-link:hover {
+  text-decoration: underline;
+}
+
+.parts-footprint-placeholder {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.parts-footprint-note {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.parts-detail-muted {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.parts-attribute-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.parts-attribute-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+}
+
+.parts-attribute-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.parts-install-section {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding-top: var(--spacing-lg);
+}
+
+.parts-install-success {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ctp-green);
+  font-size: var(--font-size-sm);
+}
+
+.parts-install-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ctp-red);
+  font-size: var(--font-size-sm);
+}

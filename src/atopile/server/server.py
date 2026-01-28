@@ -404,6 +404,9 @@ def create_app(
         parts as parts_routes,
     )
     from atopile.server.routes import (
+        parts_search as parts_search_routes,
+    )
+    from atopile.server.routes import (
         problems as problems_routes,
     )
     from atopile.server.routes import (
@@ -421,6 +424,7 @@ def create_app(
     app.include_router(projects_routes.router)
     app.include_router(builds_routes.router)
     app.include_router(artifacts_routes.router)
+    app.include_router(parts_search_routes.router)
     app.include_router(parts_routes.router)
     app.include_router(problems_routes.router)
     app.include_router(packages_routes.router)

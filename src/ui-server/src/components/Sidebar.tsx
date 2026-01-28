@@ -343,7 +343,7 @@ export function Sidebar() {
   }
 
   return (
-    <div className={`unified-layout ${selectedPackage ? 'package-detail-open' : ''}`}>
+    <div className={`unified-layout ${selectedPackage || selectedPart ? 'package-detail-open' : ''}`}>
       {/* Header with settings */}
       <SidebarHeader
         atopile={atopile}
