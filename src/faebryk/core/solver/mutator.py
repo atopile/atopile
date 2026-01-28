@@ -123,6 +123,12 @@ class Transformations:
     marked: OrderedSet[F.Parameters.is_parameter_operatable] = field(
         default_factory=OrderedSet[F.Parameters.is_parameter_operatable]
     )
+    merged: OrderedSet[F.Parameters.is_parameter_operatable] = field(
+        default_factory=OrderedSet[F.Parameters.is_parameter_operatable]
+    )
+    merged_targets: OrderedSet[F.Parameters.is_parameter_operatable] = field(
+        default_factory=OrderedSet[F.Parameters.is_parameter_operatable]
+    )
 
     _no_log: bool = False
 
@@ -165,6 +171,8 @@ class Transformations:
                 logger.error(f"DIRTY: terminated={len(self.terminated)}")
             if bool(self.asserted):
                 logger.error(f"DIRTY: asserted={len(self.asserted)}")
+            if bool(self.merged):
+                logger.error(f"DIRTY: merged={len(self.merged)}")
 
         return bool(
             self.removed
@@ -173,6 +181,7 @@ class Transformations:
             or self.terminated
             or self.asserted
             or self.marked
+            or self.merged
         )
 
     @property
@@ -183,6 +192,7 @@ class Transformations:
             and not self.created
             and not self.terminated
             and not self.marked
+            and not self.merged
         )
 
     @staticmethod
@@ -226,6 +236,7 @@ class Transformations:
         copied = len(self.copied)
         terminated = len(self.terminated)
         marked = len(self.marked)
+        merged = len(self.merged)
         return (
             f"mutated={mutated}"
             f", created={created}"
@@ -233,6 +244,7 @@ class Transformations:
             f", copied={copied}"
             f", terminated={terminated}"
             f", marked={marked}"
+            f", merged={merged}"
         )
 
     def get_new_predicates(
@@ -1917,6 +1929,11 @@ class Mutator:
             new_expr_e, allow_different_graph=True, mutator=self
         ):
             self.transformations.copied.add(expr_po)
+
+        # congruence dedup mapped multiple input exprs to the same output expr
+        if new_expr_po in self.transformations.merged_targets:
+            self.transformations.merged.add(expr_po)
+        self.transformations.merged_targets.add(new_expr_po)
 
         if S_LOG:
             s.__exit__(None, None, None)
