@@ -218,6 +218,9 @@ function handleOpen(): void {
     sendAction('setWorkspaceFolders', { folders: workspaceFolders });
   }
 
+  // Get atopile config (including actual version) - this clears any "installing" state
+  sendAction('getAtopileConfig');
+
   void refreshProjects();
   void refreshBuilds();
   void fetchLogViewCurrentId();
@@ -708,6 +711,27 @@ function handleError(event: Event): void {
 function updateAtopileConfig(data: Record<string, unknown>): void {
   const update: Partial<AppState['atopile']> = {};
 
+  // Actual installed atopile (source of truth)
+  const actualVersion =
+    (typeof data.actual_version === 'string' && data.actual_version) ||
+    (typeof data.actualVersion === 'string' && data.actualVersion) ||
+    null;
+  if (actualVersion !== null) {
+    update.actualVersion = actualVersion;
+    // When we receive actualVersion, the server has started - clear installing state
+    update.isInstalling = false;
+    update.installProgress = null;
+  }
+
+  const actualSource =
+    (typeof data.actual_source === 'string' && data.actual_source) ||
+    (typeof data.actualSource === 'string' && data.actualSource) ||
+    null;
+  if (actualSource !== null) {
+    update.actualSource = actualSource;
+  }
+
+  // User's selection in the dropdown
   if (typeof data.source === 'string') {
     update.source = data.source as AppState['atopile']['source'];
   }
@@ -772,6 +796,21 @@ function updateAtopileConfig(data: Record<string, unknown>): void {
 
   if (Object.keys(update).length > 0) {
     useStore.getState().setAtopileConfig(update);
+
+    // Forward atopile settings changes to VS Code extension
+    // This triggers the extension to update VS Code settings and restart the backend if needed
+    const atopile = useStore.getState().atopile;
+    if (atopile) {
+      postMessage({
+        type: 'atopileSettings',
+        atopile: {
+          source: atopile.source,
+          currentVersion: atopile.currentVersion,
+          branch: atopile.branch,
+          localPath: atopile.localPath,
+        },
+      });
+    }
   }
 }
 

@@ -10,6 +10,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as which from 'which';
 import { getProjectRoot } from './utilities';
+import { getAtopileWorkspaceFolders } from './vscodeapi';
 import * as vscode from 'vscode';
 
 export interface AtoBinInfo {
@@ -145,6 +146,18 @@ export async function resolveAtoBinForWorkspace(): Promise<{
     settings: ISettings;
     atoBin: AtoBinLocator;
 } | null> {
+    // Try atopile workspace folders first (folders containing ato.yaml)
+    const atopileWorkspaces = await getAtopileWorkspaceFolders();
+    for (const workspace of atopileWorkspaces) {
+        const settings = await getWorkspaceSettings(workspace);
+        const atoBin = await getAtoBin(settings);
+        if (atoBin) {
+            traceVerbose(`Found ato bin using workspace: ${workspace.uri.fsPath}`);
+            return { settings, atoBin };
+        }
+    }
+
+    // Fall back to default project root
     const projectRoot = await getProjectRoot();
     const settings = await getWorkspaceSettings(projectRoot);
     const atoBin = await getAtoBin(settings);

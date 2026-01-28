@@ -288,21 +288,51 @@ async def _refresh_packages_for_deps_change() -> None:
         await packages_domain.refresh_installed_packages_state()
 
 
-async def _load_atopile_install_options() -> None:
+async def _load_atopile_install_options(ctx: AppContext) -> None:
     """Background task to load atopile versions, branches, and detect installations."""
+    from atopile import version as ato_version
     from atopile.server.domains import atopile_install
 
     try:
         log.info("[background] Loading atopile installation options")
 
-        # Fetch available versions from PyPI
+        # Emit the ACTUAL atopile status - this is the source of truth
+        # for what version/source the extension is using to build projects
+        try:
+            version_obj = ato_version.get_installed_atopile_version()
+            actual_version = str(version_obj)
+            actual_source = ctx.ato_source or "unknown"
+            # Include UI source type so the dropdown shows the correct initial state
+            ui_source = ctx.ato_ui_source or "release"
+            await server_state.emit_event(
+                "atopile_config_changed",
+                {
+                    "actual_version": actual_version,
+                    "actual_source": actual_source,
+                    "source": ui_source,  # Sets the active dropdown button
+                },
+            )
+            log.info(
+                f"[background] Actual atopile: {actual_version} from {actual_source} (UI: {ui_source})"  # noqa: E501
+            )
+        except Exception as e:
+            log.warning(f"[background] Could not detect actual version: {e}")
+
+        # Fetch available versions from PyPI (for the selector UI)
         versions = await atopile_install.fetch_available_versions()
         await server_state.emit_event(
             "atopile_config_changed", {"available_versions": versions}
         )
         log.info(f"[background] Loaded {len(versions)} PyPI versions")
 
-        # Detect local installations
+        # Fetch available branches from GitHub (for the selector UI)
+        branches = await atopile_install.fetch_available_branches()
+        await server_state.emit_event(
+            "atopile_config_changed", {"available_branches": branches}
+        )
+        log.info(f"[background] Loaded {len(branches)} GitHub branches")
+
+        # Detect local installations (for the selector UI)
         installations = await asyncio.to_thread(
             atopile_install.detect_local_installations
         )
@@ -371,7 +401,7 @@ def create_app(
         asyncio.create_task(_watch_project_sources_background())
         asyncio.create_task(_watch_project_python_background())
         asyncio.create_task(_watch_project_dependencies_background())
-        asyncio.create_task(_load_atopile_install_options())
+        asyncio.create_task(_load_atopile_install_options(ctx))
 
         if not ctx.workspace_paths:
             log.info("No workspace paths configured, skipping initial state population")
@@ -536,18 +566,18 @@ class DashboardServer:
 
 def start_dashboard_server(
     port: Optional[int] = None,
-    workspace_path: Optional[Path] = None,
+    workspace_paths: Optional[list[Path]] = None,
 ) -> tuple[DashboardServer, str]:
     """
     Start the dashboard server.
 
     Args:
         port: Port to use (defaults to a free port)
-        workspace_path: Workspace path to scan for projects
+        workspace_paths: Workspace paths to scan for projects
 
     Returns:
         Tuple of (DashboardServer, url)
     """
-    server = DashboardServer(port=port, workspace_path=workspace_path)
+    server = DashboardServer(port=port, workspace_paths=workspace_paths)
     server.start()
     return server, server.url

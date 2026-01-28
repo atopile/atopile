@@ -51,11 +51,14 @@ async def fetch_available_versions() -> list[str]:
     """
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
+            log.info(f"Fetching versions from PyPI: {PYPI_URL}")
             response = await client.get(PYPI_URL)
             response.raise_for_status()
             data = response.json()
 
             releases = data.get("releases", {})
+            log.info(f"Found {len(releases)} total releases on PyPI")
+
             # Filter out pre-release versions and versions below minimum
             versions = []
             for version in releases.keys():
@@ -70,6 +73,11 @@ async def fetch_available_versions() -> list[str]:
             # Sort versions (newest first)
             versions.sort(key=_parse_version, reverse=True)
 
+            log.info(
+                f"Filtered to {len(versions)} compatible versions "
+                f"(minimum: {'.'.join(map(str, MINIMUM_SUPPORTED_VERSION))})"
+            )
+
             # Limit to most recent versions (UI shows top 20)
             return versions[:25]
     except Exception as e:
@@ -83,27 +91,56 @@ async def fetch_available_branches() -> list[str]:
     Returns a list of branch names.
     """
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            # Get branches (UI filters and shows top 15)
-            response = await client.get(
-                GITHUB_API_BRANCHES,
-                params={"per_page": 50},
-                headers={"Accept": "application/vnd.github.v3+json"},
-            )
-            response.raise_for_status()
-            branches = response.json()
+        all_branches = []
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            # Paginate through all branches (max 100 per page)
+            page = 1
+            while True:
+                response = await client.get(
+                    GITHUB_API_BRANCHES,
+                    params={"per_page": 100, "page": page},
+                    headers={"Accept": "application/vnd.github.v3+json"},
+                )
+                response.raise_for_status()
+                branches = response.json()
 
-            # Extract branch names
-            branch_names = [b["name"] for b in branches]
+                if not branches:
+                    break
 
-            # Sort with main/develop first
-            priority = {"main": 0, "develop": 1, "master": 2}
-            branch_names.sort(key=lambda b: (priority.get(b, 100), b))
+                all_branches.extend([b["name"] for b in branches])
 
-            return branch_names
+                # Stop if we got less than 100 (last page)
+                if len(branches) < 100:
+                    break
+                page += 1
+
+                # Safety limit to avoid infinite loops
+                if page > 10:
+                    break
+
+            # Sort with main/develop/stage branches first
+            def branch_priority(name: str) -> tuple:
+                if name == "main":
+                    return (0, name)
+                if name == "develop":
+                    return (1, name)
+                if name == "master":
+                    return (2, name)
+                if name.startswith("stage/"):
+                    return (3, name)
+                if name.startswith("feature/"):
+                    return (5, name)
+                if name.startswith("fix/"):
+                    return (6, name)
+                return (4, name)
+
+            all_branches.sort(key=branch_priority)
+            log.info(f"Fetched {len(all_branches)} branches from GitHub")
+
+            return all_branches
     except Exception as e:
         log.error(f"Failed to fetch GitHub branches: {e}")
-        return ["main", "develop"]  # Fallback
+        return ["main", "develop", "stage/0.14.x"]  # Fallback with common branches
 
 
 async def validate_local_path(path: str) -> dict:

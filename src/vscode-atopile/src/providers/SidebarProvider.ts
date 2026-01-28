@@ -101,6 +101,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _lastWorkspaceRoot: string | null = null;
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;
+  private _lastAtopileSettingsKey: string | null = null;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -201,10 +202,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       localResourceRoots: isDev
         ? [] // No local resources in dev mode
         : [
-            vscode.Uri.file(path.join(extensionPath, 'resources')),
-            vscode.Uri.file(path.join(extensionPath, 'resources', 'webviews')),
-            vscode.Uri.file(path.join(extensionPath, 'webviews', 'dist')),
-          ],
+          vscode.Uri.file(path.join(extensionPath, 'resources')),
+          vscode.Uri.file(path.join(extensionPath, 'resources', 'webviews')),
+          vscode.Uri.file(path.join(extensionPath, 'webviews', 'dist')),
+        ],
     };
     webviewView.webview.options = webviewOptions;
 
@@ -235,19 +236,34 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Get workspace folder paths from VS Code.
+   * Get workspace folder path synchronously (for HTML generation).
+   * Just returns the first workspace folder.
    */
-  private _getWorkspaceRoot(): string | null {
+  private _getWorkspaceRootSync(): string | null {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) return null;
     return folders[0].uri.fsPath;
   }
 
-  private _postWorkspaceRoot(): void {
+  /**
+   * Get workspace folder path, preferring folders with atopile projects.
+   */
+  private async _getWorkspaceRoot(): Promise<string | null> {
+    // Prefer workspace folders that contain atopile projects (ato.yaml)
+    const atopileWorkspaces = await getAtopileWorkspaceFolders();
+    if (atopileWorkspaces.length > 0) {
+      return atopileWorkspaces[0].uri.fsPath;
+    }
+
+    // Fall back to first workspace folder
+    return this._getWorkspaceRootSync();
+  }
+
+  private async _postWorkspaceRoot(): Promise<void> {
     if (!this._view) {
       return;
     }
-    const root = this._getWorkspaceRoot();
+    const root = await this._getWorkspaceRoot();
     if (this._lastWorkspaceRoot === root) {
       return;
     }
@@ -290,7 +306,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         backendServer.setConnected(message.isConnected);
         break;
       case 'atopileSettings':
-        this._handleAtopileSettings(message.atopile);
+        // Handle async - fire and forget but log errors
+        this._handleAtopileSettings(message.atopile).catch((error) => {
+          traceError(`[SidebarProvider] Error handling atopile settings: ${error}`);
+        });
+        break;
+      case 'browseAtopilePath':
+        this._handleBrowseAtopilePath().catch((error) => {
+          traceError(`[SidebarProvider] Error browsing atopile path: ${error}`);
+        });
         break;
       case 'selectionChanged':
         void this._handleSelectionChanged(message);
@@ -449,13 +473,38 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Handle atopile settings changes from the UI.
-   * Syncs atopile settings to VS Code configuration.
+   * Handle request to browse for a local atopile path.
+   * Shows a native folder picker dialog and sends the selected path back to the webview.
    */
-  private _handleAtopileSettings(atopile: AtopileSettingsMessage['atopile']): void {
+  private async _handleBrowseAtopilePath(): Promise<void> {
+    traceInfo('[SidebarProvider] Browsing for local atopile path');
+
+    const result = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: true,
+      canSelectMany: false,
+      openLabel: 'Select atopile installation',
+      title: 'Select atopile installation directory or binary',
+    });
+
+    const selectedPath = result?.[0]?.fsPath ?? null;
+    traceInfo(`[SidebarProvider] Browse result: ${selectedPath}`);
+
+    // Send the result back to the webview
+    this._view?.webview.postMessage({
+      type: 'browseAtopilePathResult',
+      path: selectedPath,
+    });
+  }
+
+  /**
+   * Handle atopile settings changes from the UI.
+   * Syncs atopile settings to VS Code configuration and restarts the backend if needed.
+   */
+  private async _handleAtopileSettings(atopile: AtopileSettingsMessage['atopile']): Promise<void> {
     if (!atopile) return;
 
-    // Store for comparison to avoid unnecessary updates
+    // Build a key for comparison to avoid unnecessary updates
     const settingsKey = JSON.stringify({
       source: atopile.source,
       currentVersion: atopile.currentVersion,
@@ -463,8 +512,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       localPath: atopile.localPath,
     });
 
-    // Skip if nothing changed (we'd need to track this, but for simplicity we'll always update)
-    // This is called on every state update, so we should be careful not to spam config changes
+    // Skip if nothing changed - this is called on every state update
+    if (settingsKey === this._lastAtopileSettingsKey) {
+      return;
+    }
+
+    const isFirstLoad = this._lastAtopileSettingsKey === null;
+    this._lastAtopileSettingsKey = settingsKey;
 
     const config = vscode.workspace.getConfiguration('atopile');
     const hasWorkspace = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0;
@@ -474,32 +528,64 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       if (atopile.source === 'local' && atopile.localPath) {
         // For local mode, set the 'ato' setting directly
         traceInfo(`[SidebarProvider] Setting atopile.ato = ${atopile.localPath}`);
-        config.update('ato', atopile.localPath, target);
-        config.update('from', undefined, target);
+        await config.update('ato', atopile.localPath, target);
+        await config.update('from', undefined, target);
       } else {
         // For release/branch mode, set the 'from' setting
         const fromValue = this._atopileSettingsToFrom(atopile);
         traceInfo(`[SidebarProvider] Setting atopile.from = ${fromValue}`);
-        config.update('from', fromValue, target);
-        config.update('ato', undefined, target);
+        await config.update('from', fromValue, target);
+        await config.update('ato', undefined, target);
+      }
+
+      // Restart the backend server to use the new atopile binary
+      // Skip restart on first load - the server is already using the correct binary
+      if (!isFirstLoad) {
+        traceInfo(`[SidebarProvider] Atopile settings changed, restarting backend server`);
+
+        // Notify UI that we're installing/switching to a new version
+        const versionDescription = atopile.source === 'local'
+          ? 'local atopile'
+          : atopile.source === 'branch'
+            ? `branch ${atopile.branch || 'main'}`
+            : `atopile v${atopile.currentVersion || 'latest'}`;
+
+        backendServer.sendToWebview({
+          type: 'atopileInstalling',
+          message: `Switching to ${versionDescription}...`,
+          source: atopile.source,
+          version: atopile.currentVersion,
+          branch: atopile.branch,
+        });
+
+        await backendServer.restartServer();
       }
     } catch (error) {
       traceError(`[SidebarProvider] Failed to update atopile settings: ${error}`);
+
+      // Notify UI of the error
+      backendServer.sendToWebview({
+        type: 'atopileInstallError',
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   /**
    * Convert UI atopile settings to a VS Code 'atopile.from' setting value.
+   * Uses PEP 508 format for version pinning (== for PyPI, @ for git URLs).
    */
   private _atopileSettingsToFrom(atopile: AtopileSettingsMessage['atopile']): string {
     if (!atopile) return 'atopile';
 
     switch (atopile.source) {
       case 'release':
+        // Use PEP 508 format: atopile==0.12.5 for exact version
         return atopile.currentVersion
-          ? `atopile@${atopile.currentVersion}`
+          ? `atopile==${atopile.currentVersion}`
           : 'atopile';
       case 'branch':
+        // Git URL format uses @ for branch/tag reference
         return `git+https://github.com/atopile/atopile.git@${atopile.branch || 'main'}`;
       case 'local':
         return atopile.localPath || '';
@@ -518,7 +604,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const backendUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
     const wsOrigin = getWsOrigin(wsUrl);
-    const workspaceRoot = this._getWorkspaceRoot();
+    const workspaceRoot = this._getWorkspaceRootSync();
 
     const workspaceParam = workspaceRoot
       ? `?workspace=${encodeURIComponent(workspaceRoot)}`
@@ -624,7 +710,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
     const wsOrigin = getWsOrigin(wsUrl);
-    const workspaceRoot = this._getWorkspaceRoot();
+    const workspaceRoot = this._getWorkspaceRootSync();
 
     // Debug: log URLs being used
     traceInfo('SidebarProvider: Generating HTML with apiUrl:', apiUrl, 'wsUrl:', wsUrl);

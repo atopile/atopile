@@ -453,11 +453,71 @@
   gap: 6px;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-  padding: var(--spacing-xs) 0;
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.settings-status svg {
+  flex-shrink: 0;
 }
 
 .settings-status .status-ok {
   color: var(--success);
+}
+
+/* Status variants */
+.settings-status-success {
+  background: rgba(166, 227, 161, 0.1);
+  border: 1px solid var(--success);
+  color: var(--success);
+}
+
+.settings-status-success svg {
+  color: var(--success);
+}
+
+.settings-status-warning {
+  background: rgba(249, 226, 175, 0.1);
+  border: 1px solid var(--ctp-yellow);
+  color: var(--ctp-yellow);
+}
+
+.settings-status-warning svg {
+  color: var(--ctp-yellow);
+}
+
+.settings-status-error {
+  background: rgba(243, 139, 168, 0.1);
+  border: 1px solid var(--ctp-red);
+  color: var(--ctp-red);
+}
+
+.settings-status-error svg {
+  color: var(--ctp-red);
+}
+
+.settings-status-info {
+  background: rgba(137, 180, 250, 0.1);
+  border: 1px solid var(--ctp-blue);
+  color: var(--ctp-blue);
+}
+
+.settings-status-info svg {
+  color: var(--ctp-blue);
+}
+
+.settings-status-info svg.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Detected Installations */

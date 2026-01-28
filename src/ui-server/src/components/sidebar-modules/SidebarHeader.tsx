@@ -5,8 +5,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Settings, ChevronDown, FolderOpen, Loader2, AlertCircle, Check, GitBranch, Package, Search, X } from 'lucide-react';
 import { sendAction } from '../../api/websocket';
+import { postMessage, onExtensionMessage, type ExtensionToWebviewMessage } from '../../api/vscodeApi';
 
-// Send action to backend via WebSocket
+// Send action to backend via WebSocket (or VS Code extension for special actions)
 const action = (name: string, data?: Record<string, unknown>) => {
   if (name === 'openUrl' && data && 'url' in data) {
     const url = (data as { url?: string }).url;
@@ -15,10 +16,19 @@ const action = (name: string, data?: Record<string, unknown>) => {
       return;
     }
   }
+  // browseAtopilePath needs to be handled by VS Code extension for native folder picker
+  if (name === 'browseAtopilePath') {
+    postMessage({ type: 'browseAtopilePath' });
+    return;
+  }
   sendAction(name, data);
 };
 
 interface AtopileState {
+  // Actual installed atopile (source of truth for builds)
+  actualVersion?: string | null;
+  actualSource?: string | null;
+  // User selection state
   isInstalling?: boolean;
   installProgress?: {
     message?: string;
@@ -66,6 +76,7 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
   // Branch search state
   const [branchSearchQuery, setBranchSearchQuery] = useState('');
   const [showBranchDropdown, setShowBranchDropdown] = useState(false);
+  const [isEditingBranch, setIsEditingBranch] = useState(false);
   const branchDropdownRef = useRef<HTMLDivElement>(null);
 
   // Local path validation state
@@ -153,6 +164,8 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
     const handleClickOutside = (e: MouseEvent) => {
       if (branchDropdownRef.current && !branchDropdownRef.current.contains(e.target as Node)) {
         setShowBranchDropdown(false);
+        setIsEditingBranch(false);
+        setBranchSearchQuery('');
       }
     };
 
@@ -184,6 +197,17 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
       }
     };
   }, [atopile?.source, atopile?.localPath]);
+
+  // Listen for browse path result from VS Code extension
+  useEffect(() => {
+    const unsubscribe = onExtensionMessage((message: ExtensionToWebviewMessage) => {
+      if (message.type === 'browseAtopilePathResult' && message.path) {
+        action('setAtopileLocalPath', { path: message.path });
+      }
+    });
+
+    return unsubscribe;
+  }, []);
 
   // Handle action_result events for settings
   useEffect(() => {
@@ -245,20 +269,6 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
           </button>
           {showSettings && (
             <div className="settings-dropdown">
-              {/* Error Display */}
-              {atopile?.error && (
-                <div className="settings-error">
-                  <AlertCircle size={12} />
-                  <span>{atopile.error}</span>
-                </div>
-              )}
-              {noReleaseVersions && (
-                <div className="settings-error">
-                  <AlertCircle size={12} />
-                  <span>No compatible release found. Select a branch or local install.</span>
-                </div>
-              )}
-
               {/* Source Type Selector */}
               <div className="settings-group">
                 <label className="settings-label">
@@ -367,16 +377,18 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
                         type="text"
                         className="branch-search-input"
                         placeholder="Search branches..."
-                        value={branchSearchQuery}
+                        value={isEditingBranch ? branchSearchQuery : (atopile?.branch || '')}
                         onChange={(e) => {
+                          setIsEditingBranch(true);
                           setBranchSearchQuery(e.target.value);
                           setShowBranchDropdown(true);
                         }}
-                        onFocus={() => setShowBranchDropdown(true)}
+                        onFocus={() => {
+                          setIsEditingBranch(true);
+                          setBranchSearchQuery('');
+                          setShowBranchDropdown(true);
+                        }}
                       />
-                      {atopile?.branch && !branchSearchQuery && (
-                        <span className="branch-current-value">{atopile.branch}</span>
-                      )}
                     </div>
                     {showBranchDropdown && (
                       <div className="branch-dropdown">
@@ -394,6 +406,7 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
                                 action('setAtopieBranch', { branch: b });
                                 setBranchSearchQuery('');
                                 setShowBranchDropdown(false);
+                                setIsEditingBranch(false);
                               }}
                             >
                               <GitBranch size={12} />
@@ -505,19 +518,6 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
                 </div>
               )}
 
-              {/* Current Status */}
-              {!atopile?.isInstalling && atopile?.currentVersion && (
-                <div className="settings-status">
-                  <Check size={12} className="status-ok" />
-                  <span>
-                    {atopile.source === 'local'
-                      ? `Using local: ${atopile.localPath?.split('/').pop() || 'atopile'}`
-                      : `v${atopile.currentVersion} installed`
-                    }
-                  </span>
-                </div>
-              )}
-
               {/* Parallel Builds Setting */}
               <div className="settings-group">
                 <div className="settings-row">
@@ -566,6 +566,67 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
                   </div>
                 </div>
               </div>
+
+              {/* Status Display - at the bottom */}
+              {/* Error state */}
+              {atopile?.error && (
+                <div className="settings-status settings-status-error">
+                  <AlertCircle size={12} />
+                  <span>{atopile.error}</span>
+                </div>
+              )}
+              {/* Warning: no compatible releases - only show if not using a valid local install and no actual version detected */}
+              {noReleaseVersions && !atopile?.actualVersion && !atopile?.isInstalling &&
+               !(atopile?.source === 'local' && localPathValidation.valid) && (
+                <div className="settings-status settings-status-warning">
+                  <AlertCircle size={12} />
+                  <span>No compatible release found. Select a branch or local install.</span>
+                </div>
+              )}
+              {/* Installing state - show when switching atopile versions */}
+              {atopile?.isInstalling && (
+                <div className="settings-status settings-status-info">
+                  <Loader2 size={12} className="spin" />
+                  <span>{atopile.installProgress?.message || 'Switching atopile version...'}</span>
+                </div>
+              )}
+              {/* Actual atopile status - Source of Truth indicator */}
+              {/* This shows what atopile is ACTUALLY being used for builds, regardless of dropdown selection */}
+              {!atopile?.isInstalling && atopile?.actualVersion && (
+                <div className="settings-status settings-status-success">
+                  <Check size={12} />
+                  <span>
+                    {atopile.actualSource === 'local-uv' || atopile.actualSource === 'local'
+                      ? `Using local atopile v${atopile.actualVersion}`
+                      : atopile.actualSource === 'settings'
+                        ? `Using atopile v${atopile.actualVersion}`
+                        : `Using atopile v${atopile.actualVersion}${atopile.actualSource ? ` (${atopile.actualSource})` : ''}`
+                    }
+                  </span>
+                </div>
+              )}
+              {/* Fallback: show selection-based status if no actual version detected yet */}
+              {/* Success state - for release/branch sources */}
+              {!atopile?.actualVersion && !atopile?.isInstalling && !atopile?.error && atopile?.currentVersion && atopile?.source !== 'local' && (
+                <div className="settings-status settings-status-success">
+                  <Check size={12} />
+                  <span>
+                    {atopile.source === 'branch'
+                      ? `Using branch ${atopile.branch || 'main'} atopile v${atopile.currentVersion}`
+                      : `Using released atopile v${atopile.currentVersion}`
+                    }
+                  </span>
+                </div>
+              )}
+              {/* Success state - for local source with valid path */}
+              {!atopile?.actualVersion && atopile?.source === 'local' && localPathValidation.valid && !localPathValidation.isValidating && (
+                <div className="settings-status settings-status-success">
+                  <Check size={12} />
+                  <span>
+                    Using local atopile{localPathValidation.version ? ` v${localPathValidation.version}` : ''}
+                  </span>
+                </div>
+              )}
 
             </div>
           )}

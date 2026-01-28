@@ -104,6 +104,10 @@ const initialState: AppState = {
 
   // Atopile configuration
   atopile: {
+    // Actual installed atopile (source of truth for builds)
+    actualVersion: null as string | null,
+    actualSource: null as string | null,
+    // User's selection in the dropdown (may differ from actual)
     currentVersion: '',
     source: 'release',
     localPath: null,

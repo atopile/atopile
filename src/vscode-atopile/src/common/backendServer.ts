@@ -15,6 +15,7 @@ import axios from 'axios';
 import * as net from 'net';
 import { traceInfo, traceError, traceVerbose } from './log/logging';
 import { resolveAtoBinForWorkspace } from './findbin';
+import { getAtopileWorkspaceFolders } from './vscodeapi';
 
 const BACKEND_HOST = '127.0.0.1';
 const SERVER_STARTUP_TIMEOUT_MS = 30000; // 30 seconds to wait for server startup
@@ -59,11 +60,18 @@ async function getAvailablePort(): Promise<number> {
 }
 
 /**
- * Get the workspace root path (first workspace folder).
+ * Get all workspace root paths that contain atopile projects.
  */
-function getWorkspaceRoot(): string | undefined {
+async function getWorkspaceRoots(): Promise<string[]> {
+    // Get workspace folders that contain atopile projects (ato.yaml)
+    const atopileWorkspaces = await getAtopileWorkspaceFolders();
+    if (atopileWorkspaces.length > 0) {
+        return atopileWorkspaces.map(w => w.uri.fsPath);
+    }
+
+    // Fall back to all workspace folders
     const folders = vscode.workspace.workspaceFolders;
-    return folders && folders.length > 0 ? folders[0].uri.fsPath : undefined;
+    return folders ? folders.map(f => f.uri.fsPath) : [];
 }
 
 /**
@@ -381,8 +389,9 @@ class BackendServerManager implements vscode.Disposable {
     /**
      * Start the backend server automatically.
      * Returns true if server started successfully, false otherwise.
+     * @param preferredPort Optional port to use (for restart to keep same port)
      */
-    async startServer(): Promise<boolean> {
+    async startServer(preferredPort?: number): Promise<boolean> {
         // If already starting, wait for that to complete
         if (this._startupPromise) {
             return this._startupPromise;
@@ -397,7 +406,7 @@ class BackendServerManager implements vscode.Disposable {
             await this.stopServer();
         }
 
-        this._startupPromise = this._doStartServer();
+        this._startupPromise = this._doStartServer(preferredPort);
         try {
             return await this._startupPromise;
         } finally {
@@ -405,7 +414,7 @@ class BackendServerManager implements vscode.Disposable {
         }
     }
 
-    private async _doStartServer(): Promise<boolean> {
+    private async _doStartServer(preferredPort?: number): Promise<boolean> {
         this._serverState = 'starting';
         this._lastError = undefined;
         this._stdoutBuffer = '';
@@ -424,20 +433,25 @@ class BackendServerManager implements vscode.Disposable {
                 this._updateStatusBar();
                 return false;
             }
-            const { atoBin } = resolved;
+            const { settings, atoBin } = resolved;
 
             if (this._process) {
                 await this.stopServer();
             }
 
-            const port = await getAvailablePort();
-            this._setPort(port);
+            // Send progress update: starting server
+            this._onWebviewMessage.fire({
+                type: 'atopileInstalling',
+                message: 'Starting backend server...',
+            });
 
             // Build command args: ato serve backend --port <port> [--workspace <path>...]
             const args = [
                 ...atoBin.command.slice(1),
                 'serve', 'backend',
                 '--port', String(this.port),
+                '--ato-source', atoBin.source,
+                '--ato-ui-source', uiSourceType,
             ];
             // Pass all workspace roots to the backend
             for (const root of workspaceRoots) {
@@ -450,7 +464,7 @@ class BackendServerManager implements vscode.Disposable {
 
             // Spawn the server process with unbuffered Python output
             const child = cp.spawn(command, args, {
-                cwd: workspaceRoot,
+                cwd: workspaceRoots.length > 0 ? workspaceRoots[0] : undefined,
                 env: {
                     ...process.env,
                     ATO_NON_INTERACTIVE: 'y',
@@ -508,6 +522,12 @@ class BackendServerManager implements vscode.Disposable {
                 this._updateStatusBar();
             });
 
+            // Send progress update: waiting for server
+            this._onWebviewMessage.fire({
+                type: 'atopileInstalling',
+                message: 'Waiting for server to initialize...',
+            });
+
             const ready = await this._waitForServerReady(child);
 
             if (ready) {
@@ -516,6 +536,12 @@ class BackendServerManager implements vscode.Disposable {
                 this._log('info', `server: Started successfully on port ${this.port}`);
                 this._serverState = 'running';
                 this._updateStatusBar();
+
+                // Send progress update: server ready (will be cleared by WebSocket connection)
+                this._onWebviewMessage.fire({
+                    type: 'atopileInstalling',
+                    message: 'Connecting to server...',
+                });
                 // Note: WebSocket connection is now managed by ui-server,
                 // which connects when the webview loads
             } else {
@@ -526,6 +552,13 @@ class BackendServerManager implements vscode.Disposable {
                 this._log('error', `server: Failed to start: ${this._lastError}`);
                 this._serverState = 'error';
                 this._updateStatusBar();
+
+                // Send error notification
+                this._onWebviewMessage.fire({
+                    type: 'atopileInstallError',
+                    error: this._lastError,
+                });
+
                 await this.stopServer();
             }
 
@@ -537,6 +570,13 @@ class BackendServerManager implements vscode.Disposable {
             this._log('error', `server: Failed to start: ${errorMsg}`);
             this._serverState = 'error';
             this._updateStatusBar();
+
+            // Send error notification
+            this._onWebviewMessage.fire({
+                type: 'atopileInstallError',
+                error: errorMsg,
+            });
+
             return false;
         }
     }
@@ -557,10 +597,14 @@ class BackendServerManager implements vscode.Disposable {
 
     /**
      * Restart the backend server (e.g., when version changes).
+     * Reuses the same port so the webview's WebSocket can reconnect.
      */
     async restartServer(): Promise<boolean> {
         traceInfo('BackendServer: Restarting server...');
         this._log('info', 'server: Restarting...');
+
+        // Save the current port to reuse it
+        const previousPort = this._port;
 
         // Stop existing server
         await this.stopServer();
@@ -568,8 +612,8 @@ class BackendServerManager implements vscode.Disposable {
         // Small delay to let the port be released
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        // Start new server
-        return this.startServer();
+        // Start new server with the same port
+        return this.startServer(previousPort);
     }
 
     /**

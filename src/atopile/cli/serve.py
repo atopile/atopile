@@ -70,6 +70,16 @@ def backend(
         "-f",
         help="Kill existing server on the port and start fresh",
     ),
+    ato_source: Optional[str] = typer.Option(
+        None,
+        "--ato-source",
+        help="Source of the atopile binary (e.g., 'settings', 'local-uv')",
+    ),
+    ato_ui_source: Optional[str] = typer.Option(
+        None,
+        "--ato-ui-source",
+        help="UI source type (e.g., 'release', 'branch', 'local')",
+    ),
 ) -> None:
     """Start the backend server in the current terminal."""
     cmd = [sys.executable, "-m", "atopile.server", "--port", str(port)]
@@ -77,6 +87,10 @@ def backend(
         cmd.extend(["--workspace", str(path)])
     if force:
         cmd.append("--force")
+    if ato_source:
+        cmd.extend(["--ato-source", ato_source])
+    if ato_ui_source:
+        cmd.extend(["--ato-ui-source", ato_ui_source])
     raise typer.Exit(subprocess.run(cmd).returncode)
 
 

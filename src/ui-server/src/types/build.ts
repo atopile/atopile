@@ -435,6 +435,10 @@ export interface AppState {
 
   // Atopile configuration
   atopile: {
+    // Actual installed atopile (source of truth for builds)
+    actualVersion: string | null;     // Version actually being used by backend
+    actualSource: string | null;      // Source actually being used (e.g., 'settings', 'local-uv')
+    // User's selection in the dropdown (may differ from actual)
     currentVersion: string;           // Currently active version (e.g., "0.14.0")
     source: 'release' | 'branch' | 'local';  // Source type
     localPath: string | null;         // Local path when source is 'local'

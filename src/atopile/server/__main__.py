@@ -49,6 +49,18 @@ def main():
         action="store_true",
         help="Kill existing server on the port and start fresh",
     )
+    parser.add_argument(
+        "--ato-source",
+        type=str,
+        default=None,
+        help="Source of the atopile binary (e.g., 'settings', 'local-uv')",
+    )
+    parser.add_argument(
+        "--ato-ui-source",
+        type=str,
+        default=None,
+        help="UI source type (e.g., 'release', 'branch', 'local')",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[3]

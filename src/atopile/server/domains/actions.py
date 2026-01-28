@@ -1370,6 +1370,36 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             )
             return {"success": True, "installations": installations}
 
+        elif action == "getAtopileConfig":
+            # Return the current atopile config including actual version
+            # This is called when WebSocket connects to get the current state
+            from atopile import version as ato_version
+
+            try:
+                version_obj = ato_version.get_installed_atopile_version()
+                actual_version = str(version_obj)
+            except Exception:
+                actual_version = None
+
+            actual_source = ctx.ato_source or "unknown"
+            ui_source = ctx.ato_ui_source or "release"
+
+            # Emit the config so it gets to the frontend
+            await server_state.emit_event(
+                "atopile_config_changed",
+                {
+                    "actual_version": actual_version,
+                    "actual_source": actual_source,
+                    "source": ui_source,
+                },
+            )
+            return {
+                "success": True,
+                "actual_version": actual_version,
+                "actual_source": actual_source,
+                "source": ui_source,
+            }
+
         elif action == "setWorkspaceFolders":
             folders = payload.get("folders", [])
             # Use first folder as workspace path (VS Code multi-root not supported)
