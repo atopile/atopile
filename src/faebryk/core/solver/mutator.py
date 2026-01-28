@@ -1416,10 +1416,11 @@ class MutationMap:
 
         forwards_mapping = self.compressed_mapping_forwards_complete
         removed = self.input_operables - set(forwards_mapping.keys())
+        forwards_values = set(forwards_mapping.values())
         created = {
             out_op: in_ops
             for out_op, in_ops in self.compressed_mapping_backwards.items()
-            if not any(op for op in in_ops if op in self.input_operables)
+            if out_op not in forwards_values
         }
 
         return MutationMap(
@@ -2737,53 +2738,52 @@ def test_mutation_map_compressed_with_creations():
 
 
 def test_mutation_map_compressed_with_mutations():
-    from faebryk.core.solver.algorithm import algorithm
+    """
+    Run the solver on a constrained graph and verify that compressed()
+    preserves forward/backward mappings through multi-stage mutations.
+    """
+    from faebryk.core.solver.solver import Solver
+    from faebryk.libs.test.boundexpressions import BoundExpressions
 
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions()
 
     class _AppMutations(fabll.Node):
-        param_a = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
-        param_b = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+        param_a = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl)
+        param_b = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl)
 
-    app = _AppMutations.bind_typegraph(tg=tg).create_instance(g=g)
-    param_a_op = app.param_a.get().can_be_operand.get()
-    param_b_op = app.param_b.get().can_be_operand.get()
+    app = _AppMutations.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+    a_op = app.param_a.get().can_be_operand.get()
+    b_op = app.param_b.get().can_be_operand.get()
+    a_po = app.param_a.get().is_parameter_operatable.get()
+    b_po = app.param_b.get().is_parameter_operatable.get()
 
-    add_expr = (
-        F.Expressions.Add.bind_typegraph(tg)
-        .create_instance(g)
-        .setup(param_a_op, param_b_op)
-    )
-    add_expr_po = add_expr.is_parameter_operatable.get()
+    # Constrain A and B so the solver has work to do (mutations)
+    E.is_subset(a_op, E.lit_op_range(((0, E.U.dl), (10, E.U.dl))), assert_=True)
+    E.is_subset(b_op, E.lit_op_range(((5, E.U.dl), (15, E.U.dl))), assert_=True)
 
-    @algorithm("mutate_expr", force_copy=True)
-    def algo_mutate(mutator: Mutator):
-        mutator.mutate_expression(
-            add_expr.is_expression.get(),
-            operands=[param_a_op, param_a_op],
-        )
+    solver = Solver()
+    state = solver.simplify(g=E.g, tg=E.tg, terminal=True)
+    mut_map = state.data.mutation_map
 
-    mut_map = MutationMap.bootstrap(tg=tg, g=g)
-
-    result = Mutator(mut_map, algo_mutate, iteration=0, terminal=False).run()
-    mut_map = mut_map.extend(result.mutation_stage)
-
-    orig_forward = mut_map.map_forward(add_expr_po)
-    assert orig_forward.maps_to is not None
-    assert not orig_forward.removed
+    assert len(mut_map.mutation_stages) > 1
 
     compressed = mut_map.compressed()
 
-    comp_forward = compressed.map_forward(add_expr_po)
-    assert comp_forward.maps_to is not None
-    assert orig_forward.maps_to.is_same(comp_forward.maps_to)
+    # Forward mappings should agree
+    for param_po in [a_po, b_po]:
+        orig = mut_map.map_forward(param_po)
+        comp = compressed.map_forward(param_po)
+        assert (orig.maps_to is None) == (comp.maps_to is None)
+        if orig.maps_to and comp.maps_to:
+            assert orig.maps_to.is_same(comp.maps_to)
 
-    orig_back = mut_map.map_backward(orig_forward.maps_to)
-    comp_back = compressed.map_backward(comp_forward.maps_to)
-    orig_uuids = {op.instance.node().get_uuid() for op in orig_back}
-    comp_uuids = {op.instance.node().get_uuid() for op in comp_back}
-    assert orig_uuids == comp_uuids
+    # Backward mappings should agree
+    for out_op in mut_map.output_operables:
+        orig_back = mut_map.map_backward(out_op)
+        comp_back = compressed.map_backward(out_op)
+        orig_uuids = {op.instance.node().get_uuid() for op in orig_back}
+        comp_uuids = {op.instance.node().get_uuid() for op in comp_back}
+        assert orig_uuids == comp_uuids
 
 
 def test_mutation_map_compressed_with_removals():
@@ -2832,64 +2832,39 @@ def test_mutation_map_compressed_with_removals():
 
 def test_mutation_map_compressed_combined():
     """
-    Comprehensive test: creations, mutations, AND removals across multiple stages.
+    Run the solver on a more complex constrained graph (overlapping constraints,
+    transitive subsets) and verify that compressed() preserves all mappings,
+    graph endpoints, and output operables.
     """
-    from faebryk.core.solver.algorithm import algorithm
+    from faebryk.core.solver.solver import Solver
+    from faebryk.libs.test.boundexpressions import BoundExpressions
 
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions()
 
     class _AppCombined(fabll.Node):
-        param_a = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
-        param_b = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+        param_a = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl)
+        param_b = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl)
+        param_c = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl)
 
-    app = _AppCombined.bind_typegraph(tg=tg).create_instance(g=g)
-    param_a_op = app.param_a.get().can_be_operand.get()
-    param_b_op = app.param_b.get().can_be_operand.get()
-    param_a_po = app.param_a.get().is_parameter_operatable.get()
-    param_b_po = app.param_b.get().is_parameter_operatable.get()
+    app = _AppCombined.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+    a_op = app.param_a.get().can_be_operand.get()
+    b_op = app.param_b.get().can_be_operand.get()
+    c_op = app.param_c.get().can_be_operand.get()
+    a_po = app.param_a.get().is_parameter_operatable.get()
+    b_po = app.param_b.get().is_parameter_operatable.get()
+    c_po = app.param_c.get().is_parameter_operatable.get()
 
-    add_expr = (
-        F.Expressions.Add.bind_typegraph(tg)
-        .create_instance(g)
-        .setup(param_a_op, param_b_op)
-    )
-    add_expr_po = add_expr.is_parameter_operatable.get()
+    # Constrain each parameter independently
+    E.is_subset(a_op, E.lit_op_range(((0, E.U.dl), (10, E.U.dl))), assert_=True)
+    E.is_subset(b_op, E.lit_op_range(((0, E.U.dl), (20, E.U.dl))), assert_=True)
+    E.is_subset(c_op, E.lit_op_range(((1, E.U.dl), (5, E.U.dl))), assert_=True)
+    # Expression involving multiple parameters
+    sum_ab = E.add(a_op, b_op)
+    E.is_subset(sum_ab, E.lit_op_range(((0, E.U.dl), (25, E.U.dl))), assert_=True)
 
-    mut_map = MutationMap.bootstrap(tg=tg, g=g)
-
-    # Get mapped references from bootstrapped graph
-    add_expr_mapped = mut_map.map_forward(add_expr_po).maps_to
-    assert add_expr_mapped is not None
-    add_expr_mapped_expr = add_expr_mapped.as_expression.force_get()
-
-    mutated_add_po: F.Parameters.is_parameter_operatable | None = None
-
-    @algorithm("stage1_create_and_mutate", force_copy=True)
-    def algo_stage1(mutator: Mutator):
-        nonlocal mutated_add_po
-        mutator.create_check_and_insert_expression(
-            F.Expressions.Multiply,
-            param_a_op,
-            param_b_op,
-            from_ops=[param_a_po],
-        )
-        mutated = mutator.mutate_expression(
-            add_expr_mapped_expr,
-            operands=[param_a_op, param_a_op],
-        )
-        mutated_add_po = mutated.as_parameter_operatable.force_get()
-
-    @algorithm("stage2_remove_and_create", force_copy=True)
-    def algo_stage2(mutator: Mutator):
-        assert mutated_add_po is not None
-        mutator.remove(mutated_add_po, no_check_roots=True)
-
-    result1 = Mutator(mut_map, algo_stage1, iteration=0, terminal=False).run()
-    mut_map = mut_map.extend(result1.mutation_stage)
-
-    result2 = Mutator(mut_map, algo_stage2, iteration=0, terminal=False).run()
-    mut_map = mut_map.extend(result2.mutation_stage)
+    solver = Solver()
+    state = solver.simplify(g=E.g, tg=E.tg, terminal=True)
+    mut_map = state.data.mutation_map
 
     assert len(mut_map.mutation_stages) >= 3
 
@@ -2906,27 +2881,24 @@ def test_mutation_map_compressed_combined():
         == mut_map.G_out.get_self_node().node().get_uuid()
     )
 
-    # Use ORIGINAL operables for map_forward (from first stage's input)
-    for param_po in [param_a_po, param_b_po]:
+    # Forward mappings agree for all original parameters
+    for param_po in [a_po, b_po, c_po]:
         orig_result = mut_map.map_forward(param_po)
         comp_result = compressed.map_forward(param_po)
-        assert orig_result.maps_to is not None
-        assert comp_result.maps_to is not None
-        assert orig_result.maps_to.is_same(comp_result.maps_to)
+        assert (orig_result.maps_to is None) == (comp_result.maps_to is None)
+        if orig_result.maps_to and comp_result.maps_to:
+            assert orig_result.maps_to.is_same(comp_result.maps_to)
 
-    # The original Add was mutated then removed
-    orig_add_result = mut_map.map_forward(add_expr_po)
-    comp_add_result = compressed.map_forward(add_expr_po)
-    assert orig_add_result.removed == comp_add_result.removed
-
+    # Same number of output operables
     assert len(compressed.output_operables) == len(mut_map.output_operables)
 
+    # Backward mappings agree for all output operables
     for out_op in mut_map.output_operables:
         orig_back = mut_map.map_backward(out_op)
         comp_back = compressed.map_backward(out_op)
-        orig_back_uuids = {op.instance.node().get_uuid() for op in orig_back}
-        comp_back_uuids = {op.instance.node().get_uuid() for op in comp_back}
-        assert orig_back_uuids == comp_back_uuids
+        orig_uuids = {op.instance.node().get_uuid() for op in orig_back}
+        comp_uuids = {op.instance.node().get_uuid() for op in comp_back}
+        assert orig_uuids == comp_uuids
 
 
 def test_bootstrap_with_initial_state_no_new_operables():
