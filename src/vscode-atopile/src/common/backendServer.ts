@@ -67,6 +67,14 @@ function getWorkspaceRoot(): string | undefined {
 }
 
 /**
+ * Get all workspace root paths.
+ */
+function getWorkspaceRoots(): string[] {
+    const folders = vscode.workspace.workspaceFolders;
+    return folders ? folders.map(f => f.uri.fsPath) : [];
+}
+
+/**
  * Build the WebSocket URL from a port number.
  */
 /**
@@ -406,7 +414,8 @@ class BackendServerManager implements vscode.Disposable {
         this._updateStatusBar();
 
         try {
-            const workspaceRoot = getWorkspaceRoot();
+            const workspaceRoots = getWorkspaceRoots();
+            const workspaceRoot = workspaceRoots[0]; // Use first for cwd
             const resolved = await resolveAtoBinForWorkspace();
             if (!resolved) {
                 this._lastError = 'ato binary not found';
@@ -424,14 +433,15 @@ class BackendServerManager implements vscode.Disposable {
             const port = await getAvailablePort();
             this._setPort(port);
 
-            // Build command args: ato serve backend --port <port> [--workspace <path>]
+            // Build command args: ato serve backend --port <port> [--workspace <path>...]
             const args = [
                 ...atoBin.command.slice(1),
                 'serve', 'backend',
                 '--port', String(this.port),
             ];
-            if (workspaceRoot) {
-                args.push('--workspace', workspaceRoot);
+            // Pass all workspace roots to the backend
+            for (const root of workspaceRoots) {
+                args.push('--workspace', root);
             }
 
             const command = atoBin.command[0];

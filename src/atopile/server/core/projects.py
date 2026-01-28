@@ -223,10 +223,24 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                         )
 
                 if targets:
+                    # Build display path: workspace_folder/relative_path
+                    # e.g., "packages/adi-adau145x" or "packages_alt/packages/st-lps22"
+                    try:
+                        rel_path = project_root.relative_to(root_path)
+                        if rel_path == Path("."):
+                            # Project is at workspace root
+                            display_path = root_path.name
+                        else:
+                            display_path = f"{root_path.name}/{rel_path}"
+                    except ValueError:
+                        # Fallback if relative_to fails
+                        display_path = project_root.name
+
                     projects.append(
                         Project(
                             root=root_str,
                             name=project_root.name,
+                            display_path=display_path,
                             targets=targets,
                         )
                     )
@@ -235,7 +249,8 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                 log.warning(f"Failed to parse {ato_file}: {e}")
                 continue
 
-    projects.sort(key=lambda p: p.name.lower())
+    # Sort by path (root) to group projects in the same directory together
+    projects.sort(key=lambda p: p.root.lower())
     return projects
 
 

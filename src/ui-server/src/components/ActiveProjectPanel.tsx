@@ -252,7 +252,7 @@ function ProjectSelector({
                     <FolderOpen size={12} className="option-icon" />
                     <span className="combobox-option-name">{project.name}</span>
                     <span className="combobox-option-path" title={project.root}>
-                      {formatPath(project.root)}
+                      {project.displayPath || formatPath(project.root)}
                     </span>
                     {isActive && <Check size={12} className="check-icon" />}
                   </button>

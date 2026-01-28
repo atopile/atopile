@@ -16,9 +16,10 @@
  * A project discovered from ato.yaml.
  */
 export interface Project {
-    name:    string;
-    root:    string;
-    targets: TargetElement[];
+    displayPath?: null | string;
+    name:         string;
+    root:         string;
+    targets:      TargetElement[];
     [property: string]: any;
 }
 
