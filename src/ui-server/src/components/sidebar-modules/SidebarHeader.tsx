@@ -144,12 +144,37 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
     return false;
   };
 
-  // Pending restart state - when user selects a new atopile but needs to restart
-  // Computed based on whether localPath (from settings) matches actualBinaryPath
-  const pendingRestartNeeded = useLocalAtopile &&
-    atopile?.localPath != null &&
-    atopile?.actualBinaryPath != null &&
-    !pathMatchesActualBinary(atopile.localPath);
+  // Pending restart state - when settings differ from what's actually running
+  //
+  // Key insight: restart is only needed when user's DESIRED state differs from RUNNING state.
+  //
+  // actualSource tells us HOW the backend resolved its binary on startup:
+  // - 'settings' = user explicitly configured atopile.ato → this is "explicitly local"
+  // - 'workspace-venv' = fallback to workspace venv (automatic, not user-configured)
+  // - 'uv' or other = extension-managed default
+  //
+  // Only 'settings' counts as "user explicitly configured local" because:
+  // - workspace-venv is just the default fallback for workspaces that have a venv
+  // - If user never configured anything, they shouldn't see restart warnings
+  const isRunningExplicitlyConfigured = atopile?.actualSource === 'settings';
+
+  const pendingRestartNeeded = (() => {
+    if (useLocalAtopile) {
+      // Toggle is ON - user wants to use their specified localPath
+      // Show restart if we have a path but it doesn't match what's running
+      return atopile?.localPath != null &&
+        atopile?.actualBinaryPath != null &&
+        !pathMatchesActualBinary(atopile.localPath);
+    } else {
+      // Toggle is OFF - user wants to use default (extension-managed uv)
+      // Only show restart if we're running an EXPLICITLY configured binary
+      // (i.e., user previously set atopile.ato and restarted with it)
+      //
+      // If actualSource is 'workspace-venv' or 'uv', that's just the default
+      // fallback for this environment, so no restart needed.
+      return isRunningExplicitlyConfigured;
+    }
+  })();
 
   // Debug logging for restart detection
   console.log('[SidebarHeader] Restart detection state:', {
@@ -157,6 +182,7 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
     localPath: atopile?.localPath,
     actualBinaryPath: atopile?.actualBinaryPath,
     actualSource: atopile?.actualSource,
+    isRunningExplicitlyConfigured,
     source: atopile?.source,
     pendingRestartNeeded,
   });
