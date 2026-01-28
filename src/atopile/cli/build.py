@@ -4,38 +4,28 @@ from __future__ import annotations
 
 import logging
 import os
-import queue
-import subprocess
-import sys
-import threading
 import time
 from pathlib import Path
-from typing import Callable
 
 import typer
 from rich.console import Console
 from typing_extensions import Annotated
 
-from atopile.buildutil import generate_build_id
+from atopile.buildutil import generate_build_id, generate_build_timestamp
 from atopile.dataclasses import (
     Build,
-    BuildReport,
     BuildStatus,
-    ProjectState,
     StageCompleteEvent,
     StageStatus,
 )
-from atopile.logging import NOW, get_logger
-from atopile.logging_utils import status_rich_icon, status_rich_text
+from atopile.logging import get_logger
+from atopile.model.build_queue import BuildQueue
 from atopile.telemetry import capture
 
 logger = get_logger(__name__)
 
 # Constants
 DEFAULT_WORKER_COUNT = os.cpu_count() or 4
-
-
-# status_rich_icon and status_rich_text are imported from atopile.logging_utils
 
 
 def discover_projects(root: Path) -> list[Path]:
@@ -87,1030 +77,244 @@ def _format_stage_entry(entry: StageCompleteEvent) -> str:
     return f"[{color}]{label}[/{color}]"
 
 
-class BuildProcess:
-    """Manages a single build subprocess."""
+_VERBOSE_INDENT = 10
 
-    def __init__(
-        self,
-        build_name: str,
-        project_root: Path,
-        project_name: str | None = None,
-        targets: list[str] | None = None,
-        exclude_targets: list[str] | None = None,
-        frozen: bool | None = None,
-        keep_picked_parts: bool | None = None,
-        keep_net_names: bool | None = None,
-        keep_designators: bool | None = None,
-        verbose: bool = False,
-    ):
-        self.name = build_name
-        self.project_name = project_name  # For multi-project builds
-        if project_name:
-            self.display_name = f"{project_name}/{build_name}"
-        else:
-            self.display_name = build_name
-        self.project_root = project_root
-        self.targets = targets or []
-        self.exclude_targets = exclude_targets or []
-        self.frozen = frozen
-        self.keep_picked_parts = keep_picked_parts
-        self.keep_net_names = keep_net_names
-        self.keep_designators = keep_designators
-        self.verbose = verbose
-        self.process: subprocess.Popen | None = None
-        self.start_time: float = 0.0
-        self.end_time: float = 0.0
-        self.return_code: int | None = None
-        self.current_stage: str = "Queued"
-        self.warnings: int = 0
-        self.errors: int = 0
-        self._error_reported: bool = False  # Track if error was already printed
-        self._stage_history: list[StageCompleteEvent] = []
-        self._stage_finalized: bool = False
-        self._stage_printer: (
-            Callable[[StageCompleteEvent, Path | None], None] | None
-        ) = None
-        self.build_id: str | None = None
 
-    def start(self) -> None:
-        """Start the build subprocess."""
-        # Build the command - run ato build for just this target
-        cmd = [
-            sys.executable,
-            "-m",
-            "atopile",
-            "build",
-            "-b",
-            self.name,
-        ]
+def _stage_dict_to_event(stage_dict: dict) -> StageCompleteEvent:
+    """Convert a stage dict from the DB into a StageCompleteEvent."""
+    status_raw = stage_dict.get("status", StageStatus.SUCCESS.value)
+    try:
+        status = StageStatus(status_raw)
+    except ValueError:
+        status = StageStatus.SUCCESS
+    return StageCompleteEvent(
+        duration=stage_dict.get("elapsed_seconds", 0.0),
+        status=status,
+        infos=stage_dict.get("infos", 0),
+        warnings=stage_dict.get("warnings", 0),
+        errors=stage_dict.get("errors", 0),
+        alerts=stage_dict.get("alerts", 0),
+        log_name=stage_dict.get("stage_id", ""),
+        description=stage_dict.get("name", ""),
+    )
 
-        # Copy environment and set worker mode
-        env = os.environ.copy()
-        env["ATO_BUILD_WORKER"] = "1"
 
-        # Use existing timestamp/build_id if passed from server, otherwise generate
-        # This ensures server-triggered builds use consistent IDs across workers
-        if "ATO_BUILD_TIMESTAMP" not in env:
-            env["ATO_BUILD_TIMESTAMP"] = NOW
-        if "ATO_BUILD_ID" not in env:
-            # Use pre-generated build_id if available (from ParallelBuildManager)
-            if self.build_id:
-                env["ATO_BUILD_ID"] = self.build_id
-            else:
-                project_path = str(self.project_root.resolve())
-                timestamp = env["ATO_BUILD_TIMESTAMP"]
-                build_id = generate_build_id(project_path, self.name, timestamp)
-                env["ATO_BUILD_ID"] = build_id
-                self.build_id = build_id
-        else:
-            # Store build_id from environment for display purposes
-            self.build_id = env["ATO_BUILD_ID"]
+def _stage_info_log_path() -> Path | None:
+    """Return the log path for a build (central SQLite database)."""
+    from atopile.logging import BuildLogger
 
-        # Pass build options to worker subprocess via environment variables
-        # These are picked up by the corresponding CLI options
-        if self.targets:
-            env["ATO_TARGET"] = ",".join(self.targets)
-        if self.exclude_targets:
-            env["ATO_EXCLUDE_TARGET"] = ",".join(self.exclude_targets)
-        if self.frozen is not None:
-            env["ATO_FROZEN"] = "1" if self.frozen else "0"
-        if self.keep_picked_parts is not None:
-            env["ATO_KEEP_PICKED_PARTS"] = "1" if self.keep_picked_parts else "0"
-        if self.keep_net_names is not None:
-            env["ATO_KEEP_NET_NAMES"] = "1" if self.keep_net_names else "0"
-        if self.keep_designators is not None:
-            env["ATO_KEEP_DESIGNATORS"] = "1" if self.keep_designators else "0"
-        if self.verbose:
-            env["ATO_VERBOSE"] = "1"
-        self.start_time = time.time()
+    return BuildLogger.get_log_db()
 
-        # Enable faulthandler in workers for crash debugging
-        # ATO_SAFE is set by --safe flag or can be set explicitly
-        preexec_fn = None
-        if os.environ.get("ATO_SAFE"):
-            env["ATO_SAFE"] = "1"
 
-            def enable_core_dumps():
-                import resource
-
-                try:
-                    resource.setrlimit(
-                        resource.RLIMIT_CORE,
-                        (resource.RLIM_INFINITY, resource.RLIM_INFINITY),
-                    )
-                except (ValueError, OSError):
-                    pass
-
-            preexec_fn = enable_core_dumps
-
-        # Keep stdout/stderr so worker exceptions are visible immediately.
-        self.process = subprocess.Popen(
-            cmd,
-            cwd=self.project_root,
-            env=env,
-            preexec_fn=preexec_fn,
-        )
-
-    def poll(self) -> int | None:
-        """Check if process has finished. Returns exit code or None if still running."""
-        if self.process is None:
-            return None
-
-        # Read stage progress from the build history DB
-        self._read_stages_from_db()
-
-        ret = self.process.poll()
-        if ret is not None and self.return_code is None:
-            self.return_code = ret
-            self.end_time = time.time()
-            self._finalize_stage_history()
-        return ret
-
-    def _finalize_stage_history(self) -> None:
-        if self._stage_finalized:
-            return
-        self._read_stages_from_db()
-        self._stage_finalized = True
-
-    def _read_stages_from_db(self) -> None:
-        """Read stage data from the build history database."""
-        if not self.build_id:
-            return
+def _print_verbose_stage(
+    console: Console, entry: StageCompleteEvent, log_path: Path | None
+) -> None:
+    """Print a single verbose stage line with its log path."""
+    log_text = ""
+    if log_path is not None:
         try:
-            from atopile.model.sqlite import BuildHistory
-
-            build_info = BuildHistory.get(self.build_id)
-            if not build_info:
-                return
-            stages = build_info.stages or []
-            if len(stages) <= len(self._stage_history):
-                return  # No new stages
-
-            # Convert new DB stages to StageCompleteEvent objects
-            for stage_dict in stages[len(self._stage_history) :]:
-                event = StageCompleteEvent(
-                    duration=stage_dict.get("elapsed_seconds", 0.0),
-                    status=StageStatus(stage_dict.get("status", "success")),
-                    infos=stage_dict.get("infos", 0),
-                    warnings=stage_dict.get("warnings", 0),
-                    errors=stage_dict.get("errors", 0),
-                    alerts=stage_dict.get("alerts", 0),
-                    log_name=stage_dict.get("stage_id", ""),
-                    description=stage_dict.get("name", ""),
-                )
-                self.warnings += event.warnings
-                self.errors += event.errors
-                self._stage_history.append(event)
-                if self._stage_printer:
-                    self._stage_printer(
-                        event,
-                        self._stage_info_log_path(event.log_name),
-                    )
-        except Exception:
-            pass  # Don't fail polling if DB read fails
-
-    def _stage_info_log_path(self, stage_name: str) -> Path | None:
-        """Return the log path for a build (central SQLite database)."""
-        from atopile.logging import BuildLogger
-
-        return BuildLogger.get_log_db()
-
-    def set_stage_printer(
-        self, printer: Callable[[StageCompleteEvent, Path | None], None] | None
-    ) -> None:
-        """Set a callback invoked for each completed stage."""
-        self._stage_printer = printer
-
-    def report(self) -> BuildReport:
-        return BuildReport(
-            name=self.display_name,
-            status=self.status,
-            warnings=self.warnings,
-            errors=self.errors,
-            stages=self._stage_history,
-        )
-
-    def format_stage_history(self, max_width: int, include_current: bool) -> str:
-        """Return a multi-line stage history string, wrapped on step boundaries."""
-        from rich.text import Text
-
-        parts = [_format_stage_entry(e) for e in self._stage_history]
-        if include_current and self.is_running and self.current_stage:
-            # Approximate current stage time from total elapsed minus completed
-            completed_time = sum(e.duration for e in self._stage_history)
-            elapsed = max(0.0, self.elapsed - completed_time)
-            icon, color = _STATUS_STYLE[StageStatus.RUNNING]
-            parts.append(
-                f"[{color}]{icon} {self.current_stage} [{elapsed:.1f}s][/{color}]"
-            )
-
-        if not parts:
-            return ""
-
-        sep = " -> "
-        lines: list[str] = []
-        current = ""
-        for part in parts:
-            if not current:
-                current = part
-                continue
-            candidate = f"{current}{sep}{part}"
-            if Text.from_markup(candidate).cell_len <= max_width:
-                current = candidate
-            else:
-                lines.append(current)
-                current = part
-        if current:
-            lines.append(current)
-
-        return "\n".join(lines)
-
-    @property
-    def elapsed(self) -> float:
-        """Get elapsed time in seconds."""
-        if self.start_time == 0:
-            return 0.0
-        end = self.end_time if self.end_time > 0 else time.time()
-        return end - self.start_time
-
-    @property
-    def is_running(self) -> bool:
-        """Check if build is still running."""
-        return self.process is not None and self.return_code is None
-
-    @property
-    def status(self) -> BuildStatus:
-        """Get current status."""
-        if self.process is None:
-            return BuildStatus.QUEUED
-        elif self.return_code is None:
-            return BuildStatus.BUILDING
-        else:
-            return BuildStatus.from_return_code(self.return_code, self.warnings)
-
-    def terminate(self) -> None:
-        """Terminate the build process."""
-        if self.process and self.return_code is None:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-
-
-class ParallelBuildManager:
-    """Manages multiple build processes with job queue."""
-
-    _STAGE_WIDTH = 22  # "Building... [123.4s]" fits in ~22 chars
-
-    def __init__(
-        self,
-        # (build_name, project_root, project_name)
-        build_tasks: list[tuple[str, Path, str | None]],
-        max_workers: int = DEFAULT_WORKER_COUNT,
-        verbose: bool = False,
-        targets: list[str] | None = None,
-        exclude_targets: list[str] | None = None,
-        frozen: bool | None = None,
-        keep_picked_parts: bool | None = None,
-        keep_net_names: bool | None = None,
-        keep_designators: bool | None = None,
-    ):
-        """
-        Initialize the build manager.
-
-        Args:
-            build_tasks: List of (build_name, project_root, project_name) tuples
-            max_workers: Maximum concurrent builds (default: CPU count)
-            verbose: Show full output (runs sequentially, no live display)
-            targets: Build targets to run (passed to workers via ATO_TARGET env var)
-            exclude_targets: Build targets to exclude (passed via ATO_EXCLUDE_TARGET)
-            frozen: If True, fail if PCB changes. Pass to workers via ATO_FROZEN env var
-            keep_picked_parts: Keep previously picked parts from PCB
-            keep_net_names: Keep net names from PCB
-            keep_designators: Keep designators from PCB
-        """
-        self.build_tasks = build_tasks
-        self.max_workers = max_workers
-        self.verbose = verbose
-        self.targets = targets or []
-        self.exclude_targets = exclude_targets or []
-        self.frozen = frozen
-        self.keep_picked_parts = keep_picked_parts
-        self.keep_net_names = keep_net_names
-        self.keep_designators = keep_designators
-
-        # Check if this is multi-project mode (any task has a project_name)
-        self.multi_project_mode = any(t[2] is not None for t in build_tasks)
-
-        # Create BuildProcess objects for all tasks
-        self.processes: dict[str, BuildProcess] = {}
-        self._task_queue: queue.Queue[str] = queue.Queue()
-
-        self._now = NOW
-
-        for build_name, project_root, project_name in build_tasks:
-            if project_name:
-                display_name = f"{project_name}/{build_name}"
-            else:
-                display_name = build_name
-            bp = BuildProcess(
-                build_name,
-                project_root,
-                project_name,
-                targets=self.targets,
-                exclude_targets=self.exclude_targets,
-                frozen=self.frozen,
-                keep_picked_parts=self.keep_picked_parts,
-                keep_net_names=self.keep_net_names,
-                keep_designators=self.keep_designators,
-                verbose=self.verbose,
-            )
-            # Pre-generate build_id so it's available for display before start()
-            project_path = str(project_root.resolve())
-            bp.build_id = generate_build_id(project_path, build_name, self._now)
-            self.processes[display_name] = bp
-            self._task_queue.put(display_name)
-
-        self._lock = threading.Lock()
-        self._active_workers: set[str] = set()
-
-        # Import rich for display
-        from rich.console import Console
-        from rich.table import Table
-
-        self._console = Console()
-        self._Table = Table
-
-        # Write initial summary immediately so UI shows builds as "queued" right away
-        # This reduces delay between when a build is requested and when the UI updates
-        self._write_live_summary()
-
-    def _start_next_build(self) -> bool:
-        """Start the next build from the queue. Returns True if a build was started."""
-        try:
-            display_name = self._task_queue.get_nowait()
-        except queue.Empty:
-            return False
-
-        bp = self.processes[display_name]
-        bp.start()
-        with self._lock:
-            self._active_workers.add(display_name)
-        return True
-
-    def _fill_worker_slots(
-        self,
-        start_next_build: Callable[[], bool] | None = None,
-        max_workers: int | None = None,
-    ) -> None:
-        """Start builds to fill available worker slots."""
-        start_fn = start_next_build or self._start_next_build
-        target_workers = max_workers or self.max_workers
-
-        with self._lock:
-            active_count = len(self._active_workers)
-
-        while active_count < target_workers:
-            if not start_fn():
-                break
-            with self._lock:
-                active_count = len(self._active_workers)
-
-    def _get_project_states(self) -> dict[str, ProjectState]:
-        """Aggregate build states by project for multi-project view."""
-        projects: dict[str, ProjectState] = {}
-
-        for display_name, bp in self.processes.items():
-            project = bp.project_name or display_name
-            if project not in projects:
-                projects[project] = ProjectState()
-
-            p = projects[project]
-            p.builds.append(bp)
-            p.total += 1
-            p.elapsed = max(p.elapsed, bp.elapsed)
-
-            status = bp.status
-            if status == BuildStatus.BUILDING:
-                p.building += 1
-                p.current_build = bp.name
-                p.current_stage = bp.current_stage
-            elif status == BuildStatus.FAILED:
-                p.failed += 1
-                p.completed += 1
-            elif status in (BuildStatus.SUCCESS, BuildStatus.WARNING):
-                p.completed += 1
-                if status == BuildStatus.WARNING:
-                    p.warnings += 1
-            elif status == BuildStatus.QUEUED:
-                p.queued += 1
-
-        # Determine aggregate status for each project
-        for p in projects.values():
-            if p.failed > 0:
-                p.status = BuildStatus.FAILED
-            elif p.building > 0:
-                p.status = BuildStatus.BUILDING
-            elif p.queued == p.total:
-                p.status = BuildStatus.QUEUED
-            elif p.warnings > 0:
-                p.status = BuildStatus.WARNING
-            else:
-                p.status = BuildStatus.SUCCESS
-
-        return projects
-
-    def _render_table(self):
-        """Render current status as a table with smart row limiting."""
-        import shutil
-
-        from rich.box import SIMPLE
-
-        # Use project-level view for multi-project mode
-        if self.multi_project_mode:
-            return self._render_project_table()
-
-        # Get terminal size
-        term_size = shutil.get_terminal_size()
-        term_height = term_size.lines
-        term_width = self._console.width or term_size.columns
-        max_rows = max(term_height - 10, 10)  # At least 10 rows
-
-        # Determine max target name length for dynamic column width
-        max_name_len = max(len(bp.display_name) for bp in self.processes.values())
-        target_width = min(max(max_name_len, 12), 40)  # Clamp between 12 and 40
-
-        # Calculate available width for status column
-        # Fixed widths: icon(1) + time(5) + padding(~10)
-        fixed_width = 1 + target_width + 5 + 10
-        status_width = max(self._STAGE_WIDTH, term_width - fixed_width)
-
-        table = self._Table(
-            show_header=True,
-            header_style="bold dim",
-            box=SIMPLE,
-            padding=(0, 1),
-            expand=True,
-        )
-
-        table.add_column("", width=1)  # Status icon
-        table.add_column("Target", width=target_width, style="cyan")
-        table.add_column("Status", width=status_width, no_wrap=True, overflow="ignore")
-        table.add_column("Time", width=5, justify="right")
-
-        with self._lock:
-            rows_shown = 0
-            hidden_queued = 0
-
-            for display_name, bp in self.processes.items():
-                status = bp.status
-
-                # If we've hit the limit, only skip queued items
-                if rows_shown >= max_rows:
-                    if status == BuildStatus.QUEUED:
-                        hidden_queued += 1
-                        continue
-                    # Always show non-queued items (building/failed/completed)
-
-                icon = status_rich_icon(status)
-
-                # Format stage text with colors
-                if status == BuildStatus.BUILDING:
-                    stage_name = bp.format_stage_history(
-                        status_width, include_current=True
-                    )
-                    if not stage_name:
-                        stage_name = bp.current_stage or "Building..."
-                        stage_text = status_rich_text(status, stage_name)
-                    else:
-                        stage_text = stage_name
-                elif status in (BuildStatus.SUCCESS, BuildStatus.WARNING):
-                    stage_name = bp.format_stage_history(
-                        status_width, include_current=False
-                    )
-                    if stage_name:
-                        stage_text = stage_name
-                    else:
-                        stage_text = status_rich_text(BuildStatus.SUCCESS, "Completed")
-                elif status == BuildStatus.FAILED:
-                    stage_name = bp.format_stage_history(
-                        status_width, include_current=False
-                    )
-                    if stage_name:
-                        stage_text = stage_name
-                    else:
-                        stage_text = status_rich_text(status, "Failed")
-                elif status == BuildStatus.QUEUED:
-                    stage_text = status_rich_text(status, "Queued")
-                else:
-                    stage_text = status_rich_text(BuildStatus.QUEUED, "Waiting...")
-
-                # Format time
-                if status == BuildStatus.QUEUED:
-                    time_text = status_rich_text(status, "-")
-                else:
-                    time_text = status_rich_text(status, f"{int(bp.elapsed)}s")
-
-                table.add_row(icon, display_name, stage_text, time_text)
-                rows_shown += 1
-                if rows_shown < max_rows:
-                    table.add_row("", "", "", "")
-
-            # Add a summary row for hidden queued items
-            if hidden_queued > 0:
-                table.add_row(
-                    "[dim]...[/dim]",
-                    f"[dim]+{hidden_queued} more queued[/dim]",
-                    "",
-                    "",
-                    "",
-                )
-
-        return table
-
-    def _render_project_table(self):
-        """Render project-level status table for multi-project mode."""
-        import shutil
-
-        from rich.box import SIMPLE
-
-        term_size = shutil.get_terminal_size()
-        term_height = term_size.lines
-        term_width = self._console.width or term_size.columns
-        max_rows = max(term_height - 10, 10)
-
-        # Find max project name length
-        projects = self._get_project_states()
-        max_name_len = max(len(name) for name in projects.keys())
-        project_width = min(max(max_name_len, 12), 40)
-
-        # Calculate available width for status column
-        # Fixed widths: icon(1) + time(5) + padding(~10)
-        fixed_width = 1 + project_width + 5 + 10
-        status_width = max(self._STAGE_WIDTH + 12, term_width - fixed_width)
-
-        table = self._Table(
-            show_header=True,
-            header_style="bold dim",
-            box=SIMPLE,
-            padding=(0, 1),
-            expand=True,
-        )
-
-        table.add_column("", width=1)  # Status icon
-        table.add_column("Project", width=project_width, style="cyan")
-        table.add_column("Status", width=status_width, no_wrap=True, overflow="ignore")
-        table.add_column("Time", width=5, justify="right")
-
-        rows_shown = 0
-        hidden_queued = 0
-
-        for project_name, p in projects.items():
-            status = p.status
-
-            # Limit rows, but always show non-queued
-            if rows_shown >= max_rows:
-                if status == BuildStatus.QUEUED:
-                    hidden_queued += 1
-                    continue
-
-            icon = status_rich_icon(status)
-
-            # Build status text showing progress and current activity
-            if status == BuildStatus.BUILDING:
-                stage = p.current_stage or "Building"
-                build_name = p.current_build or ""
-                progress = f"{p.completed}/{p.total}"
-
-                # Calculate available space for stage based on status_width
-                # Format: "{build_name} {progress} {stage}"
-                # Reserve: build_name(max 10) + space + progress + space
-                reserved = min(len(build_name), 10) + 1 + len(progress) + 1
-                max_stage_len = max(status_width - reserved, 10)
-
-                if len(stage) > max_stage_len:
-                    stage = stage[: max_stage_len - 3] + "..."
-                if len(build_name) > 10:
-                    build_name = build_name[:8] + ".."
-
-                colored_name = status_rich_text(status, build_name)
-                status_text = f"{colored_name} {progress} {stage}"
-            elif status == BuildStatus.FAILED:
-                failed_text = status_rich_text(status, f"{p.failed} failed")
-                status_text = f"{failed_text}, {p.completed - p.failed}/{p.total} done"
-            elif status == BuildStatus.WARNING:
-                progress_text = f"{p.completed}/{p.total} done"
-                status_text = status_rich_text(status, progress_text)
-            elif status == BuildStatus.SUCCESS:
-                progress_text = f"{p.completed}/{p.total} done"
-                status_text = status_rich_text(status, progress_text)
-            elif status == BuildStatus.QUEUED:
-                status_text = status_rich_text(status, f"Queued ({p.total} builds)")
-            else:
-                status_text = f"{p.completed}/{p.total}"
-
-            # Time
-            if status == BuildStatus.QUEUED:
-                time_text = status_rich_text(status, "-")
-            else:
-                time_text = status_rich_text(status, f"{int(p.elapsed)}s")
-
-            table.add_row(icon, project_name, status_text, time_text)
-            rows_shown += 1
-            if rows_shown < max_rows:
-                table.add_row("", "", "", "")
-
-        if hidden_queued > 0:
-            table.add_row(
-                "[dim]...[/dim]",
-                f"[dim]+{hidden_queued} more queued[/dim]",
-                "",
-                "",
-            )
-
-        return table
-
-    def _render_summary(self) -> str:
-        """Render summary line."""
-        with self._lock:
-            queued = sum(
-                1 for bp in self.processes.values() if bp.status == BuildStatus.QUEUED
-            )
-            building = sum(
-                1 for bp in self.processes.values() if bp.status == BuildStatus.BUILDING
-            )
-            completed = sum(
-                1
-                for bp in self.processes.values()
-                if bp.status in (BuildStatus.SUCCESS, BuildStatus.WARNING)
-            )
-            failed = sum(
-                1 for bp in self.processes.values() if bp.status == BuildStatus.FAILED
-            )
-            warnings = sum(bp.warnings for bp in self.processes.values())
-
-        parts = []
-        if queued > 0:
-            parts.append(f"[dim]Queued: {queued}[/dim]")
-        if building > 0:
-            parts.append(f"Building: {building}/{self.max_workers}")
-        if completed > 0:
-            parts.append(f"Completed: {completed}")
-        if failed > 0:
-            parts.append(f"[red]Failed: {failed}[/red]")
-        if warnings > 0:
-            parts.append(f"Warnings: {warnings}")
-
-        return "  ".join(parts) if parts else "Starting..."
-
-    _VERBOSE_INDENT = 10
-
-    def _print_verbose_stage(
-        self, entry: StageCompleteEvent, log_path: Path | None
-    ) -> None:
-        """Print a single verbose stage line with its log path."""
-        log_text = ""
-        if log_path is not None:
-            try:
-                log_path = log_path.relative_to(Path.cwd())
-            except ValueError:
-                pass
-            log_text = f"  {log_path}"
-
-        self._console.print(
-            f"{'':>{self._VERBOSE_INDENT}}{_format_stage_entry(entry)}{log_text}"
-        )
-
-    def _write_live_summary(self) -> None:
-        """Write per-target build status to the build history database."""
-        from atopile.model.sqlite import BuildHistory
-
-        _FINISHED = {
-            BuildStatus.SUCCESS,
-            BuildStatus.FAILED,
-            BuildStatus.CANCELLED,
-            BuildStatus.WARNING,
-        }
-
-        for bp in self.processes.values():
-            if not bp.build_id:
-                continue
-
-            data = self._get_build_data(bp)
-
-            row = Build(
-                build_id=bp.build_id,
-                name=bp.name,
-                display_name=bp.display_name,
-                project_root=str(bp.project_root.resolve()),
-                target=bp.name,
-                status=bp.status,
-                started_at=bp.start_time or time.time(),
-                stages=data.get("stages", []),
-                warnings=data.get("warnings", 0),
-                errors=data.get("errors", 0),
-                completed_at=time.time() if bp.status in _FINISHED else None,
-            )
-
-            BuildHistory.set(row)
-
-    def run_until_complete(self) -> dict[str, int]:
-        """
-        Run all builds until complete.
-
-        Uses a queue to limit concurrent builds to max_workers.
-        In verbose mode, runs sequentially with full output.
-
-        Returns dict of display_name -> exit_code.
-        """
-        # Write initial summary with all builds queued
-        self._write_live_summary()
-
-        if self.verbose:
-            return self._run_verbose()
-
-        results = self._run_parallel()
-
-        return results
-
-    def _print_build_logs(
-        self,
-        bp: "BuildProcess",
-        console: "Console",
-        levels: list[str] | None = None,
-    ) -> None:
-        """Print logs from the SQLite database for a build."""
-        import sqlite3
-
-        from atopile.logging import BuildLogger
-
-        if not bp.build_id:
+            log_path = log_path.relative_to(Path.cwd())
+        except ValueError:
+            pass
+        log_text = f"  {log_path}"
+
+    console.print(
+        f"{'':>{_VERBOSE_INDENT}}{_format_stage_entry(entry)}{log_text}"
+    )
+
+
+def _print_build_logs(
+    build_id: str | None,
+    console: Console,
+    levels: list[str] | None = None,
+) -> None:
+    """Print logs from the SQLite database for a build."""
+    import sqlite3
+
+    from atopile.logging import BuildLogger
+
+    if not build_id:
+        return
+
+    try:
+        db_path = BuildLogger.get_log_db()
+        if not db_path.exists():
             return
-        build_id = bp.build_id
 
-        try:
-            db_path = BuildLogger.get_log_db()
-            if not db_path.exists():
-                return
+        conn = sqlite3.connect(str(db_path), timeout=5.0)
+        conn.row_factory = sqlite3.Row
 
-            conn = sqlite3.connect(str(db_path), timeout=5.0)
-            conn.row_factory = sqlite3.Row
+        conditions = ["build_id = ?"]
+        params: list = [build_id]
 
-            # Build query with filters
-            conditions = ["build_id = ?"]
-            params: list = [build_id]
+        if levels:
+            placeholders = ",".join("?" * len(levels))
+            conditions.append(f"level IN ({placeholders})")
+            params.extend(levels)
 
-            if levels:
-                placeholders = ",".join("?" * len(levels))
-                conditions.append(f"level IN ({placeholders})")
-                params.extend(levels)
+        where_clause = " AND ".join(conditions)
+        query = f"""
+            SELECT timestamp, stage, level, message, ato_traceback, python_traceback
+            FROM logs
+            WHERE {where_clause}
+            ORDER BY id
+        """
 
-            where_clause = " AND ".join(conditions)
-            query = f"""
-                SELECT timestamp, stage, level, message, ato_traceback, python_traceback
-                FROM logs
-                WHERE {where_clause}
-                ORDER BY id
-            """
+        cursor = conn.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
 
-            cursor = conn.execute(query, params)
-            rows = cursor.fetchall()
-            conn.close()
+        for row in rows:
+            level = row["level"]
+            message = row["message"]
+            stage = row["stage"]
 
-            # Print logs with color coding
-            for row in rows:
-                level = row["level"]
-                message = row["message"]
-                stage = row["stage"]
-
-                # Color code by level
-                if level == "ERROR" or level == "ALERT":
-                    color = "red"
-                elif level == "WARNING":
-                    color = "yellow"
-                elif level == "INFO":
-                    color = "cyan"
-                else:
-                    color = "white"
-
-                # Format: [STAGE] LEVEL: message
-                console.print(f"[{color}][{stage}] {level}: {message}[/{color}]")
-
-                # Print tracebacks if present
-                if row["ato_traceback"]:
-                    console.print(f"[dim]{row['ato_traceback']}[/dim]")
-                if row["python_traceback"]:
-                    console.print(f"[dim]{row['python_traceback']}[/dim]")
-
-        except Exception as e:
-            logger.debug(f"Failed to query logs for {build_id}: {e}")
-
-    def _print_build_result(
-        self,
-        display_name: str,
-        bp: "BuildProcess",
-        ret: int,
-        console: "Console",
-    ) -> None:
-        """Print per-build success/failure summary with details."""
-        if ret == 0:
-            if bp.warnings > 0:
-                console.print(
-                    f"[yellow]⚠ {display_name} completed with "
-                    f"{bp.warnings} warning(s)[/yellow]"
-                )
-                # In verbose mode, print the actual warnings
-                if self.verbose:
-                    console.print("\n[bold yellow]Warnings:[/bold yellow]")
-                    self._print_build_logs(bp, console, levels=["WARNING"])
-                    console.print()
+            if level in ("ERROR", "ALERT"):
+                color = "red"
+            elif level == "WARNING":
+                color = "yellow"
+            elif level == "INFO":
+                color = "cyan"
             else:
-                console.print(f"[green]✓ {display_name} completed[/green]")
-        else:
-            console.print(f"[red]✗ {display_name} failed[/red]")
-            # In verbose mode, print the actual errors
-            if self.verbose:
-                console.print("\n[bold red]Errors:[/bold red]")
-                self._print_build_logs(bp, console, levels=["ERROR", "ALERT"])
+                color = "white"
+
+            console.print(f"[{color}][{stage}] {level}: {message}[/{color}]")
+
+            if row["ato_traceback"]:
+                console.print(f"[dim]{row['ato_traceback']}[/dim]")
+            if row["python_traceback"]:
+                console.print(f"[dim]{row['python_traceback']}[/dim]")
+
+    except Exception as exc:
+        logger.debug(f"Failed to query logs for {build_id}: {exc}")
+
+
+def _print_build_result(
+    display_name: str,
+    build: Build,
+    console: Console,
+    verbose: bool,
+) -> None:
+    """Print per-build success/failure summary with details."""
+    return_code = build.return_code or 0
+    if return_code == 0 and build.status in (BuildStatus.SUCCESS, BuildStatus.WARNING):
+        if build.warnings > 0:
+            console.print(
+                f"[yellow]⚠ {display_name} completed with "
+                f"{build.warnings} warning(s)[/yellow]"
+            )
+            if verbose:
+                console.print("\n[bold yellow]Warnings:[/bold yellow]")
+                _print_build_logs(build.build_id, console, levels=["WARNING"])
                 console.print()
-
-    def _run_verbose(self) -> dict[str, int]:
-        """Run builds sequentially without live display."""
-        console = self._get_full_width_console()
-        return self._run_parallel(
-            max_workers=1,
-            print_headers=True,
-            print_results=True,
-            stage_printer=self._print_verbose_stage,
-            console=console,
-        )
-
-    @staticmethod
-    def _get_full_width_console() -> "Console":
-        import shutil
-
-        from rich.console import Console
-
-        width = shutil.get_terminal_size(fallback=(120, 24)).columns
-        return Console(width=width)
-
-    def _run_parallel(
-        self,
-        *,
-        max_workers: int | None = None,
-        print_headers: bool = False,
-        print_results: bool = False,
-        stage_printer: Callable[[StageCompleteEvent, Path | None], None] | None = None,
-        console: Console | None = None,
-    ) -> dict[str, int]:
-        """Run builds."""
-
-        results: dict[str, int] = {}
-        console = console or self._console
-
-        def start_next_build() -> bool:
-            try:
-                display_name = self._task_queue.get_nowait()
-            except queue.Empty:
-                return False
-
-            bp = self.processes[display_name]
-            build_id_str = f" (build_id= {bp.build_id})" if bp.build_id else ""
-            # Add newline after header in verbose mode for cleaner stage output
-            newline = "\n" if print_headers else ""
-            header = (
-                f"[bold cyan]▶ Building {display_name}{build_id_str}[/bold cyan]"
-                f"{newline}"
-            )
-            console.print(header)
-            if stage_printer is not None:
-                bp.set_stage_printer(stage_printer)
-            bp.start()
-            with self._lock:
-                self._active_workers.add(display_name)
-            return True
-
-        def run_loop(console: "Console") -> dict[str, int]:
-            try:
-                # Fill initial worker slots
-                self._fill_worker_slots(
-                    start_next_build=start_next_build, max_workers=max_workers
-                )
-
-                # Poll until all processes complete
-                while True:
-                    completed_this_round = []
-
-                    with self._lock:
-                        # Check for completed builds
-                        for display_name in list(self._active_workers):
-                            bp = self.processes[display_name]
-                            ret = bp.poll()
-                            if ret is not None:
-                                results[display_name] = ret
-                                completed_this_round.append(display_name)
-
-                                if stage_printer is not None:
-                                    bp.set_stage_printer(None)
-
-                                if print_results:
-                                    self._print_build_result(
-                                        display_name,
-                                        bp,
-                                        ret,
-                                        console,
-                                    )
-                                    bp._error_reported = True
-                                elif ret != 0 and not bp._error_reported:
-                                    console.print(
-                                        f"[red bold]✗ {display_name}[/red bold]\n"
-                                    )
-                                    bp._error_reported = True
-                                elif ret == 0 and bp.warnings > 0:
-                                    console.print(
-                                        f"[yellow bold]⚠ {display_name}[/yellow bold]\n"
-                                    )
-
-                        # Remove completed builds from active set
-                        for name in completed_this_round:
-                            self._active_workers.discard(name)
-
-                    # Fill any freed worker slots
-                    if completed_this_round:
-                        self._fill_worker_slots(
-                            start_next_build=start_next_build, max_workers=max_workers
-                        )
-
-                    # Check if all builds are done
-                    all_done = (
-                        len(results) == len(self.processes) and self._task_queue.empty()
-                    )
-                    if all_done:
-                        break
-
-                    # Update JSON summary
-                    self._write_live_summary()
-
-                    time.sleep(0.5)
-
-            except KeyboardInterrupt:
-                # Terminate all processes on interrupt
-                for bp in self.processes.values():
-                    bp.terminate()
-                raise
-
-            return results
-
-        run_loop(console)
-
-        return results
-
-    def _get_build_data(self, bp: "BuildProcess") -> dict:
-        """Collect minimal data for a single build as a dictionary."""
-        # Use pre-generated build_id from BuildProcess, or generate if not available
-        if bp.build_id:
-            build_id = bp.build_id
         else:
-            project_path = (
-                str(bp.project_root.resolve()) if bp.project_root else "unknown"
-            )
-            build_id = generate_build_id(project_path, bp.name, self._now)
+            console.print(f"[green]✓ {display_name} completed[/green]")
+    else:
+        console.print(f"[red]✗ {display_name} failed[/red]")
+        if verbose:
+            console.print("\n[bold red]Errors:[/bold red]")
+            _print_build_logs(build.build_id, console, levels=["ERROR", "ALERT"])
+            console.print()
 
-        data = {
-            "name": bp.name,  # Target name for matching
-            "display_name": bp.display_name,
-            "build_id": build_id,
-            "status": bp.status.value,
-            "elapsed_seconds": round(bp.elapsed, 2),
-            "warnings": bp.warnings,
-            "errors": bp.errors,
-        }
 
-        # Add timing data from stage history
-        if bp._stage_history:
-            data["stages"] = [
-                {
-                    "name": entry.description,
-                    "stage_id": entry.log_name,
-                    # Serialize StageStatus enum to string value for JSON
-                    "status": entry.status.value
-                    if hasattr(entry.status, "value")
-                    else str(entry.status),
-                    "elapsed_seconds": round(entry.duration, 2),
-                    "infos": entry.infos,
-                    "warnings": entry.warnings,
-                    "errors": entry.errors,
-                    "alerts": entry.alerts,
-                }
-                for entry in bp._stage_history
-            ]
+def _get_full_width_console() -> Console:
+    import shutil
 
-        return data
+    width = shutil.get_terminal_size(fallback=(120, 24)).columns
+    return Console(width=width)
 
-    def generate_summary(self) -> None:
-        """Generate final per-target build summaries."""
-        self._write_live_summary()
+
+def _run_build_queue(
+    builds: list[Build],
+    *,
+    jobs: int,
+    verbose: bool,
+) -> dict[str, int]:
+    """Run builds through a local BuildQueue and return build_id -> exit code."""
+    from atopile.model.sqlite import BuildHistory
+
+    if not builds:
+        return {}
+
+    BuildHistory.init_db()
+
+    console = _get_full_width_console() if verbose else Console()
+    max_concurrent = 1 if verbose else jobs
+    queue = BuildQueue(max_concurrent=max_concurrent)
+
+    build_ids = [build.build_id for build in builds if build.build_id]
+    display_names = {
+        build.build_id: build.display_name for build in builds if build.build_id
+    }
+
+    for build in builds:
+        queue.enqueue(build)
+
+    started: set[str] = set()
+    reported: set[str] = set()
+    last_stage_counts: dict[str, int] = {}
+
+    def on_update() -> None:
+        for build_id in build_ids:
+            build = queue.find_build(build_id)
+            if not build:
+                continue
+
+            display_name = display_names.get(build_id, build.display_name)
+
+            if verbose:
+                if (
+                    build.status
+                    in (
+                        BuildStatus.BUILDING,
+                        BuildStatus.SUCCESS,
+                        BuildStatus.WARNING,
+                        BuildStatus.FAILED,
+                        BuildStatus.CANCELLED,
+                    )
+                    and build_id not in started
+                ):
+                    build_id_str = (
+                        f" (build_id={build.build_id})" if build.build_id else ""
+                    )
+                    console.print(
+                        f"[bold cyan]▶ Building {display_name}{build_id_str}[/bold cyan]"
+                    )
+                    started.add(build_id)
+
+            if verbose:
+                stages = build.stages or []
+                last_count = last_stage_counts.get(build_id, 0)
+                if len(stages) > last_count:
+                    for stage in stages[last_count:]:
+                        event = _stage_dict_to_event(stage)
+                        _print_verbose_stage(console, event, _stage_info_log_path())
+                    last_stage_counts[build_id] = len(stages)
+
+            if (
+                build.status
+                in (
+                    BuildStatus.SUCCESS,
+                    BuildStatus.WARNING,
+                    BuildStatus.FAILED,
+                    BuildStatus.CANCELLED,
+                )
+                and build_id not in reported
+            ):
+                if verbose:
+                    _print_build_result(display_name, build, console, verbose=True)
+                else:
+                    if build.status == BuildStatus.FAILED:
+                        console.print(
+                            f"[red bold]✗ {display_name}[/red bold]"
+                        )
+                    elif build.status == BuildStatus.WARNING:
+                        console.print(
+                            f"[yellow bold]⚠ {display_name}[/yellow bold]"
+                        )
+                reported.add(build_id)
+
+    return queue.wait_for_builds(build_ids, on_update=on_update, poll_interval=0.5)
 
 
 def _run_single_build() -> None:
@@ -1224,29 +428,40 @@ def _build_all_projects(
     )
 
     # Initialize build history database
-    from atopile.model.sqlite import BuildHistory
+    timestamp = generate_build_timestamp()
+    builds: list[Build] = []
+    for build_name, project_root, project_name in build_tasks:
+        project_path = str(project_root.resolve())
+        build_id = generate_build_id(project_path, build_name, timestamp)
+        builds.append(
+            Build(
+                build_id=build_id,
+                name=build_name,
+                display_name=f"{project_name}/{build_name}" if project_name else build_name,
+                project_root=project_path,
+                project_name=project_name,
+                target=build_name,
+                timestamp=timestamp,
+                frozen=frozen,
+                status=BuildStatus.QUEUED,
+                started_at=time.time(),
+                include_targets=targets or [],
+                exclude_targets=exclude_targets or [],
+                keep_picked_parts=keep_picked_parts,
+                keep_net_names=keep_net_names,
+                keep_designators=keep_designators,
+                verbose=verbose,
+            )
+        )
 
-    BuildHistory.init_db()
+    results = _run_build_queue(builds, jobs=jobs, verbose=verbose)
 
-    # Create and run parallel build manager
-    manager = ParallelBuildManager(
-        build_tasks,
-        max_workers=jobs,
-        verbose=verbose,
-        targets=targets,
-        exclude_targets=exclude_targets,
-        frozen=frozen,
-        keep_picked_parts=keep_picked_parts,
-        keep_net_names=keep_net_names,
-        keep_designators=keep_designators,
-    )
-
-    results = manager.run_until_complete()
-
-    # Generate per-target summaries
-    manager.generate_summary()
-
-    failed = [name for name, code in results.items() if code != 0]
+    build_by_id = {build.build_id: build for build in builds if build.build_id}
+    failed = [
+        build_by_id[build_id].display_name
+        for build_id, code in results.items()
+        if code != 0 and build_id in build_by_id
+    ]
     exit_code = _report_build_results(
         failed=failed,
         total=len(build_tasks),
@@ -1428,44 +643,48 @@ def build(
     build_names = list(config.selected_builds)
     project_root = config.project.paths.root
 
-    # Create build tasks: (build_name, project_root, project_name)
-    build_tasks: list[tuple[str, Path, str | None]] = [
-        (name, project_root, None) for name in build_names
-    ]
-
-    # Initialize build history database
-    from atopile.model.sqlite import BuildHistory
-
-    BuildHistory.init_db()
-
-    # Create and run parallel build manager
-    manager = ParallelBuildManager(
-        build_tasks,
-        max_workers=jobs,
-        verbose=verbose,
-        targets=target,
-        exclude_targets=exclude_target,
-        frozen=frozen,
-        keep_picked_parts=keep_picked_parts,
-        keep_net_names=keep_net_names,
-        keep_designators=keep_designators,
-    )
+    timestamp = generate_build_timestamp()
+    builds: list[Build] = []
+    for build_name in build_names:
+        build_id = generate_build_id(str(project_root.resolve()), build_name, timestamp)
+        builds.append(
+            Build(
+                build_id=build_id,
+                name=build_name,
+                display_name=build_name,
+                project_root=str(project_root.resolve()),
+                target=build_name,
+                entry=entry,
+                standalone=standalone,
+                timestamp=timestamp,
+                frozen=frozen,
+                status=BuildStatus.QUEUED,
+                started_at=time.time(),
+                include_targets=target,
+                exclude_targets=exclude_target,
+                keep_picked_parts=keep_picked_parts,
+                keep_net_names=keep_net_names,
+                keep_designators=keep_designators,
+                verbose=verbose,
+            )
+        )
 
     try:
-        results = manager.run_until_complete()
+        results = _run_build_queue(builds, jobs=jobs, verbose=verbose)
     except KeyboardInterrupt:
         logger.info("Build interrupted")
         raise typer.Exit(1)
 
-    # Generate per-target summaries
-    manager.generate_summary()
-
-    # Flush and close all build loggers to ensure logs are written to SQLite
     from atopile.logging import BuildLogger
 
     BuildLogger.close_all()
 
-    failed = [name for name, code in results.items() if code != 0]
+    build_by_id = {build.build_id: build for build in builds if build.build_id}
+    failed = [
+        build_by_id[build_id].display_name
+        for build_id, code in results.items()
+        if code != 0 and build_id in build_by_id
+    ]
 
     build_exit_code = _report_build_results(
         failed=failed,

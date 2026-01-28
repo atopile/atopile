@@ -111,7 +111,6 @@ export function useSidebarData({ state }: UseSidebarDataParams) {
           warnings: build?.warnings ?? t.lastBuild?.warnings,
           errors: build?.errors ?? t.lastBuild?.errors,
           elapsedSeconds: build?.elapsedSeconds,
-          duration: t.lastBuild?.elapsedSeconds,
           buildId: build?.buildId,
           stages: displayStages.map((s: any) => ({
             ...s,
@@ -196,9 +195,9 @@ export function useSidebarData({ state }: UseSidebarDataParams) {
             errors: build?.errors,
             stages: build?.stages || [],
             queuePosition: build?.queuePosition,
-            lastBuild: (build && (build.status === 'success' || build.status === 'failed' || build.status === 'warning') && build.startedAt) ? {
+            lastBuild: (build && (build.status === 'success' || build.status === 'failed' || build.status === 'warning') && build.startedAt && typeof build.elapsedSeconds === 'number') ? {
               status: build.status === 'failed' ? 'error' : build.status,
-              timestamp: new Date((build.startedAt + (build.elapsedSeconds || 0)) * 1000).toISOString(),
+              timestamp: new Date((build.startedAt + build.elapsedSeconds) * 1000).toISOString(),
               elapsedSeconds: build.elapsedSeconds,
               warnings: build.warnings || 0,
               errors: build.errors || 0,

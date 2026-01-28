@@ -415,30 +415,6 @@
         "default": null,
         "title": "Startedat"
       },
-      "completedAt": {
-        "anyOf": [
-          {
-            "type": "number"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Completedat"
-      },
-      "duration": {
-        "anyOf": [
-          {
-            "type": "number"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Duration"
-      },
       "timestamp": {
         "anyOf": [
           {
@@ -457,21 +433,16 @@
         "type": "boolean"
       },
       "frozen": {
-        "default": false,
-        "title": "Frozen",
-        "type": "boolean"
-      },
-      "buildingStartedAt": {
         "anyOf": [
           {
-            "type": "number"
+            "type": "boolean"
           },
           {
             "type": "null"
           }
         ],
-        "default": null,
-        "title": "Buildingstartedat"
+        "default": false,
+        "title": "Frozen"
       },
       "stages": {
         "items": {
@@ -3077,6 +3048,62 @@
       "message"
     ],
     "title": "InstallProgress",
+    "type": "object"
+  },
+  "EventMessage": {
+    "$defs": {
+      "EventType": {
+        "description": "Event types emitted to WebSocket clients.",
+        "enum": [
+          "projects_changed",
+          "packages_changed",
+          "stdlib_changed",
+          "bom_changed",
+          "variables_changed",
+          "builds_changed",
+          "problems_changed",
+          "project_files_changed",
+          "project_modules_changed",
+          "project_dependencies_changed",
+          "atopile_config_changed",
+          "log_view_current_id_changed",
+          "open_layout",
+          "open_kicad",
+          "open_3d"
+        ],
+        "title": "EventType",
+        "type": "string"
+      }
+    },
+    "description": "WebSocket event message payload.",
+    "properties": {
+      "type": {
+        "const": "event",
+        "default": "event",
+        "title": "Type",
+        "type": "string"
+      },
+      "event": {
+        "$ref": "#/$defs/EventType"
+      },
+      "data": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Data"
+      }
+    },
+    "required": [
+      "event"
+    ],
+    "title": "EventMessage",
     "type": "object"
   }
 }

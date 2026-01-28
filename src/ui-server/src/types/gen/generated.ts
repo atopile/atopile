@@ -89,31 +89,28 @@ export interface BuildTargetBuildTargetStatus {
  * A build (active, queued, or completed).
  */
 export interface Build {
-    buildId?:           null | string;
-    buildingStartedAt?: number | null;
-    completedAt?:       number | null;
-    displayName:        string;
-    duration?:          number | null;
-    elapsedSeconds?:    number;
-    entry?:             null | string;
-    error?:             null | string;
-    errors?:            number;
-    frozen?:            boolean;
-    logDir?:            null | string;
-    logFile?:           null | string;
-    name:               string;
-    projectName?:       null | string;
-    projectRoot?:       null | string;
-    queuePosition?:     number | null;
-    returnCode?:        number | null;
-    stages?:            { [key: string]: any }[];
-    standalone?:        boolean;
-    startedAt?:         number | null;
-    status?:            BuildStatus;
-    target?:            null | string;
-    timestamp?:         null | string;
-    totalStages?:       number;
-    warnings?:          number;
+    buildId?:        null | string;
+    displayName:     string;
+    elapsedSeconds?: number;
+    entry?:          null | string;
+    error?:          null | string;
+    errors?:         number;
+    frozen?:         boolean | null;
+    logDir?:         null | string;
+    logFile?:        null | string;
+    name:            string;
+    projectName?:    null | string;
+    projectRoot?:    null | string;
+    queuePosition?:  number | null;
+    returnCode?:     number | null;
+    stages?:         { [key: string]: any }[];
+    standalone?:     boolean;
+    startedAt?:      number | null;
+    status?:         BuildStatus;
+    target?:         null | string;
+    timestamp?:      null | string;
+    totalStages?:    number;
+    warnings?:       number;
     [property: string]: any;
 }
 
@@ -686,4 +683,39 @@ export interface InstallProgress {
     message:  string;
     percent?: number | null;
     [property: string]: any;
+}
+
+/**
+ * WebSocket event message payload.
+ */
+export interface EventMessage {
+    data?: { [key: string]: any } | null;
+    event: EventType;
+    type?: EventMessageType;
+    [property: string]: any;
+}
+
+/**
+ * Event types emitted to WebSocket clients.
+ */
+export enum EventType {
+    AtopileConfigChanged = "atopile_config_changed",
+    BOMChanged = "bom_changed",
+    BuildsChanged = "builds_changed",
+    LogViewCurrentIDChanged = "log_view_current_id_changed",
+    Open3D = "open_3d",
+    OpenKicad = "open_kicad",
+    OpenLayout = "open_layout",
+    PackagesChanged = "packages_changed",
+    ProblemsChanged = "problems_changed",
+    ProjectDependenciesChanged = "project_dependencies_changed",
+    ProjectFilesChanged = "project_files_changed",
+    ProjectModulesChanged = "project_modules_changed",
+    ProjectsChanged = "projects_changed",
+    StdlibChanged = "stdlib_changed",
+    VariablesChanged = "variables_changed",
+}
+
+export enum EventMessageType {
+    Event = "event",
 }

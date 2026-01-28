@@ -309,6 +309,26 @@ class BackendServerManager implements vscode.Disposable {
             action: 'show_logs',
         });
 
+        // Add troubleshooting section when disconnected
+        if (!this._isConnected) {
+            items.push({ label: '', kind: vscode.QuickPickItemKind.Separator, action: 'none' });
+            items.push({
+                label: '$(terminal) Clear Logs',
+                description: 'Run "ato dev clear-logs" in terminal',
+                action: 'clear_logs',
+            });
+            items.push({
+                label: '$(refresh) Restart Extension Host',
+                description: 'Restart VS Code extension host',
+                action: 'restart_extension_host',
+            });
+            items.push({
+                label: '$(comment-discussion) Join Discord',
+                description: 'Get help from the community',
+                action: 'open_discord',
+            });
+        }
+
         const selected = await vscode.window.showQuickPick(items, {
             placeHolder: 'Backend Server Configuration',
             title: 'atopile Backend',
@@ -319,6 +339,17 @@ class BackendServerManager implements vscode.Disposable {
         switch (selected.action) {
             case 'show_logs':
                 this.showLogs();
+                break;
+            case 'clear_logs':
+                const terminal = vscode.window.createTerminal('atopile');
+                terminal.show();
+                terminal.sendText('ato dev clear-logs');
+                break;
+            case 'restart_extension_host':
+                void vscode.commands.executeCommand('workbench.action.restartExtensionHost');
+                break;
+            case 'open_discord':
+                void vscode.env.openExternal(vscode.Uri.parse('https://discord.gg/CRe5xaDBr3'));
                 break;
         }
     }

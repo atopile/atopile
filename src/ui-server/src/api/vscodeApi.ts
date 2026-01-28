@@ -94,6 +94,14 @@ export interface RestartExtensionMessage {
   type: 'restartExtension';
 }
 
+export interface ShowLogsMessage {
+  type: 'showLogs';
+}
+
+export interface ShowBackendMenuMessage {
+  type: 'showBackendMenu';
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -101,7 +109,9 @@ export type ExtensionMessage =
   | SelectionChangedMessage
   | BrowseAtopilePathMessage
   | ReloadWindowMessage
-  | RestartExtensionMessage;
+  | RestartExtensionMessage
+  | ShowLogsMessage
+  | ShowBackendMenuMessage;
 
 /**
  * Type-safe helper to post messages to the extension.

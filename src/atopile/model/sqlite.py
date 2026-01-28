@@ -33,8 +33,6 @@ class BuildHistory:
                     return_code      INTEGER,
                     error            TEXT,
                     started_at       REAL,
-                    completed_at     REAL,
-                    duration         REAL,
                     elapsed_seconds  REAL,
                     stages           TEXT,
                     warnings         INTEGER,
@@ -59,8 +57,6 @@ class BuildHistory:
             return_code=row["return_code"],
             error=row["error"],
             started_at=row["started_at"],
-            completed_at=row["completed_at"],
-            duration=row["duration"],
             elapsed_seconds=row["elapsed_seconds"] or 0.0,
             stages=json.loads(row["stages"]) if row["stages"] else [],
             warnings=row["warnings"],
@@ -80,10 +76,10 @@ class BuildHistory:
                     INSERT OR REPLACE INTO build_history
                         (build_id, name, display_name, project_name,
                          project_root, target, entry, status,
-                         return_code, error, started_at, completed_at,
-                         duration, elapsed_seconds, stages, warnings,
+                         return_code, error, started_at,
+                         elapsed_seconds, stages, warnings,
                          errors, timestamp, standalone, frozen)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         build.build_id,
@@ -97,15 +93,13 @@ class BuildHistory:
                         build.return_code,
                         build.error,
                         build.started_at,
-                        build.completed_at,
-                        build.duration,
                         build.elapsed_seconds,
                         json.dumps(build.stages),
                         build.warnings,
                         build.errors,
                         build.timestamp,
-                        int(build.standalone),
-                        int(build.frozen),
+                        int(bool(build.standalone)),
+                        int(bool(build.frozen)),
                     ),
                 )
         except Exception:
@@ -468,4 +462,3 @@ class Tests:
         assert len(rows) == 1
         assert rows[0]["message"] == "passed"
         assert last_id > 0
-

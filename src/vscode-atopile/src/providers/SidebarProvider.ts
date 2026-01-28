@@ -66,6 +66,14 @@ interface RestartExtensionMessage {
   type: 'restartExtension';
 }
 
+interface ShowLogsMessage {
+  type: 'showLogs';
+}
+
+interface ShowBackendMenuMessage {
+  type: 'showBackendMenu';
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -73,7 +81,9 @@ type WebviewMessage =
   | SelectionChangedMessage
   | BrowseAtopilePathMessage
   | ReloadWindowMessage
-  | RestartExtensionMessage;
+  | RestartExtensionMessage
+  | ShowLogsMessage
+  | ShowBackendMenuMessage;
 
 /**
  * Check if we're running in development mode.
@@ -344,6 +354,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this._handleRestartExtension().catch((error) => {
           traceError(`[SidebarProvider] Error restarting extension: ${error}`);
         });
+      case 'showLogs':
+        void vscode.commands.executeCommand('atopile.logViewer.focus');
+        break;
+      case 'showBackendMenu':
+        void vscode.commands.executeCommand('atopile.backendStatus');
         break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);

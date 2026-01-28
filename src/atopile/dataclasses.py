@@ -6,6 +6,9 @@ used throughout the atopile codebase, including:
 - Pydantic BaseModel classes for API schemas
 - Python dataclasses for internal data structures
 - Type aliases and enums used in data models
+
+Note: TypeScript types are generated from selected Pydantic models here via
+`python scripts/generate_types.py`.
 """
 
 from __future__ import annotations
@@ -51,6 +54,35 @@ class StageStatus(str, Enum):
     FAILED = "failed"
     ERROR = "error"
     SKIPPED = "skipped"
+
+
+class EventType(StrEnum):
+    """Event types emitted to WebSocket clients."""
+
+    # Data state changes - client should refetch
+    PROJECTS_CHANGED = "projects_changed"
+    PACKAGES_CHANGED = "packages_changed"
+    STDLIB_CHANGED = "stdlib_changed"
+    BOM_CHANGED = "bom_changed"
+    VARIABLES_CHANGED = "variables_changed"
+    BUILDS_CHANGED = "builds_changed"
+    PROBLEMS_CHANGED = "problems_changed"
+
+    # File watcher notifications
+    PROJECT_FILES_CHANGED = "project_files_changed"
+    PROJECT_MODULES_CHANGED = "project_modules_changed"
+    PROJECT_DEPENDENCIES_CHANGED = "project_dependencies_changed"
+
+    # Configuration changes
+    ATOPILE_CONFIG_CHANGED = "atopile_config_changed"
+
+    # Shared UI state
+    LOG_VIEW_CURRENT_ID_CHANGED = "log_view_current_id_changed"
+
+    # Action requests (frontend should handle)
+    OPEN_LAYOUT = "open_layout"
+    OPEN_KICAD = "open_kicad"
+    OPEN_3D = "open_3d"
 
 
 # =============================================================================
@@ -432,14 +464,11 @@ class Build(CamelModel):
     target: Optional[str] = None
     entry: Optional[str] = None
     started_at: Optional[float] = None
-    completed_at: Optional[float] = None
-    duration: Optional[float] = None
 
     # Active build fields
     timestamp: Optional[str] = None
     standalone: bool = False
-    frozen: bool = False
-    building_started_at: Optional[float] = None
+    frozen: bool | None = False
 
     # Stages and logs
     stages: list[dict[str, Any]] = Field(default_factory=list)
@@ -451,6 +480,14 @@ class Build(CamelModel):
 
     # Queue info
     queue_position: Optional[int] = None
+
+    # Build options (used to construct subprocess command/env, not serialized)
+    include_targets: list[str] = Field(default_factory=list, exclude=True)
+    exclude_targets: list[str] = Field(default_factory=list, exclude=True)
+    keep_picked_parts: bool | None = Field(default=None, exclude=True)
+    keep_net_names: bool | None = Field(default=None, exclude=True)
+    keep_designators: bool | None = Field(default=None, exclude=True)
+    verbose: bool = Field(default=False, exclude=True)
 
     @model_validator(mode="before")
     @classmethod
@@ -517,6 +554,14 @@ class BuildTargetStatus(CamelModel):
     errors: int = 0
     stages: Optional[list[dict]] = None
     build_id: Optional[str] = None  # Build ID hash for reference
+
+
+class EventMessage(BaseModel):
+    """WebSocket event message payload."""
+
+    type: Literal["event"] = "event"
+    event: EventType
+    data: Optional[dict[str, Any]] = None
 
 
 class BuildTarget(CamelModel):
