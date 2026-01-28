@@ -95,6 +95,7 @@ export interface QueuedBuild {
   elapsedSeconds?: number;
   stages?: Array<{
     name: string;
+    stageId?: string;
     displayName?: string;
     status: string;
     elapsedSeconds?: number;
