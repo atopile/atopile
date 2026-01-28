@@ -615,7 +615,8 @@ def flatten_expressions(mutator: Mutator):
 
         # no aliases for predicates
         if e.try_get_sibling_trait(F.Expressions.is_predicate):
-            logger.debug(f"No aliases for predicate {e.compact_repr()}")
+            if S_LOG:
+                logger.debug(f"No aliases for predicate {e.compact_repr()}")
             for a in aliases:
                 mutator.remove(a.is_parameter_operatable.get(), no_check_roots=True)
             expr_reprs[e] = mutator.make_singleton(True).can_be_operand.get()

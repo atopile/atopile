@@ -202,10 +202,15 @@ class Transformations:
         ]
         mutated = indented_container(
             [f"{k} -> {v}" for k, v in mutated_transformations if k != v]
-            + [f"copy {k}" for k, v in mutated_transformations if k == v]
+            + [f"copy {k}" for k, v in mutated_transformations if k == v],
+            use_repr=False,
         )
-        created = indented_container([k.compact_repr() for k in self.created])
-        removed = indented_container([k.compact_repr() for k in self.removed])
+        created = indented_container(
+            [k.compact_repr() for k in self.created], use_repr=False
+        )
+        removed = indented_container(
+            [k.compact_repr() for k in self.removed], use_repr=False
+        )
         # copied = indented_container(
         #    [k.compact_repr(old_context) for k in self.transformations.copied]
         # )
@@ -545,6 +550,30 @@ class MutationStage:
             return
         log(f"{g} {len(nodes)}/{len(pre_nodes)} [{out}\n]")
 
+    @staticmethod
+    def print_g_in_g_out(
+        tg_in: fbrk.TypeGraph,
+        g_in: graph.GraphView,
+        tg_out: fbrk.TypeGraph,
+        g_out: graph.GraphView,
+    ) -> Table:
+        collected = ""
+
+        def _capture_log(x: str):
+            nonlocal collected
+            collected += x + "\n"
+
+        t = Table("G_in", "G_out")
+
+        MutationStage.print_graph_contents_static(tg_in, g_in, log=_capture_log)
+        g_in_str = Text.from_ansi(collected)
+        collected = ""
+
+        MutationStage.print_graph_contents_static(tg_out, g_out, log=_capture_log)
+        g_out_str = Text.from_ansi(collected)
+        t.add_row(g_in_str, g_out_str)
+        return t
+
     def map_forward(
         self, param: F.Parameters.is_parameter_operatable
     ) -> F.Parameters.is_parameter_operatable | None:
@@ -616,6 +645,8 @@ class MutationStage:
             key = "new"
             key_from_ops = " \n  ".join(___repr_op(o) for o in from_ops)
             value = ___repr_op(op)
+            if op.has_trait(is_irrelevant):
+                continue
             if (op_e := op.as_expression.try_get()) and op_e.try_get_sibling_trait(
                 F.Expressions.is_predicate
             ):
@@ -642,7 +673,9 @@ class MutationStage:
             rows.append((key, value))
 
         terminated = self.transformations.terminated.difference(
-            co.try_get_sibling_trait(F.Expressions.is_predicate) for co in created_ops
+            co.try_get_sibling_trait(F.Expressions.is_predicate)
+            and not co.try_get_sibling_trait(is_irrelevant)
+            for co in created_ops
         )
         for op in terminated:
             rows.append(
@@ -1224,15 +1257,7 @@ class MutationMap:
             except:
                 if S_LOG:
                     logger.error(f"Error running algorithm {algo.name}")
-                    logger.error("G_in")
-                    MutationStage.print_graph_contents_static(
-                        mutator.tg_in, mutator.G_in, log=logger.error
-                    )
-                    logger.error(mutator.transformations)
-                    logger.error("G_out")
-                    MutationStage.print_graph_contents_static(
-                        mutator.tg_out, mutator.G_out, log=logger.error
-                    )
+                    mutator.print_current_state(log=logger.error)
                 raise
 
             mut_map = mut_map.extend(algo_result.mutation_stage)
@@ -2393,27 +2418,7 @@ class Mutator:
         if S_LOG:
             logger.debug(f"Dirty after {self.algo.name}")
             stage.print_mutation_table()
-
-            collected = ""
-
-            def _capture_log(x: str):
-                nonlocal collected
-                collected += x + "\n"
-
-            t = Table("G_in", "G_out")
-
-            MutationStage.print_graph_contents_static(
-                self.tg_in, self.G_in, log=_capture_log
-            )
-            g_in_str = Text.from_ansi(collected)
-            collected = ""
-
-            MutationStage.print_graph_contents_static(
-                self.tg_out, self.G_out, log=_capture_log
-            )
-            g_out_str = Text.from_ansi(collected)
-            t.add_row(g_in_str, g_out_str)
-            logger.debug(rich_to_string(t))
+            self.print_current_state(log=logger.debug)
 
         return AlgoResult(mutation_stage=stage, dirty=dirty)
 
@@ -2430,6 +2435,13 @@ class Mutator:
             f" |G_out|={self.G_out.get_node_count()}"
             f" '{self.algo.name}'{t})"
         )
+
+    def print_current_state(self, log: Callable[[Any], None] = logger.debug):
+        log(Text.from_ansi(str(self.transformations)))
+        t = MutationStage.print_g_in_g_out(
+            self.tg_in, self.G_in, self.tg_out, self.G_out
+        )
+        log(rich_to_string(t))
 
 
 # TESTS --------------------------------------------------------------------------------

@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     import faebryk.library._F as F
 from atopile.logging import scope
 from atopile.logging_utils import NET_LINE_WIDTH
-from faebryk.core.solver.mutator import MutationMap, MutationStage, Mutator
+from faebryk.core.solver.mutator import MutationMap, Mutator
 from faebryk.core.solver.symbolic import (
     expression_groups,
     expression_wise,
@@ -133,14 +133,8 @@ class Solver:
                 algo_result = mutator.close()
             except:
                 logger.error(f"Error running algorithm {algo.name}")
-                logger.error("G_in")
-                MutationStage.print_graph_contents_static(
-                    mutator.tg_in, mutator.G_in, log=logger.error
-                )
-                logger.error("G_out")
-                MutationStage.print_graph_contents_static(
-                    mutator.tg_out, mutator.G_out, log=logger.error
-                )
+                mutator.print_current_state(log=logger.error)
+
                 raise
 
             iteration_state.dirty |= algo_result.dirty
