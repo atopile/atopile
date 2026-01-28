@@ -1221,6 +1221,10 @@ def insert_expression(
 
                     return InsertExpressionResult(most_constrained, False)
                 case ExpressionBuilder():
+                    # map operands into G_out
+                    most_constrained = _operands_mutated_and_expressions_flat(
+                        mutator, most_constrained
+                    )
                     builder = most_constrained
                     if I_LOG:
                         logger.debug(f"Subsume adjust {builder.compact_repr()}")
