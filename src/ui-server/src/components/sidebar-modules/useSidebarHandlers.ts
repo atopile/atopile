@@ -88,8 +88,13 @@ export function useSidebarHandlers({
     action('installPackage', { packageId, projectRoot, version });
   };
 
-  const handleCreateProject = (data?: { name?: string; license?: string; description?: string; parentDirectory?: string }) => {
-    action('createProject', data || {});
+  const handleCreateProject = async (data?: { name?: string; license?: string; description?: string; parentDirectory?: string }) => {
+    const response = await sendActionWithResponse('createProject', data || {});
+    if (!response.result?.success) {
+      const errorMsg = response.result?.error || 'Failed to create project';
+      throw new Error(errorMsg);
+    }
+    // Projects are refreshed by the backend automatically
   };
 
   const handleStructureRefresh = () => {
@@ -120,16 +125,16 @@ export function useSidebarHandlers({
     action('openSource', { projectId, entry });
   };
 
-  const handleOpenKiCad = (projectId: string, buildId: string) => {
-    action('openKiCad', { projectId, buildId });
+  const handleOpenKiCad = (projectId: string, targetName: string) => {
+    action('openKiCad', { projectId, targetName });
   };
 
-  const handleOpenLayout = (projectId: string, buildId: string) => {
-    action('openLayout', { projectId, buildId });
+  const handleOpenLayout = (projectId: string, targetName: string) => {
+    action('openLayout', { projectId, targetName });
   };
 
-  const handleOpen3D = (projectId: string, buildId: string) => {
-    action('open3D', { projectId, buildId });
+  const handleOpen3D = (projectId: string, targetName: string) => {
+    action('open3D', { projectId, targetName });
   };
 
   // Build Target Management

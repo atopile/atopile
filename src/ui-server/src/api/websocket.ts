@@ -603,6 +603,36 @@ function handleEventMessage(message: EventMessage): void {
     null;
 
   switch (message.event) {
+    case 'open_layout': {
+      const path = typeof data.path === 'string' ? data.path : null;
+      postMessage({
+        type: 'openSignals',
+        openLayout: path,
+        openKicad: null,
+        open3d: null,
+      });
+      break;
+    }
+    case 'open_kicad': {
+      const path = typeof data.path === 'string' ? data.path : null;
+      postMessage({
+        type: 'openSignals',
+        openLayout: null,
+        openKicad: path,
+        open3d: null,
+      });
+      break;
+    }
+    case 'open_3d': {
+      const path = typeof data.path === 'string' ? data.path : null;
+      postMessage({
+        type: 'openSignals',
+        openLayout: null,
+        openKicad: null,
+        open3d: path,
+      });
+      break;
+    }
     case 'projects_changed':
       void refreshProjects();
       break;
@@ -610,6 +640,8 @@ function handleEventMessage(message: EventMessage): void {
       void refreshBuilds();
       break;
     case 'project_dependencies_changed':
+      // Clear all installing packages - a dependency change means install completed
+      useStore.getState().clearInstallingPackages();
       void refreshDependencies(projectRoot);
       break;
     case 'bom_changed':
@@ -619,6 +651,12 @@ function handleEventMessage(message: EventMessage): void {
       void refreshVariables();
       break;
     case 'packages_changed':
+      // Check if this is an install error event
+      if (data.error && data.package_id) {
+        const packageId = data.package_id as string;
+        const errorMsg = data.error as string;
+        useStore.getState().setInstallError(packageId, errorMsg);
+      }
       void refreshPackages();
       break;
     case 'stdlib_changed':

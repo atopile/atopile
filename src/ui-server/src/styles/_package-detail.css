@@ -203,26 +203,72 @@
 }
 
 .detail-install-btn.update {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
+  background: var(--ctp-yellow);
+  color: var(--ctp-crust);
+  border: none;
 }
 
 .detail-install-btn.update:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  background: var(--ctp-peach);
+  color: var(--ctp-crust);
 }
 
 .detail-install-btn.installing {
-  background: var(--accent);
-  color: var(--text-on-accent);
+  background: var(--ctp-green);
+  color: var(--ctp-crust);
   cursor: wait;
   position: relative;
   overflow: hidden;
+  box-shadow: 0 0 0 2px var(--ctp-green);
+  animation: installing-pulse 2s ease-in-out infinite;
+}
+
+.detail-install-btn.installing::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--ctp-green) 25%,
+    var(--ctp-teal) 50%,
+    var(--ctp-green) 75%,
+    transparent 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: installing-sweep 1.5s linear infinite;
+  background-size: 200% 100%;
 }
 
 .detail-install-btn.installing svg {
   animation: spin 0.8s linear infinite;
+}
+
+@keyframes installing-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px var(--ctp-green), 0 0 8px rgba(166, 227, 161, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 2px var(--ctp-green), 0 0 16px rgba(166, 227, 161, 0.6);
+  }
+}
+
+@keyframes installing-sweep {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .detail-install-error {

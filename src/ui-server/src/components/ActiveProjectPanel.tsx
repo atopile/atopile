@@ -25,8 +25,8 @@ interface ActiveProjectPanelProps {
   onOpenKiCad: (projectRoot: string, targetName: string) => void
   onOpen3D: (projectRoot: string, targetName: string) => void
   onOpenLayout: (projectRoot: string, targetName: string) => void
-  onCreateProject?: (data?: NewProjectData) => void
-  onCreateTarget?: (projectRoot: string, data: NewTargetData) => void
+  onCreateProject?: (data?: NewProjectData) => Promise<void>
+  onCreateTarget?: (projectRoot: string, data: NewTargetData) => Promise<void>
   onGenerateManufacturingData?: (projectRoot: string, targetName: string) => void
   queuedBuilds?: QueuedBuild[]
   onCancelBuild?: (buildId: string) => void
@@ -1110,24 +1110,22 @@ export function ActiveProjectPanel({
   const [createProjectError, setCreateProjectError] = useState<string | null>(null)
   const [createTargetError, setCreateTargetError] = useState<string | null>(null)
 
-  const handleCreateProject = useCallback((data?: NewProjectData) => {
+  const handleCreateProject = useCallback(async (data?: NewProjectData) => {
     if (!onCreateProject) return
     setIsCreatingProject(true)
     setCreateProjectError(null)
 
-    // Call the create project handler
-    onCreateProject(data)
-
-    // For now, close form after a delay since we don't have async feedback yet
-    // In the future, this should be async with proper success/error handling
-    setTimeout(() => {
+    try {
+      await onCreateProject(data)
+      // Success - close form
+      setShowNewProjectForm(false)
+    } catch (error) {
+      // Display error to user
+      setCreateProjectError(error instanceof Error ? error.message : 'Failed to create project')
+    } finally {
       setIsCreatingProject(false)
-      // Only close if no error was set
-      if (!createProjectError) {
-        setShowNewProjectForm(false)
-      }
-    }, 1000)
-  }, [onCreateProject, createProjectError])
+    }
+  }, [onCreateProject])
 
   // Reset errors when forms are opened
   useEffect(() => {
@@ -1156,19 +1154,21 @@ export function ActiveProjectPanel({
     return activeProject.targets?.[0]?.name ?? null
   }, [activeProject, selectedTargetName])
 
-  const handleCreateTarget = useCallback((data: NewTargetData) => {
+  const handleCreateTarget = useCallback(async (data: NewTargetData) => {
     if (!onCreateTarget || !activeProject) return
     setIsCreatingTarget(true)
     setCreateTargetError(null)
 
-    // Call the create target handler with project root and data
-    onCreateTarget(activeProject.root, data)
-
-    // For now, close form after a delay since we don't have async feedback yet
-    setTimeout(() => {
-      setIsCreatingTarget(false)
+    try {
+      await onCreateTarget(activeProject.root, data)
+      // Success - close form
       setShowNewTargetForm(false)
-    }, 1000)
+    } catch (error) {
+      // Display error to user
+      setCreateTargetError(error instanceof Error ? error.message : 'Failed to create target')
+    } finally {
+      setIsCreatingTarget(false)
+    }
   }, [onCreateTarget, activeProject])
 
   // Filter builds for active project
