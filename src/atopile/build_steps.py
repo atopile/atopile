@@ -666,6 +666,7 @@ def update_pcb(ctx: BuildStepContext) -> None:
     pcb.transformer.check_unattached_fps()
 
     # Ensure proper board appearance (matte black soldermask, ENIG copper finish)
+    # This will overwrite user settings in the KiCad PCB file!
     ensure_board_appearance(pcb.pcb_file.kicad_pcb)
 
     # set layout
