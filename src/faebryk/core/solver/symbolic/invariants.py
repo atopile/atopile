@@ -1106,6 +1106,16 @@ def insert_expression(
 
     _ss_lits_available(mutator)
 
+    # no irrelevant predicates
+    # if builder.assert_ and any(
+    #    op.try_get_sibling_trait(is_irrelevant) for op in builder.operands
+    # ):
+    #    if I_LOG:
+    #        logger.debug(
+    #            f"Remove transitive irrelevant predicate: {builder.compact_repr()}"
+    #        )
+    #    return InsertExpressionResult(None, False)
+
     builder = _operands_mutated_and_expressions_flat(mutator, builder)
 
     # * Op(P!, ...) -> Op(True, ...)
@@ -1236,9 +1246,18 @@ def insert_expression(
             sub_lit = super_lit
             builder = builder.with_(terminate=True, irrelevant=True)
             # TODO consider shortcut for singletons (other than predicates)
-            # Shortcut: no useless predicates
-            if builder.assert_ and super_lit.op_setic_equals_singleton(True):
-                return InsertExpressionResult(None, False)
+
+            # Looks like shortcut but is important.
+            # Predicates have no aliases onto which we can move the lits to
+            if builder.assert_:
+                if super_lit.op_setic_equals_singleton(True):
+                    return InsertExpressionResult(None, False)
+                if super_lit.op_setic_equals_singleton(False):
+                    raise Contradiction(
+                        f"Deduced predicate to false {builder.compact_repr()}",
+                        involved=[],
+                        mutator=mutator,
+                    )
 
     # * terminate A ss! X, X ss! A
     if (
