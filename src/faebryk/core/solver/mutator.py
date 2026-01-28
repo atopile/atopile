@@ -1453,6 +1453,9 @@ class ExpressionBuilder[
     assert_: bool
     terminate: bool
     traits: list[fabll.NodeT | None]
+    # TODO make non-default
+    # TODO consider including in matches
+    irrelevant: bool = False
 
     @classmethod
     def from_e(cls, e: F.Expressions.is_expression) -> "ExpressionBuilder[T]":
@@ -1467,6 +1470,7 @@ class ExpressionBuilder[
                 if trait_t is not None
                 and (t := e.try_get_sibling_trait(trait_t)) is not None
             ],
+            irrelevant=bool(e.try_get_sibling_trait(is_irrelevant)),
         )
 
     def indexed_ops(self) -> dict[int, F.Parameters.can_be_operand]:
@@ -1549,13 +1553,15 @@ class ExpressionBuilder[
         assert_: bool | None = None,
         terminate: bool | None = None,
         traits: list[fabll.NodeT | None] | None = None,
+        irrelevant: bool | None = None,
     ) -> "ExpressionBuilder[T]":
         return ExpressionBuilder(
-            factory or self.factory,
-            operands if operands is not None else self.operands,
-            assert_ if assert_ is not None else self.assert_,
-            terminate if terminate is not None else self.terminate,
-            traits if traits is not None else self.traits,
+            factory=factory or self.factory,
+            operands=operands if operands is not None else self.operands,
+            assert_=assert_ if assert_ is not None else self.assert_,
+            terminate=terminate if terminate is not None else self.terminate,
+            traits=traits if traits is not None else self.traits,
+            irrelevant=irrelevant if irrelevant is not None else self.irrelevant,
         )
 
     def __rich_repr__(self):
@@ -1699,7 +1705,7 @@ class Mutator:
         - check graph consistency
         => create expression in new graph
         """
-        expr_factory, operands, assert_, terminate, traits = builder
+        expr_factory, operands, assert_, terminate, traits, irrelevant = builder
 
         # check canonical
         # only after canonicalize has run
@@ -1725,6 +1731,9 @@ class Mutator:
 
         if terminate:
             self.terminate(new_expr_e)
+
+        if irrelevant:
+            self.mark_irrelevant(new_expr.is_parameter_operatable.get())
 
         for trait in traits:
             if trait is not None:

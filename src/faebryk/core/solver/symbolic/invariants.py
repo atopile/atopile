@@ -516,13 +516,12 @@ def _no_empty_superset(
     """
     A ss! {} => Contradiction.
     """
-    factory, operands, assert_, _, _ = builder
     if (
-        factory is IsSubset
-        and assert_
-        and (lit := operands[1].try_get_sibling_trait(F.Literals.is_literal))
+        builder.factory is IsSubset
+        and builder.assert_
+        and (lit := builder.operands[1].try_get_sibling_trait(F.Literals.is_literal))
         and lit.op_setic_is_empty()
-        and (po := operands[0].as_parameter_operatable.try_get())
+        and (po := builder.operands[0].as_parameter_operatable.try_get())
     ):
         constraint_ops = [
             op.is_parameter_operatable.get()
@@ -546,8 +545,7 @@ def _no_predicate_literals(
     P! ss! True / True ss! P! -> Drop (carries no information)
     """
 
-    factory, operands, assert_, _, _ = builder
-    if not (factory is F.Expressions.IsSubset and assert_):
+    if not (builder.factory is F.Expressions.IsSubset and builder.assert_):
         return builder
 
     if not (lits := builder.indexed_lits()):
@@ -600,9 +598,7 @@ def _no_literal_inequalities(
     """
     import math
 
-    factory, operands, assert_, terminate, _ = builder
-
-    if factory is not F.Expressions.GreaterOrEqual or not assert_:
+    if builder.factory is not F.Expressions.GreaterOrEqual or not builder.assert_:
         return builder
 
     if not (lits := builder.indexed_lits()):
@@ -611,7 +607,7 @@ def _no_literal_inequalities(
     # Case: A >=! X -> A ss! [X.max(), +∞)
     # The parameter operatable A must be >= the maximum value of literal X
     if lit := lits.get(1):
-        po_operand = operands[0]
+        po_operand = builder.operands[0]
         lit_num = fabll.Traits(lit).get_obj(F.Literals.Numbers)
         bound_val = lit_num.get_max_value()
         new_superset = mutator.utils.make_number_literal_from_range(bound_val, math.inf)
@@ -619,7 +615,7 @@ def _no_literal_inequalities(
     # The parameter operatable A must be <= the minimum value of literal X
     else:
         lit = lits[0]
-        po_operand = operands[1]
+        po_operand = builder.operands[1]
         lit_num = fabll.Traits(lit).get_obj(F.Literals.Numbers)
         bound_val = lit_num.get_min_value()
         new_superset = mutator.utils.make_number_literal_from_range(
@@ -629,7 +625,9 @@ def _no_literal_inequalities(
     new_operands = [po_operand, new_superset.can_be_operand.get()]
     new_builder = cast(
         ExpressionBuilder,
-        ExpressionBuilder(IsSubset, new_operands, assert_, terminate, []),
+        ExpressionBuilder(
+            IsSubset, new_operands, builder.assert_, builder.terminate, []
+        ),
     )  # TODO fuck you pyright
 
     if I_LOG:
@@ -1136,6 +1134,7 @@ def insert_expression(
     builder = _no_singleton_supersets(mutator, builder)
 
     # * no congruence
+    # TODO consider: what happens if congruent is irrelevant
     if congruent := find_congruent_expression(
         mutator, builder, allow_uncorrelated_congruence_match
     ):
@@ -1154,7 +1153,8 @@ def insert_expression(
                     f"Merge alias: {alias.compact_repr()}"
                     f" with congruent {congruent_op.pretty()}"
                 )
-            # TODO this is a shortcut for below, we dont really want shortcuts for now
+            # Shortcut: this is a shortcut for creating a new alias
+            # TODO: careful required shortcut
             _merge_alias(
                 mutator,
                 alias,
@@ -1163,15 +1163,6 @@ def insert_expression(
                 .as_parameter_operatable.force_get()
                 .as_parameter.force_get(),
             )
-            # mutator.create_check_and_insert_expression_from_builder(
-            #     ExpressionBuilder(
-            #         F.Expressions.Is,
-            #         [alias.as_operand.get(), congruent_op],
-            #         assert_=True,
-            #         terminate=True,
-            #         traits=[],
-            #     )
-            # )
         # unflag dirty
         if expr_already_exists_in_old_graph:
             if congruent_po in mutator.transformations.created:
@@ -1250,9 +1241,11 @@ def insert_expression(
         super_lit, pure = lit_fold_res
         if pure:
             sub_lit = super_lit
-            builder = builder.with_(terminate=True)
-
-            # TODO can consider later a shortcut for singletons to not make the expr
+            builder = builder.with_(terminate=True, irrelevant=True)
+            # TODO consider shortcut for singletons (other than predicates)
+            # Shortcut: no useless predicates
+            if builder.assert_ and super_lit.op_setic_equals_singleton(True):
+                return InsertExpressionResult(None, False)
 
     # * terminate A ss! X, X ss! A
     if (
@@ -1306,6 +1299,9 @@ def insert_expression(
                 ],
                 assert_=True,
                 terminate=True,
+                # mark alias irrelevant if expr is irrelevant
+                # else expr can't be filtered
+                irrelevant=builder.irrelevant,
                 traits=[],
             )
         )
