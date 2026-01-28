@@ -548,6 +548,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private async _handleAtopileSettings(atopile: AtopileSettingsMessage['atopile']): Promise<void> {
     if (!atopile) return;
 
+    traceInfo(`[SidebarProvider] _handleAtopileSettings received: ${JSON.stringify(atopile)}`);
+
     // Build a key for comparison to avoid unnecessary updates
     const settingsKey = JSON.stringify({
       source: atopile.source,
@@ -559,9 +561,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     // Skip if nothing changed - this is called on every state update
     if (settingsKey === this._lastAtopileSettingsKey) {
+      traceInfo(`[SidebarProvider] Skipping - settings unchanged: ${settingsKey}`);
       return;
     }
 
+    traceInfo(`[SidebarProvider] Processing new settings: ${settingsKey}`);
     this._lastAtopileSettingsKey = settingsKey;
 
     const config = vscode.workspace.getConfiguration('atopile');

@@ -325,15 +325,15 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
       }
     } else {
       // Switch back to release mode (default) - clear both settings to use uv fallback
-      action('setAtopileSource', { source: 'release' });
       // Clear both atopile.ato and atopile.from to fall back to extension-managed uv
       postMessage({
         type: 'atopileSettings',
         atopile: {
-          source: 'release',
           clearSettings: true,  // Signal to clear both ato and from
         },
       });
+      // Update backend state after sending to VS Code (so it doesn't trigger another save)
+      action('setAtopileSource', { source: 'release' });
       // Restart is now computed from state, no need to track manually
     }
   };
