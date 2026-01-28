@@ -354,6 +354,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this._handleRestartExtension().catch((error) => {
           traceError(`[SidebarProvider] Error restarting extension: ${error}`);
         });
+        break;
       case 'showLogs':
         void vscode.commands.executeCommand('atopile.logViewer.focus');
         break;
