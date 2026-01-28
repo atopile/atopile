@@ -185,19 +185,22 @@ export function Sidebar() {
 
   // Memoized callbacks for event handlers (avoid new function references each render)
   const handleBuildTarget = useCallback((projectRoot: string, targetName: string) => {
+    panels.collapseAllExceptProjects();
     action('build', { projectRoot, targets: [targetName] });
-  }, []);
+  }, [panels]);
 
   const handleBuildAllTargets = useCallback((projectRoot: string, projectName: string) => {
+    panels.collapseAllExceptProjects();
     action('build', { level: 'project', id: projectRoot, label: projectName, targets: [] });
-  }, []);
+  }, [panels]);
 
   // Generate manufacturing data - triggers a build which includes manufacturing outputs
   const handleGenerateManufacturingData = useCallback((projectRoot: string, targetName: string) => {
     // Manufacturing data is generated as part of the build process
     // The build outputs include gerbers, BOM, and pick-and-place files
+    panels.collapseAllExceptProjects();
     action('build', { projectRoot, targets: [targetName] });
-  }, []);
+  }, [panels]);
 
   const handleOpenOutput = useCallback(async (
     output: 'openKiCad' | 'open3D' | 'openLayout',
@@ -396,7 +399,6 @@ export function Sidebar() {
         <CollapsibleSection
           id="packages"
           title="Packages"
-          badge={packageCount}
           loading={isLoadingPackages}
           warningMessage={packagesError || null}
           collapsed={panels.isCollapsed('packages')}
@@ -432,7 +434,6 @@ export function Sidebar() {
         <CollapsibleSection
           id="stdlib"
           title="Standard Library"
-          badge={stdlibItems?.length || 0}
           collapsed={panels.isCollapsed('stdlib')}
           onToggle={() => panels.togglePanel('stdlib')}
           height={panels.calculatedHeights['stdlib']}
@@ -466,7 +467,6 @@ export function Sidebar() {
         <CollapsibleSection
           id="variables"
           title="Variables"
-          badge={variableCount}
           collapsed={panels.isCollapsed('variables')}
           onToggle={() => panels.togglePanel('variables')}
           height={panels.calculatedHeights['variables']}
@@ -485,7 +485,6 @@ export function Sidebar() {
         <CollapsibleSection
           id="bom"
           title="BOM"
-          badge={bomData?.components?.length ?? 0}
           warningCount={bomWarningCount}
           collapsed={panels.isCollapsed('bom')}
           onToggle={() => panels.togglePanel('bom')}

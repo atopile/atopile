@@ -42,7 +42,11 @@ def _serialize_part(component: Component) -> dict:
                 unit_cost = float(p.price) if p.price is not None else None
                 break
         if unit_cost is None:
-            unit_cost = float(component.price[0].price) if component.price[0].price is not None else None
+            unit_cost = (
+                float(component.price[0].price)
+                if component.price[0].price is not None
+                else None
+            )
 
     return {
         "lcsc": component.lcsc_display,
@@ -248,15 +252,17 @@ def handle_list_installed_parts(project_root: str) -> list[dict]:
             lcsc_id = part.pick_part.supplier_partno
 
         # Return basic info immediately - frontend enriches with stock/price async
-        parts.append({
-            "identifier": part.identifier,
-            "manufacturer": part.mfn[0],
-            "mpn": part.mfn[1],
-            "lcsc": lcsc_id,
-            "datasheet_url": part.datasheet,
-            "description": part.docstring,
-            "path": str(part.path),
-        })
+        parts.append(
+            {
+                "identifier": part.identifier,
+                "manufacturer": part.mfn[0],
+                "mpn": part.mfn[1],
+                "lcsc": lcsc_id,
+                "datasheet_url": part.datasheet,
+                "description": part.docstring,
+                "path": str(part.path),
+            }
+        )
 
     return parts
 
@@ -289,9 +295,9 @@ def handle_get_part_footprint(lcsc_id: str) -> bytes | None:
 
         # Export to KiCad format
         exporter = ExporterFootprintKicad(easyeda_footprint)
-        fp_raw = call_with_file_capture(
-            lambda path: exporter.export(str(path), None)
-        )[1]
+        fp_raw = call_with_file_capture(lambda path: exporter.export(str(path), None))[
+            1
+        ]
 
         # Convert to latest KiCad format
         fp = kicad.loads(kicad.footprint_v5.FootprintFile, fp_raw.decode("utf-8"))
@@ -300,7 +306,10 @@ def handle_get_part_footprint(lcsc_id: str) -> bytes | None:
         return kicad.dumps(new_fp).encode("utf-8")
     except Exception as e:
         import logging
-        logging.getLogger(__name__).warning(f"Failed to get footprint for {lcsc_id}: {e}")
+
+        logging.getLogger(__name__).warning(
+            f"Failed to get footprint for {lcsc_id}: {e}"
+        )
         return None
 
 
@@ -338,7 +347,10 @@ def handle_get_part_model(lcsc_id: str) -> tuple[bytes, str] | None:
         return model_data, easyeda_footprint.model_3d.name
     except Exception as e:
         import logging
-        logging.getLogger(__name__).warning(f"Failed to get 3D model for {lcsc_id}: {e}")
+
+        logging.getLogger(__name__).warning(
+            f"Failed to get 3D model for {lcsc_id}: {e}"
+        )
         return None
 
 

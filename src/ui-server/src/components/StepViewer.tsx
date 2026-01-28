@@ -124,19 +124,79 @@ export default function StepViewer({ src, className, style }: StepViewerProps) {
 
           geometry.setIndex(mesh.index.array)
 
-          const color = mesh.color
-            ? new THREE.Color(mesh.color[0], mesh.color[1], mesh.color[2])
-            : new THREE.Color(0.7, 0.7, 0.7)
+          // Check if we have per-face colors in brep_faces
+          const hasFaceColors = mesh.brep_faces?.some(
+            (f: { color?: number[] }) => f.color && f.color.length >= 3
+          )
 
-          const material = new THREE.MeshStandardMaterial({
-            color,
-            metalness: 0.1,
-            roughness: 0.6,
-            side: THREE.DoubleSide,
-          })
+          if (hasFaceColors && mesh.brep_faces) {
+            // Build vertex colors from brep_faces
+            const vertexCount = mesh.attributes.position.array.length / 3
+            const colors = new Float32Array(vertexCount * 3)
+            const indexCount = mesh.index.array.length
 
-          const threeMesh = new THREE.Mesh(geometry, material)
-          group.add(threeMesh)
+            // Default color (grey)
+            for (let i = 0; i < vertexCount * 3; i += 3) {
+              colors[i] = 0.7
+              colors[i + 1] = 0.7
+              colors[i + 2] = 0.7
+            }
+
+            // Debug: log face structure
+            const faces = mesh.brep_faces as { first: number; last: number; color?: number[] }[]
+            console.log('[StepViewer] brep_faces debug:', {
+              faceCount: faces.length,
+              indexArrayLength: indexCount,
+              vertexCount,
+              sampleFaces: faces.slice(0, 5).map(f => ({ first: f.first, last: f.last, color: f.color })),
+              maxLast: Math.max(...faces.map(f => f.last)),
+            })
+
+            // Apply face colors - brep_faces.first/last appear to be direct index array positions
+            const indices = mesh.index.array
+            for (const face of faces) {
+              if (!face.color || face.color.length < 3) continue
+              const [r, g, b] = face.color
+
+              // face.first and face.last are positions in the index array
+              for (let i = face.first; i <= face.last; i++) {
+                if (i >= indexCount) continue // Safety check
+                const vertexIndex = indices[i]
+                if (vertexIndex * 3 + 2 < colors.length) {
+                  colors[vertexIndex * 3] = r
+                  colors[vertexIndex * 3 + 1] = g
+                  colors[vertexIndex * 3 + 2] = b
+                }
+              }
+            }
+
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+
+            const material = new THREE.MeshStandardMaterial({
+              vertexColors: true,
+              metalness: 0.1,
+              roughness: 0.6,
+              side: THREE.DoubleSide,
+            })
+
+            const threeMesh = new THREE.Mesh(geometry, material)
+            group.add(threeMesh)
+          } else {
+            // Fallback: use mesh-level color or default grey
+            const color = mesh.color
+              ? new THREE.Color(mesh.color[0], mesh.color[1], mesh.color[2])
+              : new THREE.Color(0.7, 0.7, 0.7)
+
+            const material = new THREE.MeshStandardMaterial({
+              color,
+              metalness: 0.1,
+              roughness: 0.6,
+              side: THREE.DoubleSide,
+            })
+
+            const threeMesh = new THREE.Mesh(geometry, material)
+            group.add(threeMesh)
+          }
         }
 
         scene.add(group)

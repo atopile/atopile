@@ -876,9 +876,7 @@
   margin: 0;
   text-align: right;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-word;
 }
 
 .detail-info-value {

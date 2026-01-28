@@ -107,6 +107,7 @@ async def get_part_details(lcsc_id: str):
     return PartDetailsResponse(part=details)
 
 
+@router.get("/api/parts/{lcsc_id}/footprint.kicad_mod")
 @router.get("/api/parts/{lcsc_id}/footprint")
 async def get_part_footprint(lcsc_id: str):
     """Return the KiCad footprint (.kicad_mod) for a part."""

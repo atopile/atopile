@@ -38,11 +38,11 @@ def search(query: str, extra_params: dict | None = None, label: str = ""):
     if extra_params:
         payload.update(extra_params)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Query: {query}")
     print(f"Label: {label}")
     print(f"Extra params: {extra_params}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     try:
         with httpx.Client(headers=HEADERS, timeout=10) as client:
@@ -110,12 +110,13 @@ def search_raw(query: str, url: str, extra_params: dict | None = None):
 
 if __name__ == "__main__":
     import time
+
     query = "100nF 0402"  # Common capacitor search
 
     # Test different sorting options
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("TESTING JLC API SORTING OPTIONS")
-    print("="*60)
+    print("=" * 60)
 
     # Check if the response has any sorting hints
     print("\n--- Checking response structure ---")
@@ -125,7 +126,7 @@ if __name__ == "__main__":
         print(f"Page info keys: {list(page_info.keys())}")
         # Check if there are sort-related fields
         for key in page_info.keys():
-            if 'sort' in key.lower() or 'order' in key.lower():
+            if "sort" in key.lower() or "order" in key.lower():
                 print(f"  {key}: {page_info[key]}")
 
     # Try V3 endpoint
@@ -133,7 +134,7 @@ if __name__ == "__main__":
     data_v3 = search_raw(query, JLC_URL_V3)
     if data_v3:
         print(f"V3 response code: {data_v3.get('code')}")
-        if data_v3.get('code') == 200:
+        if data_v3.get("code") == 200:
             page_info_v3 = data_v3.get("data", {}).get("componentPageInfo", {})
             print(f"V3 Page info keys: {list(page_info_v3.keys())}")
 
@@ -142,7 +143,7 @@ if __name__ == "__main__":
 
     # The API seems to ignore sort params - let's try client-side sorting
     # for now, and add UI sort indicators
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("CONCLUSION: JLC API does not support server-side sorting")
     print("We should implement client-side sorting of the 50 results")
-    print("="*60)
+    print("=" * 60)

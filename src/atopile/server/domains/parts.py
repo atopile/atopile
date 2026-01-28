@@ -25,6 +25,17 @@ def _normalize_lcsc_id(lcsc_id: str) -> tuple[str, int]:
 
 
 def _serialize_component(component: Component) -> dict:
+    # Get the raw unit price from the first price tier (qty=1)
+    # Don't use get_price() as it includes handling fees
+    unit_cost = None
+    if component.price:
+        for p in component.price:
+            if p.qFrom in (None, 0, 1):
+                unit_cost = float(p.price) if p.price is not None else None
+                break
+        if unit_cost is None and component.price:
+            unit_cost = float(component.price[0].price) if component.price[0].price is not None else None
+
     return {
         "lcsc": component.lcsc_display,
         "manufacturer": component.manufacturer_name,
@@ -33,7 +44,7 @@ def _serialize_component(component: Component) -> dict:
         "description": component.description,
         "datasheet_url": component.datasheet_url,
         "stock": component.stock,
-        "unit_cost": component.get_price(1),
+        "unit_cost": unit_cost,
         "is_basic": bool(component.is_basic),
         "is_preferred": bool(component.is_preferred),
         "price": [
@@ -120,29 +131,10 @@ def handle_get_lcsc_parts(
     results = client.fetch_parts_multiple(params)
 
     parts: dict[str, dict | None] = {}
-    latest_build = _latest_build_for(project_root, target)
-    build_id = latest_build.get("build_id") if latest_build else None
-    logged_warning = False
     for (display, _numeric), components in zip(normalized, results, strict=False):
         if components:
-            component = components[0]
-            parts[display] = _serialize_component(component)
-            if build_id and project_root and component.stock == 0:
-                logged_warning = (
-                    _log_out_of_stock(
-                        build_id=build_id,
-                        project_root=project_root,
-                        target=target,
-                        component=component,
-                    )
-                    or logged_warning
-                )
+            parts[display] = _serialize_component(components[0])
         else:
             parts[display] = None
-
-    if logged_warning:
-        from atopile.server import problem_parser
-
-        problem_parser.sync_problems_to_state()
 
     return {"parts": parts}

@@ -93,7 +93,7 @@
 
 .parts-visual-section {
   margin: 0 calc(-1 * var(--spacing-xl));
-  background: var(--bg-secondary);
+  background: var(--bg-primary);
   border-top: 1px solid var(--border-subtle);
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -142,13 +142,10 @@
 }
 
 .parts-visual-content {
-  min-height: 220px;
+  min-height: 280px;
   aspect-ratio: 1 / 1;
-  max-height: 400px;
-  padding: var(--spacing-md) var(--spacing-xl);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  max-height: 500px;
+  padding: 0;
 }
 
 .parts-visual-image {

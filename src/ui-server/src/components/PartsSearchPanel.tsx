@@ -82,49 +82,56 @@ export function PartsSearchPanel({
       .then((response) => {
         if (!active) return
         const parts = response.parts || []
-        setInstalledParts(parts)
 
-        // Enrich parts that have LCSC IDs but missing stock/price
+        // Determine which parts need enrichment
         const lcscIds = parts
           .filter((p) => p.lcsc && (p.stock == null || p.unit_cost == null))
           .map((p) => p.lcsc!)
 
-        if (lcscIds.length > 0) {
-          setEnrichingLcscs(new Set(lcscIds.map((id) => id.toUpperCase())))
+        // Show parts immediately with spinners for those being enriched
+        const enrichingSet = new Set(lcscIds.map((id) => id.toUpperCase()))
+        setEnrichingLcscs(enrichingSet)
+        setInstalledParts(parts)
+        setInstalledLoading(false)
 
+        // Start enrichment in background
+        if (lcscIds.length > 0) {
           api.parts.lcsc(lcscIds, { projectRoot: selectedProjectRoot })
             .then((enrichResponse) => {
               if (!active) return
+              const enrichedParts = enrichResponse.parts || {}
               setInstalledParts((prev) =>
                 prev.map((part) => {
                   if (!part.lcsc) return part
-                  const enriched = enrichResponse.parts[part.lcsc.toUpperCase()]
+                  const key = part.lcsc.toUpperCase()
+                  const enriched = enrichedParts[key]
                   if (!enriched) return part
                   return {
                     ...part,
-                    stock: enriched.stock,
-                    unit_cost: enriched.unit_cost,
+                    stock: enriched.stock ?? part.stock,
+                    unit_cost: enriched.unit_cost ?? part.unit_cost,
                     description: part.description || enriched.description,
                     package: part.package || enriched.package,
                   }
                 })
               )
             })
-            .catch(() => {
-              // Silently fail enrichment - parts still display with basic info
+            .catch((err) => {
+              // Log but don't block - parts still display with basic info
+              console.warn('Parts enrichment failed:', err)
             })
             .finally(() => {
               if (!active) return
               setEnrichingLcscs(new Set())
             })
+        } else {
+          // No enrichment needed, clear any spinners
+          setEnrichingLcscs(new Set())
         }
       })
       .catch((error) => {
         if (!active) return
         setInstalledError(error instanceof Error ? error.message : 'Failed to load installed parts')
-      })
-      .finally(() => {
-        if (!active) return
         setInstalledLoading(false)
       })
 

@@ -67,15 +67,14 @@ export default function KiCanvasEmbed({
     }
   }, [isReady])
 
-  // Pre-check if src URL is valid
+  // Pre-check if src URL is valid using GET (HEAD not supported by all endpoints)
   useEffect(() => {
     setIsLoading(true)
     setError(null)
 
-    let cancelled = false
-    fetch(src, { method: 'HEAD' })
+    const controller = new AbortController()
+    fetch(src, { signal: controller.signal })
       .then((response) => {
-        if (cancelled) return
         if (!response.ok) {
           const msg = response.status === 404
             ? 'Footprint not available'
@@ -84,16 +83,17 @@ export default function KiCanvasEmbed({
           onError?.(msg)
           setIsLoading(false)
         }
+        // If OK, let kicanvas handle the actual loading
       })
-      .catch(() => {
-        if (cancelled) return
+      .catch((err) => {
+        if (err.name === 'AbortError') return
         setError('Failed to load footprint')
         onError?.('Failed to load footprint')
         setIsLoading(false)
       })
 
     return () => {
-      cancelled = true
+      controller.abort()
     }
   }, [src, onError])
 
@@ -101,16 +101,35 @@ export default function KiCanvasEmbed({
     const embed = embedRef.current
     if (!embed || !isReady) return
 
-    const handleLoad = () => setIsLoading(false)
-    const handleError = () => setIsLoading(false)
+    const handleLoad = () => {
+      console.log('[KiCanvas] Load event fired')
+      setIsLoading(false)
+    }
+    const handleError = (e: Event) => {
+      console.log('[KiCanvas] Error event fired', e)
+      setIsLoading(false)
+    }
 
+    // Listen for various possible event names
     embed.addEventListener('kicanvas:load', handleLoad)
+    embed.addEventListener('kicanvas:loaded', handleLoad)
     embed.addEventListener('load', handleLoad)
     embed.addEventListener('error', handleError)
+    embed.addEventListener('kicanvas:error', handleError)
+
+    // Fallback timeout - if no events fire after 5 seconds, assume loaded
+    const timeout = setTimeout(() => {
+      console.log('[KiCanvas] Timeout reached, assuming loaded')
+      setIsLoading(false)
+    }, 5000)
+
     return () => {
+      clearTimeout(timeout)
       embed.removeEventListener('kicanvas:load', handleLoad)
+      embed.removeEventListener('kicanvas:loaded', handleLoad)
       embed.removeEventListener('load', handleLoad)
       embed.removeEventListener('error', handleError)
+      embed.removeEventListener('kicanvas:error', handleError)
     }
   }, [isReady])
 
