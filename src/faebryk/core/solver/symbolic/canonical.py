@@ -138,7 +138,7 @@ import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import ExpressionBuilder, Mutator
 from faebryk.core.solver.utils import S_LOG
-from faebryk.libs.util import not_none, one
+from faebryk.libs.util import EquivalenceClasses, indented_container, not_none, one
 
 Add = F.Expressions.Add
 And = F.Expressions.And
@@ -412,93 +412,6 @@ def convert_to_canonical_operations(mutator: Mutator):
         )
 
 
-def _create_alias_parameter_for_expression(
-    mutator: Mutator,
-    expr: F.Expressions.is_expression,
-    expr_copy: F.Expressions.is_expression,
-    existing_params: set[F.Parameters.is_parameter],
-) -> F.Parameters.is_parameter:
-    """
-    Selects or creates a parameter to serve as an representative for an expression.
-    """
-
-    if S_LOG:
-        expr_repr = expr.compact_repr()
-    expr_po = expr.as_parameter_operatable.get()
-
-    mutated = {
-        k: mutator.get_mutated(k_po)
-        for k in existing_params
-        if mutator.has_been_mutated((k_po := k.as_parameter_operatable.get()))
-    }
-
-    is_expr_old: F.Expressions.Is | None = None
-
-    if mutated:
-        assert len(mutated) == 1
-        p = next(iter(mutated.values())).as_parameter.force_get()
-        if S_LOG:
-            logger.debug(
-                f"Using mutated {p.compact_repr()} for {expr_repr}"  # pyright: ignore[reportPossiblyUnboundVariable]
-            )
-    elif existing_params:
-        p_old = next(iter(existing_params))
-        p = mutator.mutate_parameter(p_old)
-        is_old = {
-            is_
-            for is_ in p_old.as_parameter_operatable.get().get_operations(
-                F.Expressions.Is, predicates_only=True
-            )
-            if expr.as_parameter_operatable.get()
-            in is_.is_expression.get().get_operand_operatables()
-        }
-        if is_old:
-            is_expr_old = next(iter(is_old))
-        if S_LOG:
-            logger.debug(
-                f"Using and mutating {p.compact_repr()} for {expr_repr}:"  # pyright: ignore[reportPossiblyUnboundVariable]
-                f" Reusing {is_expr_old.is_expression.get().compact_repr() if is_expr_old else 'no old is'}"  # noqa: E501
-            )
-    else:
-        p = mutator.register_created_parameter(
-            expr_copy.create_representative(alias=False),
-            from_ops=[expr_po],
-        )
-        if S_LOG:
-            logger.debug(
-                f"Using created {p.compact_repr()} for {expr_repr}"  # pyright: ignore[reportPossiblyUnboundVariable]
-            )
-
-    is_expr = mutator._create_and_insert_expression(
-        ExpressionBuilder(
-            F.Expressions.Is,
-            [expr_copy.as_operand.get(), p.as_operand.get()],
-            assert_=True,
-            terminate=True,
-            traits=[],
-        )
-    )
-    is_expr_po = is_expr.is_parameter_operatable.get()
-    if is_expr_old:
-        is_expr_old_po = is_expr_old.is_parameter_operatable.get()
-        mutator._mutate(is_expr_old_po, is_expr_po)
-        # only if no change mark as copy
-        if mutator.is_terminated(is_expr_old.is_expression.get()):
-            mutator.transformations.copied.add(is_expr_old_po)
-    else:
-        mutator.transformations.created[is_expr_po] = [expr_po]
-
-    for p_old in existing_params:
-        p_old_po = p_old.as_parameter_operatable.get()
-        if mutator.has_been_mutated(p_old_po):
-            continue
-        mutator._mutate(
-            p_old.as_parameter_operatable.get(), p.as_parameter_operatable.get()
-        )
-
-    return p
-
-
 def _remove_unit_expressions(
     mutator: Mutator, exprs: Iterable[F.Expressions.is_expression]
 ) -> list[F.Expressions.is_expression]:
@@ -536,6 +449,7 @@ def flatten_expressions(mutator: Mutator):
     """
     Flatten nested expressions: f(g(A)) -> f(B), B is! g(A)
     """
+    # TODO: consider shortcut for pure literal expressions
 
     # Don't use standard mutation interfaces here because they will trigger invariant checks
 
@@ -570,7 +484,90 @@ def flatten_expressions(mutator: Mutator):
     exprs = F.Expressions.is_expression.sort_by_depth_expr(mutator.get_expressions())
 
     exprs = _remove_unit_expressions(mutator, exprs)
+
     expr_reprs: dict[F.Expressions.is_expression, F.Parameters.can_be_operand] = {}
+    class_reprs: dict[
+        frozenset[F.Parameters.is_parameter_operatable], F.Parameters.can_be_operand
+    ] = {}
+
+    # build eq classes
+    expr_pos = [e.as_parameter_operatable.get() for e in exprs]
+    classes = EquivalenceClasses(expr_pos)
+    for e in exprs:
+        e_obj = fabll.Traits(e).get_obj_raw()
+        if e_obj.isinstance(F.Expressions.Is) and e_obj.has_trait(
+            F.Expressions.is_predicate
+        ):
+            ops = e.get_operand_operatables()
+            classes.add_eq(*ops)
+
+    alias_classes = [frozenset(class_) for class_ in classes.get()]
+
+    # build representative for each class
+    for class_ in alias_classes:
+        class_params = {p for elem in class_ if (p := elem.as_parameter.try_get())}
+        class_exprs = {e for elem in class_ if (e := elem.as_expression.try_get())}
+
+        # no need to create representative for predicates
+        # if param exists, need to keep it to alias it to True
+        has_predicate = any(
+            e.try_get_sibling_trait(F.Expressions.is_predicate) for e in class_exprs
+        )
+        if has_predicate:
+            for e in class_exprs:
+                expr_reprs[e] = mutator.make_singleton(True).can_be_operand.get()
+        if not class_params and has_predicate:
+            continue
+
+        if class_params:
+            p_old = next(iter(class_params))
+            p = mutator.mutate_parameter(p_old)
+            if S_LOG:
+                exprs_repr = indented_container(
+                    [e.compact_repr() for e in class_exprs], use_repr=False
+                )
+                logger.debug(
+                    f"Using and mutating {p_old.compact_repr(no_lit_suffix=True)} -> {p.compact_repr()} "
+                    f"for {indented_container([c.compact_repr() for c in class_], use_repr=False)}"
+                )
+        else:
+            p = (
+                next(iter(class_))
+                .as_expression.force_get()
+                .create_representative(g=mutator.G_out, tg=mutator.tg_out, alias=False)
+            )
+            if S_LOG:
+                exprs_repr = indented_container(
+                    [e.compact_repr() for e in class_exprs], use_repr=False
+                )
+                logger.debug(f"Using created {p.compact_repr()} for {exprs_repr}")
+            mutator.register_created_parameter(p, from_ops=[])
+
+        class_reprs[class_] = p.as_operand.get()
+        p_po = p.as_parameter_operatable.get()
+
+        if has_predicate:
+            mutator._create_and_insert_expression(
+                ExpressionBuilder(
+                    F.Expressions.IsSubset,
+                    [
+                        p.as_operand.get(),
+                        mutator.make_singleton(True).can_be_operand.get(),
+                    ],
+                    assert_=True,
+                    terminate=True,
+                    traits=[],
+                )
+            )
+            continue
+
+        # replace exprs as operands with representative (comes further down)
+        if not has_predicate:
+            for e in class_exprs:
+                expr_reprs[e] = p.as_operand.get()
+        # map all params to representative
+        for p in class_params:
+            mutator._mutate(p.as_parameter_operatable.get(), p_po)
 
     def _map_operand(
         mutator: Mutator, o: F.Parameters.can_be_operand
@@ -586,9 +583,8 @@ def flatten_expressions(mutator: Mutator):
             ).as_operand.get()
         return mutator.get_copy(o)
 
+    # copy/flatten exprs
     for e in exprs:
-        e_po = e.as_parameter_operatable.get()
-        e_op = e.as_operand.get()
         # aliases are manually created
         if (
             fabll.Traits(e).get_obj_raw().isinstance(F.Expressions.Is)
@@ -596,54 +592,72 @@ def flatten_expressions(mutator: Mutator):
             and not e.get_operand_literals()
         ):
             continue
-        # TODO: consider shortcut for pure literal expressions
+
+        e_po = e.as_parameter_operatable.get()
+
         # parents = e_op.get_operations() - aliases
         original_operands = e.get_operands()
         operands = [_map_operand(mutator, o) for o in original_operands]
-        e_copy = mutator._mutate(
+        copy_only = all(
+            o1.is_same(o2, allow_different_graph=True)
+            for o1, o2 in zip(original_operands, operands)
+        )
+
+        mutator._mutate(
             e_po,
             mutator._create_and_insert_expression(
                 ExpressionBuilder.from_e(e).with_(operands=operands)
             ).is_parameter_operatable.get(),
-        ).as_expression.force_get()
-        if all(
-            o1.is_same(o2, allow_different_graph=True)
-            for o1, o2 in zip(original_operands, operands)
-        ):
+        )
+
+        if copy_only:
             mutator.transformations.copied.add(e_po)
 
-        aliases = e_op.get_operations(F.Expressions.Is, predicates_only=True)
+    # TODO careful with predicates
+    # build alias classes in new graph
+    for class_ in alias_classes:
+        class_exprs = {e for c in class_ if (e := c.as_expression.try_get())}
 
-        # no aliases for predicates
-        if e.try_get_sibling_trait(F.Expressions.is_predicate):
-            if S_LOG:
-                logger.debug(f"No aliases for predicate {e.compact_repr()}")
-            for a in aliases:
-                mutator.remove(a.is_parameter_operatable.get(), no_check_roots=True)
-            expr_reprs[e] = mutator.make_singleton(True).can_be_operand.get()
+        # if any expr is predicate, dont create alias, and mark others all predicates
+        if any(
+            e.try_get_sibling_trait(F.Expressions.is_predicate) for e in class_exprs
+        ):
+            for e in class_exprs:
+                if not e.try_get_sibling_trait(F.Expressions.is_predicate):
+                    fabll.Traits.create_and_add_instance_to(
+                        fabll.Traits(e).get_obj_raw(), F.Expressions.is_predicate
+                    )
             continue
 
-        alias_params = {
-            p
-            for alias in aliases
-            for p in alias.is_expression.get().get_operands_with_trait(
-                F.Parameters.is_parameter
-            )
-        }
+        class_param_op = class_reprs[class_]
 
-        representative_op = _create_alias_parameter_for_expression(
-            mutator, e, e_copy, existing_params=alias_params
-        ).as_operand.get()
+        if not class_exprs:
+            # no point in creating alias for just the parameter
+            # all the othe param alias get dropped
+            continue
 
-        expr_reprs[e] = representative_op
-        # alias is added by mutate_expression / invariant
-
-        alias = one(
-            e_copy.as_operand.get().get_operations(
-                F.Expressions.Is, predicates_only=True
+        # build big alias with all exprs and the representative
+        alias = mutator._create_and_insert_expression(
+            ExpressionBuilder(
+                F.Expressions.Is,
+                [
+                    mutator.get_mutated(
+                        e.as_parameter_operatable.get()
+                    ).as_operand.get()
+                    for e in class_exprs
+                ]
+                + [class_param_op],
+                assert_=True,
+                terminate=True,
+                traits=[],
             )
         )
-        for a in aliases:
-            mutator.transformations.mutated[a.is_parameter_operatable.get()] = (
-                alias.is_parameter_operatable.get()
-            )
+        alias_po = alias.is_parameter_operatable.get()
+
+        # mutate old aliases
+        for c in class_:
+            for is_ in c.get_operations(F.Expressions.Is, predicates_only=True):
+                mutator._mutate(
+                    is_.is_parameter_operatable.get(),
+                    alias_po,
+                )

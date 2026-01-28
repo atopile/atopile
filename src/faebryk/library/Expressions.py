@@ -803,13 +803,18 @@ class is_expression(fabll.Node):
 
     def create_representative(
         self,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         alias: bool = True,
     ) -> F.Parameters.is_parameter:
         """
         Warning: Strips unit!
         """
-        g = self.g
-        tg = self.tg
+        if alias:
+            assert g is None and tg is None
+
+        g = g or self.g
+        tg = tg or self.tg
         p_type = self.get_parameter_type()
         p_instance = p_type.bind_typegraph(tg=tg).create_instance(g=g)
         if isinstance(p_instance, F.Parameters.NumericParameter):
