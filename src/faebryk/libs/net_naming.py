@@ -675,7 +675,7 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
     5. "net" - default fallback
 
     Conflict resolution:
-    - Hierarchical prefixing: nets get prefixed with parent interface name
+    - Hierarchical prefixing: nets get prefixed with parent module/interface name
     - Numeric suffixing: last resort when prefixing is insufficient
 
     Affixes:
