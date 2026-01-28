@@ -72,6 +72,7 @@ def _sort_nets(
 ) -> list[ProcessableNet]:
     """
     Sort the nets based on the number of connected electricals (lowest number first).
+    This way we can process nets with the least name options first.
 
     Electricals within each net are sorted by name length (shortest first) so that
     the first electrical (used for base name derivation) has the shortest/simplest name.
@@ -108,12 +109,12 @@ def collect_unnamed_nets(
     return _sort_nets(unnamed_nets)
 
 
-def process_required_names(
+def process_required_and_suggested_names(
     processable_nets: list[ProcessableNet],
 ) -> None:
     """
     Check if a has_net_name trait is present or if
-    has_net_name_suggestion.Level.EXPECTED is used.
+    has_net_name_suggestion.Level.EXPECTED is used on any of the connected electricals.
 
     Name priority levels:
     - has_net_name trait: Highest priority, name is required and used as-is
@@ -121,7 +122,7 @@ def process_required_names(
     - has_net_name_suggestion.Level.SUGGESTED: Optional, joined with "-" separator
     """
 
-    def _get_hierarchical_names(
+    def _get_required_and_suggested_names(
         electricals: list[F.Electrical],
     ) -> tuple[list[str], list[str]]:
         """
@@ -156,15 +157,24 @@ def process_required_names(
 
             longest_hierarchy = max(hierarchies, key=len)
 
-            names: list[tuple[fabll.Node, str]] = []
+            # TODO: get all names from all hierarchies and collect all expected
+            # If any hierarchies which are not the longest give a suggestion,
+            # log a debug message about a skipped hierarchy
+            # Only respect the longest hierarchy's suggestions
+            # raise exception upon matching expected names (already done)
+
+            interfaces_with_name: list[tuple[fabll.Node, str]] = []
             for node, _ in longest_hierarchy:
                 if node.has_trait(fabll.is_interface):
-                    names.append((node, node.get_name(accept_no_parent=True)))
-            return names
+                    interfaces_with_name.append(
+                        (node, node.get_name(accept_no_parent=True))
+                    )
+            return interfaces_with_name
 
         interface_nodes = _get_all_connected_interfaces(electricals)
         for node, _ in interface_nodes:
             if name_trait := node.try_get_trait(F.has_net_name):
+                # TODO: this might never trigger, only the unnamed nets are processed
                 required_names.append(name_trait.get_name())
             elif suggestion_trait := node.try_get_trait(F.has_net_name_suggestion):
                 if suggestion_trait.level == F.has_net_name_suggestion.Level.EXPECTED:
@@ -180,9 +190,10 @@ def process_required_names(
 
     for processable_net in processable_nets:
         if not processable_net.electricals:
+            # TODO: shouldn't this raise an error?
             continue
 
-        required_names, suggested_names = _get_hierarchical_names(
+        required_names, suggested_names = _get_required_and_suggested_names(
             [e.electrical for e in processable_net.electricals]
         )
 
@@ -194,13 +205,10 @@ def process_required_names(
                     "Multiple required names found for net: "
                     f"{processable_net.net.get_name()}"
                 )
-            else:
-                required_name = required_names[0]
-                processable_net.net_name.base_name = required_name
-                # Track for cross-net duplicate detection
-                required_name_to_nets.setdefault(required_name, []).append(
-                    processable_net
-                )
+            required_name = required_names[0]
+            processable_net.net_name.base_name = required_name
+            # Track for cross-net duplicate detection
+            required_name_to_nets.setdefault(required_name, []).append(processable_net)
         elif suggested_names:
             # hierarchically add the suggested name
             base_name = "-".join(suggested_names)
@@ -535,9 +543,7 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
     unnamed_count = len(processable_nets)
     already_named = total_nets - unnamed_count
 
-    logger.debug(f"Found {unnamed_count} unnamed nets ({already_named} already named)")
-
-    process_required_names(processable_nets)
+    process_required_and_suggested_names(processable_nets)
     add_base_name(processable_nets)
     add_affixes(processable_nets)
     conflicts_resolved = resolve_name_conflicts(processable_nets)
@@ -549,15 +555,15 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
 
     # Log summary table
     summary = f"""
-| Metric               | Count |
-|----------------------|-------|
-| Total nets           | {total_nets:5} |
-| Already named        | {already_named:5} |
-| Newly named          | {unnamed_count:5} |
-| Conflicts resolved   | {conflicts_resolved:5} |
-| With required prefix | {with_prefix:5} |
-| With required suffix | {with_suffix:5} |
-"""
+    | Metric               | Count |
+    |----------------------|-------|
+    | Total nets           | {total_nets:5} |
+    | Already named        | {already_named:5} |
+    | Newly named          | {unnamed_count:5} |
+    | Conflicts resolved   | {conflicts_resolved:5} |
+    | With required prefix | {with_prefix:5} |
+    | With required suffix | {with_suffix:5} |
+    """
     logger.debug(summary, extra={"markdown": True})
 
 
