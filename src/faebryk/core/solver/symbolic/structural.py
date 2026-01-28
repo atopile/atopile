@@ -8,6 +8,9 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
+from faebryk.core.solver.symbolic.pure_literal import (
+    exec_pure_literal_operands,
+)
 from faebryk.core.solver.utils import MutatorUtils
 from faebryk.libs.util import OrderedSet
 
@@ -219,16 +222,31 @@ def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
         expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
         from_ops = [expr_po]
 
-        # Make new expr with subset literals
-        res = mutator.create_check_and_insert_expression(
-            mutator.utils.hack_get_expr_type(expr_e),
-            *mapped_operands,
-            from_ops=from_ops,
-            allow_uncorrelated_congruence_match=True,
-        )
-        if res.out is None:
+        # fold pure literal expressions
+        # Theoretically this is a shortcut, since invariants should deal with this.
+        # But either that's generally not possible without the context or I'm too stupid
+        # to implement it. So we rely on this shortcut for now.
+        if all(mutator.utils.is_literal(op) for op in mapped_operands):
+            out = exec_pure_literal_operands(
+                mutator.G_transient,
+                mutator.tg_in,
+                mutator.utils.hack_get_expr_type(expr_e),
+                mapped_operands,
+            )
+        else:
+            # Make new expr with subset literals
+            res = mutator.create_check_and_insert_expression(
+                mutator.utils.hack_get_expr_type(expr_e),
+                *mapped_operands,
+                from_ops=from_ops,
+                allow_uncorrelated_congruence_match=True,
+            )
+            out = res.out
+
+        if out is None:
             continue
-        expr_superset = res.out.as_operand.get()
+
+        expr_superset = out.as_operand.get()
 
         # Subset old expr to subset estimated one
         mutator.create_check_and_insert_expression(
@@ -330,16 +348,30 @@ def lower_estimation_of_expressions_with_subsets(mutator: Mutator):
         expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
         from_ops = [expr_po]
 
-        # Step 5: Make new expr with subset literals
-        res = mutator.create_check_and_insert_expression(
-            mutator.utils.hack_get_expr_type(expr_e),
-            *mapped_operands,
-            from_ops=from_ops,
-            allow_uncorrelated_congruence_match=True,
-        )
-        if res.out is None:
+        # fold pure literal expressions
+        # Theoretically this is a shortcut, since invariants should deal with this.
+        # But either that's generally not possible without the context or I'm too stupid
+        # to implement it. So we rely on this shortcut for now.
+        if all(mutator.utils.is_literal(op) for op in mapped_operands):
+            out = exec_pure_literal_operands(
+                mutator.G_transient,
+                mutator.tg_in,
+                mutator.utils.hack_get_expr_type(expr_e),
+                mapped_operands,
+            )
+        else:
+            # Step 5: Make new expr with subset literals
+            res = mutator.create_check_and_insert_expression(
+                mutator.utils.hack_get_expr_type(expr_e),
+                *mapped_operands,
+                from_ops=from_ops,
+                allow_uncorrelated_congruence_match=True,
+            )
+            out = res.out
+        if out is None:
             continue
-        expr_subset = res.out.as_operand.get()
+
+        expr_subset = out.as_operand.get()
 
         # Step 6: Superset old expr to subset estimated one
         # new_expr ⊆ original_expr (inverse of upper estimation)
