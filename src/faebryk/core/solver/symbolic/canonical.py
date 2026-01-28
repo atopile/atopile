@@ -596,6 +596,7 @@ def flatten_expressions(mutator: Mutator):
             and not e.get_operand_literals()
         ):
             continue
+        # TODO: consider shortcut for pure literal expressions
         # parents = e_op.get_operations() - aliases
         original_operands = e.get_operands()
         operands = [_map_operand(mutator, o) for o in original_operands]
