@@ -203,7 +203,7 @@ def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
     exprs = {
         e
         for op in supersetted_ops.keys()
-        for e in op.get_operations()
+        for e in mutator.get_operations(op.as_parameter_operatable.force_get())
         # setic expressions can't get subset estimated
         if not e.has_trait(F.Expressions.is_setic)
     }
@@ -315,7 +315,7 @@ def lower_estimation_of_expressions_with_subsets(mutator: Mutator):
     exprs = {
         e
         for op in subsetted_ops.keys()
-        for e in op.get_operations()
+        for e in mutator.get_operations(op.as_parameter_operatable.force_get())
         # setic expressions can't get subset estimated
         if not e.has_trait(F.Expressions.is_setic)
     }
