@@ -329,8 +329,18 @@ def create_project(
     parent_directory: Path, name: Optional[str] = None
 ) -> tuple[Path, str]:
     """
-    Create a new minimal atopile project.
+    Create a new atopile project using the standard cookiecutter template.
+
+    This ensures consistency with CLI-created projects and provides:
+    - Proper version handling with clean_version()
+    - Comprehensive .gitignore
+    - GitHub CI/CD workflows
+    - LICENSE file
     """
+    import sys
+
+    from cookiecutter.main import cookiecutter
+
     from atopile import version
 
     if not parent_directory.exists():
@@ -338,63 +348,51 @@ def create_project(
     if not parent_directory.is_dir():
         raise ValueError(f"Path is not a directory: {parent_directory}")
 
+    # Generate unique project name if not provided
     if name:
         project_name = name
     else:
-        base_name = "new-project"
+        base_name = "new_project"
         project_name = base_name
         counter = 2
         while (parent_directory / project_name).exists():
-            project_name = f"{base_name}-{counter}"
+            project_name = f"{base_name}_{counter}"
             counter += 1
 
-    project_dir = parent_directory / project_name
-    if project_dir.exists():
-        raise ValueError(f"Directory already exists: {project_dir}")
+    # Check if directory would already exist
+    project_slug = project_name.lower().replace(" ", "_").replace("-", "_")
+    if (parent_directory / project_slug).exists():
+        raise ValueError(f"Directory already exists: {parent_directory / project_slug}")
 
-    project_dir.mkdir(parents=True)
-    (project_dir / "layouts").mkdir()
-
+    # Get clean version
     try:
-        ato_version = version.get_installed_atopile_version()
+        ato_version = str(
+            version.clean_version(version.get_installed_atopile_version())
+        )
     except Exception:
-        ato_version = "^0.9.0"
+        ato_version = "0.9.0"
 
-    ato_yaml_content = f'''requires-atopile: "{ato_version}"
+    # Use the standard project template
+    template_dir = Path(__file__).parent.parent.parent / "templates/project-template"
 
-paths:
-  src: ./
-  layout: ./layouts
+    project_path = Path(
+        cookiecutter(
+            str(template_dir),
+            output_dir=str(parent_directory),
+            no_input=True,
+            extra_context={
+                "project_name": project_name,
+                "author_name": "Author",
+                "author_email": "author@example.com",
+                "license": "MIT license",
+                "description": "A new atopile project",
+                "__ato_version": ato_version,
+                "__python_path": sys.executable,
+            },
+        )
+    )
 
-builds:
-  default:
-    entry: main.ato:App
-'''
-    (project_dir / "ato.yaml").write_text(ato_yaml_content)
-
-    main_ato_content = f'''"""{project_name} - A new atopile project"""
-
-module App:
-    pass
-'''
-    (project_dir / "main.ato").write_text(main_ato_content)
-
-    gitignore_content = """# Build outputs
-build/
-
-# Dependencies
-.ato/
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-"""
-    (project_dir / ".gitignore").write_text(gitignore_content)
-
-    return project_dir, project_name
+    return project_path, project_path.name
 
 
 def _load_ato_yaml(project_root: Path) -> tuple[dict, Path]:
