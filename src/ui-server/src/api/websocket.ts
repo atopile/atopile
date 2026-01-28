@@ -9,7 +9,7 @@ import { useStore } from '../store';
 import type { AppState, Build, BuildStatus } from '../types/build';
 import { api } from './client';
 import { WS_STATE_URL, getWorkspaceFolders } from './config';
-import { postMessage } from './vscodeApi';
+import { postMessage, onExtensionMessage, type ExtensionToWebviewMessage } from './vscodeApi';
 
 // Reconnection settings
 const RECONNECT_DELAY_MS = 1000;
@@ -806,3 +806,15 @@ export default {
   sendAction,
   isConnected,
 };
+
+// Listen for workspace folder changes from VS Code extension
+// and update the backend so it can discover projects in new folders
+onExtensionMessage((message: ExtensionToWebviewMessage) => {
+  if (message.type === 'workspaceFoldersChanged') {
+    const folders = message.folders;
+    if (folders && folders.length > 0) {
+      console.log('[WS] Workspace folders changed, updating backend:', folders);
+      sendAction('setWorkspaceFolders', { folders });
+    }
+  }
+});

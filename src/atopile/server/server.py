@@ -493,10 +493,14 @@ class DashboardServer:
         self,
         port: Optional[int] = None,
         workspace_paths: Optional[list[Path]] = None,
+        logs_base: Optional[Path] = None,
     ):
         self.port = port or find_free_port()
         self.workspace_paths = workspace_paths or []
-        self.app = create_app(logs_base=logs_base, workspace_paths=self.workspace_paths)
+        self.logs_base = logs_base
+        self.app = create_app(
+            logs_base=self.logs_base, workspace_paths=self.workspace_paths
+        )
         self._server: Optional[uvicorn.Server] = None
         self._thread: Optional[threading.Thread] = None
 

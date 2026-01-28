@@ -53,11 +53,35 @@ interface SelectionChangedMessage {
   targetNames: string[];
 }
 
+interface BrowseAtopilePathMessage {
+  type: 'browseAtopilePath';
+}
+
+interface BrowseFolderMessage {
+  type: 'browseFolder';
+  purpose: string;
+  defaultPath?: string;
+}
+
+interface AddWorkspaceFolderMessage {
+  type: 'addWorkspaceFolder';
+  folderPath: string;
+}
+
+interface SelectProjectMessage {
+  type: 'selectProject';
+  projectRoot: string;
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
   | AtopileSettingsMessage
-  | SelectionChangedMessage;
+  | SelectionChangedMessage
+  | BrowseAtopilePathMessage
+  | BrowseFolderMessage
+  | AddWorkspaceFolderMessage
+  | SelectProjectMessage;
 
 /**
  * Check if we're running in development mode.
@@ -232,6 +256,28 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         undefined
       )
     );
+
+    // Listen for workspace folder changes and notify webview
+    this._disposables.push(
+      vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        this._postWorkspaceFolders();
+      })
+    );
+  }
+
+  /**
+   * Post the current workspace folders to the webview.
+   * This is called when workspace folders change so the webview can update the backend.
+   */
+  private _postWorkspaceFolders(): void {
+    if (!this._view) return;
+    const folders = vscode.workspace.workspaceFolders || [];
+    const folderPaths = folders.map(f => f.uri.fsPath);
+    traceInfo(`[SidebarProvider] Posting workspace folders: ${folderPaths.join(', ')}`);
+    this._view.webview.postMessage({
+      type: 'workspaceFoldersChanged',
+      folders: folderPaths,
+    });
   }
 
   /**
@@ -294,6 +340,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         break;
       case 'selectionChanged':
         void this._handleSelectionChanged(message);
+        break;
+      case 'browseAtopilePath':
+        this._handleBrowseAtopilePath().catch((error) => {
+          traceError(`[SidebarProvider] Error browsing atopile path: ${error}`);
+        });
+        break;
+      case 'browseFolder':
+        this._handleBrowseFolder(message.purpose, message.defaultPath).catch((error) => {
+          traceError(`[SidebarProvider] Error browsing folder: ${error}`);
+        });
+        break;
+      case 'addWorkspaceFolder':
+        this._handleAddWorkspaceFolder(message.folderPath);
+        break;
+      case 'selectProject':
+        this._handleSelectProject(message.projectRoot);
         break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
@@ -446,6 +508,95 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         vscode.window.showErrorMessage(`Failed to open: ${err.message}`);
       }
     );
+  }
+
+  /**
+   * Handle request to browse for a local atopile path.
+   * Shows a native folder picker dialog and sends the selected path back to the webview.
+   */
+  private async _handleBrowseAtopilePath(): Promise<void> {
+    traceInfo('[SidebarProvider] Browsing for local atopile path');
+
+    const result = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: true,
+      canSelectMany: false,
+      openLabel: 'Select atopile installation',
+      title: 'Select atopile installation directory or binary',
+    });
+
+    const selectedPath = result?.[0]?.fsPath ?? null;
+    traceInfo(`[SidebarProvider] Browse atopile path result: ${selectedPath}`);
+
+    // Send the result back to the webview
+    this._view?.webview.postMessage({
+      type: 'browseAtopilePathResult',
+      path: selectedPath,
+    });
+  }
+
+  /**
+   * Handle request to browse for a folder.
+   * Shows a native folder picker dialog and sends the selected path back to the webview.
+   */
+  private async _handleBrowseFolder(purpose: string, defaultPath?: string): Promise<void> {
+    traceInfo(`[SidebarProvider] Browsing for folder (purpose: ${purpose})`);
+
+    const defaultUri = defaultPath ? vscode.Uri.file(defaultPath) : undefined;
+
+    const result = await vscode.window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+      defaultUri,
+      openLabel: 'Select Folder',
+      title: 'Select folder for new project',
+    });
+
+    const selectedPath = result?.[0]?.fsPath ?? null;
+    traceInfo(`[SidebarProvider] Browse folder result: ${selectedPath}`);
+
+    // Send the result back to the webview
+    this._view?.webview.postMessage({
+      type: 'browseFolderResult',
+      purpose,
+      path: selectedPath,
+    });
+  }
+
+  /**
+   * Handle request to add a folder to the workspace.
+   */
+  private _handleAddWorkspaceFolder(folderPath: string): void {
+    traceInfo(`[SidebarProvider] Adding workspace folder: ${folderPath}`);
+
+    const folderUri = vscode.Uri.file(folderPath);
+    const existingFolders = vscode.workspace.workspaceFolders || [];
+
+    // Check if folder is already in workspace
+    const alreadyExists = existingFolders.some(
+      (f) => f.uri.fsPath === folderUri.fsPath
+    );
+
+    if (!alreadyExists) {
+      // Add the folder to the workspace
+      vscode.workspace.updateWorkspaceFolders(
+        existingFolders.length, // Insert at the end
+        0, // Don't remove any folders
+        { uri: folderUri }
+      );
+      traceInfo(`[SidebarProvider] Added folder to workspace: ${folderPath}`);
+    } else {
+      traceInfo(`[SidebarProvider] Folder already in workspace: ${folderPath}`);
+    }
+  }
+
+  /**
+   * Handle request to select a project (sets it as active in VS Code state).
+   */
+  private _handleSelectProject(projectRoot: string): void {
+    traceInfo(`[SidebarProvider] Selecting project: ${projectRoot}`);
+    setProjectRoot(projectRoot);
   }
 
   /**

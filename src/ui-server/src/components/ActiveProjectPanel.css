@@ -1028,6 +1028,41 @@
   min-height: 40px;
 }
 
+.form-field-with-browse {
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.form-field-with-browse input {
+  flex: 1;
+  min-width: 0;
+}
+
+.browse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.browse-btn:hover:not(:disabled) {
+  background: var(--bg-quaternary);
+  color: var(--text-primary);
+  border-color: var(--ctp-blue);
+}
+
+.browse-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .form-hint {
   font-size: var(--font-size-xxs);
   color: var(--text-muted);

@@ -23,6 +23,7 @@ class ModelState:
     """
 
     def __init__(self) -> None:
+        self._workspace_path: Optional[Path] = None
         self._workspace_paths: list[Path] = []
         self._active_builds: list[Build] = []
         self._build_lock = threading.RLock()  # RLock allows reentrant locking

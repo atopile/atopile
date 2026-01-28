@@ -82,11 +82,35 @@ export interface SelectionChangedMessage {
   targetNames: string[];
 }
 
+export interface BrowseAtopilePathMessage {
+  type: 'browseAtopilePath';
+}
+
+export interface BrowseFolderMessage {
+  type: 'browseFolder';
+  purpose: string;  // Identifies what the folder is for (e.g., 'projectLocation')
+  defaultPath?: string;
+}
+
+export interface AddWorkspaceFolderMessage {
+  type: 'addWorkspaceFolder';
+  folderPath: string;
+}
+
+export interface SelectProjectMessage {
+  type: 'selectProject';
+  projectRoot: string;
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
   | AtopileSettingsMessage
-  | SelectionChangedMessage;
+  | SelectionChangedMessage
+  | BrowseAtopilePathMessage
+  | BrowseFolderMessage
+  | AddWorkspaceFolderMessage
+  | SelectProjectMessage;
 
 /**
  * Type-safe helper to post messages to the extension.
@@ -114,10 +138,29 @@ export interface ActiveFileMessage {
   filePath: string | null;
 }
 
+export interface BrowseAtopilePathResultMessage {
+  type: 'browseAtopilePathResult';
+  path: string | null;
+}
+
+export interface BrowseFolderResultMessage {
+  type: 'browseFolderResult';
+  purpose: string;
+  path: string | null;
+}
+
+export interface WorkspaceFoldersChangedMessage {
+  type: 'workspaceFoldersChanged';
+  folders: string[];
+}
+
 export type ExtensionToWebviewMessage =
   | TriggerBuildMessage
   | SetAtopileInstallingMessage
-  | ActiveFileMessage;
+  | ActiveFileMessage
+  | BrowseAtopilePathResultMessage
+  | BrowseFolderResultMessage
+  | WorkspaceFoldersChangedMessage;
 
 // Callback type for extension message handlers
 type ExtensionMessageHandler = (message: ExtensionToWebviewMessage) => void;
@@ -149,7 +192,10 @@ export function initExtensionMessageListener(): void {
     if (
       message.type === 'triggerBuild' ||
       message.type === 'setAtopileInstalling' ||
-      message.type === 'activeFile'
+      message.type === 'activeFile' ||
+      message.type === 'browseAtopilePathResult' ||
+      message.type === 'browseFolderResult' ||
+      message.type === 'workspaceFoldersChanged'
     ) {
       for (const handler of extensionMessageHandlers) {
         handler(message as ExtensionToWebviewMessage);
