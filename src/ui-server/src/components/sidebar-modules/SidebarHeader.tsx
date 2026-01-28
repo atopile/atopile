@@ -422,7 +422,7 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
                     <>
                       <AlertCircle size={14} />
                       <span className="health-message">
-                        Restart extension host to start local atopile
+                        Restart extension host to use specified atopile
                       </span>
                     </>
                   )}
