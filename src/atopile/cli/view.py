@@ -173,8 +173,6 @@ def _serve_visualizer(app, port: int):
 
             # Serve until interrupted
             httpd.serve_forever()
-    except KeyboardInterrupt:
-        log.info("\nShutting down server...")
     finally:
         # Clean up temp directory
         import shutil
