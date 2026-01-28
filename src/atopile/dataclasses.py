@@ -464,14 +464,11 @@ class Build(CamelModel):
     target: Optional[str] = None
     entry: Optional[str] = None
     started_at: Optional[float] = None
-    completed_at: Optional[float] = None
-    duration: Optional[float] = None
 
     # Active build fields
     timestamp: Optional[str] = None
     standalone: bool = False
     frozen: bool | None = False
-    building_started_at: Optional[float] = None
 
     # Stages and logs
     stages: list[dict[str, Any]] = Field(default_factory=list)

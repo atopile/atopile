@@ -174,8 +174,8 @@ def _run_build_subprocess(
 
         # Poll for completion while monitoring the DB for stage updates
         last_stages: list[dict[str, Any]] = []
-        poll_interval = 0.5
-
+        poll_interval = 0.25
+        last_emit = 0.0
         while process.poll() is None:
             if cancel_flags.get(build.build_id, False):
                 process.terminate()
@@ -189,7 +189,8 @@ def _run_build_subprocess(
             build_info = BuildHistory.get(build.build_id)
             current_stages = build_info.stages if build_info else []
 
-            if current_stages != last_stages:
+            now = time.time()
+            if current_stages != last_stages or (now - last_emit) >= poll_interval:
                 log.debug(
                     "Build %s: stage update - %d stages",
                     build.build_id,
@@ -202,6 +203,7 @@ def _run_build_subprocess(
                     )
                 )
                 last_stages = current_stages
+                last_emit = now
 
             time.sleep(poll_interval)
 
@@ -584,7 +586,6 @@ class BuildQueue:
                     build = self._builds.get(msg.build_id)
                     if build:
                         build.status = BuildStatus.BUILDING
-                        build.building_started_at = time.time()
                 self._emit_change(msg.build_id, "started")
 
             elif isinstance(msg, BuildStageMsg):
@@ -613,8 +614,6 @@ class BuildQueue:
 
     def _handle_completed(self, msg: BuildCompletedMsg) -> None:
         """Handle a build-completed message."""
-        completed_at = time.time()
-
         warnings = sum(
             1 for s in msg.stages if s.get("status") == StageStatus.WARNING.value
         )
@@ -623,26 +622,24 @@ class BuildQueue:
         )
         status = BuildStatus.from_return_code(msg.return_code, warnings)
 
-        started_at = completed_at
-        duration = 0.0
+        started_at: float | None = None
+        elapsed_seconds: float | None = None
 
         build: Build | None
         with self._builds_lock:
             build = self._builds.get(msg.build_id)
             if build:
-                started_at = (
-                    build.building_started_at or build.started_at or completed_at
-                )
-                duration = completed_at - started_at
-
                 build.status = status
                 build.return_code = msg.return_code
                 build.error = msg.error
                 build.stages = msg.stages
-                build.duration = duration
                 build.warnings = warnings
                 build.errors = errors
-                build.completed_at = completed_at
+
+        existing = BuildHistory.get(msg.build_id)
+        if existing:
+            started_at = existing.started_at
+            elapsed_seconds = existing.elapsed_seconds
 
         with self._active_lock:
             self._active.discard(msg.build_id)
@@ -660,11 +657,10 @@ class BuildQueue:
                     return_code=msg.return_code,
                     error=msg.error,
                     started_at=started_at,
-                    duration=duration,
+                    elapsed_seconds=elapsed_seconds,
                     stages=msg.stages,
                     warnings=warnings,
                     errors=errors,
-                    completed_at=completed_at,
                 )
             )
 
@@ -860,11 +856,9 @@ class BuildQueue:
                 started_at = build.started_at
 
                 if status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
-                    duration = build.duration or 0.0
-                    completed_at = (
-                        (build.building_started_at or started_at or 0.0) + duration
-                    )
-                    if completed_at and (now - completed_at) > cleanup_delay:
+                    elapsed_seconds = build.elapsed_seconds or 0.0
+                    completed_at = (started_at or 0.0) + elapsed_seconds
+                    if started_at and elapsed_seconds and (now - completed_at) > cleanup_delay:
                         to_remove.append(build.build_id)
                 else:
                     if started_at and (now - started_at) > stale_threshold:

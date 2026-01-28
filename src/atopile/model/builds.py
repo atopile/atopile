@@ -30,18 +30,6 @@ from atopile.model.sqlite import BuildHistory
 log = logging.getLogger(__name__)
 
 
-def _compute_active_elapsed(build: Build) -> float:
-    """Compute elapsed seconds for an active build at the current moment."""
-    if build.status in (
-        BuildStatus.BUILDING,
-        BuildStatus.SUCCESS,
-        BuildStatus.FAILED,
-        BuildStatus.CANCELLED,
-    ):
-        start_time = build.building_started_at or build.started_at or time.time()
-    else:
-        start_time = build.started_at or time.time()
-    return time.time() - start_time
 
 
 def _fix_interrupted_build(build: Build) -> Build:
@@ -65,11 +53,12 @@ def handle_get_summary(_ctx: AppContext) -> dict:
     # First, add all active builds (in-memory) with computed elapsed
     for build in _build_queue.get_all_builds():
         active_build_ids.add(build.build_id)
-        elapsed = _compute_active_elapsed(build)
+        history = BuildHistory.get(build.build_id) if build.build_id else None
+        elapsed = history.elapsed_seconds if history else None
         all_builds.append(
             build.model_copy(
                 update={
-                    "elapsed_seconds": elapsed,
+                    "elapsed_seconds": elapsed or 0.0,
                 }
             )
         )
@@ -250,11 +239,8 @@ def handle_get_active_builds() -> dict:
         if status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
             continue
 
-        if status == BuildStatus.BUILDING:
-            start_time = build.building_started_at or build.started_at or time.time()
-        else:
-            start_time = build.started_at or time.time()
-        elapsed = time.time() - start_time
+        history = BuildHistory.get(build.build_id) if build.build_id else None
+        elapsed = history.elapsed_seconds if history else None
 
         target = build.target or "default"
 
@@ -265,9 +251,9 @@ def handle_get_active_builds() -> dict:
                 "project_root": build.project_root,
                 "target": target,
                 "entry": build.entry,
-                "started_at": build.building_started_at or build.started_at,
-                "elapsed_seconds": elapsed,
-                "stages": build.stages,
+                "started_at": history.started_at if history else None,
+                "elapsed_seconds": elapsed or 0.0,
+                "stages": history.stages if history else build.stages,
                 "queue_position": None,
                 "warnings": build.warnings,
                 "errors": build.errors,
@@ -353,18 +339,8 @@ def handle_get_build_info(build_id: str) -> dict | None:
     # First check active builds (in-memory)
     build = _build_queue.find_build(build_id)
     if build:
-        updates: dict = {"elapsed_seconds": _compute_active_elapsed(build)}
-        finished_statuses = (
-            BuildStatus.SUCCESS,
-            BuildStatus.FAILED,
-            BuildStatus.CANCELLED,
-        )
-        if build.status in finished_statuses:
-            start = build.building_started_at or build.started_at
-            if start and build.duration:
-                updates["completed_at"] = start + build.duration
-            updates["duration"] = build.duration
-
+        elapsed = _get_db_elapsed(build_id)
+        updates: dict = {"elapsed_seconds": elapsed or 0.0}
         return build.model_copy(update=updates).model_dump(by_alias=True)
 
     # Fall back to build history database

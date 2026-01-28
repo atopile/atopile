@@ -89,31 +89,28 @@ export interface BuildTargetBuildTargetStatus {
  * A build (active, queued, or completed).
  */
 export interface Build {
-    buildId?:           null | string;
-    buildingStartedAt?: number | null;
-    completedAt?:       number | null;
-    displayName:        string;
-    duration?:          number | null;
-    elapsedSeconds?:    number;
-    entry?:             null | string;
-    error?:             null | string;
-    errors?:            number;
-    frozen?:            boolean | null;
-    logDir?:            null | string;
-    logFile?:           null | string;
-    name:               string;
-    projectName?:       null | string;
-    projectRoot?:       null | string;
-    queuePosition?:     number | null;
-    returnCode?:        number | null;
-    stages?:            { [key: string]: any }[];
-    standalone?:        boolean;
-    startedAt?:         number | null;
-    status?:            BuildStatus;
-    target?:            null | string;
-    timestamp?:         null | string;
-    totalStages?:       number;
-    warnings?:          number;
+    buildId?:        null | string;
+    displayName:     string;
+    elapsedSeconds?: number;
+    entry?:          null | string;
+    error?:          null | string;
+    errors?:         number;
+    frozen?:         boolean | null;
+    logDir?:         null | string;
+    logFile?:        null | string;
+    name:            string;
+    projectName?:    null | string;
+    projectRoot?:    null | string;
+    queuePosition?:  number | null;
+    returnCode?:     number | null;
+    stages?:         { [key: string]: any }[];
+    standalone?:     boolean;
+    startedAt?:      number | null;
+    status?:         BuildStatus;
+    target?:         null | string;
+    timestamp?:      null | string;
+    totalStages?:    number;
+    warnings?:       number;
     [property: string]: any;
 }
 

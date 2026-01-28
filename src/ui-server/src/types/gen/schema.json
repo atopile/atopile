@@ -415,30 +415,6 @@
         "default": null,
         "title": "Startedat"
       },
-      "completedAt": {
-        "anyOf": [
-          {
-            "type": "number"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Completedat"
-      },
-      "duration": {
-        "anyOf": [
-          {
-            "type": "number"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Duration"
-      },
       "timestamp": {
         "anyOf": [
           {
@@ -467,18 +443,6 @@
         ],
         "default": false,
         "title": "Frozen"
-      },
-      "buildingStartedAt": {
-        "anyOf": [
-          {
-            "type": "number"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Buildingstartedat"
       },
       "stages": {
         "items": {
