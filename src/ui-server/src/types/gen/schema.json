@@ -145,7 +145,7 @@
           }
         ],
         "default": null,
-        "title": "Display Path"
+        "title": "Displaypath"
       }
     },
     "required": [
