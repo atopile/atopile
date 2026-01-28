@@ -485,14 +485,12 @@ class BackendServerManager implements vscode.Disposable {
                 message: `Starting backend server (${atoBin.source})...`,
             });
 
-            // Determine UI source type from settings and atoBin source
-            // 'local' if using local installation (settings.ato or workspace-venv),
-            // 'branch' if from starts with 'git+', else 'release'
+            // Determine UI source type from settings
+            // 'local' ONLY if atopile.ato is explicitly set in settings
+            // The toggle should be OFF by default even if using workspace-venv as fallback
             let uiSourceType = 'release';
-            if (settings.ato || atoBin.source === 'workspace-venv' || atoBin.source === 'settings') {
+            if (settings.ato) {
                 uiSourceType = 'local';
-            } else if (settings.from?.startsWith('git+')) {
-                uiSourceType = 'branch';
             }
 
             // Get the actual binary path (first element of the command)
