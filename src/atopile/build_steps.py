@@ -106,76 +106,45 @@ class MusterTarget:
     success: bool | None = None
 
     def __call__(self, ctx: BuildStepContext) -> None:
-        if not self.virtual:
-            import time
+        if self.virtual:
+            self.success = True
+            return
 
-            from atopile.dataclasses import Build, BuildStage, BuildStatus
-            from atopile.model.sqlite import BuildHistory
+        import time
 
-            try:
-                # Set up logging for this build stage
-                ctx.stage = self.name
-                ctx._stage_start_time = time.time()
-                from atopile.logging import BuildLogger
+        from atopile.dataclasses import Build, BuildStage, BuildStatus
+        from atopile.logging import BuildLogger
+        from atopile.model.sqlite import BuildHistory
 
-                BuildLogger.update_stage(self.name)
+        ctx.stage = self.name
+        BuildLogger.update_stage(self.name)
 
-                self.func(ctx)
-            except Exception:
-                self.success = False
-                # Record failed stage
-                elapsed = time.time() - ctx._stage_start_time
-                ctx.completed_stages.append(
-                    BuildStage(
-                        name=self.description or self.name,
-                        stage_id=self.name,
-                        elapsed_seconds=round(elapsed, 2),
-                        status="failed",
-                    )
-                )
-                if ctx.build_id:
-                    BuildHistory.set(
-                        Build(
-                            build_id=ctx.build_id,
-                            name=config.build.name,
-                            display_name=config.build.name,
-                            project_root=str(config.project.paths.root),
-                            target=config.build.name,
-                            status=BuildStatus.BUILDING,
-                            stages=[
-                                s.model_dump(by_alias=True)
-                                for s in ctx.completed_stages
-                            ],
-                        )
-                    )
-                raise
-
-            # Record successful stage
-            elapsed = time.time() - ctx._stage_start_time
+        start = time.time()
+        succeeded = False
+        try:
+            self.func(ctx)
+            succeeded = True
+        finally:
+            elapsed = round(time.time() - start, 2)
             ctx.completed_stages.append(
                 BuildStage(
                     name=self.description or self.name,
                     stage_id=self.name,
-                    elapsed_seconds=round(elapsed, 2),
-                    status="success",
+                    elapsed_seconds=elapsed,
+                    status="success" if succeeded else "failed",
                 )
             )
-            if ctx.build_id:
-                BuildHistory.set(
-                    Build(
-                        build_id=ctx.build_id,
-                        name=config.build.name,
-                        display_name=config.build.name,
-                        project_root=str(config.project.paths.root),
-                        target=config.build.name,
-                        status=BuildStatus.BUILDING,
-                        stages=[
-                            s.model_dump(by_alias=True) for s in ctx.completed_stages
-                        ],
-                    )
-                )
-
-        self.success = True
+            if succeeded and ctx.build_id:
+                BuildHistory.set(Build(
+                    build_id=ctx.build_id,
+                    name=config.build.name,
+                    display_name=config.build.name,
+                    project_root=str(config.project.paths.root),
+                    target=config.build.name,
+                    status=BuildStatus.BUILDING,
+                    stages=[s.model_dump(by_alias=True) for s in ctx.completed_stages],
+                ))
+            self.success = succeeded
 
     @property
     def succeeded(self) -> bool:
