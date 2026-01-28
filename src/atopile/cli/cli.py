@@ -26,17 +26,16 @@ from atopile.cli import (
     build,
     configure,
     create,
+    dev,
     inspect_,
     install,
     kicad_ipc,
+    lsp,
+    mcp,
     package,
     serve,
     view,
-    lsp,
-    mcp,
-    dev,
 )
-from atopile.logging import handler, logger
 from atopile.errors import (
     UserException,
     UserNoProjectException,
@@ -44,6 +43,7 @@ from atopile.errors import (
     iter_leaf_exceptions,
     log_discord_banner,
 )
+from atopile.logging import handler, logger
 
 SAFE_MODE_OPTION = ConfigFlag(
     "SAFE_MODE", False, "Handle exceptions gracefully (coredump)"
@@ -280,21 +280,30 @@ def validate(
 
 
 def main():
-    """CLI entry point with exception handling."""
+    """
+    CLI entry point with exception handling.
+
+    Exception Contract:
+        - UserException (and subclasses): Build failures - log error, exit(1)
+        - Other exceptions: Unexpected errors - log error, exit(1)
+        - KeyboardInterrupt: User cancelled - exit(130)
+
+    When run as a subprocess by the server (via build_queue.py), the exit
+    code determines the build status:
+        - exit(0): SUCCESS
+        - exit(1): FAILED
+        - exit(130): CANCELLED (SIGINT)
+    """
     from atopile import telemetry
 
     try:
         app()
-    except (UserException, ExceptionGroup) as exc:
-        # Log each exception (will be formatted nicely by LogHandler)
+    except KeyboardInterrupt:
+        logger.info("Interrupted")
+        raise SystemExit(130)  # Standard exit code for SIGINT
+    except Exception as exc:
         for e in iter_leaf_exceptions(exc):
             logger.error(e, exc_info=e)
-        telemetry.capture_exception(exc)
-        log_discord_banner()
-        raise SystemExit(1)
-    except Exception as exc:
-        # Unexpected exceptions - log with full traceback
-        logger.exception("Uncaught exception", exc_info=exc)
         telemetry.capture_exception(exc)
         log_discord_banner()
         raise SystemExit(1)

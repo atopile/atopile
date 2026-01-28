@@ -353,12 +353,9 @@ def _run_single_build() -> None:
     try:
         with config.select_build(build_name):
             buildutil.build(ctx=ctx)
-    except (UserException, ExceptionGroup) as exc:
+    except Exception as exc:
         for e in iter_leaf_exceptions(exc):
             logger.error(e, exc_info=e)
-        sys.exit(1)
-    except Exception as exc:
-        logger.exception("Uncaught exception in worker", exc_info=exc)
         sys.exit(1)
 
     # Note: BuildLogger.close_all() is registered as an atexit handler,
@@ -675,11 +672,7 @@ def build(
             )
         )
 
-    try:
-        results = _run_build_queue(builds, jobs=jobs, verbose=verbose)
-    except KeyboardInterrupt:
-        logger.info("Build interrupted")
-        raise typer.Exit(1)
+    results = _run_build_queue(builds, jobs=jobs, verbose=verbose)
 
     from atopile.logging import BuildLogger
 
