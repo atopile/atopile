@@ -534,6 +534,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     frame-src ${viteDevServer};
     style-src 'unsafe-inline';
     script-src 'unsafe-inline';
+    img-src https: http: data:;
     connect-src ${viteDevServer} ${backendUrl} ${wsOrigin};
   ">
   <title>atopile</title>
@@ -620,6 +621,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       ? webview.asWebviewUri(vscode.Uri.file(iconPath)).toString()
       : '';
 
+    // WASM file for 3D viewer
+    const wasmPath = path.join(webviewsDir, 'occt-import-js.wasm');
+    const wasmUri = fs.existsSync(wasmPath)
+      ? webview.asWebviewUri(vscode.Uri.file(wasmPath)).toString()
+      : '';
+
     // Get backend URLs from backendServer (uses discovered port or config)
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
@@ -637,9 +644,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'none';
     style-src ${webview.cspSource} 'unsafe-inline';
-    script-src ${webview.cspSource} 'nonce-${nonce}';
+    script-src ${webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval';
     font-src ${webview.cspSource};
-    img-src ${webview.cspSource} data:;
+    img-src ${webview.cspSource} data: https: http:;
     connect-src ${apiUrl} ${wsOrigin};
   ">
   <title>atopile</title>
@@ -656,6 +663,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     window.__ATOPILE_WS_URL__ = '${wsOrigin}';
     window.__ATOPILE_ICON_URL__ = '${iconUri}';
     window.__ATOPILE_EXTENSION_VERSION__ = '${this._extensionVersion}';
+    window.__ATOPILE_WASM_URL__ = '${wasmUri}';
     // Inject workspace root for the React app
     window.__ATOPILE_WORKSPACE_ROOT__ = ${JSON.stringify(workspaceRoot || '')};
   </script>

@@ -1,21 +1,92 @@
 /**
- * PackagesPanel - VS Code-style package browser
+ * PackagesPanel - Tab-based layout
  */
 
 .packages-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
+  min-width: 0;
 }
 
-/* Search bar - always at top */
+/* Tabs */
+.packages-tabs {
+  display: flex;
+  gap: 0;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.packages-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  justify-content: center;
+}
+
+.packages-tab:hover {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+
+.packages-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+
+.packages-tab svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.packages-tab.active svg {
+  opacity: 1;
+}
+
+.packages-tab-count {
+  font-size: var(--font-size-xs);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  margin-left: 2px;
+}
+
+.packages-tab.active .packages-tab-count {
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+
+/* Tab content */
+.packages-tab-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* Search bar */
 .packages-search-bar {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--bg-secondary);
+  background: var(--bg-primary);
   border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
 }
 
 .packages-search-bar svg {
@@ -43,80 +114,24 @@
   border-bottom: 1px solid var(--ctp-red);
   color: var(--ctp-red);
   font-size: var(--font-size-xs);
+  flex-shrink: 0;
 }
 
-/* Sections container */
-.packages-sections {
+/* Results container */
+.packages-results-container {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
 }
 
-/* Section */
-.packages-section {
-  border-bottom: 1px solid var(--border-subtle);
+/* Package list */
+.packages-list {
+  padding: var(--spacing-xs);
 }
 
-.packages-section:last-child {
-  border-bottom: none;
-}
-
-/* Section header - collapsible */
-.packages-section-header {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  width: 100%;
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  user-select: none;
-  transition: background var(--transition-fast);
-}
-
-.packages-section-header:hover {
-  background: var(--bg-hover);
-}
-
-.packages-section-header.static {
-  cursor: default;
-}
-
-.packages-section-header.static:hover {
-  background: transparent;
-}
-
-.section-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-}
-
-.section-title {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.section-count {
-  margin-left: auto;
-  font-size: var(--font-size-sm);
-  color: var(--text-muted);
-  background: var(--bg-tertiary);
-  padding: 1px 6px;
-  border-radius: var(--radius-sm);
-}
-
-/* Section content */
-.packages-section-content {
-  padding: 0 var(--spacing-xs) var(--spacing-xs);
-}
-
-/* Package row - unified layout for both installed and marketplace */
-.marketplace-package-row {
+/* Package row */
+.packages-row {
   display: flex;
   align-items: flex-start;
   gap: var(--spacing-sm);
@@ -126,33 +141,32 @@
   transition: background var(--transition-fast);
 }
 
-.marketplace-package-row:hover {
+.packages-row:hover {
   background: var(--bg-hover);
 }
 
-/* Installed packages in marketplace section are slightly dimmed */
-.packages-section:last-child .marketplace-package-row.installed {
+.packages-row.installed {
   opacity: 0.7;
 }
 
-.marketplace-package-icon {
+.packages-row-icon {
   color: var(--accent-secondary);
   flex-shrink: 0;
   margin-top: 2px;
 }
 
-.marketplace-package-info {
+.packages-row-info {
   flex: 1;
   min-width: 0;
 }
 
-.marketplace-package-header {
+.packages-row-header {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
 }
 
-.marketplace-package-name {
+.packages-row-name {
   font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-primary);
@@ -161,12 +175,12 @@
   text-overflow: ellipsis;
 }
 
-.marketplace-installed-badge {
+.packages-installed-badge {
   color: var(--ctp-green);
   flex-shrink: 0;
 }
 
-.marketplace-package-summary {
+.packages-row-summary {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   line-height: 1.4;
@@ -178,7 +192,7 @@
 }
 
 /* Meta container - publisher and version */
-.marketplace-package-meta {
+.packages-row-meta {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -186,13 +200,13 @@
   flex-shrink: 0;
 }
 
-.marketplace-package-publisher {
+.packages-row-publisher {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
   white-space: nowrap;
 }
 
-.marketplace-package-version {
+.packages-row-version {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
   font-family: var(--font-mono);
@@ -200,13 +214,6 @@
 }
 
 /* Empty states */
-.packages-empty-hint {
-  padding: var(--spacing-sm) var(--spacing-md);
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  font-style: italic;
-}
-
 .packages-empty-state {
   display: flex;
   flex-direction: column;
@@ -215,12 +222,31 @@
   gap: var(--spacing-sm);
   padding: var(--spacing-xl);
   color: var(--text-muted);
+  text-align: center;
+  min-height: 200px;
 }
 
 .packages-empty-state svg {
-  opacity: 0.5;
+  opacity: 0.4;
 }
 
 .packages-empty-state span {
   font-size: var(--font-size-sm);
+  max-width: 240px;
+}
+
+.packages-empty-action {
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.packages-empty-action:hover {
+  background: var(--accent-hover);
 }

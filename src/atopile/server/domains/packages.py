@@ -754,7 +754,7 @@ def handle_get_package_details(
         )
 
     if scan_path is None:
-        scan_path = ctx.workspace_path
+        scan_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
 
     if scan_path:
         packages_map = get_installed_packages_for_workspace(scan_path)
@@ -773,7 +773,7 @@ def handle_get_package_info(
     ctx: AppContext,
 ) -> PackageInfo:
     if scan_path is None:
-        scan_path = ctx.workspace_path
+        scan_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
 
     packages_map = get_installed_packages_for_workspace(scan_path)
     if package_id in packages_map:

@@ -6,6 +6,7 @@ import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from atopile.server.domains import parts_search as parts_domain
@@ -104,6 +105,45 @@ async def get_part_details(lcsc_id: str):
     if not details:
         raise HTTPException(status_code=404, detail=f"Part not found: {lcsc_id}")
     return PartDetailsResponse(part=details)
+
+
+@router.get("/api/parts/{lcsc_id}/footprint")
+async def get_part_footprint(lcsc_id: str):
+    """Return the KiCad footprint (.kicad_mod) for a part."""
+    try:
+        data = await asyncio.to_thread(
+            parts_domain.handle_get_part_footprint,
+            lcsc_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Footprint not found: {lcsc_id}")
+    return Response(
+        content=data,
+        media_type="application/x-kicad-footprint",
+        headers={"Content-Disposition": f"inline; filename={lcsc_id}.kicad_mod"},
+    )
+
+
+@router.get("/api/parts/{lcsc_id}/model")
+async def get_part_model(lcsc_id: str):
+    """Return the STEP 3D model for a part."""
+    try:
+        result = await asyncio.to_thread(
+            parts_domain.handle_get_part_model,
+            lcsc_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not result:
+        raise HTTPException(status_code=404, detail=f"3D model not found: {lcsc_id}")
+    data, name = result
+    return Response(
+        content=data,
+        media_type="model/step",
+        headers={"Content-Disposition": f"inline; filename={name}"},
+    )
 
 
 @router.get("/api/parts/installed", response_model=InstalledPartsResponse)

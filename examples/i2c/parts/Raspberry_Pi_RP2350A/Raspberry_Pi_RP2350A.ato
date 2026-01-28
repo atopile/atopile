@@ -1,0 +1,79 @@
+#pragma experiment("TRAITS")
+import has_datasheet
+import has_designator_prefix
+import has_part_picked
+import is_atomic_part
+import is_auto_generated
+
+component Raspberry_Pi_RP2350A_package:
+    # This trait marks this file as auto-generated
+    # If you want to manually change it, remove the trait
+    trait is_auto_generated<system="ato_part", source="easyeda:C42411118", date="2026-01-28T07:32:05.668902+00:00", checksum="b054b698ea9520a8b534f778958f9b3b0d5617958e5ab057a05ee43dff795c5d">
+
+    trait is_atomic_part<manufacturer="Raspberry Pi", partnumber="RP2350A", footprint="QFN-60_L7.0-W7.0-P0.40-TL-EP3.4.kicad_mod", symbol="RP2350A_C42411118.kicad_sym">
+    trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C42411118", manufacturer="Raspberry Pi", partno="RP2350A">
+    trait has_designator_prefix<prefix="U">
+    trait has_datasheet<datasheet="https://www.lcsc.com/datasheet/lcsc_datasheet_2412101620_Raspberry-Pi-RP2350A_C42411118.pdf">
+
+    # pins
+    signal ADC_AVDD ~ pin 44
+    signal DVDD ~ pin 6
+    DVDD ~ pin 23
+    DVDD ~ pin 39
+    signal GND ~ pin 61
+    signal GPIO0 ~ pin 2
+    signal GPIO1 ~ pin 3
+    signal GPIO2 ~ pin 4
+    signal GPIO3 ~ pin 5
+    signal GPIO4 ~ pin 7
+    signal GPIO5 ~ pin 8
+    signal GPIO6 ~ pin 9
+    signal GPIO7 ~ pin 10
+    signal GPIO8 ~ pin 12
+    signal GPIO9 ~ pin 13
+    signal GPIO10 ~ pin 14
+    signal GPIO11 ~ pin 15
+    signal GPIO12 ~ pin 16
+    signal GPIO13 ~ pin 17
+    signal GPIO14 ~ pin 18
+    signal GPIO15 ~ pin 19
+    signal GPIO16 ~ pin 27
+    signal GPIO17 ~ pin 28
+    signal GPIO18 ~ pin 29
+    signal GPIO19 ~ pin 31
+    signal GPIO20 ~ pin 32
+    signal GPIO21 ~ pin 33
+    signal GPIO22 ~ pin 34
+    signal GPIO23 ~ pin 35
+    signal GPIO24 ~ pin 36
+    signal GPIO25 ~ pin 37
+    signal GPIO26_ADC0 ~ pin 40
+    signal GPIO27_ADC1 ~ pin 41
+    signal GPIO28_ADC2 ~ pin 42
+    signal GPIO29_ADC3 ~ pin 43
+    signal IOVDD ~ pin 1
+    IOVDD ~ pin 11
+    IOVDD ~ pin 20
+    IOVDD ~ pin 30
+    IOVDD ~ pin 38
+    IOVDD ~ pin 45
+    signal QSPI_IOVDD ~ pin 54
+    signal QSPI_SCLK ~ pin 56
+    signal QSPI_SD0 ~ pin 57
+    signal QSPI_SD1 ~ pin 59
+    signal QSPI_SD2 ~ pin 58
+    signal QSPI_SD3 ~ pin 55
+    signal QSPI_SS ~ pin 60
+    signal RUN ~ pin 26
+    signal SWCLK ~ pin 24
+    signal SWDIO ~ pin 25
+    signal USB_DM ~ pin 51
+    signal USB_DP ~ pin 52
+    signal USB_OTP_VDD ~ pin 53
+    signal VREG_AVDD ~ pin 46
+    signal VREG_FB ~ pin 50
+    signal VREG_LX ~ pin 48
+    signal VREG_PGND ~ pin 47
+    signal VREG_VIN ~ pin 49
+    signal XIN ~ pin 21
+    signal XOUT ~ pin 22

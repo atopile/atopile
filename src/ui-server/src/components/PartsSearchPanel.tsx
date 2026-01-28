@@ -1,9 +1,9 @@
 /**
- * PartsSearchPanel - Part search with installed section and results table.
+ * PartsSearchPanel - Tab-based part search and project parts view.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CheckCircle, ChevronDown, ChevronRight, Cpu, PackageSearch, Search } from 'lucide-react'
+import { ArrowDown, ArrowUp, CheckCircle, Loader2, Package, PackageSearch, Search } from 'lucide-react'
 import type { PartSearchItem, InstalledPartItem } from '../types/build'
 import type { SelectedPart } from './sidebar-modules'
 import { api } from '../api/client'
@@ -14,14 +14,25 @@ interface PartsSearchPanelProps {
   onOpenPartDetail: (part: SelectedPart) => void
 }
 
+type TabId = 'search' | 'project'
+type SortColumn = 'mpn' | 'description' | 'manufacturer' | 'stock' | 'price'
+type SortDirection = 'asc' | 'desc'
+interface SortState {
+  column: SortColumn
+  direction: SortDirection
+}
+
 function formatCurrency(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return '-'
-  return `$${value.toFixed(4)}`
+  if (value < 0.01) return `$${value.toFixed(4)}`
+  return `$${value.toFixed(2)}`
 }
 
 function formatStock(stock: number | null | undefined): string {
   if (stock == null) return '-'
   if (stock <= 0) return 'Out of stock'
+  if (stock >= 1_000_000) return `${(stock / 1_000_000).toFixed(1)}M`
+  if (stock >= 1_000) return `${(stock / 1_000).toFixed(1)}K`
   return stock.toLocaleString()
 }
 
@@ -29,33 +40,92 @@ export function PartsSearchPanel({
   selectedProjectRoot,
   onOpenPartDetail,
 }: PartsSearchPanelProps) {
+  const [activeTab, setActiveTab] = useState<TabId>('search')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<PartSearchItem[]>([])
   const [searchError, setSearchError] = useState<string | null>(null)
   const [searchLoading, setSearchLoading] = useState(false)
-  const [installedOpen, setInstalledOpen] = useState(true)
   const [installedParts, setInstalledParts] = useState<InstalledPartItem[]>([])
   const [installedError, setInstalledError] = useState<string | null>(null)
+  const [enrichingLcscs, setEnrichingLcscs] = useState<Set<string>>(new Set())
+  const [installedLoading, setInstalledLoading] = useState(false)
+  const [sort, setSort] = useState<SortState>({ column: 'stock', direction: 'desc' })
+  const [projectFilter, setProjectFilter] = useState('')
 
   const searchRequestId = useRef(0)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const projectInputRef = useRef<HTMLInputElement>(null)
+
+  // Focus search input when switching tabs
+  useEffect(() => {
+    if (activeTab === 'search' && searchInputRef.current) {
+      searchInputRef.current.focus()
+    } else if (activeTab === 'project' && projectInputRef.current) {
+      projectInputRef.current.focus()
+    }
+  }, [activeTab])
 
   useEffect(() => {
+    // Clear state immediately when project changes
+    setInstalledParts([])
+    setInstalledError(null)
+    setEnrichingLcscs(new Set())
+    setInstalledLoading(false)
+
     if (!selectedProjectRoot) {
-      setInstalledParts([])
-      setInstalledError(null)
       return
     }
 
     let active = true
-    setInstalledError(null)
+    setInstalledLoading(true)
     api.parts.installed(selectedProjectRoot)
       .then((response) => {
         if (!active) return
-        setInstalledParts(response.parts || [])
+        const parts = response.parts || []
+        setInstalledParts(parts)
+
+        // Enrich parts that have LCSC IDs but missing stock/price
+        const lcscIds = parts
+          .filter((p) => p.lcsc && (p.stock == null || p.unit_cost == null))
+          .map((p) => p.lcsc!)
+
+        if (lcscIds.length > 0) {
+          setEnrichingLcscs(new Set(lcscIds.map((id) => id.toUpperCase())))
+
+          api.parts.lcsc(lcscIds, { projectRoot: selectedProjectRoot })
+            .then((enrichResponse) => {
+              if (!active) return
+              setInstalledParts((prev) =>
+                prev.map((part) => {
+                  if (!part.lcsc) return part
+                  const enriched = enrichResponse.parts[part.lcsc.toUpperCase()]
+                  if (!enriched) return part
+                  return {
+                    ...part,
+                    stock: enriched.stock,
+                    unit_cost: enriched.unit_cost,
+                    description: part.description || enriched.description,
+                    package: part.package || enriched.package,
+                  }
+                })
+              )
+            })
+            .catch(() => {
+              // Silently fail enrichment - parts still display with basic info
+            })
+            .finally(() => {
+              if (!active) return
+              setEnrichingLcscs(new Set())
+            })
+        }
       })
       .catch((error) => {
         if (!active) return
         setInstalledError(error instanceof Error ? error.message : 'Failed to load installed parts')
+      })
+      .finally(() => {
+        if (!active) return
+        setInstalledLoading(false)
       })
 
     return () => {
@@ -106,108 +176,152 @@ export function PartsSearchPanel({
     )
   }, [installedParts])
 
+  const filteredAndSortedInstalledParts = useMemo(() => {
+    const filter = projectFilter.trim().toLowerCase()
+    const filtered = filter
+      ? installedParts.filter((part) => {
+          const searchable = [
+            part.mpn,
+            part.identifier,
+            part.manufacturer,
+            part.description,
+            part.lcsc,
+          ].filter(Boolean).join(' ').toLowerCase()
+          return searchable.includes(filter)
+        })
+      : installedParts
+
+    return [...filtered].sort((a, b) => {
+      let cmp = 0
+      switch (sort.column) {
+        case 'mpn':
+          cmp = (a.mpn || a.identifier || '').localeCompare(b.mpn || b.identifier || '')
+          break
+        case 'description':
+          cmp = (a.description || '').localeCompare(b.description || '')
+          break
+        case 'manufacturer':
+          cmp = (a.manufacturer || '').localeCompare(b.manufacturer || '')
+          break
+        case 'stock':
+          cmp = (a.stock ?? -1) - (b.stock ?? -1)
+          break
+        case 'price':
+          cmp = (a.unit_cost ?? Infinity) - (b.unit_cost ?? Infinity)
+          break
+      }
+      return sort.direction === 'desc' ? -cmp : cmp
+    })
+  }, [installedParts, sort, projectFilter])
+
+  const sortedSearchResults = useMemo(() => {
+    return [...searchResults].sort((a, b) => {
+      let cmp = 0
+      switch (sort.column) {
+        case 'mpn':
+          cmp = (a.mpn || '').localeCompare(b.mpn || '')
+          break
+        case 'description':
+          cmp = (a.description || '').localeCompare(b.description || '')
+          break
+        case 'manufacturer':
+          cmp = (a.manufacturer || '').localeCompare(b.manufacturer || '')
+          break
+        case 'stock':
+          cmp = (a.stock ?? -1) - (b.stock ?? -1)
+          break
+        case 'price':
+          cmp = (a.unit_cost ?? Infinity) - (b.unit_cost ?? Infinity)
+          break
+      }
+      return sort.direction === 'desc' ? -cmp : cmp
+    })
+  }, [searchResults, sort])
+
+  const toggleSort = (column: SortColumn) => {
+    setSort((prev) => ({
+      column,
+      direction: prev.column === column && prev.direction === 'desc' ? 'asc' : 'desc',
+    }))
+  }
+
   const hasSearchQuery = searchQuery.trim().length > 0
+
+  const SortIcon = ({ column }: { column: SortColumn }) => {
+    if (sort.column !== column) return null
+    return sort.direction === 'desc' ? <ArrowDown size={10} /> : <ArrowUp size={10} />
+  }
+
+  const renderSortHeader = () => (
+    <div className="parts-results-header">
+      <button className="parts-sort-btn left" onClick={() => toggleSort('mpn')}>
+        PN <SortIcon column="mpn" />
+      </button>
+      <button className="parts-sort-btn left" onClick={() => toggleSort('description')}>
+        Description <SortIcon column="description" />
+      </button>
+      <button className="parts-sort-btn left" onClick={() => toggleSort('manufacturer')}>
+        Mfr <SortIcon column="manufacturer" />
+      </button>
+      <button className="parts-sort-btn" onClick={() => toggleSort('stock')}>
+        Stock <SortIcon column="stock" />
+      </button>
+      <button className="parts-sort-btn" onClick={() => toggleSort('price')}>
+        Price <SortIcon column="price" />
+      </button>
+    </div>
+  )
 
   return (
     <div className="parts-panel">
-      <div className="parts-search-bar">
-        <Search size={14} />
-        <input
-          type="text"
-          placeholder="Search parts (LCSC ID or Manufacturer:PartNumber)..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+      <div className="parts-tabs">
+        <button
+          className={`parts-tab ${activeTab === 'search' ? 'active' : ''}`}
+          onClick={() => setActiveTab('search')}
+        >
+          <Search size={14} />
+          Find Parts
+        </button>
+        <button
+          className={`parts-tab ${activeTab === 'project' ? 'active' : ''}`}
+          onClick={() => setActiveTab('project')}
+        >
+          <Package size={14} />
+          Project
+          {installedParts.length > 0 && (
+            <span className="parts-tab-count">{installedParts.length}</span>
+          )}
+        </button>
       </div>
 
-      {searchError && (
-        <div className="parts-error">{searchError}</div>
-      )}
+      {activeTab === 'search' && (
+        <div className="parts-tab-content">
+          <div className="parts-search-bar">
+            <Search size={14} />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search parts..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
 
-      <div className="parts-sections">
-        <div className="parts-section">
-          <button
-            className="parts-section-header"
-            onClick={() => setInstalledOpen((prev) => !prev)}
-          >
-            <span className="section-toggle">
-              {installedOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            </span>
-            <span className="section-title">INSTALLED</span>
-            <span className="section-count">{installedParts.length}</span>
-          </button>
-
-          {installedOpen && (
-            <div className="parts-section-content">
-              {!selectedProjectRoot && (
-                <div className="parts-empty-hint">
-                  Select a project to view installed parts
-                </div>
-              )}
-              {selectedProjectRoot && installedError && (
-                <div className="parts-empty-hint">{installedError}</div>
-              )}
-              {selectedProjectRoot && !installedError && installedParts.length === 0 && (
-                <div className="parts-empty-hint">No parts installed</div>
-              )}
-              {selectedProjectRoot && installedParts.length > 0 && (
-                <div className="parts-results-table parts-installed-table">
-                  <div className="parts-results-header">
-                    <span>PN</span>
-                    <span>Description</span>
-                    <span>Mfr</span>
-                    <span>Stock</span>
-                    <span>Price</span>
-                  </div>
-                  {installedParts.map((part) => (
-                    <div
-                      key={part.identifier}
-                      className="parts-results-row installed"
-                      onClick={() => {
-                        if (!part.lcsc) return
-                        onOpenPartDetail({
-                          lcsc: part.lcsc,
-                          mpn: part.mpn,
-                          manufacturer: part.manufacturer,
-                          description: part.description || '',
-                          package: part.package || undefined,
-                          datasheet_url: part.datasheet_url || undefined,
-                          image_url: part.image_url || undefined,
-                          installed: true,
-                        })
-                      }}
-                    >
-                      <span className="parts-cell parts-cell-primary">
-                        {part.mpn || part.identifier}
-                        <CheckCircle size={12} className="parts-installed-badge" />
-                      </span>
-                      <span className="parts-cell parts-cell-description">
-                        {part.description || '-'}
-                      </span>
-                      <span className="parts-cell">{part.manufacturer || '-'}</span>
-                      <span className="parts-cell">{formatStock(part.stock)}</span>
-                      <span className="parts-cell">{formatCurrency(part.unit_cost)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="parts-section">
-          {hasSearchQuery && (
-            <div className="parts-section-header static">
-              <span className="section-title">RESULTS</span>
-              <span className="section-count">{searchResults.length}</span>
-            </div>
+          {searchError && (
+            <div className="parts-error">{searchError}</div>
           )}
 
-          <div className="parts-section-content">
+          <div className="parts-results-container">
             {searchLoading && (
               <div className="parts-empty-state">
-                <PackageSearch size={24} />
+                <Loader2 size={24} className="parts-spinner" />
                 <span>Searching...</span>
+              </div>
+            )}
+            {!searchLoading && !hasSearchQuery && (
+              <div className="parts-empty-state">
+                <PackageSearch size={32} />
+                <span>Search JLCPCB parts by name, description, or part number</span>
               </div>
             )}
             {!searchLoading && hasSearchQuery && searchResults.length === 0 && (
@@ -218,14 +332,8 @@ export function PartsSearchPanel({
             )}
             {!searchLoading && searchResults.length > 0 && (
               <div className="parts-results-table">
-                <div className="parts-results-header">
-                  <span>PN</span>
-                  <span>Description</span>
-                  <span>Mfr</span>
-                  <span>Stock</span>
-                  <span>Price</span>
-                </div>
-                {searchResults.map((part) => {
+                {renderSortHeader()}
+                {sortedSearchResults.map((part) => {
                   const isInstalled = installedLcscIds.has(part.lcsc.toUpperCase())
                   return (
                     <div
@@ -247,22 +355,112 @@ export function PartsSearchPanel({
                         {isInstalled && <CheckCircle size={12} className="parts-installed-badge" />}
                       </span>
                       <span className="parts-cell parts-cell-description">{part.description}</span>
-                      <span className="parts-cell">{part.manufacturer}</span>
-                      <span className="parts-cell">{formatStock(part.stock)}</span>
-                      <span className="parts-cell">{formatCurrency(part.unit_cost)}</span>
+                      <span className="parts-cell parts-cell-mfr">{part.manufacturer}</span>
+                      <span className="parts-cell parts-cell-stock">{formatStock(part.stock)}</span>
+                      <span className="parts-cell parts-cell-price">{formatCurrency(part.unit_cost)}</span>
                     </div>
                   )
                 })}
               </div>
             )}
-            {!hasSearchQuery && (
-              <div className="parts-empty-hint">
-                Search for a part to see results
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'project' && (
+        <div className="parts-tab-content">
+          {selectedProjectRoot && installedParts.length > 0 && (
+            <div className="parts-search-bar">
+              <Search size={14} />
+              <input
+                ref={projectInputRef}
+                type="text"
+                placeholder="Filter project parts..."
+                value={projectFilter}
+                onChange={(e) => setProjectFilter(e.target.value)}
+              />
+            </div>
+          )}
+          <div className="parts-results-container">
+            {!selectedProjectRoot && (
+              <div className="parts-empty-state">
+                <Package size={32} />
+                <span>Select a project to view installed parts</span>
+              </div>
+            )}
+            {selectedProjectRoot && installedLoading && (
+              <div className="parts-empty-state">
+                <Loader2 size={24} className="parts-spinner" />
+                <span>Loading project parts...</span>
+              </div>
+            )}
+            {selectedProjectRoot && !installedLoading && installedError && (
+              <div className="parts-empty-state">
+                <span>{installedError}</span>
+              </div>
+            )}
+            {selectedProjectRoot && !installedLoading && !installedError && installedParts.length === 0 && (
+              <div className="parts-empty-state">
+                <Package size={32} />
+                <span>No parts installed in this project</span>
+                <button
+                  className="parts-empty-action"
+                  onClick={() => setActiveTab('search')}
+                >
+                  Find parts to add
+                </button>
+              </div>
+            )}
+            {selectedProjectRoot && !installedLoading && installedParts.length > 0 && filteredAndSortedInstalledParts.length === 0 && (
+              <div className="parts-empty-state">
+                <Package size={24} />
+                <span>No parts match "{projectFilter}"</span>
+              </div>
+            )}
+            {selectedProjectRoot && !installedLoading && filteredAndSortedInstalledParts.length > 0 && (
+              <div className="parts-results-table">
+                {renderSortHeader()}
+                {filteredAndSortedInstalledParts.map((part) => {
+                  const isEnriching = part.lcsc ? enrichingLcscs.has(part.lcsc.toUpperCase()) : false
+                  return (
+                    <div
+                      key={part.identifier}
+                      className="parts-results-row"
+                      onClick={() => {
+                        if (!part.lcsc) return
+                        onOpenPartDetail({
+                          lcsc: part.lcsc,
+                          mpn: part.mpn,
+                          manufacturer: part.manufacturer,
+                          description: part.description || '',
+                          package: part.package || undefined,
+                          datasheet_url: part.datasheet_url || undefined,
+                          image_url: part.image_url || undefined,
+                          installed: true,
+                        })
+                      }}
+                    >
+                      <span className="parts-cell parts-cell-primary">
+                        {part.mpn || part.identifier}
+                      </span>
+                      <span className="parts-cell parts-cell-description">
+                        {part.description || '-'}
+                      </span>
+                      <span className="parts-cell parts-cell-mfr">{part.manufacturer || '-'}</span>
+                      <span className="parts-cell parts-cell-stock">
+                        {isEnriching ? <Loader2 size={12} className="parts-spinner" /> : formatStock(part.stock)}
+                      </span>
+                      <span className="parts-cell parts-cell-price">
+                        {isEnriching ? <Loader2 size={12} className="parts-spinner" /> : formatCurrency(part.unit_cost)}
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

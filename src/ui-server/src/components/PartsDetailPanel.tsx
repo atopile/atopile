@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Cpu, ExternalLink, Loader2, CheckCircle, AlertCircle, Download } from 'lucide-react'
+import { ArrowLeft, Cpu, ExternalLink, Loader2, CheckCircle, AlertCircle, Download, Layers, Cuboid, Image } from 'lucide-react'
 import type { PartSearchItem } from '../types/build'
 import type { SelectedPart } from './sidebar-modules'
 import { api } from '../api/client'
+import { API_URL } from '../api/config'
+import KiCanvasEmbed from './KiCanvasEmbed'
+import StepViewer from './StepViewer'
 import './PartsDetailPanel.css'
 
 interface PartsDetailPanelProps {
@@ -13,12 +16,15 @@ interface PartsDetailPanelProps {
 
 function formatCurrency(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return '-'
-  return `$${value.toFixed(4)}`
+  if (value < 0.01) return `$${value.toFixed(4)}`
+  return `$${value.toFixed(2)}`
 }
 
 function formatStock(stock: number | null | undefined): string {
   if (stock == null) return '-'
   if (stock <= 0) return 'Out of stock'
+  if (stock >= 1_000_000) return `${(stock / 1_000_000).toFixed(1)}M`
+  if (stock >= 1_000) return `${(stock / 1_000).toFixed(1)}K`
   return stock.toLocaleString()
 }
 
@@ -36,6 +42,7 @@ export function PartsDetailPanel({
   const [isUninstalling, setIsUninstalling] = useState(false)
   const [uninstallError, setUninstallError] = useState<string | null>(null)
   const [uninstallSuccess, setUninstallSuccess] = useState(false)
+  const [activeVisualTab, setActiveVisualTab] = useState<'image' | 'footprint' | '3d'>('image')
 
   useEffect(() => {
     let active = true
@@ -141,11 +148,6 @@ export function PartsDetailPanel({
       {!isLoading && !error && (
         <div className="detail-panel-content">
           <div className="parts-detail-grid">
-            {imageUrl && (
-              <div className="detail-section parts-detail-section parts-image-section">
-                <img src={imageUrl} alt={displayMpn} className="parts-image" />
-              </div>
-            )}
             <section className="detail-section parts-detail-section">
               <h3 className="detail-section-title">
                 <Download size={14} />
@@ -241,6 +243,14 @@ export function PartsDetailPanel({
                   <dt>Unit price</dt>
                   <dd className="detail-info-value">{formatCurrency(details?.unit_cost)}</dd>
                 </div>
+                <div className="detail-info-row">
+                  <dt>Type</dt>
+                  <dd className="detail-info-value">
+                    <span className={`parts-type-badge ${details?.is_basic ? 'basic' : details?.is_preferred ? 'preferred' : 'extended'}`}>
+                      {details?.is_basic ? 'Basic' : details?.is_preferred ? 'Preferred' : 'Extended'}
+                    </span>
+                  </dd>
+                </div>
                 {details?.datasheet_url && (
                   <div className="detail-info-row">
                     <dt>Datasheet</dt>
@@ -259,21 +269,50 @@ export function PartsDetailPanel({
               </dl>
             </div>
 
-            <div className="detail-section parts-detail-section">
-              <div className="parts-detail-section-title">Footprint</div>
-              <dl className="detail-info-list">
-                <div className="detail-info-row">
-                  <dt>Footprint</dt>
-                  <dd className="detail-info-value">
-                    <span className="detail-info-mono">
-                      {details?.package || part.package || 'No footprint data yet'}
-                    </span>
-                  </dd>
-                </div>
-              </dl>
-              <p className="parts-footprint-note detail-empty">
-                Footprint preview will appear here once EasyEDA data is wired.
-              </p>
+            <div className="parts-visual-section">
+              <div className="parts-visual-tabs">
+                <button
+                  className={`parts-visual-tab ${activeVisualTab === 'image' ? 'active' : ''}`}
+                  onClick={() => setActiveVisualTab('image')}
+                >
+                  <Image size={14} />
+                  Image
+                </button>
+                <button
+                  className={`parts-visual-tab ${activeVisualTab === 'footprint' ? 'active' : ''}`}
+                  onClick={() => setActiveVisualTab('footprint')}
+                >
+                  <Layers size={14} />
+                  Footprint
+                </button>
+                <button
+                  className={`parts-visual-tab ${activeVisualTab === '3d' ? 'active' : ''}`}
+                  onClick={() => setActiveVisualTab('3d')}
+                >
+                  <Cuboid size={14} />
+                  3D Model
+                </button>
+              </div>
+              <div className="parts-visual-content">
+                {activeVisualTab === 'image' ? (
+                  imageUrl ? (
+                    <img src={imageUrl} alt={displayMpn} className="parts-visual-image" />
+                  ) : (
+                    <div className="parts-visual-empty">No image available</div>
+                  )
+                ) : activeVisualTab === 'footprint' ? (
+                  <KiCanvasEmbed
+                    src={`${API_URL}/api/parts/${encodeURIComponent(part.lcsc)}/footprint`}
+                    controls="basic"
+                    theme="kicad"
+                    zoom="objects"
+                  />
+                ) : (
+                  <StepViewer
+                    src={`${API_URL}/api/parts/${encodeURIComponent(part.lcsc)}/model`}
+                  />
+                )}
+              </div>
             </div>
 
             <div className="detail-section parts-detail-section">

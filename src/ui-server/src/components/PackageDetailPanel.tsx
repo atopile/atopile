@@ -454,21 +454,21 @@ export function PackageDetailPanel({
         </section>
 
         {/* Visuals */}
-        <section className="detail-section">
-          <div className="detail-visual-bar">
-            <div className="detail-visual-tabs">
+        <section className="package-visual-section">
+          <div className="package-visual-header">
+            <div className="package-visual-tabs">
               <button
-                className={`detail-visual-tab ${activeVisualTab === '3d' ? 'active' : ''}`}
+                className={`package-visual-tab ${activeVisualTab === '3d' ? 'active' : ''}`}
                 onClick={() => setActiveVisualTab('3d')}
               >
-                <Cuboid size={12} />
-                3D
+                <Cuboid size={14} />
+                3D Model
               </button>
               <button
-                className={`detail-visual-tab ${activeVisualTab === 'layout' ? 'active' : ''}`}
+                className={`package-visual-tab ${activeVisualTab === 'layout' ? 'active' : ''}`}
                 onClick={() => setActiveVisualTab('layout')}
               >
-                <Layers size={12} />
+                <Layers size={14} />
                 Layout
               </button>
             </div>
@@ -502,7 +502,7 @@ export function PackageDetailPanel({
               </div>
             )}
           </div>
-          <div className="detail-visual-content">
+          <div className="package-visual-content">
             {activeVisualTab === '3d' ? (
               selectedBuildTarget ? (
                 modelArtifact ? (

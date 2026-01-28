@@ -11,6 +11,7 @@ interface KiCanvasEmbedProps {
   zoom?: 'objects' | 'page'
   className?: string
   style?: React.CSSProperties
+  onError?: (error: string) => void
 }
 
 interface KiCanvasEmbedElement extends HTMLElement {
@@ -29,10 +30,12 @@ export default function KiCanvasEmbed({
   zoom = 'objects',
   className,
   style,
+  onError,
 }: KiCanvasEmbedProps) {
   const embedRef = useRef<KiCanvasEmbedElement>(null)
   const [isReady, setIsReady] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -64,9 +67,35 @@ export default function KiCanvasEmbed({
     }
   }, [isReady])
 
+  // Pre-check if src URL is valid
   useEffect(() => {
     setIsLoading(true)
-  }, [src])
+    setError(null)
+
+    let cancelled = false
+    fetch(src, { method: 'HEAD' })
+      .then((response) => {
+        if (cancelled) return
+        if (!response.ok) {
+          const msg = response.status === 404
+            ? 'Footprint not available'
+            : `Failed to load footprint (${response.status})`
+          setError(msg)
+          onError?.(msg)
+          setIsLoading(false)
+        }
+      })
+      .catch(() => {
+        if (cancelled) return
+        setError('Failed to load footprint')
+        onError?.('Failed to load footprint')
+        setIsLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [src, onError])
 
   useEffect(() => {
     const embed = embedRef.current
@@ -87,10 +116,14 @@ export default function KiCanvasEmbed({
 
   return (
     <div className="detail-visual-frame detail-visual-stack">
-      {!isReady ? (
+      {error ? (
+        <div className="detail-visual-empty">
+          {error}
+        </div>
+      ) : !isReady ? (
         <div className="detail-visual-spinner">
           <span className="spinner" />
-          <span>Loading layout...</span>
+          <span>Loading viewer...</span>
         </div>
       ) : (
         <>
@@ -112,7 +145,7 @@ export default function KiCanvasEmbed({
           {isLoading && (
             <div className="detail-visual-spinner">
               <span className="spinner" />
-              <span>Loading layout...</span>
+              <span>Loading footprint...</span>
             </div>
           )}
         </>

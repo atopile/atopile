@@ -392,25 +392,6 @@ export function Sidebar() {
           />
         </CollapsibleSection>
 
-        {/* Structure Section */}
-        <CollapsibleSection
-          id="structure"
-          title="Structure"
-          collapsed={panels.isCollapsed('structure')}
-          onToggle={() => panels.togglePanel('structure')}
-          height={panels.calculatedHeights['structure']}
-          onResizeStart={(e) => panels.handleResizeStart('structure', e)}
-        >
-          <StructurePanel
-            activeFilePath={activeEditorFile}
-            lastAtoFile={lastAtoFile}
-            projects={projects || []}
-            onRefreshStructure={handlers.handleStructureRefresh}
-          />
-        </CollapsibleSection>
-
-        {/* Build Queue is now integrated into Projects panel above */}
-
         {/* Packages Section */}
         <CollapsibleSection
           id="packages"
@@ -461,6 +442,23 @@ export function Sidebar() {
             items={stdlibItems}
             isLoading={isLoadingStdlib}
             onRefresh={handleRefreshStdlib}
+          />
+        </CollapsibleSection>
+
+        {/* Structure Section */}
+        <CollapsibleSection
+          id="structure"
+          title="Structure"
+          collapsed={panels.isCollapsed('structure')}
+          onToggle={() => panels.togglePanel('structure')}
+          height={panels.calculatedHeights['structure']}
+          onResizeStart={(e) => panels.handleResizeStart('structure', e)}
+        >
+          <StructurePanel
+            activeFilePath={activeEditorFile}
+            lastAtoFile={lastAtoFile}
+            projects={projects || []}
+            onRefreshStructure={handlers.handleStructureRefresh}
           />
         </CollapsibleSection>
 

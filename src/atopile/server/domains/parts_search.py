@@ -33,6 +33,17 @@ def _normalize_lcsc_id(raw: str) -> int | None:
 
 
 def _serialize_part(component: Component) -> dict:
+    # Get the raw unit price from the first price tier (qty=1)
+    # Don't use get_price() as it includes handling fees
+    unit_cost = None
+    if component.price:
+        for p in component.price:
+            if p.qFrom in (None, 0, 1):
+                unit_cost = float(p.price) if p.price is not None else None
+                break
+        if unit_cost is None:
+            unit_cost = float(component.price[0].price) if component.price[0].price is not None else None
+
     return {
         "lcsc": component.lcsc_display,
         "manufacturer": component.manufacturer_name,
@@ -41,7 +52,7 @@ def _serialize_part(component: Component) -> dict:
         "description": component.description,
         "datasheet_url": component.datasheet_url,
         "stock": component.stock,
-        "unit_cost": component.get_price(1),
+        "unit_cost": unit_cost,
         "is_basic": bool(component.is_basic),
         "is_preferred": bool(component.is_preferred),
         "price": [
@@ -58,6 +69,13 @@ def _pretty_attributes(attributes: dict[str, object] | None) -> dict[str, str]:
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
+
+    # Create unit instances so decode_symbol_runtime can find them during deserialization
+    from faebryk.library.Units import Ampere, Farad, Henry, Ohm, Volt, Watt
+
+    for unit_type in [Ohm, Volt, Watt, Farad, Ampere, Henry]:
+        unit_type.bind_typegraph(tg=tg).create_instance(g=g)
+
     pretty: dict[str, str] = {}
     for name, value in attributes.items():
         if value is None:
@@ -229,7 +247,8 @@ def handle_list_installed_parts(project_root: str) -> list[dict]:
         if part.pick_part and part.pick_part.supplier.supplier_id.lower() == "lcsc":
             lcsc_id = part.pick_part.supplier_partno
 
-        base = {
+        # Return basic info immediately - frontend enriches with stock/price async
+        parts.append({
             "identifier": part.identifier,
             "manufacturer": part.mfn[0],
             "mpn": part.mfn[1],
@@ -237,32 +256,90 @@ def handle_list_installed_parts(project_root: str) -> list[dict]:
             "datasheet_url": part.datasheet,
             "description": part.docstring,
             "path": str(part.path),
-        }
-
-        if lcsc_id:
-            try:
-                detail = handle_get_part_details(lcsc_id)
-            except Exception:
-                detail = None
-            if detail:
-                base.update(
-                    {
-                        "manufacturer": detail.get("manufacturer")
-                        or base["manufacturer"],
-                        "mpn": detail.get("mpn") or base["mpn"],
-                        "datasheet_url": detail.get("datasheet_url")
-                        or base["datasheet_url"],
-                        "description": detail.get("description") or base["description"],
-                        "package": detail.get("package"),
-                        "stock": detail.get("stock"),
-                        "unit_cost": detail.get("unit_cost"),
-                        "image_url": detail.get("image_url"),
-                    }
-                )
-
-        parts.append(base)
+        })
 
     return parts
+
+
+def handle_get_part_footprint(lcsc_id: str) -> bytes | None:
+    """Fetch the kicad_mod footprint data for a part."""
+    from easyeda2kicad.easyeda.easyeda_api import EasyedaApi
+    from easyeda2kicad.easyeda.easyeda_importer import EasyedaFootprintImporter
+    from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
+    from faebryk.libs.kicad.fileformats import kicad
+    from faebryk.libs.util import call_with_file_capture
+
+    lcsc_numeric = _normalize_lcsc_id(lcsc_id)
+    if lcsc_numeric is None:
+        raise ValueError(f"Invalid LCSC part number: {lcsc_id}")
+
+    lcsc_str = f"C{lcsc_numeric}"
+
+    try:
+        # Fetch from EasyEDA API directly
+        api = EasyedaApi()
+        cad_data = api.get_cad_data_of_component(lcsc_id=lcsc_str)
+        if not cad_data:
+            return None
+
+        # Import footprint
+        easyeda_footprint = EasyedaFootprintImporter(
+            easyeda_cp_cad_data=cad_data
+        ).get_footprint()
+
+        # Export to KiCad format
+        exporter = ExporterFootprintKicad(easyeda_footprint)
+        fp_raw = call_with_file_capture(
+            lambda path: exporter.export(str(path), None)
+        )[1]
+
+        # Convert to latest KiCad format
+        fp = kicad.loads(kicad.footprint_v5.FootprintFile, fp_raw.decode("utf-8"))
+        new_fp = kicad.convert(fp)
+
+        return kicad.dumps(new_fp).encode("utf-8")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to get footprint for {lcsc_id}: {e}")
+        return None
+
+
+def handle_get_part_model(lcsc_id: str) -> tuple[bytes, str] | None:
+    """Fetch the STEP 3D model data for a part."""
+    from easyeda2kicad.easyeda.easyeda_api import EasyedaApi
+    from easyeda2kicad.easyeda.easyeda_importer import EasyedaFootprintImporter
+
+    lcsc_numeric = _normalize_lcsc_id(lcsc_id)
+    if lcsc_numeric is None:
+        raise ValueError(f"Invalid LCSC part number: {lcsc_id}")
+
+    lcsc_str = f"C{lcsc_numeric}"
+
+    try:
+        # Fetch from EasyEDA API directly
+        api = EasyedaApi()
+        cad_data = api.get_cad_data_of_component(lcsc_id=lcsc_str)
+        if not cad_data:
+            return None
+
+        # Import footprint to get model info
+        easyeda_footprint = EasyedaFootprintImporter(
+            easyeda_cp_cad_data=cad_data
+        ).get_footprint()
+
+        if easyeda_footprint.model_3d is None:
+            return None
+
+        # Fetch the 3D model
+        model_data = api.get_step_3d_model(uuid=easyeda_footprint.model_3d.uuid)
+        if model_data is None:
+            return None
+
+        return model_data, easyeda_footprint.model_3d.name
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to get 3D model for {lcsc_id}: {e}")
+        return None
 
 
 def handle_uninstall_part(lcsc_id: str, project_root: str) -> dict:
@@ -309,6 +386,8 @@ def test_selftest_pretty_attributes() -> None:
     Lightweight sanity check for attribute decoding.
     Not executed automatically; call manually if needed.
     """
+    from faebryk.library.Units import Ohm
+
     value_dict = {
         "type": "Quantity_Interval_Disjoint",
         "data": {
@@ -318,17 +397,19 @@ def test_selftest_pretty_attributes() -> None:
                     "intervals": [
                         {
                             "type": "Numeric_Interval",
-                            "data": {"min": 9.9e4, "max": 1.01e5},
+                            "data": {"min": 9.9e3, "max": 1.01e4},
                         }
                     ]
                 },
             },
-            # "unit": "V",
+            "unit": "ohm",
         },
     }
 
+    # Create graph with unit instances for computing expected value
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
+    Ohm.bind_typegraph(tg=tg).create_instance(g=g)
     expected = F.Literals.is_literal.deserialize(value_dict, g=g, tg=tg).pretty_str()
 
     pretty_from_str = _pretty_attributes({"resistance": str(value_dict)})
