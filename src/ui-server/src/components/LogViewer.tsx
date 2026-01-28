@@ -1,7 +1,7 @@
 /**
  * Log Viewer - WebSocket wrapper with parameter inputs
  * Supports both build logs and test logs modes
- * Supports one-shot fetch and real-time streaming
+ * Always streams; automatically restarts when filters change.
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -111,10 +111,6 @@ export function LogViewer() {
   // Status tooltip state
   const [showStatusTooltip, setShowStatusTooltip] = useState(false);
 
-  // Auto-start tracking
-  const autoStartedRef = useRef(false);
-  const lastAutoBuildIdRef = useRef<string | null>(null);
-
   // WebSocket connection (lazy - connects on demand)
   const {
     connectionState,
@@ -159,57 +155,36 @@ export function LogViewer() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Toggle streaming
-  const toggleStreaming = useCallback(() => {
-    if (streaming) {
+  // Auto-stream: (re)start the stream whenever any filter parameter changes.
+  // A short debounce batches rapid changes (e.g. typing in an input).
+  useEffect(() => {
+    if (connectionState !== 'connected') return;
+
+    const id = mode === 'build' ? buildId.trim() : testRunId.trim();
+    if (!id) {
       stopStream();
       return;
     }
 
-    setLogs([]);
+    const timer = setTimeout(() => {
+      stopStream();
+      setLogs([]);
 
-    if (mode === 'build') {
-      startBuildStream(buildBuildLogRequest(buildId, stage, logLevels, audience));
-    } else {
-      startTestStream(buildTestLogRequest(testRunId, testName, logLevels, audience));
-    }
-    setAutoScroll(true);
-  }, [streaming, mode, buildId, stage, testRunId, testName, logLevels, audience, stopStream, startBuildStream, startTestStream, setLogs]);
+      if (mode === 'build') {
+        startBuildStream(buildBuildLogRequest(buildId, stage, logLevels, audience));
+      } else {
+        startTestStream(buildTestLogRequest(testRunId, testName, logLevels, audience));
+      }
+      setAutoScroll(true);
+    }, 150);
 
-  // Auto-start streaming when connected with a valid ID from URL params
-  useEffect(() => {
-    if (autoStartedRef.current) return;
-    if (connectionState !== 'connected') return;
-    if (streaming) return;
+    return () => clearTimeout(timer);
+  }, [mode, buildId, stage, testRunId, testName, logLevels, audience, connectionState, stopStream, startBuildStream, startTestStream, setLogs]);
 
-    const id = mode === 'build' ? buildId.trim() : testRunId.trim();
-    if (!id) return;
-
-    autoStartedRef.current = true;
-    toggleStreaming();
-  }, [connectionState, mode, buildId, testRunId, streaming, toggleStreaming]);
-
-  // Auto-start streaming when a new build_id is provided (or restart if already streaming)
-  useEffect(() => {
-    const trimmedBuildId = buildId.trim();
-    if (mode !== 'build') return;
-    if (!trimmedBuildId) return;
-    if (connectionState !== 'connected') return;
-    if (lastAutoBuildIdRef.current === trimmedBuildId) return;
-
-    // Stop current stream (no-op if not streaming), then start with new build ID
-    stopStream();
-    autoStartedRef.current = true;
-    lastAutoBuildIdRef.current = trimmedBuildId;
-
-    setLogs([]);
-    startBuildStream(buildBuildLogRequest(trimmedBuildId, stage, logLevels, audience));
-    setAutoScroll(true);
-  }, [buildId, mode, connectionState, stage, logLevels, audience, stopStream, startBuildStream, setLogs]);
-
-  // Populate build_id from the latest active build when available
+  // Populate build_id from the latest active build when none is set
   useEffect(() => {
     if (mode !== 'build') return;
+    if (buildId.trim()) return;
 
     const candidates = [...queuedBuilds, ...builds].filter((build) => build.buildId);
     if (candidates.length === 0) return;
@@ -224,36 +199,10 @@ export function LogViewer() {
     }
 
     const latestBuildId = latest.buildId ?? '';
-    if (!latestBuildId || buildId.trim()) return;
-
-    if (streaming) {
-      stopStream();
+    if (latestBuildId) {
+      setBuildId(latestBuildId);
     }
-
-    autoStartedRef.current = false;
-    lastAutoBuildIdRef.current = latestBuildId;
-    setBuildId(latestBuildId);
-  }, [queuedBuilds, builds, mode, buildId, streaming, stopStream, setBuildId]);
-
-  // Restart stream when log levels change while streaming
-  const prevLogLevelsRef = useRef(logLevels);
-  useEffect(() => {
-    if (prevLogLevelsRef.current === logLevels) return;
-    prevLogLevelsRef.current = logLevels;
-
-    if (streaming) {
-      // Stop and restart with new levels
-      stopStream();
-      setLogs([]);
-
-      if (mode === 'build') {
-        startBuildStream(buildBuildLogRequest(buildId, stage, logLevels, audience));
-      } else {
-        startTestStream(buildTestLogRequest(testRunId, testName, logLevels, audience));
-      }
-    }
-
-  }, [logLevels, streaming, mode, buildId, testRunId, stage, testName, audience, stopStream, startBuildStream, startTestStream, setLogs]);
+  }, [queuedBuilds, builds, mode, buildId, setBuildId]);
 
   const toggleLevel = (level: LogLevel) => {
     setLogLevels(prev =>
@@ -304,14 +253,12 @@ export function LogViewer() {
               <button
                 className={`lv-mode-btn ${mode === 'build' ? 'active' : ''}`}
                 onClick={() => setMode('build')}
-                disabled={streaming}
               >
                 Build
               </button>
               <button
                 className={`lv-mode-btn ${mode === 'test' ? 'active' : ''}`}
                 onClick={() => setMode('test')}
-                disabled={streaming}
               >
                 Test
               </button>
@@ -325,7 +272,6 @@ export function LogViewer() {
                 onChange={(e) => setBuildId(e.target.value)}
                 placeholder="Build ID"
                 className="lv-input"
-                disabled={streaming}
               />
             ) : (
               <input
@@ -334,17 +280,8 @@ export function LogViewer() {
                 onChange={(e) => setTestRunId(e.target.value)}
                 placeholder="Test Run ID"
                 className="lv-input"
-                disabled={streaming}
               />
             )}
-
-            <button
-              className={`lv-btn ${streaming ? 'lv-btn-danger' : 'lv-btn-success'}`}
-              onClick={toggleStreaming}
-              disabled={connectionState !== 'connected'}
-            >
-              {streaming ? 'Stop' : 'Stream'}
-            </button>
           </div>
 
           {/* Right section: Filters */}
@@ -357,7 +294,6 @@ export function LogViewer() {
                 onChange={(e) => setStage(e.target.value)}
                 placeholder="Stage"
                 className="lv-input lv-input-search"
-                disabled={streaming}
                 title="Filter by build stage"
               />
             ) : (
@@ -367,7 +303,6 @@ export function LogViewer() {
                 onChange={(e) => setTestName(e.target.value)}
                 placeholder="Test Name"
                 className="lv-input lv-input-search"
-                disabled={streaming}
                 title="Filter by test name"
               />
             )}
@@ -403,7 +338,6 @@ export function LogViewer() {
               value={audience}
               onChange={(e) => setAudience(e.target.value as Audience)}
               className="lv-select"
-              disabled={streaming}
             >
               {AUDIENCES.map(aud => (
                 <option key={aud} value={aud}>{aud}</option>

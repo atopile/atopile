@@ -991,6 +991,19 @@ function BuildQueueItem({
             />
           </div>
         )}
+        {build.buildId && (
+          <button
+            className="build-queue-logs-btn"
+            onClick={(e) => {
+              e.stopPropagation()
+              useStore.getState().setLogViewerBuildId(build.buildId)
+              sendAction('setLogViewCurrentId', { buildId: build.buildId, stage: null })
+            }}
+            title="View all logs for this build"
+          >
+            <ScrollText size={10} />
+          </button>
+        )}
         {(build.status === 'queued' || build.status === 'building') && onCancel && build.buildId && (
           <button
             className="build-queue-cancel"
@@ -1017,18 +1030,7 @@ function BuildQueueItem({
           </div>
           {hasStages ? (
             build.stages!.map((stage, index) => (
-              <div
-                key={index}
-                className={`build-stage ${stage.status} build-stage-clickable`}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  if (build.buildId) {
-                    useStore.getState().setLogViewerBuildId(build.buildId)
-                    sendAction('setLogViewCurrentId', { buildId: build.buildId, stage: stage.stageId || stage.name })
-                  }
-                }}
-                title={`View logs for ${stage.displayName || stage.name}`}
-              >
+              <div key={index} className={`build-stage ${stage.status}`}>
                 <StageStatusIcon status={stage.status} />
                 <span className="stage-name">{stage.displayName || stage.name}</span>
                 {(() => {
@@ -1041,6 +1043,19 @@ function BuildQueueItem({
                     <span className="stage-time">{formatDuration(stageElapsed)}</span>
                   )
                 })()}
+                <button
+                  className="stage-logs-btn"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (build.buildId) {
+                      useStore.getState().setLogViewerBuildId(build.buildId)
+                      sendAction('setLogViewCurrentId', { buildId: build.buildId, stage: stage.stageId || stage.name })
+                    }
+                  }}
+                  title={`View logs for ${stage.displayName || stage.name}`}
+                >
+                  <ScrollText size={10} />
+                </button>
               </div>
             ))
           ) : (
