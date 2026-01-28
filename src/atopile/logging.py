@@ -78,20 +78,6 @@ def _is_serving() -> bool:
     )
 
 
-def _should_log(record: logging.LogRecord) -> bool:
-    """Filter for atopile/faebryk logs, excluding server/http unless serving."""
-    name = record.name
-    if name.startswith(("watchdog", "fsevents")):
-        return False
-    if _is_serving():
-        return True
-    if name.startswith("httpcore") or name.startswith("atopile.server"):
-        return False
-    return (
-        name.startswith("atopile")
-        or name.startswith("faebryk")
-        or name.startswith("test")
-    )
 
 
 class AtoLogger(logging.Logger):
@@ -348,15 +334,13 @@ def capture_logs():
 @contextmanager
 def log_exceptions(log_sink: io.StringIO):
     """Context manager to capture exceptions to a log sink."""
-    from atopile.cli.excepthook import _handle_exception
-
     exc_console = Console(file=log_sink)
     exc_handler = LogHandler(console=exc_console)
     logger.addHandler(exc_handler)
     try:
         yield
     except Exception as exc:
-        _handle_exception(type(exc), exc, exc.__traceback__)
+        logger.error(exc, exc_info=exc)
         raise
     finally:
         logger.removeHandler(exc_handler)
@@ -857,7 +841,6 @@ class LogHandler(RichHandler):
         self.hide_traceback_types = hide_traceback_types
         self.always_show_traceback_types = always_show_traceback_types
         self.traceback_level = traceback_level
-        self._logged_exceptions: set = set()
         self._is_terminal = force_terminal or console.is_terminal
         self._build_logger = build_logger
         self._test_logger: LoggerForTest | None = None
@@ -1036,9 +1019,36 @@ class LogHandler(RichHandler):
             except Exception:
                 pass
 
+    def _should_log_to_console(self, record: logging.LogRecord) -> bool:
+        """
+        Determine if a record should be logged to console.
+
+        All logs go to the database unfiltered. Console filtering rules:
+        - Only atopile/faebryk/test loggers (exclude watchdog, httpcore, etc.)
+        - Only INFO level and above (DEBUG goes to database only)
+        """
+        name = record.name
+
+        # Filter by logger name
+        if name.startswith(("watchdog", "fsevents")):
+            return False
+        if not _is_serving():
+            if name.startswith("httpcore") or name.startswith("atopile.server"):
+                return False
+            if not (
+                name.startswith("atopile")
+                or name.startswith("faebryk")
+                or name.startswith("test")
+            ):
+                return False
+
+        # Console only shows INFO and above
+        if record.levelno < logging.INFO:
+            return False
+
+        return True
+
     def emit(self, record: logging.LogRecord) -> None:
-        if not _should_log(record):
-            return
 
         # Get scope level for tree visualization prefix
         scope_level = _log_scope_level.get()
@@ -1053,6 +1063,7 @@ class LogHandler(RichHandler):
             record.msg = f"{scope_prefix}{formatted}"
             record.args = None
 
+        # Database receives all logs unfiltered
         self._write_to_db(record)
 
         # Restore original for proper exception handling below
@@ -1060,26 +1071,8 @@ class LogHandler(RichHandler):
             record.msg = original_msg  # pyright: ignore[reportPossiblyUnboundVariable]
             record.args = original_args  # pyright: ignore[reportPossiblyUnboundVariable]
 
-        # Test workers: skip expensive Rich traceback rendering for console output
-        # The traceback is already written to DB above, console output goes to log file
-        if os.environ.get("FBRK_TEST_ORCHESTRATOR_URL") and record.exc_info:
-            return
-
-        # Workers suppress console except errors (unless verbose mode)
-        if (
-            os.environ.get("ATO_BUILD_WORKER")
-            and not os.environ.get("ATO_VERBOSE")
-            and self.console.file in (sys.stdout, sys.stderr)
-            and record.levelno < logging.ERROR
-        ):
-            return
-
-        # Dedupe exceptions
-        hashable = None
-        if exc := getattr(record, "exc_info", None):
-            if exc[1] and isinstance(exc[1], _BaseBaseUserException):
-                hashable = exc[1].get_frozen()
-        if hashable and hashable in self._logged_exceptions:
+        # Console is filtered (INFO+, atopile/faebryk only, etc.)
+        if not self._should_log_to_console(record):
             return
 
         # Render
@@ -1115,9 +1108,6 @@ class LogHandler(RichHandler):
                     self.console.print(renderable, crop=False, overflow="ignore")
             except Exception:
                 self.handleError(record)
-            finally:
-                if hashable:
-                    self._logged_exceptions.add(hashable)
 
 
 # =============================================================================

@@ -12,9 +12,6 @@ if __name__ in ("__main__", "atopile.cli.cli"):
         sys.exit(0)
 
 
-# excepthook must be installed before typer is imported
-import atopile.cli.excepthook  # noqa: F401, I001
-
 import json
 import logging
 from enum import Enum
@@ -40,10 +37,12 @@ from atopile.cli import (
     dev,
 )
 from atopile.logging import handler, logger
-from atopile.errors import UserException, UserNoProjectException
-from atopile.exceptions import (
+from atopile.errors import (
+    UserException,
+    UserNoProjectException,
     UserResourceException,
     iter_leaf_exceptions,
+    log_discord_banner,
 )
 
 SAFE_MODE_OPTION = ConfigFlag(
@@ -281,7 +280,24 @@ def validate(
 
 
 def main():
-    app()
+    """CLI entry point with exception handling."""
+    from atopile import telemetry
+
+    try:
+        app()
+    except (UserException, ExceptionGroup) as exc:
+        # Log each exception (will be formatted nicely by LogHandler)
+        for e in iter_leaf_exceptions(exc):
+            logger.error(e, exc_info=e)
+        telemetry.capture_exception(exc)
+        log_discord_banner()
+        raise SystemExit(1)
+    except Exception as exc:
+        # Unexpected exceptions - log with full traceback
+        logger.exception("Uncaught exception", exc_info=exc)
+        telemetry.capture_exception(exc)
+        log_discord_banner()
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

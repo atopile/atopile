@@ -50,8 +50,8 @@ from atopile.errors import (
     UserException,
     UserFileNotFoundError,
     UserNoProjectException,
+    UserResourceException,
 )
-from atopile.exceptions import UserResourceException
 from atopile.logging import get_logger
 from atopile.version import (
     DISTRIBUTION_NAME,
