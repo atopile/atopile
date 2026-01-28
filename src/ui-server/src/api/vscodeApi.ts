@@ -82,11 +82,16 @@ export interface SelectionChangedMessage {
   targetNames: string[];
 }
 
+export interface ShowLogsMessage {
+  type: 'showLogs';
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
   | AtopileSettingsMessage
-  | SelectionChangedMessage;
+  | SelectionChangedMessage
+  | ShowLogsMessage;
 
 /**
  * Type-safe helper to post messages to the extension.

@@ -53,11 +53,16 @@ interface SelectionChangedMessage {
   targetNames: string[];
 }
 
+interface ShowLogsMessage {
+  type: 'showLogs';
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
   | AtopileSettingsMessage
-  | SelectionChangedMessage;
+  | SelectionChangedMessage
+  | ShowLogsMessage;
 
 /**
  * Check if we're running in development mode.
@@ -294,6 +299,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         break;
       case 'selectionChanged':
         void this._handleSelectionChanged(message);
+        break;
+      case 'showLogs':
+        void vscode.commands.executeCommand('atopile.logViewer.focus');
         break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);

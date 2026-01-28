@@ -4,6 +4,7 @@ import type { Project, BuildTarget } from '../types/build'
 import type { QueuedBuild } from '../types/build'
 import { useStore } from '../store'
 import { sendAction } from '../api/websocket'
+import { postMessage } from '../api/vscodeApi'
 import './ActiveProjectPanel.css'
 
 interface NewProjectData {
@@ -998,6 +999,7 @@ function BuildQueueItem({
               e.stopPropagation()
               useStore.getState().setLogViewerBuildId(build.buildId)
               sendAction('setLogViewCurrentId', { buildId: build.buildId, stage: null })
+              postMessage({ type: 'showLogs' })
             }}
             title="View all logs for this build"
           >
@@ -1050,6 +1052,7 @@ function BuildQueueItem({
                     if (build.buildId) {
                       useStore.getState().setLogViewerBuildId(build.buildId)
                       sendAction('setLogViewCurrentId', { buildId: build.buildId, stage: stage.stageId || stage.name })
+                      postMessage({ type: 'showLogs' })
                     }
                   }}
                   title={`View logs for ${stage.displayName || stage.name}`}
@@ -1329,22 +1332,6 @@ export function ActiveProjectPanel({
           >
             <Layout size={12} />
             <span>Layout</span>
-          </button>
-          <button
-            className="control-btn output-btn"
-            onClick={() => {
-              const targetBuilds = projectBuilds.filter(b => b.target === activeTargetName)
-              const latestBuild = targetBuilds.length > 0 ? targetBuilds[0] : projectBuilds[0]
-              if (latestBuild?.buildId) {
-                useStore.getState().setLogViewerBuildId(latestBuild.buildId)
-                sendAction('setLogViewCurrentId', { buildId: latestBuild.buildId, stage: null })
-              }
-            }}
-            disabled={!activeProject || projectBuilds.length === 0}
-            title={projectBuilds.length > 0 ? 'View build logs' : 'No builds available'}
-          >
-            <ScrollText size={12} />
-            <span>Logs</span>
           </button>
         </div>
 
