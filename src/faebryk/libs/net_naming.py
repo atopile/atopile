@@ -12,7 +12,7 @@ MAX_NAME_LENGTH = 255
 MAX_CONFLICT_RESOLUTION_ITERATIONS = 100
 
 # Pre-compiled regex for filtering unpreferred names
-_UNPREFERRED_NAMES_RE = re.compile(r"^(net|power|\d+|part_of)$")
+_UNPREFERRED_NAMES_RE = re.compile(r"^(net|\d+|part_of|output|line|unnamed\[\d+\])$")
 
 # Characters that are invalid in net names (KiCad restrictions)
 _INVALID_NAME_CHARS_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
@@ -80,13 +80,17 @@ def _sort_nets(
     processable_nets: list[ProcessableNet] = []
     for net in nets:
         # Sort electricals by name length so shortest name is first (used for naming)
-        electricals: list[tuple[F.Electrical, str]] = sorted(
-            [
-                (e, e.get_name(accept_no_parent=True))
-                for e in net.get_connected_electricals()
-            ],
-            key=lambda e: len(e[1]),
-        )
+        # electricals: list[tuple[F.Electrical, str]] = sorted(
+        #     [
+        #         (e, e.get_name(accept_no_parent=True))
+        #         for e in net.get_connected_electricals()
+        #     ],
+        #     key=lambda e: len(e[1]),
+        # )
+        electricals: list[tuple[F.Electrical, str]] = [
+            (e, e.get_name(accept_no_parent=True))
+            for e in net.get_connected_electricals()
+        ]
         processable_nets.append(
             ProcessableNet(
                 net=net,
@@ -107,6 +111,55 @@ def collect_unnamed_nets(
     """
     unnamed_nets = [n for n in nets if not n.has_trait(F.has_net_name)]
     return _sort_nets(unnamed_nets)
+
+
+def _get_all_connected_interfaces(
+    electricals: list[F.Electrical],
+) -> list[list[tuple[fabll.Node, str]]]:
+    """
+    Get the interfaces hierarchy of all connected electricals.
+
+    Given a list of electricals:
+    1. for each electrical, get the hierarchy
+    2. collect all hierarchies
+    3. filter for is_interface trait
+
+    Returns:
+        List of all hierarchies
+    """
+    hierarchies: list[list[tuple[fabll.Node, str]]] = []
+    for electrical in electricals:
+        hierarchies.append(electrical.get_hierarchy())
+
+    # filter for is_interface trait
+    interfaces_hierarchies: list[list[tuple[fabll.Node, str]]] = [
+        [(node, name) for node, name in hierarchy if node.has_trait(fabll.is_interface)]
+        for hierarchy in hierarchies
+    ]
+    return sorted(interfaces_hierarchies, key=len)
+
+
+def _try_extract_signal_name(node: fabll.Node) -> str | None:
+    """
+    Try to find the connected `ato signal` in the same component definition, and
+    try to extract its name.
+    """
+    from atopile.compiler.ast_visitor import is_ato_component, is_ato_pin
+
+    if not node.has_trait(is_ato_pin):
+        return None
+    if not (pin_electrical := node.try_cast(F.Electrical)):
+        raise ValueError(
+            f"Node {node} is not an electrical. "
+            "pins in ato components should always be a pin"
+        )
+    connected_electricals = pin_electrical._is_interface.get().get_connected()
+    for electrical in connected_electricals:
+        if (ato_component := electrical.get_parent()) and ato_component[0].has_trait(
+            is_ato_component
+        ):
+            return filter_unpreferred_names(electrical.get_name(accept_no_parent=True))
+    return None
 
 
 def process_required_and_suggested_names(
@@ -136,84 +189,56 @@ def process_required_and_suggested_names(
         Returns:
             Tuple of (required_names, suggested_names)
         """
-        from atopile.compiler.ast_visitor import is_ato_component, is_ato_pin
-
         required_names: list[str] = []
         suggested_names: list[str] = []
 
-        def _get_all_connected_interfaces(
-            electricals: list[F.Electrical],
-        ) -> list[tuple[fabll.Node, str]]:
+        def _check_suggested_and_expected_names(
+            interfaces: list[tuple[fabll.Node, str]],
+            suggested: bool = False,
+        ) -> tuple[list[str], list[str]]:
             """
-            Get the names of the is_interface items in the hierarchy.
-
-            Given a list of electricals:
-            1. for each electrical, get the hierarchy
-            2. get the electrical with the longest hierarchy
-            3. go through the hierarchy and get the names of the is_interface items
+            Check for suggested and expected names in the interface nodes.
 
             Returns:
-                List of (node, name) tuples of the is_interface items
+                Tuple of (required_names, suggested_names)
             """
-            hierarchies: list[list[tuple[fabll.Node, str]]] = []
-            for electrical in electricals:
-                hierarchies.append(electrical.get_hierarchy())
+            _required_names: list[str] = []
+            _suggested_names: list[str] = []
+            for node, _ in interfaces:
+                if name_trait := node.try_get_trait(F.has_net_name):
+                    # TODO: this might never trigger, only the unnamed
+                    # nets are processed. might need to do collision detection
+                    # higher up in the process. (after ALL nets are processed)
+                    _required_names.append(name_trait.get_name())
+                elif suggestion_trait := node.try_get_trait(F.has_net_name_suggestion):
+                    if (
+                        suggestion_trait.level
+                        == F.has_net_name_suggestion.Level.EXPECTED
+                    ):
+                        _required_names.append(suggestion_trait.name)
+                    elif (
+                        suggestion_trait.level
+                        == F.has_net_name_suggestion.Level.SUGGESTED
+                    ):
+                        _suggested_names.append(suggestion_trait.name)
+            if suggested:
+                return _required_names, _suggested_names
+            return _required_names, []
 
-            if not hierarchies:
-                return []
-
-            longest_hierarchy = max(hierarchies, key=len)
-
-            # TODO: get all names from all hierarchies and collect all expected
-            # If any hierarchies which are not the longest give a suggestion,
-            # log a debug message about a skipped hierarchy
-            # Only respect the longest hierarchy's suggestions
-            # raise exception upon matching expected names (already done)
-
-            interfaces_with_name: list[tuple[fabll.Node, str]] = []
-            for node, _ in longest_hierarchy:
-                if node.has_trait(fabll.is_interface):
-                    interfaces_with_name.append(
-                        (node, node.get_name(accept_no_parent=True))
-                    )
-            return interfaces_with_name
-
-        def _try_extract_signal_name(node: fabll.Node) -> str | None:
-            """
-            Try to find the connected `ato signal` in the same component definition, and
-            try to extract its name.
-            """
-            if not node.has_trait(is_ato_pin):
-                return None
-            if not (pin_electrical := node.try_cast(F.Electrical)):
-                raise ValueError(
-                    f"Node {node} is not an electrical. "
-                    "pins in ato components should always be a pin"
-                )
-            connected_electricals = pin_electrical._is_interface.get().get_connected()
-            for electrical in connected_electricals:
-                if (ato_component := electrical.get_parent()) and ato_component[
-                    0
-                ].has_trait(is_ato_component):
-                    return filter_unpreferred_names(
-                        electrical.get_name(accept_no_parent=True)
-                    )
-            return None
-
-        interface_nodes = _get_all_connected_interfaces(electricals)
-        for node, _ in interface_nodes:
-            if name_trait := node.try_get_trait(F.has_net_name):
-                # TODO: this might never trigger, only the unnamed nets are processed
-                required_names.append(name_trait.get_name())
-            elif suggestion_trait := node.try_get_trait(F.has_net_name_suggestion):
-                if suggestion_trait.level == F.has_net_name_suggestion.Level.EXPECTED:
-                    required_names.append(suggestion_trait.name)
-                elif (
-                    suggestion_trait.level == F.has_net_name_suggestion.Level.SUGGESTED
-                ):
-                    suggested_names.append(suggestion_trait.name)
-            elif signal_name := _try_extract_signal_name(node):
-                suggested_names.append(signal_name)
+        connected_interfaces = _get_all_connected_interfaces(electricals)
+        longest_hierarchy = max(connected_interfaces, key=len)
+        connected_interfaces.remove(longest_hierarchy)
+        longest_hierarchy_required_names, longest_hierarchy_suggested_names = (
+            _check_suggested_and_expected_names(longest_hierarchy, suggested=True)
+        )
+        suggested_names = longest_hierarchy_suggested_names
+        required_names = longest_hierarchy_required_names
+        for interfaces in connected_interfaces:
+            req_names, sug_names = _check_suggested_and_expected_names(interfaces)
+            if sug_names:
+                required_names.extend(sug_names)
+            if req_names:
+                required_names.extend(req_names)
         return required_names, suggested_names
 
     # Track required names across all nets for duplicate detection
@@ -221,8 +246,9 @@ def process_required_and_suggested_names(
 
     for processable_net in processable_nets:
         if not processable_net.electricals:
-            # TODO: shouldn't this raise an error?
-            continue
+            raise ValueError(
+                f"Net {processable_net.net.get_name()} has no connected electricals"
+            )
 
         required_names, suggested_names = _get_required_and_suggested_names(
             [e.electrical for e in processable_net.electricals]
@@ -293,20 +319,86 @@ def add_base_name(
 ) -> None:
     """
     Add the base name to the net name
+
+    Stages:
+    1. try using one of the nice basenames derived from one of the connected electricals
+    2. default to "net" if nothing else is available
     """
 
+    def _add_nice_base_name(processable_net: ProcessableNet) -> None:
+        """
+        Add a nice base name to the net name if available.
+        """
+
+        def _nice_base_names(processable_net: ProcessableNet) -> list[str]:
+            """
+            Find nice base names and return them in order of preference.
+
+            Order of preference:
+            1. name of the electrical connected to the footprint pad (ato `pin`)
+            2. name of the electrical that is defined as ato `signal`
+            3. names from all nodes in the interface hierarchy
+                (leaf to root, so deeper/more-specific names come first)
+            4. default to "net"
+            """
+            from atopile.compiler.ast_visitor import is_ato_pin
+
+            nice_base_names: list[str] = []
+            pin_nodes: list[fabll.Node] = []
+            connected_interfaces = _get_all_connected_interfaces(
+                [e.electrical for e in processable_net.electricals]
+            )
+
+            # Collect ato pin nodes from the leaf of each interface hierarchy
+            for hierarchy in connected_interfaces:
+                if not hierarchy:
+                    continue
+                leaf_node, _ = hierarchy[-1]
+                if leaf_node.has_trait(is_ato_pin):
+                    pin_nodes.append(leaf_node)
+
+            # Priotity 1: pin name extraction (unlikely this is a good name)
+            for pin_node in pin_nodes:
+                if pin_name := pin_node.get_name(accept_no_parent=True):
+                    nice_base_names.append(pin_name)
+
+            # Priority 2: signal name extracted from ato pin
+            for pin_node in pin_nodes:
+                if signal_name := _try_extract_signal_name(pin_node):
+                    nice_base_names.append(signal_name)
+
+            # Priority 3: names from all nodes in the interface hierarchy
+            # (leaf to root, so deeper/more-specific names come first)
+            for hierarchy in connected_interfaces:
+                for _, name in reversed(hierarchy):
+                    if name not in nice_base_names:
+                        nice_base_names.append(name)
+
+            # Priority 4: default to "net"
+
+            # remove unwanted names
+            logger.debug(f"nice base names before filtering: {nice_base_names}")
+            nice_base_names = [
+                name
+                for name in nice_base_names
+                if filter_unpreferred_names(name) is not None
+            ]
+
+            return nice_base_names
+
+        names = _nice_base_names(processable_net)
+        logger.debug(f"nice names after filtering:  {names}")
+        if names:
+            # for now just use the first name (highest rank)
+            processable_net.net_name.base_name = names[0]
+
+    logger.debug(f"trying to add nice base names to {len(processable_nets)} nets")
     for processable_net in processable_nets:
         if processable_net.net_name.base_name is None:
-            if (electricals := processable_net.electricals) and (
-                elec_name := electricals[0].name
-            ) is not None:
-                # Use the name of the electrical deepest in the hierarchy, but
-                # walk upwards until we find a preferred name.
-                for part in reversed(elec_name.split(".")):
-                    if filtered_name := filter_unpreferred_names(part):
-                        processable_net.net_name.base_name = filtered_name
-                        break
-            # else default to "net" if nothing else is available
+            # skip setting base name if already set (by suggested or required names)
+            _add_nice_base_name(processable_net)
+        else:
+            logger.debug(f"nice! skipping {processable_net.net_name.name}")
 
 
 def add_affixes(
@@ -465,8 +557,7 @@ def resolve_name_conflicts(
             # For remaining nets, try prefixing with parent interface name
             remaining_nets = conflict_group_sorted[1:]
             for net in remaining_nets:
-                parent_name = _get_parent_interface_name(net)
-                if parent_name:
+                if parent_name := _get_parent_interface_name(net):
                     net.net_name.prefix = parent_name
                     conflicts_resolved += 1
                 # If no parent interface (shouldn't happen in well-formed hierarchy),
@@ -531,6 +622,7 @@ def apply_names_to_nets(
 
     name_counts = Counter(final_names.values())
     duplicates = [name for name, count in name_counts.items() if count > 1]
+    # TODO: this should resolve itself instead of raising an error
     if duplicates:
         raise ValueError(
             f"Net name collision after truncation: {duplicates}. "
