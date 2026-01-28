@@ -12,7 +12,9 @@ MAX_NAME_LENGTH = 255
 MAX_CONFLICT_RESOLUTION_ITERATIONS = 100
 
 # Pre-compiled regex for filtering unpreferred names
-_UNPREFERRED_NAMES_RE = re.compile(r"^(net|\d+|part_of|output|line|unnamed\[\d+\])$")
+_UNPREFERRED_NAMES_RE = re.compile(
+    r"^(net|\d+|0x[0-9A-Fa-f]+|part_of|output|line|unnamed\[\d+\])$"
+)
 
 # Characters that are invalid in net names (KiCad restrictions)
 _INVALID_NAME_CHARS_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
@@ -487,10 +489,14 @@ def _get_conflict_sort_key(processable_net: ProcessableNet) -> tuple[int, str]:
 
 def _get_parent_interface_name(processable_net: ProcessableNet) -> str | None:
     """
-    Get the immediate parent interface name for prefixing.
+    Get a parent interface name for prefixing that differs from the base name.
+
+    Walks up the hierarchy from the immediate parent toward the root,
+    skipping any parent whose name matches the current base name
+    (to avoid producing names like "signal_a.signal_a").
 
     Returns:
-        The parent interface name, or None if not available.
+        The first distinct parent interface name, or None if not available.
     """
     if not (electricals := processable_net.electricals):
         return None
@@ -505,8 +511,14 @@ def _get_parent_interface_name(processable_net: ProcessableNet) -> str | None:
     if len(parts) < 2:
         return None
 
-    # Return the second-to-last part (immediate parent interface)
-    return parts[-2]
+    base_name = processable_net.net_name.base_name
+
+    # Walk from immediate parent toward root, skip names matching the base
+    for part in reversed(parts[:-1]):
+        if part.lower() != (base_name or "").lower():
+            return part
+
+    return None
 
 
 def _find_conflicting_nets(
@@ -852,10 +864,10 @@ class TestNetNaming:
 
         assert net_names == [
             "interface_a.no_name",
-            "interface_b.PRE_line_SUF",
             "no_name",
             "no_name_SUF",
-            "PRE_line_SUF",
+            "PRE_interface_a_SUF",
+            "PRE_interface_b_SUF",
         ]
 
     def test_hierarchical_name_resolution(self):
@@ -957,24 +969,24 @@ class TestNetNaming:
         print(f"net_names: {net_names}")
 
         assert net_names == [
-            "app_interface.line",
-            "app_interface2.line",
-            "base_interface.line",
-            "base_interface.line-1",
+            "app_interface",
+            "app_interface2",
+            "app_interface2.level1_interface",
+            "base_interface",
             "dup_name",
             "dup_name-1",
             "dup_name_suggested",
             "dup_with_affix_SUF",
+            "level0_interface",
+            "level0_interface.base_interface",
             "level0_interface.dup_with_affix_SUF",
-            "level0_interface.line",
-            "level0_interface.line-1",
             "level0_interface.PRE_dup_with_affix",
+            "level1_interface",
             "level1_interface.dup_name_suggested",
             "level1_interface.dup_name_suggested-1",
             "level1_interface.dup_name_suggested-2",
-            "level1_interface.line",
-            "level1_interface.line-1",
-            "line",
+            "level1_interface.level0_interface",
+            "net",
             "PRE_dup_with_affix",
         ]
 
@@ -1040,20 +1052,24 @@ class TestNetNaming:
 
     def test_filter_unpreferred_names(self):
         """
-        Test filter_unpreferred_names filters out 'net', 'power', and numeric names
+        Test filter_unpreferred_names filters out generic/uninformative names
         """
         # Should filter out unpreferred names
         assert filter_unpreferred_names("net") is None
-        assert filter_unpreferred_names("power") is None
         assert filter_unpreferred_names("0") is None
         assert filter_unpreferred_names("123") is None
         assert filter_unpreferred_names("9999") is None
+        assert filter_unpreferred_names("part_of") is None
+        assert filter_unpreferred_names("output") is None
+        assert filter_unpreferred_names("line") is None
+        assert filter_unpreferred_names("unnamed[0]") is None
+        assert filter_unpreferred_names("unnamed[42]") is None
 
         # Should pass through preferred names
         assert filter_unpreferred_names("GND") == "GND"
         assert filter_unpreferred_names("VCC") == "VCC"
         assert filter_unpreferred_names("SDA") == "SDA"
-        assert filter_unpreferred_names("line") == "line"
+        assert filter_unpreferred_names("power") == "power"
         assert filter_unpreferred_names("my_signal") == "my_signal"
         assert filter_unpreferred_names("net1") == "net1"  # not exactly "net"
         assert (
@@ -1236,7 +1252,7 @@ class TestNetNaming:
         assert processable_nets[0].net_name.base_name == "my_signal"
 
     def test_add_base_name_filters_unpreferred(self):
-        """Test add_base_name filters out unpreferred names like 'power' and 'net'"""
+        """Test add_base_name filters out unpreferred names like 'output' and 'net'"""
         import faebryk.core.node as fabll
 
         g = fabll.graph.GraphView.create()
@@ -1244,8 +1260,7 @@ class TestNetNaming:
 
         class FilterUnpreferredApp(fabll.Node):
             _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
-            # Use a dotted name to test hierarchy walking
-            power = F.Electrical.MakeChild()  # "power" is unpreferred
+            output = F.Electrical.MakeChild()  # "output" is unpreferred
             my_signal = F.Electrical.MakeChild()  # preferred name
 
         app = FilterUnpreferredApp.bind_typegraph(tg=tg).create_instance(g=g)
@@ -1260,17 +1275,17 @@ class TestNetNaming:
         processable_nets = collect_unnamed_nets(nets)
         add_base_name(processable_nets)
 
-        # Find the processable net for the "power" electrical
-        # Since "power" is filtered, base_name should remain None (falls back to "net")
-        power_net = next(
-            pn for pn in processable_nets if pn.electricals[0].name == "power"
+        # Find the processable net for the "output" electrical
+        # Since "output" is filtered, base_name should remain None (falls back to "net")
+        output_net = next(
+            pn for pn in processable_nets if pn.electricals[0].name == "output"
         )
         signal_net = next(
             pn for pn in processable_nets if pn.electricals[0].name == "my_signal"
         )
 
-        # "power" is unpreferred, so base_name remains None
-        assert power_net.net_name.base_name is None
+        # "output" is unpreferred, so base_name remains None
+        assert output_net.net_name.base_name is None
         # "my_signal" is preferred, so base_name is set
         assert signal_net.net_name.base_name == "my_signal"
 
@@ -1283,7 +1298,7 @@ class TestNetNaming:
 
         class ConflictPrefixInterface(fabll.Node):
             _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
-            line = F.Electrical.MakeChild()
+            signal = F.Electrical.MakeChild()
 
         class ConflictPrefixApp(fabll.Node):
             _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
@@ -1302,9 +1317,9 @@ class TestNetNaming:
         processable_nets = collect_unnamed_nets(nets)
         add_base_name(processable_nets)
 
-        # Both should have base_name "line" before conflict resolution
+        # Both should have base_name "signal" before conflict resolution
         for pn in processable_nets:
-            assert pn.net_name.base_name == "line"
+            assert pn.net_name.base_name == "signal"
 
         resolve_name_conflicts(processable_nets)
 
@@ -1312,8 +1327,8 @@ class TestNetNaming:
         names = [pn.net_name.name for pn in processable_nets]
         assert len(set(names)) == 2  # All unique
 
-        # One should keep "line", the other should have a prefix
-        assert "line" in names
+        # One should keep "signal", the other should have a prefix
+        assert "signal" in names
         prefixed_names = [n for n in names if "." in n]
         assert len(prefixed_names) == 1
 
