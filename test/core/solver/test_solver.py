@@ -13,10 +13,7 @@ import faebryk.library._F as F
 from faebryk.core.solver.mutator import MutationMap
 from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_expression
-from faebryk.core.solver.utils import (
-    Contradiction,
-    ContradictionByLiteral,
-)
+from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.picker.picker import pick_parts_recursively
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.util import not_none
@@ -276,7 +273,7 @@ def test_shortcircuit_logic_and():
     E.and_(p0, E.lit_bool(False), assert_=True)
     solver = Solver()
 
-    with pytest.raises(ContradictionByLiteral):
+    with pytest.raises(Contradiction):
         solver.simplify(E.tg, E.g)
 
 
@@ -579,7 +576,7 @@ def test_less_obvious_contradiction_by_literal():
         p.as_parameter_operatable.force_get().compact_repr()
 
     solver = Solver()
-    with pytest.raises(ContradictionByLiteral):
+    with pytest.raises(Contradiction):
         solver.simplify(E.tg, E.g)
 
 
@@ -1016,7 +1013,7 @@ def test_voltage_divider_reject_invalid_r_top():
     )
 
     solver = Solver()
-    with pytest.raises(ContradictionByLiteral):
+    with pytest.raises(Contradiction):
         solver.simplify(E.tg, E.g)
 
 
@@ -1453,7 +1450,7 @@ def test_find_contradiction_by_gt():
     E.greater_than(A, B, assert_=True)
 
     solver = Solver()
-    with pytest.raises(ContradictionByLiteral):
+    with pytest.raises(Contradiction):
         solver.simplify(E.tg, E.g)
 
 
