@@ -159,8 +159,7 @@ def test_mutation_map_compressed_mapping_backwards_copy():
     variables_mid = list(mapping.output_operables)
 
     E2 = BoundExpressions()
-    _, variables_new = _create_letters(E2, 3)
-    variables_new = [v for v in variables_new]
+    variables_new = _create_letters(E2, 3)
 
     mapping_new = mapping.extend(
         MutationStage(
@@ -193,8 +192,7 @@ def test_mutation_map_compressed_mapping_backwards_mutate():
     variables_mid = list(mapping.output_operables)
 
     E2 = BoundExpressions()
-    _, variables_new = _create_letters(E2, 3)
-    variables_new = [v for v in variables_new]
+    variables_new = _create_letters(E2, 3)
 
     mapping_new = mapping.extend(
         MutationStage(
@@ -237,8 +235,7 @@ def test_mutation_map_non_copy_mutated_mutate():
     mapping = MutationMap.bootstrap(E.tg, E.g)
 
     E2 = BoundExpressions()
-    _, variables_new = _create_letters(E2, 3)
-    variables_new = [v for v in variables_new]
+    variables_new = _create_letters(E2, 3)
 
     mapping_new = mapping.extend(
         MutationStage(
@@ -266,7 +263,7 @@ def test_mutation_map_non_copy_mutated_mutate_expression():
     mapping = MutationMap.bootstrap(E.tg, E.g)
 
     E2 = BoundExpressions()
-    _, variables_new = _create_letters(E2, 2)
+    variables_new = _create_letters(E2, 2)
     op_new = E2.multiply(*[v.as_operand.get() for v in variables_new])
 
     mapping_new = mapping.extend(
@@ -295,7 +292,7 @@ def test_mutation_map_submap():
     mapping = MutationMap.bootstrap(E.tg, E.g)
 
     E2 = BoundExpressions()
-    _, variables_new = _create_letters(E2, 2)
+    variables_new = _create_letters(E2, 2)
     op_new = E2.multiply(*[v.as_operand.get() for v in variables_new])
 
     mapping_new = mapping.extend(  # noqa: F841
