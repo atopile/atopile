@@ -552,10 +552,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     try {
       if (atopile.source === 'local' && atopile.localPath) {
-        // For local mode, set the 'ato' setting directly
+        // For local mode, set the 'ato' setting directly (it overrides 'from')
         traceInfo(`[SidebarProvider] Setting atopile.ato = ${atopile.localPath}`);
         await config.update('ato', atopile.localPath, target);
-        await config.update('from', undefined, target);
       } else {
         // For release/branch mode, set the 'from' setting
         const fromValue = this._atopileSettingsToFrom(atopile);

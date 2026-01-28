@@ -1359,6 +1359,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             path = payload.get("path", "")
             result = await atopile_install.validate_local_path(path)
+            log.info(f"[validateAtopilePath] path={path}, result={result}")
             return {"success": True, **result}
 
         elif action == "refreshDetectedInstallations":

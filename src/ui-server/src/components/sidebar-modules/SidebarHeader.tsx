@@ -84,6 +84,19 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
   // Use local toggle state - derived from atopile.source
   const useLocalAtopile = atopile?.source === 'local';
 
+  // Local state for path input (controlled input needs synchronous state updates)
+  const [localPathInput, setLocalPathInput] = useState(atopile?.localPath || '');
+  // Track if input is focused to prevent external sync from overwriting user typing
+  const [inputFocused, setInputFocused] = useState(false);
+
+  // Sync local input state when store value changes externally (e.g., from detected installations)
+  // BUT only when the input is not focused (user not actively typing)
+  useEffect(() => {
+    if (!inputFocused && atopile?.localPath !== undefined && atopile.localPath !== localPathInput) {
+      setLocalPathInput(atopile.localPath || '');
+    }
+  }, [atopile?.localPath, inputFocused]);
+
   // Local path validation state
   const [localPathValidation, setLocalPathValidation] = useState<{
     isValidating: boolean;
@@ -205,17 +218,10 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
   useEffect(() => {
     const unsubscribe = onExtensionMessage((message: ExtensionToWebviewMessage) => {
       if (message.type === 'browseAtopilePathResult' && message.path) {
-        // Validate and select the path (version will be set after validation)
+        // Set the path - this triggers validation via the useEffect above
+        // The validation result handler will save the RESOLVED path to settings
         action('setAtopileLocalPath', { path: message.path });
-        // Save to settings immediately
-        postMessage({
-          type: 'atopileSettings',
-          atopile: {
-            source: 'local',
-            localPath: message.path,
-          },
-        });
-        // Restart status is computed from state, no need to track manually
+        // Don't save to settings here - let validation resolve the full binary path first
       }
     });
 
@@ -253,6 +259,10 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
 
       // Handle validateAtopilePath result
       if (message?.action === 'validateAtopilePath' && result) {
+        console.log('[SidebarHeader] validateAtopilePath raw message:', JSON.stringify(message, null, 2));
+        console.log('[SidebarHeader] validateAtopilePath result object:', result);
+        console.log('[SidebarHeader] resolved_path value:', result.resolved_path);
+
         setLocalPathValidation({
           isValidating: false,
           valid: result.valid ?? false,
@@ -270,11 +280,8 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
             pathToSave,
           });
 
-          // Update the local path in the store to the resolved path
-          if (result.resolved_path && result.resolved_path !== atopile?.localPath) {
-            action('setAtopileLocalPath', { path: result.resolved_path });
-          }
-
+          // Save the RESOLVED path to VS Code settings (not the user's input)
+          // Don't update the store's localPath - keep showing what the user typed
           postMessage({
             type: 'atopileSettings',
             atopile: {
@@ -492,8 +499,13 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
                       type="text"
                       className={`settings-input${localPathValidation.valid === true ? ' valid' : ''}${localPathValidation.valid === false ? ' invalid' : ''}`}
                       placeholder="/path/to/atopile or ato binary"
-                      value={atopile?.localPath || ''}
+                      value={localPathInput}
+                      onFocus={() => setInputFocused(true)}
+                      onBlur={() => setInputFocused(false)}
                       onChange={(e) => {
+                        // Update local state immediately for responsive input
+                        setLocalPathInput(e.target.value);
+                        // Sync to backend store (async, for validation trigger)
                         action('setAtopileLocalPath', { path: e.target.value });
                       }}
                     />
@@ -519,8 +531,12 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
                           <Check size={12} />
                           <div className="validation-success">
                             <span>Found atopile{localPathValidation.version ? ` v${localPathValidation.version}` : ''}</span>
-                            {localPathValidation.resolvedPath && localPathValidation.resolvedPath !== atopile?.localPath && (
-                              <span className="resolved-path">at {localPathValidation.resolvedPath.replace(/^\/Users\/[^/]+/, '~')}</span>
+                            {localPathValidation.resolvedPath && (
+                              <span className="resolved-path">
+                                {localPathValidation.resolvedPath !== atopile?.localPath
+                                  ? `Using ${localPathValidation.resolvedPath.replace(/^\/Users\/[^/]+/, '~')}`
+                                  : `at ${localPathValidation.resolvedPath.replace(/^\/Users\/[^/]+/, '~')}`}
+                              </span>
                             )}
                           </div>
                         </>

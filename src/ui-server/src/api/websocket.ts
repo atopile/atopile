@@ -256,18 +256,9 @@ function handleMessage(event: MessageEvent): void {
             });
           }
 
-          // Forward atopile settings changes to VS Code extension
-          if (state.atopile) {
-            postMessage({
-              type: 'atopileSettings',
-              atopile: {
-                source: state.atopile.source,
-                currentVersion: state.atopile.currentVersion,
-                branch: state.atopile.branch,
-                localPath: state.atopile.localPath,
-              },
-            });
-          }
+          // NOTE: Don't forward backend atopile state to VS Code settings here.
+          // The backend state is informational (what's currently running).
+          // User settings are only saved when explicitly changed in SidebarHeader.
         }
         break;
 

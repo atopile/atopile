@@ -176,7 +176,8 @@ async def validate_local_path(path: str) -> dict:
         # Look for ato binary in common locations
         candidates = [
             ("bin/ato", None),  # venv binary
-            (".venv/bin/ato", None),  # local venv
+            (".venv/bin/ato", None),  # local venv (dotted)
+            ("venv/bin/ato", None),  # local venv (no dot)
             ("ato", None),  # direct binary
             ("src/atopile/cli/cli.py", sys.executable),  # source tree
         ]
