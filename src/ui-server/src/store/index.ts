@@ -41,6 +41,15 @@ const arraysEqual = (a: string[], b: string[]) => {
   return a.every((value, index) => value === b[index]);
 };
 
+// BroadcastChannel for cross-webview state synchronization
+const _channel: BroadcastChannel | null = (() => {
+  try {
+    return new BroadcastChannel('atopile-store');
+  } catch {
+    return null;
+  }
+})();
+
 // Initial state for the store
 const initialState: AppState = {
   // Connection
@@ -663,10 +672,8 @@ export const useStore = create<Store>()(
   )
 );
 
-<<<<<<< HEAD
-=======
 // Receive cross-webview state updates
-_channel?.addEventListener('message', (event) => {
+_channel?.addEventListener('message', (event: MessageEvent) => {
   const { key, value } = event.data ?? {};
   if (key) {
     useStore.setState({ [key]: value });
@@ -692,8 +699,6 @@ useStore.subscribe(
     });
   }
 );
-
->>>>>>> 5ec6e6d4b (update layout/3d views to selected build)
 // Selectors for common derived state
 export const useSelectedProject = () =>
   useStore((state) => {
