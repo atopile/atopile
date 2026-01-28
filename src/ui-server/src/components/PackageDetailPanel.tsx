@@ -28,7 +28,6 @@ interface PackageDetailProps {
   error: string | null
   onClose: () => void
   onInstall: (version: string) => void
-  onUninstall: () => void
   onBuild?: (entry?: string) => void  // Optional, no longer used in UI
 }
 
@@ -113,7 +112,6 @@ export function PackageDetailPanel({
   error,
   onClose,
   onInstall,
-  onUninstall,
 }: PackageDetailProps) {
   const [infoCollapsed, setInfoCollapsed] = useState(true)
   // Use details from API if available, fallback to basic package info
@@ -149,16 +147,8 @@ export function PackageDetailPanel({
 
   // Get description from details or package
   const description = details?.description || details?.summary || pkg.description
-  const installedFromList = typeof pkg.installed === 'boolean' ? pkg.installed : undefined
-  const isInstalled = installedFromList ?? details?.installed ?? false
-  const installedVersion = isInstalled ? (pkg.version || details?.installedVersion) : undefined
-  const isUpdateAvailable = Boolean(
-    isInstalled &&
-    selectedVersion &&
-    installedVersion &&
-    selectedVersion !== installedVersion
-  )
-  const showUninstall = Boolean(isInstalled && !isUpdateAvailable)
+  const isInstalled = details?.installed ?? pkg.installed
+  const installedVersion = details?.installedVersion || pkg.version
   const packageTitle = pkg.fullName || pkg.name
   const releaseDate = sortedVersions.find(v => v.version === selectedVersion)?.releasedAt
 
@@ -309,25 +299,19 @@ export function PackageDetailPanel({
             )}
 
             <button
-              className={`detail-install-btn ${
-                isUpdateAvailable ? 'update' : showUninstall ? 'uninstall' : 'install'
-              } ${isInstalling ? 'installing' : ''}`}
-              onClick={() =>
-                showUninstall
-                  ? onUninstall()
-                  : onInstall(selectedVersion || details?.version || pkg.version || '')
-              }
+              className={`detail-install-btn ${isInstalled ? 'update' : 'install'} ${isInstalling ? 'installing' : ''}`}
+              onClick={() => onInstall(selectedVersion || details?.version || pkg.version || '')}
               disabled={isLoading || isInstalling}
             >
               {isInstalling ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
-                  {showUninstall ? 'Uninstalling...' : 'Installing...'}
+                  Installing...
                 </>
               ) : (
                 <>
                   <Download size={14} />
-                  {isUpdateAvailable ? 'Update' : showUninstall ? 'Uninstall' : 'Install'}
+                  {isInstalled ? 'Update' : 'Install'}
                 </>
               )}
             </button>

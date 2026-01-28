@@ -5,24 +5,15 @@ Local package management helpers (installed package inspection).
 from __future__ import annotations
 
 import logging
+import subprocess
 from pathlib import Path
 
 import yaml
 
-from atopile.cli import install as cli_install
 from atopile.dataclasses import InstalledPackage, PackageInfo
-from atopile.exceptions import UserException as AtopileUserException
-
 from . import projects as core_projects
 
 log = logging.getLogger(__name__)
-
-
-def _format_install_error(exc: Exception) -> str:
-    if isinstance(exc, AtopileUserException):
-        message = getattr(exc, "message", "") or str(exc)
-        return message or "ato add/remove failed"
-    return str(exc) or "ato add/remove failed"
 
 
 def get_installed_packages_for_project(project_root: Path) -> list[InstalledPackage]:
@@ -119,17 +110,31 @@ def get_all_installed_packages(paths: list[Path]) -> dict[str, PackageInfo]:
 def install_package_to_project(
     project_root: Path, package_identifier: str, version: str | None = None
 ) -> None:
-    """Install or update a package in a project via the internal CLI implementation."""
-    pkg_spec = f"{package_identifier}@{version}" if version else package_identifier
-    try:
-        cli_install.add([pkg_spec], path=project_root)
-    except Exception as exc:
-        raise RuntimeError(_format_install_error(exc)) from exc
+    """Install or update a package in a project via `ato add`."""
+    cmd = ["ato", "add", package_identifier]
+    if version:
+        cmd.append(f"@{version}")
+
+    result = subprocess.run(
+        cmd,
+        cwd=str(project_root),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr or "ato add failed")
 
 
 def remove_package_from_project(project_root: Path, package_identifier: str) -> None:
-    """Remove a package from a project via the internal CLI implementation."""
-    try:
-        cli_install.remove([package_identifier], path=project_root)
-    except Exception as exc:
-        raise RuntimeError(_format_install_error(exc)) from exc
+    """Remove a package from a project via `ato remove`."""
+    cmd = ["ato", "remove", package_identifier]
+    result = subprocess.run(
+        cmd,
+        cwd=str(project_root),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr or "ato remove failed")

@@ -217,17 +217,6 @@
   color: var(--ctp-crust);
 }
 
-.detail-install-btn.uninstall {
-  background: var(--ctp-red);
-  color: var(--ctp-crust);
-  border: none;
-}
-
-.detail-install-btn.uninstall:hover {
-  background: var(--ctp-maroon);
-  color: var(--ctp-crust);
-}
-
 .detail-install-btn.installing {
   background: var(--ctp-green);
   color: var(--ctp-crust);
