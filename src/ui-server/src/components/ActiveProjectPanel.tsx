@@ -4,6 +4,8 @@ import type { Project, BuildTarget } from '../types/build'
 import type { QueuedBuild } from '../types/build'
 import { useStore } from '../store'
 import { sendAction } from '../api/websocket'
+import { postMessage, onExtensionMessage, type ExtensionToWebviewMessage } from '../api/vscodeApi'
+import { getWorkspaceFolders } from '../api/config'
 import './ActiveProjectPanel.css'
 
 interface NewProjectData {
@@ -25,7 +27,7 @@ interface ActiveProjectPanelProps {
   onOpenKiCad: (projectRoot: string, targetName: string) => void
   onOpen3D: (projectRoot: string, targetName: string) => void
   onOpenLayout: (projectRoot: string, targetName: string) => void
-  onCreateProject?: (data?: NewProjectData) => Promise<void>
+  onCreateProject?: (data?: NewProjectData) => Promise<string | null>
   onCreateTarget?: (projectRoot: string, data: NewTargetData) => Promise<void>
   onGenerateManufacturingData?: (projectRoot: string, targetName: string) => void
   queuedBuilds?: QueuedBuild[]
@@ -716,13 +718,16 @@ function NewProjectForm({
   onCancel,
   isCreating,
   error,
+  defaultLocation,
 }: {
   onSubmit: (data: NewProjectData) => void
   onCancel: () => void
   isCreating?: boolean
   error?: string | null
+  defaultLocation?: string
 }) {
   const [name, setName] = useState('')
+  const [location, setLocation] = useState(defaultLocation || '')
   const [license, setLicense] = useState('')
   const [description, setDescription] = useState('')
   const nameRef = useRef<HTMLInputElement>(null)
@@ -732,12 +737,31 @@ function NewProjectForm({
     nameRef.current?.focus()
   }, [])
 
+  // Listen for browse folder result from VS Code extension
+  useEffect(() => {
+    const unsubscribe = onExtensionMessage((message: ExtensionToWebviewMessage) => {
+      if (message.type === 'browseFolderResult' && message.purpose === 'projectLocation' && message.path) {
+        setLocation(message.path)
+      }
+    })
+    return unsubscribe
+  }, [])
+
+  const handleBrowseLocation = () => {
+    postMessage({
+      type: 'browseFolder',
+      purpose: 'projectLocation',
+      defaultPath: location || defaultLocation,
+    })
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     onSubmit({
       name: name.trim() || undefined,
       license: license || undefined,
       description: description.trim() || undefined,
+      parentDirectory: location.trim() || undefined,
     })
   }
 
@@ -779,6 +803,29 @@ function NewProjectForm({
           onChange={(e) => setName(e.target.value)}
           disabled={isCreating}
         />
+      </div>
+
+      <div className="form-field">
+        <label htmlFor="project-location">Location</label>
+        <div className="form-field-with-browse">
+          <input
+            id="project-location"
+            type="text"
+            placeholder="Parent directory for the project"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            disabled={isCreating}
+          />
+          <button
+            type="button"
+            className="browse-btn"
+            onClick={handleBrowseLocation}
+            disabled={isCreating}
+            title="Browse..."
+          >
+            <FolderOpen size={14} />
+          </button>
+        </div>
       </div>
 
       <div className="form-field">
@@ -1110,22 +1157,46 @@ export function ActiveProjectPanel({
   const [createProjectError, setCreateProjectError] = useState<string | null>(null)
   const [createTargetError, setCreateTargetError] = useState<string | null>(null)
 
+  // Compute default location for new project from existing projects or workspace folders
+  const defaultProjectLocation = useMemo(() => {
+    if (projects.length > 0) {
+      // Use parent directory of the first project
+      const firstProjectRoot = projects[0].root
+      const parts = firstProjectRoot.split('/')
+      parts.pop() // Remove the project folder name
+      return parts.join('/')
+    }
+    // Fall back to first workspace folder
+    const workspaceFolders = getWorkspaceFolders()
+    if (workspaceFolders.length > 0) {
+      return workspaceFolders[0]
+    }
+    return ''
+  }, [projects])
+
   const handleCreateProject = useCallback(async (data?: NewProjectData) => {
     if (!onCreateProject) return
     setIsCreatingProject(true)
     setCreateProjectError(null)
 
     try {
-      await onCreateProject(data)
+      const projectRoot = await onCreateProject(data)
       // Success - close form
       setShowNewProjectForm(false)
+
+      // Select the new project after a short delay to allow projects list to refresh
+      if (projectRoot) {
+        setTimeout(() => {
+          onSelectProject(projectRoot)
+        }, 500)
+      }
     } catch (error) {
       // Display error to user
       setCreateProjectError(error instanceof Error ? error.message : 'Failed to create project')
     } finally {
       setIsCreatingProject(false)
     }
-  }, [onCreateProject])
+  }, [onCreateProject, onSelectProject])
 
   // Reset errors when forms are opened
   useEffect(() => {
@@ -1211,6 +1282,7 @@ export function ActiveProjectPanel({
           onCancel={() => setShowNewProjectForm(false)}
           isCreating={isCreatingProject}
           error={createProjectError}
+          defaultLocation={defaultProjectLocation}
         />
       )}
 

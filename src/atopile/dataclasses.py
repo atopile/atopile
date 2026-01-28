@@ -1223,7 +1223,7 @@ class BuildReport:
 class AppContext:
     summary_file: Optional[Path] = None
     logs_base: Optional[Path] = None
-    workspace_paths: list[Path] = field(default_factory=list)
+    workspace_paths: list[Path] = field(default_factory=list)  # All workspace folders
 
 
 @dataclass(frozen=True)

@@ -5,8 +5,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Settings, ChevronDown, FolderOpen, Loader2, AlertCircle, Check, GitBranch, Package, Search, X } from 'lucide-react';
 import { sendAction } from '../../api/websocket';
+import { postMessage, onExtensionMessage, type ExtensionToWebviewMessage } from '../../api/vscodeApi';
 
-// Send action to backend via WebSocket
+// Send action to backend via WebSocket (or VS Code extension for special actions)
 const action = (name: string, data?: Record<string, unknown>) => {
   if (name === 'openUrl' && data && 'url' in data) {
     const url = (data as { url?: string }).url;
@@ -14,6 +15,11 @@ const action = (name: string, data?: Record<string, unknown>) => {
       window.open(url, '_blank', 'noopener,noreferrer');
       return;
     }
+  }
+  // browseAtopilePath needs to be handled by VS Code extension for native folder picker
+  if (name === 'browseAtopilePath') {
+    postMessage({ type: 'browseAtopilePath' });
+    return;
   }
   sendAction(name, data);
 };
@@ -184,6 +190,17 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
       }
     };
   }, [atopile?.source, atopile?.localPath]);
+
+  // Listen for browse atopile path result from VS Code extension
+  useEffect(() => {
+    const unsubscribe = onExtensionMessage((message: ExtensionToWebviewMessage) => {
+      if (message.type === 'browseAtopilePathResult' && message.path) {
+        action('setAtopileLocalPath', { path: message.path });
+      }
+    });
+
+    return unsubscribe;
+  }, []);
 
   // Handle action_result events for settings
   useEffect(() => {

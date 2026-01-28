@@ -5,6 +5,7 @@
 
 import { sendActionWithResponse } from '../../api/websocket';
 import { useStore } from '../../store';
+import { postMessage } from '../../api/vscodeApi';
 import type { Selection, SelectedPackage } from './sidebarUtils';
 
 interface UseSidebarHandlersProps {
@@ -88,13 +89,27 @@ export function useSidebarHandlers({
     action('installPackage', { packageId, projectRoot, version });
   };
 
-  const handleCreateProject = async (data?: { name?: string; license?: string; description?: string; parentDirectory?: string }) => {
+  const handleCreateProject = async (data?: { name?: string; license?: string; description?: string; parentDirectory?: string }): Promise<string | null> => {
     const response = await sendActionWithResponse('createProject', data || {});
     if (!response.result?.success) {
       const errorMsg = response.result?.error || 'Failed to create project';
       throw new Error(errorMsg);
     }
-    // Projects are refreshed by the backend automatically
+
+    // Get the project root from the response
+    const result = response.result as { project_root?: string; projectRoot?: string };
+    const projectRoot = result.project_root || result.projectRoot || null;
+
+    if (projectRoot) {
+      // Add the project folder to the VS Code workspace if not already there
+      postMessage({ type: 'addWorkspaceFolder', folderPath: projectRoot });
+
+      // Notify VS Code extension to select this project
+      postMessage({ type: 'selectProject', projectRoot });
+    }
+
+    // Return the project root so the caller can select it after projects are refreshed
+    return projectRoot;
   };
 
   const handleStructureRefresh = () => {

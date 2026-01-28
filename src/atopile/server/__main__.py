@@ -49,6 +49,12 @@ def main():
         action="store_true",
         help="Kill existing server on the port and start fresh",
     )
+    parser.add_argument(
+        "--logs-dir",
+        type=str,
+        default=None,
+        help="Directory for build logs (default: ./build/logs)",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[3]
