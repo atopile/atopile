@@ -645,6 +645,9 @@ def _no_predicate_operands(
     don't use predicates as operands:
     Op(P!, ...) -> Op(True, ...)
     """
+    # don't modify operands of terminated expressions
+    if builder.terminate:
+        return builder
 
     # only assertable can have predicate operands
     if not builder.factory.bind_typegraph(
