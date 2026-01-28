@@ -1881,8 +1881,14 @@ class Mutator:
             expr_obj.isinstance(builder.factory) and operands == expr.get_operands()
         )
 
-        # predicates don't have aliases
-        if assert_:
+        if (
+            # predicates don't have aliases
+            assert_
+            # expr with no alias yet: insert_expression will create one later
+            or not expr.as_operand.get().get_operations(
+                F.Expressions.Is, predicates_only=True
+            )
+        ):
             alias_p = None
         else:
             alias_p = (
