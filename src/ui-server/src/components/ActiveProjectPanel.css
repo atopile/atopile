@@ -856,6 +856,15 @@
   background: var(--bg-secondary);
 }
 
+.build-stage-clickable {
+  cursor: pointer;
+}
+
+.build-stage-clickable:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
 .build-stage .stage-icon {
   flex-shrink: 0;
   width: 10px;

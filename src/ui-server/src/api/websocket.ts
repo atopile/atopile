@@ -297,7 +297,7 @@ function handleMessage(event: MessageEvent): void {
             : (Array.isArray(multiIds) && typeof multiIds[0] === 'string' ? multiIds[0] : null);
           if (buildId) {
             useStore.getState().setLogViewerBuildId(buildId);
-            sendAction('setLogViewCurrentId', { buildId });
+            sendAction('setLogViewCurrentId', { buildId, stage: null });
           }
         }
         if (typeof window !== 'undefined') {
@@ -583,9 +583,15 @@ async function fetchLogViewCurrentId(): Promise<void> {
     const buildId = typeof response.result?.buildId === 'string'
       ? response.result.buildId
       : null;
+    const stage = typeof response.result?.stage === 'string'
+      ? response.result.stage
+      : null;
     if (buildId) {
       useStore.getState().setLogViewerBuildId(buildId);
     }
+    window.dispatchEvent(
+      new CustomEvent('atopile:log_view_stage_changed', { detail: { stage } })
+    );
   } catch (error) {
     console.warn('[WS] Failed to fetch log view current ID:', error);
   }
@@ -667,7 +673,11 @@ function handleEventMessage(message: EventMessage): void {
     case EventType.LogViewCurrentIDChanged:
       {
         const buildId = typeof data.buildId === 'string' ? data.buildId : null;
+        const stage = typeof data.stage === 'string' ? data.stage : null;
         useStore.getState().setLogViewerBuildId(buildId);
+        window.dispatchEvent(
+          new CustomEvent('atopile:log_view_stage_changed', { detail: { stage } })
+        );
       }
       break;
     default:

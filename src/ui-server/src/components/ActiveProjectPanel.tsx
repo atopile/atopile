@@ -1017,7 +1017,18 @@ function BuildQueueItem({
           </div>
           {hasStages ? (
             build.stages!.map((stage, index) => (
-              <div key={index} className={`build-stage ${stage.status}`}>
+              <div
+                key={index}
+                className={`build-stage ${stage.status} build-stage-clickable`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (build.buildId) {
+                    useStore.getState().setLogViewerBuildId(build.buildId)
+                    sendAction('setLogViewCurrentId', { buildId: build.buildId, stage: stage.stageId || stage.name })
+                  }
+                }}
+                title={`View logs for ${stage.displayName || stage.name}`}
+              >
                 <StageStatusIcon status={stage.status} />
                 <span className="stage-name">{stage.displayName || stage.name}</span>
                 {(() => {
@@ -1311,7 +1322,7 @@ export function ActiveProjectPanel({
               const latestBuild = targetBuilds.length > 0 ? targetBuilds[0] : projectBuilds[0]
               if (latestBuild?.buildId) {
                 useStore.getState().setLogViewerBuildId(latestBuild.buildId)
-                sendAction('setLogViewCurrentId', { buildId: latestBuild.buildId })
+                sendAction('setLogViewCurrentId', { buildId: latestBuild.buildId, stage: null })
               }
             }}
             disabled={!activeProject || projectBuilds.length === 0}

@@ -1259,9 +1259,12 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
         elif action == "setLogViewCurrentId":
             build_id = payload.get("buildId")
+            stage = payload.get("stage")
             client_state.log_view_current_id = build_id
+            client_state.log_view_current_stage = stage
             await server_state.emit_event(
-                "log_view_current_id_changed", {"buildId": build_id}
+                "log_view_current_id_changed",
+                {"buildId": build_id, "stage": stage},
             )
             return {"success": True}
 
@@ -1269,6 +1272,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             return {
                 "success": True,
                 "buildId": client_state.log_view_current_id,
+                "stage": client_state.log_view_current_stage,
             }
 
         elif action == "setAtopileSource":

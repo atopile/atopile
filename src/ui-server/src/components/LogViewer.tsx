@@ -63,7 +63,7 @@ export function LogViewer() {
   const buildId = useStore((state) => state.logViewerBuildId) ?? '';
   const setBuildId = useCallback((id: string) => {
     useStore.getState().setLogViewerBuildId(id || null);
-    sendAction('setLogViewCurrentId', { buildId: id || null });
+    sendAction('setLogViewCurrentId', { buildId: id || null, stage: null });
   }, []);
   const [stage, setStage] = useState('');
 
@@ -73,6 +73,16 @@ export function LogViewer() {
       setBuildId(initialParams.buildId);
     }
   }, [setBuildId]);
+
+  // Listen for stage changes dispatched by the websocket handler
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ stage: string | null }>).detail;
+      setStage(detail.stage ?? '');
+    };
+    window.addEventListener('atopile:log_view_stage_changed', handler);
+    return () => window.removeEventListener('atopile:log_view_stage_changed', handler);
+  }, []);
 
   // Test log specific parameters
   const [testRunId, setTestRunId] = useState(initialParams.testRunId);
