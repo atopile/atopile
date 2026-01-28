@@ -459,25 +459,23 @@ def find_congruent_expression[T: F.Expressions.ExpressionNodes](
     )
     non_lits = list(builder.indexed_pos().values())
     if not non_lits:
-        # discovery works different with only lits
-        # TODO think about how useful this case actually is for !allow_uncorrelated
-        lit_ops = {
-            op
-            for op in factory_bound.get_instances(mutator.G_out)
-            if mutator.utils.is_literal_expression(
-                op.get_trait(F.Parameters.can_be_operand)
-            )
-            # check congruence
-            and F.Expressions.is_expression.are_pos_congruent(
-                op.get_trait(F.Expressions.is_expression).get_operands(),
+        # When all operands are literals, we can't use the "common parents" discovery
+        # below. We must scan:
+        def _matches(op: T) -> bool:
+            if not mutator.utils.is_literal_expression(op.can_be_operand.get()):
+                return False
+            return F.Expressions.is_expression.are_pos_congruent(
+                op.is_expression.get().get_operands(),
                 builder.operands,
                 g=mutator.G_transient,
                 tg=mutator.tg_in,
                 allow_uncorrelated=allow_uncorrelated,
             )
-        }
-        if lit_ops:
-            return next(iter(lit_ops))
+
+        for op in factory_bound.get_instances(mutator.G_out):
+            if _matches(op):
+                return op
+
         return None
 
     parents = [non_lit.get_operations() for non_lit in non_lits]
@@ -1286,6 +1284,10 @@ def insert_expression(
     # expression must have an Is alias so it can be used as an operand)
     if not builder.assert_ and alias is None:
         alias = expr.is_expression.get().create_representative(alias=False)
+        if I_LOG:
+            logger.debug(
+                f"Create alias: {alias.compact_repr()} for {builder.compact_repr()}"
+            )
     # transfer/create alias for new expr
     if alias:
         # TODO find alias in old graph and copy it over if it exists
