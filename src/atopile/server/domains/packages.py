@@ -6,7 +6,6 @@ import asyncio
 import logging
 import os
 import re
-import subprocess
 import threading
 import time
 from pathlib import Path
@@ -822,25 +821,19 @@ def handle_install_package(
             "error": None,
         }
 
-    cmd = ["ato", "add", request.package_identifier]
-    if request.version:
-        cmd.append(f"@{request.version}")
-
     def run_install():
         try:
-            result = subprocess.run(
-                cmd,
-                cwd=request.project_root,
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
             with _package_op_lock:
-                if result.returncode == 0:
+                try:
+                    core_packages.install_package_to_project(
+                        project_path, request.package_identifier, request.version
+                    )
                     _active_package_ops[op_id]["status"] = "success"
-                else:
+                except Exception as exc:
                     _active_package_ops[op_id]["status"] = "failed"
-                    _active_package_ops[op_id]["error"] = result.stderr[:500]
+                    _active_package_ops[op_id]["error"] = (
+                        str(exc)[:500] or "ato add failed"
+                    )
         except Exception as exc:
             with _package_op_lock:
                 _active_package_ops[op_id]["status"] = "failed"
@@ -876,23 +869,19 @@ def handle_remove_package(
             "error": None,
         }
 
-    cmd = ["ato", "remove", request.package_identifier]
-
     def run_remove():
         try:
-            result = subprocess.run(
-                cmd,
-                cwd=request.project_root,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
             with _package_op_lock:
-                if result.returncode == 0:
+                try:
+                    core_packages.remove_package_from_project(
+                        project_path, request.package_identifier
+                    )
                     _active_package_ops[op_id]["status"] = "success"
-                else:
+                except Exception as exc:
                     _active_package_ops[op_id]["status"] = "failed"
-                    _active_package_ops[op_id]["error"] = result.stderr[:500]
+                    _active_package_ops[op_id]["error"] = (
+                        str(exc)[:500] or "ato remove failed"
+                    )
         except Exception as exc:
             with _package_op_lock:
                 _active_package_ops[op_id]["status"] = "failed"
