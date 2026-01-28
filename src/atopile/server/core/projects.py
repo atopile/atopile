@@ -235,7 +235,8 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                 log.warning(f"Failed to parse {ato_file}: {e}")
                 continue
 
-    projects.sort(key=lambda p: p.name.lower())
+    # Sort by path (root) to group projects in the same directory together
+    projects.sort(key=lambda p: p.root.lower())
     return projects
 
 
