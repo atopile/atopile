@@ -123,6 +123,7 @@ export interface ProjectDependency {
 export interface Project {
   root: string;
   name: string;
+  displayPath?: string;  // Relative path for display (e.g., "packages/proj")
   description?: string;  // Project description from ato.yaml
   targets: BuildTarget[];
   dependencies?: ProjectDependency[];  // Project dependencies from ato.yaml

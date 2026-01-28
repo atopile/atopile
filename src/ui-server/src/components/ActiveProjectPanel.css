@@ -129,7 +129,7 @@
   left: 0;
   right: 0;
   z-index: 100;
-  background: var(--bg-secondary);
+  background: var(--vscode-dropdown-background, #1e1e2e);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
@@ -197,6 +197,7 @@
   flex: 1;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
+  opacity: 0.7;
   font-family: var(--font-mono);
   white-space: nowrap;
   overflow: hidden;
@@ -341,7 +342,7 @@
   left: 0;
   right: 0;
   z-index: 100;
-  background: var(--bg-secondary);
+  background: var(--vscode-dropdown-background, #1e1e2e);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);

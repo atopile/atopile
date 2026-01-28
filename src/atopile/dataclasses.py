@@ -545,12 +545,15 @@ class MaxConcurrentRequest(BaseModel):
 # =============================================================================
 
 
-class Project(BaseModel):
+class Project(CamelModel):
     """A project discovered from ato.yaml."""
 
     root: str
     name: str
     targets: list[BuildTarget]
+    display_path: Optional[str] = (
+        None  # Relative path for display (e.g., "packages/proj")
+    )
 
 
 class ProjectsResponse(CamelModel):
@@ -1219,7 +1222,7 @@ class BuildReport:
 @dataclass
 class AppContext:
     summary_file: Optional[Path] = None
-    workspace_path: Optional[Path] = None
+    workspace_paths: list[Path] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

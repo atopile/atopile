@@ -40,13 +40,13 @@ _last_packages_registry_refresh: float = 0.0
 
 async def _load_projects_background(ctx: AppContext) -> None:
     """Background task to load projects without blocking startup."""
-    if not ctx.workspace_path:
+    if not ctx.workspace_paths:
         await server_state.emit_event("projects_changed")
         return
     try:
-        log.info(f"[background] Loading projects from {ctx.workspace_path}")
+        log.info(f"[background] Loading projects from {ctx.workspace_paths}")
         await asyncio.to_thread(
-            core_projects.discover_projects_in_path, ctx.workspace_path
+            core_projects.discover_projects_in_paths, ctx.workspace_paths
         )
         await server_state.emit_event("projects_changed")
         log.info("[background] Project discovery complete")
@@ -56,13 +56,15 @@ async def _load_projects_background(ctx: AppContext) -> None:
 
 
 async def _refresh_projects_state() -> None:
-    workspace_path = model_state.workspace_path
-    if not workspace_path:
+    workspace_paths = model_state.workspace_paths
+    if not workspace_paths:
         await server_state.emit_event("projects_changed")
         return
 
     try:
-        await asyncio.to_thread(core_projects.discover_projects_in_path, workspace_path)
+        await asyncio.to_thread(
+            core_projects.discover_projects_in_paths, workspace_paths
+        )
         await server_state.emit_event("projects_changed")
     except Exception as exc:
         log.error(f"[background] Failed to refresh projects: {exc}")
@@ -73,7 +75,9 @@ async def _load_packages_background(ctx: AppContext) -> None:
     """Background task to load packages without blocking startup."""
     try:
         log.info("[background] Loading packages from registry")
-        await packages_domain.refresh_packages_state(scan_path=ctx.workspace_path)
+        # Use first workspace path for package scanning
+        scan_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
+        await packages_domain.refresh_packages_state(scan_path=scan_path)
         log.info("[background] Packages refresh complete")
     except Exception as exc:
         log.error(f"[background] Failed to load packages: {exc}")
@@ -313,7 +317,7 @@ async def _load_atopile_install_options() -> None:
 
 def create_app(
     summary_file: Optional[Path] = None,
-    workspace_path: Optional[Path] = None,
+    workspace_paths: Optional[list[Path]] = None,
 ) -> FastAPI:
     """
     Create the FastAPI application with API routes for the dashboard.
@@ -333,7 +337,7 @@ def create_app(
 
     ctx = AppContext(
         summary_file=summary_file,
-        workspace_path=workspace_path,
+        workspace_paths=workspace_paths or [],
     )
     app.state.ctx = ctx
 
@@ -352,8 +356,8 @@ def create_app(
         loop.set_default_executor(executor)
         log.info("Configured thread pool with 64 workers")
 
-        # Configure model_state with workspace path
-        model_state.set_workspace_path(ctx.workspace_path)
+        # Configure model_state with workspace paths
+        model_state.set_workspace_paths(ctx.workspace_paths)
 
         # Configure event_bus with event loop and emitter
         event_bus.set_event_loop(loop)
@@ -369,8 +373,8 @@ def create_app(
         asyncio.create_task(_watch_project_dependencies_background())
         asyncio.create_task(_load_atopile_install_options())
 
-        if not ctx.workspace_path:
-            log.info("No workspace path configured, skipping initial state population")
+        if not ctx.workspace_paths:
+            log.info("No workspace paths configured, skipping initial state population")
             return
 
         # Fire background tasks - don't await, server starts immediately
@@ -486,11 +490,11 @@ class DashboardServer:
     def __init__(
         self,
         port: Optional[int] = None,
-        workspace_path: Optional[Path] = None,
+        workspace_paths: Optional[list[Path]] = None,
     ):
         self.port = port or find_free_port()
-        self.workspace_path = workspace_path
-        self.app = create_app(workspace_path=self.workspace_path)
+        self.workspace_paths = workspace_paths or []
+        self.app = create_app(workspace_paths=self.workspace_paths)
         self._server: Optional[uvicorn.Server] = None
         self._thread: Optional[threading.Thread] = None
 
