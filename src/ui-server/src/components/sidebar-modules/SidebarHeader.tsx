@@ -324,17 +324,16 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
         selectLocalInstallation(atopile.localPath, localPathValidation.version);
       }
     } else {
-      // Switch back to release mode (default) - clear both settings to use uv fallback
-      // Clear both atopile.ato and atopile.from to fall back to extension-managed uv
+      // Switch back to default (extension-managed uv) - just clear atopile.ato
       postMessage({
         type: 'atopileSettings',
         atopile: {
-          clearSettings: true,  // Signal to clear both ato and from
+          source: 'release',
+          localPath: null,  // Clear the ato setting
         },
       });
-      // Update backend state after sending to VS Code (so it doesn't trigger another save)
+      // Update backend state
       action('setAtopileSource', { source: 'release' });
-      // Restart is now computed from state, no need to track manually
     }
   };
 

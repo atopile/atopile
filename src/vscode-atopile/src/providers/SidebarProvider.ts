@@ -42,10 +42,7 @@ interface AtopileSettingsMessage {
   type: 'atopileSettings';
   atopile: {
     source?: string;
-    currentVersion?: string;
-    branch?: string | null;
     localPath?: string | null;
-    clearSettings?: boolean;  // Clear both ato and from to use default uv
   };
 }
 
@@ -553,10 +550,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // Build a key for comparison to avoid unnecessary updates
     const settingsKey = JSON.stringify({
       source: atopile.source,
-      currentVersion: atopile.currentVersion,
-      branch: atopile.branch,
       localPath: atopile.localPath,
-      clearSettings: atopile.clearSettings,
     });
 
     // Skip if nothing changed - this is called on every state update
@@ -573,23 +567,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const target = hasWorkspace ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
 
     try {
-      if (atopile.clearSettings) {
-        // Clear both settings to fall back to extension-managed uv
-        traceInfo(`[SidebarProvider] Clearing atopile.ato and atopile.from (using uv fallback)`);
-        await config.update('ato', undefined, target);
-        await config.update('from', undefined, target);
-      } else if (atopile.source === 'local' && atopile.localPath) {
-        // For local mode, set the 'ato' setting directly (it overrides 'from')
+      // Only manage atopile.ato setting - never touch atopile.from
+      // When local mode is on with a path, set ato; otherwise clear it
+      if (atopile.source === 'local' && atopile.localPath) {
         traceInfo(`[SidebarProvider] Setting atopile.ato = ${atopile.localPath}`);
         await config.update('ato', atopile.localPath, target);
       } else {
-        // For release/branch mode, set the 'from' setting
-        const fromValue = this._atopileSettingsToFrom(atopile);
-        traceInfo(`[SidebarProvider] Setting atopile.from = ${fromValue}`);
-        await config.update('from', fromValue, target);
+        // Clear ato setting to fall back to extension-managed uv
+        traceInfo(`[SidebarProvider] Clearing atopile.ato (using uv fallback)`);
         await config.update('ato', undefined, target);
       }
-      // Settings saved - user will click "Restart" button to apply
       traceInfo(`[SidebarProvider] Atopile settings saved. User must restart to apply.`);
     } catch (error) {
       traceError(`[SidebarProvider] Failed to update atopile settings: ${error}`);
@@ -622,29 +609,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         type: 'atopileInstallError',
         error: 'Failed to restart atopile backend. Try reloading the window.',
       });
-    }
-  }
-
-  /**
-   * Convert UI atopile settings to a VS Code 'atopile.from' setting value.
-   * Uses PEP 508 format for version pinning (== for PyPI, @ for git URLs).
-   */
-  private _atopileSettingsToFrom(atopile: AtopileSettingsMessage['atopile']): string {
-    if (!atopile) return 'atopile';
-
-    switch (atopile.source) {
-      case 'release':
-        // Use PEP 508 format: atopile==0.12.5 for exact version
-        return atopile.currentVersion
-          ? `atopile==${atopile.currentVersion}`
-          : 'atopile';
-      case 'branch':
-        // Git URL format uses @ for branch/tag reference
-        return `git+https://github.com/atopile/atopile.git@${atopile.branch || 'main'}`;
-      case 'local':
-        return atopile.localPath || '';
-      default:
-        return 'atopile';
     }
   }
 
