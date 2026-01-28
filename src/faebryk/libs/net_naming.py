@@ -12,7 +12,7 @@ MAX_NAME_LENGTH = 255
 MAX_CONFLICT_RESOLUTION_ITERATIONS = 100
 
 # Pre-compiled regex for filtering unpreferred names
-_UNPREFERRED_NAMES_RE = re.compile(r"^(net|power|\d+)$")
+_UNPREFERRED_NAMES_RE = re.compile(r"^(net|power|\d+|part_of)$")
 
 # Characters that are invalid in net names (KiCad restrictions)
 _INVALID_NAME_CHARS_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
@@ -120,6 +120,11 @@ def process_required_and_suggested_names(
     - has_net_name trait: Highest priority, name is required and used as-is
     - has_net_name_suggestion.Level.EXPECTED: Required name from suggestion
     - has_net_name_suggestion.Level.SUGGESTED: Optional, joined with "-" separator
+    - `signal` name in an ato `component`
+
+    Raises:
+        ValueError: If multiple required names are found for a net
+        ValueError: If a net has the same required name as another net
     """
 
     def _get_required_and_suggested_names(
@@ -131,6 +136,8 @@ def process_required_and_suggested_names(
         Returns:
             Tuple of (required_names, suggested_names)
         """
+        from atopile.compiler.ast_visitor import is_ato_component, is_ato_pin
+
         required_names: list[str] = []
         suggested_names: list[str] = []
 
@@ -171,6 +178,28 @@ def process_required_and_suggested_names(
                     )
             return interfaces_with_name
 
+        def _try_extract_signal_name(node: fabll.Node) -> str | None:
+            """
+            Try to find the connected `ato signal` in the same component definition, and
+            try to extract its name.
+            """
+            if not node.has_trait(is_ato_pin):
+                return None
+            if not (pin_electrical := node.try_cast(F.Electrical)):
+                raise ValueError(
+                    f"Node {node} is not an electrical. "
+                    "pins in ato components should always be a pin"
+                )
+            connected_electricals = pin_electrical._is_interface.get().get_connected()
+            for electrical in connected_electricals:
+                if (ato_component := electrical.get_parent()) and ato_component[
+                    0
+                ].has_trait(is_ato_component):
+                    return filter_unpreferred_names(
+                        electrical.get_name(accept_no_parent=True)
+                    )
+            return None
+
         interface_nodes = _get_all_connected_interfaces(electricals)
         for node, _ in interface_nodes:
             if name_trait := node.try_get_trait(F.has_net_name):
@@ -183,6 +212,8 @@ def process_required_and_suggested_names(
                     suggestion_trait.level == F.has_net_name_suggestion.Level.SUGGESTED
                 ):
                     suggested_names.append(suggestion_trait.name)
+            elif signal_name := _try_extract_signal_name(node):
+                suggested_names.append(signal_name)
         return required_names, suggested_names
 
     # Track required names across all nets for duplicate detection
@@ -421,7 +452,7 @@ def resolve_name_conflicts(
     conflicts_resolved = 0
 
     # Keep resolving conflicts until none remain
-    for iteration in range(MAX_CONFLICT_RESOLUTION_ITERATIONS):
+    for _ in range(MAX_CONFLICT_RESOLUTION_ITERATIONS):
         conflicting_groups = _find_conflicting_nets(processable_nets)
         if not conflicting_groups:
             break
