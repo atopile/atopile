@@ -2115,9 +2115,14 @@ class Mutator:
             }
         )
 
-        irrelevant_pos = (
-            self.get_parameter_operatables(include_terminated=True) - maybe_relevant_pos
-        )
+        irrelevant_pos = {
+            po
+            for po in (
+                self.get_parameter_operatables(include_terminated=True)
+                - maybe_relevant_pos
+            )
+            if po.try_get_sibling_trait(is_relevant) is None
+        }
 
         if S_LOG:
             logger.debug(
