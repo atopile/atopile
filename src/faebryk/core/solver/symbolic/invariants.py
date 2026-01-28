@@ -2854,27 +2854,34 @@ class TestSubsumptionDetection:
         E = BoundExpressions()
         X = E.parameter_op()
 
-        # Create predicates A, B, C (as can_be_operand)
         pred_a = E.is_subset(X, E.lit_op_range((0, 10)), assert_=False)
         pred_b = E.is_subset(X, E.lit_op_range((20, 30)), assert_=False)
         pred_c = E.is_subset(X, E.lit_op_range((40, 50)), assert_=False)
 
-        # Create Or(A, B) as existing predicate
         existing_or = F.Expressions.Or.from_operands(
             pred_a, pred_b, g=E.g, tg=E.tg, assert_=True
         )
         mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
 
-        def callback(m: Mutator):
-            existing_canon = not_none(
-                mut_map.map_forward(
-                    existing_or.get_trait(F.Parameters.is_parameter_operatable)
-                ).maps_to
-            )
-            m.mutate_expression(existing_canon.as_expression.force_get())
+        or_canon = not_none(
+            mut_map.map_forward(
+                existing_or.get_trait(F.Parameters.is_parameter_operatable)
+            ).maps_to
+        )
+        # After flattening, Or operands are alias-representative parameters
+        or_operands = or_canon.as_expression.force_get().get_operands()
+        pred_c_canon = not_none(
+            mut_map.map_forward(pred_c.as_parameter_operatable.force_get()).maps_to
+        )
+        pred_c_repr = AliasClass.of(pred_c_canon.as_operand.get()).representative()
 
-            # Build new Or(A, B, C)
-            new_operands = [not_none(m.get_copy(op)) for op in [pred_a, pred_b, pred_c]]
+        def callback(m: Mutator):
+            m.mutate_expression(or_canon.as_expression.force_get())
+
+            new_operands = [
+                m.get_mutated(op.as_parameter_operatable.force_get()).as_operand.get()
+                for op in or_operands
+            ] + [not_none(m.get_copy(pred_c_repr))]
             builder = ExpressionBuilder(
                 F.Expressions.Or, new_operands, assert_=True, terminate=False, traits=[]
             )
@@ -2896,15 +2903,20 @@ class TestSubsumptionDetection:
         )
         mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
 
-        def callback(m: Mutator):
-            existing_canon = not_none(
-                mut_map.map_forward(
-                    existing_or.get_trait(F.Parameters.is_parameter_operatable)
-                ).maps_to
-            )
-            m.mutate_expression(existing_canon.as_expression.force_get())
+        or_canon = not_none(
+            mut_map.map_forward(
+                existing_or.get_trait(F.Parameters.is_parameter_operatable)
+            ).maps_to
+        )
+        or_operands = or_canon.as_expression.force_get().get_operands()
 
-            new_operands = [not_none(m.get_copy(op)) for op in [pred_a, pred_b]]
+        def callback(m: Mutator):
+            m.mutate_expression(or_canon.as_expression.force_get())
+
+            new_operands = [
+                m.get_mutated(op.as_parameter_operatable.force_get()).as_operand.get()
+                for op in or_operands
+            ]
             builder = ExpressionBuilder(
                 F.Expressions.Or, new_operands, assert_=True, terminate=False, traits=[]
             )
@@ -2922,22 +2934,26 @@ class TestSubsumptionDetection:
         pred_b = E.is_subset(X, E.lit_op_range((20, 30)), assert_=False)
         pred_c = E.is_subset(X, E.lit_op_range((40, 50)), assert_=False)
 
-        # Create Or(A, B, C) as existing predicate
         existing_or = F.Expressions.Or.from_operands(
             pred_a, pred_b, pred_c, g=E.g, tg=E.tg, assert_=True
         )
         mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
 
-        def callback(m: Mutator):
-            existing_canon = not_none(
-                mut_map.map_forward(
-                    existing_or.get_trait(F.Parameters.is_parameter_operatable)
-                ).maps_to
-            )
-            m.mutate_expression(existing_canon.as_expression.force_get())
+        or_canon = not_none(
+            mut_map.map_forward(
+                existing_or.get_trait(F.Parameters.is_parameter_operatable)
+            ).maps_to
+        )
+        or_operands = or_canon.as_expression.force_get().get_operands()
 
-            # Try to find subsumption for Or(A, B)
-            new_operands = [not_none(m.get_copy(op)) for op in [pred_a, pred_b]]
+        def callback(m: Mutator):
+            m.mutate_expression(or_canon.as_expression.force_get())
+
+            # Try to find subsumption for Or(A, B) — subset of existing Or(A, B, C)
+            new_operands = [
+                m.get_mutated(op.as_parameter_operatable.force_get()).as_operand.get()
+                for op in or_operands[:2]
+            ]
             builder = ExpressionBuilder(
                 F.Expressions.Or, new_operands, assert_=True, terminate=False, traits=[]
             )
@@ -2961,15 +2977,27 @@ class TestSubsumptionDetection:
         )
         mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
 
-        def callback(m: Mutator):
-            existing_canon = not_none(
-                mut_map.map_forward(
-                    existing_or.get_trait(F.Parameters.is_parameter_operatable)
-                ).maps_to
-            )
-            m.mutate_expression(existing_canon.as_expression.force_get())
+        or_canon = not_none(
+            mut_map.map_forward(
+                existing_or.get_trait(F.Parameters.is_parameter_operatable)
+            ).maps_to
+        )
+        or_operands = or_canon.as_expression.force_get().get_operands()
+        pred_c_canon = not_none(
+            mut_map.map_forward(pred_c.as_parameter_operatable.force_get()).maps_to
+        )
+        pred_c_repr = AliasClass.of(pred_c_canon.as_operand.get()).representative()
 
-            new_operands = [not_none(m.get_copy(op)) for op in [pred_a, pred_c]]
+        def callback(m: Mutator):
+            m.mutate_expression(or_canon.as_expression.force_get())
+
+            # Build Or(A, C) — A from existing Or, C is extra
+            new_operands = [
+                m.get_mutated(
+                    or_operands[0].as_parameter_operatable.force_get()
+                ).as_operand.get(),
+                not_none(m.get_copy(pred_c_repr)),
+            ]
             builder = ExpressionBuilder(
                 F.Expressions.Or, new_operands, assert_=True, terminate=False, traits=[]
             )
@@ -2977,7 +3005,8 @@ class TestSubsumptionDetection:
 
         result = self._run_in_mutator(mut_map, callback)
         assert result is not None
-        assert result.most_constrained_expr is None
+        assert result.subsumed is None
+        assert isinstance(result.most_constrained_expr, ExpressionBuilder)
 
     def test_subsumption_check_e2e(self):
         """
@@ -3085,43 +3114,38 @@ class TestSubsumptionDetection:
         pred_c = E.is_subset(X, E.lit_op_range((40, 50)), assert_=False)
         false_lit = E.lit_bool(False)
 
-        # Create existing Or!(A, B) - tighter
         existing_or = F.Expressions.Or.from_operands(
             pred_a, pred_b, g=E.g, tg=E.tg, assert_=True
         )
         mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
 
-        def callback(m: Mutator):
-            existing_canon = not_none(
-                mut_map.map_forward(
-                    existing_or.get_trait(F.Parameters.is_parameter_operatable)
-                ).maps_to
-            )
-            pred_a_canon = not_none(
-                mut_map.map_forward(pred_a.as_parameter_operatable.force_get()).maps_to
-            )
-            pred_b_canon = not_none(
-                mut_map.map_forward(pred_b.as_parameter_operatable.force_get()).maps_to
-            )
-            pred_c_canon = not_none(
-                mut_map.map_forward(pred_c.as_parameter_operatable.force_get()).maps_to
-            )
+        or_canon = not_none(
+            mut_map.map_forward(
+                existing_or.get_trait(F.Parameters.is_parameter_operatable)
+            ).maps_to
+        )
+        or_operands = or_canon.as_expression.force_get().get_operands()
+        pred_c_canon = not_none(
+            mut_map.map_forward(pred_c.as_parameter_operatable.force_get()).maps_to
+        )
+        pred_c_repr = AliasClass.of(pred_c_canon.as_operand.get()).representative()
 
-            m.mutate_expression(existing_canon.as_expression.force_get())
+        def callback(m: Mutator):
+            m.mutate_expression(or_canon.as_expression.force_get())
             m.mutate_expression(pred_c_canon.as_expression.force_get())
 
-            pred_a_out = m.get_mutated(pred_a_canon)
-            pred_b_out = m.get_mutated(pred_b_canon)
-            pred_c_out = m.get_mutated(pred_c_canon)
-
+            new_operands = [
+                m.get_mutated(op.as_parameter_operatable.force_get()).as_operand.get()
+                for op in or_operands
+            ] + [
+                m.get_mutated(
+                    pred_c_repr.as_parameter_operatable.force_get()
+                ).as_operand.get(),
+                not_none(m.get_copy(false_lit)),
+            ]
             builder = ExpressionBuilder(
                 F.Expressions.Or,
-                [
-                    pred_a_out.as_operand.get(),
-                    pred_b_out.as_operand.get(),
-                    pred_c_out.as_operand.get(),
-                    not_none(m.get_copy(false_lit)),
-                ],
+                new_operands,
                 assert_=True,
                 terminate=False,
                 traits=[],
@@ -3148,43 +3172,38 @@ class TestSubsumptionDetection:
         pred_b = E.is_subset(X, E.lit_op_range((20, 30)), assert_=False)
         pred_c = E.is_subset(X, E.lit_op_range((40, 50)), assert_=False)
 
-        # Create existing Or!(A, B) - tighter
         existing_or = F.Expressions.Or.from_operands(
             pred_a, pred_b, g=E.g, tg=E.tg, assert_=True
         )
         mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
 
+        or_canon = not_none(
+            mut_map.map_forward(
+                existing_or.get_trait(F.Parameters.is_parameter_operatable)
+            ).maps_to
+        )
+        or_operands = or_canon.as_expression.force_get().get_operands()
+        pred_c_canon = not_none(
+            mut_map.map_forward(pred_c.as_parameter_operatable.force_get()).maps_to
+        )
+        pred_c_repr = AliasClass.of(pred_c_canon.as_operand.get()).representative()
+
         def callback(m: Mutator):
-            existing_canon = not_none(
-                mut_map.map_forward(
-                    existing_or.get_trait(F.Parameters.is_parameter_operatable)
-                ).maps_to
-            )
-            pred_a_canon = not_none(
-                mut_map.map_forward(pred_a.as_parameter_operatable.force_get()).maps_to
-            )
-            pred_b_canon = not_none(
-                mut_map.map_forward(pred_b.as_parameter_operatable.force_get()).maps_to
-            )
-            pred_c_canon = not_none(
-                mut_map.map_forward(pred_c.as_parameter_operatable.force_get()).maps_to
-            )
-
-            m.mutate_expression(existing_canon.as_expression.force_get())
-            pred_a_out = m.get_mutated(pred_a_canon)
-            pred_b_out = m.get_mutated(pred_b_canon)
-
+            m.mutate_expression(or_canon.as_expression.force_get())
             m.mutate_expression(pred_c_canon.as_expression.force_get())
-            pred_c_out = m.get_mutated(pred_c_canon)
 
-            # Try to create Or!(A, B, C) - looser
+            new_operands = [
+                m.get_mutated(op.as_parameter_operatable.force_get()).as_operand.get()
+                for op in or_operands
+            ] + [
+                m.get_mutated(
+                    pred_c_repr.as_parameter_operatable.force_get()
+                ).as_operand.get(),
+            ]
+
             builder = ExpressionBuilder(
                 F.Expressions.Or,
-                [
-                    pred_a_out.as_operand.get(),
-                    pred_b_out.as_operand.get(),
-                    pred_c_out.as_operand.get(),
-                ],
+                new_operands,
                 assert_=True,
                 terminate=False,
                 traits=[],
