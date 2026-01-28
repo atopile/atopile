@@ -285,6 +285,7 @@ class is_expression(fabll.Node):
         symbol: str,
         is_predicate: bool,
         is_terminated: bool,
+        relevant: bool | None,
         lit_suffix: str,
         use_full_name: bool,
         class_suffix: str,
@@ -306,6 +307,9 @@ class is_expression(fabll.Node):
 
         if not no_class_suffix:
             symbol_suffix += class_suffix
+
+        if relevant is not None:
+            symbol_suffix += "★" if relevant else "⊘"
 
         symbol += symbol_suffix
 
@@ -390,12 +394,19 @@ class is_expression(fabll.Node):
         if alias_suffix:
             alias_suffix = f"[{alias_suffix}]"
 
+        from faebryk.core.solver.mutator import is_irrelevant, is_relevant
+
+        isrelevant = self.try_get_sibling_trait(is_relevant) is not None
+        irrelevant = self.try_get_sibling_trait(is_irrelevant) is not None
+        relevant = True if isrelevant else False if irrelevant else None
+
         style = self.get_repr_style()
         return self._compact_repr(
             style=style,
             symbol=style.symbol if style.symbol is not None else type(self).__name__,
             is_predicate=bool(self.try_get_sibling_trait(is_predicate)),
             is_terminated=bool(self.try_get_sibling_trait(is_terminated)),
+            relevant=relevant,
             lit_suffix=(
                 self.as_parameter_operatable.get()._get_lit_suffix()
                 if not no_lit_suffix

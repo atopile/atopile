@@ -2178,8 +2178,8 @@ def test_exec_pure_literal_expressions(
 
     expr = op(*lits_converted)
     expr_e = expr.as_parameter_operatable.force_get().as_expression.force_get()
-    print("EXPR", expr_e.compact_repr())
-    print("EXPECTED", expected_converted.pretty_str())
+    logger.info(f"EXPR: {expr_e.compact_repr()}")
+    logger.info(f"EXPECTED: {expected_converted.pretty_str()}")
     assert not_none(exec_pure_literal_expression(E.g, E.tg, expr_e)).op_setic_equals(
         expected_converted, g=E.g, tg=E.tg
     )

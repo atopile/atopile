@@ -1599,6 +1599,7 @@ class ExpressionBuilder[
             else self.factory.__name__,
             is_predicate=bool(self.assert_),
             is_terminated=bool(self.terminate),
+            relevant=False if self.irrelevant else None,
             lit_suffix="",
             class_suffix="",
             use_full_name=use_full_name,
