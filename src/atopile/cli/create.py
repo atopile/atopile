@@ -489,7 +489,9 @@ def project(path: Annotated[Path | None, typer.Option()] = None):
 
     template = _ProjectTemplate(
         extra_context={
-            "__ato_version": version.get_installed_atopile_version(),
+            "__ato_version": version.clean_version(
+                version.get_installed_atopile_version()
+            ),
             "__python_path": sys.executable,
         }
     )
@@ -563,7 +565,9 @@ def package(
             "project_slug": package_slug,
             "entry_name": entry_name,
             "package_owner": package_owner,
-            "__ato_version": version.get_installed_atopile_version(),
+            "__ato_version": version.clean_version(
+                version.get_installed_atopile_version()
+            ),
             "__python_path": sys.executable,
         }
     )
