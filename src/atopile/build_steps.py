@@ -78,6 +78,79 @@ logger = get_logger(__name__)
 MAX_PCB_DIFF_LENGTH = 100
 
 
+def _run_stage_ticker(
+    *,
+    build_id: str,
+    build_name: str,
+    display_name: str,
+    project_root: str,
+    target: str,
+    stage_name: str,
+    stage_id: str,
+    stage_display_name: str | None,
+    build_started_at: float,
+    stage_started_at: float,
+    stop_event,
+    interval_s: float = 0.25,
+) -> None:
+    import time
+
+    from atopile.dataclasses import Build, BuildStatus, StageStatus
+    from atopile.model.sqlite import BuildHistory
+
+    while not stop_event.wait(interval_s):
+        now = time.time()
+        elapsed_stage = round(now - stage_started_at, 2)
+        elapsed_build = now - build_started_at
+
+        build_info = BuildHistory.get(build_id)
+        current_stages = build_info.stages if build_info else []
+        updated = False
+        new_stages: list[dict] = []
+
+        for stage in current_stages:
+            stage_key = stage.get("stageId") or stage.get("stage_id")
+            if stage_key == stage_id:
+                updated = True
+                new_stages.append(
+                    {
+                        **stage,
+                        "name": stage_name,
+                        "stageId": stage_id,
+                        "displayName": stage_display_name,
+                        "status": StageStatus.RUNNING.value,
+                        "elapsedSeconds": elapsed_stage,
+                    }
+                )
+            else:
+                new_stages.append(stage)
+
+        if not updated:
+            new_stages.append(
+                {
+                    "name": stage_name,
+                    "stageId": stage_id,
+                    "displayName": stage_display_name,
+                    "status": StageStatus.RUNNING.value,
+                    "elapsedSeconds": elapsed_stage,
+                }
+            )
+
+        BuildHistory.set(
+            Build(
+                build_id=build_id,
+                name=build_name,
+                display_name=display_name,
+                project_root=project_root,
+                target=target,
+                status=BuildStatus.BUILDING,
+                started_at=build_started_at,
+                elapsed_seconds=elapsed_build,
+                stages=new_stages,
+            )
+        )
+
+
 class Tags(StrEnum):
     REQUIRES_KICAD = "requires_kicad"
 
@@ -106,61 +179,93 @@ class MusterTarget:
     success: bool | None = None
 
     def __call__(self, ctx: BuildStepContext) -> None:
-        if not self.virtual:
-            import time
+        if self.virtual:
+            self.success = True
+            return
 
-            from atopile.dataclasses import Build, BuildStage, BuildStatus
-            from atopile.model.sqlite import BuildHistory
+        import multiprocessing
+        import time
 
-            try:
-                # Set up logging for this build stage
-                ctx.stage = self.name
-                ctx._stage_start_time = time.time()
-                from atopile.logging import BuildLogger
+        from atopile.dataclasses import Build, BuildStage, BuildStatus, StageStatus
+        from atopile.logging import BuildLogger
+        from atopile.model.sqlite import BuildHistory
 
-                BuildLogger.update_stage(self.name)
+        ctx.stage = self.name
+        BuildLogger.update_stage(self.name)
 
-                self.func(ctx)
-            except Exception:
-                self.success = False
-                # Record failed stage
-                elapsed = time.time() - ctx._stage_start_time
-                ctx.completed_stages.append(
-                    BuildStage(
-                        name=self.description or self.name,
-                        stage_id=self.name,
-                        elapsed_seconds=round(elapsed, 2),
-                        status="failed",
-                    )
+        start = time.time()
+        running_stage = BuildStage(
+            name=self.description or self.name,
+            stage_id=self.name,
+            status=StageStatus.RUNNING,
+        )
+
+        build_started_at = start
+        if ctx.build_id:
+            existing = BuildHistory.get(ctx.build_id)
+            if existing and existing.started_at:
+                build_started_at = existing.started_at
+            BuildHistory.set(
+                Build(
+                    build_id=ctx.build_id,
+                    name=config.build.name,
+                    display_name=config.build.name,
+                    project_root=str(config.project.paths.root),
+                    target=config.build.name,
+                    status=BuildStatus.BUILDING,
+                    started_at=build_started_at,
+                    elapsed_seconds=time.time() - build_started_at,
+                    stages=[
+                        s.model_dump(by_alias=True) for s in ctx.completed_stages
+                    ]
+                    + [running_stage.model_dump(by_alias=True)],
                 )
-                if ctx.build_id:
-                    BuildHistory.set(
-                        Build(
-                            build_id=ctx.build_id,
-                            name=config.build.name,
-                            display_name=config.build.name,
-                            project_root=str(config.project.paths.root),
-                            target=config.build.name,
-                            status=BuildStatus.BUILDING,
-                            stages=[
-                                s.model_dump(by_alias=True)
-                                for s in ctx.completed_stages
-                            ],
-                        )
-                    )
-                raise
+            )
 
-            # Record successful stage
-            elapsed = time.time() - ctx._stage_start_time
+        stop_event = multiprocessing.Event()
+        ticker: multiprocessing.Process | None = None
+        if ctx.build_id:
+            ticker = multiprocessing.Process(
+                target=_run_stage_ticker,
+                kwargs={
+                    "build_id": ctx.build_id,
+                    "build_name": config.build.name,
+                    "display_name": config.build.name,
+                    "project_root": str(config.project.paths.root),
+                    "target": config.build.name,
+                    "stage_name": self.description or self.name,
+                    "stage_id": self.name,
+                    "stage_display_name": None,
+                    "build_started_at": build_started_at,
+                    "stage_started_at": start,
+                    "stop_event": stop_event,
+                },
+                daemon=True,
+            )
+            ticker.start()
+
+        succeeded = False
+        try:
+            self.func(ctx)
+            succeeded = True
+        finally:
+            stop_event.set()
+            if ticker and ticker.is_alive():
+                ticker.terminate()
+            elapsed = round(time.time() - start, 2)
             ctx.completed_stages.append(
                 BuildStage(
                     name=self.description or self.name,
                     stage_id=self.name,
-                    elapsed_seconds=round(elapsed, 2),
-                    status="success",
+                    elapsed_seconds=elapsed,
+                    status=StageStatus.SUCCESS if succeeded else StageStatus.FAILED,
                 )
             )
             if ctx.build_id:
+                existing = BuildHistory.get(ctx.build_id)
+                started_at = (
+                    existing.started_at if existing and existing.started_at else start
+                )
                 BuildHistory.set(
                     Build(
                         build_id=ctx.build_id,
@@ -169,13 +274,12 @@ class MusterTarget:
                         project_root=str(config.project.paths.root),
                         target=config.build.name,
                         status=BuildStatus.BUILDING,
-                        stages=[
-                            s.model_dump(by_alias=True) for s in ctx.completed_stages
-                        ],
+                        started_at=started_at,
+                        elapsed_seconds=time.time() - started_at,
+                        stages=[s.model_dump(by_alias=True) for s in ctx.completed_stages],
                     )
                 )
-
-        self.success = True
+            self.success = succeeded
 
     @property
     def succeeded(self) -> bool:

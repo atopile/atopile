@@ -54,7 +54,7 @@ def _load_last_build_for_target(
         return BuildTargetStatus(
             status=status,
             timestamp=timestamp,
-            elapsed_seconds=build.duration,
+            elapsed_seconds=build.elapsed_seconds,
             warnings=build.warnings,
             errors=build.errors,
             stages=build.stages,

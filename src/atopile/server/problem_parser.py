@@ -10,7 +10,7 @@ import logging
 import sqlite3
 from pathlib import Path
 
-from atopile.dataclasses import Problem
+from atopile.dataclasses import EventType, Problem
 from atopile.logging import BuildLogger
 from atopile.model.sqlite import BuildHistory
 from atopile.server.events import event_bus
@@ -132,7 +132,7 @@ def sync_problems_to_state(developer_mode: bool | None = None) -> None:
             If None, uses the current developer_mode setting from server_state.
     """
     payload = {"developer_mode": developer_mode} if developer_mode is not None else {}
-    event_bus.emit_sync("problems_changed", payload)
+    event_bus.emit_sync(EventType.PROBLEMS_CHANGED, payload)
 
 
 __all__ = [

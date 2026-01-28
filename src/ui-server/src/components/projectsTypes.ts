@@ -17,7 +17,6 @@ export interface BuildStage {
   name: string;
   displayName?: string;  // User-friendly name
   status: 'pending' | 'running' | 'success' | 'warning' | 'error' | 'skipped';
-  duration?: number;  // in seconds (from summary)
   elapsedSeconds?: number;  // in seconds (from live status)
   message?: string;
 }
@@ -41,7 +40,6 @@ export interface BuildTarget {
   status: 'idle' | 'queued' | 'building' | 'success' | 'error' | 'warning' | 'cancelled';
   errors?: number;
   warnings?: number;
-  duration?: number;
   stages?: BuildStage[];
   // Active build tracking
   buildId?: string;  // Active build ID for cancellation

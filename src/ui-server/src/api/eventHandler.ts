@@ -1,6 +1,7 @@
 import { api } from './client';
 import { useStore } from '../store';
 import type { AppState } from '../types/build';
+import { EventType } from '../types/gen/generated';
 
 type AtopileConfig = AppState['atopile'];
 
@@ -157,22 +158,25 @@ export async function fetchInitialData(): Promise<void> {
   ]);
 }
 
-export async function handleEvent(event: string, data: unknown): Promise<void> {
+export async function handleEvent(
+  event: EventType | string,
+  data: unknown
+): Promise<void> {
   const detail = (data ?? {}) as Record<string, unknown>;
   const store = useStore.getState();
 
   switch (event) {
-    case 'projects_changed':
+    case EventType.ProjectsChanged:
       if (typeof detail.error === 'string') {
         store.setProjectsError(detail.error);
         break;
       }
       await fetchProjects();
       break;
-    case 'builds_changed':
+    case EventType.BuildsChanged:
       await fetchBuilds();
       break;
-    case 'packages_changed':
+    case EventType.PackagesChanged:
       if (typeof detail.error === 'string') {
         store.setInstallError(
           typeof detail.package_id === 'string' ? detail.package_id : 'unknown',
@@ -181,40 +185,40 @@ export async function handleEvent(event: string, data: unknown): Promise<void> {
       }
       await fetchPackages();
       break;
-    case 'problems_changed':
+    case EventType.ProblemsChanged:
       await fetchProblems();
       break;
-    case 'stdlib_changed':
+    case EventType.StdlibChanged:
       await fetchStdlib();
       break;
-    case 'bom_changed':
+    case EventType.BOMChanged:
       await fetchBom();
       break;
-    case 'variables_changed':
+    case EventType.VariablesChanged:
       await fetchVariables();
       break;
-    case 'project_files_changed': {
+    case EventType.ProjectFilesChanged: {
       const projectRoot = typeof detail.project_root === 'string'
         ? detail.project_root
         : store.selectedProjectRoot;
       if (projectRoot) await fetchProjectFiles(projectRoot);
       break;
     }
-    case 'project_modules_changed': {
+    case EventType.ProjectModulesChanged: {
       const projectRoot = typeof detail.project_root === 'string'
         ? detail.project_root
         : store.selectedProjectRoot;
       if (projectRoot) await fetchProjectModules(projectRoot);
       break;
     }
-    case 'project_dependencies_changed': {
+    case EventType.ProjectDependenciesChanged: {
       const projectRoot = typeof detail.project_root === 'string'
         ? detail.project_root
         : store.selectedProjectRoot;
       if (projectRoot) await fetchProjectDependencies(projectRoot);
       break;
     }
-    case 'atopile_config_changed':
+    case EventType.AtopileConfigChanged:
       updateAtopileConfig({
         source: typeof detail.source === 'string' ? detail.source as AtopileConfig['source'] : undefined,
         currentVersion: typeof detail.current_version === 'string'
