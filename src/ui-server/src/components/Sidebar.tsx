@@ -280,7 +280,7 @@ export function Sidebar() {
                 entry: data.entry,
               });
               if (!response.result?.success) {
-                const errorMsg = response.result?.error || 'Failed to add target';
+                const errorMsg = response.result?.error || 'Failed to add build';
                 throw new Error(errorMsg);
               }
               action('refreshProjects');
