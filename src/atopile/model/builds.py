@@ -22,17 +22,9 @@ from atopile.dataclasses import (
 from atopile.model import build_history
 from atopile.model.build_queue import (
     _DEFAULT_MAX_CONCURRENT,
-    _acquire_build_lock,
-    _active_builds,
-    _build_lock,
     _build_queue,
     _build_settings,
-    _is_duplicate_build,
-    _release_build_lock,
-    _sync_builds_to_state,
-    cancel_build,
 )
-from atopile.model.model_state import model_state
 from atopile.model.sqlite import BuildHistory
 
 log = logging.getLogger(__name__)
@@ -71,17 +63,16 @@ def handle_get_summary(_ctx: AppContext) -> dict:
     active_build_ids: set[str] = set()
 
     # First, add all active builds (in-memory) with computed elapsed
-    with _build_lock:
-        for build in _active_builds:
-            active_build_ids.add(build.build_id)
-            elapsed = _compute_active_elapsed(build)
-            all_builds.append(
-                build.model_copy(
-                    update={
-                        "elapsed_seconds": elapsed,
-                    }
-                )
+    for build in _build_queue.get_all_builds():
+        active_build_ids.add(build.build_id)
+        elapsed = _compute_active_elapsed(build)
+        all_builds.append(
+            build.model_copy(
+                update={
+                    "elapsed_seconds": elapsed,
+                }
             )
+        )
 
     # Then add historical builds from database (not currently active)
     history_builds = BuildHistory.get_all(limit=100)
@@ -172,36 +163,29 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
     timestamp = generate_build_timestamp()
 
     for target in targets:
-        existing_build_id = _is_duplicate_build(
+        existing_build_id = _build_queue.is_duplicate(
             request.project_root, target, request.entry
         )
         if existing_build_id:
             build_id = existing_build_id
         else:
             build_id = generate_build_id(request.project_root, target, timestamp)
-            with _build_lock:
-                model_state.add_build(
-                    Build(
-                        build_id=build_id,
-                        project_root=request.project_root,
-                        target=target,
-                        timestamp=timestamp,
-                        entry=request.entry,
-                        standalone=request.standalone,
-                        frozen=request.frozen,
-                        status=BuildStatus.QUEUED,
-                        started_at=time.time(),
-                    )
+            _build_queue.enqueue(
+                Build(
+                    build_id=build_id,
+                    project_root=request.project_root,
+                    target=target,
+                    timestamp=timestamp,
+                    entry=request.entry,
+                    standalone=request.standalone,
+                    frozen=request.frozen,
+                    status=BuildStatus.QUEUED,
+                    started_at=time.time(),
                 )
+            )
             new_build_ids.append(build_id)
 
         build_targets.append(BuildTargetInfo(target=target, build_id=build_id))
-
-    for build_id in new_build_ids:
-        _build_queue.enqueue(build_id)
-
-    if new_build_ids:
-        _sync_builds_to_state()
 
     if not build_targets:
         return BuildResponse(
@@ -229,7 +213,7 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
 
 def handle_get_build_status(build_id: str) -> BuildTargetResponse | None:
     """Get status of a specific build target. Returns None if not found."""
-    build = model_state.find_build(build_id)
+    build = _build_queue.find_build(build_id)
     if not build:
         return None
 
@@ -245,10 +229,10 @@ def handle_get_build_status(build_id: str) -> BuildTargetResponse | None:
 
 def handle_cancel_build(build_id: str) -> dict:
     """Cancel a build. Returns result dict with success flag."""
-    if not model_state.find_build(build_id):
+    if not _build_queue.find_build(build_id):
         return {"success": False, "message": f"Build not found: {build_id}"}
 
-    success = cancel_build(build_id)
+    success = _build_queue.cancel_build(build_id)
     if success:
         return {"success": True, "message": f"Build {build_id} cancelled"}
     return {
@@ -261,49 +245,36 @@ def handle_get_active_builds() -> dict:
     """Get all active (queued or building) builds."""
     log.info("[DEBUG] handle_get_active_builds called")
     builds = []
+    for build in _build_queue.get_all_builds():
+        status = build.status
+        if status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
+            continue
 
-    if not _acquire_build_lock(timeout=5.0, context="handle_get_active_builds"):
-        log.error(
-            "[DEBUG] handle_get_active_builds: lock acquisition timed out, returning empty"  # noqa: E501
+        if status == BuildStatus.BUILDING:
+            start_time = build.building_started_at or build.started_at or time.time()
+        else:
+            start_time = build.started_at or time.time()
+        elapsed = time.time() - start_time
+
+        target = build.target or "default"
+
+        builds.append(
+            {
+                "build_id": build.build_id,
+                "status": status.value,
+                "project_root": build.project_root,
+                "target": target,
+                "entry": build.entry,
+                "started_at": build.building_started_at or build.started_at,
+                "elapsed_seconds": elapsed,
+                "stages": build.stages,
+                "queue_position": None,
+                "warnings": build.warnings,
+                "errors": build.errors,
+                "return_code": build.return_code,
+                "error": build.error,
+            }
         )
-        return {"builds": [], "error": "Lock timeout - build system may be busy"}
-
-    try:
-        log.info("[DEBUG] handle_get_active_builds acquired lock")
-        for build in _active_builds:
-            status = build.status
-            if status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
-                continue
-
-            if status == BuildStatus.BUILDING:
-                start_time = (
-                    build.building_started_at or build.started_at or time.time()
-                )
-            else:
-                start_time = build.started_at or time.time()
-            elapsed = time.time() - start_time
-
-            target = build.target or "default"
-
-            builds.append(
-                {
-                    "build_id": build.build_id,
-                    "status": status.value,
-                    "project_root": build.project_root,
-                    "target": target,
-                    "entry": build.entry,
-                    "started_at": build.building_started_at or build.started_at,
-                    "elapsed_seconds": elapsed,
-                    "stages": build.stages,
-                    "queue_position": None,
-                    "warnings": build.warnings,
-                    "errors": build.errors,
-                    "return_code": build.return_code,
-                    "error": build.error,
-                }
-            )
-    finally:
-        _release_build_lock(context="handle_get_active_builds")
 
     builds.sort(
         key=lambda x: (
@@ -380,23 +351,21 @@ def handle_get_build_info(build_id: str) -> dict | None:
     Returns build info dict or None if not found.
     """
     # First check active builds (in-memory)
-    with _build_lock:
-        build = model_state.find_build(build_id)
-        if build:
-            updates: dict = {"elapsed_seconds": _compute_active_elapsed(build)}
-            # Add completed_at estimation for finished builds
-            finished_statuses = (
-                BuildStatus.SUCCESS,
-                BuildStatus.FAILED,
-                BuildStatus.CANCELLED,
-            )
-            if build.status in finished_statuses:
-                start = build.building_started_at or build.started_at
-                if start and build.duration:
-                    updates["completed_at"] = start + build.duration
-                updates["duration"] = build.duration
+    build = _build_queue.find_build(build_id)
+    if build:
+        updates: dict = {"elapsed_seconds": _compute_active_elapsed(build)}
+        finished_statuses = (
+            BuildStatus.SUCCESS,
+            BuildStatus.FAILED,
+            BuildStatus.CANCELLED,
+        )
+        if build.status in finished_statuses:
+            start = build.building_started_at or build.started_at
+            if start and build.duration:
+                updates["completed_at"] = start + build.duration
+            updates["duration"] = build.duration
 
-            return build.model_copy(update=updates).model_dump(by_alias=True)
+        return build.model_copy(update=updates).model_dump(by_alias=True)
 
     # Fall back to build history database
     historical = BuildHistory.get(build_id)

@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from atopile.dataclasses import AppContext
+from atopile.model.build_queue import _build_queue
 from atopile.model.model_state import model_state
 from atopile.model.sqlite import BuildHistory
 from atopile.server.connections import server_state
@@ -362,6 +363,19 @@ def create_app(
         # Configure event_bus with event loop and emitter
         event_bus.set_event_loop(loop)
         event_bus.register_emitter(server_state.emit_event)
+
+        from atopile.server.module_introspection import clear_module_cache
+
+        _build_queue.on_change = lambda _bid, _evt: event_bus.emit_sync(
+            "builds_changed"
+        )
+        _build_queue.on_completed = lambda build: (
+            clear_module_cache(),
+            event_bus.emit_sync(
+                "projects_changed", {"project_root": build.project_root}
+            ),
+            event_bus.emit_sync("bom_changed", {"project_root": build.project_root}),
+        )
 
         asyncio.create_task(_refresh_stdlib_state())
         asyncio.create_task(_watch_stdlib_background())

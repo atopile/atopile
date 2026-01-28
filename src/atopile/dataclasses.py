@@ -438,7 +438,7 @@ class Build(CamelModel):
     # Active build fields
     timestamp: Optional[str] = None
     standalone: bool = False
-    frozen: bool = False
+    frozen: bool | None = False
     building_started_at: Optional[float] = None
 
     # Stages and logs
@@ -451,6 +451,14 @@ class Build(CamelModel):
 
     # Queue info
     queue_position: Optional[int] = None
+
+    # Build options (used to construct subprocess command/env, not serialized)
+    include_targets: list[str] = Field(default_factory=list, exclude=True)
+    exclude_targets: list[str] = Field(default_factory=list, exclude=True)
+    keep_picked_parts: bool | None = Field(default=None, exclude=True)
+    keep_net_names: bool | None = Field(default=None, exclude=True)
+    keep_designators: bool | None = Field(default=None, exclude=True)
+    verbose: bool = Field(default=False, exclude=True)
 
     @model_validator(mode="before")
     @classmethod
