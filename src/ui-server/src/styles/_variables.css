@@ -45,12 +45,15 @@
   /* Theme transition for smooth switching */
   --theme-transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 
-  /* Font Sizes */
-  --font-size-xs: 9px;
-  --font-size-sm: 10px;
-  --font-size-base: 11px;
-  --font-size-md: 12px;
-  --font-size-lg: 13px;
+  /* Font Sizes (scale from VS Code UI font size) */
+  --font-size-base: var(--vscode-font-size, 13px);
+  --font-size-xxs: calc(var(--font-size-base) * 0.69);
+  --font-size-xs: calc(var(--font-size-base) * 0.77);
+  --font-size-sm: calc(var(--font-size-base) * 0.85);
+  --font-size-md: calc(var(--font-size-base) * 0.92);
+  --font-size-lg: calc(var(--font-size-base) * 1.08);
+  --font-size-xl: calc(var(--font-size-base) * 1.23);
+  --font-size-xxl: calc(var(--font-size-base) * 1.38);
 
   /* Icon Sizes */
   --icon-size-sm: 12px;   /* Row icons, inline icons */

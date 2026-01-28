@@ -27,7 +27,7 @@
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   font-weight: 600;
   border-radius: 8px;
 }
@@ -59,7 +59,7 @@
 }
 
 .empty-state .hint {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   margin-top: var(--spacing-xs);
   color: var(--text-muted);
   opacity: 0.7;
@@ -151,7 +151,7 @@
 }
 
 .log-message {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   word-break: break-word;
 }
@@ -164,13 +164,13 @@
 }
 
 .log-source {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-family: var(--font-mono);
   color: var(--text-muted);
 }
 
 .log-timestamp {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   font-family: var(--font-mono);
   color: var(--text-muted);
   white-space: nowrap;
@@ -191,7 +191,7 @@
 
 .details-content, .raw-content {
   padding: var(--spacing-sm);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-family: var(--font-mono);
   color: var(--text-secondary);
   white-space: pre-wrap;
@@ -211,7 +211,7 @@
   justify-content: space-between;
   padding: var(--spacing-xs) var(--spacing-sm);
   background: var(--bg-hover);
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   font-weight: 600;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -238,7 +238,7 @@
 .raw-content {
   background: var(--ctp-crust);
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
 }
 
 /* ============================================
@@ -282,7 +282,7 @@
 }
 
 .popout-header h2 {
-  font-size: 14px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -297,7 +297,7 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   cursor: pointer;
 }
@@ -358,7 +358,7 @@
   border: none;
   background: transparent;
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--font-size-md);
   outline: none;
 }
 
@@ -376,7 +376,7 @@
   border: 1px solid var(--border-color);
   background: var(--bg-tertiary);
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -442,7 +442,7 @@
   gap: var(--spacing-xs);
   padding: 2px 8px;
   border-radius: var(--radius-sm);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   text-transform: uppercase;
 }
@@ -468,13 +468,13 @@
 }
 
 .popout-log-time {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-family: var(--font-mono);
   color: var(--text-muted);
 }
 
 .popout-log-target, .popout-log-stage {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   padding: 2px 6px;
   background: var(--bg-tertiary);
   color: var(--text-muted);
@@ -482,13 +482,13 @@
 }
 
 .popout-log-message {
-  font-size: 12px;
+  font-size: var(--font-size-md);
   color: var(--text-primary);
   margin-bottom: var(--spacing-sm);
 }
 
 .popout-log-source {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-family: var(--font-mono);
   color: var(--accent);
   margin-bottom: var(--spacing-sm);
@@ -498,7 +498,7 @@
   padding: var(--spacing-md);
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-family: var(--font-mono);
   color: var(--text-secondary);
   white-space: pre-wrap;
@@ -511,7 +511,7 @@
 .popout-log-raw {
   background: var(--ctp-crust);
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
 }
 
 /* ============================================
@@ -567,7 +567,7 @@
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   border-bottom: 2px solid transparent;

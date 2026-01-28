@@ -9,7 +9,7 @@
 
 /* Section Labels - matches Variables panel table headers */
 .section-label {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   font-weight: 600;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -54,7 +54,8 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  padding: 0 var(--spacing-xs);
+  padding: 0 var(--spacing-sm);
+  min-height: 28px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
   background: var(--bg-tertiary);
@@ -81,11 +82,11 @@
 .combobox-input {
   flex: 1;
   min-width: 0;
-  padding: var(--spacing-xs) 0;
+  padding: 0;
   background: transparent;
   border: none;
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-family: var(--font-mono);
   outline: none;
 }
@@ -145,7 +146,7 @@
   padding: var(--spacing-sm);
   text-align: center;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
 }
 
 /* Combobox option - single-line layout: icon | name | path | check */
@@ -183,7 +184,7 @@
 }
 
 .combobox-option-name {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   font-family: var(--font-mono);
   color: var(--text-primary);
@@ -194,7 +195,7 @@
 
 .combobox-option-path {
   flex: 1;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   font-family: var(--font-mono);
   white-space: nowrap;
@@ -225,7 +226,7 @@
   border: 1px dashed var(--border-default);
   background: transparent;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -266,7 +267,7 @@
   border-radius: 7px;
   background: var(--ctp-yellow);
   color: var(--ctp-base);
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   font-weight: 600;
 }
 
@@ -287,12 +288,13 @@
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 5px 8px;
+  padding: 0 var(--spacing-sm);
+  min-height: 28px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all 0.15s ease;
   text-align: left;
@@ -324,7 +326,7 @@
 
 .target-trigger-entry {
   flex: 1;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   font-family: var(--font-mono);
   text-align: right;
@@ -382,14 +384,14 @@
 }
 
 .target-option-name {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   font-family: var(--font-mono);
 }
 
 .target-option-entry {
   flex: 1;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   font-family: var(--font-mono);
   text-align: right;
@@ -428,7 +430,7 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--spacing-xs);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
 
@@ -443,7 +445,7 @@
 
 .project-description .description-text {
   flex: 1;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   line-height: 1.4;
   display: -webkit-box;
@@ -495,7 +497,7 @@
 .project-description .description-input {
   width: 100%;
   padding: 4px 6px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   line-height: 1.4;
   color: var(--text-primary);
   background: var(--bg-tertiary);
@@ -532,7 +534,7 @@
   justify-content: center;
   gap: 4px;
   padding: 6px 4px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
@@ -606,7 +608,7 @@
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -641,7 +643,7 @@
   border-radius: 7px;
   background: var(--ctp-yellow);
   color: var(--ctp-base);
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   font-weight: 600;
 }
 
@@ -658,7 +660,7 @@
 .build-queue-empty {
   padding: var(--spacing-xs);
   text-align: center;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
 
@@ -718,7 +720,7 @@
 }
 
 .build-queue-target {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   font-family: var(--font-mono);
   color: var(--text-primary);
@@ -728,7 +730,7 @@
 }
 
 .build-queue-stage {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   font-family: var(--font-mono);
   white-space: nowrap;
@@ -738,7 +740,7 @@
 }
 
 .build-queue-status {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
@@ -751,13 +753,13 @@
 }
 
 .build-queue-counter {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
 
 .build-queue-time {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
@@ -812,7 +814,7 @@
   justify-content: space-between;
   gap: 6px;
   padding: 2px 4px 4px;
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
@@ -834,7 +836,7 @@
 
 .build-stages-empty {
   padding: 2px 4px;
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
@@ -844,7 +846,7 @@
   align-items: center;
   gap: 6px;
   padding: 2px 4px;
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   border-radius: var(--radius-sm);
 }
@@ -938,7 +940,7 @@
 }
 
 .form-title {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -970,7 +972,7 @@
   background: rgba(243, 139, 168, 0.1);
   border: 1px solid var(--ctp-red);
   color: var(--ctp-red);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   line-height: 1.4;
 }
 
@@ -988,7 +990,7 @@
 }
 
 .form-field label {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -1003,7 +1005,7 @@
   border: 1px solid var(--border-subtle);
   background: var(--bg-tertiary);
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-family: var(--font-mono);
   outline: none;
   transition: border-color 0.15s ease;
@@ -1026,7 +1028,7 @@
 }
 
 .form-hint {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   font-style: italic;
 }
@@ -1069,7 +1071,7 @@
   border: none;
   background: transparent;
   color: var(--text-primary);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   text-align: left;
   cursor: pointer;
 }
@@ -1085,7 +1087,7 @@
 }
 
 .entry-suggestion .suggestion-file {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   font-family: var(--font-mono);
   overflow: hidden;
@@ -1102,7 +1104,7 @@
 
 .form-btn {
   padding: 5px 10px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   border-radius: var(--radius-sm);
   cursor: pointer;
