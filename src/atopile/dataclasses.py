@@ -640,6 +640,7 @@ class DependenciesResponse(BaseModel):
 class CreateProjectRequest(BaseModel):
     parent_directory: str
     name: str | None = None
+    license: str | None = None
 
 
 class CreateProjectResponse(BaseModel):

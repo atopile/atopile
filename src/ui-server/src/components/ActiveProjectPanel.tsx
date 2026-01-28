@@ -10,10 +10,19 @@ import './ActiveProjectPanel.css'
 
 interface NewProjectData {
   name?: string
-  license?: string
-  description?: string
   parentDirectory?: string
+  license?: string
 }
+
+const LICENSE_OPTIONS = [
+  { value: '', label: 'Select license (optional)' },
+  { value: 'MIT license', label: 'MIT License' },
+  { value: 'BSD license', label: 'BSD License' },
+  { value: 'ISC license', label: 'ISC License' },
+  { value: 'Apache Software License 2.0', label: 'Apache 2.0' },
+  { value: 'GNU General Public License v3', label: 'GPL v3' },
+  { value: 'Not open source', label: 'Not Open Source' },
+]
 
 interface ActiveProjectPanelProps {
   projects: Project[]
@@ -429,16 +438,6 @@ function TargetSelector({
   )
 }
 
-// Available license options
-const LICENSE_OPTIONS = [
-  { value: '', label: 'Select license (optional)' },
-  { value: 'MIT', label: 'MIT License' },
-  { value: 'Apache-2.0', label: 'Apache 2.0' },
-  { value: 'GPL-3.0', label: 'GPL 3.0' },
-  { value: 'BSD-3-Clause', label: 'BSD 3-Clause' },
-  { value: 'Proprietary', label: 'Proprietary' },
-]
-
 interface NewTargetData {
   name: string
   entry: string
@@ -729,7 +728,6 @@ function NewProjectForm({
   const [name, setName] = useState('')
   const [location, setLocation] = useState(defaultLocation || '')
   const [license, setLicense] = useState('')
-  const [description, setDescription] = useState('')
   const nameRef = useRef<HTMLInputElement>(null)
 
   // Focus name input on mount
@@ -759,9 +757,8 @@ function NewProjectForm({
     e.preventDefault()
     onSubmit({
       name: name.trim() || undefined,
-      license: license || undefined,
-      description: description.trim() || undefined,
       parentDirectory: location.trim() || undefined,
+      license: license || undefined,
     })
   }
 
@@ -842,18 +839,6 @@ function NewProjectForm({
             </option>
           ))}
         </select>
-      </div>
-
-      <div className="form-field">
-        <label htmlFor="project-description">Description</label>
-        <textarea
-          id="project-description"
-          placeholder="Project description (optional)"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          disabled={isCreating}
-          rows={2}
-        />
       </div>
 
       <div className="form-actions">

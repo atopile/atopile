@@ -291,6 +291,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
         if action == "createProject":
             parent_directory = payload.get("parentDirectory")
             name = payload.get("name")
+            license = payload.get("license")
 
             if not parent_directory:
                 if ctx.workspace_paths:
@@ -301,7 +302,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             try:
                 # Run blocking project creation in thread pool
                 project_dir, project_name = await asyncio.to_thread(
-                    core_projects.create_project, Path(parent_directory), name
+                    core_projects.create_project, Path(parent_directory), name, license
                 )
             except ValueError as exc:
                 return {"success": False, "error": str(exc)}

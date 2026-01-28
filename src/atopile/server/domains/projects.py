@@ -268,7 +268,7 @@ def handle_create_project(
     project_dir: Path | None = None
     try:
         project_dir, project_name = core_projects.create_project(
-            parent_dir, request.name
+            parent_dir, request.name, request.license
         )
         return CreateProjectResponse(
             success=True,

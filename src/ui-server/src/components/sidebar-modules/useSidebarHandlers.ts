@@ -89,7 +89,7 @@ export function useSidebarHandlers({
     action('installPackage', { packageId, projectRoot, version });
   };
 
-  const handleCreateProject = async (data?: { name?: string; license?: string; description?: string; parentDirectory?: string }): Promise<string | null> => {
+  const handleCreateProject = async (data?: { name?: string; parentDirectory?: string; license?: string }): Promise<string | null> => {
     const response = await sendActionWithResponse('createProject', data || {});
     if (!response.result?.success) {
       const errorMsg = response.result?.error || 'Failed to create project';

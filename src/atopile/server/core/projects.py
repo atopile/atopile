@@ -326,7 +326,9 @@ def build_file_tree(directory: Path, base_path: Path) -> list[FileTreeNode]:
 
 
 def create_project(
-    parent_directory: Path, name: Optional[str] = None
+    parent_directory: Path,
+    name: Optional[str] = None,
+    license: Optional[str] = None,
 ) -> tuple[Path, str]:
     """
     Create a new atopile project using the standard cookiecutter template.
@@ -384,7 +386,7 @@ def create_project(
                 "project_name": project_name,
                 "author_name": "Author",
                 "author_email": "author@example.com",
-                "license": "MIT license",
+                "license": license or "MIT license",
                 "description": "A new atopile project",
                 "__ato_version": ato_version,
                 "__python_path": sys.executable,
