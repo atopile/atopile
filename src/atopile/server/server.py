@@ -18,7 +18,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from atopile.dataclasses import AppContext
+from atopile.dataclasses import AppContext, EventType
 from atopile.model.build_queue import _build_queue
 from atopile.model.model_state import model_state
 from atopile.model.sqlite import BuildHistory
@@ -366,16 +366,20 @@ def create_app(
 
         from atopile.server.module_introspection import clear_module_cache
 
-        _build_queue.on_change = lambda _bid, _evt: event_bus.emit_sync(
-            "builds_changed"
-        )
-        _build_queue.on_completed = lambda build: (
-            clear_module_cache(),
+        def _handle_build_change(_build_id: str, _event: str) -> None:
+            event_bus.emit_sync(EventType.BUILDS_CHANGED)
+
+        def _handle_build_completed(build) -> None:
+            clear_module_cache()
             event_bus.emit_sync(
-                "projects_changed", {"project_root": build.project_root}
-            ),
-            event_bus.emit_sync("bom_changed", {"project_root": build.project_root}),
-        )
+                EventType.PROJECTS_CHANGED, {"project_root": build.project_root}
+            )
+            event_bus.emit_sync(
+                EventType.BOM_CHANGED, {"project_root": build.project_root}
+            )
+
+        _build_queue.on_change = _handle_build_change
+        _build_queue.on_completed = _handle_build_completed
 
         asyncio.create_task(_refresh_stdlib_state())
         asyncio.create_task(_watch_stdlib_background())

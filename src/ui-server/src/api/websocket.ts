@@ -7,6 +7,8 @@
 
 import { useStore } from '../store';
 import type { AppState, Build, BuildStatus } from '../types/build';
+import type { EventMessage } from '../types/gen/generated';
+import { EventMessageType, EventType } from '../types/gen/generated';
 import { api } from './client';
 import { WS_STATE_URL, getWorkspaceFolders } from './config';
 import { postMessage } from './vscodeApi';
@@ -21,12 +23,6 @@ const CONNECTION_TIMEOUT_MS = 5000; // Timeout for connection handshake
 interface StateMessage {
   type: 'state';
   data: AppState;
-}
-
-interface EventMessage {
-  type: 'event';
-  event: string;
-  data?: Record<string, unknown>;
 }
 
 interface ActionResultMessage {
@@ -310,7 +306,7 @@ function handleMessage(event: MessageEvent): void {
           );
         }
         break;
-      case 'event':
+      case EventMessageType.Event:
         handleEventMessage(message);
         break;
 
@@ -603,7 +599,7 @@ function handleEventMessage(message: EventMessage): void {
     null;
 
   switch (message.event) {
-    case 'open_layout': {
+    case EventType.OpenLayout: {
       const path = typeof data.path === 'string' ? data.path : null;
       postMessage({
         type: 'openSignals',
@@ -613,7 +609,7 @@ function handleEventMessage(message: EventMessage): void {
       });
       break;
     }
-    case 'open_kicad': {
+    case EventType.OpenKicad: {
       const path = typeof data.path === 'string' ? data.path : null;
       postMessage({
         type: 'openSignals',
@@ -623,7 +619,7 @@ function handleEventMessage(message: EventMessage): void {
       });
       break;
     }
-    case 'open_3d': {
+    case EventType.Open3D: {
       const path = typeof data.path === 'string' ? data.path : null;
       postMessage({
         type: 'openSignals',
@@ -633,24 +629,24 @@ function handleEventMessage(message: EventMessage): void {
       });
       break;
     }
-    case 'projects_changed':
+    case EventType.ProjectsChanged:
       void refreshProjects();
       break;
-    case 'builds_changed':
+    case EventType.BuildsChanged:
       void refreshBuilds();
       break;
-    case 'project_dependencies_changed':
+    case EventType.ProjectDependenciesChanged:
       // Clear all installing packages - a dependency change means install completed
       useStore.getState().clearInstallingPackages();
       void refreshDependencies(projectRoot);
       break;
-    case 'bom_changed':
+    case EventType.BOMChanged:
       void refreshBom();
       break;
-    case 'variables_changed':
+    case EventType.VariablesChanged:
       void refreshVariables();
       break;
-    case 'packages_changed':
+    case EventType.PackagesChanged:
       // Check if this is an install error event
       if (data.error && data.package_id) {
         const packageId = data.package_id as string;
@@ -659,16 +655,16 @@ function handleEventMessage(message: EventMessage): void {
       }
       void refreshPackages();
       break;
-    case 'stdlib_changed':
+    case EventType.StdlibChanged:
       void refreshStdlib();
       break;
-    case 'problems_changed':
+    case EventType.ProblemsChanged:
       void refreshProblems();
       break;
-    case 'atopile_config_changed':
+    case EventType.AtopileConfigChanged:
       updateAtopileConfig(data);
       break;
-    case 'log_view_current_id_changed':
+    case EventType.LogViewCurrentIDChanged:
       {
         const buildId = typeof data.buildId === 'string' ? data.buildId : null;
         useStore.getState().setLogViewerBuildId(buildId);

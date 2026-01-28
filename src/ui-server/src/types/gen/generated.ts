@@ -98,7 +98,7 @@ export interface Build {
     entry?:             null | string;
     error?:             null | string;
     errors?:            number;
-    frozen?:            boolean;
+    frozen?:            boolean | null;
     logDir?:            null | string;
     logFile?:           null | string;
     name:               string;
@@ -686,4 +686,39 @@ export interface InstallProgress {
     message:  string;
     percent?: number | null;
     [property: string]: any;
+}
+
+/**
+ * WebSocket event message payload.
+ */
+export interface EventMessage {
+    data?: { [key: string]: any } | null;
+    event: EventType;
+    type?: EventMessageType;
+    [property: string]: any;
+}
+
+/**
+ * Event types emitted to WebSocket clients.
+ */
+export enum EventType {
+    AtopileConfigChanged = "atopile_config_changed",
+    BOMChanged = "bom_changed",
+    BuildsChanged = "builds_changed",
+    LogViewCurrentIDChanged = "log_view_current_id_changed",
+    Open3D = "open_3d",
+    OpenKicad = "open_kicad",
+    OpenLayout = "open_layout",
+    PackagesChanged = "packages_changed",
+    ProblemsChanged = "problems_changed",
+    ProjectDependenciesChanged = "project_dependencies_changed",
+    ProjectFilesChanged = "project_files_changed",
+    ProjectModulesChanged = "project_modules_changed",
+    ProjectsChanged = "projects_changed",
+    StdlibChanged = "stdlib_changed",
+    VariablesChanged = "variables_changed",
+}
+
+export enum EventMessageType {
+    Event = "event",
 }
