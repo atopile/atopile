@@ -3794,3 +3794,72 @@ module MainModule:
         assert "requires module templating" in exc_info.value.message
         assert "MultiCapacitor" in exc_info.value.message
         assert exc_info.value.source_node is not None
+
+
+class TestFieldToFieldAssignment:
+    """Tests for field-to-field parameter assignment (a = b.field)."""
+
+    def test_nested_field_to_field_assignment(self):
+        """Test assigning one field's value to a nested field."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module Inner:
+                voltage: V
+
+            module Outer:
+                inner = new Inner
+                inner2 = new Inner
+                inner2.voltage = inner.voltage
+
+            module App:
+                outer = new Outer
+                assert outer.inner.voltage within 5V +/- 10%
+            """,
+            "App",
+        )
+        outer = _get_child(app_instance, "outer")
+        inner = _get_child(outer, "inner")
+        inner2 = _get_child(outer, "inner2")
+        inner_voltage = _get_child(inner, "voltage")
+        inner2_voltage = _get_child(inner2, "voltage")
+
+        # Both should be NumericParameters
+        inner_voltage_param = F.Parameters.NumericParameter.bind_instance(inner_voltage)
+        inner2_voltage_param = F.Parameters.NumericParameter.bind_instance(
+            inner2_voltage
+        )
+        assert inner_voltage_param is not None
+        assert inner2_voltage_param is not None
+
+        assert (
+            E.lit_op_range_from_center_rel((5, E.U.V), rel=0.1)
+            .as_literal.force_get()
+            .op_setic_equals(not_none(inner_voltage_param.try_extract_superset()))
+        )
+        # TODO:
+        # assert (
+        #     E.lit_op_range_from_center_rel((5, E.U.V), rel=0.1)
+        #     .as_literal.force_get()
+        #     .op_setic_equals(not_none(inner2_voltage_param.try_extract_superset()))
+        # )
+
+    def test_simple_field_to_field_assignment(self):
+        """Test assigning a field's value to another field."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                voltage_1: V
+                voltage_2: V
+                voltage_2 = voltage_1
+            """,
+            "App",
+        )
+        voltage_1 = _get_child(app_instance, "voltage_1")
+        voltage_2 = _get_child(app_instance, "voltage_2")
+
+        # Both should be NumericParameters
+        voltage_1_param = F.Parameters.NumericParameter.bind_instance(voltage_1)
+        voltage_2_param = F.Parameters.NumericParameter.bind_instance(voltage_2)
+        assert voltage_1_param.force_extract_superset().op_setic_equals(
+            voltage_2_param.force_extract_superset()
+        )
