@@ -115,12 +115,12 @@
   align-items: center;
   gap: 6px;
   flex: 1;
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding: var(--spacing-xs) var(--spacing-sm);
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   transition: all var(--transition-fast);

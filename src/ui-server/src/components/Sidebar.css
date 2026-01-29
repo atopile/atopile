@@ -455,9 +455,9 @@
   padding: 4px 8px;
   border: none;
   background: transparent;
-  color: var(--vscode-descriptionForeground, var(--text-muted));
+  color: var(--vscode-foreground, var(--text-secondary));
   font-family: var(--font-sans);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   font-weight: 400;
   cursor: pointer;
   border-radius: var(--radius-sm);

@@ -114,10 +114,10 @@ body {
   align-items: center;
   gap: var(--spacing-sm);
   /* Match VS Code native view title styling */
-  font-weight: 400;
+  font-family: var(--font-sans);
+  font-weight: 500;
   font-size: var(--font-size-sm);
   color: var(--text-primary);
-  text-transform: uppercase;
   letter-spacing: 0;
 }
 

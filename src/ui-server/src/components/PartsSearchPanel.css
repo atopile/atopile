@@ -24,13 +24,13 @@
   align-items: center;
   gap: 6px;
   flex: 1;
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding: var(--spacing-xs) var(--spacing-sm);
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--vscode-descriptionForeground, var(--text-muted));
   font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   font-weight: 400;
   cursor: pointer;
   transition: all var(--transition-fast);

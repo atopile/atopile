@@ -539,7 +539,7 @@
   font-weight: 500;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
-  background: var(--bg-tertiary);
+  background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -565,13 +565,14 @@
 }
 
 .control-btn.primary {
-  border-color: var(--ctp-blue);
-  background: color-mix(in srgb, var(--ctp-blue) 20%, var(--bg-tertiary));
-  color: var(--ctp-blue);
+  border-color: var(--ato-orange);
+  background: transparent;
+  color: var(--text-secondary);
 }
 
 .control-btn.primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ctp-blue) 30%, var(--bg-tertiary));
+  background: color-mix(in srgb, var(--ato-orange) 10%, var(--bg-tertiary));
+  color: var(--ato-orange);
 }
 
 .control-btn:disabled {

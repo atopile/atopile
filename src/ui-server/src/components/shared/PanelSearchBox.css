@@ -39,7 +39,7 @@
   outline: none;
   /* Match VS Code native font */
   font-family: var(--font-sans);
-  font-size: var(--vscode-font-size, 13px);
+  font-size: var(--font-size-xs);
   color: var(--vscode-input-foreground, var(--text-primary));
 }
 

@@ -5,12 +5,14 @@
   padding: var(--spacing-sm) var(--spacing-md);
 }
 
-/* Subtle header - JetBrains-inspired minimal design */
+/* Header - matches BOM summary style */
 .structure-header {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  padding: 2px 4px;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
 }
 
@@ -45,8 +47,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   border: none;
   background: transparent;
   color: var(--text-muted);
@@ -151,18 +153,46 @@
   gap: var(--spacing-xs);
 }
 
+/* Unified empty/loading/error states - matches other panels */
 .structure-loading,
 .structure-empty,
 .structure-error {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-md);
-  font-size: var(--font-size-md);
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xl) var(--spacing-md);
   color: var(--text-muted);
+  text-align: center;
+  min-height: 120px;
+}
+
+.structure-loading svg,
+.structure-empty svg {
+  opacity: 0.4;
+}
+
+.structure-empty .empty-title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-top: var(--spacing-xs);
+}
+
+.structure-empty .empty-description {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  max-width: 220px;
+  line-height: 1.4;
 }
 
 .structure-error {
+  color: var(--error);
+}
+
+.structure-error svg {
+  opacity: 0.6;
   color: var(--error);
 }
 

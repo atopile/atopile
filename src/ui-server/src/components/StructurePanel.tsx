@@ -277,7 +277,7 @@ export function StructurePanel({
           title="Refresh structure"
           disabled={!effectiveAtoFile || !activeProject}
         >
-          <RefreshCw size={14} />
+          <RefreshCw size={12} />
         </button>
       </div>
 
@@ -294,19 +294,22 @@ export function StructurePanel({
       <div className="structure-body">
         {state.status === 'idle' && (
           <div className="structure-empty">
-            <span>Open an .ato file to view the structure</span>
+            <FileCode size={24} />
+            <span className="empty-title">No structure available</span>
+            <span className="empty-description">Open an .ato file to view the module structure</span>
           </div>
         )}
         {state.status === 'loading' && (
           <div className="structure-loading">
-            <Loader2 size={16} className="spin" />
+            <Loader2 size={12} className="spin" />
             <span>Loading structure...</span>
           </div>
         )}
         {state.status === 'error' && (
           <div className="structure-error">
-            <AlertTriangle size={14} />
-            <span>{state.message}</span>
+            <AlertTriangle size={24} />
+            <span className="empty-title">Error loading structure</span>
+            <span className="empty-description">{state.message}</span>
           </div>
         )}
         {state.status === 'ready' && (
@@ -329,11 +332,13 @@ export function StructurePanel({
             </div>
           ) : searchTerm ? (
             <div className="structure-empty">
-              <span>No matches for "{searchTerm}"</span>
+              <span className="empty-title">No matches found</span>
+              <span className="empty-description">No results for "{searchTerm}"</span>
             </div>
           ) : (
             <div className="structure-empty">
-              <span>No structure found</span>
+              <span className="empty-title">No structure found</span>
+              <span className="empty-description">This file contains no modules</span>
             </div>
           )
         )}

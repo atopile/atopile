@@ -418,7 +418,7 @@
   to { opacity: 1; }
 }
 
-/* Variables loading, error, and empty states */
+/* Variables loading, error, and empty states - unified pattern */
 .variables-loading,
 .variables-error,
 .variables-empty {
@@ -426,11 +426,11 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-xl) var(--spacing-lg);
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xl) var(--spacing-md);
   color: var(--text-muted);
   text-align: center;
-  min-height: 150px;
+  min-height: 120px;
 }
 
 .variables-loading .spinner {
@@ -512,20 +512,26 @@
   flex-shrink: 0;
 }
 
+.variables-loading svg,
+.variables-empty svg {
+  opacity: 0.4;
+}
+
 .variables-empty .empty-title {
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-secondary);
+  margin-top: var(--spacing-xs);
 }
 
 .variables-empty .empty-description {
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
-  max-width: 200px;
+  max-width: 220px;
+  line-height: 1.4;
 }
 
 /* Variables Build Selector placement */
 .variables-build-selector {
   padding: var(--spacing-xs) var(--spacing-sm);
-  border-bottom: 1px solid var(--border-subtle);
 }

@@ -240,14 +240,15 @@
   margin-left: auto;
 }
 
-/* Expanded content */
+/* Expanded content - description hugs name, decent spacing below */
 .stdlib-card-description {
-  margin-top: var(--spacing-xs);
-  margin-left: 48px; /* Align with item name */
+  margin-top: 2px;
+  margin-bottom: var(--spacing-sm);
+  margin-left: calc(16px + 16px + 4px); /* Align with name: chevron + icon + gap */
   padding-right: var(--spacing-sm);
   font-family: var(--font-sans);
-  font-size: var(--vscode-font-size, 13px);
-  color: var(--vscode-descriptionForeground, var(--text-secondary));
+  font-size: var(--font-size-xs);
+  color: var(--vscode-descriptionForeground, var(--text-muted));
   line-height: 1.4;
 }
 
