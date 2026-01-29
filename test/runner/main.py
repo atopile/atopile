@@ -30,6 +30,7 @@ from urllib.parse import quote as url_quote
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from jinja2 import Template
 from rich.console import Console
 from rich.text import Text
@@ -3276,48 +3277,8 @@ async def serve_log_viewer(request: Request):
     return HTMLResponse(content=content)
 
 
-@app.get("/logViewer.js")
-async def serve_log_viewer_js():
-    """Serve the log viewer JavaScript bundle."""
-    from starlette.responses import FileResponse
-
-    js_path = LOG_VIEWER_DIST_DIR / "logViewer.js"
-    if js_path.exists():
-        return FileResponse(js_path, media_type="application/javascript")
-    return HTMLResponse("Not found", status_code=404)
-
-
-@app.get("/logViewer.css")
-async def serve_log_viewer_css():
-    """Serve the log viewer CSS."""
-    from starlette.responses import FileResponse
-
-    css_path = LOG_VIEWER_DIST_DIR / "logViewer.css"
-    if css_path.exists():
-        return FileResponse(css_path, media_type="text/css")
-    return HTMLResponse("Not found", status_code=404)
-
-
-@app.get("/index.css")
-async def serve_index_css():
-    """Serve the shared CSS."""
-    from starlette.responses import FileResponse
-
-    css_path = LOG_VIEWER_DIST_DIR / "index.css"
-    if css_path.exists():
-        return FileResponse(css_path, media_type="text/css")
-    return HTMLResponse("Not found", status_code=404)
-
-
-@app.get("/index-{hash}.js")
-async def serve_shared_js(hash: str):
-    """Serve the shared JavaScript chunk."""
-    from starlette.responses import FileResponse
-
-    # Find any file matching the pattern
-    for f in LOG_VIEWER_DIST_DIR.glob("index-*.js"):
-        return FileResponse(f, media_type="application/javascript")
-    return HTMLResponse("Not found", status_code=404)
+# Mount log viewer static assets
+app.mount("/", StaticFiles(directory=LOG_VIEWER_DIST_DIR, html=False), name="log-viewer-static")
 
 
 class ReportTimer:
