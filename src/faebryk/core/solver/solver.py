@@ -47,6 +47,7 @@ class Solver:
             expression_groups.idempotent_unpack,
             expression_groups.involutory_fold,
             expression_groups.unary_identity_unpack,
+            expression_groups.associative_fold,
             *expression_wise.fold_algorithms,
             structural.predicate_unconstrained_operands_deduce,
             structural.transitive_subset,
