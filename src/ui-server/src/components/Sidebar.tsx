@@ -85,16 +85,10 @@ export function Sidebar() {
   const [, setSelection] = useState<Selection>({ type: 'none' });
   const [selectedPackage, setSelectedPackage] = useState<SelectedPackage | null>(null);
   const [selectedPart, setSelectedPart] = useState<SelectedPart | null>(null);
-  const [activeTab, setActiveTab] = useState<'structure' | 'packages' | 'parts' | 'stdlib' | 'parameters' | 'bom'>('structure');
+  const [activeTab, setActiveTab] = useState<'structure' | 'packages' | 'parts' | 'stdlib' | 'parameters' | 'bom'>('packages');
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // Memoized computed values (previously inline in JSX)
-  const bomWarningCount = useMemo(() => {
-    if (!bomData?.components) return 0;
-    return bomData.components.filter(c => c.stock !== null && c.stock === 0).length;
-  }, [bomData]);
 
   // Keep selected package in sync with refreshed package list (e.g., after install/uninstall)
   useEffect(() => {
@@ -376,13 +370,6 @@ export function Sidebar() {
         <div className="tabbed-panels">
           <div className="tab-bar">
             <button
-              className={`tab-button ${activeTab === 'structure' ? 'active' : ''}`}
-              onClick={() => setActiveTab('structure')}
-              title="Structure"
-            >
-              Structure
-            </button>
-            <button
               className={`tab-button ${activeTab === 'packages' ? 'active' : ''}`}
               onClick={() => setActiveTab('packages')}
               title="Packages"
@@ -403,7 +390,13 @@ export function Sidebar() {
               title="Standard Library"
             >
               Standard Library
-              {(stdlibItems?.length || 0) > 0 && <span className="tab-badge">{stdlibItems?.length}</span>}
+            </button>
+            <button
+              className={`tab-button ${activeTab === 'structure' ? 'active' : ''}`}
+              onClick={() => setActiveTab('structure')}
+              title="Structure"
+            >
+              Structure
             </button>
             <button
               className={`tab-button ${activeTab === 'parameters' ? 'active' : ''}`}
@@ -418,20 +411,10 @@ export function Sidebar() {
               title="Bill of Materials"
             >
               BOM
-              {(bomData?.components?.length ?? 0) > 0 && <span className="tab-badge">{bomData?.components?.length}</span>}
-              {bomWarningCount > 0 && <span className="tab-warning">{bomWarningCount}</span>}
             </button>
           </div>
 
           <div className="tab-content">
-            {activeTab === 'structure' && (
-              <StructurePanel
-                activeFilePath={activeEditorFile}
-                lastAtoFile={lastAtoFile}
-                projects={projects || []}
-                onRefreshStructure={handlers.handleStructureRefresh}
-              />
-            )}
             {activeTab === 'packages' && (
               <PackagesPanel
                 packages={packages || []}
@@ -452,6 +435,14 @@ export function Sidebar() {
                 items={stdlibItems}
                 isLoading={isLoadingStdlib}
                 onRefresh={handleRefreshStdlib}
+              />
+            )}
+            {activeTab === 'structure' && (
+              <StructurePanel
+                activeFilePath={activeEditorFile}
+                lastAtoFile={lastAtoFile}
+                projects={projects || []}
+                onRefreshStructure={handlers.handleStructureRefresh}
               />
             )}
             {activeTab === 'parameters' && (
