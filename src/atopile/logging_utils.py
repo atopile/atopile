@@ -440,6 +440,32 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # =============================================================================
 
 
+def print_subprocess_output(
+    text: str,
+    is_stderr: bool = False,
+) -> None:
+    """
+    Print output from a subprocess.
+
+    The subprocess log formatter adds source prefix via ATO_LOG_SOURCE env var,
+    so we just pass through the output as-is.
+
+    Args:
+        text: The output text (may contain ANSI codes)
+        is_stderr: Whether this is stderr output
+    """
+    from rich.text import Text
+
+    # Handle multi-line text, preserving ANSI codes
+    lines = text.rstrip("\n").split("\n")
+    for line in lines:
+        output = Text.from_ansi(line)
+        if is_stderr:
+            error_console.print(output, highlight=False)
+        else:
+            console.print(output, highlight=False)
+
+
 def status_rich_icon(status: BuildStatus | str) -> str:
     """Get Rich-formatted icon for status (for terminal display)."""
     icon, color = get_status_style(status)
@@ -646,6 +672,11 @@ class BuildPrinter:
 
             # Print final status line
             self._print_compact_result(display_name, status, warnings)
+
+    def get_display_name(self, build_id: str) -> str:
+        """Get display name for a build, falling back to truncated build_id."""
+        state = self._builds.get(build_id)
+        return state.display_name if state else build_id[:8]
 
     def _print_verbose_stage(self, stage: dict) -> None:
         """Print a single verbose stage line."""

@@ -93,6 +93,14 @@ def _build_subprocess_env(build: Build) -> dict[str, str]:
     env["PYTHONUNBUFFERED"] = "1"
     env["ATO_BUILD_WORKER"] = "1"
 
+    # Force Rich to output ANSI colors even when piped (for verbose mode)
+    # Also set wide terminal so Rich doesn't wrap - let parent terminal handle it
+    if build.verbose:
+        env["FORCE_COLOR"] = "1"
+        env["COLUMNS"] = "500"
+        # Set log source for prefix in log output
+        env["ATO_LOG_SOURCE"] = build.display_name or build.name or "build"
+
     if build.build_id:
         env["ATO_BUILD_ID"] = build.build_id
     if build.timestamp:
