@@ -305,24 +305,36 @@ async def _load_atopile_install_options(ctx: AppContext) -> None:
     """Background task to load atopile versions, branches, and detect installations."""
     from atopile import version as ato_version
 
-    # No try/except - let exceptions crash the server for visibility
-    log.info("Loading atopile installation options")
+    try:
+        log.info("[background] Loading atopile installation options")
 
-    # Fetch available versions from PyPI
-    versions = await atopile_install.fetch_available_versions()
-    await server_state.emit_event(
-        "atopile_config_changed", {"available_versions": versions}
-    )
-    log.info(f"Loaded {len(versions)} PyPI versions")
+        # Emit the ACTUAL atopile status - this is the source of truth
+        # for what version/source the extension is using to build projects
+        try:
+            version_obj = ato_version.get_installed_atopile_version()
+            actual_version = str(version_obj)
+            actual_source = ctx.ato_source or "unknown"
+            # Include UI source type so the dropdown shows the correct initial state
+            ui_source = ctx.ato_ui_source or "release"
+            await server_state.emit_event(
+                "atopile_config_changed",
+                {
+                    "actual_version": actual_version,
+                    "actual_source": actual_source,
+                    "actual_binary_path": ctx.ato_binary_path,  # Actual binary path
+                    "source": ui_source,  # Sets the active toggle state
+                    "local_path": ctx.ato_local_path,  # Path for display in UI
+                },
+            )
+            log.info(
+                f"[background] Actual atopile: {actual_version} from {actual_source} "
+                f"(binary: {ctx.ato_binary_path}, UI: {ui_source})"
+            )
+        except Exception as e:
+            log.warning(f"[background] Could not detect actual version: {e}")
 
-    # Detect local installations
-    installations = await asyncio.to_thread(
-        atopile_install.detect_local_installations
-    )
-    await server_state.emit_event(
-        "atopile_config_changed", {"detected_installations": installations}
-    )
-    log.info(f"Detected {len(installations)} local installations")
+    except Exception as exc:
+        log.error(f"[background] Failed to load atopile install options: {exc}")
 
 
 def cleanup_server(exc: BaseException | None = None) -> None:
