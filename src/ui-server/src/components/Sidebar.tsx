@@ -50,7 +50,6 @@ export function Sidebar() {
   const selectedTargetNames = useStore((s) => s.selectedTargetNames) ?? [];
   const isLoadingProjects = useStore((s) => s.isLoadingProjects);
   const isLoadingPackages = useStore((s) => s.isLoadingPackages);
-  const packagesError = useStore((s) => s.packagesError);
   const installingPackageIds = useStore((s) => s.installingPackageIds);
   const installError = useStore((s) => s.installError);
   const stdlibItems = useStore((s) => s.stdlibItems);
@@ -86,15 +85,10 @@ export function Sidebar() {
   const [, setSelection] = useState<Selection>({ type: 'none' });
   const [selectedPackage, setSelectedPackage] = useState<SelectedPackage | null>(null);
   const [selectedPart, setSelectedPart] = useState<SelectedPart | null>(null);
+  const [activeTab, setActiveTab] = useState<'structure' | 'packages' | 'parts' | 'stdlib' | 'parameters' | 'bom'>('packages');
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // Memoized computed values (previously inline in JSX)
-  const bomWarningCount = useMemo(() => {
-    if (!bomData?.components) return 0;
-    return bomData.components.filter(c => c.stock !== null && c.stock === 0).length;
-  }, [bomData]);
 
   // Keep selected package in sync with refreshed package list (e.g., after install/uninstall)
   useEffect(() => {
@@ -239,12 +233,6 @@ export function Sidebar() {
     setSelectedPart(null);
   }, []);
 
-  const handleOpenPartDetail = useCallback((part: SelectedPart) => {
-    setSelectedPackage(null);
-    action('clearPackageDetails');
-    setSelectedPart(part);
-  }, []);
-
   const handlePackageInstall = useCallback(async (version?: string) => {
     if (!selectedPackage) return;
     const projectRoot = selectedProjectRoot || sidebarProjects?.[0]?.root;
@@ -378,111 +366,106 @@ export function Sidebar() {
           />
         </CollapsibleSection>
 
-        {/* Packages Section */}
-        <CollapsibleSection
-          id="packages"
-          title="Packages"
-          loading={isLoadingPackages}
-          warningMessage={packagesError || null}
-          collapsed={panels.isCollapsed('packages')}
-          onToggle={() => panels.togglePanel('packages')}
-          height={panels.calculatedHeights['packages']}
-          onResizeStart={(e) => panels.handleResizeStart('packages', e)}
-        >
-          <PackagesPanel
-            packages={packages || []}
-            installedDependencies={selectedProjectRoot ? (projectDependencies?.[selectedProjectRoot] || []) : []}
-            selectedProjectRoot={selectedProjectRoot}
-            installError={installError}
-            onOpenPackageDetail={handlers.handleOpenPackageDetail}
-          />
-        </CollapsibleSection>
+        {/* Tabbed Panels Section */}
+        <div className="tabbed-panels">
+          <div className="tab-bar">
+            <button
+              className={`tab-button ${activeTab === 'packages' ? 'active' : ''}`}
+              onClick={() => setActiveTab('packages')}
+              title="Packages"
+            >
+              Packages
+              {isLoadingPackages && <span className="tab-loading" />}
+            </button>
+            <button
+              className={`tab-button ${activeTab === 'parts' ? 'active' : ''}`}
+              onClick={() => setActiveTab('parts')}
+              title="Parts"
+            >
+              Parts
+            </button>
+            <button
+              className={`tab-button ${activeTab === 'stdlib' ? 'active' : ''}`}
+              onClick={() => setActiveTab('stdlib')}
+              title="Standard Library"
+            >
+              Standard Library
+            </button>
+            <button
+              className={`tab-button ${activeTab === 'structure' ? 'active' : ''}`}
+              onClick={() => setActiveTab('structure')}
+              title="Structure"
+            >
+              Structure
+            </button>
+            <button
+              className={`tab-button ${activeTab === 'parameters' ? 'active' : ''}`}
+              onClick={() => setActiveTab('parameters')}
+              title="Parameters"
+            >
+              Parameters
+            </button>
+            <button
+              className={`tab-button ${activeTab === 'bom' ? 'active' : ''}`}
+              onClick={() => setActiveTab('bom')}
+              title="Bill of Materials"
+            >
+              BOM
+            </button>
+          </div>
 
-        {/* Parts Section */}
-        <CollapsibleSection
-          id="parts"
-          title="Parts"
-          collapsed={panels.isCollapsed('parts')}
-          onToggle={() => panels.togglePanel('parts')}
-          height={panels.calculatedHeights['parts']}
-          onResizeStart={(e) => panels.handleResizeStart('parts', e)}
-        >
-          <PartsSearchPanel
-            selectedProjectRoot={selectedProjectRoot}
-            onOpenPartDetail={handleOpenPartDetail}
-          />
-        </CollapsibleSection>
-
-        {/* Standard Library Section */}
-        <CollapsibleSection
-          id="stdlib"
-          title="Standard Library"
-          collapsed={panels.isCollapsed('stdlib')}
-          onToggle={() => panels.togglePanel('stdlib')}
-          height={panels.calculatedHeights['stdlib']}
-          onResizeStart={(e) => panels.handleResizeStart('stdlib', e)}
-        >
-          <StandardLibraryPanel
-            items={stdlibItems}
-            isLoading={isLoadingStdlib}
-            onRefresh={handleRefreshStdlib}
-          />
-        </CollapsibleSection>
-
-        {/* Structure Section */}
-        <CollapsibleSection
-          id="structure"
-          title="Structure"
-          collapsed={panels.isCollapsed('structure')}
-          onToggle={() => panels.togglePanel('structure')}
-          height={panels.calculatedHeights['structure']}
-          onResizeStart={(e) => panels.handleResizeStart('structure', e)}
-        >
-          <StructurePanel
-            activeFilePath={activeEditorFile}
-            lastAtoFile={lastAtoFile}
-            projects={projects || []}
-            onRefreshStructure={handlers.handleStructureRefresh}
-          />
-        </CollapsibleSection>
-
-        {/* Variables Section */}
-        <CollapsibleSection
-          id="variables"
-          title="Variables"
-          collapsed={panels.isCollapsed('variables')}
-          onToggle={() => panels.togglePanel('variables')}
-          height={panels.calculatedHeights['variables']}
-          onResizeStart={(e) => panels.handleResizeStart('variables', e)}
-        >
-          <VariablesPanel
-            variablesData={currentVariablesData}
-            isLoading={isLoadingVariables}
-            error={variablesError}
-            selectedTargetName={selectedTargetName}
-            hasActiveProject={!!selectedProjectRoot}
-          />
-        </CollapsibleSection>
-
-        {/* BOM Section */}
-        <CollapsibleSection
-          id="bom"
-          title="BOM"
-          warningCount={bomWarningCount}
-          collapsed={panels.isCollapsed('bom')}
-          onToggle={() => panels.togglePanel('bom')}
-          height={panels.calculatedHeights['bom']}
-          onResizeStart={(e) => panels.handleResizeStart('bom', e)}
-        >
-          <BOMPanel
-            bomData={bomData}
-            isLoading={isLoadingBom}
-            error={bomError}
-            selectedProjectRoot={selectedProjectRoot}
-            selectedTargetNames={selectedTargetNames}
-            onGoToSource={handleGoToSource}
-          />
-        </CollapsibleSection>
+          <div className="tab-content">
+            {activeTab === 'packages' && (
+              <PackagesPanel
+                packages={packages || []}
+                installedDependencies={selectedProjectRoot ? (projectDependencies?.[selectedProjectRoot] || []) : []}
+                selectedProjectRoot={selectedProjectRoot}
+                installError={installError}
+                onOpenPackageDetail={handlers.handleOpenPackageDetail}
+              />
+            )}
+            {activeTab === 'parts' && (
+              <PartsSearchPanel
+                selectedProjectRoot={selectedProjectRoot}
+                onOpenPartDetail={handlers.handleOpenPartDetail}
+              />
+            )}
+            {activeTab === 'stdlib' && (
+              <StandardLibraryPanel
+                items={stdlibItems}
+                isLoading={isLoadingStdlib}
+                onRefresh={handleRefreshStdlib}
+              />
+            )}
+            {activeTab === 'structure' && (
+              <StructurePanel
+                activeFilePath={activeEditorFile}
+                lastAtoFile={lastAtoFile}
+                projects={projects || []}
+                onRefreshStructure={handlers.handleStructureRefresh}
+              />
+            )}
+            {activeTab === 'parameters' && (
+              <VariablesPanel
+                variablesData={currentVariablesData}
+                isLoading={isLoadingVariables}
+                error={variablesError}
+                selectedTargetName={selectedTargetName}
+                hasActiveProject={!!selectedProjectRoot}
+              />
+            )}
+            {activeTab === 'bom' && (
+              <BOMPanel
+                bomData={bomData}
+                isLoading={isLoadingBom}
+                error={bomError}
+                selectedProjectRoot={selectedProjectRoot}
+                selectedTargetNames={selectedTargetNames}
+                onGoToSource={handleGoToSource}
+              />
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Detail Panel (slides in when package selected) */}
