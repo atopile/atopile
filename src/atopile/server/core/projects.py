@@ -16,7 +16,6 @@ from atopile.dataclasses import (
     BuildStatus,
     BuildTarget,
     BuildTargetStatus,
-    FileTreeNode,
     ModuleDefinition,
     Project,
 )
@@ -252,100 +251,6 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
     # Sort by path (root) to group projects in the same directory together
     projects.sort(key=lambda p: p.root.lower())
     return projects
-
-
-def build_file_tree(
-    directory: Path, base_path: Path, include_all: bool = False
-) -> list[FileTreeNode]:
-    """
-    Build a file tree for UI display.
-
-    Args:
-        directory: Directory to scan
-        base_path: Base path for computing relative paths
-        include_all: If True, include all files. If False, only .ato and .py files.
-    """
-    nodes: list[FileTreeNode] = []
-
-    excluded_dirs = {
-        "build",
-        ".ato",
-        "__pycache__",
-        ".git",
-        ".venv",
-        "venv",
-        "node_modules",
-        ".pytest_cache",
-        ".mypy_cache",
-        "dist",
-        "egg-info",
-    }
-
-    try:
-        items = sorted(
-            directory.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())
-        )
-    except PermissionError:
-        return nodes
-
-    for item in items:
-        # Skip hidden files unless include_all is True
-        if item.name.startswith(".") and item.name not in {".ato"}:
-            if not include_all:
-                continue
-        if item.name in excluded_dirs:
-            if not include_all:
-                continue
-        if item.name.endswith(".egg-info"):
-            if not include_all:
-                continue
-
-        rel_path = str(item.relative_to(base_path))
-
-        if item.is_dir():
-            children = build_file_tree(item, base_path, include_all=include_all)
-            # For include_all mode, show empty folders too
-            if children or include_all:
-                nodes.append(
-                    FileTreeNode(
-                        name=item.name,
-                        path=rel_path,
-                        type="folder",
-                        children=children,
-                    )
-                )
-        elif item.is_file():
-            if include_all:
-                # Include all files with their extension
-                ext = item.suffix.lstrip(".") if item.suffix else None
-                nodes.append(
-                    FileTreeNode(
-                        name=item.name,
-                        path=rel_path,
-                        type="file",
-                        extension=ext,
-                    )
-                )
-            elif item.suffix == ".ato":
-                nodes.append(
-                    FileTreeNode(
-                        name=item.name,
-                        path=rel_path,
-                        type="file",
-                        extension="ato",
-                    )
-                )
-            elif item.suffix == ".py":
-                nodes.append(
-                    FileTreeNode(
-                        name=item.name,
-                        path=rel_path,
-                        type="file",
-                        extension="py",
-                    )
-                )
-
-    return nodes
 
 
 def create_project(

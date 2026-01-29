@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { API_URL } from '../api/config'
+import { postMessage } from '../api/vscodeApi'
 import type { PackageDetails } from '../types/build'
 import KiCanvasEmbed from './KiCanvasEmbed'
 import MarkdownRenderer from './MarkdownRenderer'
@@ -337,31 +338,30 @@ export function PackageDetailPanel({
         {/* Information */}
         <section className={`detail-section detail-section-collapsible ${infoCollapsed ? 'collapsed' : ''}`}>
           <div className="detail-section-header">
-            <div className="detail-section-header-left">
-              <button
-                type="button"
-                className="detail-collapse-toggle"
-                onClick={() => setInfoCollapsed((prev) => !prev)}
-                aria-expanded={!infoCollapsed}
-                aria-label={infoCollapsed ? 'Expand information' : 'Collapse information'}
-              >
+            <button
+              type="button"
+              className="detail-section-header-left"
+              onClick={() => setInfoCollapsed((prev) => !prev)}
+              aria-expanded={!infoCollapsed}
+              aria-label={infoCollapsed ? 'Expand information' : 'Collapse information'}
+            >
+              <span className="detail-collapse-toggle">
                 {infoCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-              </button>
+              </span>
               <h3 className="detail-section-title">
                 <Package size={14} />
                 Information
               </h3>
-            </div>
+            </button>
             {(details?.homepage || pkg.homepage) && (
-              <a
-                href={details?.homepage || pkg.homepage}
-                target="_blank"
-                rel="noopener"
+              <button
+                type="button"
+                onClick={() => postMessage({ type: 'openInSimpleBrowser', url: details?.homepage || pkg.homepage || '' })}
                 className="detail-open-icon"
                 title="Open in browser"
               >
                 <ExternalLink size={12} />
-              </a>
+              </button>
             )}
           </div>
           {!infoCollapsed && (

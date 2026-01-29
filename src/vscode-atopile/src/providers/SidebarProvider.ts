@@ -115,6 +115,18 @@ interface OpenInTerminalMessage {
   path: string;
 }
 
+interface ListFilesMessage {
+  type: 'listFiles';
+  projectRoot: string;
+  includeAll?: boolean;
+}
+
+interface LoadDirectoryMessage {
+  type: 'loadDirectory';
+  projectRoot: string;
+  directoryPath: string;  // Relative path to directory
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -132,7 +144,9 @@ type WebviewMessage =
   | CreateFileMessage
   | CreateFolderMessage
   | DuplicateFileMessage
-  | OpenInTerminalMessage;
+  | OpenInTerminalMessage
+  | ListFilesMessage
+  | LoadDirectoryMessage;
 
 /**
  * Check if we're running in development mode.
@@ -613,6 +627,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           traceInfo(`[SidebarProvider] Opened terminal at ${message.path}`);
         }
         break;
+      case 'listFiles':
+        // List files in a project directory
+        this._handleListFiles(message.projectRoot, message.includeAll ?? true);
+        break;
+      case 'loadDirectory':
+        // Load contents of a lazy-loaded directory
+        this._handleLoadDirectory(message.projectRoot, message.directoryPath);
+        break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
     }
@@ -751,6 +773,229 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     setCurrentThreeDModel({ path: modelPath, exists: true });
     void openModelViewerPreview();
+  }
+
+  /**
+   * Handle listFiles request - enumerate files in a project directory.
+   * File enumeration is handled entirely by the VS Code extension.
+   * Hidden directories (starting with .) are shown but not recursed into (lazy loaded).
+   */
+  private async _handleListFiles(projectRoot: string, includeAll: boolean): Promise<void> {
+    traceInfo(`[SidebarProvider] Listing files for: ${projectRoot}, includeAll: ${includeAll}`);
+
+    // Directories to completely exclude (not even show)
+    const excludedDirs = new Set([
+      '__pycache__',
+      'node_modules',
+      '.pytest_cache',
+      '.mypy_cache',
+      'dist',
+      'egg-info',
+    ]);
+
+    // Hidden directories to show but lazy load (don't recurse into by default)
+    const lazyLoadDirs = new Set([
+      '.git',
+      '.venv',
+      '.ato',
+      'build',
+      'venv',
+    ]);
+
+    interface FileNode {
+      name: string;
+      path: string;
+      type: 'file' | 'folder';
+      extension?: string;
+      children?: FileNode[];
+      lazyLoad?: boolean;  // True if directory contents not yet loaded
+    }
+
+    const buildFileTree = async (dirUri: vscode.Uri, basePath: string, isLazyLoadDir: boolean = false): Promise<FileNode[]> => {
+      const nodes: FileNode[] = [];
+
+      try {
+        const entries = await vscode.workspace.fs.readDirectory(dirUri);
+
+        // Sort: directories first, then alphabetically
+        entries.sort((a, b) => {
+          const aIsDir = a[1] === vscode.FileType.Directory;
+          const bIsDir = b[1] === vscode.FileType.Directory;
+          if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
+          return a[0].toLowerCase().localeCompare(b[0].toLowerCase());
+        });
+
+        for (const [name, fileType] of entries) {
+          // Skip completely excluded directories
+          if (excludedDirs.has(name)) continue;
+          if (name.endsWith('.egg-info')) continue;
+
+          const relativePath = basePath ? `${basePath}/${name}` : name;
+          const itemUri = vscode.Uri.joinPath(dirUri, name);
+          const isHidden = name.startsWith('.');
+
+          if (fileType === vscode.FileType.Directory) {
+            // Check if this directory should be lazy loaded
+            const shouldLazyLoad = lazyLoadDirs.has(name) || (isHidden && !includeAll);
+
+            if (shouldLazyLoad) {
+              // Show the directory but mark it for lazy loading
+              nodes.push({
+                name,
+                path: relativePath,
+                type: 'folder',
+                children: [],  // Empty - will be loaded on demand
+                lazyLoad: true,
+              });
+            } else {
+              const children = await buildFileTree(itemUri, relativePath, false);
+              // Skip empty directories unless includeAll
+              if (children.length > 0 || includeAll) {
+                nodes.push({
+                  name,
+                  path: relativePath,
+                  type: 'folder',
+                  children,
+                });
+              }
+            }
+          } else if (fileType === vscode.FileType.File) {
+            // Skip hidden files unless includeAll
+            if (isHidden && !includeAll) continue;
+
+            // If not includeAll, only include .ato and .py files
+            if (!includeAll) {
+              const ext = name.split('.').pop()?.toLowerCase();
+              if (ext !== 'ato' && ext !== 'py') continue;
+            }
+
+            const ext = name.includes('.') ? name.split('.').pop()?.toLowerCase() : undefined;
+            nodes.push({
+              name,
+              path: relativePath,
+              type: 'file',
+              extension: ext,
+            });
+          }
+        }
+      } catch (err) {
+        traceError(`[SidebarProvider] Error reading directory ${dirUri.fsPath}: ${err}`);
+      }
+
+      return nodes;
+    };
+
+    try {
+      const rootUri = vscode.Uri.file(projectRoot);
+      const files = await buildFileTree(rootUri, '');
+
+      // Count total files (excluding lazy-loaded directories)
+      const countFiles = (nodes: FileNode[]): number => {
+        let count = 0;
+        for (const node of nodes) {
+          if (node.type === 'file') {
+            count++;
+          } else if (node.children && !node.lazyLoad) {
+            count += countFiles(node.children);
+          }
+        }
+        return count;
+      };
+
+      const total = countFiles(files);
+
+      // Send result back to webview
+      this._view?.webview.postMessage({
+        type: 'filesListed',
+        projectRoot,
+        files,
+        total,
+      });
+
+      traceInfo(`[SidebarProvider] Listed ${total} files for ${projectRoot}`);
+    } catch (err) {
+      traceError(`[SidebarProvider] Failed to list files: ${err}`);
+      this._view?.webview.postMessage({
+        type: 'filesListed',
+        projectRoot,
+        files: [],
+        total: 0,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /**
+   * Handle loadDirectory request - load contents of a lazy-loaded directory.
+   */
+  private async _handleLoadDirectory(projectRoot: string, directoryPath: string): Promise<void> {
+    traceInfo(`[SidebarProvider] Loading directory: ${directoryPath} in ${projectRoot}`);
+
+    interface FileNode {
+      name: string;
+      path: string;
+      type: 'file' | 'folder';
+      extension?: string;
+      children?: FileNode[];
+      lazyLoad?: boolean;
+    }
+
+    try {
+      const dirUri = vscode.Uri.file(path.join(projectRoot, directoryPath));
+      const entries = await vscode.workspace.fs.readDirectory(dirUri);
+      const nodes: FileNode[] = [];
+
+      // Sort: directories first, then alphabetically
+      entries.sort((a, b) => {
+        const aIsDir = a[1] === vscode.FileType.Directory;
+        const bIsDir = b[1] === vscode.FileType.Directory;
+        if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
+        return a[0].toLowerCase().localeCompare(b[0].toLowerCase());
+      });
+
+      for (const [name, fileType] of entries) {
+        const relativePath = `${directoryPath}/${name}`;
+        const isHidden = name.startsWith('.');
+
+        if (fileType === vscode.FileType.Directory) {
+          // For directories inside a lazy-loaded dir, also lazy load them if hidden
+          nodes.push({
+            name,
+            path: relativePath,
+            type: 'folder',
+            children: [],
+            lazyLoad: isHidden,  // Lazy load nested hidden dirs
+          });
+        } else if (fileType === vscode.FileType.File) {
+          const ext = name.includes('.') ? name.split('.').pop()?.toLowerCase() : undefined;
+          nodes.push({
+            name,
+            path: relativePath,
+            type: 'file',
+            extension: ext,
+          });
+        }
+      }
+
+      // Send result back to webview
+      this._view?.webview.postMessage({
+        type: 'directoryLoaded',
+        projectRoot,
+        directoryPath,
+        children: nodes,
+      });
+
+      traceInfo(`[SidebarProvider] Loaded ${nodes.length} items in ${directoryPath}`);
+    } catch (err) {
+      traceError(`[SidebarProvider] Failed to load directory: ${err}`);
+      this._view?.webview.postMessage({
+        type: 'directoryLoaded',
+        projectRoot,
+        directoryPath,
+        children: [],
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /**

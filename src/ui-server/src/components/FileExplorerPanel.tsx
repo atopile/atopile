@@ -32,7 +32,6 @@ import {
   Clock,
 } from 'lucide-react';
 import { useStore } from '../store';
-import { api } from '../api/client';
 import { postToExtension } from '../api/vscodeApi';
 import { FileContextMenu, type ContextMenuPosition, type ContextMenuTarget } from './FileContextMenu';
 import './FileExplorerPanel.css';
@@ -99,6 +98,7 @@ export interface FileNode {
   type: 'file' | 'directory';
   children?: FileNode[];
   mtime?: number; // Last modified timestamp
+  lazyLoad?: boolean; // True if directory contents not yet loaded
 }
 
 export type SortMode = 'name' | 'modified' | 'type';
@@ -351,9 +351,13 @@ const TreeNode = memo(function TreeNode({
 
   const handleDragStart = useCallback((e: React.DragEvent) => {
     e.dataTransfer.setData('text/plain', node.path);
-    e.dataTransfer.effectAllowed = 'move';
+    // Set file URI for dropping into VS Code editor
+    const fullPath = `${projectRoot}/${node.path}`;
+    const fileUri = `file://${fullPath}`;
+    e.dataTransfer.setData('text/uri-list', fileUri);
+    e.dataTransfer.effectAllowed = 'copyMove';
     onDragStart(node.path);
-  }, [node.path, onDragStart]);
+  }, [node.path, projectRoot, onDragStart]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -487,36 +491,81 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
   // Get files for selected project
   const files = projectRoot ? projectFiles[projectRoot] : undefined;
 
-  // Fetch files when project changes or files are cleared (for refresh)
+  // Request files from the VS Code extension (not the backend)
   useEffect(() => {
     if (!projectRoot) return;
     if (files && files.length > 0) return; // Already have files
 
-    const fetchFiles = async () => {
-      try {
-        useStore.getState().setLoadingFiles(true);
-        // Use include_all=true to get all files, not just .ato and .py
-        const response = await api.files.list(projectRoot, true);
-        useStore.getState().setProjectFiles(projectRoot, response.files || []);
-      } catch (error) {
-        console.error('Failed to fetch project files:', error);
-        useStore.getState().setLoadingFiles(false);
-      }
-    };
-
-    fetchFiles();
+    useStore.getState().setLoadingFiles(true);
+    // Send message to extension to list files
+    postToExtension({
+      type: 'listFiles',
+      projectRoot,
+      includeAll: true,
+    });
   }, [projectRoot, files]);
 
-  // Listen for file system changes from the extension
+  // Track directories currently being loaded
+  const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
+
+  // Helper to update a specific directory's children in the file tree
+  const updateDirectoryChildren = useCallback((
+    nodes: FileNode[],
+    targetPath: string,
+    children: FileNode[]
+  ): FileNode[] => {
+    return nodes.map(node => {
+      if (node.path === targetPath && node.type === 'directory') {
+        return { ...node, children, lazyLoad: false };
+      }
+      if (node.children && node.type === 'directory') {
+        return { ...node, children: updateDirectoryChildren(node.children, targetPath, children) };
+      }
+      return node;
+    });
+  }, []);
+
+  // Listen for file system changes and file listing results from the extension
   useEffect(() => {
     if (!projectRoot) return;
 
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
+
+      // Handle file listing response from extension
+      if (message?.type === 'filesListed' && message.projectRoot === projectRoot) {
+        useStore.getState().setProjectFiles(projectRoot, message.files || []);
+        useStore.getState().setLoadingFiles(false);
+        if (message.error) {
+          console.error('Failed to list files:', message.error);
+        }
+      }
+
+      // Handle lazy-loaded directory contents
+      if (message?.type === 'directoryLoaded' && message.projectRoot === projectRoot) {
+        const currentFiles = useStore.getState().projectFiles[projectRoot] || [];
+        // Convert children to FileNode format (folder -> directory)
+        const convertedChildren = (message.children || []).map((child: { name: string; path: string; type: string; extension?: string; children?: unknown[]; lazyLoad?: boolean }) => ({
+          ...child,
+          type: child.type === 'folder' ? 'directory' : 'file',
+        })) as FileNode[];
+        const updatedFiles = updateDirectoryChildren(currentFiles, message.directoryPath, convertedChildren);
+        useStore.getState().setProjectFiles(projectRoot, updatedFiles);
+        setLoadingDirs(prev => {
+          const next = new Set(prev);
+          next.delete(message.directoryPath);
+          return next;
+        });
+        if (message.error) {
+          console.error('Failed to load directory:', message.error);
+        }
+      }
+
+      // Handle file system changes - clear files to trigger refresh
       if (message?.type === 'filesChanged' && message.projectRoot === projectRoot) {
-        // Clear files to trigger a refresh
         useStore.getState().setProjectFiles(projectRoot, []);
       }
+
       // When a file is duplicated, start rename mode on the new file
       if (message?.type === 'fileDuplicated' && message.newRelativePath) {
         // Small delay to let the file list refresh first
@@ -528,7 +577,7 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [projectRoot]);
+  }, [projectRoot, updateDirectoryChildren]);
 
   // Clean up drag state when drag ends anywhere (e.g., dropped outside, cancelled)
   useEffect(() => {

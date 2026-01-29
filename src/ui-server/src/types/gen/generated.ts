@@ -586,23 +586,6 @@ export interface ModuleChild {
 }
 
 /**
- * A node in the file tree (either a file or folder).
- */
-export interface FileTreeNode {
-    children?:  FileTreeNode[] | null;
-    extension?: null | string;
-    name:       string;
-    path:       string;
-    type:       FileTreeNodeType;
-    [property: string]: any;
-}
-
-export enum FileTreeNodeType {
-    File = "file",
-    Folder = "folder",
-}
-
-/**
  * A project dependency with version info.
  */
 export interface DependencyInfo {
