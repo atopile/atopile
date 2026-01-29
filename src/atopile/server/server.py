@@ -289,28 +289,37 @@ async def _refresh_packages_for_deps_change() -> None:
         await packages_domain.refresh_installed_packages_state()
 
 
-async def _load_atopile_install_options() -> None:
+async def _load_atopile_install_options(ctx: AppContext) -> None:
     """Background task to load atopile versions, branches, and detect installations."""
-    from atopile.server.domains import atopile_install
+    from atopile import version as ato_version
 
     try:
         log.info("[background] Loading atopile installation options")
 
-        # Fetch available versions from PyPI
-        versions = await atopile_install.fetch_available_versions()
-        await server_state.emit_event(
-            "atopile_config_changed", {"available_versions": versions}
-        )
-        log.info(f"[background] Loaded {len(versions)} PyPI versions")
-
-        # Detect local installations
-        installations = await asyncio.to_thread(
-            atopile_install.detect_local_installations
-        )
-        await server_state.emit_event(
-            "atopile_config_changed", {"detected_installations": installations}
-        )
-        log.info(f"[background] Detected {len(installations)} local installations")
+        # Emit the ACTUAL atopile status - this is the source of truth
+        # for what version/source the extension is using to build projects
+        try:
+            version_obj = ato_version.get_installed_atopile_version()
+            actual_version = str(version_obj)
+            actual_source = ctx.ato_source or "unknown"
+            # Include UI source type so the dropdown shows the correct initial state
+            ui_source = ctx.ato_ui_source or "release"
+            await server_state.emit_event(
+                "atopile_config_changed",
+                {
+                    "actual_version": actual_version,
+                    "actual_source": actual_source,
+                    "actual_binary_path": ctx.ato_binary_path,  # Actual binary path
+                    "source": ui_source,  # Sets the active toggle state
+                    "local_path": ctx.ato_local_path,  # Path for display in UI
+                },
+            )
+            log.info(
+                f"[background] Actual atopile: {actual_version} from {actual_source} "
+                f"(binary: {ctx.ato_binary_path}, UI: {ui_source})"
+            )
+        except Exception as e:
+            log.warning(f"[background] Could not detect actual version: {e}")
 
     except Exception as exc:
         log.error(f"[background] Failed to load atopile install options: {exc}")
@@ -319,6 +328,10 @@ async def _load_atopile_install_options() -> None:
 def create_app(
     summary_file: Optional[Path] = None,
     workspace_paths: Optional[list[Path]] = None,
+    ato_source: Optional[str] = None,
+    ato_ui_source: Optional[str] = None,
+    ato_local_path: Optional[str] = None,
+    ato_binary_path: Optional[str] = None,
 ) -> FastAPI:
     """
     Create the FastAPI application with API routes for the dashboard.
@@ -339,6 +352,10 @@ def create_app(
     ctx = AppContext(
         summary_file=summary_file,
         workspace_paths=workspace_paths or [],
+        ato_source=ato_source,
+        ato_ui_source=ato_ui_source,
+        ato_local_path=ato_local_path,
+        ato_binary_path=ato_binary_path,
     )
     app.state.ctx = ctx
 
@@ -389,7 +406,7 @@ def create_app(
         asyncio.create_task(_watch_project_sources_background())
         asyncio.create_task(_watch_project_python_background())
         asyncio.create_task(_watch_project_dependencies_background())
-        asyncio.create_task(_load_atopile_install_options())
+        asyncio.create_task(_load_atopile_install_options(ctx))
 
         if not ctx.workspace_paths:
             log.info("No workspace paths configured, skipping initial state population")
@@ -509,10 +526,20 @@ class DashboardServer:
         self,
         port: Optional[int] = None,
         workspace_paths: Optional[list[Path]] = None,
+        ato_source: Optional[str] = None,
+        ato_ui_source: Optional[str] = None,
+        ato_local_path: Optional[str] = None,
+        ato_binary_path: Optional[str] = None,
     ):
         self.port = port or find_free_port()
         self.workspace_paths = workspace_paths or []
-        self.app = create_app(workspace_paths=self.workspace_paths)
+        self.app = create_app(
+            workspace_paths=self.workspace_paths,
+            ato_source=ato_source,
+            ato_ui_source=ato_ui_source,
+            ato_local_path=ato_local_path,
+            ato_binary_path=ato_binary_path,
+        )
         self._server: Optional[uvicorn.Server] = None
         self._thread: Optional[threading.Thread] = None
 
@@ -554,18 +581,18 @@ class DashboardServer:
 
 def start_dashboard_server(
     port: Optional[int] = None,
-    workspace_path: Optional[Path] = None,
+    workspace_paths: Optional[list[Path]] = None,
 ) -> tuple[DashboardServer, str]:
     """
     Start the dashboard server.
 
     Args:
         port: Port to use (defaults to a free port)
-        workspace_path: Workspace path to scan for projects
+        workspace_paths: Workspace paths to scan for projects
 
     Returns:
         Tuple of (DashboardServer, url)
     """
-    server = DashboardServer(port=port, workspace_path=workspace_path)
+    server = DashboardServer(port=port, workspace_paths=workspace_paths)
     server.start()
     return server, server.url

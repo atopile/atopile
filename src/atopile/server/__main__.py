@@ -49,6 +49,30 @@ def main():
         action="store_true",
         help="Kill existing server on the port and start fresh",
     )
+    parser.add_argument(
+        "--ato-source",
+        type=str,
+        default=None,
+        help="Source of the atopile binary (e.g., 'settings', 'local-uv')",
+    )
+    parser.add_argument(
+        "--ato-ui-source",
+        type=str,
+        default=None,
+        help="UI source type (e.g., 'release', 'branch', 'local')",
+    )
+    parser.add_argument(
+        "--ato-local-path",
+        type=str,
+        default=None,
+        help="Path to local atopile installation (for display in UI)",
+    )
+    parser.add_argument(
+        "--ato-binary-path",
+        type=str,
+        default=None,
+        help="Actual resolved path to the ato binary being used",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[3]
@@ -94,6 +118,10 @@ def main():
     server = DashboardServer(
         port=port,
         workspace_paths=workspace_paths,
+        ato_source=args.ato_source,
+        ato_ui_source=args.ato_ui_source,
+        ato_local_path=args.ato_local_path,
+        ato_binary_path=args.ato_binary_path,
     )
 
     print(f"Starting dashboard server on http://localhost:{port}")

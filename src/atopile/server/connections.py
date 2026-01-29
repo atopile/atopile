@@ -8,7 +8,7 @@ The backend no longer owns UI or data state; it only emits notifications.
 import asyncio
 import logging
 import uuid
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import WebSocket
 
@@ -23,6 +23,8 @@ class ServerConnections:
     def __init__(self) -> None:
         self._clients: dict[str, ConnectedClient] = {}
         self._lock = asyncio.Lock()
+        # Store atopile config state to send to new clients
+        self._atopile_config: dict[str, Any] = {}
 
     async def connect_client(self, websocket: WebSocket) -> str:
         """Accept a WebSocket connection and return client ID."""
@@ -35,6 +37,21 @@ class ServerConnections:
             )
 
         log.info("Client %s connected (total: %d)", client_id, len(self._clients))
+
+        # Send current atopile config state to the new client
+        if self._atopile_config:
+            try:
+                await websocket.send_json(
+                    {
+                        "type": "event",
+                        "event": "atopile_config_changed",
+                        "data": self._atopile_config,
+                    }
+                )
+                log.debug("Sent atopile config to new client %s", client_id)
+            except Exception as e:
+                log.warning("Failed to send initial atopile config: %s", e)
+
         return client_id
 
     async def disconnect_client(self, client_id: str) -> None:
@@ -45,6 +62,11 @@ class ServerConnections:
 
     async def emit_event(self, event_type: str, data: Optional[dict] = None) -> None:
         """Emit an event to all subscribed clients."""
+        # Store atopile config updates so we can send to new clients
+        if event_type == "atopile_config_changed" and data:
+            self._atopile_config.update(data)
+            log.debug("Updated stored atopile config: %s", list(data.keys()))
+
         async with self._lock:
             await self._emit_event_unlocked(event_type, data)
 
@@ -76,6 +98,7 @@ class ServerConnections:
         if dead_clients:
             log.info("Removed %d dead clients", len(dead_clients))
 
+
 server_state = ServerConnections()
 
 
@@ -90,3 +113,7 @@ def reset_server_state() -> ServerConnections:
     server_state = ServerConnections()
     return server_state
 
+
+def get_atopile_config() -> dict:
+    """Get the current atopile config state."""
+    return server_state._atopile_config.copy()
