@@ -84,6 +84,10 @@ export interface BrowseAtopilePathMessage {
   type: 'browseAtopilePath';
 }
 
+export interface BrowseProjectPathMessage {
+  type: 'browseProjectPath';
+}
+
 export interface ReloadWindowMessage {
   type: 'reloadWindow';
 }
@@ -123,6 +127,7 @@ export type ExtensionMessage =
   | AtopileSettingsMessage
   | SelectionChangedMessage
   | BrowseAtopilePathMessage
+  | BrowseProjectPathMessage
   | ReloadWindowMessage
   | RestartExtensionMessage
   | ShowLogsMessage
@@ -159,6 +164,11 @@ export interface ActiveFileMessage {
 
 export interface BrowseAtopilePathResultMessage {
   type: 'browseAtopilePathResult';
+  path: string | null;
+}
+
+export interface BrowseProjectPathResultMessage {
+  type: 'browseProjectPathResult';
   path: string | null;
 }
 
@@ -210,6 +220,7 @@ export type ExtensionToWebviewMessage =
   | SetAtopileInstallingMessage
   | ActiveFileMessage
   | BrowseAtopilePathResultMessage
+  | BrowseProjectPathResultMessage
   | AtopileInstallingMessage
   | AtopileInstallErrorMessage
   | ServerReadyMessage
