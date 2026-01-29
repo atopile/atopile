@@ -76,23 +76,21 @@ def _sort_nets(
     Sort the nets based on the number of connected electricals (lowest number first).
     This way we can process nets with the least name options first.
 
-    Electricals within each net are sorted by name length (shortest first) so that
-    the first electrical (used for base name derivation) has the shortest/simplest name.
+    Electricals within each net are sorted alphabetically by name for determinism.
+    The first electrical (electricals[0]) is used for hierarchy depth calculation
+    and conflict resolution, so stable ordering is critical.
     """
     processable_nets: list[ProcessableNet] = []
     for net in nets:
-        # Sort electricals by name length so shortest name is first (used for naming)
-        # electricals: list[tuple[F.Electrical, str]] = sorted(
-        #     [
-        #         (e, e.get_name(accept_no_parent=True))
-        #         for e in net.get_connected_electricals()
-        #     ],
-        #     key=lambda e: len(e[1]),
-        # )
-        electricals: list[tuple[F.Electrical, str]] = [
-            (e, e.get_name(accept_no_parent=True))
-            for e in net.get_connected_electricals()
-        ]
+        # Sort electricals alphabetically by name for deterministic ordering.
+        # This ensures electricals[0] is always the same across runs.
+        electricals: list[tuple[F.Electrical, str]] = sorted(
+            [
+                (e, e.get_name(accept_no_parent=True))
+                for e in net.get_connected_electricals()
+            ],
+            key=lambda e: e[1],  # sort by name alphabetically
+        )
         processable_nets.append(
             ProcessableNet(
                 net=net,
