@@ -58,7 +58,7 @@
   min-height: 28px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
-  background: var(--bg-tertiary);
+  background: transparent;
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
@@ -69,7 +69,7 @@
 .combobox-input-wrapper.open,
 .combobox-input-wrapper:focus-within {
   border-color: var(--ctp-blue);
-  background: var(--bg-secondary);
+  background: transparent;
 }
 
 .combobox-icon {
@@ -293,7 +293,7 @@
   min-height: 28px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  background: var(--bg-tertiary);
+  background: transparent;
   color: var(--text-primary);
   font-size: var(--font-size-sm);
   cursor: pointer;
@@ -307,7 +307,7 @@
 
 .target-combobox-trigger.open {
   border-color: var(--ctp-blue);
-  background: var(--bg-secondary);
+  background: transparent;
 }
 
 .target-combobox-trigger:disabled {
