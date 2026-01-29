@@ -187,6 +187,15 @@ def cli(
         logger.root.setLevel(logging.DEBUG)
         handler.traceback_level = logging.WARNING
 
+    # Initialize build history database early, before any config import.
+    # This ensures the server can track build status even if config validation fails.
+    import os
+
+    if os.environ.get("ATO_BUILD_WORKER"):
+        from atopile.model.sqlite import BuildHistory
+
+        BuildHistory.init_db()
+
     # Set up database logging BEFORE importing config.
     # This ensures config validation errors get logged to the database
     # like any other error (critical for the VS Code extension to see them).
