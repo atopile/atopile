@@ -1553,6 +1553,13 @@ class ExpressionBuilder[
                 x1_po = mutator.get_mutated(x1_po)
                 x2_po = mutator.get_mutated(x2_po)
                 return x1_po.is_same(x2_po, allow_different_graph=allow_different_graph)
+
+            if (
+                allow_different_graph
+                and (x1_lit := x1.as_literal.try_get())
+                and (x2_lit := x2.as_literal.try_get())
+            ):
+                return x1_lit.op_setic_equals(x2_lit)
             return False
 
         same_type = fabll.Traits(other).get_obj_raw().isinstance(self.factory)
