@@ -243,11 +243,10 @@ class ConfigFormat(str, Enum):
 
 @app.command(hidden=True)
 def dump_config(format: ConfigFormat = ConfigFormat.python):
-    from rich import print
-
     from atopile.config import config
+    from atopile.logging_utils import console
 
-    print(config.project.model_dump(mode=format))
+    console.print(config.project.model_dump(mode=format))
 
 
 @app.command(help="Check file for syntax errors and internal consistency")

@@ -3,12 +3,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Generator
 
+import atopile.compiler.ast_types as AST
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
-from rich.markdown import Markdown
 from rich.syntax import Syntax
 from rich.text import Text
 
-import atopile.compiler.ast_types as AST
+from atopile.logging_utils import safe_markdown
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 
@@ -246,7 +246,7 @@ class DslRichException(DslException):
         self, console: Console, options: ConsoleOptions
     ) -> Generator[ConsoleRenderable, None, None]:
         yield Text(self.title, style="bold red")
-        yield Markdown(self.message)
+        yield safe_markdown(self.message, console)
 
         from atopile.compiler.ast_visitor import ASTVisitor
 

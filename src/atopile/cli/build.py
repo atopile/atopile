@@ -8,7 +8,6 @@ import time
 from pathlib import Path
 
 import typer
-from rich.console import Console
 from typing_extensions import Annotated
 
 from atopile.buildutil import generate_build_id, generate_build_timestamp
@@ -19,6 +18,13 @@ from atopile.dataclasses import (
     StageStatus,
 )
 from atopile.logging import get_logger
+from rich.console import Console
+
+from atopile.logging_utils import (
+    LEVEL_STYLES,
+    console,
+    format_stage_status,
+)
 from atopile.model.build_queue import BuildQueue
 from atopile.telemetry import capture
 
@@ -50,31 +56,15 @@ def discover_projects(root: Path) -> list[Path]:
     return sorted(projects)
 
 
-# Semantic status -> (icon, color)
-_STATUS_STYLE = {
-    StageStatus.SUCCESS: ("✓", "green"),
-    StageStatus.WARNING: ("⚠", "yellow"),
-    StageStatus.FAILED: ("✗", "red"),
-    StageStatus.ERROR: ("✗", "red"),  # Error is similar to failed
-    StageStatus.RUNNING: ("●", "blue"),
-    StageStatus.PENDING: ("○", "dim"),
-    StageStatus.SKIPPED: ("⊘", "dim"),
-}
-
-
 def _format_stage_entry(entry: StageCompleteEvent) -> str:
     """Render a completed stage entry with status color and counts."""
-    icon, color = _STATUS_STYLE.get(entry.status, ("✓", "green"))
-    counts = ""
-    if entry.errors > 0:
-        counts = f"({entry.errors}E"
-        if entry.warnings > 0:
-            counts += f",{entry.warnings}W"
-        counts += ")"
-    elif entry.warnings > 0:
-        counts = f"({entry.warnings})"
-    label = f"{icon}{counts} {entry.description} [{entry.duration:.1f}s]"
-    return f"[{color}]{label}[/{color}]"
+    return format_stage_status(
+        status=entry.status,
+        description=entry.description,
+        duration=entry.duration,
+        errors=entry.errors,
+        warnings=entry.warnings,
+    )
 
 
 _VERBOSE_INDENT = 10
@@ -169,14 +159,8 @@ def _print_build_logs(
             message = row["message"]
             stage = row["stage"]
 
-            if level in ("ERROR", "ALERT"):
-                color = "red"
-            elif level == "WARNING":
-                color = "yellow"
-            elif level == "INFO":
-                color = "cyan"
-            else:
-                color = "white"
+            # Use shared level styles (ALERT maps to ERROR style)
+            color = LEVEL_STYLES.get(level, LEVEL_STYLES.get("ERROR", "white"))
 
             console.print(f"[{color}][{stage}] {level}: {message}[/{color}]")
 
@@ -218,10 +202,11 @@ def _print_build_result(
 
 
 def _get_full_width_console() -> Console:
+    """Get a console with full terminal width (for verbose mode)."""
     import shutil
 
     width = shutil.get_terminal_size(fallback=(120, 24)).columns
-    return Console(width=width)
+    return Console(width=width)  # New instance needed for custom width
 
 
 def _run_build_queue(
@@ -238,7 +223,7 @@ def _run_build_queue(
 
     BuildHistory.init_db()
 
-    console = _get_full_width_console() if verbose else Console()
+    build_console = _get_full_width_console() if verbose else console
     max_concurrent = 1 if verbose else jobs
     queue = BuildQueue(max_concurrent=max_concurrent)
 
@@ -277,7 +262,7 @@ def _run_build_queue(
                     build_id_str = (
                         f" (build_id={build.build_id})" if build.build_id else ""
                     )
-                    console.print(
+                    build_console.print(
                         f"[bold cyan]▶ Building {display_name}{build_id_str}[/bold cyan]"
                     )
                     started.add(build_id)
@@ -288,7 +273,7 @@ def _run_build_queue(
                 if len(stages) > last_count:
                     for stage in stages[last_count:]:
                         event = _stage_dict_to_event(stage)
-                        _print_verbose_stage(console, event, _stage_info_log_path())
+                        _print_verbose_stage(build_console, event, _stage_info_log_path())
                     last_stage_counts[build_id] = len(stages)
 
             if (
@@ -302,14 +287,14 @@ def _run_build_queue(
                 and build_id not in reported
             ):
                 if verbose:
-                    _print_build_result(display_name, build, console, verbose=True)
+                    _print_build_result(display_name, build, build_console, verbose=True)
                 else:
                     if build.status == BuildStatus.FAILED:
-                        console.print(
+                        build_console.print(
                             f"[red bold]✗ {display_name}[/red bold]"
                         )
                     elif build.status == BuildStatus.WARNING:
-                        console.print(
+                        build_console.print(
                             f"[yellow bold]⚠ {display_name}[/yellow bold]"
                         )
                 reported.add(build_id)

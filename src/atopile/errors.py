@@ -31,13 +31,14 @@ from typing import (
 
 from antlr4 import CommonTokenStream, ParserRuleContext, Token
 from caseconverter import titlecase
+
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
 from rich.highlighter import ReprHighlighter
-from rich.markdown import Markdown
 from rich.syntax import Syntax
 from rich.text import Text
 from rich.traceback import Traceback
 
+from atopile.logging_utils import safe_markdown
 from faebryk.libs.util import groupby, md_list
 
 if TYPE_CHECKING:
@@ -90,18 +91,12 @@ class UserException(Exception):
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> list[ConsoleRenderable]:
-        def _markdown(message: str) -> ConsoleRenderable:
-            if console.is_terminal:
-                return Markdown(message)
-            else:
-                return Text(message)
-
         renderables: list[ConsoleRenderable] = []
         if self.title:
             renderables += [Text(self.title, style="bold")]
 
         renderables += [
-            _markdown(self.message)
+            safe_markdown(self.message, console)
             if self.markdown
             else ReprHighlighter()(self.message)
         ]
@@ -247,19 +242,13 @@ class SourceLocatedUserException(UserException):
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> list[ConsoleRenderable]:
-        def _markdown(message: str) -> ConsoleRenderable:
-            if console.is_terminal:
-                return Markdown(message)
-            else:
-                return Text(message)
-
         renderables: list[ConsoleRenderable] = []
 
         if self.title:
             renderables += [Text(self.title, style="bold red")]
 
         renderables += [
-            _markdown(self.message)
+            safe_markdown(self.message, console)
             if self.markdown
             else ReprHighlighter()(Text(self.message))
         ]
