@@ -48,7 +48,14 @@ class BuildCancelledMsg:
     build_id: str
 
 
-BuildResultMsg = BuildStartedMsg | BuildStageMsg | BuildCompletedMsg | BuildCancelledMsg
+@dataclass(frozen=True)
+class BuildOutputMsg:
+    build_id: str
+    text: str
+    is_stderr: bool = False
+
+
+BuildResultMsg = BuildStartedMsg | BuildStageMsg | BuildCompletedMsg | BuildCancelledMsg | BuildOutputMsg
 
 log = logging.getLogger(__name__)
 
@@ -162,19 +169,55 @@ def _run_build_subprocess(
             build.project_root,
         )
 
-        # Worker writes all logs to the build DB; no need to capture stdout/stderr.
-        process = subprocess.Popen(
-            cmd,
-            cwd=build.project_root,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env=env,
-            preexec_fn=preexec_fn,
-        )
+        # For verbose mode, pipe stdout/stderr to stream output to parent
+        # For non-verbose mode, discard output (stages come from DB)
+        if build.verbose:
+            process = subprocess.Popen(
+                cmd,
+                cwd=build.project_root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                preexec_fn=preexec_fn,
+                text=True,
+                bufsize=1,  # Line buffered
+            )
+
+            # Start threads to read stdout/stderr and forward to result_q
+            def stream_output(pipe, is_stderr: bool) -> None:
+                try:
+                    for line in pipe:
+                        result_q.put(BuildOutputMsg(
+                            build_id=build.build_id,
+                            text=line,
+                            is_stderr=is_stderr,
+                        ))
+                except Exception:
+                    pass
+                finally:
+                    pipe.close()
+
+            stdout_thread = threading.Thread(
+                target=stream_output, args=(process.stdout, False), daemon=True
+            )
+            stderr_thread = threading.Thread(
+                target=stream_output, args=(process.stderr, True), daemon=True
+            )
+            stdout_thread.start()
+            stderr_thread.start()
+        else:
+            process = subprocess.Popen(
+                cmd,
+                cwd=build.project_root,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=env,
+                preexec_fn=preexec_fn,
+            )
 
         # Poll for completion while monitoring the DB for stage updates
         last_stages: list[dict[str, Any]] = []
-        poll_interval = 0.25
+        poll_interval = 0.1 if build.verbose else 0.25
         last_emit = 0.0
         while process.poll() is None:
             if cancel_flags.get(build.build_id, False):
@@ -270,6 +313,7 @@ class BuildQueue:
         # Callbacks
         self.on_change: Callable[[str, str], None] | None = None
         self.on_completed: Callable[[Build], None] | None = None
+        self.on_output: Callable[[str, str, bool], None] | None = None  # build_id, text, is_stderr
 
     def start(self) -> None:
         """Start the thread pool and orchestrator thread."""
@@ -611,6 +655,13 @@ class BuildQueue:
                     self._cancel_flags.pop(msg.build_id, None)
 
                 self._emit_change(msg.build_id, "cancelled")
+
+            elif isinstance(msg, BuildOutputMsg):
+                if self.on_output:
+                    try:
+                        self.on_output(msg.build_id, msg.text, msg.is_stderr)
+                    except Exception:
+                        log.exception("BuildQueue: on_output callback failed")
 
     def _handle_completed(self, msg: BuildCompletedMsg) -> None:
         """Handle a build-completed message."""
