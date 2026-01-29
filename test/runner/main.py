@@ -10,7 +10,6 @@ import datetime
 import os
 import queue
 import shutil
-import socket
 import subprocess
 import sys
 import threading
@@ -21,6 +20,9 @@ import uvicorn
 
 # Ensure we can import from test package
 sys.path.insert(0, os.getcwd())
+
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from test.runner.baselines import (
     RemoteBaseline,
@@ -43,17 +45,20 @@ from test.runner.git_info import (
     get_commit_info,
     get_platform_name,
 )
+from test.runner.orchestrator import router as orchestrator_router
+from test.runner.orchestrator import set_globals as set_orchestrator_globals
 from test.runner.report import (
     REPORT_HTML_PATH,
-    REPORT_JSON_PATH,
     TestAggregator,
     TestState,
     _print,
-    _ts,
-    rebuild_reports_from_existing,
+)
+from test.runner.report import (
     set_globals as set_report_globals,
 )
-from test.runner.ui import app, set_aggregator, set_globals as set_ui_globals
+from test.runner.ui import LOG_VIEWER_DIST_DIR
+from test.runner.ui import router as ui_router
+from test.runner.ui import set_globals as set_ui_globals
 
 # Configuration
 REPORT_INTERVAL_SECONDS = int(os.getenv("FBRK_TEST_REPORT_INTERVAL", 5))
@@ -98,6 +103,18 @@ ci_info: CIInfo = CIInfo()
 
 # Global aggregator instance (initialized in main)
 aggregator: TestAggregator | None = None
+
+# Create FastAPI app and include routers
+app = FastAPI()
+app.include_router(orchestrator_router)
+app.include_router(ui_router)
+
+# Mount log viewer static assets (must be last to not shadow other routes)
+app.mount(
+    "/static",
+    StaticFiles(directory=LOG_VIEWER_DIST_DIR, html=False),
+    name="log-viewer-static",
+)
 
 
 def get_log_file(worker_id: int) -> Path:
@@ -165,7 +182,9 @@ def get_free_port(start_port: int = 50000, max_attempts: int = 100) -> int:
         port = start_port + attempt
         if not is_port_in_use(port):
             return port
-    raise RuntimeError(f"No free port found in range {start_port}-{start_port + max_attempts}")
+    raise RuntimeError(
+        f"No free port found in range {start_port}-{start_port + max_attempts}"
+    )
 
 
 def collect_tests(pytest_args: list[str]) -> tuple[list[str], dict[str, str]]:
@@ -259,13 +278,15 @@ def run_report_server(open_browser: bool = False) -> None:
     report_url = f"http://127.0.0.1:{port}/report"
     _print(f"Starting report server at {report_url}")
 
-    # Initialize globals for UI
-    set_ui_globals(test_queue, None, REPORT_HTML_PATH, REMOTE_BASELINES_DIR, LOG_DIR)
+    # Initialize globals for orchestrator and UI
+    set_orchestrator_globals(test_queue, None)
+    set_ui_globals(None, REPORT_HTML_PATH, REMOTE_BASELINES_DIR)
 
     server = start_server(port)
 
     if open_browser:
         import webbrowser
+
         webbrowser.open(report_url)
 
     _print(f"Report available at: {report_url}")
@@ -409,9 +430,9 @@ def main(
         collection_errors=errors,
     )
 
-    # Set up UI globals
-    set_ui_globals(test_queue, aggregator, REPORT_HTML_PATH, REMOTE_BASELINES_DIR, LOG_DIR)
-    set_aggregator(aggregator)
+    # Set up orchestrator and UI globals
+    set_orchestrator_globals(test_queue, aggregator)
+    set_ui_globals(aggregator, REPORT_HTML_PATH, REMOTE_BASELINES_DIR)
 
     for error_key, error_value in errors.items():
         aggregator._tests[error_key] = TestState(
@@ -542,9 +563,8 @@ def main(
             if test_queue.empty():
                 pending_unstarted = aggregator.unstarted_pending_nodeids()
                 if pending_unstarted and aggregator.pending_count() > 0:
-                    _print(
-                        f"WARNING: Found {len(pending_unstarted)} pending unstarted tests with empty queue; requeueing."
-                    )
+                    n = len(pending_unstarted)
+                    _print(f"WARNING: {n} pending unstarted tests; requeueing.")
                     for nodeid in pending_unstarted:
                         test_queue.put(nodeid)
 
@@ -592,6 +612,7 @@ def main(
     _print(f"Final: {aggregator.get_report()}")
 
     from test.runner.report import format_duration
+
     total_duration = (datetime.datetime.now() - aggregator.start_time).total_seconds()
     _print(f"Total time: {format_duration(total_duration)}")
 
@@ -604,7 +625,7 @@ def main(
             save_baseline_name,
             BASELINES_DIR,
             BASELINES_INDEX,
-            get_platform_name()
+            get_platform_name(),
         )
         _print(f"Baseline saved: {baseline_path}")
 

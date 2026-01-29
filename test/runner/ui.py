@@ -1,27 +1,20 @@
 """
-FastAPI routes for the test runner UI.
+UI routes for the test runner dashboard.
 
-Provides endpoints for test coordination and live report viewing.
+Provides endpoints for viewing reports, managing baselines, and the log viewer.
 """
 
-import json
-import queue
 import subprocess
-import threading
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
-from fastapi import FastAPI, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 
+from atopile.server.routes.logs import router as logs_router
 from test.runner.baselines import (
-    RemoteBaseline,
-    fetch_all_workflow_runs,
-    fetch_remote_commits,
     fetch_remote_report,
     get_branch_base,
-    get_current_branch,
     get_remote_branch_heads,
     list_local_baselines,
     load_local_baseline,
@@ -30,28 +23,24 @@ from test.runner.baselines import (
     workflow_runs_cache,
     workflow_runs_lock,
 )
-from test.runner.common import (
-    ClaimRequest,
-    ClaimResponse,
-    EventRequest,
-)
+
+router = APIRouter()
 
 # These will be set by main.py
-test_queue = None  # type: ignore
 aggregator = None  # type: ignore
-REPORT_HTML_PATH = Path("artifacts/test-report.json")
+REPORT_HTML_PATH = Path("artifacts/test-report.html")
 REMOTE_BASELINES_DIR = Path("artifacts/baselines/remote")
-LOG_DIR = Path("artifacts/logs")
+
+# Path to the log viewer static files
+LOG_VIEWER_DIST_DIR = Path(__file__).parent.parent.parent / "src" / "ui-server" / "dist"
 
 
-def set_globals(queue_ref, agg_ref, report_path, remote_dir, log_dir):
+def set_globals(agg_ref, report_path, remote_dir):
     """Set global references from main module."""
-    global test_queue, aggregator, REPORT_HTML_PATH, REMOTE_BASELINES_DIR, LOG_DIR
-    test_queue = queue_ref
+    global aggregator, REPORT_HTML_PATH, REMOTE_BASELINES_DIR
     aggregator = agg_ref
     REPORT_HTML_PATH = report_path
     REMOTE_BASELINES_DIR = remote_dir
-    LOG_DIR = log_dir
 
 
 def get_aggregator():
@@ -65,28 +54,7 @@ def set_aggregator(agg):
     aggregator = agg
 
 
-app = FastAPI()
-
-
-@app.post("/claim")
-async def claim(request: ClaimRequest):
-    try:
-        nodeid = test_queue.get_nowait()
-        if aggregator and nodeid is not None:
-            aggregator.handle_claim(request.pid, nodeid)
-        return ClaimResponse(nodeid=nodeid)
-    except queue.Empty:
-        return ClaimResponse(nodeid=None)
-
-
-@app.post("/event")
-async def event(request: EventRequest):
-    if aggregator:
-        aggregator.handle_event(request)
-    return {"status": "ok"}
-
-
-@app.get("/")
+@router.get("/")
 async def report_redirect():
     """Redirect root to the test report."""
     return HTMLResponse(
@@ -95,7 +63,7 @@ async def report_redirect():
     )
 
 
-@app.get("/report")
+@router.get("/report")
 async def serve_report():
     """Serve the test report HTML file."""
     report_path = REPORT_HTML_PATH
@@ -114,14 +82,14 @@ async def serve_report():
     )
 
 
-@app.get("/api/baselines")
+@router.get("/api/baselines")
 async def get_baselines():
     """List available local baselines."""
     baselines = list_local_baselines()
     return {"baselines": baselines}
 
 
-@app.post("/api/change-baseline")
+@router.post("/api/change-baseline")
 async def change_baseline(request: Request):
     """Change baseline and regenerate report."""
     try:
@@ -165,7 +133,7 @@ async def change_baseline(request: Request):
         return {"error": str(e)}
 
 
-@app.get("/api/remote-commits")
+@router.get("/api/remote-commits")
 async def get_remote_commits(branch: Optional[str] = None):
     """
     Get list of recent commits with workflow runs from GitHub.
@@ -252,7 +220,7 @@ async def get_remote_commits(branch: Optional[str] = None):
     }
 
 
-@app.get("/api/baseline-status")
+@router.get("/api/baseline-status")
 async def get_baseline_status(commit: str):
     """
     Check the status of a baseline (cached, downloading, error).
@@ -262,21 +230,12 @@ async def get_baseline_status(commit: str):
 
     return {
         "cached": cached,
-        "downloading": False,  # Could track this in future with background download tasks
+        "downloading": False,  # Could track with background download tasks
         "error": None,
     }
 
 
-# Mount the existing logs WebSocket router from atopile.server
-from atopile.server.routes.logs import router as logs_router
-
-app.include_router(logs_router)
-
-# Path to the log viewer static files
-LOG_VIEWER_DIST_DIR = Path(__file__).parent.parent.parent / "src" / "ui-server" / "dist"
-
-
-@app.get("/logs")
+@router.get("/logs")
 async def serve_log_viewer(request: Request):
     """Serve the log viewer HTML page with injected API URL."""
     html_path = LOG_VIEWER_DIST_DIR / "log-viewer.html"
@@ -305,10 +264,5 @@ async def serve_log_viewer(request: Request):
     return HTMLResponse(content=content)
 
 
-# Mount log viewer static assets
-app.mount(
-    "/",
-    StaticFiles(directory=LOG_VIEWER_DIST_DIR, html=False),
-    name="log-viewer-static",
-)
-
+# Include the logs WebSocket router from atopile.server
+router.include_router(logs_router)

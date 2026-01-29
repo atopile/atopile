@@ -24,10 +24,7 @@ from test.runner.baselines import (
     CompareStatus,
     RemoteBaseline,
     fetch_remote_report,
-    get_branch_base,
-    get_current_branch,
     list_local_baselines,
-    load_local_baseline,
     remote_commits,
     remote_commits_lock,
 )
@@ -37,8 +34,6 @@ from test.runner.common import (
     Outcome,
 )
 from test.runner.git_info import (
-    CIInfo,
-    CommitInfo,
     collect_env_subset,
     get_git_info,
 )
@@ -1412,17 +1407,17 @@ def _rebuild_report_with_baseline(
 
         baseline_rec = baseline_record(baseline.tests, nodeid) if nodeid else None
         baseline_outcome = baseline_rec.get("outcome") if baseline_rec else None
-        compare_status = (
-            compare_status(status, baseline_outcome) if baseline.loaded else None
+        cmp_status = (
+            get_compare_status(status, baseline_outcome) if baseline.loaded else None
         )
-        t["compare_status"] = compare_status
+        t["compare_status"] = cmp_status
         t["baseline_outcome"] = baseline_outcome
 
-        if compare_status == "regression":
+        if cmp_status == "regression":
             regressions += 1
-        elif compare_status == "fixed":
+        elif cmp_status == "fixed":
             fixed += 1
-        elif compare_status == "new":
+        elif cmp_status == "new":
             new_tests += 1
 
         baseline_duration_s = baseline_rec.get("duration_s") if baseline_rec else None

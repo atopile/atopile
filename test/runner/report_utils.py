@@ -222,8 +222,6 @@ def perf_change(
     return diff, pct, significant
 
 
-
-
 def split_error_message(error_message: str | None) -> tuple[str | None, str | None]:
     """Split error message into type and summary."""
     if not error_message:

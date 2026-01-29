@@ -95,14 +95,16 @@ def get_remote_branch_heads() -> list[dict[str, str]]:
                     ref, full_hash, short_hash, message, author, timestamp = parts
                     # Strip origin/ prefix
                     branch_name = ref.replace("origin/", "", 1)
-                    branches.append({
-                        "branch": branch_name,
-                        "commit_hash": short_hash,
-                        "commit_hash_full": full_hash,
-                        "commit_message": message,
-                        "commit_author": author,
-                        "commit_time": timestamp,
-                    })
+                    branches.append(
+                        {
+                            "branch": branch_name,
+                            "commit_hash": short_hash,
+                            "commit_hash_full": full_hash,
+                            "commit_message": message,
+                            "commit_author": author,
+                            "commit_time": timestamp,
+                        }
+                    )
     except Exception as e:
         print(f"Warning: Could not fetch remote branches: {e}")
     return branches
@@ -142,7 +144,13 @@ def get_branch_base(branch: Optional[str] = None) -> Optional[dict[str, str]]:
 
                 # Get commit info
                 result = subprocess.run(
-                    ["git", "show", "--format=%H|%h|%s|%an|%ai", "--no-patch", merge_base_hash],
+                    [
+                        "git",
+                        "show",
+                        "--format=%H|%h|%s|%an|%ai",
+                        "--no-patch",
+                        merge_base_hash,
+                    ],
                     capture_output=True,
                     text=True,
                     timeout=5,
@@ -183,7 +191,7 @@ def get_remote_tracking_branch() -> Optional[str]:
 def fetch_remote_report(
     commit_hash: Optional[str] = None,
     use_cache: bool = True,
-    remote_baselines_dir: Path = Path("artifacts/baselines/remote")
+    remote_baselines_dir: Path = Path("artifacts/baselines/remote"),
 ) -> RemoteBaseline:
     """
     Fetch a test report from GitHub Actions.
@@ -396,7 +404,9 @@ def fetch_remote_report(
 
             # Cache the baseline if successfully loaded
             if baseline.loaded and baseline.commit_hash and use_cache:
-                cache_remote_baseline(baseline.commit_hash, baseline, remote_baselines_dir)
+                cache_remote_baseline(
+                    baseline.commit_hash, baseline, remote_baselines_dir
+                )
 
         except Exception as e:
             baseline.error = f"Error downloading/parsing artifact: {e}"
@@ -405,7 +415,9 @@ def fetch_remote_report(
     return baseline
 
 
-def list_local_baselines(baselines_index: Path = Path("artifacts/baselines/index.json")) -> list[dict[str, Any]]:
+def list_local_baselines(
+    baselines_index: Path = Path("artifacts/baselines/index.json"),
+) -> list[dict[str, Any]]:
     """List all available local baselines."""
     if not baselines_index.exists():
         return []
@@ -416,7 +428,9 @@ def list_local_baselines(baselines_index: Path = Path("artifacts/baselines/index
         return []
 
 
-def load_local_baseline(name: str, baselines_dir: Path = Path("artifacts/baselines")) -> RemoteBaseline:
+def load_local_baseline(
+    name: str, baselines_dir: Path = Path("artifacts/baselines")
+) -> RemoteBaseline:
     """
     Load a local baseline by name.
     Returns a RemoteBaseline object for compatibility with existing comparison logic.
@@ -466,7 +480,7 @@ def save_local_baseline(
     name: str,
     baselines_dir: Path = Path("artifacts/baselines"),
     baselines_index: Path = Path("artifacts/baselines/index.json"),
-    platform_name: str = "unknown"
+    platform_name: str = "unknown",
 ) -> Path:
     """
     Save the current test report as a named local baseline.
@@ -644,9 +658,9 @@ def fetch_remote_commits(branch: str, limit: int = 20) -> list[dict[str, Any]]:
                         commit_data["conclusion"] = run.get("conclusion", "")
                         commit_data["status"] = run.get("status", "")
 
-                        # Don't check artifacts during initial fetch - too slow
-                        # Artifact checking will happen lazily when user selects baseline
-                        # For now, assume completed runs have artifacts
+                        # Skip artifact check during fetch - too slow.
+                        # Check lazily when user selects baseline.
+                        # Assume completed runs have artifacts.
                         if run.get("status") == "completed":
                             commit_data["has_artifact"] = True  # Optimistic assumption
         except Exception as e:
@@ -703,13 +717,18 @@ def fetch_all_workflow_runs(limit: int = 200) -> dict[str, dict[str, Any]]:
                     continue
 
                 # Get short hash (8 chars)
-                commit_hash_short = commit_hash_full[:8] if len(commit_hash_full) >= 8 else commit_hash_full
+                commit_hash_short = (
+                    commit_hash_full[:8]
+                    if len(commit_hash_full) >= 8
+                    else commit_hash_full
+                )
 
                 # Only keep the most recent run for each commit
                 if commit_hash_short not in workflow_map:
                     workflow_map[commit_hash_short] = {
                         "has_workflow_run": True,
-                        "has_artifact": run.get("status") == "completed",  # Optimistic assumption
+                        "has_artifact": run.get("status")
+                        == "completed",  # Optimistic assumption
                         "run_id": run.get("databaseId"),
                         "status": run.get("status", ""),
                         "conclusion": run.get("conclusion", ""),
@@ -722,7 +741,9 @@ def fetch_all_workflow_runs(limit: int = 200) -> dict[str, dict[str, Any]]:
     return workflow_map
 
 
-def cache_remote_baseline(commit_hash: str, baseline: RemoteBaseline, remote_baselines_dir: Path) -> None:
+def cache_remote_baseline(
+    commit_hash: str, baseline: RemoteBaseline, remote_baselines_dir: Path
+) -> None:
     """
     Cache a remote baseline to disk.
     Baselines are stored as: artifacts/baselines/remote/<commit_hash>.json
@@ -765,7 +786,9 @@ def cache_remote_baseline(commit_hash: str, baseline: RemoteBaseline, remote_bas
     update_remote_cache_index(commit_hash, baseline, remote_baselines_dir)
 
 
-def update_remote_cache_index(commit_hash: str, baseline: RemoteBaseline, remote_baselines_dir: Path) -> None:
+def update_remote_cache_index(
+    commit_hash: str, baseline: RemoteBaseline, remote_baselines_dir: Path
+) -> None:
     """Update the remote baseline cache index."""
     index_file = remote_baselines_dir / "index.json"
     index_data: dict[str, Any] = {"version": "1", "cached_commits": []}
@@ -777,22 +800,31 @@ def update_remote_cache_index(commit_hash: str, baseline: RemoteBaseline, remote
             pass
 
     # Remove existing entry for this commit
-    cached = [c for c in index_data.get("cached_commits", []) if c.get("commit_hash") != commit_hash]
+    cached = [
+        c
+        for c in index_data.get("cached_commits", [])
+        if c.get("commit_hash") != commit_hash
+    ]
 
     # Add new entry
-    cached.insert(0, {
-        "commit_hash": commit_hash,
-        "commit_hash_full": baseline.commit_hash_full,
-        "branch": baseline.branch,
-        "cached_at": datetime.now().isoformat(),
-        "test_count": len(baseline.tests),
-    })
+    cached.insert(
+        0,
+        {
+            "commit_hash": commit_hash,
+            "commit_hash_full": baseline.commit_hash_full,
+            "branch": baseline.branch,
+            "cached_at": datetime.now().isoformat(),
+            "test_count": len(baseline.tests),
+        },
+    )
 
     index_data["cached_commits"] = cached
     index_file.write_text(json.dumps(index_data, indent=2), encoding="utf-8")
 
 
-def load_cached_remote_baseline(commit_hash: str, remote_baselines_dir: Path) -> Optional[RemoteBaseline]:
+def load_cached_remote_baseline(
+    commit_hash: str, remote_baselines_dir: Path
+) -> Optional[RemoteBaseline]:
     """
     Load a cached remote baseline from disk.
     Returns None if not cached.

@@ -41,6 +41,7 @@ def _format_rich_traceback(
     is captured separately via _extract_traceback_frames.
     """
     import traceback
+
     lines = traceback.format_exception(exc_type, exc_value, exc_tb)
     return "".join(lines)
 
@@ -196,8 +197,8 @@ def pytest_runtest_logreport(report: pytest.TestReport):
             exc_type, exc_value, exc_tb = _captured_exc_info.pop(report.nodeid)
             if exc_type and exc_value:
                 output["error"] = _format_rich_traceback(exc_type, exc_value, exc_tb)
-                # Extract structured traceback with local variables for IDE-like inspector
-                # Serialize to JSON string since output dict expects str values
+                # Extract structured traceback with local vars for inspector.
+                # Serialize to JSON string since output dict expects str values.
                 structured_tb = _extract_traceback_frames(
                     exc_type,
                     exc_value,
