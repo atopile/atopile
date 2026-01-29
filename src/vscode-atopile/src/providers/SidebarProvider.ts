@@ -258,12 +258,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._disposeFileWatcher();
     this._watchedProjectRoot = projectRoot;
 
-    // Watch all files in the project (but not node_modules, .git, etc.)
+    // Watch all files in the project
     const pattern = new vscode.RelativePattern(projectRoot, '**/*');
     this._fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
 
     // Debounced notification to avoid flooding on bulk operations
-    const notifyChange = () => {
+    const notifyChange = (uri: vscode.Uri) => {
+      // Ignore changes in .git directory
+      const relativePath = uri.fsPath.substring(projectRoot.length);
+      if (relativePath.includes('/.git/') || relativePath.includes('\\.git\\')) {
+        return;
+      }
+
       if (this._fileChangeDebounce) {
         clearTimeout(this._fileChangeDebounce);
       }
@@ -811,7 +817,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       lazyLoad?: boolean;  // True if directory contents not yet loaded
     }
 
-    const buildFileTree = async (dirUri: vscode.Uri, basePath: string, isLazyLoadDir: boolean = false): Promise<FileNode[]> => {
+    const buildFileTree = async (dirUri: vscode.Uri, basePath: string): Promise<FileNode[]> => {
       const nodes: FileNode[] = [];
 
       try {
@@ -848,7 +854,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 lazyLoad: true,
               });
             } else {
-              const children = await buildFileTree(itemUri, relativePath, false);
+              const children = await buildFileTree(itemUri, relativePath);
               // Skip empty directories unless includeAll
               if (children.length > 0 || includeAll) {
                 nodes.push({
@@ -955,16 +961,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
       for (const [name, fileType] of entries) {
         const relativePath = `${directoryPath}/${name}`;
-        const isHidden = name.startsWith('.');
 
         if (fileType === vscode.FileType.Directory) {
-          // For directories inside a lazy-loaded dir, also lazy load them if hidden
+          // All directories inside a lazy-loaded parent are also lazy-loaded
+          // This allows them to be expanded on demand
           nodes.push({
             name,
             path: relativePath,
             type: 'folder',
             children: [],
-            lazyLoad: isHidden,  // Lazy load nested hidden dirs
+            lazyLoad: true,  // All nested dirs are lazy-loaded
           });
         } else if (fileType === vscode.FileType.File) {
           const ext = name.includes('.') ? name.split('.').pop()?.toLowerCase() : undefined;

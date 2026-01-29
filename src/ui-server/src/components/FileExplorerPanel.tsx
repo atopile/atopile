@@ -95,7 +95,7 @@ const AtopileIcon = memo(function AtopileIcon({ size = 16 }: { size?: number }) 
 export interface FileNode {
   name: string;
   path: string;
-  type: 'file' | 'directory';
+  type: 'file' | 'folder';  // Use 'folder' to match FileTreeNode from store
   children?: FileNode[];
   mtime?: number; // Last modified timestamp
   lazyLoad?: boolean; // True if directory contents not yet loaded
@@ -255,7 +255,7 @@ const TreeNode = memo(function TreeNode({
   onDragLeave,
   onDrop,
 }: TreeNodeProps) {
-  const isDirectory = node.type === 'directory';
+  const isDirectory = node.type === 'folder';
   const isExpanded = expandedPaths.has(node.path);
   const isSelected = selectedPaths.has(node.path);
   const isLoading = loadingDirs.has(node.path);
@@ -347,7 +347,7 @@ const TreeNode = memo(function TreeNode({
     if (!node.children) return [];
     return [...node.children].sort((a, b) => {
       if (a.type !== b.type) {
-        return a.type === 'directory' ? -1 : 1;
+        return a.type === 'folder' ? -1 : 1;
       }
       return a.name.localeCompare(b.name, undefined, { numeric: true });
     });
@@ -522,10 +522,10 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
     children: FileNode[]
   ): FileNode[] => {
     return nodes.map(node => {
-      if (node.path === targetPath && node.type === 'directory') {
+      if (node.path === targetPath && node.type === 'folder') {
         return { ...node, children, lazyLoad: false };
       }
-      if (node.children && node.type === 'directory') {
+      if (node.children && node.type === 'folder') {
         return { ...node, children: updateDirectoryChildren(node.children, targetPath, children) };
       }
       return node;
@@ -546,17 +546,39 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
         if (message.error) {
           console.error('Failed to list files:', message.error);
         }
+
+        // Re-request contents of any expanded lazy-loaded directories
+        // This preserves expanded state after file watcher triggers a reload
+        const files = message.files || [];
+        const findLazyLoadedExpanded = (nodes: typeof files, expanded: Set<string>): string[] => {
+          const paths: string[] = [];
+          for (const node of nodes) {
+            if (node.type === 'folder' && node.lazyLoad && expanded.has(node.path)) {
+              paths.push(node.path);
+            }
+            if (node.children) {
+              paths.push(...findLazyLoadedExpanded(node.children, expanded));
+            }
+          }
+          return paths;
+        };
+
+        const lazyExpandedPaths = findLazyLoadedExpanded(files, expandedPaths);
+        for (const dirPath of lazyExpandedPaths) {
+          postToExtension({
+            type: 'loadDirectory',
+            projectRoot,
+            directoryPath: dirPath,
+          });
+        }
       }
 
       // Handle lazy-loaded directory contents
       if (message?.type === 'directoryLoaded' && message.projectRoot === projectRoot) {
         const currentFiles = useStore.getState().projectFiles[projectRoot] || [];
-        // Convert children to FileNode format (folder -> directory)
-        const convertedChildren = (message.children || []).map((child: { name: string; path: string; type: string; extension?: string; children?: unknown[]; lazyLoad?: boolean }) => ({
-          ...child,
-          type: child.type === 'folder' ? 'directory' : 'file',
-        })) as FileNode[];
-        const updatedFiles = updateDirectoryChildren(currentFiles, message.directoryPath, convertedChildren);
+        // Children from extension already use 'folder' type to match FileNode
+        const children = (message.children || []) as FileNode[];
+        const updatedFiles = updateDirectoryChildren(currentFiles, message.directoryPath, children);
         useStore.getState().setProjectFiles(projectRoot, updatedFiles);
         setLoadingDirs(prev => {
           const next = new Set(prev);
@@ -584,7 +606,7 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [projectRoot, updateDirectoryChildren]);
+  }, [projectRoot, updateDirectoryChildren, expandedPaths]);
 
   // Clean up drag state when drag ends anywhere (e.g., dropped outside, cancelled)
   useEffect(() => {
@@ -615,43 +637,6 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
     });
   }, []);
 
-  // Helper to find a node by path in the file tree
-  const findNodeByPath = useCallback((nodes: FileNode[], targetPath: string): FileNode | null => {
-    for (const node of nodes) {
-      if (node.path === targetPath) return node;
-      if (node.children) {
-        const found = findNodeByPath(node.children, targetPath);
-        if (found) return found;
-      }
-    }
-    return null;
-  }, []);
-
-  // Handle expand/collapse
-  const handleToggle = useCallback((path: string) => {
-    const node = findNodeByPath(fileTree, path);
-
-    // If this is a lazy-loaded directory being expanded, request its contents
-    if (node?.type === 'directory' && node.lazyLoad && !expandedPaths.has(path) && !loadingDirs.has(path) && projectRoot) {
-      setLoadingDirs(prev => new Set([...prev, path]));
-      postToExtension({
-        type: 'loadDirectory',
-        projectRoot,
-        directoryPath: path,
-      });
-    }
-
-    setExpandedPaths((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
-      return next;
-    });
-  }, [fileTree, expandedPaths, loadingDirs, projectRoot, findNodeByPath]);
-
   // Handle file open - paths are relative to project root
   const handleOpen = useCallback((path: string) => {
     if (!projectRoot) return;
@@ -673,7 +658,7 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
         path: `${projectRoot}/${node.path}`,
         relativePath: node.path,
         name: node.name,
-        isDirectory: node.type === 'directory',
+        isDirectory: node.type === 'folder',
         projectRoot,
       },
     });
@@ -868,17 +853,55 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
   const fileTree = useMemo(() => {
     if (!files || files.length === 0) return [];
 
-    // The store already has FileTreeNode[] which matches our FileNode interface
-    // Just need to map type names
+    // The store's FileTreeNode[] is compatible with our FileNode interface
+    // (both use 'file' | 'folder' for type)
     const mapNode = (node: typeof files[0]): FileNode => ({
       name: node.name,
       path: node.path,
-      type: node.type === 'folder' ? 'directory' : 'file',
+      type: node.type,
       children: node.children?.map(mapNode),
+      lazyLoad: node.lazyLoad,
     });
 
     return files.map(mapNode);
   }, [files]);
+
+  // Helper to find a node by path in the file tree
+  const findNodeByPath = useCallback((nodes: FileNode[], targetPath: string): FileNode | null => {
+    for (const node of nodes) {
+      if (node.path === targetPath) return node;
+      if (node.children) {
+        const found = findNodeByPath(node.children, targetPath);
+        if (found) return found;
+      }
+    }
+    return null;
+  }, []);
+
+  // Handle expand/collapse
+  const handleToggle = useCallback((path: string) => {
+    const node = findNodeByPath(fileTree, path);
+
+    // If this is a lazy-loaded directory being expanded, request its contents
+    if (node?.type === 'folder' && node.lazyLoad && !expandedPaths.has(path) && !loadingDirs.has(path) && projectRoot) {
+      setLoadingDirs(prev => new Set([...prev, path]));
+      postToExtension({
+        type: 'loadDirectory',
+        projectRoot,
+        directoryPath: path,
+      });
+    }
+
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  }, [fileTree, expandedPaths, loadingDirs, projectRoot, findNodeByPath]);
 
   // Filter tree by search query with regex and case sensitivity support
   const filteredTree = useMemo(() => {
@@ -916,7 +939,7 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
 
       const nameMatches = matcher(node.name);
 
-      if (node.type === 'directory' && node.children) {
+      if (node.type === 'folder' && node.children) {
         const filteredChildren = node.children
           .map(filterNode)
           .filter((n): n is FileNode => n !== null);
@@ -949,7 +972,7 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
       return [...nodes].sort((a, b) => {
         // Directories always first
         if (a.type !== b.type) {
-          return a.type === 'directory' ? -1 : 1;
+          return a.type === 'folder' ? -1 : 1;
         }
 
         // Then sort by selected mode
@@ -986,7 +1009,7 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
     const collectPaths = (nodes: FileNode[]) => {
       for (const node of nodes) {
         paths.push(node.path);
-        if (node.type === 'directory' && expandedPaths.has(node.path) && node.children) {
+        if (node.type === 'folder' && expandedPaths.has(node.path) && node.children) {
           collectPaths(node.children);
         }
       }
@@ -1032,7 +1055,7 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
       const collectDirPaths = (nodes: FileNode[]): string[] => {
         const paths: string[] = [];
         for (const node of nodes) {
-          if (node.type === 'directory') {
+          if (node.type === 'folder') {
             paths.push(node.path);
             if (node.children) {
               paths.push(...collectDirPaths(node.children));
