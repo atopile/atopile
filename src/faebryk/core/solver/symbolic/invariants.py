@@ -1075,14 +1075,13 @@ def _merge_alias(
     if not mutator.has_been_mutated(old_alias_po):
         mutator._mutate(old_alias_po, new_alias_po)
         return
-    old_mutated = (
-        mutator.get_mutated(old_alias_po)
-        if not old_alias_po.is_in_graph(mutator.G_out)
-        else old_alias_po
-    )
+    old_mutated = mutator.get_mutated(old_alias_po)
+
     if old_mutated.is_same(new_alias_po):
         return
-    raise NotImplementedError("TODO merge mutated parameter")
+
+    # re-mutate
+    mutator.remutate(old_mutated, new_alias_po)
 
 
 def _merge_monotone_traits(

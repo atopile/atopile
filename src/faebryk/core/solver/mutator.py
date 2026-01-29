@@ -1962,6 +1962,50 @@ class Mutator:
             s.__exit__(None, None, None)
         return new_expr_e.as_operand.get()
 
+    def remutate(
+        self,
+        po: F.Parameters.is_parameter_operatable,
+        new_po: F.Parameters.is_parameter_operatable,
+    ):
+        """
+        Re-mutate a po that is already in G_out
+        Strategy:
+        - _mutate (so future exprs use the right one)
+        - remap in mutations k->po to k->new_po
+        - mark irrelevant (so filtered)
+        - replace in all exprs with new_po
+        - remutate all exprs recursively
+        """
+        # TODO should do more testing
+        # TODO is it right to remutate v instead of k?
+        assert po.is_in_graph(self.G_out)
+        assert new_po.is_in_graph(self.G_out)
+
+        if S_LOG:
+            logger.debug(f"Remutate {po.compact_repr()} to {new_po.compact_repr()}")
+
+        po_op = po.as_operand.get()
+        self.transformations.mutated = {
+            k: new_po if v == po else v for k, v in self.transformations.mutated.items()
+        }
+        self.mark_irrelevant(po)
+
+        for e in po.get_operations():
+            e_e = e.get_trait(F.Expressions.is_expression)
+            e_po = e_e.as_parameter_operatable.get()
+            if e.has_trait(is_irrelevant):
+                continue
+            ops = e_e.get_operands()
+            ops_new = [
+                op if not op.is_same(po_op) else new_po.as_operand.get() for op in ops
+            ]
+            # TODO should this use the invariant checked one?
+            remutated_e = self._create_and_insert_expression(
+                ExpressionBuilder.from_e(e_e).with_(operands=ops_new)
+            )
+            remutated_e_po = remutated_e.is_parameter_operatable.get()
+            self.remutate(e_po, remutated_e_po)
+
     def get_copy(
         self,
         obj: F.Parameters.can_be_operand,
@@ -2098,14 +2142,14 @@ class Mutator:
         )
 
     def mark_irrelevant(self, po: F.Parameters.is_parameter_operatable):
-        if po in self.transformations.removed:
-            raise ValueError(f"Cannot mark removed operatable as irrelevant: {po}")
-        if po in self.transformations.mutated:
-            raise ValueError(f"Cannot mark mutated operatable as irrelevant: {po}")
-        if po.try_get_sibling_trait(is_irrelevant) is not None:
-            return
+        # if po in self.transformations.removed:
+        #     raise ValueError(f"Cannot mark removed operatable as irrelevant: {po}")
+        # if po in self.transformations.mutated:
+        #     raise ValueError(f"Cannot mark mutated operatable as irrelevant: {po}")
+        # if po.try_get_sibling_trait(is_irrelevant) is not None:
+        #     return
         self.try_add_trait_to_owner(
-            po, is_irrelevant.bind_typegraph(self.tg_out).get_or_create_type()
+            po, is_irrelevant.bind_typegraph(po.tg).get_or_create_type()
         )
 
     def mark_relevance(self):
