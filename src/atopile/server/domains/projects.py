@@ -65,9 +65,15 @@ def handle_get_modules(
     return ModulesResponse(modules=modules, total=len(modules))
 
 
-def handle_get_files(project_root: str) -> FilesResponse | None:
+def handle_get_files(
+    project_root: str, include_all: bool = False
+) -> FilesResponse | None:
     """
     Get file tree for a project.
+
+    Args:
+        project_root: Path to the project root
+        include_all: If True, include all files. If False, only .ato and .py files.
 
     Returns None if project not found.
     """
@@ -75,7 +81,9 @@ def handle_get_files(project_root: str) -> FilesResponse | None:
     if not project_path.exists():
         return None
 
-    file_tree = core_projects.build_file_tree(project_path, project_path)
+    file_tree = core_projects.build_file_tree(
+        project_path, project_path, include_all=include_all
+    )
 
     def count_files(nodes: list[FileTreeNode]) -> int:
         count = 0

@@ -332,9 +332,9 @@ export const api = {
 
   // Project files/modules
   files: {
-    list: (projectRoot: string) =>
+    list: (projectRoot: string, includeAll: boolean = false) =>
       fetchJSON<FilesResponse>(
-        `/api/files?project_root=${encodeURIComponent(projectRoot)}`
+        `/api/files?project_root=${encodeURIComponent(projectRoot)}&include_all=${includeAll}`
       ),
   },
 

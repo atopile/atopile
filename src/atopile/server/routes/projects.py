@@ -9,13 +9,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from atopile.dataclasses import (
+    AppContext,
     DependenciesResponse,
     FilesResponse,
     ModuleChild,
     ModulesResponse,
     ProjectsResponse,
 )
-from atopile.dataclasses import AppContext
 from atopile.server.domains import projects as projects_domain
 from atopile.server.domains.deps import get_ctx
 
@@ -57,9 +57,14 @@ async def get_files(
     project_root: str = Query(
         ..., description="Path to the project root to scan for files"
     ),
+    include_all: bool = Query(
+        False, description="If true, include all files. If false, only .ato and .py"
+    ),
 ):
-    """List all .ato and .py files in a project."""
-    result = await asyncio.to_thread(projects_domain.handle_get_files, project_root)
+    """List files in a project."""
+    result = await asyncio.to_thread(
+        projects_domain.handle_get_files, project_root, include_all
+    )
     if result is None:
         raise HTTPException(
             status_code=404,
