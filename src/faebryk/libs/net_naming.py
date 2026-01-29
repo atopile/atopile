@@ -493,15 +493,17 @@ def _get_conflict_sort_key(processable_net: ProcessableNet) -> tuple[int, str]:
     """
     Get a deterministic sort key for conflict resolution.
 
-    Returns tuple to sort by hierarchy_depth, then electrical_name
+    Returns tuple of (hierarchy_depth, full_hierarchy_path) for stable ordering.
+    The full path ensures unique tie-breaking even when multiple nets have the
+    same depth and electrical name (e.g., branch_a.leaf.sig vs branch_b.leaf.sig).
     """
     depth = _get_hierarchy_depth(processable_net)
-    # Use the first electrical's name as secondary key for determinism
+    # Use the full hierarchy path for deterministic tie-breaking
     if processable_net.electricals:
-        name = processable_net.electricals[0].name or ""
+        path = _get_full_hierarchy_path(processable_net.electricals[0].electrical)
     else:
-        name = ""
-    return (depth, name)
+        path = ""
+    return (depth, path)
 
 
 def _get_parent_interface_name(processable_net: ProcessableNet) -> str | None:
