@@ -11,7 +11,7 @@ import yaml
 
 from atopile.cli import install as cli_install
 from atopile.dataclasses import InstalledPackage, PackageInfo
-from atopile.exceptions import UserException as AtopileUserException
+from atopile.errors import UserException as AtopileUserException
 
 from . import projects as core_projects
 

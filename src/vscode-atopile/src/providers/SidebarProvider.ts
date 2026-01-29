@@ -481,7 +481,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         vscode.commands.executeCommand('workbench.action.restartExtensionHost');
         break;
       case 'showLogs':
-        void vscode.commands.executeCommand('atopile.logViewer.focus');
+        backendServer.showLogs();
+        break;
+      case 'showBackendMenu':
+        void vscode.commands.executeCommand('atopile.backendStatus');
         break;
       case 'showBackendMenu':
         void vscode.commands.executeCommand('atopile.backendStatus');

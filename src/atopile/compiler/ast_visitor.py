@@ -44,7 +44,7 @@ from atopile.compiler.gentypegraph import (
     Symbol,
 )
 from atopile.compiler.overrides import ReferenceOverrideRegistry, TraitOverrideRegistry
-from atopile.exceptions import DeprecatedException, downgrade
+from atopile.errors import DeprecatedException, downgrade
 from atopile.logging import get_logger
 from faebryk.core.faebrykpy import EdgeTraversal
 from faebryk.library.Units import UnitsNotCommensurableError

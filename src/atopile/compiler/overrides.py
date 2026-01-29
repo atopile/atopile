@@ -26,7 +26,7 @@ from atopile.compiler.gentypegraph import (
     LinkPath,
     NoOpAction,
 )
-from atopile.exceptions import DeprecatedException, downgrade
+from atopile.errors import DeprecatedException, downgrade
 from atopile.logging import get_logger
 from faebryk.core.faebrykpy import EdgeComposition, EdgeTrait
 from faebryk.libs.smd import SMDSize

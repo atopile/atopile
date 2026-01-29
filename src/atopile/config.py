@@ -47,11 +47,13 @@ from atopile import address, version
 from atopile.address import AddressError, AddrStr
 from atopile.errors import (
     UserBadParameterError,
+    UserConfigNotFoundError,
+    UserConfigurationError,
     UserException,
     UserFileNotFoundError,
     UserNoProjectException,
+    UserResourceException,
 )
-from atopile.exceptions import UserResourceException
 from atopile.logging import get_logger
 from atopile.version import (
     DISTRIBUTION_NAME,
@@ -123,14 +125,6 @@ class BaseConfigModel(BaseModel):
 class BuildType(Enum):
     ATO = "ato"
     PYTHON = "python"
-
-
-class UserConfigurationError(UserException):
-    """An error in the config file."""
-
-
-class UserConfigNotFoundError(UserException):
-    """No project config file was found."""
 
 
 class ConfigFileSettingsSource(YamlConfigSettingsSource, ABC):

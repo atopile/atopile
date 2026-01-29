@@ -8,17 +8,15 @@ import time
 from pathlib import Path
 
 import typer
-from rich.console import Console
 from typing_extensions import Annotated
 
 from atopile.buildutil import generate_build_id, generate_build_timestamp
 from atopile.dataclasses import (
     Build,
     BuildStatus,
-    StageCompleteEvent,
-    StageStatus,
 )
 from atopile.logging import get_logger
+from atopile.logging_utils import BuildPrinter, print_subprocess_output
 from atopile.model.build_queue import BuildQueue
 from atopile.telemetry import capture
 
@@ -50,178 +48,6 @@ def discover_projects(root: Path) -> list[Path]:
     return sorted(projects)
 
 
-# Semantic status -> (icon, color)
-_STATUS_STYLE = {
-    StageStatus.SUCCESS: ("✓", "green"),
-    StageStatus.WARNING: ("⚠", "yellow"),
-    StageStatus.FAILED: ("✗", "red"),
-    StageStatus.ERROR: ("✗", "red"),  # Error is similar to failed
-    StageStatus.RUNNING: ("●", "blue"),
-    StageStatus.PENDING: ("○", "dim"),
-    StageStatus.SKIPPED: ("⊘", "dim"),
-}
-
-
-def _format_stage_entry(entry: StageCompleteEvent) -> str:
-    """Render a completed stage entry with status color and counts."""
-    icon, color = _STATUS_STYLE.get(entry.status, ("✓", "green"))
-    counts = ""
-    if entry.errors > 0:
-        counts = f"({entry.errors}E"
-        if entry.warnings > 0:
-            counts += f",{entry.warnings}W"
-        counts += ")"
-    elif entry.warnings > 0:
-        counts = f"({entry.warnings})"
-    label = f"{icon}{counts} {entry.description} [{entry.duration:.1f}s]"
-    return f"[{color}]{label}[/{color}]"
-
-
-_VERBOSE_INDENT = 10
-
-
-def _stage_dict_to_event(stage_dict: dict) -> StageCompleteEvent:
-    """Convert a stage dict from the DB into a StageCompleteEvent."""
-    status_raw = stage_dict.get("status", StageStatus.SUCCESS.value)
-    try:
-        status = StageStatus(status_raw)
-    except ValueError:
-        status = StageStatus.SUCCESS
-    return StageCompleteEvent(
-        duration=stage_dict.get("elapsed_seconds", 0.0),
-        status=status,
-        infos=stage_dict.get("infos", 0),
-        warnings=stage_dict.get("warnings", 0),
-        errors=stage_dict.get("errors", 0),
-        alerts=stage_dict.get("alerts", 0),
-        log_name=stage_dict.get("stage_id", ""),
-        description=stage_dict.get("name", ""),
-    )
-
-
-def _stage_info_log_path() -> Path | None:
-    """Return the log path for a build (central SQLite database)."""
-    from atopile.logging import BuildLogger
-
-    return BuildLogger.get_log_db()
-
-
-def _print_verbose_stage(
-    console: Console, entry: StageCompleteEvent, log_path: Path | None
-) -> None:
-    """Print a single verbose stage line with its log path."""
-    log_text = ""
-    if log_path is not None:
-        try:
-            log_path = log_path.relative_to(Path.cwd())
-        except ValueError:
-            pass
-        log_text = f"  {log_path}"
-
-    console.print(
-        f"{'':>{_VERBOSE_INDENT}}{_format_stage_entry(entry)}{log_text}"
-    )
-
-
-def _print_build_logs(
-    build_id: str | None,
-    console: Console,
-    levels: list[str] | None = None,
-) -> None:
-    """Print logs from the SQLite database for a build."""
-    import sqlite3
-
-    from atopile.logging import BuildLogger
-
-    if not build_id:
-        return
-
-    try:
-        db_path = BuildLogger.get_log_db()
-        if not db_path.exists():
-            return
-
-        conn = sqlite3.connect(str(db_path), timeout=5.0)
-        conn.row_factory = sqlite3.Row
-
-        conditions = ["build_id = ?"]
-        params: list = [build_id]
-
-        if levels:
-            placeholders = ",".join("?" * len(levels))
-            conditions.append(f"level IN ({placeholders})")
-            params.extend(levels)
-
-        where_clause = " AND ".join(conditions)
-        query = f"""
-            SELECT timestamp, stage, level, message, ato_traceback, python_traceback
-            FROM logs
-            WHERE {where_clause}
-            ORDER BY id
-        """
-
-        cursor = conn.execute(query, params)
-        rows = cursor.fetchall()
-        conn.close()
-
-        for row in rows:
-            level = row["level"]
-            message = row["message"]
-            stage = row["stage"]
-
-            if level in ("ERROR", "ALERT"):
-                color = "red"
-            elif level == "WARNING":
-                color = "yellow"
-            elif level == "INFO":
-                color = "cyan"
-            else:
-                color = "white"
-
-            console.print(f"[{color}][{stage}] {level}: {message}[/{color}]")
-
-            if row["ato_traceback"]:
-                console.print(f"[dim]{row['ato_traceback']}[/dim]")
-            if row["python_traceback"]:
-                console.print(f"[dim]{row['python_traceback']}[/dim]")
-
-    except Exception as exc:
-        logger.debug(f"Failed to query logs for {build_id}: {exc}")
-
-
-def _print_build_result(
-    display_name: str,
-    build: Build,
-    console: Console,
-    verbose: bool,
-) -> None:
-    """Print per-build success/failure summary with details."""
-    return_code = build.return_code or 0
-    if return_code == 0 and build.status in (BuildStatus.SUCCESS, BuildStatus.WARNING):
-        if build.warnings > 0:
-            console.print(
-                f"[yellow]⚠ {display_name} completed with "
-                f"{build.warnings} warning(s)[/yellow]"
-            )
-            if verbose:
-                console.print("\n[bold yellow]Warnings:[/bold yellow]")
-                _print_build_logs(build.build_id, console, levels=["WARNING"])
-                console.print()
-        else:
-            console.print(f"[green]✓ {display_name} completed[/green]")
-    else:
-        console.print(f"[red]✗ {display_name} failed[/red]")
-        if verbose:
-            console.print("\n[bold red]Errors:[/bold red]")
-            _print_build_logs(build.build_id, console, levels=["ERROR", "ALERT"])
-            console.print()
-
-
-def _get_full_width_console() -> Console:
-    import shutil
-
-    width = shutil.get_terminal_size(fallback=(120, 24)).columns
-    return Console(width=width)
 
 
 def _run_build_queue(
@@ -236,9 +62,10 @@ def _run_build_queue(
     if not builds:
         return {}
 
+    # Initialize database
     BuildHistory.init_db()
 
-    console = _get_full_width_console() if verbose else Console()
+    # Verbose mode runs sequentially (one build at a time)
     max_concurrent = 1 if verbose else jobs
     queue = BuildQueue(max_concurrent=max_concurrent)
 
@@ -252,69 +79,77 @@ def _run_build_queue(
 
     started: set[str] = set()
     reported: set[str] = set()
-    last_stage_counts: dict[str, int] = {}
 
-    def on_update() -> None:
-        for build_id in build_ids:
-            build = queue.find_build(build_id)
-            if not build:
-                continue
+    TERMINAL_STATUSES = (
+        BuildStatus.SUCCESS,
+        BuildStatus.WARNING,
+        BuildStatus.FAILED,
+        BuildStatus.CANCELLED,
+    )
 
-            display_name = display_names.get(build_id, build.display_name)
+    with BuildPrinter(verbose=verbose) as printer:
 
-            if verbose:
+        # For verbose mode, stream subprocess output to console
+        if verbose:
+            # Buffer output until the build header is printed to keep ordering.
+            pending_output: dict[str, list[tuple[str, bool]]] = {}
+
+            def _flush_pending(build_id: str) -> None:
+                buffered = pending_output.pop(build_id, [])
+                for text, is_stderr in buffered:
+                    print_subprocess_output(text, is_stderr)
+
+            def on_output(build_id: str, text: str, is_stderr: bool) -> None:
+                if build_id not in started:
+                    pending_output.setdefault(build_id, []).append((text, is_stderr))
+                    return
+                print_subprocess_output(text, is_stderr)
+
+            queue.on_output = on_output
+
+        def on_update() -> None:
+            for build_id in build_ids:
+                build = queue.find_build(build_id)
+                if not build:
+                    continue
+
+                display_name = display_names.get(build_id, build.display_name)
+
+                # Build started
                 if (
-                    build.status
-                    in (
-                        BuildStatus.BUILDING,
-                        BuildStatus.SUCCESS,
-                        BuildStatus.WARNING,
-                        BuildStatus.FAILED,
-                        BuildStatus.CANCELLED,
-                    )
+                    build.status in (BuildStatus.BUILDING, *TERMINAL_STATUSES)
                     and build_id not in started
                 ):
-                    build_id_str = (
-                        f" (build_id={build.build_id})" if build.build_id else ""
-                    )
-                    console.print(
-                        f"[bold cyan]▶ Building {display_name}{build_id_str}[/bold cyan]"
-                    )
+                    printer.build_started(build_id, display_name, total=build.total_stages)
                     started.add(build_id)
+                    if verbose:
+                        _flush_pending(build_id)
 
-            if verbose:
-                stages = build.stages or []
-                last_count = last_stage_counts.get(build_id, 0)
-                if len(stages) > last_count:
-                    for stage in stages[last_count:]:
-                        event = _stage_dict_to_event(stage)
-                        _print_verbose_stage(console, event, _stage_info_log_path())
-                    last_stage_counts[build_id] = len(stages)
+                # Stage updates
+                if build.stages:
+                    printer.stage_update(build_id, build.stages, build.total_stages)
 
-            if (
-                build.status
-                in (
-                    BuildStatus.SUCCESS,
-                    BuildStatus.WARNING,
-                    BuildStatus.FAILED,
-                    BuildStatus.CANCELLED,
-                )
-                and build_id not in reported
-            ):
-                if verbose:
-                    _print_build_result(display_name, build, console, verbose=True)
-                else:
-                    if build.status == BuildStatus.FAILED:
-                        console.print(
-                            f"[red bold]✗ {display_name}[/red bold]"
-                        )
-                    elif build.status == BuildStatus.WARNING:
-                        console.print(
-                            f"[yellow bold]⚠ {display_name}[/yellow bold]"
-                        )
-                reported.add(build_id)
+                # Build completed
+                if build.status in TERMINAL_STATUSES and build_id not in reported:
+                    printer.build_completed(
+                        build_id,
+                        build.status,
+                        warnings=build.warnings,
+                        errors=build.errors,
+                    )
+                    reported.add(build_id)
 
-    return queue.wait_for_builds(build_ids, on_update=on_update, poll_interval=0.5)
+        results = queue.wait_for_builds(build_ids, on_update=on_update, poll_interval=0.1)
+
+        # Print build summary boxes after all builds complete
+        completed_builds = [
+            queue.find_build(build_id)
+            for build_id in build_ids
+            if queue.find_build(build_id)
+        ]
+        printer.print_summary(completed_builds)
+
+        return results
 
 
 def _run_single_build() -> None:
@@ -324,9 +159,12 @@ def _run_single_build() -> None:
     This is called when ATO_BUILD_WORKER is set by the parent process.
     Stages are written to the build history DB as they complete.
     """
+    import sys
+
     from atopile import buildutil
     from atopile.buildutil import BuildStepContext
     from atopile.config import config
+    from atopile.errors import UserException, iter_leaf_exceptions
     from atopile.model.sqlite import BuildHistory
 
     # Get the single build target from config
@@ -338,8 +176,6 @@ def _run_single_build() -> None:
 
     build_name = build_names[0]
 
-    from atopile.cli.excepthook import install_worker_excepthook
-
     # Read build_id from environment (passed by parent process)
     build_id = os.environ.get("ATO_BUILD_ID")
 
@@ -349,14 +185,16 @@ def _run_single_build() -> None:
     # Create build context to track completed stages
     ctx = BuildStepContext(build=None, build_id=build_id)
 
-    with config.select_build(build_name):
-        install_worker_excepthook()
-        buildutil.build(ctx=ctx)
+    try:
+        with config.select_build(build_name):
+            buildutil.build(ctx=ctx)
+    except Exception as exc:
+        for e in iter_leaf_exceptions(exc):
+            logger.error(e, exc_info=e)
+        sys.exit(1)
 
     # Note: BuildLogger.close_all() is registered as an atexit handler,
-    # so logs will be flushed during process shutdown. We don't call it
-    # explicitly here because the excepthook needs to log errors AFTER
-    # any exceptions occur, and close_all() would close the writer too early.
+    # so logs will be flushed during process shutdown.
 
 
 def _build_all_projects(
@@ -669,11 +507,7 @@ def build(
             )
         )
 
-    try:
-        results = _run_build_queue(builds, jobs=jobs, verbose=verbose)
-    except KeyboardInterrupt:
-        logger.info("Build interrupted")
-        raise typer.Exit(1)
+    results = _run_build_queue(builds, jobs=jobs, verbose=verbose)
 
     from atopile.logging import BuildLogger
 
@@ -726,7 +560,7 @@ def _report_build_results(
 ) -> int:
     """Report build results and return exit code (0 for success, 1 for failure)."""
     if failed:
-        from atopile.cli.excepthook import log_discord_banner
+        from atopile.errors import log_discord_banner
 
         log_discord_banner()
         logger.error("Build failed! %d of %d targets failed", len(failed), total)

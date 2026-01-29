@@ -16,8 +16,7 @@ from atopile.config import (
     find_project_config_file,
 )
 from atopile.config import config as Gcfg
-from atopile.errors import UserValueError
-from atopile.exceptions import UserResourceException, accumulate
+from atopile.errors import UserResourceException, UserValueError, accumulate
 from atopile.layout import in_sub_pcb
 from atopile.logging import ALERT
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer

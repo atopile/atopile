@@ -40,8 +40,11 @@ from atopile.compiler.build import (
 )
 from atopile.compiler.parse_utils import get_src_info_from_token
 from atopile.config import find_project_dir
-from atopile.errors import UserException
-from atopile.exceptions import DowngradedExceptionCollector, iter_leaf_exceptions
+from atopile.errors import (
+    DowngradedExceptionCollector,
+    UserException,
+    iter_leaf_exceptions,
+)
 from atopile.logging import get_logger
 
 logger = get_logger(__name__)

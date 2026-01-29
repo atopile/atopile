@@ -25,7 +25,6 @@ from pathlib import Path
 from types import ModuleType, TracebackType
 from typing import Any
 
-from rich._null_file import NullFile
 from rich.console import Console, ConsoleRenderable
 from rich.logging import RichHandler
 from rich.markdown import Markdown
@@ -40,7 +39,13 @@ from atopile.dataclasses import (
     TestLogRow,
 )
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
-from atopile.logging_utils import PLOG, console, error_console
+from atopile.logging_utils import (
+    LEVEL_CHAR,
+    LEVEL_STYLES,
+    PLOG,
+    console,
+    error_console,
+)
 
 # Suppress noisy third-party loggers
 logging.getLogger("requests").setLevel(logging.WARNING)
@@ -78,20 +83,6 @@ def _is_serving() -> bool:
     )
 
 
-def _should_log(record: logging.LogRecord) -> bool:
-    """Filter for atopile/faebryk logs, excluding server/http unless serving."""
-    name = record.name
-    if name.startswith(("watchdog", "fsevents")):
-        return False
-    if _is_serving():
-        return True
-    if name.startswith("httpcore") or name.startswith("atopile.server"):
-        return False
-    return (
-        name.startswith("atopile")
-        or name.startswith("faebryk")
-        or name.startswith("test")
-    )
 
 
 class AtoLogger(logging.Logger):
@@ -238,7 +229,11 @@ def _extract_traceback_frames(
     suppress_paths: list[str] | None = None,
 ) -> dict:
     """
-    Extract structured traceback with local variables.
+    Extract structured traceback with local variables for the `python_traceback` field.
+
+    This returns structured JSON data for programmatic debugging. The separate
+    `ato_traceback` field (from `render_ato_traceback()`) stores ANSI-formatted
+    user-friendly source snippets.
 
     Returns a dict with:
     - exc_type: Exception type name
@@ -334,6 +329,36 @@ def get_exception_display_message(exc: BaseException) -> str:
     return str(exc) or type(exc).__name__
 
 
+def render_ato_traceback(exc: BaseException) -> str | None:
+    """
+    Render exception's rich output to an ANSI-formatted string for database storage.
+
+    This is for the `ato_traceback` field - user-friendly source snippets with colors.
+    The separate `python_traceback` field stores structured JSON from
+    `_extract_traceback_frames()` for programmatic debugging.
+
+    Uses force_terminal=True to include ANSI escape codes (colors) in the output,
+    which can be rendered by the frontend.
+    """
+    if not hasattr(exc, "__rich_console__"):
+        return None
+    try:
+        ansi_buffer = io.StringIO()
+        capture_console = Console(
+            file=ansi_buffer,
+            width=120,
+            force_terminal=True,  # Include ANSI color codes in output
+        )
+        # Skip first renderable (title) - we use it as the message
+        renderables = exc.__rich_console__(capture_console, capture_console.options)
+        for renderable in list(renderables)[1:]:
+            capture_console.print(renderable)
+        result = ansi_buffer.getvalue().strip()
+        return result or None
+    except Exception:
+        return None
+
+
 @contextmanager
 def capture_logs():
     """Context manager to capture logs to a StringIO."""
@@ -348,15 +373,13 @@ def capture_logs():
 @contextmanager
 def log_exceptions(log_sink: io.StringIO):
     """Context manager to capture exceptions to a log sink."""
-    from atopile.cli.excepthook import _handle_exception
-
     exc_console = Console(file=log_sink)
     exc_handler = LogHandler(console=exc_console)
     logger.addHandler(exc_handler)
     try:
         yield
     except Exception as exc:
-        _handle_exception(type(exc), exc, exc.__traceback__)
+        logger.error(exc, exc_info=exc)
         raise
     finally:
         logger.removeHandler(exc_handler)
@@ -394,6 +417,14 @@ def scope(msg: str | None = None):
 def get_scope_level() -> int:
     """Get the current log scope nesting level."""
     return _log_scope_level.get()
+
+
+def _get_log_handler() -> "LogHandler | None":
+    """Get the LogHandler from the root logger, if present."""
+    for h in logging.getLogger().handlers:
+        if isinstance(h, LogHandler):
+            return h
+    return None
 
 
 class BaseLogger:
@@ -474,13 +505,7 @@ class BaseLogger:
         audience: Log.Audience = Log.Audience.DEVELOPER,
         objects: dict | None = None,
     ) -> None:
-        self.log(
-            Log.Level.DEBUG,
-            message,
-            logger_name=logger_name,
-            audience=audience,
-            objects=objects,
-        )
+        self.log(Log.Level.DEBUG, message, logger_name=logger_name, audience=audience, objects=objects)
 
     def info(
         self,
@@ -490,13 +515,7 @@ class BaseLogger:
         audience: Log.Audience = Log.Audience.DEVELOPER,
         objects: dict | None = None,
     ) -> None:
-        self.log(
-            Log.Level.INFO,
-            message,
-            logger_name=logger_name,
-            audience=audience,
-            objects=objects,
-        )
+        self.log(Log.Level.INFO, message, logger_name=logger_name, audience=audience, objects=objects)
 
     def warning(
         self,
@@ -506,13 +525,7 @@ class BaseLogger:
         audience: Log.Audience = Log.Audience.DEVELOPER,
         objects: dict | None = None,
     ) -> None:
-        self.log(
-            Log.Level.WARNING,
-            message,
-            logger_name=logger_name,
-            audience=audience,
-            objects=objects,
-        )
+        self.log(Log.Level.WARNING, message, logger_name=logger_name, audience=audience, objects=objects)
 
     def error(
         self,
@@ -522,13 +535,7 @@ class BaseLogger:
         audience: Log.Audience = Log.Audience.DEVELOPER,
         objects: dict | None = None,
     ) -> None:
-        self.log(
-            Log.Level.ERROR,
-            message,
-            logger_name=logger_name,
-            audience=audience,
-            objects=objects,
-        )
+        self.log(Log.Level.ERROR, message, logger_name=logger_name, audience=audience, objects=objects)
 
     def flush(self) -> None:
         if self._append_chunk is None:
@@ -574,17 +581,14 @@ class LoggerForTest(BaseLogger):
 
     @classmethod
     def close_all(cls) -> None:
-        for h in logging.getLogger().handlers:
-            if isinstance(h, LogHandler) and h._test_logger:
-                h._test_logger.close()
+        if (h := _get_log_handler()) and h._test_logger:
+            h._test_logger.close()
 
     @classmethod
     def flush_all(cls) -> None:
         """Flush pending logs without closing the writer."""
-        for h in logging.getLogger().handlers:
-            if isinstance(h, LogHandler) and h._test_logger:
-                h._test_logger.flush()
-                break
+        if (h := _get_log_handler()) and h._test_logger:
+            h._test_logger.flush()
 
     @classmethod
     def setup_logging(cls, test_run_id: str, test: str = "") -> "LoggerForTest | None":
@@ -596,20 +600,16 @@ class LoggerForTest(BaseLogger):
 
             test_logger = cls(test_run_id, test)
             test_logger.set_writer(TestLogs.append_chunk)
-            for h in logging.getLogger().handlers:
-                if isinstance(h, LogHandler):
-                    h._test_logger = test_logger
-                    break
+            if h := _get_log_handler():
+                h._test_logger = test_logger
             return test_logger
         except Exception:
             return None
 
     @classmethod
     def update_test_name(cls, test: str | None) -> None:
-        for h in logging.getLogger().handlers:
-            if isinstance(h, LogHandler) and h._test_logger:
-                h._test_logger.set_context(test or "")
-                break
+        if (h := _get_log_handler()) and h._test_logger:
+            h._test_logger.set_context(test or "")
 
     @property
     def test_run_id(self) -> str:
@@ -720,22 +720,18 @@ class BuildLogger(BaseLogger):
                 stage=stage or "cli",
                 build_id=env_build_id,
             )
-            for h in logging.getLogger().handlers:
-                if isinstance(h, LogHandler):
-                    h._build_logger = bl
-                    break
+            if h := _get_log_handler():
+                h._build_logger = bl
             return bl
         except Exception:
             return None
 
     @classmethod
     def update_stage(cls, stage: str | None) -> None:
-        for h in logging.getLogger().handlers:
-            if isinstance(h, LogHandler) and h._build_logger:
-                h._build_logger.set_context(stage or "")
-                if stage:
-                    logging.getLogger(__name__).debug(f"Starting build stage: {stage}")
-                break
+        if (h := _get_log_handler()) and h._build_logger:
+            h._build_logger.set_context(stage or "")
+            if stage:
+                logging.getLogger(__name__).debug(f"Starting build stage: {stage}")
 
     def set_stage(self, stage: str) -> None:
         self.set_context(stage)
@@ -779,11 +775,7 @@ class BuildLogger(BaseLogger):
         level: Log.Level = Log.Level.ERROR,
     ) -> None:
         message = str(exc) or type(exc).__name__
-        ato_tb = (
-            self._extract_ato_traceback(exc)
-            if hasattr(exc, "__rich_console__")
-            else None
-        )
+        ato_tb = render_ato_traceback(exc)
         python_tb = "".join(
             traceback.format_exception(type(exc), exc, exc.__traceback__)
         )
@@ -794,20 +786,6 @@ class BuildLogger(BaseLogger):
             ato_traceback=ato_tb,
             python_traceback=python_tb,
         )
-
-    def _extract_ato_traceback(self, exc: BaseException) -> str | None:
-        try:
-            from rich.console import Console as RC
-
-            buf = io.StringIO()
-            c = RC(file=buf, width=120, force_terminal=True)
-            if hasattr(exc, "__rich_console__"):
-                for r in list(exc.__rich_console__(c, c.options))[1:]:  # type: ignore
-                    c.print(r)
-            result = buf.getvalue().strip()
-            return result or None
-        except Exception:
-            return None
 
 
 # =============================================================================
@@ -843,6 +821,8 @@ class LogHandler(RichHandler):
             console=console,
             rich_tracebacks=rich_tracebacks,
             show_path=show_path,
+            show_time=False,
+            show_level=False,
             **kwargs,
         )
         self.tracebacks_suppress = list(tracebacks_suppress or ["typer"])
@@ -857,7 +837,6 @@ class LogHandler(RichHandler):
         self.hide_traceback_types = hide_traceback_types
         self.always_show_traceback_types = always_show_traceback_types
         self.traceback_level = traceback_level
-        self._logged_exceptions: set = set()
         self._is_terminal = force_terminal or console.is_terminal
         self._build_logger = build_logger
         self._test_logger: LoggerForTest | None = None
@@ -885,36 +864,6 @@ class LogHandler(RichHandler):
                 exc_type = type(exc_value)
                 exc_tb = exc_value.__traceback__
         return exc_type, exc_value, exc_tb
-
-    def _extract_ato_traceback(self, exc: BaseException) -> str | None:
-        """
-        Extract the ato-specific traceback info (source location, code context).
-
-        This renders the exception using Rich to a string buffer to capture
-        the user-facing context like source file paths and code snippets.
-        """
-        try:
-            from io import StringIO
-
-            from rich.console import Console as RichConsole
-
-            buffer = StringIO()
-            temp_console = RichConsole(
-                file=buffer,
-                width=120,
-                force_terminal=True,
-            )
-
-            if hasattr(exc, "__rich_console__"):
-                renderables = exc.__rich_console__(temp_console, temp_console.options)
-                # Skip the first renderable (title) since we use it as message
-                for renderable in list(renderables)[1:]:
-                    temp_console.print(renderable)
-
-            result = buffer.getvalue().strip()
-            return result if result else None
-        except Exception:
-            return None
 
     def _get_traceback(self, record: logging.LogRecord) -> Traceback | None:
         if not record.exc_info:
@@ -994,7 +943,60 @@ class LogHandler(RichHandler):
         if record.exc_info and (exc := record.exc_info[1]):
             if isinstance(exc, ConsoleRenderable) or hasattr(exc, "__rich_console__"):
                 return exc  # type: ignore
-        return self._render_message(record, message)
+
+        from datetime import datetime
+
+        from rich.table import Table
+
+        # Check for subprocess source identifier (use short form)
+        log_source = os.environ.get("ATO_LOG_SOURCE")
+        source_id = os.environ.get("ATO_BUILD_ID", "")[:4] if log_source else ""
+
+        # Build styled prefix: [id] time L logger_name
+        timestamp = datetime.fromtimestamp(record.created).strftime("%H:%M:%S")
+        level_name = record.levelname
+        level_char = LEVEL_CHAR.get(level_name, level_name[0])
+        logger_name = record.name
+
+        # Truncate/pad logger name to fixed width (18 chars) for alignment
+        if len(logger_name) > 18:
+            logger_name = "…" + logger_name[-17:]
+        logger_name = f"{logger_name:<18}"
+
+        if not self._is_terminal or _is_serving():
+            # Avoid Rich table wrapping in non-interactive streams.
+            prefix_parts: list[str] = []
+            if source_id:
+                prefix_parts.append(f"[{source_id}]")
+            prefix_parts.append(timestamp)
+            prefix_parts.append(level_char)
+            prefix_parts.append(logger_name.strip())
+            prefix = "  ".join(prefix_parts) + "  "
+            output = Text.from_ansi(f"{prefix}{message}")
+            output.no_wrap = True
+            output.overflow = "ignore"
+            return output
+
+        # Level-specific colors (from shared constants)
+        level_color = LEVEL_STYLES.get(level_name, "white")
+
+        # Build prefix as Text
+        prefix = Text()
+        if source_id:
+            prefix.append(f"[{source_id}]  ", style="dim")
+        prefix.append(f"{timestamp}  ", style="dim")
+        prefix.append(level_char, style=f"{level_color} bold")
+        prefix.append(f"  {logger_name}  ", style="dim")
+
+        # Get message renderable
+        msg_renderable = self._render_message(record, message)
+
+        # Use a borderless table so prefix stays fixed and message wraps nicely
+        table = Table.grid(padding=0)
+        table.add_column(no_wrap=True)  # Prefix column - no wrapping
+        table.add_column()  # Message column - wraps naturally
+        table.add_row(prefix, msg_renderable)
+        return table
 
     def _write_to_db(self, record: logging.LogRecord) -> None:
         if _is_serving():
@@ -1013,8 +1015,7 @@ class LogHandler(RichHandler):
                 exc_value = record.exc_info[1] if record.exc_info else None
                 if exc_value and isinstance(exc_value, _BaseBaseUserException):
                     message = get_exception_display_message(exc_value)
-                    if isinstance(db_logger, BuildLogger):
-                        ato_tb = db_logger._extract_ato_traceback(exc_value)
+                    ato_tb = render_ato_traceback(exc_value)
                     if record.exc_info:
                         py_tb = json.dumps(_extract_traceback_frames(*record.exc_info))
                 else:
@@ -1036,9 +1037,32 @@ class LogHandler(RichHandler):
             except Exception:
                 pass
 
+    def _should_log_to_console(self, record: logging.LogRecord) -> bool:
+        """
+        Common log filter for both server console and CLI builds
+        """
+        # name = record.name
+
+        # Filter by logger name
+        # if name.startswith(("watchdog", "fsevents")):
+        #     return False
+        # if not _is_serving():
+        #     if name.startswith("httpcore") or name.startswith("atopile.server"):
+        #         return False
+        #     if not (
+        #         name.startswith("atopile")
+        #         or name.startswith("faebryk")
+        #         or name.startswith("test")
+        #     ):
+        #         return False
+
+        # Console only shows INFO and above
+        if record.levelno < logging.INFO:
+            return False
+
+        return True
+
     def emit(self, record: logging.LogRecord) -> None:
-        if not _should_log(record):
-            return
 
         # Get scope level for tree visualization prefix
         scope_level = _log_scope_level.get()
@@ -1053,6 +1077,7 @@ class LogHandler(RichHandler):
             record.msg = f"{scope_prefix}{formatted}"
             record.args = None
 
+        # Database receives all logs unfiltered
         self._write_to_db(record)
 
         # Restore original for proper exception handling below
@@ -1060,26 +1085,8 @@ class LogHandler(RichHandler):
             record.msg = original_msg  # pyright: ignore[reportPossiblyUnboundVariable]
             record.args = original_args  # pyright: ignore[reportPossiblyUnboundVariable]
 
-        # Test workers: skip expensive Rich traceback rendering for console output
-        # The traceback is already written to DB above, console output goes to log file
-        if os.environ.get("FBRK_TEST_ORCHESTRATOR_URL") and record.exc_info:
-            return
-
-        # Workers suppress console except errors (unless verbose mode)
-        if (
-            os.environ.get("ATO_BUILD_WORKER")
-            and not os.environ.get("ATO_VERBOSE")
-            and self.console.file in (sys.stdout, sys.stderr)
-            and record.levelno < logging.ERROR
-        ):
-            return
-
-        # Dedupe exceptions
-        hashable = None
-        if exc := getattr(record, "exc_info", None):
-            if exc[1] and isinstance(exc[1], _BaseBaseUserException):
-                hashable = exc[1].get_frozen()
-        if hashable and hashable in self._logged_exceptions:
+        # Console is filtered (INFO+, atopile/faebryk only, etc.)
+        if not self._should_log_to_console(record):
             return
 
         # Render
@@ -1098,26 +1105,32 @@ class LogHandler(RichHandler):
         if scope_prefix:
             message = f"{scope_prefix}{message}"
 
+        if _is_serving():
+            # VSCode Output should be plain text to avoid forced wrapping.
+            from rich.text import Text
+
+            plain = Text.from_ansi(message.replace("\r", "")).plain
+            target = error_console.file if (record.levelno >= logging.ERROR and record.exc_info) else self.console.file
+            try:
+                target.write(plain + "\n")
+                target.flush()
+            except Exception:
+                self.handleError(record)
+            return
+
         renderable = self.render(
             record=record,
             traceback=tb,
             message_renderable=self.render_message(record, message),
         )
 
-        if isinstance(self.console.file, NullFile):
+        try:
+            if record.levelno >= logging.ERROR and record.exc_info:
+                error_console.print(renderable, crop=False, overflow="ignore")
+            else:
+                self.console.print(renderable, crop=False, overflow="ignore")
+        except Exception:
             self.handleError(record)
-        else:
-            try:
-                if record.levelno >= logging.ERROR and record.exc_info:
-                    stderr_console = Console(file=sys.stderr, width=self.console.width)
-                    stderr_console.print(renderable, crop=False, overflow="ignore")
-                else:
-                    self.console.print(renderable, crop=False, overflow="ignore")
-            except Exception:
-                self.handleError(record)
-            finally:
-                if hashable:
-                    self._logged_exceptions.add(hashable)
 
 
 # =============================================================================
@@ -1153,6 +1166,41 @@ def _strip_stream_id(entry: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in entry.items() if k != "id"}
 
 
+def _fetch_logs(
+    log_class: type,
+    identifier: str,
+    *,
+    context_filter: str | None,
+    log_levels: list[str] | None,
+    audience: str | None,
+    after_id: int,
+    count: int,
+    order: str,
+    is_test: bool = False,
+) -> tuple[list[dict[str, Any]], int]:
+    """Generic log fetcher for both build and test logs."""
+    max_count = max(1, min(count, LOGS_MAX_COUNT))
+    if is_test:
+        return log_class.fetch_chunk(
+            identifier,
+            test_name=context_filter,
+            levels=log_levels,
+            audience=audience,
+            after_id=after_id,
+            count=max_count,
+            order=order,
+        )
+    return log_class.fetch_chunk(
+        identifier,
+        stage=context_filter,
+        levels=log_levels,
+        audience=audience,
+        after_id=after_id,
+        count=max_count,
+        order=order,
+    )
+
+
 def load_build_logs(
     *,
     build_id: str,
@@ -1161,17 +1209,12 @@ def load_build_logs(
     audience: str | None,
     count: int,
 ) -> list[dict[str, Any]]:
-    max_count = max(1, min(count, LOGS_MAX_COUNT))
     from atopile.model.sqlite import Logs
 
-    rows, _last_id = Logs.fetch_chunk(
-        build_id,
-        stage=stage,
-        levels=log_levels,
-        audience=audience,
-        after_id=0,
-        count=max_count,
-        order="DESC",
+    rows, _ = _fetch_logs(
+        Logs, build_id,
+        context_filter=stage, log_levels=log_levels, audience=audience,
+        after_id=0, count=count, order="DESC",
     )
     return [_strip_stream_id(r) for r in rows]
 
@@ -1184,17 +1227,12 @@ def load_test_logs(
     audience: str | None,
     count: int,
 ) -> list[dict[str, Any]]:
-    max_count = max(1, min(count, LOGS_MAX_COUNT))
     from atopile.model.sqlite import TestLogs
 
-    rows, _last_id = TestLogs.fetch_chunk(
-        test_run_id,
-        test_name=test_name,
-        levels=log_levels,
-        audience=audience,
-        after_id=0,
-        count=max_count,
-        order="DESC",
+    rows, _ = _fetch_logs(
+        TestLogs, test_run_id,
+        context_filter=test_name, log_levels=log_levels, audience=audience,
+        after_id=0, count=count, order="DESC", is_test=True,
     )
     return [_strip_stream_id(r) for r in rows]
 
@@ -1208,17 +1246,12 @@ def load_build_logs_stream(
     after_id: int,
     count: int,
 ) -> tuple[list[dict[str, Any]], int]:
-    max_count = max(1, min(count, 5000))
     from atopile.model.sqlite import Logs
 
-    return Logs.fetch_chunk(
-        build_id,
-        stage=stage,
-        levels=log_levels,
-        audience=audience,
-        after_id=after_id,
-        count=max_count,
-        order="ASC",
+    return _fetch_logs(
+        Logs, build_id,
+        context_filter=stage, log_levels=log_levels, audience=audience,
+        after_id=after_id, count=count, order="ASC",
     )
 
 
@@ -1231,17 +1264,12 @@ def load_test_logs_stream(
     after_id: int,
     count: int,
 ) -> tuple[list[dict[str, Any]], int]:
-    max_count = max(1, min(count, 5000))
     from atopile.model.sqlite import TestLogs
 
-    return TestLogs.fetch_chunk(
-        test_run_id,
-        test_name=test_name,
-        levels=log_levels,
-        audience=audience,
-        after_id=after_id,
-        count=max_count,
-        order="ASC",
+    return _fetch_logs(
+        TestLogs, test_run_id,
+        context_filter=test_name, log_levels=log_levels, audience=audience,
+        after_id=after_id, count=count, order="ASC", is_test=True,
     )
 
 
