@@ -246,6 +246,15 @@
   visibility: hidden;
 }
 
+.twistie-loading {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--vscode-progressBar-background, var(--accent));
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
 /* ============================================================================
    Icons
    ============================================================================ */

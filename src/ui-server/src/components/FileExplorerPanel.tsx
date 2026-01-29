@@ -213,6 +213,7 @@ interface TreeNodeProps {
   depth: number;
   selectedPaths: Set<string>;
   expandedPaths: Set<string>;
+  loadingDirs: Set<string>;
   projectRoot: string;
   renamingPath: string | null;
   draggedPath: string | null;
@@ -236,6 +237,7 @@ const TreeNode = memo(function TreeNode({
   depth,
   selectedPaths,
   expandedPaths,
+  loadingDirs,
   projectRoot,
   renamingPath,
   draggedPath,
@@ -256,7 +258,9 @@ const TreeNode = memo(function TreeNode({
   const isDirectory = node.type === 'directory';
   const isExpanded = expandedPaths.has(node.path);
   const isSelected = selectedPaths.has(node.path);
-  const hasChildren = isDirectory && node.children && node.children.length > 0;
+  const isLoading = loadingDirs.has(node.path);
+  // Show expand arrow for directories with children OR lazy-loaded directories
+  const hasChildren = isDirectory && ((node.children && node.children.length > 0) || node.lazyLoad);
   const isRenaming = renamingPath === node.path;
   const isDragging = draggedPath === node.path;
   const isDragOver = dragOverPath === node.path && isDirectory;
@@ -393,7 +397,9 @@ const TreeNode = memo(function TreeNode({
       >
         {/* Twistie (expand/collapse arrow) */}
         <span className={`twistie ${isDirectory && hasChildren ? '' : 'hidden'}`}>
-          {isExpanded ? (
+          {isLoading ? (
+            <span className="twistie-loading" />
+          ) : isExpanded ? (
             <ChevronDown size={16} className="twistie-icon" />
           ) : (
             <ChevronRight size={16} className="twistie-icon" />
@@ -425,7 +431,7 @@ const TreeNode = memo(function TreeNode({
       </div>
 
       {/* Children */}
-      {isExpanded && hasChildren && (
+      {isExpanded && hasChildren && !node.lazyLoad && (
         <div className="tree-children" role="group">
           {sortedChildren.map((child) => (
             <TreeNode
@@ -434,6 +440,7 @@ const TreeNode = memo(function TreeNode({
               depth={depth + 1}
               selectedPaths={selectedPaths}
               expandedPaths={expandedPaths}
+              loadingDirs={loadingDirs}
               projectRoot={projectRoot}
               renamingPath={renamingPath}
               draggedPath={draggedPath}
@@ -608,8 +615,32 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
     });
   }, []);
 
+  // Helper to find a node by path in the file tree
+  const findNodeByPath = useCallback((nodes: FileNode[], targetPath: string): FileNode | null => {
+    for (const node of nodes) {
+      if (node.path === targetPath) return node;
+      if (node.children) {
+        const found = findNodeByPath(node.children, targetPath);
+        if (found) return found;
+      }
+    }
+    return null;
+  }, []);
+
   // Handle expand/collapse
   const handleToggle = useCallback((path: string) => {
+    const node = findNodeByPath(fileTree, path);
+
+    // If this is a lazy-loaded directory being expanded, request its contents
+    if (node?.type === 'directory' && node.lazyLoad && !expandedPaths.has(path) && !loadingDirs.has(path) && projectRoot) {
+      setLoadingDirs(prev => new Set([...prev, path]));
+      postToExtension({
+        type: 'loadDirectory',
+        projectRoot,
+        directoryPath: path,
+      });
+    }
+
     setExpandedPaths((prev) => {
       const next = new Set(prev);
       if (next.has(path)) {
@@ -619,7 +650,7 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
       }
       return next;
     });
-  }, []);
+  }, [fileTree, expandedPaths, loadingDirs, projectRoot, findNodeByPath]);
 
   // Handle file open - paths are relative to project root
   const handleOpen = useCallback((path: string) => {
@@ -876,7 +907,13 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
     // Recursively filter nodes - keep a node if:
     // 1. Its name matches the query, OR
     // 2. Any of its children match (for directories)
+    // Note: Exclude lazy-loaded directories from search (their contents aren't loaded)
     const filterNode = (node: FileNode): FileNode | null => {
+      // Skip lazy-loaded directories in search - their contents aren't loaded
+      if (node.lazyLoad) {
+        return null;
+      }
+
       const nameMatches = matcher(node.name);
 
       if (node.type === 'directory' && node.children) {
@@ -1135,6 +1172,7 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
               depth={0}
               selectedPaths={selectedPaths}
               expandedPaths={expandedPaths}
+              loadingDirs={loadingDirs}
               projectRoot={projectRoot}
               renamingPath={renamingPath}
               draggedPath={draggedPath}
