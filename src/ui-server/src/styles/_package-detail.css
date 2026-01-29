@@ -1163,9 +1163,32 @@ kicanvas-embed {
   --kicanvas-board-bg: var(--bg-primary);
   --kicanvas-board-grid: var(--bg-primary);
 
+  /* Hide grid dots - try multiple variable names */
+  --grid-color: transparent;
+  --grid-bg: transparent;
+  --grid-dot-color: transparent;
+  --grid-line-color: transparent;
+  --canvas-grid: transparent;
+  --board-grid: var(--bg-primary);
+  --grid: transparent;
+  --grid-major: transparent;
+  --grid-minor: transparent;
+  --grid-opacity: 0;
+
   /* Base UI colors - replace kicanvas defaults with theme colors */
   --bg: var(--bg-primary);
   --fg: var(--text-primary);
+
+  /* Toolbar (bottom control bar) - ensure proper styling */
+  --toolbar-bg: var(--bg-secondary);
+  --toolbar-fg: var(--text-primary);
+  --toolbar-border: 1px solid var(--border-subtle);
+  --toolbar-button-bg: var(--bg-secondary);
+  --toolbar-button-fg: var(--text-primary);
+  --toolbar-button-hover-bg: var(--bg-hover);
+  --toolbar-button-hover-fg: var(--text-primary);
+  --toolbar-button-active-bg: var(--accent);
+  --toolbar-button-active-fg: var(--text-on-accent);
 
   /* Remove gradients - use solid colors instead */
   --gradient-purple-green-light: var(--bg-secondary);
@@ -1259,4 +1282,36 @@ kicanvas-embed {
   --tooltip-bg: var(--bg-tertiary);
   --tooltip-fg: var(--text-primary);
   --tooltip-border: 1px solid var(--border-color);
+
+  /* Status bar / bottom toolbar area */
+  --status-bar-bg: var(--bg-secondary);
+  --status-bar-fg: var(--text-primary);
+  --status-bar-border: 1px solid var(--border-subtle);
+
+  /* Controls area at bottom */
+  --controls-bg: var(--bg-secondary);
+  --controls-fg: var(--text-primary);
+  --controls-border: 1px solid var(--border-subtle);
+}
+
+/* Direct styling for kicanvas elements via CSS part selectors (if supported) */
+kicanvas-embed::part(toolbar),
+kicanvas-embed::part(controls),
+kicanvas-embed::part(status-bar) {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-subtle) !important;
+}
+
+kicanvas-embed::part(toolbar-button),
+kicanvas-embed::part(button) {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-subtle) !important;
+}
+
+kicanvas-embed::part(toolbar-button):hover,
+kicanvas-embed::part(button):hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
 }

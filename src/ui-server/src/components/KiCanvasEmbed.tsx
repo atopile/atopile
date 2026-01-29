@@ -154,14 +154,54 @@ export default function KiCanvasEmbed({
     const handleLoad = () => {
       setIsLoading(false)
 
-      // Access the viewer
+      // Access the viewer with extended type for various zoom methods
       const viewer = (embed as unknown as {
         viewer?: {
           layers?: { set_visibility?: (layer: string, visible: boolean) => void }
           zoom_to_page?: () => void
+          zoom_to_fit?: () => void
+          zoom_all?: () => void
+          fit?: () => void
+          camera?: {
+            fit_to_bbox?: (bbox: unknown) => void
+            zoom_to_bbox?: (bbox: unknown) => void
+          }
           draw?: () => void
+          grid?: {
+            visible?: boolean
+            enabled?: boolean
+          }
+          set_grid_visible?: (visible: boolean) => void
+          show_grid?: boolean
+          renderer?: {
+            grid_visible?: boolean
+            show_grid?: boolean
+          }
         }
       }).viewer
+
+      // Disable grid dots
+      if (viewer) {
+        // Try various methods to disable the grid
+        if (viewer.grid) {
+          viewer.grid.visible = false
+          viewer.grid.enabled = false
+        }
+        if (viewer.set_grid_visible) {
+          viewer.set_grid_visible(false)
+        }
+        if ('show_grid' in viewer) {
+          viewer.show_grid = false
+        }
+        if (viewer.renderer) {
+          if ('grid_visible' in viewer.renderer) {
+            viewer.renderer.grid_visible = false
+          }
+          if ('show_grid' in viewer.renderer) {
+            viewer.renderer.show_grid = false
+          }
+        }
+      }
 
       // Hide reference designators if requested
       if (hideReferences && viewer?.layers?.set_visibility) {
@@ -170,15 +210,94 @@ export default function KiCanvasEmbed({
         viewer.layers.set_visibility('B.Silkscreen', false)
       }
 
-      // Zoom to page bounds (excludes text items that extend beyond board)
-      // This gives a cleaner view focused on the actual footprint/board
-      if (viewer?.zoom_to_page) {
-        // Small delay to ensure layer visibility changes are applied
-        setTimeout(() => {
-          viewer.zoom_to_page?.()
-          viewer.draw?.()
-        }, 50)
+      // Style toolbar buttons and hide grid in shadow DOM
+      const styleShadowDOM = () => {
+        const shadowRoot = embed.shadowRoot
+        if (!shadowRoot) return
+
+        // Get computed theme colors
+        const bgPrimary = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim() || '#1e1e2e'
+        const bgSecondary = getComputedStyle(document.documentElement).getPropertyValue('--bg-secondary').trim() || '#313244'
+        const textPrimary = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim() || '#cdd6f4'
+        const borderSubtle = getComputedStyle(document.documentElement).getPropertyValue('--border-subtle').trim() || '#45475a'
+        const bgHover = getComputedStyle(document.documentElement).getPropertyValue('--bg-hover').trim() || '#45475a'
+
+        // Inject CSS to hide grid and style toolbar
+        const styleId = 'atopile-kicanvas-overrides'
+        if (!shadowRoot.getElementById(styleId)) {
+          const style = document.createElement('style')
+          style.id = styleId
+          style.textContent = `
+            /* Hide grid dots/lines */
+            .grid, [class*="grid"], canvas.grid, .grid-layer, .grid-overlay {
+              display: none !important;
+              visibility: hidden !important;
+              opacity: 0 !important;
+            }
+
+            /* Set grid colors to transparent/background */
+            :host {
+              --grid-color: transparent !important;
+              --grid-bg: transparent !important;
+              --grid: transparent !important;
+              --board-grid: ${bgPrimary} !important;
+              --kicanvas-board-grid: ${bgPrimary} !important;
+            }
+
+            /* Style toolbar buttons */
+            button {
+              background: ${bgSecondary} !important;
+              color: ${textPrimary} !important;
+              border: 1px solid ${borderSubtle} !important;
+              border-radius: 4px !important;
+            }
+            button:hover {
+              background: ${bgHover} !important;
+            }
+
+            /* Style toolbar containers */
+            [class*="toolbar"], [class*="controls"], [class*="status-bar"] {
+              background: ${bgSecondary} !important;
+              border-color: ${borderSubtle} !important;
+            }
+          `
+          shadowRoot.appendChild(style)
+        }
+
+        // Also directly style buttons for browsers that don't support !important in shadow DOM
+        const buttons = shadowRoot.querySelectorAll('button')
+        buttons.forEach((btn: HTMLButtonElement) => {
+          btn.style.background = bgSecondary
+          btn.style.color = textPrimary
+          btn.style.border = `1px solid ${borderSubtle}`
+          btn.style.borderRadius = '4px'
+          btn.addEventListener('mouseenter', () => {
+            btn.style.background = bgHover
+          })
+          btn.addEventListener('mouseleave', () => {
+            btn.style.background = bgSecondary
+          })
+        })
       }
+
+      // Re-zoom after hiding layers to center on remaining visible content
+      // Try various zoom methods that KiCanvas may support
+      setTimeout(() => {
+        // Style shadow DOM (toolbar buttons, hide grid)
+        styleShadowDOM()
+
+        // Try zoom_to_fit first (fits to visible content)
+        if (viewer?.zoom_to_fit) {
+          viewer.zoom_to_fit()
+        } else if (viewer?.fit) {
+          viewer.fit()
+        } else if (viewer?.zoom_all) {
+          viewer.zoom_all()
+        } else if (viewer?.zoom_to_page) {
+          viewer.zoom_to_page()
+        }
+        viewer?.draw?.()
+      }, 100) // Slightly longer delay to ensure layer changes are processed
     }
     const handleError = () => setIsLoading(false)
 
