@@ -316,7 +316,7 @@ export function Sidebar() {
               onClick={() => setActiveTab('stdlib')}
               title="Standard Library"
             >
-              Stdlib
+              Standard Library
               {(stdlibItems?.length || 0) > 0 && <span className="tab-badge">{stdlibItems?.length}</span>}
             </button>
             <button
@@ -324,7 +324,7 @@ export function Sidebar() {
               onClick={() => setActiveTab('parameters')}
               title="Parameters"
             >
-              Params
+              Parameters
               {variableCount > 0 && <span className="tab-badge">{variableCount}</span>}
             </button>
             <button
