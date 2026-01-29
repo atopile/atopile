@@ -207,35 +207,6 @@ def _env_truthy(name: str) -> bool | None:
     return True
 
 
-def _detect_llm_agent() -> bool:
-    agent_env_vars = [
-        "CLAUDE_CODE",
-        "ANTHROPIC_CLAUDE_CODE",
-        "CLAUDE_CODE_SESSION",
-        "CODEX_CLI",
-        "OPENAI_CODEX",
-        "OPENAI_CODEX_CLI",
-        "CURSOR",
-        "CURSOR_IDE",
-        "CURSOR_TRACE_ID",
-    ]
-    if any(os.getenv(k) for k in agent_env_vars):
-        return True
-    term_program = (os.getenv("TERM_PROGRAM") or "").lower()
-    return "cursor" in term_program
-
-
-def _resolve_llm_flag(llm_cli: bool) -> bool:
-    if llm_cli:
-        return True
-    override = _env_truthy("FBRK_TEST_LLM")
-    if override is not None:
-        return override
-    if _env_truthy("CI") or _env_truthy("GITHUB_ACTIONS"):
-        return False
-    return _detect_llm_agent()
-
-
 def _count_callsites(
     flags: list,
     *,
@@ -579,11 +550,6 @@ def test(
         "--open",
         help="Automatically open the live test report in your browser",
     ),
-    llm: bool = typer.Option(
-        False,
-        "--llm",
-        help="Print LLM-friendly summary + jq hints (uses artifacts/test-report.json)",
-    ),
     reuse: bool = typer.Option(
         False,
         "--reuse",
@@ -665,19 +631,15 @@ def test(
             except Exception:
                 pass
 
-    llm_effective = _resolve_llm_flag(llm)
-
     if reuse:
         if direct:
             raise ValueError("--reuse cannot be combined with --direct")
-        from test.runner.main import _print_llm_summary, rebuild_reports_from_existing
+        from test.runner.main import rebuild_reports_from_existing
 
-        updated = rebuild_reports_from_existing(
+        rebuild_reports_from_existing(
             report_path=Path("artifacts/test-report.json"),
             baseline_commit=baseline_commit,
         )
-        if llm_effective:
-            _print_llm_summary(updated)
         if keep_open:
             from test.runner.main import run_report_server
 
@@ -731,7 +693,6 @@ def test(
         local_baseline_name=local_baseline,
         save_baseline_name=save_baseline,
         open_browser=open_browser,
-        llm=llm_effective,
         keep_open=keep_open,
     )
 

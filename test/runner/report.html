@@ -802,6 +802,25 @@
         display: none;
       }
 
+      .baseline-dropdown-filter {
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--ctp-surface1);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+      }
+
+      .baseline-dropdown-filter input[type="checkbox"] {
+        cursor: pointer;
+      }
+
+      .baseline-dropdown-filter label {
+        cursor: pointer;
+        color: var(--ctp-text);
+        user-select: none;
+      }
+
       .baseline-status {
         font-size: 10px;
         color: var(--ctp-overlay1);
@@ -1359,6 +1378,8 @@
       // Baseline selector functionality
       var availableBaselines = [[baselines_json]];
       var remoteCommits = [[remote_commits_json]];
+      var remoteBranchHeads = [];
+      var branchBase = null;
       var currentBaseline = "[[current_baseline]]";
       var currentBaselineInfo = "[[current_baseline_info]]";
 
@@ -1380,12 +1401,18 @@
       function filterBaselineOptions() {
         var searchInput = document.getElementById("baselineSearchInput");
         var searchTerm = searchInput.value.toLowerCase();
+        var showOnlyAvailable = document.getElementById("baselineShowOnlyAvailable").checked;
         var options = document.querySelectorAll(".baseline-dropdown-option");
         var optgroups = document.querySelectorAll(".baseline-dropdown-optgroup");
 
         options.forEach(function(option) {
           var text = option.textContent.toLowerCase();
-          if (text.includes(searchTerm)) {
+          var matchesSearch = text.includes(searchTerm);
+          var isDisabled = option.classList.contains("disabled");
+          var isAvailable = !isDisabled;
+
+          // Show if matches search AND (show all OR is available)
+          if (matchesSearch && (!showOnlyAvailable || isAvailable)) {
             option.classList.remove("hidden");
           } else {
             option.classList.add("hidden");
@@ -1525,6 +1552,130 @@
           container.appendChild(remoteGroup);
         }
 
+        // Add branch base
+        if (branchBase) {
+          var baseGroup = document.createElement("div");
+          baseGroup.className = "baseline-dropdown-optgroup";
+
+          var baseLabel = document.createElement("div");
+          baseLabel.className = "baseline-dropdown-optgroup-label";
+          baseLabel.textContent = "Branch Base";
+          baseGroup.appendChild(baseLabel);
+
+          var option = document.createElement("div");
+          option.className = "baseline-dropdown-option";
+          var commitHash = branchBase.commit_hash || "unknown";
+          var value = "remote:" + commitHash;
+          option.dataset.value = value;
+
+          // Get first line of commit message
+          var message = "";
+          if (branchBase.commit_message) {
+            message = branchBase.commit_message.split("\n")[0];
+            if (message.length > 50) {
+              message = message.substring(0, 47) + "...";
+            }
+          }
+
+          // Format option text
+          var text = commitHash;
+          if (message) {
+            text += " - " + message;
+          }
+          if (branchBase.base_branch) {
+            text += " (base: " + branchBase.base_branch + ")";
+          }
+
+          // Check if available
+          var isDisabled = false;
+          if (!branchBase.has_workflow_run) {
+            text += " (no CI run)";
+            isDisabled = true;
+          } else if (!branchBase.has_artifact) {
+            text += " (no artifact)";
+            isDisabled = true;
+          }
+
+          option.textContent = text;
+
+          if (isDisabled) {
+            option.classList.add("disabled");
+          } else {
+            option.onclick = function() {
+              selectBaselineOption(value, text);
+            };
+          }
+
+          if (currentBaseline === value) {
+            option.classList.add("selected");
+          }
+
+          baseGroup.appendChild(option);
+          container.appendChild(baseGroup);
+        }
+
+        // Add branch heads
+        if (remoteBranchHeads && remoteBranchHeads.length > 0) {
+          var branchGroup = document.createElement("div");
+          branchGroup.className = "baseline-dropdown-optgroup";
+
+          var branchLabel = document.createElement("div");
+          branchLabel.className = "baseline-dropdown-optgroup-label";
+          branchLabel.textContent = "Branch Heads";
+          branchGroup.appendChild(branchLabel);
+
+          remoteBranchHeads.forEach(function (branch) {
+            var option = document.createElement("div");
+            option.className = "baseline-dropdown-option";
+            var commitHash = branch.commit_hash || "unknown";
+            var value = "remote:" + commitHash;
+            option.dataset.value = value;
+
+            // Get first line of commit message
+            var message = "";
+            if (branch.commit_message) {
+              message = branch.commit_message.split("\n")[0];
+              if (message.length > 40) {
+                message = message.substring(0, 37) + "...";
+              }
+            }
+
+            // Format option text with branch name
+            var text = branch.branch + " (" + commitHash + ")";
+            if (message) {
+              text += " - " + message;
+            }
+
+            // Check if available
+            var isDisabled = false;
+            if (!branch.has_workflow_run) {
+              text += " (no CI run)";
+              isDisabled = true;
+            } else if (!branch.has_artifact) {
+              text += " (no artifact)";
+              isDisabled = true;
+            }
+
+            option.textContent = text;
+
+            if (isDisabled) {
+              option.classList.add("disabled");
+            } else {
+              option.onclick = function() {
+                selectBaselineOption(value, text);
+              };
+            }
+
+            if (currentBaseline === value) {
+              option.classList.add("selected");
+            }
+
+            branchGroup.appendChild(option);
+          });
+
+          container.appendChild(branchGroup);
+        }
+
         // Add local baselines
         if (availableBaselines && availableBaselines.length > 0) {
           var localGroup = document.createElement("div");
@@ -1577,8 +1728,14 @@
           var data = await response.json();
           if (data.commits) {
             remoteCommits = data.commits;
-            populateBaselineDropdown();
           }
+          if (data.branch_heads) {
+            remoteBranchHeads = data.branch_heads;
+          }
+          if (data.branch_base) {
+            branchBase = data.branch_base;
+          }
+          populateBaselineDropdown();
         } catch (e) {
           console.log("Could not load remote commits (likely static file)", e);
         }
@@ -1857,6 +2014,14 @@
                 placeholder="Search commits..."
                 oninput="filterBaselineOptions()"
               >
+            </div>
+            <div class="baseline-dropdown-filter">
+              <input
+                type="checkbox"
+                id="baselineShowOnlyAvailable"
+                onchange="filterBaselineOptions()"
+              >
+              <label for="baselineShowOnlyAvailable">Show only available</label>
             </div>
             <div class="baseline-dropdown-options" id="baselineDropdownOptions">
               <!-- Options populated by JavaScript -->

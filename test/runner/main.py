@@ -13,16 +13,13 @@ import json
 import os
 import platform
 import queue
-import re
 import shutil
 import socket
 import subprocess
 import sys
-import tempfile
 import threading
 import time
-from dataclasses import dataclass, field
-from enum import StrEnum, auto
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, cast
 from urllib.parse import quote as url_quote
@@ -32,12 +29,27 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Template
-from rich.console import Console
-from rich.text import Text
 
 # Ensure we can import from test package
 sys.path.insert(0, os.getcwd())
 
+from test.runner.baselines import (
+    CompareStatus,
+    RemoteBaseline,
+    fetch_all_workflow_runs,
+    fetch_remote_commits,
+    fetch_remote_report,
+    get_branch_base,
+    get_current_branch,
+    get_remote_branch_heads,
+    list_local_baselines,
+    load_local_baseline,
+    remote_commits,
+    remote_commits_lock,
+    save_local_baseline,
+    workflow_runs_cache,
+    workflow_runs_lock,
+)
 from test.runner.common import (
     ClaimRequest,
     ClaimResponse,
@@ -45,927 +57,34 @@ from test.runner.common import (
     EventType,
     Outcome,
 )
-
-
-def ansi_to_html(text: str) -> str:
-    """Convert ANSI escape codes to HTML with inline styles."""
-    import io
-
-    # Use Rich to parse ANSI and export to HTML
-    console = Console(file=io.StringIO(), force_terminal=True, record=True)
-    rich_text = Text.from_ansi(text)
-    console.print(rich_text, soft_wrap=True)
-    # Export with inline styles, extract just the code content
-    html_output = console.export_html(inline_styles=True, code_format="{code}")
-    return html_output
-
-
-class CompareStatus(StrEnum):
-    """Status comparing local test to remote baseline."""
-
-    SAME = auto()  # Outcome unchanged
-    REGRESSION = auto()  # Was passing, now failing
-    FIXED = auto()  # Was failing, now passing
-    NEW = auto()  # Test didn't exist in baseline
-    REMOVED = auto()  # Test was removed (only in baseline)
-
-
-@dataclass
-class RemoteBaseline:
-    """Holds remote test results for comparison."""
-
-    tests: dict[str, dict[str, Any]] = field(default_factory=dict)  # nodeid -> info
-    commit_hash: Optional[str] = None
-    commit_hash_full: Optional[str] = None
-    commit_author: Optional[str] = None
-    commit_message: Optional[str] = None
-    commit_time: Optional[str] = None
-    branch: Optional[str] = None
-    loaded: bool = False
-    error: Optional[str] = None
-
-
-def get_current_branch() -> Optional[str]:
-    """Get the current git branch name."""
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except Exception:
-        pass
-    return None
-
-
-def get_remote_tracking_branch() -> Optional[str]:
-    """Get the remote tracking branch (e.g., origin/main)."""
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except Exception:
-        pass
-    return None
-
-
-def fetch_remote_report(commit_hash: Optional[str] = None, use_cache: bool = True) -> RemoteBaseline:
-    """
-    Fetch a test report from GitHub Actions.
-
-    If commit_hash is provided, fetches the report for that specific commit.
-    Otherwise, fetches the most recent completed run for the current branch
-    (falling back to 'main' if no runs exist for the current branch).
-
-    Uses the `gh` CLI to download artifacts from workflow runs.
-    Caches downloaded baselines for faster subsequent access.
-    """
-    # Check cache first if commit_hash is provided and caching is enabled
-    if commit_hash and use_cache:
-        cached = load_cached_remote_baseline(commit_hash)
-        if cached:
-            return cached
-
-    baseline = RemoteBaseline()
-
-    # Check gh CLI is available and we're in a valid repo
-    try:
-        result = subprocess.run(
-            ["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode != 0:
-            baseline.error = "Failed to get repository info (is gh CLI installed?)"
-            return baseline
-        # Successfully got repo info, gh CLI is working
-    except FileNotFoundError:
-        baseline.error = "gh CLI not found - install with: brew install gh"
-        return baseline
-    except Exception as e:
-        baseline.error = f"Error getting repo info: {e}"
-        return baseline
-
-    run_id = None
-
-    # If a specific commit hash is provided, find the workflow run for it
-    if commit_hash:
-        # Resolve short hash to full hash using git
-        try:
-            result = subprocess.run(
-                ["git", "rev-parse", commit_hash],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0:
-                full_hash = result.stdout.strip()
-            else:
-                full_hash = commit_hash  # Use as-is if git can't resolve
-        except Exception:
-            full_hash = commit_hash
-
-        try:
-            result = subprocess.run(
-                [
-                    "gh",
-                    "run",
-                    "list",
-                    "--commit",
-                    full_hash,
-                    "--workflow",
-                    "pytest.yml",
-                    "--status",
-                    "completed",
-                    "--limit",
-                    "1",
-                    "--json",
-                    "databaseId,headSha,headBranch",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if result.returncode == 0:
-                runs = json.loads(result.stdout)
-                if runs:
-                    run_id = runs[0]["databaseId"]
-                    baseline.commit_hash = runs[0]["headSha"][:8]
-                    baseline.branch = runs[0].get("headBranch", "unknown")
-                else:
-                    baseline.error = f"No workflow run found for commit '{commit_hash}'"
-                    return baseline
-            else:
-                baseline.error = f"Failed to find run for commit: {result.stderr}"
-                return baseline
-        except Exception as e:
-            baseline.error = f"Error finding workflow run for commit: {e}"
-            return baseline
-    else:
-        # Auto-detect: find the most recent completed workflow run for this branch
-        # Fall back to 'main' if current branch has no runs.
-        branch = get_current_branch()
-        if not branch:
-            baseline.error = "Could not determine current branch"
-            return baseline
-        baseline.branch = branch
-
-        branches_to_try = [branch]
-        if branch != "main":
-            branches_to_try.append("main")
-
-        for try_branch in branches_to_try:
-            try:
-                result = subprocess.run(
-                    [
-                        "gh",
-                        "run",
-                        "list",
-                        "--branch",
-                        try_branch,
-                        "--workflow",
-                        "pytest.yml",
-                        "--status",
-                        "completed",
-                        "--limit",
-                        "1",
-                        "--json",
-                        "databaseId,headSha,conclusion",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
-                if result.returncode != 0:
-                    continue
-
-                runs = json.loads(result.stdout)
-                if runs:
-                    run_id = runs[0]["databaseId"]
-                    baseline.commit_hash = runs[0]["headSha"][:8]
-                    baseline.branch = try_branch
-                    break
-            except Exception:
-                continue
-
-        if run_id is None:
-            baseline.error = (
-                f"No completed workflow runs found for '{branch}' or 'main'"
-            )
-            return baseline
-
-    # Download the test-report.json artifact
-    with tempfile.TemporaryDirectory() as tmpdir:
-        try:
-            result = subprocess.run(
-                [
-                    "gh",
-                    "run",
-                    "download",
-                    str(run_id),
-                    "--name",
-                    "test-report.json",
-                    "--dir",
-                    tmpdir,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            if result.returncode != 0:
-                baseline.error = f"Failed to download artifact: {result.stderr}"
-                return baseline
-
-            # Look for test-report.json in the downloaded files
-            report_path = Path(tmpdir) / "test-report.json"
-            if not report_path.exists():
-                # Check if it's in a subdirectory
-                for p in Path(tmpdir).rglob("test-report.json"):
-                    report_path = p
-                    break
-
-            if not report_path.exists():
-                baseline.error = "test-report.json not found in artifact"
-                return baseline
-
-            # Parse the report
-            report_data = json.loads(report_path.read_text())
-            tests = {}
-            for t in report_data.get("tests", []):
-                nodeid = t.get("nodeid") or t.get("fullnodeid")
-                outcome = t.get("outcome") or t.get("status")
-                if not nodeid or not outcome:
-                    continue
-                tests[nodeid] = {
-                    "outcome": str(outcome).lower(),
-                    "duration_s": t.get("duration_s") or t.get("duration"),
-                    "memory_usage_mb": t.get("memory_usage_mb", 0.0),
-                    "memory_peak_mb": t.get("memory_peak_mb", 0.0),
-                }
-            baseline.tests = tests
-            baseline.loaded = True
-
-            commit_info_data = report_data.get("commit") or {}
-            if not baseline.commit_hash and commit_info_data.get("short_hash"):
-                baseline.commit_hash = commit_info_data.get("short_hash")
-            if commit_info_data.get("hash"):
-                baseline.commit_hash_full = commit_info_data.get("hash")
-            elif baseline.commit_hash:
-                baseline.commit_hash_full = baseline.commit_hash
-            baseline.commit_author = commit_info_data.get("author")
-            baseline.commit_message = commit_info_data.get("message")
-            baseline.commit_time = commit_info_data.get("time")
-            if not baseline.branch and report_data.get("baseline", {}).get("branch"):
-                baseline.branch = report_data.get("baseline", {}).get("branch")
-
-            # Cache the baseline if successfully loaded
-            if baseline.loaded and baseline.commit_hash and use_cache:
-                cache_remote_baseline(baseline.commit_hash, baseline)
-
-        except Exception as e:
-            baseline.error = f"Error downloading/parsing artifact: {e}"
-            return baseline
-
-    return baseline
-
-
-def list_local_baselines() -> list[dict[str, Any]]:
-    """List all available local baselines."""
-    if not BASELINES_INDEX.exists():
-        return []
-    try:
-        index_data = json.loads(BASELINES_INDEX.read_text())
-        return index_data.get("baselines", [])
-    except Exception:
-        return []
-
-
-def load_local_baseline(name: str) -> RemoteBaseline:
-    """
-    Load a local baseline by name.
-    Returns a RemoteBaseline object for compatibility with existing comparison logic.
-    """
-    baseline = RemoteBaseline()
-
-    baseline_file = BASELINES_DIR / f"{name}.json"
-    if not baseline_file.exists():
-        baseline.error = f"Local baseline '{name}' not found"
-        return baseline
-
-    try:
-        data = json.loads(baseline_file.read_text())
-        tests = {}
-        for t in data.get("tests", []):
-            nodeid = t.get("nodeid") or t.get("fullnodeid")
-            outcome = t.get("outcome") or t.get("status")
-            if not nodeid or not outcome:
-                continue
-            tests[nodeid] = {
-                "outcome": str(outcome).lower(),
-                "duration_s": t.get("duration_s") or t.get("duration"),
-                "memory_usage_mb": t.get("memory_usage_mb", 0.0),
-                "memory_peak_mb": t.get("memory_peak_mb", 0.0),
-            }
-        baseline.tests = tests
-        baseline.loaded = True
-
-        # Extract metadata from the baseline file
-        commit_data = data.get("commit") or {}
-        baseline.commit_hash = commit_data.get("short_hash") or name
-        baseline.commit_hash_full = commit_data.get("hash")
-        baseline.commit_author = commit_data.get("author")
-        baseline.commit_message = commit_data.get("message")
-        baseline.commit_time = commit_data.get("time")
-        baseline.branch = data.get("run", {}).get("git", {}).get("branch")
-
-    except Exception as e:
-        baseline.error = f"Error loading local baseline '{name}': {e}"
-        return baseline
-
-    return baseline
-
-
-def save_local_baseline(report: dict[str, Any], name: str) -> Path:
-    """
-    Save the current test report as a named local baseline.
-    Returns the path to the saved baseline file.
-    """
-    # Create baselines directory if needed
-    BASELINES_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Save the baseline file
-    baseline_file = BASELINES_DIR / f"{name}.json"
-    baseline_file.write_text(json.dumps(report, indent=2), encoding="utf-8")
-
-    # Update the index
-    index_data: dict[str, Any] = {"version": "1", "baselines": []}
-    if BASELINES_INDEX.exists():
-        try:
-            index_data = json.loads(BASELINES_INDEX.read_text())
-        except Exception:
-            pass
-
-    # Get metadata for index entry
-    summary = report.get("summary", {})
-    commit = report.get("commit", {}) or {}
-    git_info = report.get("run", {}).get("git", {}) or {}
-
-    entry = {
-        "name": name,
-        "created_at": report.get("generated_at"),
-        "commit_hash": commit.get("short_hash"),
-        "branch": git_info.get("branch"),
-        "tests_total": summary.get("total", 0),
-        "passed": summary.get("passed", 0),
-        "failed": summary.get("failed", 0),
-        "platform": platform.system().lower(),
-    }
-
-    # Remove existing entry with same name if present
-    baselines = [b for b in index_data.get("baselines", []) if b.get("name") != name]
-    baselines.insert(0, entry)  # Add new entry at the beginning
-    index_data["baselines"] = baselines
-
-    BASELINES_INDEX.write_text(json.dumps(index_data, indent=2), encoding="utf-8")
-
-    return baseline_file
-
-
-def fetch_remote_commits(branch: str, limit: int = 20) -> list[dict[str, Any]]:
-    """
-    Fetch a list of recent commits from git, marking which ones have workflow runs.
-
-    Strategy:
-    1. Use git log to get all recent commits on the branch
-    2. Use gh run list to get workflow runs
-    3. Match them up to mark which commits have test results available
-
-    Returns a list of commits with metadata including:
-    - commit_hash: Short commit hash (8 chars)
-    - commit_hash_full: Full commit hash
-    - commit_message: First line of commit message
-    - commit_author: Author name
-    - commit_time: Commit timestamp
-    - branch: Branch name
-    - run_id: GitHub Actions run ID (if workflow run exists)
-    - created_at: Workflow run timestamp (if exists)
-    - conclusion: Workflow conclusion (if exists)
-    - has_artifact: Whether test-report.json artifact exists
-    - has_workflow_run: Whether this commit has any workflow run
-    """
-    commits = []
-
-    # First, get all recent commits from git log
-    try:
-        # Try remote branch first, fall back to local branch
-        git_ref = f"origin/{branch}"
-        result = subprocess.run(
-            ["git", "rev-parse", "--verify", git_ref],
-            capture_output=True,
-            timeout=5,
-        )
-        if result.returncode != 0:
-            # Remote branch doesn't exist, use local
-            git_ref = branch
-
-        result = subprocess.run(
-            [
-                "git",
-                "log",
-                git_ref,
-                "--format=%H|%h|%s|%an|%ai",
-                f"-{limit}",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode != 0:
-            return commits
-
-        # Parse git log output
-        git_commits = {}
-        for line in result.stdout.strip().split("\n"):
-            if not line:
-                continue
-            parts = line.split("|", 4)
-            if len(parts) == 5:
-                full_hash, short_hash, message, author, timestamp = parts
-                git_commits[full_hash] = {
-                    "commit_hash": short_hash[:8],
-                    "commit_hash_full": full_hash,
-                    "commit_message": message,
-                    "commit_author": author,
-                    "commit_time": timestamp,
-                    "branch": branch,
-                    "run_id": None,
-                    "created_at": "",
-                    "conclusion": "",
-                    "has_artifact": False,
-                    "has_workflow_run": False,
-                }
-    except Exception as e:
-        print(f"Warning: Could not fetch git commits: {e}")
-        return commits
-
-    # Check if gh CLI is available
-    gh_available = True
-    try:
-        subprocess.run(
-            ["gh", "--version"],
-            capture_output=True,
-            timeout=5,
-        )
-    except (FileNotFoundError, Exception):
-        gh_available = False
-
-    # Now fetch workflow runs and match them with git commits
-    if gh_available:
-        try:
-            # Fetch more workflow runs than commits to increase chance of matches
-            result = subprocess.run(
-                [
-                    "gh",
-                    "run",
-                    "list",
-                    "--branch",
-                    branch,
-                    "--workflow",
-                    "pytest.yml",
-                    "--limit",
-                    str(limit * 3),  # Fetch 3x to cover commits without runs
-                    "--json",
-                    "databaseId,headSha,headBranch,createdAt,conclusion,status",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if result.returncode == 0:
-                runs = json.loads(result.stdout)
-
-                # Create a map of commit hash -> workflow run
-                run_map = {}
-                for run in runs:
-                    commit_hash_full = run.get("headSha", "")
-                    if commit_hash_full and commit_hash_full not in run_map:
-                        # Keep only the most recent run for each commit
-                        run_map[commit_hash_full] = run
-
-                # Match workflow runs with git commits
-                for full_hash, commit_data in git_commits.items():
-                    if full_hash in run_map:
-                        run = run_map[full_hash]
-                        commit_data["has_workflow_run"] = True
-                        commit_data["run_id"] = run.get("databaseId")
-                        commit_data["created_at"] = run.get("createdAt", "")
-                        commit_data["conclusion"] = run.get("conclusion", "")
-                        commit_data["status"] = run.get("status", "")
-
-                        # Don't check artifacts during initial fetch - too slow
-                        # Artifact checking will happen lazily when user selects baseline
-                        # For now, assume completed runs have artifacts
-                        if run.get("status") == "completed":
-                            commit_data["has_artifact"] = True  # Optimistic assumption
-        except Exception as e:
-            print(f"Warning: Could not fetch workflow runs: {e}")
-
-    # Convert to list and return
-    commits = list(git_commits.values())
-    return commits
-
-
-def check_artifact_exists(run_id: int) -> bool:
-    """Check if test-report.json artifact exists for a given run."""
-    try:
-        # Try to download the artifact without actually saving it
-        # If the artifact exists, gh will succeed; otherwise it will fail
-        result = subprocess.run(
-            [
-                "gh",
-                "api",
-                f"repos/{{owner}}/{{repo}}/actions/runs/{run_id}/artifacts",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode != 0:
-            return False
-
-        data = json.loads(result.stdout)
-        artifacts = data.get("artifacts", [])
-        # Check if test-report.json artifact exists and is not expired
-        for artifact in artifacts:
-            if artifact.get("name") == "test-report.json" and not artifact.get("expired", True):
-                return True
-        return False
-    except Exception:
-        return False
-
-
-def cache_remote_baseline(commit_hash: str, baseline: RemoteBaseline) -> None:
-    """
-    Cache a remote baseline to disk.
-    Baselines are stored as: artifacts/baselines/remote/<commit_hash>.json
-    """
-    if not baseline.loaded or not baseline.tests:
-        return
-
-    # Create cache directory
-    REMOTE_BASELINES_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Build cache data structure (similar to test report format)
-    cache_data = {
-        "commit": {
-            "hash": baseline.commit_hash_full,
-            "short_hash": baseline.commit_hash,
-            "author": baseline.commit_author,
-            "message": baseline.commit_message,
-            "time": baseline.commit_time,
-        },
-        "baseline": {
-            "branch": baseline.branch,
-        },
-        "tests": [
-            {
-                "nodeid": nodeid,
-                "outcome": test_data["outcome"],
-                "duration_s": test_data.get("duration_s"),
-                "memory_usage_mb": test_data.get("memory_usage_mb", 0.0),
-                "memory_peak_mb": test_data.get("memory_peak_mb", 0.0),
-            }
-            for nodeid, test_data in baseline.tests.items()
-        ],
-    }
-
-    # Write cache file
-    cache_file = REMOTE_BASELINES_DIR / f"{commit_hash}.json"
-    cache_file.write_text(json.dumps(cache_data, indent=2), encoding="utf-8")
-
-    # Update cache index
-    update_remote_cache_index(commit_hash, baseline)
-
-
-def update_remote_cache_index(commit_hash: str, baseline: RemoteBaseline) -> None:
-    """Update the remote baseline cache index."""
-    index_data: dict[str, Any] = {"version": "1", "cached_commits": []}
-
-    if REMOTE_BASELINES_INDEX.exists():
-        try:
-            index_data = json.loads(REMOTE_BASELINES_INDEX.read_text())
-        except Exception:
-            pass
-
-    # Remove existing entry for this commit
-    cached = [c for c in index_data.get("cached_commits", []) if c.get("commit_hash") != commit_hash]
-
-    # Add new entry
-    cached.insert(0, {
-        "commit_hash": commit_hash,
-        "commit_hash_full": baseline.commit_hash_full,
-        "branch": baseline.branch,
-        "cached_at": datetime.now().isoformat(),
-        "test_count": len(baseline.tests),
-    })
-
-    index_data["cached_commits"] = cached
-    REMOTE_BASELINES_INDEX.write_text(json.dumps(index_data, indent=2), encoding="utf-8")
-
-
-def load_cached_remote_baseline(commit_hash: str) -> Optional[RemoteBaseline]:
-    """
-    Load a cached remote baseline from disk.
-    Returns None if not cached.
-    """
-    cache_file = REMOTE_BASELINES_DIR / f"{commit_hash}.json"
-    if not cache_file.exists():
-        return None
-
-    try:
-        data = json.loads(cache_file.read_text())
-        baseline = RemoteBaseline()
-
-        # Parse tests
-        tests = {}
-        for t in data.get("tests", []):
-            nodeid = t.get("nodeid")
-            outcome = t.get("outcome")
-            if not nodeid or not outcome:
-                continue
-            tests[nodeid] = {
-                "outcome": str(outcome).lower(),
-                "duration_s": t.get("duration_s"),
-                "memory_usage_mb": t.get("memory_usage_mb", 0.0),
-                "memory_peak_mb": t.get("memory_peak_mb", 0.0),
-            }
-        baseline.tests = tests
-        baseline.loaded = True
-
-        # Parse metadata
-        commit_data = data.get("commit", {})
-        baseline.commit_hash = commit_data.get("short_hash", commit_hash)
-        baseline.commit_hash_full = commit_data.get("hash")
-        baseline.commit_author = commit_data.get("author")
-        baseline.commit_message = commit_data.get("message")
-        baseline.commit_time = commit_data.get("time")
-        baseline.branch = data.get("baseline", {}).get("branch")
-
-        return baseline
-    except Exception as e:
-        print(f"Warning: Failed to load cached baseline for {commit_hash}: {e}")
-        return None
-
+from test.runner.git_info import (
+    CIInfo,
+    CommitInfo,
+    collect_env_subset,
+    get_ci_info,
+    get_commit_info,
+    get_git_info,
+    get_platform_name,
+)
+from test.runner.report_utils import (
+    ansi_to_html,
+    apply_output_limits,
+    baseline_record,
+    format_duration,
+    outcome_to_str,
+    percentiles,
+    perf_change,
+    safe_iso,
+    sanitize_output,
+    split_error_message,
+    split_nodeid,
+)
+from test.runner.report_utils import (
+    compare_status as get_compare_status,
+)
 
 # Global baseline (fetched once at startup)
 remote_baseline: RemoteBaseline = RemoteBaseline()
-
-# Global state for remote commits (populated in background)
-remote_commits: list[dict[str, Any]] = []
-remote_commits_lock = threading.Lock()
-
-
-@dataclass
-class CommitInfo:
-    """Git commit information."""
-
-    hash: Optional[str] = None
-    short_hash: Optional[str] = None
-    author: Optional[str] = None
-    message: Optional[str] = None
-    time: Optional[str] = None
-
-
-@dataclass
-class CIInfo:
-    """GitHub CI information."""
-
-    is_ci: bool = False
-    run_id: Optional[str] = None
-    run_number: Optional[str] = None
-    workflow: Optional[str] = None
-    job: Optional[str] = None
-    runner_name: Optional[str] = None
-    runner_os: Optional[str] = None
-    actor: Optional[str] = None
-    repository: Optional[str] = None
-    ref: Optional[str] = None
-
-
-def _load_github_event() -> Optional[dict[str, Any]]:
-    """
-    Load the GitHub Actions event payload if available.
-
-    In GitHub Actions, `GITHUB_EVENT_PATH` points to a JSON file describing the
-    triggering event (push, pull_request, etc.).
-    """
-
-    event_path = os.environ.get("GITHUB_EVENT_PATH")
-    if not event_path:
-        return None
-
-    try:
-        raw = Path(event_path).read_text(encoding="utf-8")
-        return cast(dict[str, Any], json.loads(raw))
-    except Exception:
-        # Robustness: malformed JSON / file missing / permissions / etc.
-        return None
-
-
-def _commit_info_from_github_event_for_merge_ref(
-    event: Optional[dict[str, Any]], ref: str
-) -> Optional[CommitInfo]:
-    """
-    GitHub Actions quirk:
-    - For `pull_request` workflows, the default checkout ref is often
-      `refs/pull/<id>/merge` (a synthetic merge commit created by GitHub).
-    - `git log -1` on that ref yields a merge commit subject like
-      "Merge <head> into <base>", which is not useful in our report.
-
-    When we detect this, prefer the PR head SHA. If the head commit object is
-    present locally (our workflow does `git fetch --unshallow`), we can then
-    `git log -1 <sha>` to get the real commit subject/author/time.
-
-    If the commit object is *not* present, we still return a useful message
-    (PR title) from the event payload.
-    """
-
-    if not (ref.startswith("refs/pull/") and ref.endswith("/merge")):
-        return None
-
-    if not event:
-        return None
-
-    pr = event.get("pull_request")
-    if not isinstance(pr, dict):
-        return None
-
-    head = pr.get("head")
-    if not isinstance(head, dict):
-        return None
-
-    sha = head.get("sha")
-    if not isinstance(sha, str) or not sha:
-        return None
-
-    info = CommitInfo(hash=sha, short_hash=sha[:8])
-
-    # Best-effort fallback values if we can't resolve the commit via git.
-    title = pr.get("title")
-    if isinstance(title, str) and title:
-        info.message = title
-
-    user = pr.get("user")
-    if isinstance(user, dict):
-        login = user.get("login")
-        if isinstance(login, str) and login:
-            info.author = login
-
-    # Note: this is PR metadata time, not the commit time, but better than nothing.
-    updated_at = pr.get("updated_at") or pr.get("created_at")
-    if isinstance(updated_at, str) and updated_at:
-        info.time = updated_at
-
-    return info
-
-
-def get_commit_info() -> CommitInfo:
-    """
-    Get git commit information. Returns CommitInfo with None fields if not in a git repo
-    or if git commands fail.
-    """
-    info = CommitInfo()
-
-    try:
-        # If we're in CI on a PR merge ref, prefer the PR's head SHA from the event
-        # payload. This avoids reporting the synthetic merge commit subject.
-        event = (
-            _load_github_event() if os.environ.get("GITHUB_ACTIONS") == "true" else None
-        )
-        ref = os.environ.get("GITHUB_REF") or ""
-        event_commit = _commit_info_from_github_event_for_merge_ref(
-            event=event, ref=ref
-        )
-        if event_commit is not None:
-            info = event_commit
-
-        # Check if we're in a git repository
-        result = subprocess.run(
-            ["git", "rev-parse", "--git-dir"], capture_output=True, text=True, timeout=5
-        )
-        if result.returncode != 0:
-            return info  # Not a git repo
-
-        # Choose which commit we want to report.
-        #
-        # - If we already found a preferred commit hash from the GitHub event, use it,
-        #   but only if it exists in this checkout (best-effort verify).
-        # - Otherwise:
-        #   - In CI, fall back to GITHUB_SHA (push events)
-        #   - Finally fall back to HEAD
-        sha: Optional[str] = info.hash
-        if sha:
-            verify = subprocess.run(
-                ["git", "rev-parse", "--verify", f"{sha}^{{commit}}"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if verify.returncode != 0:
-                # Can't resolve the commit object; keep fallback event info but don't
-                # attempt git log on this sha.
-                sha = None
-
-        if not sha:
-            sha = (
-                os.environ.get("GITHUB_SHA")
-                if os.environ.get("GITHUB_ACTIONS") == "true"
-                else None
-            )
-
-        if not sha:
-            sha = "HEAD"
-
-        # Normalize/resolve to full hash.
-        result = subprocess.run(
-            ["git", "rev-parse", sha], capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0:
-            info.hash = result.stdout.strip()
-            info.short_hash = info.hash[:8] if info.hash else None
-
-        # Get author
-        result = subprocess.run(
-            ["git", "log", "-1", "--format=%an <%ae>", sha],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            info.author = result.stdout.strip()
-
-        # Get commit message (first line only)
-        result = subprocess.run(
-            ["git", "log", "-1", "--format=%s", sha],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            info.message = result.stdout.strip()
-
-        # Get commit time
-        result = subprocess.run(
-            ["git", "log", "-1", "--format=%ci", sha],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            info.time = result.stdout.strip()
-
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        # git not installed, timeout, or other OS error
-        pass
-    except Exception:
-        # Catch any unexpected errors to ensure robustness
-        pass
-
-    return info
-
-
-def get_ci_info() -> CIInfo:
-    """
-    Get GitHub CI information from environment variables.
-    Returns CIInfo with is_ci=False if not running in GitHub Actions.
-    """
-    info = CIInfo()
-
-    # Check if we're running in GitHub Actions
-    if os.environ.get("GITHUB_ACTIONS") != "true":
-        return info
-
-    info.is_ci = True
-    info.run_id = os.environ.get("GITHUB_RUN_ID")
-    info.run_number = os.environ.get("GITHUB_RUN_NUMBER")
-    info.workflow = os.environ.get("GITHUB_WORKFLOW")
-    info.job = os.environ.get("GITHUB_JOB")
-    info.runner_name = os.environ.get("RUNNER_NAME")
-    info.runner_os = os.environ.get("RUNNER_OS")
-    info.actor = os.environ.get("GITHUB_ACTOR")
-    info.repository = os.environ.get("GITHUB_REPOSITORY")
-    info.ref = os.environ.get("GITHUB_REF")
-
-    return info
 
 
 # Global commit and CI info (populated once at startup)
@@ -997,7 +116,6 @@ PERF_MIN_MEMORY_DIFF_MB = float(os.getenv("FBRK_TEST_PERF_MIN_MEMORY_DIFF_MB", "
 # Report config
 REPORT_SCHEMA_VERSION = "4"
 REPORT_JSON_PATH = Path("artifacts/test-report.json")
-REPORT_LLM_JSON_PATH = Path("artifacts/test-report.llm.json")
 REPORT_HTML_PATH = Path("artifacts/test-report.html")
 
 # Local baselines config
@@ -1008,14 +126,15 @@ BASELINES_INDEX = BASELINES_DIR / "index.json"
 REMOTE_BASELINES_DIR = Path("artifacts/baselines/remote")
 REMOTE_BASELINES_INDEX = REMOTE_BASELINES_DIR / "index.json"
 REMOTE_COMMIT_LIMIT = int(os.getenv("FBRK_TEST_REMOTE_COMMIT_LIMIT", "50"))
-SKIP_REMOTE_BASELINES = os.getenv("FBRK_TEST_SKIP_REMOTE_BASELINES", "").lower() in ("1", "true", "yes")
+SKIP_REMOTE_BASELINES = os.getenv("FBRK_TEST_SKIP_REMOTE_BASELINES", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 # Output truncation config (0 = no truncation)
 OUTPUT_MAX_BYTES = int(os.getenv("FBRK_TEST_OUTPUT_MAX_BYTES", "0"))
 OUTPUT_TRUNCATE_MODE = os.getenv("FBRK_TEST_OUTPUT_TRUNCATE_MODE", "tail")
-
-# LLM summary output (only when --llm)
-LLM_SUMMARY_MAX_ITEMS = int(os.getenv("FBRK_TEST_LLM_SUMMARY_MAX_ITEMS", "10"))
 
 # Global state
 test_queue = queue.Queue[str]()
@@ -1031,380 +150,6 @@ HTML_TEMPLATE: Template = Template(
 
 
 # Helper to extract params from a string
-def extract_params(s: str) -> tuple[str, str]:
-    if s.endswith("]") and "[" in s:
-        # Find the last '['
-        idx = s.rfind("[")
-        return s[:idx], s[idx + 1 : -1]
-    return s, ""
-
-
-def split_nodeid(nodeid: str) -> tuple[str, str, str, str]:
-    parts = nodeid.split("::")
-    file_path = parts[0]
-    rest = parts[1:]
-    class_name = ""
-    function_name = ""
-    params = ""
-    if len(rest) > 0:
-        if len(rest) > 1:
-            class_name = "::".join(rest[:-1])
-            function_name, params = extract_params(rest[-1])
-        else:
-            function_name, params = extract_params(rest[0])
-    return file_path, class_name, function_name, params
-
-
-def _safe_iso(dt: datetime.datetime | None) -> str | None:
-    if dt is None:
-        return None
-    return dt.isoformat(sep=" ", timespec="seconds")
-
-
-def _collect_env_subset() -> dict[str, str]:
-    env = {}
-    keys = {
-        "CI",
-        "GITHUB_ACTIONS",
-        "PYTEST_ADDOPTS",
-        "PYTHONHASHSEED",
-    }
-    for k, v in os.environ.items():
-        if k.startswith("FBRK_TEST_") or k in keys:
-            env[k] = v
-    return env
-
-
-def _get_git_info() -> dict[str, Any] | None:
-    branch = get_current_branch()
-    if not branch:
-        return None
-    info: dict[str, Any] = {"branch": branch}
-    info["remote_tracking"] = get_remote_tracking_branch()
-    try:
-        result = subprocess.run(
-            ["git", "status", "--porcelain"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-        )
-        if result.returncode == 0:
-            info["dirty"] = bool(result.stdout.strip())
-    except Exception:
-        pass
-    return info
-
-
-_ANSI_PATTERN = re.compile(r"(?:\x1B\[[0-?]*[ -/]*[@-~])|(?:\x1B\].*?(?:\x07|\x1b\\))")
-
-
-def _strip_ansi(text: str) -> str:
-    if not text:
-        return text
-    return _ANSI_PATTERN.sub("", text)
-
-
-def _sanitize_output(output: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not output:
-        return output
-    cleaned: dict[str, Any] = {}
-    for key, value in output.items():
-        cleaned[key] = _strip_ansi(value) if isinstance(value, str) else value
-    return cleaned
-
-
-def _truncate_text(text: str) -> tuple[str, dict[str, Any]]:
-    raw = text.encode("utf-8", errors="replace")
-    total = len(raw)
-    meta = {
-        "bytes_total": total,
-        "bytes_kept": total,
-        "truncated": False,
-        "limit": OUTPUT_MAX_BYTES,
-        "mode": OUTPUT_TRUNCATE_MODE,
-    }
-    if OUTPUT_MAX_BYTES <= 0 or total <= OUTPUT_MAX_BYTES:
-        return text, meta
-
-    kept = raw
-    if OUTPUT_TRUNCATE_MODE == "head":
-        kept = raw[:OUTPUT_MAX_BYTES]
-        marker = f"\n...[truncated {total - OUTPUT_MAX_BYTES} bytes]...\n"
-        text_out = kept.decode("utf-8", errors="replace") + marker
-    else:
-        kept = raw[-OUTPUT_MAX_BYTES:]
-        marker = f"\n...[truncated {total - OUTPUT_MAX_BYTES} bytes]...\n"
-        text_out = marker + kept.decode("utf-8", errors="replace")
-
-    meta["bytes_kept"] = len(kept)
-    meta["truncated"] = True
-    return text_out, meta
-
-
-def _apply_output_limits(
-    output: dict[str, str] | None,
-) -> tuple[dict[str, str] | None, dict[str, dict[str, Any]] | None]:
-    if not output:
-        return None, None
-    limited = {}
-    meta = {}
-    for key, value in output.items():
-        if value is None:
-            continue
-        limited_value, info = _truncate_text(value)
-        limited[key] = limited_value
-        meta[key] = info
-    return limited, meta
-
-
-def _percentiles(values: list[float], percentiles: list[int]) -> dict[str, float]:
-    if not values:
-        return {}
-    values = sorted(values)
-    out: dict[str, float] = {}
-    for p in percentiles:
-        if len(values) == 1:
-            out[f"p{p}"] = values[0]
-            continue
-        k = (len(values) - 1) * (p / 100)
-        f = int(k)
-        c = min(f + 1, len(values) - 1)
-        if f == c:
-            out[f"p{p}"] = values[f]
-        else:
-            d = k - f
-            out[f"p{p}"] = values[f] + (values[c] - values[f]) * d
-    return out
-
-
-def _outcome_to_str(outcome: Outcome | str | None) -> str | None:
-    if outcome is None:
-        return None
-    if isinstance(outcome, Outcome):
-        return outcome.name.lower()
-    return str(outcome).lower()
-
-
-def _compare_to_str(compare: CompareStatus | str | None) -> str | None:
-    if compare is None:
-        return None
-    if isinstance(compare, CompareStatus):
-        return compare.name.lower()
-    return str(compare).lower()
-
-
-def _baseline_record(
-    baseline_map: dict[str, dict[str, Any]], nodeid: str
-) -> dict[str, Any] | None:
-    if not baseline_map:
-        return None
-    record = baseline_map.get(nodeid)
-    if not record:
-        return None
-    if isinstance(record, str):
-        return {"outcome": record}
-    return record
-
-
-def _compare_status(current: str | None, baseline: str | None) -> str | None:
-    if baseline is None:
-        return "new"
-    if current is None:
-        return None
-    valid = {"passed", "failed", "error", "crashed", "skipped"}
-    if current not in valid:
-        return None
-    if current == baseline:
-        return "same"
-    if baseline == "passed" and current in ("failed", "error", "crashed"):
-        return "regression"
-    if baseline in ("failed", "error", "crashed") and current == "passed":
-        return "fixed"
-    return "same"
-
-
-def _perf_change(
-    current: float | None,
-    baseline: float | None,
-    min_diff: float,
-    threshold_percent: float,
-) -> tuple[float | None, float | None, bool]:
-    if not current or not baseline or baseline <= 0 or current <= 0:
-        return None, None, False
-    diff = current - baseline
-    pct = diff / baseline
-    significant = abs(diff) >= min_diff and abs(pct) >= threshold_percent
-    return diff, pct, significant
-
-
-def _default_llm_section() -> dict[str, Any]:
-    return {
-        "source_of_truth": str(REPORT_JSON_PATH),
-        "note": "This JSON is the single source of truth for test results.",
-        "why_use_this": [
-            "Contains stdout/stderr/logs/traceback + truncation metadata.",
-            "Use test.output_full for complete logs; test.output is the HTML preview.",
-            "Includes baseline comparisons (regressions/fixed/new/removed).",
-            "Captures memory usage and worker log paths.",
-            "Includes collection errors and run metadata.",
-        ],
-        "jq_recipes": [
-            f"jq '.summary' {REPORT_JSON_PATH}",
-            "jq -r '.derived.failures[] | \"\\(.nodeid) :: \\(.error_message)\"' "
-            f"{REPORT_JSON_PATH}",
-            'jq -r \'.tests[] | select(.status!="passed") '
-            "| {nodeid,output_full}' "
-            f"{REPORT_JSON_PATH}",
-            'jq -r \'.tests[] | select(.status!="passed") '
-            "| {nodeid,status,error_message}' "
-            f"{REPORT_JSON_PATH}",
-            "jq -r '.tests | sort_by(.duration_s) | reverse | .[:10] "
-            "| .[] | {nodeid,duration_s}' "
-            f"{REPORT_JSON_PATH}",
-            "jq -r '.derived.perf_regressions[] "
-            "| {nodeid,duration_delta_s,speedup_pct}' "
-            f"{REPORT_JSON_PATH}",
-            "jq -r '.tests[] | select(.compare_status==\"regression\") | .nodeid' "
-            f"{REPORT_JSON_PATH}",
-        ],
-        "recommended_commands": [],
-    }
-
-
-def _split_error_message(error_message: str | None) -> tuple[str | None, str | None]:
-    if not error_message:
-        return None, None
-    msg = error_message.strip()
-    if ": " in msg:
-        left, right = msg.split(": ", 1)
-        if left and " " not in left and len(left) < 64:
-            return left, right
-    return None, msg
-
-
-def _print_llm_summary(report: dict[str, Any]) -> None:
-    summary = report.get("summary", {})
-    baseline = report.get("baseline", {})
-    derived = report.get("derived", {})
-    llm = report.get("llm", {})
-
-    print("\nLLM summary (from artifacts/test-report.json)")
-    print("Note: JSON is the source of truth; HTML/LLM JSON are derived.")
-    print(f"LLM JSON (derived): {REPORT_LLM_JSON_PATH}")
-    print(
-        "Summary: "
-        f"passed={summary.get('passed', 0)} "
-        f"failed={summary.get('failed', 0)} "
-        f"errors={summary.get('errors', 0)} "
-        f"crashed={summary.get('crashed', 0)} "
-        f"skipped={summary.get('skipped', 0)} "
-        f"running={summary.get('running', 0)} "
-        f"queued={summary.get('queued', 0)} "
-        f"collection_errors={summary.get('collection_errors', 0)} "
-        f"perf_regressions={summary.get('perf_regressions', 0)} "
-        f"truncated_outputs={summary.get('output_truncated_tests', 0)}"
-    )
-    if report.get("run", {}).get("selection_applied"):
-        print("Selection: filtered run (test args applied)")
-
-    if baseline.get("loaded"):
-        scope = summary.get("baseline_scope", "full")
-        removed = summary.get("removed", 0)
-        removed_total = summary.get("removed_total", removed)
-        print(
-            "Baseline: "
-            f"commit={baseline.get('commit_hash')} "
-            f"branch={baseline.get('branch')} "
-            f"regressions={summary.get('regressions', 0)} "
-            f"fixed={summary.get('fixed', 0)} "
-            f"new={summary.get('new_tests', 0)} "
-            f"removed={removed}"
-        )
-        if scope != "full" and removed_total:
-            print(
-                f"Baseline scope: {scope} (filtered run; removed_total={removed_total})"
-            )
-    elif baseline.get("error"):
-        print(f"Baseline: error={baseline.get('error')}")
-
-    why = llm.get("why_use_this", [])
-    if why:
-        print("\nWhy use the report JSON:")
-        for line in why:
-            print(f"- {line}")
-
-    def _print_items(label: str, items: list[dict[str, Any]]):
-        if not items:
-            return
-        print(f"\n{label} (top {min(len(items), LLM_SUMMARY_MAX_ITEMS)}):")
-        for item in items[:LLM_SUMMARY_MAX_ITEMS]:
-            nodeid = item.get("nodeid", "<unknown>")
-            status = item.get("status") or item.get("compare_status") or ""
-            error_message = item.get("error_summary") or item.get("error_message") or ""
-            if error_message:
-                print(f"- {nodeid} [{status}] :: {error_message}")
-            elif status:
-                print(f"- {nodeid} [{status}]")
-            else:
-                print(f"- {nodeid}")
-
-    _print_items("Failures", derived.get("failures", []))
-    _print_items("Regressions", derived.get("regressions", []))
-    _print_items("Collection Errors", derived.get("collection_errors", []))
-
-    perf_regs = derived.get("perf_regressions", [])
-    if perf_regs:
-        print(f"\nPerf regressions (top {min(len(perf_regs), LLM_SUMMARY_MAX_ITEMS)}):")
-        for item in perf_regs[:LLM_SUMMARY_MAX_ITEMS]:
-            nodeid = item.get("nodeid", "<unknown>")
-            delta = item.get("duration_delta_s")
-            pct = item.get("speedup_pct")
-            if delta is not None and pct is not None:
-                print(f"- {nodeid} (+{delta:.2f}s, {pct:.1f}%)")
-            else:
-                print(f"- {nodeid}")
-
-    slowest = derived.get("slowest", [])
-    if slowest:
-        print(f"\nSlowest tests (top {min(len(slowest), LLM_SUMMARY_MAX_ITEMS)}):")
-        for item in slowest[:LLM_SUMMARY_MAX_ITEMS]:
-            nodeid = item.get("nodeid", "<unknown>")
-            duration = item.get("duration_s", 0.0)
-            print(f"- {nodeid} ({duration:.2f}s)")
-
-    recommended = llm.get("recommended_commands", [])
-    if recommended:
-        print("\nRecommended commands (top 6):")
-        for rec in recommended[:6]:
-            desc = rec.get("description", "")
-            cmd = rec.get("command", "")
-            if desc:
-                print(f"- {desc}: {cmd}")
-            else:
-                print(f"- {cmd}")
-
-    print("\nSchema (top-level keys):")
-    print(
-        "schema_version, generated_at, run, summary, commit, ci, baseline, "
-        "artifacts, collection_errors, tests, derived, llm"
-    )
-    print("Schema (run keys):")
-    print(
-        "start_time, end_time, duration_s, pytest_args, selection_applied, "
-        "env, git, orchestrator_report_url, output_limits, perf"
-    )
-    print("Schema (test keys):")
-    print(
-        "nodeid, file, class, function, params, status, outcome, duration_s, "
-        "error_message, output, output_full, output_meta, memory_usage_mb, "
-        "memory_peak_mb, compare_status, speedup_pct"
-    )
-
-    recipes = llm.get("jq_recipes", [])
-    if recipes:
-        print("\nJQ tips:")
-        for recipe in recipes:
-            print(recipe)
 
 
 @dataclass
@@ -1433,17 +178,6 @@ def _ts() -> str:
 
 def _print(msg: str):
     print(f"[{_ts()}] {msg}", flush=True)
-
-
-def format_duration(seconds: float) -> str:
-    if seconds < 1.0:
-        return f"{seconds * 1000:.0f}ms"
-    elif seconds < 60.0:
-        return f"{seconds:.2f}s"
-    else:
-        minutes = int(seconds // 60)
-        secs = seconds % 60
-        return f"{minutes}m {secs:.0f}s"
 
 
 class TestAggregator:
@@ -1797,7 +531,7 @@ class TestAggregator:
         test_entries: list[dict[str, Any]] = []
 
         def _build_status(t: dict[str, Any]) -> tuple[str, str | None]:
-            outcome = _outcome_to_str(t["outcome"])
+            outcome = outcome_to_str(t["outcome"])
             if t["collection_error"]:
                 return "collection_error", outcome or "error"
             if outcome is None:
@@ -1837,12 +571,12 @@ class TestAggregator:
                 memory_peak_values.append(t["memory_peak_mb"])
 
             output_full = cast(dict[str, str] | None, t["output"])
-            output, output_meta = _apply_output_limits(output_full)
+            output, output_meta = apply_output_limits(output_full)
 
             if state == "running" and t["pid"]:
                 worker_log = self.get_worker_log(t["pid"])
                 if worker_log:
-                    live_output, live_meta = _apply_output_limits({"live": worker_log})
+                    live_output, live_meta = apply_output_limits({"live": worker_log})
                     if live_output:
                         if output is None:
                             output = {}
@@ -1867,8 +601,8 @@ class TestAggregator:
                 worker_log_path = str(get_log_file(worker_id))
 
             file_path, class_name, function_name, params = split_nodeid(t["nodeid"])
-            error_type, error_summary = _split_error_message(t["error_message"])
-            baseline_rec = _baseline_record(baseline.tests, t["nodeid"])
+            error_type, error_summary = split_error_message(t["error_message"])
+            baseline_rec = baseline_record(baseline.tests, t["nodeid"])
             baseline_outcome = (
                 baseline_rec.get("outcome") if baseline_rec else t["baseline_outcome"]
             )
@@ -1884,7 +618,7 @@ class TestAggregator:
 
             if baseline_outcome and not t["baseline_outcome"]:
                 t["baseline_outcome"] = baseline_outcome
-            compare_status = _compare_status(status, baseline_outcome)
+            compare_status = get_compare_status(status, baseline_outcome)
             if compare_status == "regression":
                 regressions += 1
             elif compare_status == "fixed":
@@ -1892,7 +626,7 @@ class TestAggregator:
             elif compare_status == "new":
                 new_tests += 1
 
-            duration_delta_s, duration_delta_pct, duration_sig = _perf_change(
+            duration_delta_s, duration_delta_pct, duration_sig = perf_change(
                 duration_s,
                 baseline_duration_s,
                 PERF_MIN_TIME_DIFF_S,
@@ -1906,7 +640,7 @@ class TestAggregator:
                     (baseline_duration_s - duration_s) / baseline_duration_s
                 ) * 100
 
-            memory_delta_mb, memory_delta_pct, memory_sig = _perf_change(
+            memory_delta_mb, memory_delta_pct, memory_sig = perf_change(
                 t["memory_peak_mb"],
                 baseline_memory_peak_mb,
                 PERF_MIN_MEMORY_DIFF_MB,
@@ -1944,8 +678,8 @@ class TestAggregator:
                     "duration_human": format_duration(duration_s)
                     if duration_s > 0
                     else ("-" if state == "queued" else "0ms"),
-                    "start_time": _safe_iso(t["start_time"]),
-                    "finish_time": _safe_iso(t["finish_time"]),
+                    "start_time": safe_iso(t["start_time"]),
+                    "finish_time": safe_iso(t["finish_time"]),
                     "error_message": t["error_message"],
                     "error_type": error_type,
                     "error_summary": error_summary,
@@ -2005,9 +739,9 @@ class TestAggregator:
             )
             removed_tests = 0 if selection_applied else removed_total
 
-        duration_percentiles = _percentiles(durations, [50, 90, 95, 99])
-        memory_usage_percentiles = _percentiles(memory_usage_values, [50, 90, 95, 99])
-        memory_peak_percentiles = _percentiles(memory_peak_values, [50, 90, 95, 99])
+        duration_percentiles = percentiles(durations, [50, 90, 95, 99])
+        memory_usage_percentiles = percentiles(memory_usage_values, [50, 90, 95, 99])
+        memory_peak_percentiles = percentiles(memory_peak_values, [50, 90, 95, 99])
 
         collection_error_entries = [
             {
@@ -2137,14 +871,12 @@ class TestAggregator:
         except Exception:
             pytest_version = None
 
-        llm_section = _default_llm_section()
-
         report = {
             "schema_version": REPORT_SCHEMA_VERSION,
-            "generated_at": _safe_iso(now),
+            "generated_at": safe_iso(now),
             "run": {
-                "start_time": _safe_iso(start_time),
-                "end_time": _safe_iso(now if running == 0 and queued == 0 else None),
+                "start_time": safe_iso(start_time),
+                "end_time": safe_iso(now if running == 0 and queued == 0 else None),
                 "duration_s": total_duration,
                 "runner_argv": list(sys.argv),
                 "pytest_args": pytest_args,
@@ -2164,8 +896,8 @@ class TestAggregator:
                 "generate_html": GENERATE_HTML,
                 "periodic_html": GENERATE_PERIODIC_HTML,
                 "baseline_requested": baseline_requested,
-                "env": _collect_env_subset(),
-                "git": _get_git_info(),
+                "env": collect_env_subset(),
+                "git": get_git_info(),
                 "orchestrator_bind": ORCHESTRATOR_BIND_HOST,
                 "orchestrator_url": self._orchestrator_url,
                 "orchestrator_report_url": self._orchestrator_report_url,
@@ -2246,31 +978,12 @@ class TestAggregator:
             "artifacts": {
                 "json": str(REPORT_JSON_PATH),
                 "html": str(REPORT_HTML_PATH),
-                "llm_json": str(REPORT_LLM_JSON_PATH),
                 "logs_dir": str(LOG_DIR),
             },
             "collection_errors": collection_error_entries,
             "tests": test_entries,
             "derived": derived,
-            "llm": llm_section,
         }
-
-        recommended = []
-        for item in derived["failures"][:LLM_SUMMARY_MAX_ITEMS]:
-            nodeid = item["nodeid"]
-            recommended.append(
-                {
-                    "description": "Re-run single test (orchestrated)",
-                    "command": f'ato dev test --llm -k "{nodeid}"',
-                }
-            )
-            recommended.append(
-                {
-                    "description": "Re-run single test (direct, tight loop; no report)",
-                    "command": f'ato dev test --direct -k "{nodeid}"',
-                }
-            )
-        report["llm"]["recommended_commands"] = recommended
 
         return report
 
@@ -2280,50 +993,6 @@ class TestAggregator:
             output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
         except Exception as e:
             print(f"Failed to write JSON report: {e}")
-
-    def write_llm_report(self, report: dict[str, Any], output_path: Path):
-        llm_data = dict(report.get("llm") or {})
-        llm_data["output_sanitized"] = True
-        llm_data["contains_full_tests"] = True
-        tests = []
-        for t in report.get("tests", []):
-            entry = dict(t)
-            output = entry.get("output")
-            output_full = entry.get("output_full")
-            sanitized = False
-            if output is not None:
-                entry["output"] = _sanitize_output(output)
-                sanitized = True
-            if output_full is not None:
-                entry["output_full"] = _sanitize_output(output_full)
-                sanitized = True
-            if sanitized:
-                entry["output_sanitized"] = True
-            tests.append(entry)
-        llm_report = {
-            "schema_version": REPORT_SCHEMA_VERSION,
-            "generated_at": report.get("generated_at"),
-            "run": report.get("run"),
-            "summary": report.get("summary"),
-            "baseline": report.get("baseline"),
-            "commit": report.get("commit"),
-            "ci": report.get("ci"),
-            "derived": report.get("derived"),
-            "llm": llm_data,
-            "tests": tests,
-            "collection_errors": report.get("collection_errors", []),
-            "artifacts": report.get("artifacts", {}),
-            "paths": {
-                "json": str(REPORT_JSON_PATH),
-                "html": str(REPORT_HTML_PATH),
-                "logs_dir": str(LOG_DIR),
-            },
-        }
-        try:
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(json.dumps(llm_report, indent=2), encoding="utf-8")
-        except Exception as e:
-            print(f"Failed to write LLM JSON report: {e}")
 
     def generate_html_report(
         self, report: dict[str, Any], output_path: Path = REPORT_HTML_PATH
@@ -2725,7 +1394,6 @@ class TestAggregator:
         self.write_json_report(report, REPORT_JSON_PATH)
         if not periodic or GENERATE_PERIODIC_HTML:
             self.generate_html_report(report, REPORT_HTML_PATH)
-        self.write_llm_report(report, REPORT_LLM_JSON_PATH)
         return report
 
 
@@ -2755,7 +1423,7 @@ def _rebuild_report_with_baseline(
 
     for t in tests:
         nodeid = t.get("nodeid")
-        outcome = _outcome_to_str(t.get("outcome") or t.get("status"))
+        outcome = outcome_to_str(t.get("outcome") or t.get("status"))
         status = t.get("status") or outcome or "queued"
 
         if status == "passed":
@@ -2785,10 +1453,10 @@ def _rebuild_report_with_baseline(
         if mem_peak:
             memory_peak_values.append(mem_peak)
 
-        baseline_rec = _baseline_record(baseline.tests, nodeid) if nodeid else None
+        baseline_rec = baseline_record(baseline.tests, nodeid) if nodeid else None
         baseline_outcome = baseline_rec.get("outcome") if baseline_rec else None
         compare_status = (
-            _compare_status(status, baseline_outcome) if baseline.loaded else None
+            compare_status(status, baseline_outcome) if baseline.loaded else None
         )
         t["compare_status"] = compare_status
         t["baseline_outcome"] = baseline_outcome
@@ -2812,7 +1480,7 @@ def _rebuild_report_with_baseline(
         t["baseline_memory_usage_mb"] = baseline_memory_usage_mb
         t["baseline_memory_peak_mb"] = baseline_memory_peak_mb
 
-        duration_delta_s, duration_delta_pct, duration_sig = _perf_change(
+        duration_delta_s, duration_delta_pct, duration_sig = perf_change(
             duration_s,
             baseline_duration_s,
             PERF_MIN_TIME_DIFF_S,
@@ -2826,7 +1494,7 @@ def _rebuild_report_with_baseline(
                 (baseline_duration_s - duration_s) / baseline_duration_s
             ) * 100
 
-        memory_delta_mb, memory_delta_pct, memory_sig = _perf_change(
+        memory_delta_mb, memory_delta_pct, memory_sig = perf_change(
             mem_peak,
             baseline_memory_peak_mb,
             PERF_MIN_MEMORY_DIFF_MB,
@@ -2871,9 +1539,9 @@ def _rebuild_report_with_baseline(
         removed_total = len(set(baseline.tests) - {t.get("nodeid") for t in tests})
         removed_tests = 0 if selection_applied else removed_total
 
-    duration_percentiles = _percentiles(durations, [50, 90, 95, 99])
-    memory_usage_percentiles = _percentiles(memory_usage_values, [50, 90, 95, 99])
-    memory_peak_percentiles = _percentiles(memory_peak_values, [50, 90, 95, 99])
+    duration_percentiles = percentiles(durations, [50, 90, 95, 99])
+    memory_usage_percentiles = percentiles(memory_usage_values, [50, 90, 95, 99])
+    memory_peak_percentiles = percentiles(memory_peak_values, [50, 90, 95, 99])
 
     total_duration = summary.get("total_duration_s")
     if total_duration is None:
@@ -2884,7 +1552,7 @@ def _rebuild_report_with_baseline(
     total_finished = passed + failed + errors + crashed + skipped
     progress_percent = int((total_finished / total_tests) * 100) if total_tests else 0
 
-    report["generated_at"] = _safe_iso(now)
+    report["generated_at"] = safe_iso(now)
     report["summary"] = {
         "passed": passed,
         "failed": failed,
@@ -3048,24 +1716,6 @@ def _rebuild_report_with_baseline(
         "collection_errors": report.get("collection_errors", []),
     }
 
-    llm_section = _default_llm_section()
-    recommended = []
-    for item in report["derived"]["failures"][:LLM_SUMMARY_MAX_ITEMS]:
-        nodeid = item["nodeid"]
-        recommended.append(
-            {
-                "description": "Re-run single test (orchestrated)",
-                "command": f'ato dev test --llm -k "{nodeid}"',
-            }
-        )
-        recommended.append(
-            {
-                "description": "Re-run single test (direct, tight loop; no report)",
-                "command": f'ato dev test --direct -k "{nodeid}"',
-            }
-        )
-    llm_section["recommended_commands"] = recommended
-    report["llm"] = llm_section
     return report
 
 
@@ -3082,7 +1732,6 @@ def rebuild_reports_from_existing(
     updated = _rebuild_report_with_baseline(report, baseline, baseline_commit)
     TestAggregator([], RemoteBaseline()).write_json_report(updated, REPORT_JSON_PATH)
     TestAggregator([], RemoteBaseline()).generate_html_report(updated, REPORT_HTML_PATH)
-    TestAggregator([], RemoteBaseline()).write_llm_report(updated, REPORT_LLM_JSON_PATH)
     return updated
 
 
@@ -3168,7 +1817,9 @@ async def change_baseline(request: Request):
             new_baseline = fetch_remote_report(commit_hash=commit_hash, use_cache=True)
         else:
             # Legacy support: assume it's a commit hash
-            new_baseline = fetch_remote_report(commit_hash=baseline_name, use_cache=True)
+            new_baseline = fetch_remote_report(
+                commit_hash=baseline_name, use_cache=True
+            )
 
         if not new_baseline.loaded:
             return {"error": new_baseline.error or "Failed to load baseline"}
@@ -3192,6 +1843,7 @@ async def get_remote_commits(branch: Optional[str] = None):
     """
     Get list of recent commits with workflow runs from GitHub.
     Returns cached commit list populated during test startup.
+    Also includes branch heads and branch base.
     """
     with remote_commits_lock:
         commits_list = list(remote_commits)
@@ -3216,9 +1868,60 @@ async def get_remote_commits(branch: Optional[str] = None):
         cache_file = REMOTE_BASELINES_DIR / f"{commit_hash}.json"
         commit["cached"] = cache_file.exists()
 
+    # Get remote branch heads
+    branch_heads = get_remote_branch_heads()
+
+    # Get workflow runs cache
+    with workflow_runs_lock:
+        workflow_cache = dict(workflow_runs_cache)
+
+    for branch_head in branch_heads:
+        commit_hash = branch_head.get("commit_hash", "")
+        cache_file = REMOTE_BASELINES_DIR / f"{commit_hash}.json"
+        branch_head["cached"] = cache_file.exists()
+
+        # If cached, it definitely has artifacts
+        if branch_head["cached"]:
+            branch_head["has_workflow_run"] = True
+            branch_head["has_artifact"] = True
+        elif commit_hash in workflow_cache:
+            # Use workflow info from global cache (across all branches)
+            branch_head["has_workflow_run"] = workflow_cache[commit_hash][
+                "has_workflow_run"
+            ]
+            branch_head["has_artifact"] = workflow_cache[commit_hash]["has_artifact"]
+        else:
+            # Not cached and not in workflow runs - no workflow run
+            branch_head["has_workflow_run"] = False
+            branch_head["has_artifact"] = False
+
+    # Get branch base (merge-base with main)
+    branch_base = get_branch_base()
+    if branch_base:
+        commit_hash = branch_base.get("commit_hash", "")
+        cache_file = REMOTE_BASELINES_DIR / f"{commit_hash}.json"
+        branch_base["cached"] = cache_file.exists()
+
+        # If cached, it definitely has artifacts
+        if branch_base["cached"]:
+            branch_base["has_workflow_run"] = True
+            branch_base["has_artifact"] = True
+        elif commit_hash in workflow_cache:
+            # Use workflow info from global cache
+            branch_base["has_workflow_run"] = workflow_cache[commit_hash][
+                "has_workflow_run"
+            ]
+            branch_base["has_artifact"] = workflow_cache[commit_hash]["has_artifact"]
+        else:
+            # Not cached and not in workflow runs - no workflow run
+            branch_base["has_workflow_run"] = False
+            branch_base["has_artifact"] = False
+
     return {
         "commits": commits_list,
         "current_commit": current_commit,
+        "branch_heads": branch_heads,
+        "branch_base": branch_base,
     }
 
 
@@ -3243,9 +1946,7 @@ from atopile.server.routes.logs import router as logs_router
 app.include_router(logs_router)
 
 # Path to the log viewer static files
-LOG_VIEWER_DIST_DIR = (
-    Path(__file__).parent.parent.parent / "src" / "ui-server" / "dist"
-)
+LOG_VIEWER_DIST_DIR = Path(__file__).parent.parent.parent / "src" / "ui-server" / "dist"
 
 
 @app.get("/logs")
@@ -3278,7 +1979,11 @@ async def serve_log_viewer(request: Request):
 
 
 # Mount log viewer static assets
-app.mount("/", StaticFiles(directory=LOG_VIEWER_DIST_DIR, html=False), name="log-viewer-static")
+app.mount(
+    "/",
+    StaticFiles(directory=LOG_VIEWER_DIST_DIR, html=False),
+    name="log-viewer-static",
+)
 
 
 class ReportTimer:
@@ -3467,7 +2172,6 @@ def main(
     local_baseline_name: str | None = None,
     save_baseline_name: str | None = None,
     open_browser: bool = False,
-    llm: bool = False,
     keep_open: bool = False,
     test_run_id: str | None = None,
     extra_env: dict[str, str] | None = None,
@@ -3544,7 +2248,7 @@ def main(
 
     # Start fetching remote commits list in background (for dropdown)
     def fetch_remote_commits_background():
-        global remote_commits
+        global remote_commits, workflow_runs_cache
         if SKIP_REMOTE_BASELINES:
             return
         try:
@@ -3553,6 +2257,12 @@ def main(
             with remote_commits_lock:
                 remote_commits.clear()
                 remote_commits.extend(commits)
+
+            # Fetch workflow runs across ALL branches for branch heads dropdown
+            all_workflow_runs = fetch_all_workflow_runs(limit=200)
+            with workflow_runs_lock:
+                workflow_runs_cache.clear()
+                workflow_runs_cache.update(all_workflow_runs)
 
             # Download HEAD baseline to cache if not already cached
             if commits and not baseline_commit and not local_baseline_name:
@@ -3639,6 +2349,7 @@ def main(
     # Use provided test_run_id if available, otherwise generate one
     if test_run_id is None:
         import hashlib
+
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         test_run_id = hashlib.sha256(f"pytest:{timestamp}".encode()).hexdigest()[:16]
     env["ATO_TEST_RUN_ID"] = test_run_id
@@ -3774,7 +2485,13 @@ def main(
 
     # Save as local baseline if requested
     if save_baseline_name:
-        baseline_path = save_local_baseline(report, save_baseline_name)
+        baseline_path = save_local_baseline(
+            report,
+            save_baseline_name,
+            BASELINES_DIR,
+            BASELINES_INDEX,
+            get_platform_name(),
+        )
         _print(f"Baseline saved: {baseline_path}")
 
     # Print link to the static report file
@@ -3782,9 +2499,6 @@ def main(
     file_url = f"file://{report_path}"
     clickable_file = f"\033]8;;{file_url}\033\\📄 {report_path}\033]8;;\033\\"
     _print(f"Report saved: {clickable_file}")
-
-    if llm:
-        _print_llm_summary(report)
 
     exit_code = 1 if aggregator.has_failures() else 0
 
