@@ -232,7 +232,7 @@ def handle_cancel_build(build_id: str) -> dict:
 
 def handle_get_active_builds() -> dict:
     """Get all active (queued or building) builds."""
-    log.info("[DEBUG] handle_get_active_builds called")
+    log.debug("handle_get_active_builds called")
     builds = []
     for build in _build_queue.get_all_builds():
         status = build.status

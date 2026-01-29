@@ -1027,20 +1027,20 @@ class LogHandler(RichHandler):
         - Only atopile/faebryk/test loggers (exclude watchdog, httpcore, etc.)
         - Only INFO level and above (DEBUG goes to database only)
         """
-        name = record.name
+        # name = record.name
 
         # Filter by logger name
-        if name.startswith(("watchdog", "fsevents")):
-            return False
-        if not _is_serving():
-            if name.startswith("httpcore") or name.startswith("atopile.server"):
-                return False
-            if not (
-                name.startswith("atopile")
-                or name.startswith("faebryk")
-                or name.startswith("test")
-            ):
-                return False
+        # if name.startswith(("watchdog", "fsevents")):
+        #     return False
+        # if not _is_serving():
+        #     if name.startswith("httpcore") or name.startswith("atopile.server"):
+        #         return False
+        #     if not (
+        #         name.startswith("atopile")
+        #         or name.startswith("faebryk")
+        #         or name.startswith("test")
+        #     ):
+        #         return False
 
         # Console only shows INFO and above
         if record.levelno < logging.INFO:
