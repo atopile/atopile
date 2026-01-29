@@ -611,6 +611,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     const jsUri = webview.asWebviewUri(vscode.Uri.file(jsPath));
+    // Base URI for relative imports in bundled JS (e.g., ./index-xxx.js)
+    const baseUri = webview.asWebviewUri(vscode.Uri.file(webviewsDir + '/'));
     const cssUri = fs.existsSync(cssPath)
       ? webview.asWebviewUri(vscode.Uri.file(cssPath))
       : null;
@@ -641,13 +643,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="${baseUri}">
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'none';
     style-src ${webview.cspSource} 'unsafe-inline';
     script-src ${webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval';
     font-src ${webview.cspSource};
     img-src ${webview.cspSource} data: https: http:;
-    connect-src ${apiUrl} ${wsOrigin};
+    connect-src ${webview.cspSource} ${apiUrl} ${wsOrigin} blob:;
   ">
   <title>atopile</title>
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}

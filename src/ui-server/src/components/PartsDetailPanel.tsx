@@ -149,10 +149,6 @@ export function PartsDetailPanel({
         <div className="detail-panel-content">
           <div className="parts-detail-grid">
             <section className="detail-section parts-detail-section">
-              <h3 className="detail-section-title">
-                <Download size={14} />
-                Install
-              </h3>
               <div className="detail-install-row">
                 <button
                   className={`detail-install-btn ${
@@ -201,16 +197,6 @@ export function PartsDetailPanel({
                   <span>{actionError}</span>
                 </div>
               )}
-              <div className="detail-install-meta">
-                {isInstalled ? (
-                  <>
-                    <CheckCircle size={12} />
-                    Installed
-                  </>
-                ) : (
-                  <span>Not installed</span>
-                )}
-              </div>
             </section>
             <div className="detail-section parts-detail-section">
               <div className="parts-detail-section-title">Overview</div>
@@ -269,6 +255,27 @@ export function PartsDetailPanel({
               </dl>
             </div>
 
+            <div className="detail-section parts-detail-section">
+              <div className="parts-detail-section-title">Attributes</div>
+              {attributes.length === 0 && (
+                <div className="detail-empty">None</div>
+              )}
+              {attributes.length > 0 && (
+                <dl className="detail-info-list">
+                  {attributes.map(([key, value]) => (
+                    <div key={key} className="detail-info-row">
+                      <dt>{key}</dt>
+                      <dd className="detail-info-value">
+                        <span className="detail-info-mono">
+                          {typeof value === 'string' ? value : JSON.stringify(value)}
+                        </span>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </div>
+
             <div className="parts-visual-section">
               <div className="parts-visual-tabs">
                 <button
@@ -313,27 +320,6 @@ export function PartsDetailPanel({
                   />
                 )}
               </div>
-            </div>
-
-            <div className="detail-section parts-detail-section">
-              <div className="parts-detail-section-title">Attributes</div>
-              {attributes.length === 0 && (
-                <div className="detail-empty">None</div>
-              )}
-              {attributes.length > 0 && (
-                <dl className="detail-info-list">
-                  {attributes.map(([key, value]) => (
-                    <div key={key} className="detail-info-row">
-                      <dt>{key}</dt>
-                      <dd className="detail-info-value">
-                        <span className="detail-info-mono">
-                          {typeof value === 'string' ? value : JSON.stringify(value)}
-                        </span>
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              )}
             </div>
           </div>
         </div>
