@@ -52,9 +52,8 @@ export interface Build {
 
   // Stages and logs
   stages?: BuildStage[];
-  // TODO: Replace this estimate once builds are defined in the graph
-  // This is the expected total number of stages for progress calculation
-  totalStages?: number;  // Default: 14 (from backend estimate)
+  // Total number of stages - set by subprocess at build start
+  totalStages?: number | null;
   logDir?: string;
   logFile?: string;
 
@@ -100,6 +99,7 @@ export interface QueuedBuild {
     status: string;
     elapsedSeconds?: number;
   }>;
+  totalStages?: number | null;
   error?: string;
 }
 

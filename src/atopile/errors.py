@@ -31,7 +31,6 @@ from typing import (
 
 from antlr4 import CommonTokenStream, ParserRuleContext, Token
 from caseconverter import titlecase
-
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
 from rich.highlighter import ReprHighlighter
 from rich.syntax import Syntax
