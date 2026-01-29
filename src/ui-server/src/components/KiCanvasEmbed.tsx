@@ -1,7 +1,7 @@
 import { createElement, useEffect, useRef, useState } from 'react'
 
 const SCRIPT_ID = 'kicanvas-script'
-const SCRIPT_SRC = '/vendored/kicanvas.js'
+const SCRIPT_SRC = 'vendored/kicanvas.js'
 
 interface KiCanvasEmbedProps {
   src: string
@@ -11,6 +11,7 @@ interface KiCanvasEmbedProps {
   zoom?: 'objects' | 'page'
   className?: string
   style?: React.CSSProperties
+  onError?: (error: string) => void
 }
 
 interface KiCanvasEmbedElement extends HTMLElement {
@@ -29,10 +30,12 @@ export default function KiCanvasEmbed({
   zoom = 'objects',
   className,
   style,
+  onError,
 }: KiCanvasEmbedProps) {
   const embedRef = useRef<KiCanvasEmbedElement>(null)
   const [isReady, setIsReady] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -64,9 +67,35 @@ export default function KiCanvasEmbed({
     }
   }, [isReady])
 
+  // Pre-check if src URL is valid using GET (HEAD not supported by all endpoints)
   useEffect(() => {
     setIsLoading(true)
-  }, [src])
+    setError(null)
+
+    const controller = new AbortController()
+    fetch(src, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) {
+          const msg = response.status === 404
+            ? 'Footprint not available'
+            : `Failed to load footprint (${response.status})`
+          setError(msg)
+          onError?.(msg)
+          setIsLoading(false)
+        }
+        // If OK, let kicanvas handle the actual loading
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return
+        setError('Failed to load footprint')
+        onError?.('Failed to load footprint')
+        setIsLoading(false)
+      })
+
+    return () => {
+      controller.abort()
+    }
+  }, [src, onError])
 
   useEffect(() => {
     const embed = embedRef.current
@@ -75,22 +104,36 @@ export default function KiCanvasEmbed({
     const handleLoad = () => setIsLoading(false)
     const handleError = () => setIsLoading(false)
 
+    // Listen for various possible event names
     embed.addEventListener('kicanvas:load', handleLoad)
+    embed.addEventListener('kicanvas:loaded', handleLoad)
     embed.addEventListener('load', handleLoad)
     embed.addEventListener('error', handleError)
+    embed.addEventListener('kicanvas:error', handleError)
+
+    // Fallback timeout - if no events fire after 5 seconds, assume loaded
+    const timeout = setTimeout(() => setIsLoading(false), 5000)
+
     return () => {
+      clearTimeout(timeout)
       embed.removeEventListener('kicanvas:load', handleLoad)
+      embed.removeEventListener('kicanvas:loaded', handleLoad)
       embed.removeEventListener('load', handleLoad)
       embed.removeEventListener('error', handleError)
+      embed.removeEventListener('kicanvas:error', handleError)
     }
-  }, [isReady])
+  }, [isReady, src])
 
   return (
     <div className="detail-visual-frame detail-visual-stack">
-      {!isReady ? (
+      {error ? (
+        <div className="detail-visual-empty">
+          {error}
+        </div>
+      ) : !isReady ? (
         <div className="detail-visual-spinner">
           <span className="spinner" />
-          <span>Loading layout...</span>
+          <span>Loading viewer...</span>
         </div>
       ) : (
         <>
@@ -112,7 +155,7 @@ export default function KiCanvasEmbed({
           {isLoading && (
             <div className="detail-visual-spinner">
               <span className="spinner" />
-              <span>Loading layout...</span>
+              <span>Loading footprint...</span>
             </div>
           )}
         </>

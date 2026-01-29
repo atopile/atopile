@@ -100,6 +100,11 @@ export interface ShowBackendMenuMessage {
   type: 'showBackendMenu';
 }
 
+export interface OpenInSimpleBrowserMessage {
+  type: 'openInSimpleBrowser';
+  url: string;
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -109,7 +114,8 @@ export type ExtensionMessage =
   | ReloadWindowMessage
   | RestartExtensionMessage
   | ShowLogsMessage
-  | ShowBackendMenuMessage;
+  | ShowBackendMenuMessage
+  | OpenInSimpleBrowserMessage;
 
 /**
  * Type-safe helper to post messages to the extension.

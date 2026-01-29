@@ -1,14 +1,14 @@
 /**
- * PackagesPanel - VS Code-style package browser
+ * PackagesPanel - Tab-based package browser
  *
  * Layout:
- * - Search at top (filters both installed and marketplace)
- * - Collapsible INSTALLED section with count
- * - Marketplace results below
+ * - Tabs: "Browse" (marketplace) | "Project" (installed)
+ * - Browse tab: Search bar + marketplace results
+ * - Project tab: Packages installed in current project
  */
 
-import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Package, PackageSearch, Search, CheckCircle } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { CheckCircle, Package, PackageSearch, Search } from 'lucide-react'
 import type { PackageInfo, ProjectDependency } from '../types/build'
 import { isInstalledInProject } from '../utils/packageUtils'
 import type { SelectedPackage } from './sidebar-modules'
@@ -28,7 +28,9 @@ interface PackagesPanelProps {
   onRemoveDependency?: (projectRoot: string, identifier: string) => void
 }
 
-// Installed package row - matches marketplace layout with version
+type TabId = 'browse' | 'project'
+
+// Installed package row
 function InstalledPackageRow({
   dependency,
   onClick,
@@ -37,20 +39,19 @@ function InstalledPackageRow({
   onClick: () => void
 }) {
   return (
-    <div className="marketplace-package-row installed" onClick={onClick}>
-      <Package size={14} className="marketplace-package-icon" />
-      <div className="marketplace-package-info">
-        <div className="marketplace-package-header">
-          <span className="marketplace-package-name">{dependency.name}</span>
-          <CheckCircle size={12} className="marketplace-installed-badge" />
+    <div className="packages-row" onClick={onClick}>
+      <Package size={14} className="packages-row-icon" />
+      <div className="packages-row-info">
+        <div className="packages-row-header">
+          <span className="packages-row-name">{dependency.name}</span>
         </div>
         {dependency.summary && (
-          <div className="marketplace-package-summary">{dependency.summary}</div>
+          <div className="packages-row-summary">{dependency.summary}</div>
         )}
       </div>
-      <div className="marketplace-package-meta">
-        <span className="marketplace-package-publisher">{dependency.publisher}</span>
-        <span className="marketplace-package-version">{dependency.version}</span>
+      <div className="packages-row-meta">
+        <span className="packages-row-publisher">{dependency.publisher}</span>
+        <span className="packages-row-version">{dependency.version}</span>
       </div>
     </div>
   )
@@ -67,19 +68,19 @@ function MarketplacePackageRow({
   onClick: () => void
 }) {
   return (
-    <div className={`marketplace-package-row ${installed ? 'installed' : ''}`} onClick={onClick}>
-      <Package size={14} className="marketplace-package-icon" />
-      <div className="marketplace-package-info">
-        <div className="marketplace-package-header">
-          <span className="marketplace-package-name">{pkg.name}</span>
-          {installed && <CheckCircle size={12} className="marketplace-installed-badge" />}
+    <div className={`packages-row ${installed ? 'installed' : ''}`} onClick={onClick}>
+      <Package size={14} className="packages-row-icon" />
+      <div className="packages-row-info">
+        <div className="packages-row-header">
+          <span className="packages-row-name">{pkg.name}</span>
+          {installed && <CheckCircle size={12} className="packages-installed-badge" />}
         </div>
         {pkg.summary && (
-          <div className="marketplace-package-summary">{pkg.summary}</div>
+          <div className="packages-row-summary">{pkg.summary}</div>
         )}
       </div>
-      <div className="marketplace-package-meta">
-        <span className="marketplace-package-publisher">{pkg.publisher}</span>
+      <div className="packages-row-meta">
+        <span className="packages-row-publisher">{pkg.publisher}</span>
       </div>
     </div>
   )
@@ -92,10 +93,18 @@ export function PackagesPanel({
   installError,
   onOpenPackageDetail,
 }: PackagesPanelProps) {
+  const [activeTab, setActiveTab] = useState<TabId>('browse')
   const [searchQuery, setSearchQuery] = useState('')
-  const [installedOpen, setInstalledOpen] = useState(true)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
-  // Filter installed packages by search query
+  // Focus search input when switching to browse tab
+  useEffect(() => {
+    if (activeTab === 'browse' && searchInputRef.current) {
+      searchInputRef.current.focus()
+    }
+  }, [activeTab])
+
+  // Filter installed packages by search query (for project tab)
   const filteredInstalled = useMemo(() => {
     if (!searchQuery.trim()) return installedDependencies
     const query = searchQuery.toLowerCase()
@@ -146,80 +155,62 @@ export function PackagesPanel({
   }
 
   const hasSearchQuery = searchQuery.trim().length > 0
-  const showInstalledSection = !hasSearchQuery || filteredInstalled.length > 0
-  const showMarketplaceSection = hasSearchQuery || filteredMarketplace.length > 0
 
   return (
     <div className="packages-panel">
-      {/* Search - always at top */}
-      <div className="packages-search-bar">
-        <Search size={14} />
-        <input
-          type="text"
-          placeholder="Search packages..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+      <div className="packages-tabs">
+        <button
+          className={`packages-tab ${activeTab === 'browse' ? 'active' : ''}`}
+          onClick={() => setActiveTab('browse')}
+        >
+          <Search size={14} />
+          Browse
+        </button>
+        <button
+          className={`packages-tab ${activeTab === 'project' ? 'active' : ''}`}
+          onClick={() => setActiveTab('project')}
+        >
+          <Package size={14} />
+          Project
+          {installedDependencies.length > 0 && (
+            <span className="packages-tab-count">{installedDependencies.length}</span>
+          )}
+        </button>
       </div>
 
-      {installError && (
-        <div className="packages-error">{installError}</div>
-      )}
-
-      <div className="packages-sections">
-        {/* Installed section */}
-        {showInstalledSection && (
-          <div className="packages-section">
-            <button
-              className="packages-section-header"
-              onClick={() => setInstalledOpen((prev) => !prev)}
-            >
-              <span className="section-toggle">
-                {installedOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              </span>
-              <span className="section-title">INSTALLED</span>
-              <span className="section-count">{filteredInstalled.length}</span>
-            </button>
-
-            {installedOpen && (
-              <div className="packages-section-content">
-                {selectedProjectRoot ? (
-                  filteredInstalled.length > 0 ? (
-                    filteredInstalled.map((dep) => (
-                      <InstalledPackageRow
-                        key={dep.identifier}
-                        dependency={dep}
-                        onClick={() => handleOpenInstalledPackage(dep)}
-                      />
-                    ))
-                  ) : (
-                    <div className="packages-empty-hint">
-                      {hasSearchQuery ? 'No matching installed packages' : 'No packages installed'}
-                    </div>
-                  )
-                ) : (
-                  <div className="packages-empty-hint">
-                    Select a project to view installed packages
-                  </div>
-                )}
-              </div>
-            )}
+      {activeTab === 'browse' && (
+        <div className="packages-tab-content">
+          <div className="packages-search-bar">
+            <Search size={14} />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search packages..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
-        )}
 
-        {/* Marketplace / Search Results */}
-        {showMarketplaceSection && (
-          <div className="packages-section">
-            {hasSearchQuery && (
-              <div className="packages-section-header static">
-                <span className="section-title">MARKETPLACE</span>
-                <span className="section-count">{filteredMarketplace.length}</span>
+          {installError && (
+            <div className="packages-error">{installError}</div>
+          )}
+
+          <div className="packages-results-container">
+            {!hasSearchQuery && packages.length === 0 && (
+              <div className="packages-empty-state">
+                <PackageSearch size={32} />
+                <span>Search for packages to install</span>
               </div>
             )}
-
-            <div className="packages-section-content">
-              {filteredMarketplace.length > 0 ? (
-                filteredMarketplace.map((pkg) => {
+            {hasSearchQuery && filteredMarketplace.length === 0 && (
+              <div className="packages-empty-state">
+                <PackageSearch size={24} />
+                <span>No packages found</span>
+              </div>
+            )}
+            {filteredMarketplace.length > 0 && (
+              <div className="packages-list">
+                {filteredMarketplace.map((pkg) => {
                   const installed = selectedProjectRoot
                     ? isInstalledInProject(pkg.installedIn || [], selectedProjectRoot)
                     : false
@@ -231,17 +222,48 @@ export function PackagesPanel({
                       onClick={() => handleOpenMarketplacePackage(pkg)}
                     />
                   )
-                })
-              ) : (
-                <div className="packages-empty-state">
-                  <PackageSearch size={24} />
-                  <span>No packages found</span>
-                </div>
-              )}
-            </div>
+                })}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {activeTab === 'project' && (
+        <div className="packages-tab-content">
+          <div className="packages-results-container">
+            {!selectedProjectRoot && (
+              <div className="packages-empty-state">
+                <Package size={32} />
+                <span>Select a project to view installed packages</span>
+              </div>
+            )}
+            {selectedProjectRoot && installedDependencies.length === 0 && (
+              <div className="packages-empty-state">
+                <Package size={32} />
+                <span>No packages installed in this project</span>
+                <button
+                  className="packages-empty-action"
+                  onClick={() => setActiveTab('browse')}
+                >
+                  Browse packages
+                </button>
+              </div>
+            )}
+            {selectedProjectRoot && installedDependencies.length > 0 && (
+              <div className="packages-list">
+                {filteredInstalled.map((dep) => (
+                  <InstalledPackageRow
+                    key={dep.identifier}
+                    dependency={dep}
+                    onClick={() => handleOpenInstalledPackage(dep)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

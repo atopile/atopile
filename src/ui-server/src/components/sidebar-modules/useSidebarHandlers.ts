@@ -5,13 +5,14 @@
 
 import { sendActionWithResponse } from '../../api/websocket';
 import { useStore } from '../../store';
-import type { Selection, SelectedPackage } from './sidebarUtils';
+import type { Selection, SelectedPackage, SelectedPart } from './sidebarUtils';
 
 interface UseSidebarHandlersProps {
   projects: any[];
   state: any;
   setSelection: React.Dispatch<React.SetStateAction<Selection>>;
   setSelectedPackage: React.Dispatch<React.SetStateAction<SelectedPackage | null>>;
+  setSelectedPart: React.Dispatch<React.SetStateAction<SelectedPart | null>>;
   action: (name: string, data?: Record<string, unknown>) => void;
 }
 
@@ -20,6 +21,7 @@ export function useSidebarHandlers({
   state,
   setSelection,
   setSelectedPackage,
+  setSelectedPart,
   action,
 }: UseSidebarHandlersProps) {
 
@@ -65,6 +67,7 @@ export function useSidebarHandlers({
 
   const handleOpenPackageDetail = async (pkg: SelectedPackage) => {
     setSelectedPackage(pkg);
+    setSelectedPart(null);
     const requestedVersion = pkg.latestVersion || pkg.version;
     const store = useStore.getState();
     store.setLoadingPackageDetails(true);
