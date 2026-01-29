@@ -404,7 +404,10 @@ class is_expression(fabll.Node):
         return self._compact_repr(
             style=style,
             symbol=style.symbol if style.symbol is not None else type(self).__name__,
-            is_predicate=bool(self.try_get_sibling_trait(is_predicate)),
+            is_predicate=bool(
+                self.try_get_sibling_trait(is_predicate)
+                or self.try_get_sibling_trait(is_information_predicate)
+            ),
             is_terminated=bool(self.try_get_sibling_trait(is_terminated)),
             relevant=relevant,
             lit_suffix=(
@@ -868,22 +871,42 @@ class is_assertable(fabll.Node):
 
     def assert_(self):
         obj = fabll.Traits(self).get_obj_raw()
-        if obj.has_trait(is_predicate):
+        if obj.has_trait(is_predicate) or obj.has_trait(is_information_predicate):
             return
+        if self.as_expression.get().is_non_constraining():
+            return fabll.Traits.create_and_add_instance_to(
+                node=obj, trait=is_information_predicate
+            )
         return fabll.Traits.create_and_add_instance_to(node=obj, trait=is_predicate)
 
     def is_asserted(self) -> bool:
-        return self.try_get_sibling_trait(is_predicate) is not None
+        return (
+            self.try_get_sibling_trait(is_predicate) is not None
+            or self.try_get_sibling_trait(is_information_predicate) is not None
+        )
 
 
 class is_predicate(fabll.Node):
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    """
+    Assertable and participates in constraining predicate semantics.
+    """
 
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     as_expression = fabll.Traits.ImpliedTrait(is_expression)
 
     def unassert(self):
         # TODO
         pass
+
+
+class is_information_predicate(fabll.Node):
+    """
+    Asserted non-constraining expression (e.g. Correlated, Not(Correlated)).
+    Does not participate in predicate semantics.
+    """
+
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    as_expression = fabll.Traits.ImpliedTrait(is_expression)
 
 
 def _make_instance_from_operand_instance[T: fabll.NodeT](
@@ -3099,7 +3122,7 @@ class Correlated(fabll.Node):
         out = fabll._ChildField(cls)
         if assert_:
             out.add_dependant(
-                fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
+                fabll.Traits.MakeEdge(is_information_predicate.MakeChild(), [out]),
             )
         for operand in operands:
             out.add_dependant(

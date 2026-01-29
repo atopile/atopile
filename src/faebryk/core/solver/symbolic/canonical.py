@@ -138,7 +138,7 @@ import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import ExpressionBuilder, Mutator
 from faebryk.core.solver.utils import S_LOG
-from faebryk.libs.util import EquivalenceClasses, indented_container, not_none, one
+from faebryk.libs.util import EquivalenceClasses, indented_container, not_none
 
 Add = F.Expressions.Add
 And = F.Expressions.And
@@ -503,6 +503,12 @@ def flatten_expressions(mutator: Mutator):
 
     alias_classes = [frozenset(class_) for class_ in classes.get()]
 
+    def _is_non_constraining(expr: F.Expressions.is_expression) -> bool:
+        return bool(
+            expr.try_get_sibling_trait(F.Expressions.is_information_predicate)
+            or expr.obj_type_has_trait(F.Expressions.has_independent_operands)
+        )
+
     # build representative for each class
     for class_ in alias_classes:
         class_params = {p for elem in class_ if (p := elem.as_parameter.try_get())}
@@ -517,6 +523,15 @@ def flatten_expressions(mutator: Mutator):
             for e in class_exprs:
                 expr_reprs[e] = mutator.make_singleton(True).can_be_operand.get()
         if not class_params and has_predicate:
+            continue
+
+        # Skip creating representative for classes with non-constraining expressions -
+        # they don't have aliases
+        if (
+            not class_params
+            and class_exprs
+            and all(_is_non_constraining(e) for e in class_exprs)
+        ):
             continue
 
         if class_params:
@@ -574,7 +589,10 @@ def flatten_expressions(mutator: Mutator):
     ) -> F.Parameters.can_be_operand:
         o = _strip_units(mutator, o)
         if o_e := o.try_get_sibling_trait(F.Expressions.is_expression):
-            o = expr_reprs[o_e]
+            # If expression has a representative, use it
+            # Otherwise it will be congruence-merged during copy
+            if o_e in expr_reprs:
+                o = expr_reprs[o_e]
         elif (
             o_p := o.try_get_sibling_trait(F.Parameters.is_parameter)
         ) and mutator.has_been_mutated(o_p.as_parameter_operatable.get()):
@@ -629,6 +647,18 @@ def flatten_expressions(mutator: Mutator):
                     )
             continue
 
+        # Info-predicate expressions (e.g. Correlated) don't need aliases -
+        # they are non-constraining and don't participate in alias semantics
+        if any(
+            e.try_get_sibling_trait(F.Expressions.is_information_predicate)
+            for e in class_exprs
+        ):
+            continue
+
+        # Skip classes where we didn't create a representative
+        if class_ not in class_reprs:
+            continue
+
         class_param_op = class_reprs[class_]
 
         if not class_exprs:
@@ -636,17 +666,24 @@ def flatten_expressions(mutator: Mutator):
             # all the othe param alias get dropped
             continue
 
+        mutated_exprs = [
+            mutator.get_mutated(e.as_parameter_operatable.get()).as_operand.get()
+            for e in class_exprs
+        ]
+
+        # Congruence matching may have merged with an info-predicate expression
+        if any(
+            op.try_get_sibling_trait(F.Expressions.is_information_predicate)
+            for op in mutated_exprs
+            if op.try_get_sibling_trait(F.Expressions.is_expression)
+        ):
+            continue
+
         # build big alias with all exprs and the representative
         alias = mutator._create_and_insert_expression(
             ExpressionBuilder(
                 F.Expressions.Is,
-                [
-                    mutator.get_mutated(
-                        e.as_parameter_operatable.get()
-                    ).as_operand.get()
-                    for e in class_exprs
-                ]
-                + [class_param_op],
+                mutated_exprs + [class_param_op],
                 assert_=True,
                 terminate=True,
                 traits=[],

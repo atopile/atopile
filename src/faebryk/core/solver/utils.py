@@ -447,9 +447,11 @@ class MutatorUtils:
         if not op:
             return OrderedSet()
 
-        tg = next(iter(op)).tg
+        first_op = next(iter(op))
+        tg = first_op.tg
+        g = first_op.g
 
-        anticorrelated_pairs = MutatorUtils.get_anticorrelated_pairs(tg)
+        anticorrelated_pairs = MutatorUtils.get_anticorrelated_pairs(tg, g)
         original_params = {
             p
             for o in op
@@ -539,7 +541,7 @@ class MutatorUtils:
 
     @staticmethod
     def get_anticorrelated_pairs(
-        tg: "fbrk.TypeGraph",
+        tg: "fbrk.TypeGraph", g: "graph.GraphView | None" = None
     ) -> set[frozenset["F.Parameters.is_parameter"]]:
         """
         Collect all parameter pairs that are explicitly marked as uncorrelated
@@ -549,11 +551,14 @@ class MutatorUtils:
 
         out: set[frozenset[F.Parameters.is_parameter]] = set()
 
-        for expr in F.Expressions.Correlated.bind_typegraph(tg).get_instances():
+        for expr in F.Expressions.Correlated.bind_typegraph(tg).get_instances(g):
             expr_op = expr.can_be_operand.get()
             expr_e = expr.is_expression.get()
-            if not expr_op.get_operations(
-                types=F.Expressions.Not, recursive=False, predicates_only=True
+            not_ops = expr_op.get_operations(
+                types=F.Expressions.Not, recursive=False, predicates_only=False
+            )
+            if not any(
+                n.has_trait(F.Expressions.is_information_predicate) for n in not_ops
             ):
                 continue
 

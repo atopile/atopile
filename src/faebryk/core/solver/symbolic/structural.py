@@ -11,7 +11,7 @@ from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.symbolic.pure_literal import (
     exec_pure_literal_operands,
 )
-from faebryk.core.solver.utils import MutatorUtils
+from faebryk.core.solver.utils import Contradiction, MutatorUtils
 from faebryk.libs.util import OrderedSet
 
 logger = logging.getLogger(__name__)
@@ -309,7 +309,9 @@ def lower_estimation_of_expressions_with_subsets(mutator: Mutator):
         return
 
     # Step 2: Build anticorrelated pairs set for correlation checking
-    anticorrelated_pairs = MutatorUtils.get_anticorrelated_pairs(mutator.tg_in)
+    anticorrelated_pairs = MutatorUtils.get_anticorrelated_pairs(
+        mutator.tg_in, mutator.G_in
+    )
 
     # Step 3: Find expressions involving subsetted operands
     exprs = {
@@ -382,3 +384,37 @@ def lower_estimation_of_expressions_with_subsets(mutator: Mutator):
             from_ops=from_ops,
             assert_=True,
         )
+
+
+@algorithm("Correlated contradiction", terminal=False)
+def correlated_contradiction(mutator: Mutator):
+    """
+    Detect Correlated(A,B) + Not(Correlated(A,B)) both info-predicates.
+
+    If a Correlated expression is asserted and also wrapped in a Not that is itself
+    asserted, the two assertions contradict each other.
+    """
+
+    Correlated = F.Expressions.Correlated
+    Not = F.Expressions.Not
+    is_info = F.Expressions.is_information_predicate
+
+    for corr in mutator.get_typed_expressions(
+        Correlated, include_terminated=False, include_irrelevant=False
+    ):
+        corr_e = corr.get_trait(F.Expressions.is_expression)
+        if not corr_e.try_get_sibling_trait(is_info):
+            continue
+        corr_op = corr.get_trait(F.Parameters.can_be_operand)
+        for not_expr in corr_op.get_operations(
+            types=Not, recursive=False, predicates_only=False
+        ):
+            if not_expr.has_trait(is_info):
+                raise Contradiction(
+                    "Correlated and Not(Correlated) both asserted",
+                    involved=[
+                        corr_op.as_parameter_operatable.force_get(),
+                        not_expr.get_trait(F.Parameters.is_parameter_operatable),
+                    ],
+                    mutator=mutator,
+                )

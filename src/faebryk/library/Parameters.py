@@ -277,6 +277,33 @@ class is_parameter_operatable(fabll.Node):
         )
 
     # literal extraction ---------------------------------------------------------------
+    def _canonical_operatable_for_set_extraction(self) -> "is_parameter_operatable":
+        """
+        Get the canonical operatable for set extraction by following alias to the
+        representative parameter.
+        """
+        from faebryk.library.Expressions import Is
+        from faebryk.library.Parameters import is_parameter
+
+        op = self.as_operand.get()
+
+        aliases = op.get_operations(Is, predicates_only=True)
+
+        if len(aliases) != 1:
+            return self
+
+        is_expr = next(iter(aliases)).is_expression.get()
+        params = is_expr.get_operands_with_trait(is_parameter)
+
+        if len(params) != 1:
+            return self
+
+        return (
+            self
+            if (representative_op := next(iter(params)).as_operand.get()).is_same(op)
+            else representative_op.as_parameter_operatable.force_get()
+        )
+
     def _try_extract_set[T: "fabll.NodeT" = "Literals.is_literal"](
         self,
         superset: bool,
@@ -285,17 +312,21 @@ class is_parameter_operatable(fabll.Node):
         from faebryk.library.Expressions import IsSubset, IsSuperset
         from faebryk.library.Literals import is_literal
 
+        # Follow alias to representative parameter for set extraction
+        target = self._canonical_operatable_for_set_extraction()
+        target_op = target.as_operand.get()
+
         l_op, r_op = (IsSubset, IsSuperset) if superset else (IsSuperset, IsSubset)
 
         lits = []
-        for expr in self.get_operations(types=l_op, predicates_only=True):
+        for expr in target.get_operations(types=l_op, predicates_only=True):
             ops = expr.is_expression.get().get_operands()
-            if not ops[0].is_same(self.as_operand.get()):
+            if not ops[0].is_same(target_op):
                 continue
             for op in ops[1:]:
                 if lit := op.as_literal.try_get():
                     lits.append(lit)
-        for expr in self.get_operations(types=r_op, predicates_only=True):
+        for expr in target.get_operations(types=r_op, predicates_only=True):
             ops = expr.is_expression.get().get_operands()
             op = ops[0]
             if lit := op.as_literal.try_get():
