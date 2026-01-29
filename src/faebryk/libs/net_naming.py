@@ -127,7 +127,8 @@ def _get_all_connected_interfaces(
     3. filter for is_interface trait
 
     Returns:
-        List of all hierarchies
+        List of all hierarchies, sorted by (length, path_string) for determinism.
+        Shortest hierarchies first; ties broken alphabetically by dotted path.
     """
     hierarchies: list[list[tuple[fabll.Node, str]]] = []
     for electrical in electricals:
@@ -138,7 +139,14 @@ def _get_all_connected_interfaces(
         [(node, name) for node, name in hierarchy if node.has_trait(fabll.is_interface)]
         for hierarchy in hierarchies
     ]
-    return sorted(interfaces_hierarchies, key=len)
+
+    # Sort by (length, path_string) for deterministic ordering.
+    # When two hierarchies have the same length, the alphabetically-first
+    # dotted path wins, ensuring consistent results across runs.
+    return sorted(
+        interfaces_hierarchies,
+        key=lambda h: (len(h), ".".join(name for _, name in h)),
+    )
 
 
 def _try_extract_signal_name(node: fabll.Node) -> str | None:
@@ -228,8 +236,9 @@ def process_required_and_suggested_names(
             return _required_names, []
 
         connected_interfaces = _get_all_connected_interfaces(electricals)
-        longest_hierarchy = max(connected_interfaces, key=len)
-        connected_interfaces.remove(longest_hierarchy)
+        # Take the last element (longest hierarchy, or alphabetically last if tied)
+        # since the list is sorted by (length, path_string) ascending
+        longest_hierarchy = connected_interfaces.pop()
         longest_hierarchy_required_names, longest_hierarchy_suggested_names = (
             _check_suggested_and_expected_names(longest_hierarchy, suggested=True)
         )
