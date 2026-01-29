@@ -91,7 +91,18 @@ def _run_build_queue(
 
         # For verbose mode, stream subprocess output to console
         if verbose:
+            # Buffer output until the build header is printed to keep ordering.
+            pending_output: dict[str, list[tuple[str, bool]]] = {}
+
+            def _flush_pending(build_id: str) -> None:
+                buffered = pending_output.pop(build_id, [])
+                for text, is_stderr in buffered:
+                    print_subprocess_output(text, is_stderr)
+
             def on_output(build_id: str, text: str, is_stderr: bool) -> None:
+                if build_id not in started:
+                    pending_output.setdefault(build_id, []).append((text, is_stderr))
+                    return
                 print_subprocess_output(text, is_stderr)
 
             queue.on_output = on_output
@@ -111,6 +122,8 @@ def _run_build_queue(
                 ):
                     printer.build_started(build_id, display_name, total=build.total_stages)
                     started.add(build_id)
+                    if verbose:
+                        _flush_pending(build_id)
 
                 # Stage updates
                 if build.stages:

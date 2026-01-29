@@ -120,6 +120,17 @@ def _build_subprocess_env(build: Build) -> dict[str, str]:
         env["ATO_KEEP_DESIGNATORS"] = "1" if build.keep_designators else "0"
     if build.verbose:
         env["ATO_VERBOSE"] = "1"
+        # Force Rich to emit ANSI formatting even when stdout is piped.
+        env["ATO_FORCE_TERMINAL"] = "1"
+        # Propagate parent width so rich bars scale correctly in subprocess.
+        try:
+            from atopile.logging_utils import get_terminal_width
+
+            width = str(get_terminal_width())
+            env["COLUMNS"] = width
+            env["TERMINAL_WIDTH"] = width
+        except Exception:
+            pass
     if os.environ.get("ATO_SAFE"):
         env["ATO_SAFE"] = "1"
 

@@ -155,12 +155,13 @@ faebryk_theme = Theme(
     }
 )
 
+_FORCE_TERMINAL = os.environ.get("ATO_FORCE_TERMINAL") in {"1", "true", "yes"}
 _CONSOLE_WIDTH = _get_terminal_width()
 rich.reconfigure(
     theme=faebryk_theme,
     width=_CONSOLE_WIDTH,
-    force_terminal=sys.stdout.isatty(),
-    soft_wrap=not sys.stdout.isatty(),
+    force_terminal=_FORCE_TERMINAL or sys.stdout.isatty(),
+    soft_wrap=not (_FORCE_TERMINAL or sys.stdout.isatty()),
 )
 
 # Console singletons - use these to avoid intermixing logging with other output
@@ -169,8 +170,8 @@ error_console = Console(
     theme=faebryk_theme,
     stderr=True,
     width=_CONSOLE_WIDTH,
-    force_terminal=sys.stderr.isatty(),
-    soft_wrap=not sys.stderr.isatty(),
+    force_terminal=_FORCE_TERMINAL or sys.stderr.isatty(),
+    soft_wrap=not (_FORCE_TERMINAL or sys.stderr.isatty()),
 )
 
 
