@@ -79,6 +79,8 @@ def _sort_nets(
     Electricals within each net are sorted alphabetically by name for determinism.
     The first electrical (electricals[0]) is used for hierarchy depth calculation
     and conflict resolution, so stable ordering is critical.
+
+    Nets are sorted by (electrical_count, first_electrical_name) for determinism.
     """
     processable_nets: list[ProcessableNet] = []
     for net in nets:
@@ -100,7 +102,15 @@ def _sort_nets(
                 ],
             )
         )
-    return sorted(processable_nets, key=lambda p: len(p.electricals))
+    # Sort by (electrical_count, first_electrical_name) for determinism.
+    # Ties in electrical count are broken by the first electrical's name.
+    return sorted(
+        processable_nets,
+        key=lambda p: (
+            len(p.electricals),
+            p.electricals[0].name if p.electricals else "",
+        ),
+    )
 
 
 def collect_unnamed_nets(
