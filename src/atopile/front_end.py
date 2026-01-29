@@ -841,6 +841,7 @@ class _FeatureFlags:
         FOR_LOOP = "FOR_LOOP"
         TRAITS = "TRAITS"
         MODULE_TEMPLATING = "MODULE_TEMPLATING"
+        INSTANCE_TRAITS = "INSTANCE_TRAITS"
 
     def __init__(self):
         self.flags = set[_FeatureFlags.Feature]()
@@ -2462,6 +2463,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def visitTrait_stmt(self, ctx: ap.Trait_stmtContext):
         self._ensure_feature_enabled(ctx, _FeatureFlags.Feature.TRAITS)
 
+        if field_ref := ctx.field_reference():
+            self._ensure_feature_enabled(ctx, _FeatureFlags.Feature.INSTANCE_TRAITS)
+
+            field_ref = self.visitFieldReference(field_ref)
+            node = self._get_referenced_node(field_ref, ctx)
+        else:
+            node = self._current_node
+
         ref = self.visitTypeReference(ctx.type_reference())
         constructor_name = (
             self.visitName(ctx.constructor().name())
@@ -2509,7 +2518,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 traceback=self.get_traceback(),
             ) from e
 
-        self._current_node.add(trait)
+        node.add(trait)
 
         from_dsl_ = trait.add(
             type_from_dsl(
