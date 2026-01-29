@@ -387,21 +387,6 @@ describe('API Client', () => {
     });
   });
 
-  describe('files API', () => {
-    it('lists project files', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: () => Promise.resolve(JSON.stringify({ files: [] })),
-      });
-
-      await api.files.list('/project');
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('project_root=%2Fproject'),
-        expect.any(Object)
-      );
-    });
-  });
-
   describe('modules API', () => {
     it('lists project modules', async () => {
       mockFetch.mockResolvedValueOnce({

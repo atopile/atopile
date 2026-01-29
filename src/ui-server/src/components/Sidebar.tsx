@@ -14,6 +14,7 @@ import { StructurePanel } from './StructurePanel';
 import { PackagesPanel } from './PackagesPanel';
 import { PartsSearchPanel } from './PartsSearchPanel';
 import { PartsDetailPanel } from './PartsDetailPanel';
+import { FileExplorerPanel } from './FileExplorerPanel';
 import { sendAction, sendActionWithResponse } from '../api/websocket';
 import { postMessage, isVsCodeWebview } from '../api/vscodeApi';
 import { useStore } from '../store';
@@ -85,7 +86,7 @@ export function Sidebar() {
   const [, setSelection] = useState<Selection>({ type: 'none' });
   const [selectedPackage, setSelectedPackage] = useState<SelectedPackage | null>(null);
   const [selectedPart, setSelectedPart] = useState<SelectedPart | null>(null);
-  const [activeTab, setActiveTab] = useState<'structure' | 'packages' | 'parts' | 'stdlib' | 'parameters' | 'bom'>('packages');
+  const [activeTab, setActiveTab] = useState<'files' | 'structure' | 'packages' | 'parts' | 'stdlib' | 'parameters' | 'bom'>('files');
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
@@ -370,6 +371,13 @@ export function Sidebar() {
         <div className="tabbed-panels">
           <div className="tab-bar">
             <button
+              className={`tab-button ${activeTab === 'files' ? 'active' : ''}`}
+              onClick={() => setActiveTab('files')}
+              title="Files"
+            >
+              Files
+            </button>
+            <button
               className={`tab-button ${activeTab === 'packages' ? 'active' : ''}`}
               onClick={() => setActiveTab('packages')}
               title="Packages"
@@ -415,6 +423,11 @@ export function Sidebar() {
           </div>
 
           <div className="tab-content">
+            {activeTab === 'files' && (
+              <FileExplorerPanel
+                projectRoot={selectedProjectRoot}
+              />
+            )}
             {activeTab === 'packages' && (
               <PackagesPanel
                 packages={packages || []}

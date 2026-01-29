@@ -20,7 +20,6 @@ import type {
   Problem,
   ModuleDefinition,
   ModuleChild,
-  FileTreeNode,
   VariablesData,
   ProjectDependency,
 } from '../types/build';
@@ -116,10 +115,6 @@ interface LogBuildId {
 
 interface ModulesResponse {
   modules: ModuleDefinition[];
-}
-
-interface FilesResponse {
-  files: FileTreeNode[];
 }
 
 interface DependenciesResponse {
@@ -330,14 +325,7 @@ export const api = {
       ),
   },
 
-  // Project files/modules
-  files: {
-    list: (projectRoot: string) =>
-      fetchJSON<FilesResponse>(
-        `/api/files?project_root=${encodeURIComponent(projectRoot)}`
-      ),
-  },
-
+  // Project modules
   modules: {
     list: (projectRoot: string) =>
       fetchJSON<ModulesResponse>(

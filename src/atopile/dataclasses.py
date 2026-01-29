@@ -644,23 +644,6 @@ class ModulesResponse(BaseModel):
     total: int
 
 
-class FileTreeNode(BaseModel):
-    """A node in the file tree (either a file or folder)."""
-
-    name: str
-    path: str
-    type: Literal["file", "folder"]
-    extension: Optional[str] = None  # 'ato' or 'py' for files
-    children: Optional[list["FileTreeNode"]] = None
-
-
-class FilesResponse(BaseModel):
-    """Response for /api/files endpoint."""
-
-    files: list[FileTreeNode]
-    total: int
-
-
 class DependencyInfo(BaseModel):
     """A project dependency with version info."""
 

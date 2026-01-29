@@ -428,6 +428,25 @@
   gap: var(--spacing-sm);
 }
 
+/* When section header left is a button (clickable to expand/collapse) */
+button.detail-section-header-left {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+
+button.detail-section-header-left:hover .detail-section-title {
+  color: var(--text-primary);
+}
+
+button.detail-section-header-left:hover .detail-collapse-toggle {
+  color: var(--text-primary);
+}
+
 .detail-collapse-toggle {
   display: inline-flex;
   align-items: center;
@@ -466,6 +485,7 @@
   color: var(--text-muted);
   text-decoration: none;
   transition: all 0.15s ease;
+  cursor: pointer;
 }
 
 .detail-open-icon:hover {
