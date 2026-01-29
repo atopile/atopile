@@ -171,13 +171,13 @@ class _EventDispatcher(PatternMatchingEventHandler):
                         sample = (
                             result.created[:2] + result.changed[:2] + result.deleted[:2]
                         )
-                        log.info(
+                        log.debug(
                             "File watcher triggered: %s created, %s changed, %s deleted",  # noqa: E501
                             len(result.created),
                             len(result.changed),
                             len(result.deleted),
                         )
-                        log.info(
+                        log.debug(
                             "File watcher sample: %s",
                             ", ".join(str(p) for p in sample[:3]),
                         )

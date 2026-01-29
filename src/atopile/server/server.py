@@ -66,12 +66,12 @@ async def _load_projects_background(ctx: AppContext) -> None:
         await server_state.emit_event("projects_changed")
         return
     # No try/except - let exceptions crash the server for visibility
-    log.info(f"[background] Loading projects from {ctx.workspace_paths}")
+    log.info(f"Loading projects from {ctx.workspace_paths}")
     await asyncio.to_thread(
         core_projects.discover_projects_in_paths, ctx.workspace_paths
     )
     await server_state.emit_event("projects_changed")
-    log.info("[background] Project discovery complete")
+    log.info("Project discovery complete")
 
 
 async def _refresh_projects_state() -> None:
@@ -90,11 +90,11 @@ async def _refresh_projects_state() -> None:
 async def _load_packages_background(ctx: AppContext) -> None:
     """Background task to load packages without blocking startup."""
     # No try/except - let exceptions crash the server for visibility
-    log.info("[background] Loading packages from registry")
+    log.info("Loading packages from registry")
     # Use first workspace path for package scanning
     scan_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
     await packages_domain.refresh_packages_state(scan_path=scan_path)
-    log.info("[background] Packages refresh complete")
+    log.info("Packages refresh complete")
 
 
 async def _refresh_stdlib_state() -> None:
@@ -306,14 +306,14 @@ async def _load_atopile_install_options(ctx: AppContext) -> None:
     from atopile import version as ato_version
 
     # No try/except - let exceptions crash the server for visibility
-    log.info("[background] Loading atopile installation options")
+    log.info("Loading atopile installation options")
 
     # Fetch available versions from PyPI
     versions = await atopile_install.fetch_available_versions()
     await server_state.emit_event(
         "atopile_config_changed", {"available_versions": versions}
     )
-    log.info(f"[background] Loaded {len(versions)} PyPI versions")
+    log.info(f"Loaded {len(versions)} PyPI versions")
 
     # Detect local installations
     installations = await asyncio.to_thread(
@@ -322,7 +322,7 @@ async def _load_atopile_install_options(ctx: AppContext) -> None:
     await server_state.emit_event(
         "atopile_config_changed", {"detected_installations": installations}
     )
-    log.info(f"[background] Detected {len(installations)} local installations")
+    log.info(f"Detected {len(installations)} local installations")
 
 
 def cleanup_server(exc: BaseException | None = None) -> None:
