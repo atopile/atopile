@@ -1157,6 +1157,68 @@ class TestNetNaming:
             "sig",
         ]
 
+    def test_naming_determinism(self):
+        """
+        Test that net naming produces identical results across multiple runs.
+
+        This test creates a hierarchy with many same-depth electricals and name
+        collisions to stress the determinism of:
+        - electricals list ordering
+        - same-length hierarchy tie-breaking
+        - conflict resolution ordering
+        """
+        import faebryk.core.node as fabll
+
+        # Define classes outside run_naming to avoid re-registration
+        class DetermLeaf(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            sig = F.Electrical.MakeChild()
+            data = F.Electrical.MakeChild()
+
+        class DetermBranch(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            leaf_x = DetermLeaf.MakeChild()
+            leaf_y = DetermLeaf.MakeChild()
+            leaf_z = DetermLeaf.MakeChild()
+
+        class DetermRoot(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+            branch_a = DetermBranch.MakeChild()
+            branch_b = DetermBranch.MakeChild()
+
+        class DetermApp(fabll.Node):
+            root = DetermRoot.MakeChild()
+
+        def run_naming() -> list[str]:
+            """Run the full naming pipeline and return sorted net names."""
+            g = fabll.graph.GraphView.create()
+            tg = fbrk.TypeGraph.create(g=g)
+
+            app = DetermApp.bind_typegraph(tg=tg).create_instance(g=g)
+
+            all_electricals = app.get_children(direct_only=False, types=F.Electrical)
+            nets = self._bind_nets_for_test(
+                electricals=all_electricals,
+                tg=tg,
+                g=g,
+            )
+            attach_net_names(nets)
+
+            return sorted(
+                [name for net in nets if (name := net.get_name()) is not None],
+                key=lambda n: n.lower(),
+            )
+
+        # Run naming multiple times and verify identical results
+        first_run = run_naming()
+        for i in range(9):
+            subsequent_run = run_naming()
+            assert first_run == subsequent_run, (
+                f"Non-deterministic naming detected on run {i + 2}:\n"
+                f"First run: {first_run}\n"
+                f"Run {i + 2}: {subsequent_run}"
+            )
+
     def test_fail_on_multiple_required_names(self):
         import pytest
 
