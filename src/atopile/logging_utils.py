@@ -14,6 +14,7 @@ import io
 import logging
 import os
 import re
+import shutil
 import sys
 import time
 from dataclasses import dataclass, field
@@ -121,6 +122,16 @@ def get_status_style(status: str | BuildStatus) -> tuple[str, str]:
 # Rich Console Configuration
 # =============================================================================
 
+def _get_terminal_width() -> int:
+    """Get terminal width, with a wide fallback for non-interactive streams."""
+    if not sys.stdout.isatty():
+        env_width = os.environ.get("COLUMNS")
+        width = int(env_width) if env_width and env_width.isdigit() else 240
+        # Avoid 80-col defaults in non-interactive outputs (e.g. VSCode Output panel).
+        return width if width >= 120 else 240
+    return shutil.get_terminal_size(fallback=(120, 24)).columns
+
+
 # Theme for faebryk-style node highlighting (includes log level styles)
 faebryk_theme = Theme(
     {
@@ -144,11 +155,23 @@ faebryk_theme = Theme(
     }
 )
 
-rich.reconfigure(theme=faebryk_theme)
+_CONSOLE_WIDTH = _get_terminal_width()
+rich.reconfigure(
+    theme=faebryk_theme,
+    width=_CONSOLE_WIDTH,
+    force_terminal=sys.stdout.isatty(),
+    soft_wrap=not sys.stdout.isatty(),
+)
 
 # Console singletons - use these to avoid intermixing logging with other output
 console = rich.get_console()
-error_console = Console(theme=faebryk_theme, stderr=True)
+error_console = Console(
+    theme=faebryk_theme,
+    stderr=True,
+    width=_CONSOLE_WIDTH,
+    force_terminal=sys.stderr.isatty(),
+    soft_wrap=not sys.stderr.isatty(),
+)
 
 
 def safe_markdown(message: str, console: Console | None = None) -> ConsoleRenderable:
@@ -173,14 +196,6 @@ def safe_markdown(message: str, console: Console | None = None) -> ConsoleRender
     if is_terminal:
         return Markdown(message)
     return Text(message)
-
-def _get_terminal_width() -> int:
-    """Get terminal width from the global console singleton."""
-    if not sys.stdout.isatty():
-        if "COLUMNS" in os.environ:
-            return int(os.environ["COLUMNS"])
-        return 240
-    return console.size.width
 
 # =============================================================================
 # Progress Bar Components
@@ -306,9 +321,7 @@ def is_piped_to_file() -> bool:
 def get_terminal_width() -> int:
     """Get the terminal width, with fallback for piped output."""
     if is_piped_to_file():
-        if "COLUMNS" in os.environ:
-            return int(os.environ["COLUMNS"])
-        return 240
+        return _get_terminal_width()
     return console.size.width
 
 

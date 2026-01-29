@@ -963,6 +963,20 @@ class LogHandler(RichHandler):
             logger_name = "…" + logger_name[-17:]
         logger_name = f"{logger_name:<18}"
 
+        if not self._is_terminal or _is_serving():
+            # Avoid Rich table wrapping in non-interactive streams.
+            prefix_parts: list[str] = []
+            if source_id:
+                prefix_parts.append(f"[{source_id}]")
+            prefix_parts.append(timestamp)
+            prefix_parts.append(level_char)
+            prefix_parts.append(logger_name.strip())
+            prefix = "  ".join(prefix_parts) + "  "
+            output = Text.from_ansi(f"{prefix}{message}")
+            output.no_wrap = True
+            output.overflow = "ignore"
+            return output
+
         # Level-specific colors (from shared constants)
         level_color = LEVEL_STYLES.get(level_name, "white")
 
@@ -1090,6 +1104,19 @@ class LogHandler(RichHandler):
         # Apply scope prefix to rendered message
         if scope_prefix:
             message = f"{scope_prefix}{message}"
+
+        if _is_serving():
+            # VSCode Output should be plain text to avoid forced wrapping.
+            from rich.text import Text
+
+            plain = Text.from_ansi(message.replace("\r", "")).plain
+            target = error_console.file if (record.levelno >= logging.ERROR and record.exc_info) else self.console.file
+            try:
+                target.write(plain + "\n")
+                target.flush()
+            except Exception:
+                self.handleError(record)
+            return
 
         renderable = self.render(
             record=record,
