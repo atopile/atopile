@@ -234,6 +234,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         : [
           vscode.Uri.file(path.join(extensionPath, 'resources')),
           vscode.Uri.file(path.join(extensionPath, 'resources', 'webviews')),
+          vscode.Uri.file(path.join(extensionPath, 'resources', 'model-viewer')),
           vscode.Uri.file(path.join(extensionPath, 'webviews', 'dist')),
         ],
     };
@@ -740,6 +741,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       ? webview.asWebviewUri(vscode.Uri.file(wasmPath)).toString()
       : '';
 
+    // Model-viewer script for GLB/GLTF 3D models
+    const modelViewerPath = path.join(extensionPath, 'resources', 'model-viewer', 'model-viewer.min.js');
+    const modelViewerUri = fs.existsSync(modelViewerPath)
+      ? webview.asWebviewUri(vscode.Uri.file(modelViewerPath)).toString()
+      : '';
+
     // Get backend URLs from backendServer (uses discovered port or config)
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
@@ -778,6 +785,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     window.__ATOPILE_ICON_URL__ = '${iconUri}';
     window.__ATOPILE_EXTENSION_VERSION__ = '${this._extensionVersion}';
     window.__ATOPILE_WASM_URL__ = '${wasmUri}';
+    window.__ATOPILE_MODEL_VIEWER_URL__ = '${modelViewerUri}';
     // Inject workspace root for the React app
     window.__ATOPILE_WORKSPACE_ROOT__ = ${JSON.stringify(workspaceRoot || '')};
   </script>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Cpu, ExternalLink, Loader2, CheckCircle, AlertCircle, Download, Layers, Cuboid, Image } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Loader2, CheckCircle, AlertCircle, Download, Layers, Cuboid, Image } from 'lucide-react'
 import type { PartSearchItem } from '../types/build'
 import type { SelectedPart } from './sidebar-modules'
 import { api } from '../api/client'
@@ -108,27 +108,20 @@ export function PartsDetailPanel({
   return (
     <div className="package-detail-panel parts-detail-panel">
       <div className="detail-panel-header">
-        <div className="detail-header-left">
-          <div className="detail-header-left-stack">
-            <button className="detail-back-btn" onClick={onClose} title="Back">
-              <ArrowLeft size={18} />
-            </button>
-            <Cpu size={20} className="detail-package-icon" />
+        <button className="detail-back-btn" onClick={onClose} title="Back">
+          <ArrowLeft size={18} />
+        </button>
+        <div className="detail-header-info">
+          <div className="detail-title-row">
+            <h2 className="detail-package-name">{displayMpn}</h2>
+            {isInstalled && (
+              <span className="detail-installed">
+                <CheckCircle size={14} />
+                Installed
+              </span>
+            )}
           </div>
-          <div className="detail-header-info">
-            <div className="detail-title-row">
-              <h2 className="detail-package-name">{displayMpn}</h2>
-              {isInstalled && (
-                <span className="detail-installed">
-                  <CheckCircle size={14} />
-                  Installed
-                </span>
-              )}
-            </div>
-            <div className="detail-package-meta">
-              <p className="detail-package-blurb">{description}</p>
-            </div>
-          </div>
+          <p className="detail-package-blurb">{description}</p>
         </div>
       </div>
 
@@ -310,8 +303,10 @@ export function PartsDetailPanel({
                   <KiCanvasEmbed
                     src={`${API_URL}/api/parts/${encodeURIComponent(part.lcsc)}/footprint.kicad_pcb`}
                     controls="basic"
+                    controlslist="nodownload"
                     theme="kicad"
                     zoom="objects"
+                    hideReferences
                   />
                 ) : (
                   <StepViewer

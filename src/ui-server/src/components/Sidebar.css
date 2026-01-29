@@ -435,32 +435,33 @@
 
 .tab-bar {
   display: flex;
-  gap: 2px;
-  padding: 4px 8px;
+  gap: 0;
+  padding: 0;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.tab-bar::-webkit-scrollbar {
-  display: none;
+  width: 100%;
 }
 
 .tab-button {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
-  padding: 4px 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 12px;
   border: none;
+  border-bottom: 2px solid transparent;
   background: transparent;
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: all var(--transition-fast);
 }
 
@@ -470,8 +471,9 @@
 }
 
 .tab-button.active {
-  background: var(--bg-tertiary);
+  background: transparent;
   color: var(--text-primary);
+  border-bottom-color: var(--accent);
 }
 
 .tab-badge {

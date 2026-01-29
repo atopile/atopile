@@ -1,6 +1,8 @@
 import { createElement, useEffect, useRef, useState } from 'react'
 
+// Use bundled model-viewer from VS Code extension if available, otherwise fall back to CDN
 const MODEL_VIEWER_SRC =
+  (window as { __ATOPILE_MODEL_VIEWER_URL__?: string }).__ATOPILE_MODEL_VIEWER_URL__ ||
   'https://ajax.googleapis.com/ajax/libs/model-viewer/4.1.0/model-viewer.min.js'
 const SCRIPT_ID = 'model-viewer-script'
 
@@ -27,23 +29,50 @@ export default function ModelViewer({ src, className, style }: ModelViewerProps)
   const viewerRef = useRef<ModelViewerElement>(null)
   const [isReady, setIsReady] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    const ensureReady = () => {
+    let cancelled = false
+    let pollInterval: ReturnType<typeof setInterval> | null = null
+
+    const checkReady = () => {
       if (window.customElements?.get('model-viewer')) {
-        setIsReady(true)
+        if (pollInterval) clearInterval(pollInterval)
+        if (!cancelled) setIsReady(true)
+        return true
       }
+      return false
     }
 
-    ensureReady()
-    if (isReady) return
+    // Already registered?
+    if (checkReady()) return
+
+    // Poll for registration after script loads (model-viewer registers async)
+    const startPolling = () => {
+      let attempts = 0
+      pollInterval = setInterval(() => {
+        if (checkReady() || cancelled) {
+          if (pollInterval) clearInterval(pollInterval)
+          return
+        }
+        attempts++
+        if (attempts > 50) { // 5 seconds max
+          if (pollInterval) clearInterval(pollInterval)
+          if (!cancelled) setError('3D viewer failed to initialize')
+        }
+      }, 100)
+    }
 
     const existing = document.getElementById(SCRIPT_ID) as HTMLScriptElement | null
     if (existing) {
-      existing.addEventListener('load', ensureReady, { once: true })
-      return () => existing.removeEventListener('load', ensureReady)
+      // Script already added, just poll for element registration
+      startPolling()
+      return () => {
+        cancelled = true
+        if (pollInterval) clearInterval(pollInterval)
+      }
     }
 
     const script = document.createElement('script')
@@ -51,13 +80,17 @@ export default function ModelViewer({ src, className, style }: ModelViewerProps)
     script.src = MODEL_VIEWER_SRC
     script.type = 'module'
     script.async = true
-    script.addEventListener('load', ensureReady, { once: true })
+    script.addEventListener('load', () => startPolling(), { once: true })
+    script.addEventListener('error', () => {
+      if (!cancelled) setError('Failed to load 3D viewer')
+    }, { once: true })
     document.head.appendChild(script)
 
     return () => {
-      script.removeEventListener('load', ensureReady)
+      cancelled = true
+      if (pollInterval) clearInterval(pollInterval)
     }
-  }, [isReady])
+  }, [])
 
   useEffect(() => {
     setIsLoading(true)
@@ -80,7 +113,9 @@ export default function ModelViewer({ src, className, style }: ModelViewerProps)
 
   return (
     <div className="detail-visual-frame detail-visual-stack">
-      {!isReady ? (
+      {error ? (
+        <div className="detail-visual-empty">{error}</div>
+      ) : !isReady ? (
         <div className="detail-visual-spinner">
           <span className="spinner" />
           <span>Loading 3D...</span>
