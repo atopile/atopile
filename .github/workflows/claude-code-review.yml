@@ -52,7 +52,7 @@ jobs:
 
             Be constructive and helpful in your feedback.
 
-            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
+            Use `gh pr comment --edit-last --create-if-none` with your Bash tool so the review stays in a single updated comment on the PR.
 
           # Optional: Use sticky comments to make Claude reuse the same comment on subsequent pushes to the same PR
           use_sticky_comment: true
