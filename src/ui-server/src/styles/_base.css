@@ -91,6 +91,8 @@ body {
   border-bottom: 1px solid var(--accent);
   background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
   min-height: 36px;
+  /* Ensure header stays above disconnected overlay so settings gear is always accessible */
+  z-index: calc(var(--z-modal) + 100);
 }
 
 .panel-header::before {

@@ -104,16 +104,16 @@ const initialState: AppState = {
 
   // Atopile configuration
   atopile: {
-    currentVersion: '',
-    source: 'release',
-    localPath: null,
-    branch: null,
-    availableVersions: [],
-    availableBranches: [],
-    detectedInstallations: [],
+    // Actual running atopile info
+    actualVersion: null as string | null,
+    actualSource: null as string | null,
+    actualBinaryPath: null as string | null,
+    // User selection state
+    source: 'release' as 'release' | 'local',
+    localPath: null as string | null,
     isInstalling: false,
-    installProgress: null,
-    error: null,
+    installProgress: null as { message: string; percent?: number } | null,
+    error: null as string | null,
   },
 
   // Problems
@@ -576,13 +576,22 @@ export const useStore = create<Store>()(
       },
 
       // Atopile config
-      setAtopileConfig: (update) =>
-        set((state) => ({
-          atopile: {
+      setAtopileConfig: (update) => {
+        console.log('[Store] setAtopileConfig update:', update);
+        set((state) => {
+          const newAtopile = {
             ...state.atopile,
             ...update,
-          },
-        })),
+          };
+          console.log('[Store] setAtopileConfig new state:', {
+            actualBinaryPath: newAtopile.actualBinaryPath,
+            localPath: newAtopile.localPath,
+            source: newAtopile.source,
+            actualVersion: newAtopile.actualVersion,
+          });
+          return { atopile: newAtopile };
+        });
+      },
 
       // Project data
       setProjectModules: (projectRoot, modules) =>
