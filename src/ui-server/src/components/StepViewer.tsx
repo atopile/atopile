@@ -81,7 +81,9 @@ export default function StepViewer({ src, className, style }: StepViewerProps) {
         const height = container.clientHeight || 200
 
         const scene = new THREE.Scene()
-        scene.background = new THREE.Color(0x1e1e2e)
+        // Use VS Code theme background color
+        const bgColor = getComputedStyle(container).getPropertyValue('--vscode-editor-background').trim() || '#1e1e2e'
+        scene.background = new THREE.Color(bgColor)
 
         const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000)
 

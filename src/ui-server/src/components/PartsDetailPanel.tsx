@@ -148,7 +148,7 @@ export function PartsDetailPanel({
       {!isLoading && !error && (
         <div className="detail-panel-content">
           <div className="parts-detail-grid">
-            <section className="detail-section parts-detail-section">
+            <div className="parts-detail-section">
               <div className="detail-install-row">
                 <button
                   className={`detail-install-btn ${
@@ -197,7 +197,7 @@ export function PartsDetailPanel({
                   <span>{actionError}</span>
                 </div>
               )}
-            </section>
+            </div>
             <div className="detail-section parts-detail-section">
               <div className="parts-detail-section-title">Overview</div>
               <dl className="detail-info-list">

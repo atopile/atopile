@@ -647,7 +647,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'none';
     style-src ${webview.cspSource} 'unsafe-inline';
-    script-src ${webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval';
+    script-src ${webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval' 'unsafe-eval';
     font-src ${webview.cspSource};
     img-src ${webview.cspSource} data: https: http:;
     connect-src ${webview.cspSource} ${apiUrl} ${wsOrigin} blob:;
