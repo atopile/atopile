@@ -3,7 +3,7 @@
  *
  * Simplified version selector with:
  * - Toggle for "Use local atopile"
- * - Auto-detect local installations in workspace
+ * - Manual path input with validation
  * - Health indicators (green=healthy, red=broken, blue=installing)
  */
 
@@ -47,11 +47,6 @@ interface AtopileState {
   branch?: string | null;
   availableBranches?: string[];
   localPath?: string | null;
-  detectedInstallations?: Array<{
-    path: string;
-    source: string;
-    version?: string | null;
-  }>;
   // Health check status
   healthStatus?: 'checking' | 'healthy' | 'unhealthy' | null;
 }
@@ -89,7 +84,7 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
   // Track if input is focused to prevent external sync from overwriting user typing
   const [inputFocused, setInputFocused] = useState(false);
 
-  // Sync local input state when store value changes externally (e.g., from detected installations)
+  // Sync local input state when store value changes externally
   // BUT only when the input is not focused (user not actively typing)
   useEffect(() => {
     if (!inputFocused && atopile?.localPath !== undefined && atopile.localPath !== localPathInput) {
@@ -208,13 +203,6 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
     }
   }, [showSettings]);
 
-  // Refresh detected installations when settings open
-  useEffect(() => {
-    if (showSettings) {
-      action('refreshDetectedInstallations');
-    }
-  }, [showSettings]);
-
   // Validate local path when it changes
   useEffect(() => {
     if (!useLocalAtopile || !atopile?.localPath) {
@@ -323,32 +311,11 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
     return () => window.removeEventListener('atopile:action_result', handleActionResult);
   }, [atopile?.localPath]);
 
-  // Helper to select a local installation
-  const selectLocalInstallation = (path: string, _version: string | null) => {
-    // Update backend state
-    action('setAtopileLocalPath', { path });
-    // Save to VS Code settings (will be used on next startup)
-    postMessage({
-      type: 'atopileSettings',
-      atopile: {
-        source: 'local',
-        localPath: path,
-      },
-    });
-    // No need to track pending restart manually - it's computed from state
-  };
-
   // Handle toggle change
   const handleToggleChange = (checked: boolean) => {
     if (checked) {
       // Switch to local mode
       action('setAtopileSource', { source: 'local' });
-      // Refresh detected installations
-      action('refreshDetectedInstallations');
-      // If we already have a local path, save settings
-      if (atopile?.localPath) {
-        selectLocalInstallation(atopile.localPath, localPathValidation.version);
-      }
     } else {
       // Switch back to default (extension-managed uv) - just clear atopile.ato
       postMessage({
@@ -483,40 +450,8 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
               {/* Local Path Section - Only visible when toggle is on */}
               {useLocalAtopile && (
                 <div className="settings-group local-path-section">
-                  {/* Detected installations - only show if there are any */}
-                  {(atopile?.detectedInstallations?.length ?? 0) > 0 && (
-                    <div className="detected-installations">
-                      <span className="detected-label">Environments detected in workspace:</span>
-                      <div className="detected-list">
-                        {atopile?.detectedInstallations?.map((inst, i) => {
-                          // Extract the directory name above .venv (e.g., "atopile_reorg" from "/path/to/atopile_reorg/.venv/bin/ato")
-                          const pathParts = inst.path.split('/');
-                          const venvIndex = pathParts.findIndex(p => p === '.venv' || p === 'venv');
-                          const projectName = venvIndex > 0 ? pathParts[venvIndex - 1] : pathParts[pathParts.length - 1];
-
-                          return (
-                            <button
-                              key={i}
-                              className={`detected-item${atopile?.localPath === inst.path ? ' active' : ''}`}
-                              onClick={() => selectLocalInstallation(inst.path, inst.version ?? null)}
-                              title={inst.path}
-                            >
-                              <span className="detected-project">{projectName}</span>
-                              {inst.version && <span className="detected-version">v{inst.version}</span>}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Manual path input */}
                   <label className="settings-label">
-                    <span className="settings-label-title">
-                      {(atopile?.detectedInstallations?.length ?? 0) > 0
-                        ? 'Or enter path manually:'
-                        : 'Enter path to atopile:'}
-                    </span>
+                    <span className="settings-label-title">Path to atopile:</span>
                   </label>
                   <div className="settings-path-input">
                     <input
