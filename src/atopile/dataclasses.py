@@ -1272,6 +1272,9 @@ class AppContext:
     ato_ui_source: Optional[str] = None
     ato_local_path: Optional[str] = None
     ato_binary_path: Optional[str] = None  # Actual resolved binary path
+    ato_from: Optional[str] = (
+        None  # The 'from' value (e.g., git branch or PyPI package)
+    )
 
 
 @dataclass(frozen=True)

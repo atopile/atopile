@@ -108,6 +108,7 @@ const initialState: AppState = {
     actualVersion: null as string | null,
     actualSource: null as string | null,
     actualBinaryPath: null as string | null,
+    atoFrom: null as string | null,
     // User selection state
     source: 'release' as 'release' | 'local',
     localPath: null as string | null,

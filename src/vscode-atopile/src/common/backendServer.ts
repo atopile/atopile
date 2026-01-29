@@ -11,10 +11,11 @@
 
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
+import * as path from 'path';
 import axios from 'axios';
 import * as net from 'net';
 import { traceInfo, traceError, traceVerbose } from './log/logging';
-import { resolveAtoBinForWorkspace } from './findbin';
+import { resolveAtoBinForWorkspace, UV_ATO_VERSION } from './findbin';
 
 const BACKEND_HOST = '127.0.0.1';
 const SERVER_STARTUP_TIMEOUT_MS = 30000; // 30 seconds to wait for server startup
@@ -494,7 +495,11 @@ class BackendServerManager implements vscode.Disposable {
             }
 
             // Get the actual binary path (first element of the command)
-            const atoBinaryPath = atoBin.command[0];
+            // Ensure it's an absolute path for reliable spawning
+            let atoBinaryPath = atoBin.command[0];
+            if (!path.isAbsolute(atoBinaryPath)) {
+                atoBinaryPath = path.resolve(atoBinaryPath);
+            }
 
             // Build command args: ato serve backend --port <port> [--workspace <path>...]
             const args = [
@@ -505,6 +510,13 @@ class BackendServerManager implements vscode.Disposable {
                 '--ato-ui-source', uiSourceType,
                 '--ato-binary-path', atoBinaryPath,
             ];
+
+            // Pass --ato-from when using UV or git-venv sources
+            // This tells the UI what source was used for installation
+            if (atoBin.source === 'local-uv' || atoBin.source === 'git-venv') {
+                const atoFrom = settings.from || UV_ATO_VERSION;
+                args.push('--ato-from', atoFrom);
+            }
             // Pass all workspace roots to the backend
             for (const root of workspaceRoots) {
                 args.push('--workspace', root);

@@ -34,6 +34,7 @@ interface AtopileState {
   actualVersion?: string | null;
   actualSource?: string | null;
   actualBinaryPath?: string | null;
+  atoFrom?: string | null;  // The 'from' value (e.g., git branch URL or PyPI package)
   // User selection state
   isInstalling?: boolean;
   installProgress?: {
@@ -47,6 +48,36 @@ interface AtopileState {
 
 interface SidebarHeaderProps {
   atopile?: AtopileState;
+}
+
+/**
+ * Parse the atoFrom value and return a friendly display string.
+ * Examples:
+ * - "git+https://github.com/atopile/atopile.git@stage/0.14.x" -> "Branch stage/0.14.x"
+ * - "atopile" or "atopile==0.14.0" -> "PyPI release"
+ * - "/path/to/atopile" -> "Local /path/to/atopile"
+ */
+function formatAtoFrom(atoFrom: string | null | undefined): string | null {
+  if (!atoFrom) return null;
+
+  // Check for git URL with branch
+  const gitMatch = atoFrom.match(/git\+https?:\/\/[^@]+@(.+)$/);
+  if (gitMatch) {
+    return `Branch ${gitMatch[1]}`;
+  }
+
+  // Check for PyPI package (just "atopile" or "atopile==version")
+  if (atoFrom === 'atopile' || atoFrom.startsWith('atopile==') || atoFrom.startsWith('atopile>=')) {
+    return 'PyPI release';
+  }
+
+  // Check for local path
+  if (atoFrom.startsWith('/') || atoFrom.startsWith('./') || atoFrom.startsWith('~')) {
+    return `Local ${atoFrom.replace(/^\/Users\/[^/]+/, '~')}`;
+  }
+
+  // Fallback: just show the value
+  return atoFrom;
 }
 
 export function SidebarHeader({ atopile }: SidebarHeaderProps) {
@@ -402,9 +433,20 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
                             ? `Using local atopile v${atopile?.actualVersion || '?'}`
                             : `Using atopile v${atopile?.actualVersion || '?'}`}
                         </span>
+                        {/* Show source info based on how atopile was resolved */}
                         {useLocalAtopile && atopile?.actualBinaryPath && (
                           <span className="health-message-path">
                             from {atopile.actualBinaryPath.replace(/^\/Users\/[^/]+/, '~')}
+                          </span>
+                        )}
+                        {!useLocalAtopile && atopile?.atoFrom && (
+                          <span className="health-message-path">
+                            {formatAtoFrom(atopile.atoFrom)}
+                          </span>
+                        )}
+                        {!useLocalAtopile && !atopile?.atoFrom && atopile?.actualSource === 'workspace-venv' && (
+                          <span className="health-message-path">
+                            Workspace .venv
                           </span>
                         )}
                       </div>

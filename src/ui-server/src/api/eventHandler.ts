@@ -236,6 +236,11 @@ export async function handleEvent(
           : typeof detail.actualBinaryPath === 'string'
             ? detail.actualBinaryPath as string
             : undefined,
+        atoFrom: typeof detail.ato_from === 'string'
+          ? detail.ato_from as string
+          : typeof detail.atoFrom === 'string'
+            ? detail.atoFrom as string
+            : undefined,
         // User selection state
         source: typeof detail.source === 'string' ? detail.source as AtopileConfig['source'] : undefined,
         localPath: typeof detail.local_path === 'string'

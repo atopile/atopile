@@ -101,7 +101,7 @@ async function installLocalAto(context: vscode.ExtensionContext) {
                 return;
             }
             try {
-                const atoBin = await getAtoBin(undefined, 300_000);
+                const atoBin = await getAtoBin(undefined, 60_000);
                 if (!atoBin) {
                     traceError('Failed to install atopile via uv');
                     vscode.window.showErrorMessage('Failed to install atopile via uv. Please check logs.');

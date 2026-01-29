@@ -21,6 +21,7 @@ import { loadBuilds, getBuilds } from '../common/manifest';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openModelViewerPreview } from '../ui/modelviewer';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
+import { UV_ATO_VERSION } from '../common/findbin';
 
 // Message types from the webview
 interface OpenSignalsMessage {
@@ -565,15 +566,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const target = hasWorkspace ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
 
     try {
-      // Only manage atopile.ato setting - never touch atopile.from
-      // When local mode is on with a path, set ato; otherwise clear it
+      // Manage atopile.ato setting, and atopile.from only when in release mode
       if (atopile.source === 'local' && atopile.localPath) {
+        // Local mode: set ato path, leave from untouched
         traceInfo(`[SidebarProvider] Setting atopile.ato = ${atopile.localPath}`);
         await config.update('ato', atopile.localPath, target);
       } else {
-        // Clear ato setting to fall back to extension-managed uv
-        traceInfo(`[SidebarProvider] Clearing atopile.ato (using uv fallback)`);
+        // Release mode: clear ato, set from to use default version
+        traceInfo(`[SidebarProvider] Clearing atopile.ato, setting atopile.from to ${UV_ATO_VERSION}`);
         await config.update('ato', undefined, target);
+        await config.update('from', UV_ATO_VERSION, target);
       }
       traceInfo(`[SidebarProvider] Atopile settings saved. User must restart to apply.`);
     } catch (error) {

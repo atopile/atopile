@@ -310,6 +310,7 @@ async def _load_atopile_install_options(ctx: AppContext) -> None:
                     "actual_version": actual_version,
                     "actual_source": actual_source,
                     "actual_binary_path": ctx.ato_binary_path,  # Actual binary path
+                    "ato_from": ctx.ato_from,  # The 'from' value (git branch or PyPi)
                     "source": ui_source,  # Sets the active toggle state
                     "local_path": ctx.ato_local_path,  # Path for display in UI
                 },
@@ -332,6 +333,7 @@ def create_app(
     ato_ui_source: Optional[str] = None,
     ato_local_path: Optional[str] = None,
     ato_binary_path: Optional[str] = None,
+    ato_from: Optional[str] = None,
 ) -> FastAPI:
     """
     Create the FastAPI application with API routes for the dashboard.
@@ -356,6 +358,7 @@ def create_app(
         ato_ui_source=ato_ui_source,
         ato_local_path=ato_local_path,
         ato_binary_path=ato_binary_path,
+        ato_from=ato_from,
     )
     app.state.ctx = ctx
 
@@ -530,6 +533,7 @@ class DashboardServer:
         ato_ui_source: Optional[str] = None,
         ato_local_path: Optional[str] = None,
         ato_binary_path: Optional[str] = None,
+        ato_from: Optional[str] = None,
     ):
         self.port = port or find_free_port()
         self.workspace_paths = workspace_paths or []
@@ -539,6 +543,7 @@ class DashboardServer:
             ato_ui_source=ato_ui_source,
             ato_local_path=ato_local_path,
             ato_binary_path=ato_binary_path,
+            ato_from=ato_from,
         )
         self._server: Optional[uvicorn.Server] = None
         self._thread: Optional[threading.Thread] = None

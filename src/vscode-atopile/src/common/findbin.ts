@@ -2,6 +2,7 @@ import { ConfigurationChangeEvent, Event, EventEmitter, ExtensionContext, window
 import { initializePython } from './python';
 import { onDidChangeConfiguration } from './vscodeapi';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { getWorkspaceSettings, ISettings } from './settings';
 import { traceError, traceInfo, traceVerbose } from './log/logging';
 import * as os from 'os';
@@ -25,12 +26,206 @@ interface AtoBinLocator {
 export const onDidChangeAtoBinInfoEvent = new EventEmitter<AtoBinInfo>();
 export const onDidChangeAtoBinInfo: Event<AtoBinInfo> = onDidChangeAtoBinInfoEvent.event;
 
-const UV_ATO_VERSION = 'atopile';
+export const UV_ATO_VERSION = 'git+https://github.com/atopile/atopile.git@stage/0.14.x';
 
 export var g_uv_path_local: string | null = null;
 
+// Store extension context for accessing global storage
+let g_extensionContext: ExtensionContext | null = null;
+
 // Track the build terminal for reuse
 let g_buildTerminal: vscode.Terminal | undefined;
+
+/**
+ * Check if a source string is a git URL (requires building from source).
+ */
+function isGitUrl(source: string): boolean {
+    return source.startsWith('git+') || source.includes('github.com');
+}
+
+/**
+ * Generate a short hash for a source string to use as venv directory name.
+ */
+function hashSource(source: string): string {
+    return crypto.createHash('sha256').update(source).digest('hex').slice(0, 12);
+}
+
+/**
+ * Get the path to a persistent venv for a given source.
+ * Creates the venv directory structure if it doesn't exist.
+ */
+function getGitVenvPath(source: string): string | null {
+    if (!g_extensionContext) {
+        traceError('[findbin] Extension context not available for git venv');
+        return null;
+    }
+    const hash = hashSource(source);
+    const venvDir = path.join(g_extensionContext.globalStorageUri.fsPath, 'git-venvs', hash);
+    return venvDir;
+}
+
+/**
+ * Get the ato binary path within a venv.
+ */
+function getAtoBinInVenv(venvPath: string): string {
+    const binDir = os.platform() === 'win32' ? 'Scripts' : 'bin';
+    const atoName = os.platform() === 'win32' ? 'ato.exe' : 'ato';
+    return path.join(venvPath, binDir, atoName);
+}
+
+/**
+ * Get the python binary path within a venv.
+ */
+function getPythonInVenv(venvPath: string): string {
+    const binDir = os.platform() === 'win32' ? 'Scripts' : 'bin';
+    const pythonName = os.platform() === 'win32' ? 'python.exe' : 'python';
+    return path.join(venvPath, binDir, pythonName);
+}
+
+/**
+ * Parse a git URL to extract repo URL and branch.
+ * Example: "git+https://github.com/atopile/atopile.git@stage/0.14.x"
+ * Returns: { repoUrl: "https://github.com/atopile/atopile.git", branch: "stage/0.14.x" }
+ */
+function parseGitUrl(source: string): { repoUrl: string; branch: string | null } | null {
+    // Handle git+https://... format
+    const gitPlusMatch = source.match(/^git\+(.+?)(?:@([^@]+))?$/);
+    if (gitPlusMatch) {
+        return {
+            repoUrl: gitPlusMatch[1],
+            branch: gitPlusMatch[2] || null,
+        };
+    }
+    // Handle plain github URLs
+    const githubMatch = source.match(/^(https:\/\/github\.com\/[^@]+)(?:@([^@]+))?$/);
+    if (githubMatch) {
+        return {
+            repoUrl: githubMatch[1],
+            branch: githubMatch[2] || null,
+        };
+    }
+    return null;
+}
+
+/**
+ * Install atopile from a git URL by cloning and running uv sync --dev.
+ * This installs all dev dependencies including Zig for building.
+ * Returns the path to the ato binary, or null if installation fails.
+ */
+async function installGitSourceToVenv(uvPath: string, source: string): Promise<string | null> {
+    const clonePath = getGitVenvPath(source);
+    if (!clonePath) {
+        return null;
+    }
+
+    // The venv is created inside the cloned repo by uv sync
+    const venvPath = path.join(clonePath, '.venv');
+    const atoBinPath = getAtoBinInVenv(venvPath);
+
+    // If ato binary already exists, return it
+    if (fs.existsSync(atoBinPath)) {
+        traceInfo(`[findbin] Git clone already exists with ato at: ${atoBinPath}`);
+        return atoBinPath;
+    }
+
+    // Check if git is available
+    const gitPath = await which('git', { nothrow: true });
+    if (!gitPath) {
+        traceError(`[findbin] Git is not installed. Cannot clone from: ${source}`);
+        return null;
+    }
+
+    const parsed = parseGitUrl(source);
+    if (!parsed) {
+        traceError(`[findbin] Could not parse git URL: ${source}`);
+        return null;
+    }
+
+    traceInfo(`[findbin] Setting up atopile from git source: ${source}`);
+    traceInfo(`[findbin] Clone path: ${clonePath}`);
+    traceInfo(`[findbin] Repo URL: ${parsed.repoUrl}, Branch: ${parsed.branch || 'default'}`);
+
+    const execFileAsync = promisify(execFile);
+
+    try {
+        // Ensure parent directory exists
+        const parentDir = path.dirname(clonePath);
+        if (!fs.existsSync(parentDir)) {
+            fs.mkdirSync(parentDir, { recursive: true });
+        }
+
+        // Clone the repo if it doesn't exist
+        if (!fs.existsSync(path.join(clonePath, '.git'))) {
+            traceInfo(`[findbin] Cloning repository...`);
+            const cloneArgs = ['clone', '--depth', '1'];
+            if (parsed.branch) {
+                cloneArgs.push('--branch', parsed.branch);
+            }
+            cloneArgs.push(parsed.repoUrl, clonePath);
+
+            await execFileAsync(gitPath, cloneArgs, {
+                timeout: 120_000, // 2 minutes for clone
+            });
+            traceInfo(`[findbin] Repository cloned successfully`);
+        } else {
+            traceInfo(`[findbin] Repository already cloned, pulling latest...`);
+            try {
+                await execFileAsync(gitPath, ['pull'], {
+                    cwd: clonePath,
+                    timeout: 60_000,
+                });
+            } catch (pullError) {
+                traceInfo(`[findbin] Git pull failed (may be ok): ${pullError}`);
+            }
+        }
+
+        // Run uv sync --dev to create venv and install all dependencies including Zig
+        traceInfo(`[findbin] Running uv sync --dev (this may take a while for first build)...`);
+        const syncResult = await execFileAsync(
+            uvPath,
+            ['sync', '--dev', '-p', '3.13'],
+            {
+                cwd: clonePath,
+                timeout: 600_000, // 10 minutes for building from source
+                env: {
+                    ...process.env,
+                    // Ensure non-interactive
+                    PIP_DISABLE_PIP_VERSION_CHECK: '1',
+                },
+            }
+        );
+        traceInfo(`[findbin] uv sync output: ${syncResult.stdout}`);
+        if (syncResult.stderr) {
+            traceInfo(`[findbin] uv sync stderr: ${syncResult.stderr}`);
+        }
+
+        // Verify ato binary exists
+        if (fs.existsSync(atoBinPath)) {
+            traceInfo(`[findbin] Successfully installed ato at: ${atoBinPath}`);
+            return atoBinPath;
+        } else {
+            traceError(`[findbin] uv sync completed but ato binary not found at: ${atoBinPath}`);
+            return null;
+        }
+    } catch (error: any) {
+        traceError(`[findbin] Failed to install git source: ${error.message}`);
+        if (error.stderr) {
+            traceError(`[findbin] stderr: ${error.stderr}`);
+        }
+        if (error.stdout) {
+            traceError(`[findbin] stdout: ${error.stdout}`);
+        }
+        // Clean up failed clone
+        try {
+            if (fs.existsSync(clonePath)) {
+                fs.rmSync(clonePath, { recursive: true, force: true });
+            }
+        } catch (cleanupError) {
+            traceError(`[findbin] Failed to clean up clone: ${cleanupError}`);
+        }
+        return null;
+    }
+}
 
 /**
  * Get the full ato command as a string (for running in terminals).
@@ -78,12 +273,29 @@ async function _getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
         traceInfo(`[findbin] User explicitly set atopile.from: ${settings.from}`);
         const uvBinLocal = await which(g_uv_path_local, { nothrow: true });
         if (uvBinLocal) {
-            traceInfo(`[findbin] Using local uv to run ato: ${uvBinLocal}`);
-            traceInfo(`[findbin] Using from: ${settings.from}`);
-            return {
-                command: [uvBinLocal, 'tool', 'run', '-p', '3.13', '--from', settings.from, 'ato'],
-                source: 'local-uv',
-            };
+            // For git URLs, use persistent venv (builds once, caches result)
+            // This is necessary because git sources don't have pre-built wheels
+            if (isGitUrl(settings.from)) {
+                traceInfo(`[findbin] Git URL detected, using persistent venv approach`);
+                const atoBinPath = await installGitSourceToVenv(uvBinLocal, settings.from);
+                if (atoBinPath && fs.existsSync(atoBinPath)) {
+                    traceInfo(`[findbin] Using ato from git venv: ${atoBinPath}`);
+                    return {
+                        command: [atoBinPath],
+                        source: 'git-venv',
+                    };
+                }
+                traceError(`[findbin] Failed to install from git URL: ${settings.from}`);
+                // Fall through to try other options
+            } else {
+                // For PyPI packages, use uv tool run (has pre-built wheels)
+                traceInfo(`[findbin] Using local uv to run ato: ${uvBinLocal}`);
+                traceInfo(`[findbin] Using from: ${settings.from}`);
+                return {
+                    command: [uvBinLocal, 'tool', 'run', '-p', '3.13', '--from', settings.from, 'ato'],
+                    source: 'local-uv',
+                };
+            }
         }
     }
 
@@ -118,12 +330,28 @@ async function _getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
         traceInfo(`[findbin] Checking extension-managed uv: ${g_uv_path_local}`);
         const uvBinLocal = await which(g_uv_path_local, { nothrow: true });
         if (uvBinLocal) {
-            traceInfo(`[findbin] Using local uv to run ato: ${uvBinLocal}`);
+            traceInfo(`[findbin] Using local uv: ${uvBinLocal}`);
             traceInfo(`[findbin] Using from: ${UV_ATO_VERSION} (default)`);
-            return {
-                command: [uvBinLocal, 'tool', 'run', '-p', '3.13', '--from', UV_ATO_VERSION, 'ato'],
-                source: 'local-uv',
-            };
+
+            // For git URLs, use persistent venv (builds once, caches result)
+            if (isGitUrl(UV_ATO_VERSION)) {
+                traceInfo(`[findbin] Default version is git URL, using persistent venv approach`);
+                const atoBinPath = await installGitSourceToVenv(uvBinLocal, UV_ATO_VERSION);
+                if (atoBinPath && fs.existsSync(atoBinPath)) {
+                    traceInfo(`[findbin] Using ato from git venv: ${atoBinPath}`);
+                    return {
+                        command: [atoBinPath],
+                        source: 'git-venv',
+                    };
+                }
+                traceError(`[findbin] Failed to install from default git URL: ${UV_ATO_VERSION}`);
+            } else {
+                // For PyPI packages, use uv tool run (has pre-built wheels)
+                return {
+                    command: [uvBinLocal, 'tool', 'run', '-p', '3.13', '--from', UV_ATO_VERSION, 'ato'],
+                    source: 'local-uv',
+                };
+            }
         }
     }
 
@@ -148,7 +376,7 @@ export async function getAtoBin(settings?: ISettings, timeout_ms?: number): Prom
         const bin = atoBin.command[0];
         const args = [...atoBin.command.slice(1), 'self-check'];
 
-        const _timeout_ms = timeout_ms ?? 15_000;
+        const _timeout_ms = timeout_ms ?? 30_000;
         const now = Date.now();
 
         traceInfo(`[findbin] Running self-check: ${bin} ${args.join(' ')}`);
@@ -288,6 +516,8 @@ export async function runAtoCommandInTerminal(
 
 
 export async function initAtoBin(context: ExtensionContext): Promise<void> {
+    // Store context for accessing global storage (needed for git venvs)
+    g_extensionContext = context;
     g_uv_path_local = getExtensionManagedUvPath(context);
 
     context.subscriptions.push(

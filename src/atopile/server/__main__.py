@@ -73,6 +73,12 @@ def main():
         default=None,
         help="Actual resolved path to the ato binary being used",
     )
+    parser.add_argument(
+        "--ato-from",
+        type=str,
+        default=None,
+        help="The 'from' value used (e.g., git branch URL or PyPI package)",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[3]
@@ -122,6 +128,7 @@ def main():
         ato_ui_source=args.ato_ui_source,
         ato_local_path=args.ato_local_path,
         ato_binary_path=args.ato_binary_path,
+        ato_from=args.ato_from,
     )
 
     print(f"Starting dashboard server on http://localhost:{port}")

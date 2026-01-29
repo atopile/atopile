@@ -440,6 +440,7 @@ export interface AppState {
     actualVersion: string | null;
     actualSource: string | null;
     actualBinaryPath: string | null;
+    atoFrom: string | null;  // The 'from' value (e.g., git branch URL or PyPI package)
     // User selection state
     source: 'release' | 'local';
     localPath: string | null;
