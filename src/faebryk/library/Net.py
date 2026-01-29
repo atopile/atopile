@@ -45,7 +45,7 @@ class Net(fabll.Node):
             return has_net_name.get_name()
         return None
 
-    def get_connected_interfaces(self) -> list[F.Electrical]:
+    def get_connected_electricals(self) -> list[F.Electrical]:
         """Get all electrical interfaces connected to this net."""
         return [
             e.cast(F.Electrical)
