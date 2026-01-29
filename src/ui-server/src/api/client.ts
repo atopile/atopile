@@ -14,6 +14,9 @@ import type {
   StdLibItem,
   BOMData,
   LcscPartsResponse,
+  PartSearchResponse,
+  PartDetailsResponse,
+  InstalledPartsResponse,
   Problem,
   ModuleDefinition,
   ModuleChild,
@@ -282,7 +285,7 @@ export const api = {
       ),
   },
 
-  // Parts (LCSC metadata)
+  // Parts
   parts: {
     lcsc: (lcscIds: string[], options?: { projectRoot?: string; target?: string | null }) =>
       fetchJSON<LcscPartsResponse>('/api/parts/lcsc', {
@@ -293,6 +296,38 @@ export const api = {
           target: options?.target ?? undefined,
         }),
       }),
+    search: (query: string, limit = 50) =>
+      fetchJSON<PartSearchResponse>(
+        `/api/parts/search?query=${encodeURIComponent(query)}&limit=${limit}`
+      ),
+    details: (lcscId: string) =>
+      fetchJSON<PartDetailsResponse>(`/api/parts/${encodeURIComponent(lcscId)}/details`),
+    installed: (projectRoot: string) =>
+      fetchJSON<InstalledPartsResponse>(
+        `/api/parts/installed?project_root=${encodeURIComponent(projectRoot)}`
+      ),
+    install: (lcscId: string, projectRoot: string) =>
+      fetchJSON<{ success: boolean; identifier?: string; path?: string; error?: string }>(
+        '/api/parts/install',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            lcsc_id: lcscId,
+            project_root: projectRoot,
+          }),
+        }
+      ),
+    uninstall: (lcscId: string, projectRoot: string) =>
+      fetchJSON<{ success: boolean; identifier?: string; path?: string; error?: string }>(
+        '/api/parts/uninstall',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            lcsc_id: lcscId,
+            project_root: projectRoot,
+          }),
+        }
+      ),
   },
 
   // Project files/modules
