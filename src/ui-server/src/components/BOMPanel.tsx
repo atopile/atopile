@@ -4,7 +4,7 @@ import {
   ExternalLink, Copy, Check, AlertTriangle,
   RefreshCw
 } from 'lucide-react'
-import { PanelSearchBox } from './shared'
+import { PanelSearchBox, EmptyState } from './shared'
 import type {
   BOMComponent as BOMComponentAPI,
   BOMData,
@@ -706,21 +706,20 @@ export function BOMPanel({
     return (
       <div className="bom-panel">
         {toolbar}
-        <div className="bom-empty-state">
-          {is404 ? (
-            <>
-              <Package size={24} />
-              <span className="empty-title">No BOM data available</span>
-              <span className="empty-description">{getEmptyDescription()}</span>
-            </>
-          ) : (
-            <>
-              <AlertTriangle size={24} />
-              <span className="empty-title">Error loading BOM</span>
-              <span className="empty-description">{error}</span>
-            </>
-          )}
-        </div>
+        {is404 ? (
+          <EmptyState
+            icon={Package}
+            title="No BOM data available"
+            description={getEmptyDescription()}
+          />
+        ) : (
+          <EmptyState
+            icon={AlertTriangle}
+            title="Error loading BOM"
+            description={error}
+            className="error"
+          />
+        )}
       </div>
     )
   }
@@ -730,11 +729,11 @@ export function BOMPanel({
     return (
       <div className="bom-panel">
         {toolbar}
-        <div className="bom-empty-state">
-          <Package size={24} />
-          <span className="empty-title">No BOM data available</span>
-          <span className="empty-description">{getEmptyDescription()}</span>
-        </div>
+        <EmptyState
+          icon={Package}
+          title="No BOM data available"
+          description={getEmptyDescription()}
+        />
       </div>
     )
   }

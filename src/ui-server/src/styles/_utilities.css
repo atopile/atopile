@@ -23,6 +23,16 @@
   min-height: 120px;
 }
 
+/* Fixed-height icon container ensures consistent text positioning */
+.panel-empty-state .empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
 .panel-empty-state svg {
   opacity: 0.4;
   color: var(--text-muted);
@@ -32,7 +42,6 @@
   font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-secondary);
-  margin-top: var(--spacing-xs);
 }
 
 .panel-empty-state .empty-description {
@@ -40,6 +49,16 @@
   color: var(--text-muted);
   max-width: 220px;
   line-height: 1.4;
+}
+
+/* Error variant of empty state */
+.panel-empty-state.error .empty-icon svg {
+  color: var(--error);
+  opacity: 0.6;
+}
+
+.panel-empty-state.error .empty-title {
+  color: var(--error);
 }
 
 /* Inline empty state - for within lists, more compact */

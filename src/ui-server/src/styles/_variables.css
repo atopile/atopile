@@ -46,12 +46,12 @@
   --theme-transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 
   /* Font Sizes - aligned with VS Code native UI */
-  --font-size-base: var(--vscode-font-size, 13px);
+  --font-size-base: var(--vscode-font-size, 14px);
   /* VS Code section header font size (matches activity bar labels) */
-  --font-size-section-header: var(--vscode-font-size, 11px);
-  --font-size-xxs: 9px;
-  --font-size-xs: 10px;
-  --font-size-sm: 11px;
+  --font-size-section-header: var(--vscode-font-size, 12px);
+  --font-size-xxs: 10px;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
   --font-size-md: var(--font-size-base);
   --font-size-lg: calc(var(--font-size-base) * 1.08);
   --font-size-xl: calc(var(--font-size-base) * 1.23);

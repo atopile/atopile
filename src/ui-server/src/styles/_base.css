@@ -20,7 +20,7 @@ html, body {
 body {
   /* Use VS Code's native UI font throughout */
   font-family: var(--font-sans);
-  font-size: var(--vscode-font-size, 13px);
+  font-size: var(--vscode-font-size, 14px);
   font-weight: var(--vscode-font-weight, 400);
   line-height: 1.4;
   color: var(--vscode-foreground, var(--text-primary));

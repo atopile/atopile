@@ -194,7 +194,7 @@
 }
 
 .stdlib-card.selected {
-  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+  background: transparent;
 }
 
 .stdlib-card-header {
@@ -240,11 +240,13 @@
   margin-left: auto;
 }
 
-/* Expanded content - description hugs name, decent spacing below */
+/* Expanded content - description aligns with name text */
 .stdlib-card-description {
   margin-top: 2px;
   margin-bottom: var(--spacing-sm);
-  margin-left: calc(16px + 16px + 4px); /* Align with name: chevron + icon + gap */
+  /* Align text directly under item name (measured: name at 57px, so 40px margin from card + 17px card offset) */
+  margin-left: 40px;
+  padding-left: 0 !important;
   padding-right: var(--spacing-sm);
   font-family: var(--font-sans);
   font-size: var(--font-size-xs);
@@ -287,7 +289,8 @@
 /* Usage code block */
 .stdlib-card-usage {
   margin-top: var(--spacing-xs);
-  margin-left: 48px; /* Align with item name */
+  /* Align box with item name (same as description: 40px) */
+  margin-left: 40px;
   margin-right: var(--spacing-sm);
   margin-bottom: var(--spacing-sm);
   background: var(--vscode-textCodeBlock-background, var(--bg-tertiary));

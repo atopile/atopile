@@ -5,7 +5,7 @@ import {
   Check, AlertTriangle, Loader2
 } from 'lucide-react'
 import { smartTruncatePair } from './sidebar-modules/sidebarUtils'
-import { PanelSearchBox } from './shared'
+import { PanelSearchBox, EmptyState } from './shared'
 
 // Variable types
 type VariableType = 'voltage' | 'current' | 'resistance' | 'capacitance' | 'ratio' | 'frequency' | 'power' | 'percentage' | 'dimensionless'
@@ -414,73 +414,85 @@ export function VariablesPanel({
     setTimeout(() => setCopiedValue(null), 2000)
   }, [])
 
-  // Extract short build ID for display (e.g., "build-42-1674520800" -> "#42")
-  const buildIdShort = (() => {
-    if (!variablesData?.build_id) return null
-    const match = variablesData.build_id.match(/^build-(\d+)-/)
-    return match ? `#${match[1]}` : variablesData.build_id.substring(0, 12)
-  })()
+  // Helper for empty state description
+  const getEmptyDescription = () => {
+    if (selectedTargetName) {
+      return `Run a build for "${selectedTargetName}" to generate variable data`
+    }
+    if (hasActiveProject) {
+      return 'Select a build and run it to generate variable data'
+    }
+    return 'Select a project and build, then run it'
+  }
 
+  const toolbar = (
+    <PanelSearchBox
+      value={searchQuery}
+      onChange={setSearchQuery}
+      placeholder="Search variables..."
+      autoFocus={isExpanded}
+    />
+  )
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="variables-panel">
+        {toolbar}
+        <div className="variables-loading">
+          <Loader2 size={24} className="spinner" />
+          <span>Loading variables...</span>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state - treat "not found" as empty state
+  if (error) {
+    const isNotFound = error.includes('404') || error.includes('not found') || error.includes('not_found') || error.toLowerCase().includes('run build')
+    return (
+      <div className="variables-panel">
+        {toolbar}
+        {isNotFound ? (
+          <EmptyState
+            icon={Hash}
+            title="No variables found"
+            description={getEmptyDescription()}
+          />
+        ) : (
+          <EmptyState
+            icon={AlertTriangle}
+            title="Error loading variables"
+            description={error}
+            className="error"
+          />
+        )}
+      </div>
+    )
+  }
+
+  // Empty state - no variables
+  if (variables.length === 0) {
+    return (
+      <div className="variables-panel">
+        {toolbar}
+        <EmptyState
+          icon={Hash}
+          title="No variables found"
+          description={getEmptyDescription()}
+        />
+      </div>
+    )
+  }
+
+  // Normal state - has variables
   return (
     <div className="variables-panel">
-      <PanelSearchBox
-        value={searchQuery}
-        onChange={setSearchQuery}
-        placeholder="Search variables..."
-        autoFocus={isExpanded}
-      />
+      {toolbar}
 
       {/* Variable tree */}
       <div className="variables-tree">
-        {isLoading && (
-          <div className="variables-loading">
-            <Loader2 size={24} className="spinner" />
-            <span className="empty-title">Loading variables...</span>
-          </div>
-        )}
-
-        {error && !isLoading && (() => {
-          // Treat "not found" errors as empty state, not error state
-          const isNotFound = error.includes('404') || error.includes('not found') || error.includes('not_found') || error.toLowerCase().includes('run build');
-          if (isNotFound) {
-            return (
-              <div className="variables-empty">
-                <Hash size={24} />
-                <span className="empty-title">No variables found</span>
-                <span className="empty-description">
-                  {selectedTargetName
-                    ? `Run a build for "${selectedTargetName}" to generate variable data`
-                    : hasActiveProject
-                      ? 'Select a build and run it to generate variable data'
-                      : 'Select a project and build, then run it'}
-                </span>
-              </div>
-            );
-          }
-          return (
-            <div className="variables-error">
-              <AlertTriangle size={24} />
-              <span className="empty-title">Error loading variables</span>
-              <span className="empty-description">{error}</span>
-            </div>
-          );
-        })()}
-
-        {!isLoading && !error && variables.length === 0 && (
-          <div className="variables-empty">
-            <Hash size={24} />
-            <span className="empty-title">No variables found</span>
-            <span className="empty-description">
-              {selectedTargetName
-                ? `Run a build for "${selectedTargetName}" to generate variable data`
-                : hasActiveProject
-                  ? 'Select a build and run it to generate variable data'
-                  : 'Select a project and build, then run it'}
-            </span>
-          </div>
-        )}
-
-        {!isLoading && !error && variables.map((node, idx) => (
+        {variables.map((node, idx) => (
           <VariableNodeComponent
             key={`${node.path}-${idx}`}
             node={node}
@@ -494,20 +506,13 @@ export function VariablesPanel({
         ))}
       </div>
 
-      {/* Status bar - only show when there's content */}
-      {(buildIdShort || copiedValue) && (
+      {/* Copied toast */}
+      {copiedValue && (
         <div className="variables-status">
-          {buildIdShort && (
-            <span className="build-id-badge" title={`Build: ${variablesData?.build_id}`}>
-              build {buildIdShort}
-            </span>
-          )}
-          {copiedValue && (
-            <span className="copied-toast">
-              <Check size={10} />
-              Copied: {copiedValue}
-            </span>
-          )}
+          <span className="copied-toast">
+            <Check size={10} />
+            Copied: {copiedValue}
+          </span>
         </div>
       )}
     </div>
