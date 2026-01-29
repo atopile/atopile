@@ -16,6 +16,7 @@ import os
 import re
 import sys
 import time
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -26,11 +27,13 @@ from rich.logging import RichHandler
 from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.progress import (
+    BarColumn,
     MofNCompleteColumn,
     Progress,
     RenderableColumn,
     SpinnerColumn,
     Task,
+    TextColumn,
     TimeElapsedColumn,
 )
 from rich.syntax import Syntax
@@ -475,3 +478,224 @@ def format_stage_status(
 
     label = f"{icon}{counts} {description} [{duration:.1f}s]"
     return f"[{color}]{label}[/{color}]"
+
+
+# =============================================================================
+# Build Printer (unified CLI output for ato build)
+# =============================================================================
+
+
+@dataclass
+class _BuildState:
+    """Track state for a single build."""
+
+    display_name: str
+    stages: list[dict] = field(default_factory=list)
+    total_stages: int = 15  # Default estimate
+    status: "BuildStatus" = field(default_factory=lambda: BuildStatus.QUEUED)
+    started: bool = False
+    reported: bool = False
+    last_printed_stage: int = 0  # for verbose mode
+
+
+class BuildPrinter:
+    """
+    Unified build output for CLI - handles both live and verbose modes.
+
+    Non-verbose mode (Rich Live):
+    - Shows animated spinners for active builds
+    - Displays progress as [completed/total] stage count
+    - Shows current stage name
+
+    Verbose mode (sequential prints):
+    - Prints header when build starts
+    - Prints each stage as it completes
+    - Prints completion summary with warnings/errors
+
+    Usage:
+        with BuildPrinter(verbose=False) as printer:
+            printer.build_started(build_id, "my-build")
+            printer.stage_update(build_id, stages_list)
+            printer.build_completed(build_id, BuildStatus.SUCCESS)
+    """
+
+    # Estimated stage count for progress display
+    DEFAULT_STAGE_COUNT = 15
+    _VERBOSE_INDENT = 10
+
+    def __init__(self, verbose: bool = False, console_: "Console | None" = None):
+        self.verbose = verbose
+        self._console = console_ or console
+        self._progress: Progress | None = None
+        self._tasks: dict[str, int] = {}  # build_id -> Progress TaskID
+        self._builds: dict[str, _BuildState] = {}
+
+    def __enter__(self) -> "BuildPrinter":
+        if not self.verbose:
+            self._progress = Progress(
+                SpinnerColumn(),
+                TextColumn("[bold]{task.description}"),
+                BarColumn(bar_width=20),
+                StyledMofNCompleteColumn(),
+                TextColumn("{task.fields[stage]}"),
+                ShortTimeElapsedColumn(),
+                console=self._console,
+                transient=True,  # Remove progress display when done
+            )
+            self._progress.__enter__()
+        return self
+
+    def __exit__(self, *args) -> None:
+        if self._progress:
+            self._progress.__exit__(*args)
+
+    def build_started(
+        self, build_id: str, display_name: str, total: int | None = None
+    ) -> None:
+        """Called when a build begins."""
+        total_stages = total if total is not None else self.DEFAULT_STAGE_COUNT
+        self._builds[build_id] = _BuildState(
+            display_name=display_name,
+            total_stages=total_stages,
+            status=BuildStatus.BUILDING,
+            started=True,
+        )
+
+        if self.verbose:
+            # Print header for verbose mode
+            self._console.print(
+                f"[bold cyan]▶ Building {display_name} (build_id={build_id})[/bold cyan]"
+            )
+        else:
+            # Add task to progress display
+            if self._progress:
+                task_id = self._progress.add_task(
+                    description=display_name,
+                    total=total_stages,
+                    stage="",
+                )
+                self._tasks[build_id] = task_id
+
+    def stage_update(self, build_id: str, stages: list[dict]) -> None:
+        """Called when stages change - updates progress or prints new stages."""
+        state = self._builds.get(build_id)
+        if not state:
+            return
+
+        state.stages = stages
+
+        # Terminal statuses indicate a stage is done
+        terminal_statuses = {"success", "warning", "failed", "error", "cancelled", "skipped"}
+
+        if self.verbose:
+            # Print only completed stages that haven't been printed yet
+            for i, stage in enumerate(stages):
+                if i < state.last_printed_stage:
+                    continue
+                status = stage.get("status", "").lower()
+                if status in terminal_statuses:
+                    self._print_verbose_stage(stage)
+                    state.last_printed_stage = i + 1
+        else:
+            # Count completed stages for progress bar
+            completed_count = sum(
+                1 for s in stages if s.get("status", "").lower() in terminal_statuses
+            )
+            # Update progress bar
+            if self._progress and build_id in self._tasks:
+                task_id = self._tasks[build_id]
+                # Show current running stage name
+                current_stage = ""
+                for stage in reversed(stages):
+                    status = stage.get("status", "").lower()
+                    if status not in terminal_statuses:
+                        current_stage = stage.get("name", "")
+                        break
+                # Update total if we've exceeded our estimate
+                new_total = max(state.total_stages, completed_count + 1)
+                self._progress.update(
+                    task_id,
+                    completed=completed_count,
+                    total=new_total,
+                    stage=f"[dim]{current_stage}[/dim]" if current_stage else "",
+                )
+
+    def build_completed(
+        self,
+        build_id: str,
+        status: "BuildStatus",
+        warnings: int = 0,
+        errors: int = 0,
+    ) -> None:
+        """Called when build finishes."""
+        state = self._builds.get(build_id)
+        if not state or state.reported:
+            return
+
+        state.status = status
+        state.reported = True
+        display_name = state.display_name
+
+        if self.verbose:
+            self._print_verbose_result(display_name, status, warnings, errors)
+        else:
+            # Remove from progress display
+            if self._progress and build_id in self._tasks:
+                task_id = self._tasks[build_id]
+                self._progress.update(task_id, visible=False)
+
+            # Print final status line
+            self._print_compact_result(display_name, status, warnings)
+
+    def _print_verbose_stage(self, stage: dict) -> None:
+        """Print a single verbose stage line."""
+        from atopile.dataclasses import StageStatus
+
+        status_raw = stage.get("status", StageStatus.SUCCESS.value)
+        try:
+            status = StageStatus(status_raw)
+        except ValueError:
+            status = StageStatus.SUCCESS
+
+        elapsed = stage.get("elapsedSeconds", 0.0)
+
+        formatted = format_stage_status(
+            status=status,
+            description=stage.get("name", ""),
+            duration=elapsed,
+            errors=stage.get("errors", 0),
+            warnings=stage.get("warnings", 0),
+        )
+        self._console.print(f"{'':>{self._VERBOSE_INDENT}}{formatted}")
+
+    def _print_verbose_result(
+        self,
+        display_name: str,
+        status: "BuildStatus",
+        warnings: int,
+        errors: int,
+    ) -> None:
+        """Print verbose mode completion message."""
+        if status in (BuildStatus.SUCCESS, BuildStatus.WARNING):
+            if warnings > 0:
+                self._console.print(
+                    f"[yellow]⚠ {display_name} completed with "
+                    f"{warnings} warning(s)[/yellow]"
+                )
+            else:
+                self._console.print(f"[green]✓ {display_name} completed[/green]")
+        else:
+            self._console.print(f"[red]✗ {display_name} failed[/red]")
+
+    def _print_compact_result(
+        self,
+        display_name: str,
+        status: "BuildStatus",
+        warnings: int,
+    ) -> None:
+        """Print compact mode completion message."""
+        if status == BuildStatus.FAILED:
+            self._console.print(f"[red bold]✗ {display_name}[/red bold]")
+        elif status == BuildStatus.WARNING or warnings > 0:
+            self._console.print(f"[yellow bold]⚠ {display_name}[/yellow bold]")
+        # Success is silent in compact mode
