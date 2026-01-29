@@ -850,10 +850,12 @@
   font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   border-radius: var(--radius-sm);
+  cursor: pointer;
 }
 
 .build-stage:hover {
-  background: var(--bg-secondary);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .build-queue-logs-btn {
@@ -881,30 +883,6 @@
   color: var(--text-primary);
 }
 
-.stage-logs-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 0.1s;
-}
-
-.build-stage:hover .stage-logs-btn {
-  opacity: 1;
-}
-
-.stage-logs-btn:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-}
 
 .build-stage .stage-icon {
   flex-shrink: 0;
