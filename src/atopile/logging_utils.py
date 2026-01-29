@@ -1,10 +1,11 @@
 """
-Logging utilities for atopile builds.
+Shared logging and Rich console utilities for atopile.
 
-This module provides:
+Provides:
+- Global console singletons (console, error_console)
+- Shared styling constants (LEVEL_STYLES, STATUS_ICONS, etc.)
+- Helper functions (safe_markdown, format_stage_status, rich_to_string, etc.)
 - Progress bar components
-- Rich console utilities
-- Formatters and highlighters
 """
 
 from __future__ import annotations
@@ -16,10 +17,12 @@ import re
 import sys
 import time
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 import rich
-from rich.console import Console, RenderableType
-from rich.highlighter import RegexHighlighter
+from rich.console import Console, ConsoleOptions, ConsoleRenderable
+from rich.highlighter import RegexHighlighter, ReprHighlighter
+from rich.logging import RichHandler
 from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.progress import (
@@ -30,54 +33,146 @@ from rich.progress import (
     Task,
     TimeElapsedColumn,
 )
+from rich.syntax import Syntax
 from rich.table import Column, Table
 from rich.text import Text
 from rich.theme import Theme
-from rich.tree import Tree
+from rich.traceback import Traceback
 
 from faebryk.libs.util import ConfigFlag, ConfigFlagInt
 
 from atopile.dataclasses import BuildStatus
 
+if TYPE_CHECKING:
+    from rich.console import RenderableType
+
+    from atopile.dataclasses import StageStatus
+
 # =============================================================================
-# Rich Console Configuration (formerly cli/console.py)
+# Shared Style Constants
 # =============================================================================
 
-# Theme for faebryk-style node highlighting
+# Canonical log level styles - use these everywhere for consistency
+LEVEL_STYLES: dict[str, str] = {
+    "DEBUG": "bright_black",
+    "INFO": "green",
+    "ALERT": "cyan bold",
+    "WARNING": "yellow",
+    "ERROR": "red",
+    "CRITICAL": "red bold reverse",
+}
+
+# Abbreviated level names with Rich markup (for compact displays)
+LEVEL_ABBREV: dict[str, str] = {
+    "DEBUG": f"[{LEVEL_STYLES['DEBUG']}]D[/{LEVEL_STYLES['DEBUG']}]",
+    "INFO": f"[{LEVEL_STYLES['INFO']}]I[/{LEVEL_STYLES['INFO']}]",
+    "WARNING": f"[{LEVEL_STYLES['WARNING']}]W[/{LEVEL_STYLES['WARNING']}]",
+    "ERROR": f"[{LEVEL_STYLES['ERROR']}]E[/{LEVEL_STYLES['ERROR']}]",
+    "CRITICAL": f"[{LEVEL_STYLES['CRITICAL']}]C[/{LEVEL_STYLES['CRITICAL']}]",
+}
+
+# Canonical status icons and colors for build/stage status
+STATUS_ICONS: dict[str, str] = {
+    "queued": "○",
+    "pending": "○",
+    "building": "●",
+    "running": "●",
+    "success": "✓",
+    "warning": "⚠",
+    "failed": "✗",
+    "error": "✗",
+    "cancelled": "⊘",
+    "skipped": "⊘",
+}
+
+STATUS_COLORS: dict[str, str] = {
+    "queued": "dim",
+    "pending": "dim",
+    "building": "blue",
+    "running": "blue",
+    "success": "green",
+    "warning": "yellow",
+    "failed": "red",
+    "error": "red",
+    "cancelled": "dim",
+    "skipped": "dim",
+}
+
+
+def get_status_style(status: str | BuildStatus) -> tuple[str, str]:
+    """Get (icon, color) tuple for a status value."""
+    if hasattr(status, "value"):
+        status = status.value
+    status_key = status.lower()
+    icon = STATUS_ICONS.get(status_key, "○")
+    color = STATUS_COLORS.get(status_key, "dim")
+    return icon, color
+
+
+# =============================================================================
+# Rich Console Configuration
+# =============================================================================
+
+# Theme for faebryk-style node highlighting (includes log level styles)
 faebryk_theme = Theme(
     {
+        # Node highlighting
         "node.Node": "bold magenta",
         "node.Type": "bright_cyan",
         "node.Parent": "bright_red",
         "node.Child": "bright_yellow",
         "node.Root": "bold yellow",
         "node.Number": "bright_green",
-        "logging.level.warning": "yellow",
         "node.Quantity": "bright_yellow",
         "node.IsSubset": "bright_blue",
         "node.Predicate": "bright_magenta",
         "node.Op": "red",
+        # Log level styles (used by Rich's built-in logging)
+        "logging.level.debug": LEVEL_STYLES["DEBUG"],
+        "logging.level.info": LEVEL_STYLES["INFO"],
+        "logging.level.warning": LEVEL_STYLES["WARNING"],
+        "logging.level.error": LEVEL_STYLES["ERROR"],
+        "logging.level.critical": LEVEL_STYLES["CRITICAL"],
     }
 )
 
 rich.reconfigure(theme=faebryk_theme)
 
-# Console should be a singleton to avoid intermixing logging w/ other output
+# Console singletons - use these to avoid intermixing logging with other output
 console = rich.get_console()
-error_console = rich.console.Console(theme=faebryk_theme, stderr=True)
+error_console = Console(theme=faebryk_theme, stderr=True)
 
-# Lazy import to avoid circular dependency
+
+def safe_markdown(message: str, console: Console | None = None) -> ConsoleRenderable:
+    """
+    Render message as Markdown if in a terminal, otherwise as plain Text.
+
+    Use this when you want Markdown formatting but need graceful fallback
+    for non-terminal output (e.g., piped to file, CI logs).
+
+    Args:
+        message: The message to render
+        console: Optional console to check is_terminal. If None, checks stdout.
+
+    Returns:
+        Markdown or Text renderable
+    """
+    if console is None:
+        is_terminal = sys.stdout.isatty()
+    else:
+        is_terminal = console.is_terminal
+
+    if is_terminal:
+        return Markdown(message)
+    return Text(message)
+
 def _get_terminal_width() -> int:
-    """Get terminal width, avoiding circular import."""
-    import os
-    import sys
-    from rich.console import Console
-    
+    """Get terminal width from the global console singleton."""
     if not sys.stdout.isatty():
         if "COLUMNS" in os.environ:
             return int(os.environ["COLUMNS"])
         return 240
-    return Console().size.width
+    return console.size.width
 
 # =============================================================================
 # Progress Bar Components
@@ -118,9 +213,9 @@ class SpacerColumn(RenderableColumn):
 
 class CompletableSpinnerColumn(SpinnerColumn):
     class Status(StrEnum):
-        SUCCESS = "[green]✓[/green]"
-        FAILURE = "[red]✗[/red]"
-        WARNING = "[yellow]⚠[/yellow]"
+        SUCCESS = f"[{STATUS_COLORS['success']}]{STATUS_ICONS['success']}[/{STATUS_COLORS['success']}]"
+        FAILURE = f"[{STATUS_COLORS['failed']}]{STATUS_ICONS['failed']}[/{STATUS_COLORS['failed']}]"
+        WARNING = f"[{STATUS_COLORS['warning']}]{STATUS_ICONS['warning']}[/{STATUS_COLORS['warning']}]"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -206,7 +301,7 @@ def get_terminal_width() -> int:
         if "COLUMNS" in os.environ:
             return int(os.environ["COLUMNS"])
         return 240
-    return Console().size.width
+    return console.size.width
 
 
 def rich_to_string(rich_obj: Table | Tree) -> str:
@@ -231,14 +326,8 @@ class NestedConsole(Console):
         return self.export_text(styles=True)
 
 
-# Abbreviated level names with Rich color markup
-_LEVEL_ABBREV = {
-    "DEBUG": "[cyan]D[/cyan]",
-    "INFO": "[green]I[/green]",
-    "WARNING": "[yellow]W[/yellow]",
-    "ERROR": "[red]E[/red]",
-    "CRITICAL": "[bold red]C[/bold red]",
-}
+# Legacy alias - use LEVEL_ABBREV instead
+_LEVEL_ABBREV = LEVEL_ABBREV
 
 
 class RelativeTimeFormatter(logging.Formatter):
@@ -350,28 +439,39 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 def status_rich_icon(status: BuildStatus | str) -> str:
     """Get Rich-formatted icon for status (for terminal display)."""
-    icon_map = {
-        BuildStatus.QUEUED: "[dim]○[/dim]",
-        BuildStatus.BUILDING: "[blue]●[/blue]",
-        BuildStatus.SUCCESS: "[green]✓[/green]",
-        BuildStatus.WARNING: "[yellow]⚠[/yellow]",
-        BuildStatus.FAILED: "[red]✗[/red]",
-    }
-    if isinstance(status, str):
-        status = BuildStatus(status)
-    return icon_map.get(status, "[dim]○[/dim]")
+    icon, color = get_status_style(status)
+    return f"[{color}]{icon}[/{color}]"
 
 
 def status_rich_text(status: BuildStatus | str, text: str) -> str:
     """Format text with Rich color markup for status."""
-    color_map = {
-        BuildStatus.QUEUED: "dim",
-        BuildStatus.BUILDING: "blue",
-        BuildStatus.SUCCESS: "green",
-        BuildStatus.WARNING: "yellow",
-        BuildStatus.FAILED: "red",
-    }
-    if isinstance(status, str):
-        status = BuildStatus(status)
-    color = color_map.get(status, "")
+    _, color = get_status_style(status)
     return f"[{color}]{text}[/{color}]" if color else text
+
+
+def format_stage_status(
+    status: "StageStatus | str",
+    description: str,
+    duration: float,
+    errors: int = 0,
+    warnings: int = 0,
+) -> str:
+    """
+    Format a stage entry with status icon, counts, and duration.
+
+    Returns Rich markup string like: "[green]✓ Stage name [1.2s][/green]"
+    """
+    icon, color = get_status_style(status)
+
+    # Build counts suffix
+    counts = ""
+    if errors > 0:
+        counts = f"({errors}E"
+        if warnings > 0:
+            counts += f",{warnings}W"
+        counts += ")"
+    elif warnings > 0:
+        counts = f"({warnings})"
+
+    label = f"{icon}{counts} {description} [{duration:.1f}s]"
+    return f"[{color}]{label}[/{color}]"

@@ -337,10 +337,10 @@ def flags():
     """
     import re
 
-    from rich.console import Console
+    from atopile.config_flags import discover_configflags
     from rich.table import Table
 
-    from atopile.config_flags import discover_configflags
+    from atopile.logging_utils import console
 
     def _linkify_urls(text: str) -> str:
         """Convert URLs to Rich hyperlinks with shorter display text."""
@@ -392,7 +392,7 @@ def flags():
             uses,
         )
 
-    Console().print(table)
+    console.print(table)
 
 
 def _fetch_and_open_test_report(commit_hash: str) -> None:
