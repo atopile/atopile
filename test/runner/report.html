@@ -672,6 +672,7 @@
         align-items: center;
         gap: 8px;
         margin-left: auto;
+        position: relative;
       }
 
       .baseline-selector label {
@@ -679,7 +680,12 @@
         font-size: 11px;
       }
 
-      .baseline-selector select {
+      .baseline-dropdown-container {
+        position: relative;
+        min-width: 200px;
+      }
+
+      .baseline-dropdown-button {
         padding: 4px 8px;
         font-size: 11px;
         background-color: var(--ctp-surface0);
@@ -687,16 +693,113 @@
         border: 1px solid var(--ctp-surface1);
         border-radius: 3px;
         cursor: pointer;
-        min-width: 150px;
+        min-width: 200px;
+        text-align: left;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
       }
 
-      .baseline-selector select:hover {
+      .baseline-dropdown-button:hover {
         background-color: var(--ctp-surface1);
       }
 
-      .baseline-selector select:focus {
+      .baseline-dropdown-button:focus {
         outline: none;
         border-color: var(--ctp-lavender);
+      }
+
+      .baseline-dropdown-arrow {
+        margin-left: 8px;
+        font-size: 10px;
+      }
+
+      .baseline-dropdown-panel {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        margin-top: 2px;
+        background-color: var(--ctp-surface0);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 3px;
+        max-height: 400px;
+        overflow: hidden;
+        z-index: 1000;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        display: none;
+      }
+
+      .baseline-dropdown-panel.open {
+        display: block;
+      }
+
+      .baseline-dropdown-search {
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--ctp-surface1);
+      }
+
+      .baseline-dropdown-search input {
+        width: 100%;
+        padding: 4px 8px;
+        font-size: 11px;
+        background-color: var(--ctp-base);
+        color: var(--ctp-text);
+        border: 1px solid var(--ctp-surface2);
+        border-radius: 3px;
+        box-sizing: border-box;
+      }
+
+      .baseline-dropdown-search input:focus {
+        outline: none;
+        border-color: var(--ctp-lavender);
+      }
+
+      .baseline-dropdown-options {
+        max-height: 340px;
+        overflow-y: auto;
+      }
+
+      .baseline-dropdown-optgroup {
+        padding: 4px 0;
+      }
+
+      .baseline-dropdown-optgroup-label {
+        padding: 4px 8px;
+        font-size: 10px;
+        font-weight: bold;
+        color: var(--ctp-overlay2);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .baseline-dropdown-option {
+        padding: 4px 8px;
+        font-size: 11px;
+        cursor: pointer;
+        color: var(--ctp-text);
+      }
+
+      .baseline-dropdown-option:hover {
+        background-color: var(--ctp-surface1);
+      }
+
+      .baseline-dropdown-option.selected {
+        background-color: var(--ctp-surface2);
+        font-weight: bold;
+      }
+
+      .baseline-dropdown-option.disabled {
+        color: var(--ctp-overlay0);
+        cursor: not-allowed;
+      }
+
+      .baseline-dropdown-option.disabled:hover {
+        background-color: transparent;
+      }
+
+      .baseline-dropdown-option.hidden {
+        display: none;
       }
 
       .baseline-status {
@@ -1259,33 +1362,120 @@
       var currentBaseline = "[[current_baseline]]";
       var currentBaselineInfo = "[[current_baseline_info]]";
 
-      function populateBaselineDropdown() {
-        var select = document.getElementById("baselineSelect");
-        if (!select) return;
+      function toggleBaselineDropdown() {
+        var panel = document.getElementById("baselineDropdownPanel");
+        var searchInput = document.getElementById("baselineSearchInput");
 
-        // Clear ALL children (options and optgroups)
-        while (select.firstChild) {
-          select.removeChild(select.firstChild);
+        if (panel.classList.contains("open")) {
+          panel.classList.remove("open");
+        } else {
+          panel.classList.add("open");
+          // Focus search input when opening
+          setTimeout(function() {
+            searchInput.focus();
+          }, 100);
         }
+      }
+
+      function filterBaselineOptions() {
+        var searchInput = document.getElementById("baselineSearchInput");
+        var searchTerm = searchInput.value.toLowerCase();
+        var options = document.querySelectorAll(".baseline-dropdown-option");
+        var optgroups = document.querySelectorAll(".baseline-dropdown-optgroup");
+
+        options.forEach(function(option) {
+          var text = option.textContent.toLowerCase();
+          if (text.includes(searchTerm)) {
+            option.classList.remove("hidden");
+          } else {
+            option.classList.add("hidden");
+          }
+        });
+
+        // Hide optgroups if all their options are hidden
+        optgroups.forEach(function(optgroup) {
+          var visibleOptions = optgroup.querySelectorAll(".baseline-dropdown-option:not(.hidden)");
+          if (visibleOptions.length === 0) {
+            optgroup.style.display = "none";
+          } else {
+            optgroup.style.display = "block";
+          }
+        });
+      }
+
+      function selectBaselineOption(value, text) {
+        var button = document.getElementById("baselineSelectedText");
+        button.textContent = text;
+
+        // Close dropdown
+        var panel = document.getElementById("baselineDropdownPanel");
+        panel.classList.remove("open");
+
+        // Clear search
+        var searchInput = document.getElementById("baselineSearchInput");
+        searchInput.value = "";
+        filterBaselineOptions();
+
+        // Update selected state
+        var options = document.querySelectorAll(".baseline-dropdown-option");
+        options.forEach(function(opt) {
+          if (opt.dataset.value === value) {
+            opt.classList.add("selected");
+          } else {
+            opt.classList.remove("selected");
+          }
+        });
+
+        // Trigger baseline change
+        changeBaseline(value);
+      }
+
+      function populateBaselineDropdown() {
+        var container = document.getElementById("baselineDropdownOptions");
+        var button = document.getElementById("baselineSelectedText");
+        if (!container) return;
+
+        // Clear all children
+        while (container.firstChild) {
+          container.removeChild(container.firstChild);
+        }
+
+        // Set button text to current baseline
+        button.textContent = currentBaselineInfo || "-- No baseline --";
 
         // Add default option showing current baseline
-        var defaultOption = document.createElement("option");
-        defaultOption.value = "";
+        var defaultGroup = document.createElement("div");
+        defaultGroup.className = "baseline-dropdown-optgroup";
+
+        var defaultOption = document.createElement("div");
+        defaultOption.className = "baseline-dropdown-option";
+        defaultOption.dataset.value = "";
         defaultOption.textContent = currentBaselineInfo || "-- No baseline --";
         if (!currentBaseline) {
-          defaultOption.selected = true;
+          defaultOption.classList.add("selected");
         }
-        select.appendChild(defaultOption);
+        defaultOption.onclick = function() {
+          selectBaselineOption("", this.textContent);
+        };
+        defaultGroup.appendChild(defaultOption);
+        container.appendChild(defaultGroup);
 
         // Add remote commits (HEAD)
         if (remoteCommits && remoteCommits.length > 0) {
-          var remoteGroup = document.createElement("optgroup");
-          remoteGroup.label = "Remote Commits (Recent)";
+          var remoteGroup = document.createElement("div");
+          remoteGroup.className = "baseline-dropdown-optgroup";
+
+          var remoteLabel = document.createElement("div");
+          remoteLabel.className = "baseline-dropdown-optgroup-label";
+          remoteLabel.textContent = "Remote Commits (Recent)";
+          remoteGroup.appendChild(remoteLabel);
 
           remoteCommits.forEach(function (commit) {
-            var option = document.createElement("option");
+            var option = document.createElement("div");
+            option.className = "baseline-dropdown-option";
             var commitHash = commit.commit_hash || "unknown";
-            option.value = "remote:" + commitHash;
+            var value = "remote:" + commitHash;
+            option.dataset.value = value;
 
             // Get first line of commit message or fallback
             var message = "";
@@ -1303,50 +1493,68 @@
             }
 
             // Grey out commits without workflow runs
+            var isDisabled = false;
             if (!commit.has_workflow_run) {
               text += " (no CI run)";
-              option.disabled = true;
-              option.style.color = "#999";
+              isDisabled = true;
             } else if (!commit.has_artifact) {
               text += " (no artifact)";
-              option.disabled = true;
-              option.style.color = "#999";
+              isDisabled = true;
             } else if (commit.status && commit.status !== "completed") {
               text += " (" + commit.status + ")";
-              option.disabled = true;
-              option.style.color = "#999";
+              isDisabled = true;
             }
 
             option.textContent = text;
-            if (currentBaseline === "remote:" + commitHash) {
-              option.selected = true;
+
+            if (isDisabled) {
+              option.classList.add("disabled");
+            } else {
+              option.onclick = function() {
+                selectBaselineOption(value, text);
+              };
             }
+
+            if (currentBaseline === value) {
+              option.classList.add("selected");
+            }
+
             remoteGroup.appendChild(option);
           });
 
-          select.appendChild(remoteGroup);
+          container.appendChild(remoteGroup);
         }
 
         // Add local baselines
         if (availableBaselines && availableBaselines.length > 0) {
-          var optgroup = document.createElement("optgroup");
-          optgroup.label = "Local Baselines";
+          var localGroup = document.createElement("div");
+          localGroup.className = "baseline-dropdown-optgroup";
+
+          var localLabel = document.createElement("div");
+          localLabel.className = "baseline-dropdown-optgroup-label";
+          localLabel.textContent = "Local Baselines";
+          localGroup.appendChild(localLabel);
 
           availableBaselines.forEach(function (baseline) {
-            var option = document.createElement("option");
-            option.value = "local:" + baseline.name;
-            option.textContent =
-              baseline.name +
-              " (" +
-              (baseline.tests_total || "?") +
-              " tests)";
-            if (currentBaseline === "local:" + baseline.name) {
-              option.selected = true;
+            var option = document.createElement("div");
+            option.className = "baseline-dropdown-option";
+            var value = "local:" + baseline.name;
+            option.dataset.value = value;
+            var text = baseline.name + " (" + (baseline.tests_total || "?") + " tests)";
+            option.textContent = text;
+
+            option.onclick = function() {
+              selectBaselineOption(value, text);
+            };
+
+            if (currentBaseline === value) {
+              option.classList.add("selected");
             }
-            optgroup.appendChild(option);
+
+            localGroup.appendChild(option);
           });
 
-          select.appendChild(optgroup);
+          container.appendChild(localGroup);
         }
       }
 
@@ -1386,10 +1594,8 @@
         }
       }
 
-      async function changeBaseline() {
-        var select = document.getElementById("baselineSelect");
+      async function changeBaseline(value) {
         var status = document.getElementById("baselineStatus");
-        var value = select.value;
 
         if (!value) {
           return;
@@ -1455,6 +1661,27 @@
         populateBaselineDropdown();
         loadBaselines();
         loadRemoteCommits();
+
+        // Close dropdown when clicking outside
+        document.addEventListener("click", function(event) {
+          var panel = document.getElementById("baselineDropdownPanel");
+          var button = document.getElementById("baselineDropdownButton");
+          var container = document.querySelector(".baseline-dropdown-container");
+
+          if (panel && container && !container.contains(event.target)) {
+            panel.classList.remove("open");
+          }
+        });
+
+        // Close dropdown with Escape key
+        document.addEventListener("keydown", function(event) {
+          if (event.key === "Escape") {
+            var panel = document.getElementById("baselineDropdownPanel");
+            if (panel) {
+              panel.classList.remove("open");
+            }
+          }
+        });
       });
     </script>
   </head>
@@ -1616,9 +1843,26 @@
         >
       </div>
       <div class="baseline-selector">
-        <label for="baselineSelect">Baseline:</label>
-        <select id="baselineSelect" onchange="changeBaseline()">
-        </select>
+        <label>Baseline:</label>
+        <div class="baseline-dropdown-container">
+          <button class="baseline-dropdown-button" id="baselineDropdownButton" onclick="toggleBaselineDropdown()">
+            <span id="baselineSelectedText">-- No baseline --</span>
+            <span class="baseline-dropdown-arrow">▼</span>
+          </button>
+          <div class="baseline-dropdown-panel" id="baselineDropdownPanel">
+            <div class="baseline-dropdown-search">
+              <input
+                type="text"
+                id="baselineSearchInput"
+                placeholder="Search commits..."
+                oninput="filterBaselineOptions()"
+              >
+            </div>
+            <div class="baseline-dropdown-options" id="baselineDropdownOptions">
+              <!-- Options populated by JavaScript -->
+            </div>
+          </div>
+        </div>
         <span id="baselineStatus" class="baseline-status"></span>
       </div>
       <a id="logsBtn" class="logs-btn" href="/logs?test_run_id=[[test_run_id]]" target="_blank" title="View test logs">
