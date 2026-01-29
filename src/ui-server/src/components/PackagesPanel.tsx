@@ -8,10 +8,11 @@
  */
 
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Package, PackageSearch, Search, CheckCircle } from 'lucide-react'
+import { ChevronDown, ChevronRight, Package, PackageSearch, CheckCircle } from 'lucide-react'
 import type { PackageInfo, ProjectDependency } from '../types/build'
 import { isInstalledInProject } from '../utils/packageUtils'
 import type { SelectedPackage } from './sidebar-modules'
+import { PanelSearchBox } from './shared'
 import './PackagesPanel.css'
 
 interface PackagesPanelProps {
@@ -26,6 +27,7 @@ interface PackagesPanelProps {
   onOpenPackageDetail: (pkg: SelectedPackage) => void
   onDependencyVersionChange?: (projectRoot: string, identifier: string, newVersion: string) => void
   onRemoveDependency?: (projectRoot: string, identifier: string) => void
+  isExpanded?: boolean
 }
 
 // Installed package row - matches marketplace layout with version
@@ -91,6 +93,7 @@ export function PackagesPanel({
   selectedProjectRoot,
   installError,
   onOpenPackageDetail,
+  isExpanded = false,
 }: PackagesPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [installedOpen, setInstalledOpen] = useState(true)
@@ -152,15 +155,12 @@ export function PackagesPanel({
   return (
     <div className="packages-panel">
       {/* Search - always at top */}
-      <div className="packages-search-bar">
-        <Search size={14} />
-        <input
-          type="text"
-          placeholder="Search packages..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-      </div>
+      <PanelSearchBox
+        value={searchQuery}
+        onChange={setSearchQuery}
+        placeholder="Search packages..."
+        autoFocus={isExpanded}
+      />
 
       {installError && (
         <div className="packages-error">{installError}</div>
@@ -177,7 +177,7 @@ export function PackagesPanel({
               <span className="section-toggle">
                 {installedOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               </span>
-              <span className="section-title">INSTALLED</span>
+              <span className="section-title">Installed</span>
               <span className="section-count">{filteredInstalled.length}</span>
             </button>
 
@@ -212,7 +212,7 @@ export function PackagesPanel({
           <div className="packages-section">
             {hasSearchQuery && (
               <div className="packages-section-header static">
-                <span className="section-title">MARKETPLACE</span>
+                <span className="section-title">Marketplace</span>
                 <span className="section-count">{filteredMarketplace.length}</span>
               </div>
             )}

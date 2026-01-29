@@ -18,13 +18,15 @@ html, body {
 }
 
 body {
+  /* Use VS Code's native UI font throughout */
   font-family: var(--font-sans);
-  font-size: var(--font-size-base);
+  font-size: var(--vscode-font-size, 13px);
+  font-weight: var(--vscode-font-weight, 400);
   line-height: 1.4;
-  color: var(--text-primary);
-  background: var(--bg-primary);
+  color: var(--vscode-foreground, var(--text-primary));
+  background: var(--vscode-sideBar-background, var(--bg-primary));
   -webkit-font-smoothing: antialiased;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   transition: var(--theme-transition);
 }
 
@@ -87,10 +89,12 @@ body {
   justify-content: space-between;
   /* Edge-to-edge: minimal horizontal padding */
   position: relative;
-  padding: var(--spacing-sm) var(--spacing-xs);
+  padding: 0 var(--spacing-xs);
   border-bottom: 1px solid var(--accent);
   background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
-  min-height: 36px;
+  /* Match VS Code native header height (35px is standard for view titles) */
+  height: 35px;
+  min-height: 35px;
   /* Ensure header stays above disconnected overlay so settings gear is always accessible */
   z-index: calc(var(--z-modal) + 100);
 }
@@ -109,11 +113,12 @@ body {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  font-weight: 600;
-  font-size: var(--font-size-md);
+  /* Match VS Code native view title styling */
+  font-weight: 400;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
-  text-transform: lowercase;
-  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  letter-spacing: 0;
 }
 
 .header-logo {

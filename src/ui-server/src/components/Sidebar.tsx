@@ -306,6 +306,7 @@ export function Sidebar() {
             lastAtoFile={lastAtoFile}
             projects={projects || []}
             onRefreshStructure={handlers.handleStructureRefresh}
+            isExpanded={!panels.isCollapsed('structure')}
           />
         </CollapsibleSection>
 
@@ -329,6 +330,7 @@ export function Sidebar() {
             selectedProjectRoot={selectedProjectRoot}
             installError={installError}
             onOpenPackageDetail={handlers.handleOpenPackageDetail}
+            isExpanded={!panels.isCollapsed('packages')}
           />
         </CollapsibleSection>
 
@@ -346,6 +348,7 @@ export function Sidebar() {
             items={stdlibItems}
             isLoading={isLoadingStdlib}
             onRefresh={handleRefreshStdlib}
+            isExpanded={!panels.isCollapsed('stdlib')}
           />
         </CollapsibleSection>
 
@@ -365,6 +368,7 @@ export function Sidebar() {
             error={variablesError}
             selectedTargetName={selectedTargetName}
             hasActiveProject={!!selectedProjectRoot}
+            isExpanded={!panels.isCollapsed('variables')}
           />
         </CollapsibleSection>
 
@@ -386,6 +390,7 @@ export function Sidebar() {
             selectedProjectRoot={selectedProjectRoot}
             selectedTargetNames={selectedTargetNames}
             onGoToSource={handleGoToSource}
+            isExpanded={!panels.isCollapsed('bom')}
           />
         </CollapsibleSection>
       </div>

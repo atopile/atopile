@@ -2,19 +2,19 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
-  padding: var(--spacing-xs);
+  padding: var(--spacing-xs) 8px;
   flex: 1 1 auto;
   min-height: 0;
 }
 
-/* Section Labels - matches Variables panel table headers */
+/* Section Labels - sub-headers within panels, smaller than main panel headers */
 .section-label {
-  font-size: var(--font-size-xxs);
-  font-weight: 600;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  letter-spacing: 0.05em;
-  opacity: 0.7;
+  font-family: var(--vscode-font-family, var(--font-sans));
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+  color: var(--vscode-descriptionForeground, var(--text-muted));
+  letter-spacing: 0;
 }
 
 /* Project Selector Row */
@@ -255,7 +255,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-xs);
-  padding: 2px 4px;
+  padding: 2px 0;
 }
 
 .builds-badge {
@@ -605,14 +605,15 @@
   align-items: center;
   gap: 4px;
   width: 100%;
-  padding: 3px 6px;
+  padding: 3px 0;
   border: none;
   background: transparent;
-  color: var(--text-muted);
-  font-size: var(--font-size-xxs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--vscode-descriptionForeground, var(--text-muted));
+  font-family: var(--vscode-font-family, var(--font-sans));
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition: all 0.15s ease;

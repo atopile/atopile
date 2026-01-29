@@ -66,10 +66,12 @@
   align-items: center;
   gap: var(--spacing-xs);
   width: 100%;
-  padding: var(--spacing-sm) var(--spacing-md);
+  height: 22px;
+  min-height: 22px;
+  padding: 0 var(--spacing-md);
   background: transparent;
   border: none;
-  color: var(--text-secondary);
+  color: var(--vscode-foreground, var(--text-secondary));
   cursor: pointer;
   user-select: none;
   transition: background var(--transition-fast);
@@ -95,17 +97,20 @@
 }
 
 .section-title {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-family: var(--vscode-font-family, var(--font-sans));
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--vscode-descriptionForeground, var(--text-muted));
 }
 
 .section-count {
   margin-left: auto;
-  font-size: var(--font-size-sm);
-  color: var(--text-muted);
-  background: var(--bg-tertiary);
+  font-family: var(--vscode-font-family, var(--font-sans));
+  font-size: 11px;
+  color: var(--vscode-badge-foreground, var(--text-muted));
+  background: var(--vscode-badge-background, var(--bg-tertiary));
   padding: 1px 6px;
   border-radius: var(--radius-sm);
 }
@@ -153,9 +158,10 @@
 }
 
 .marketplace-package-name {
-  font-size: var(--font-size-sm);
+  font-family: var(--vscode-font-family, var(--font-sans));
+  font-size: var(--vscode-font-size, 13px);
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--vscode-foreground, var(--text-primary));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -167,8 +173,9 @@
 }
 
 .marketplace-package-summary {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  font-family: var(--vscode-font-family, var(--font-sans));
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-descriptionForeground, var(--text-secondary));
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -187,23 +194,25 @@
 }
 
 .marketplace-package-publisher {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
+  font-family: var(--vscode-font-family, var(--font-sans));
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, var(--text-muted));
   white-space: nowrap;
 }
 
 .marketplace-package-version {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  font-family: var(--font-mono);
+  font-family: var(--vscode-editor-font-family, var(--font-mono));
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, var(--text-muted));
   white-space: nowrap;
 }
 
 /* Empty states */
 .packages-empty-hint {
   padding: var(--spacing-sm) var(--spacing-md);
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
+  font-family: var(--vscode-font-family, var(--font-sans));
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-descriptionForeground, var(--text-muted));
   font-style: italic;
 }
 
@@ -214,7 +223,7 @@
   justify-content: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-xl);
-  color: var(--text-muted);
+  color: var(--vscode-descriptionForeground, var(--text-muted));
 }
 
 .packages-empty-state svg {
@@ -222,5 +231,6 @@
 }
 
 .packages-empty-state span {
-  font-size: var(--font-size-sm);
+  font-family: var(--vscode-font-family, var(--font-sans));
+  font-size: var(--vscode-font-size, 13px);
 }

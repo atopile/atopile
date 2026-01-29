@@ -258,7 +258,10 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 6px;
+  /* Match VS Code native tree item height */
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+  padding: 0 6px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: var(--font-size-sm);
@@ -343,7 +346,10 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 6px;
+  /* Match VS Code native tree item height */
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+  padding: 0 6px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: var(--font-size-sm);
@@ -420,10 +426,13 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 6px;
+  /* Match VS Code native tree item height */
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+  padding: 0 6px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   transition: background var(--transition-fast);
 }

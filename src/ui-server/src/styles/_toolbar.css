@@ -100,33 +100,36 @@
   align-items: center;
   gap: var(--spacing-xs);
   padding: 4px var(--spacing-sm);
-  background: var(--bg-tertiary);
-  border: 1px solid transparent;
+  /* Use VS Code native input styling */
+  background: var(--vscode-input-background, var(--bg-tertiary));
+  border: 1px solid var(--vscode-input-border, transparent);
   border-radius: var(--radius-sm);
-  color: var(--text-muted);
+  color: var(--vscode-input-foreground, var(--text-muted));
   transition: all var(--transition-fast);
 }
 
 .search-box:hover {
-  border-color: var(--border-subtle);
+  border-color: var(--vscode-input-border, var(--border-subtle));
 }
 
 .search-box input {
   flex: 1;
   border: none;
   background: transparent;
-  color: var(--text-primary);
-  font-size: var(--font-size-xs);
+  /* Match VS Code native font */
+  font-family: var(--font-sans);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-input-foreground, var(--text-primary));
   outline: none;
 }
 
 .search-box input::placeholder {
-  color: var(--text-muted);
+  color: var(--vscode-input-placeholderForeground, var(--text-muted));
 }
 
 .search-box:focus-within {
-  border-color: var(--accent);
-  background: var(--bg-secondary);
+  border-color: var(--vscode-focusBorder, var(--accent));
+  background: var(--vscode-input-background, var(--bg-secondary));
 }
 
 /* Search clear button */

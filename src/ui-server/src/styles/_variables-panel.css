@@ -245,7 +245,10 @@
   display: grid;
   grid-template-columns: minmax(80px, 1.2fr) minmax(80px, 1fr) minmax(80px, 1fr) 16px;
   gap: 4px;
-  padding: 2px 4px;
+  /* Match VS Code native tree item height */
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+  padding: 0 4px;
   align-items: center;
   cursor: pointer;
   border-radius: var(--radius-sm);

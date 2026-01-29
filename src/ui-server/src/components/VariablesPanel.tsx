@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react'
 import {
-  ChevronDown, ChevronRight, Search, Box, Zap,
+  ChevronDown, ChevronRight, Box, Zap,
   Hash, Percent, CircuitBoard, RefreshCw,
   Check, AlertTriangle, Loader2
 } from 'lucide-react'
 import { smartTruncatePair } from './sidebar-modules/sidebarUtils'
+import { PanelSearchBox } from './shared'
 
 // Variable types
 type VariableType = 'voltage' | 'current' | 'resistance' | 'capacitance' | 'ratio' | 'frequency' | 'power' | 'percentage' | 'dimensionless'
@@ -341,6 +342,7 @@ interface VariablesPanelProps {
   // Active context for empty state messages
   selectedTargetName?: string | null
   hasActiveProject?: boolean
+  isExpanded?: boolean
 }
 
 export function VariablesPanel({
@@ -349,6 +351,7 @@ export function VariablesPanel({
   error = null,
   selectedTargetName = null,
   hasActiveProject = false,
+  isExpanded = false,
 }: VariablesPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
@@ -420,20 +423,12 @@ export function VariablesPanel({
 
   return (
     <div className="variables-panel">
-      {/* Toolbar */}
-      <div className="panel-toolbar">
-        <div className="panel-toolbar-row">
-          <div className="search-box">
-            <Search size={14} />
-            <input
-              type="text"
-              placeholder="Search variables..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-        </div>
-      </div>
+      <PanelSearchBox
+        value={searchQuery}
+        onChange={setSearchQuery}
+        placeholder="Search variables..."
+        autoFocus={isExpanded}
+      />
 
       {/* Variable tree */}
       <div className="variables-tree">

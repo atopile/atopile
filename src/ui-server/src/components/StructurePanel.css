@@ -32,12 +32,12 @@
 }
 
 .structure-path {
-  font-size: var(--font-size-base);
-  color: var(--text-muted);
+  font-family: var(--vscode-font-family, var(--font-sans));
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, var(--text-muted));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-mono);
 }
 
 .structure-refresh-btn {
