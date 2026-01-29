@@ -187,6 +187,13 @@ def cli(
         logger.root.setLevel(logging.DEBUG)
         handler.traceback_level = logging.WARNING
 
+    # Set up database logging BEFORE importing config.
+    # This ensures config validation errors get logged to the database
+    # like any other error (critical for the VS Code extension to see them).
+    from atopile.logging import BuildLogger
+
+    BuildLogger.setup_logging(enable_database=True, stage="cli")
+
     # FIXME: this won't work properly when configs
     # are reloaded from a pointed-to file (eg in `ato build path/to/file`)
     # from outside a project directory
@@ -200,12 +207,6 @@ def cli(
     #    check_for_update()
 
     configure.setup()
-
-    # Set up database logging for all CLI commands (not just builds)
-    # This ensures logs from validate, inspect, etc. are also stored in the database
-    from atopile.logging import BuildLogger
-
-    BuildLogger.setup_logging(enable_database=True, stage="cli")
 
 
 app.command()(build.build)

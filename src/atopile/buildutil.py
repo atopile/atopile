@@ -8,7 +8,6 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.config import BuildType, config
 from atopile.dataclasses import BuildStage
 from atopile.errors import UserToolNotAvailableError
 from atopile.exceptions import accumulate
@@ -18,6 +17,7 @@ from faebryk.libs.util import once
 
 if TYPE_CHECKING:
     from atopile.compiler.build import BuildFileResult, Linker
+    from atopile.config import BuildType
 
 logger = get_logger(__name__)
 
@@ -50,7 +50,7 @@ def generate_build_timestamp() -> str:
 class BuildContext:
     g: graph.GraphView
     tg: fbrk.TypeGraph
-    build_type: BuildType
+    build_type: "BuildType"
     app_type: graph.BoundNode | None = None
     app_class: type[fabll.Node] | None = None
     linker: "Linker | None" = None
@@ -106,6 +106,7 @@ def _check_kicad_cli() -> bool:
 def run_build_targets(ctx: BuildStepContext) -> None:
     """Run build targets in dependency order."""
     from atopile import build_steps
+    from atopile.config import config
 
     targets = {build_steps.generate_default.name} | set(config.build.targets) - set(
         config.build.exclude_targets
@@ -143,6 +144,7 @@ def _load_python_app_class() -> type[fabll.Node]:
         FabllTypeSymbolNotFoundError,
         import_fabll_type,
     )
+    from atopile.config import config
 
     try:
         return import_fabll_type(

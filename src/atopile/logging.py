@@ -700,18 +700,20 @@ class BuildLogger(BaseLogger):
         if not enable_database:
             return None
         try:
-            from atopile.config import config
-
-            try:
-                project_path = str(config.project.paths.root.resolve())
-                target = config.build.name if hasattr(config, "build") else "cli"
-            except (RuntimeError, AttributeError):
-                project_path, target = "cli", "default"
-
+            # Check for build_id from environment FIRST, before importing config.
+            # This is critical because importing config triggers config validation,
+            # and we need logging to be set up BEFORE validation so that config
+            # errors get logged to the database like any other error.
             env_build_id = os.environ.get("ATO_BUILD_ID")
             env_timestamp = os.environ.get("ATO_BUILD_TIMESTAMP")
             if not env_build_id or not env_timestamp:
                 return None
+
+            # When we have build_id from env (worker mode), we don't need config
+            # at all - project_path and target are only used to generate build_id,
+            # which we already have. Use placeholder values.
+            project_path = "worker"
+            target = "worker"
 
             bl = cls.get(
                 project_path,
