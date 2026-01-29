@@ -1088,7 +1088,6 @@ export function ActiveProjectPanel({
   queuedBuilds = [],
   onCancelBuild,
 }: ActiveProjectPanelProps) {
-  const [showBuildQueue, setShowBuildQueue] = useState(false)
   const [showNewProjectForm, setShowNewProjectForm] = useState(false)
   const [showNewTargetForm, setShowNewTargetForm] = useState(false)
   const [isCreatingProject, setIsCreatingProject] = useState(false)
@@ -1162,13 +1161,6 @@ export function ActiveProjectPanel({
     if (!activeProject) return []
     return queuedBuilds.filter((b) => b.projectRoot === activeProject.root)
   }, [queuedBuilds, activeProject])
-
-  // Auto-expand build queue when builds are active
-  useEffect(() => {
-    if (projectBuilds.length > 0 && !showBuildQueue) {
-      setShowBuildQueue(true)
-    }
-  }, [projectBuilds.length])
 
   useEffect(() => {
     if (!activeProject) return
@@ -1335,33 +1327,21 @@ export function ActiveProjectPanel({
           </button>
         </div>
 
-        {/* Build Queue - always visible, collapsed when empty */}
+        {/* Build Queue - always visible */}
         <div className="build-queue-section">
-          <button
-            className="build-queue-toggle"
-            onClick={() => setShowBuildQueue(!showBuildQueue)}
-          >
-            <ChevronDown
-              size={12}
-              className={`toggle-chevron ${showBuildQueue ? 'open' : ''}`}
-            />
-            <span>Build Queue</span>
-          </button>
-          {showBuildQueue && (
-            <div className="build-queue-list">
-              {projectBuilds.length === 0 ? (
-                <div className="build-queue-empty">No recent builds</div>
-              ) : (
-                projectBuilds.map((build) => (
-                  <BuildQueueItem
-                    key={build.buildId}
-                    build={build}
-                    onCancel={onCancelBuild}
-                  />
-                ))
-              )}
-            </div>
-          )}
+          <div className="build-queue-list">
+            {projectBuilds.length === 0 ? (
+              <div className="build-queue-empty">No recent builds</div>
+            ) : (
+              projectBuilds.map((build) => (
+                <BuildQueueItem
+                  key={build.buildId}
+                  build={build}
+                  onCancel={onCancelBuild}
+                />
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>
