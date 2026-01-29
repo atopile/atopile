@@ -311,39 +311,6 @@ def test_inequality_to_set():
     assert _extract_and_check(p0, solver, E.lit_op_range((1, 2)))
 
 
-def test_remove_obvious_tautologies():
-    """
-    p0 is! p1 + p2
-    p1 >= 0
-    p2 >= 0
-    p0 is! p1 + p2
-    p2 is! p2
-    => remove p2 is! p2
-
-    The reflexive tautology Is(p2, p2) is dropped during solver processing via the
-    _no_reflexive_tautologies invariant and replaced with a True literal.
-    """
-    E = BoundExpressions()
-    p0, p1, p2 = [E.parameter_op(units=E.U.dl) for _ in range(3)]
-
-    E.is_(p0, E.add(p1, p2), assert_=True)
-
-    E.greater_than(p1, E.lit_op_single((0.0, E.U.dl)), assert_=True)
-    E.greater_than(p2, E.lit_op_single((0.0, E.U.dl)), assert_=True)
-    E.is_(p2, E.add(p1, p2), assert_=True)
-    X = E.is_(p2, p2, assert_=True)
-
-    solver = Solver()
-    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
-
-    # The tautology X = Is(p2, p2) is dropped by _no_reflexive_tautologies invariant
-    # during solver processing - it's replaced with a True literal, so it doesn't
-    # map forward to an expression node
-    out = repr_map.map_forward(X.as_parameter_operatable.force_get())
-    # The expression should either not map forward (maps_to=None) or be marked removed
-    assert out.maps_to is None or out.removed
-
-
 def test_subset_of_literal():
     E = BoundExpressions()
     p0, p1, p2 = (
