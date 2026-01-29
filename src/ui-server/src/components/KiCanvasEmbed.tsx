@@ -12,6 +12,7 @@ interface KiCanvasEmbedProps {
   className?: string
   style?: React.CSSProperties
   onError?: (error: string) => void
+  hideReferences?: boolean
 }
 
 interface KiCanvasEmbedElement extends HTMLElement {
@@ -31,11 +32,41 @@ export default function KiCanvasEmbed({
   className,
   style,
   onError,
+  hideReferences = false,
 }: KiCanvasEmbedProps) {
   const embedRef = useRef<KiCanvasEmbedElement>(null)
   const [isReady, setIsReady] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Set kicanvas board colors from computed theme values
+  // This resolves the nested CSS variable issue where getPropertyValue returns unresolved vars
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const updateBoardColors = () => {
+      const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim()
+      if (bgColor) {
+        document.documentElement.style.setProperty('--kicanvas-board-bg', bgColor)
+        document.documentElement.style.setProperty('--kicanvas-board-grid', bgColor)
+      }
+    }
+
+    // Update on mount and when theme changes
+    updateBoardColors()
+
+    // Watch for theme changes via data-theme attribute
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.attributeName === 'data-theme' || mutation.attributeName === 'class') {
+          updateBoardColors()
+        }
+      }
+    })
+    observer.observe(document.documentElement, { attributes: true })
+
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -101,7 +132,35 @@ export default function KiCanvasEmbed({
     const embed = embedRef.current
     if (!embed || !isReady) return
 
-    const handleLoad = () => setIsLoading(false)
+    const handleLoad = () => {
+      setIsLoading(false)
+
+      // Access the viewer
+      const viewer = (embed as unknown as {
+        viewer?: {
+          layers?: { set_visibility?: (layer: string, visible: boolean) => void }
+          zoom_to_page?: () => void
+          draw?: () => void
+        }
+      }).viewer
+
+      // Hide reference designators if requested
+      if (hideReferences && viewer?.layers?.set_visibility) {
+        // Hide front and back silkscreen (reference designators)
+        viewer.layers.set_visibility('F.Silkscreen', false)
+        viewer.layers.set_visibility('B.Silkscreen', false)
+      }
+
+      // Zoom to page bounds (excludes text items that extend beyond board)
+      // This gives a cleaner view focused on the actual footprint/board
+      if (viewer?.zoom_to_page) {
+        // Small delay to ensure layer visibility changes are applied
+        setTimeout(() => {
+          viewer.zoom_to_page?.()
+          viewer.draw?.()
+        }, 50)
+      }
+    }
     const handleError = () => setIsLoading(false)
 
     // Listen for various possible event names
@@ -122,7 +181,7 @@ export default function KiCanvasEmbed({
       embed.removeEventListener('error', handleError)
       embed.removeEventListener('kicanvas:error', handleError)
     }
-  }, [isReady, src])
+  }, [isReady, src, hideReferences])
 
   return (
     <div className="detail-visual-frame detail-visual-stack">

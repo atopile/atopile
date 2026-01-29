@@ -18,39 +18,19 @@
 
 .detail-panel-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-start;
   padding: var(--spacing-lg) var(--spacing-xl);
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border-color);
   gap: var(--spacing-md);
 }
 
-.detail-header-left {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-md);
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.detail-header-left-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  margin-top: -4px;
-  margin-left: -8px;
-}
-
-.detail-package-icon {
-  color: var(--accent-secondary);
-}
-
 .detail-header-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
 }
 
 .detail-title-row {
@@ -61,15 +41,13 @@
 }
 
 .detail-package-name {
-  font-size: var(--font-size-xl);
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-primary);
   font-family: var(--font-mono);
   margin: 0;
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-word;
 }
 
 .detail-version-pill {
@@ -85,16 +63,10 @@
   font-family: var(--font-mono);
 }
 
-.detail-package-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-md);
-}
-
 .detail-package-blurb {
-  font-size: var(--font-size-md);
-  color: var(--text-secondary);
-  line-height: 1.5;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  line-height: 1.4;
   margin: 0;
 }
 
@@ -110,13 +82,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin-top: -2px;
   border: none;
-  background: transparent;
-  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
   border-radius: var(--radius-sm);
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .detail-back-btn:hover {
@@ -721,34 +696,31 @@
 /* Package visual section - matching parts panel tab style */
 .package-visual-section {
   margin: 0 calc(-1 * var(--spacing-xl));
-  background: var(--bg-secondary);
+  background: var(--bg-primary);
   border-top: 1px solid var(--border-subtle);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.package-visual-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .package-visual-tabs {
   display: flex;
-  flex: 1;
+  gap: 0;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  width: 100%;
 }
 
 .package-visual-tab {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex: 1;
-  padding: var(--spacing-sm) var(--spacing-md);
+  gap: 8px;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: var(--spacing-md) var(--spacing-md);
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
   font-weight: 500;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -775,10 +747,98 @@
 }
 
 .package-visual-content {
-  min-height: 220px;
-  aspect-ratio: 1 / 1;
-  max-height: 400px;
-  padding: var(--spacing-md) var(--spacing-xl);
+  position: relative;
+  width: 100%;
+  height: 400px;
+  padding: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.package-visual-content > .detail-visual-frame,
+.package-visual-content > .detail-visual-empty {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Build target selector - positioned in bottom-right corner */
+.package-build-selector {
+  position: absolute;
+  bottom: var(--spacing-md);
+  right: var(--spacing-md);
+  z-index: 10;
+}
+
+.package-build-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.package-build-trigger:hover,
+.package-build-trigger.open {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.package-build-trigger svg {
+  transition: transform var(--transition-fast);
+}
+
+.package-build-trigger svg.rotated {
+  transform: rotate(180deg);
+}
+
+.package-build-dropdown {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  min-width: 160px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.package-build-option {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.package-build-option:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.package-build-option.selected {
+  background: var(--accent);
+  color: var(--text-on-accent);
 }
 
 .detail-visual-content {
@@ -795,7 +855,19 @@
   border-radius: 0;
   background: transparent;
   height: 100%;
-  display: block;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.detail-visual-frame kicanvas-embed,
+.detail-visual-frame canvas {
+  flex: 1;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0;
+  min-height: 0;
 }
 
 .detail-visual-stack {
@@ -1088,7 +1160,9 @@
    These cascade into the Shadow DOM of the kicanvas-embed web component
    ============================================ */
 kicanvas-embed {
-  /* Board canvas colors are set on :root in _variables.css (read by patched kicanvas.js via document.documentElement) */
+  /* Board canvas colors - explicitly set on component to ensure they're read */
+  --kicanvas-board-bg: var(--bg-primary);
+  --kicanvas-board-grid: var(--bg-primary);
 
   /* Base UI colors - replace kicanvas defaults with theme colors */
   --bg: var(--bg-primary);
