@@ -109,9 +109,10 @@ app = FastAPI()
 app.include_router(orchestrator_router)
 app.include_router(ui_router)
 
-# Mount log viewer static assets (must be last to not shadow other routes)
+# Mount log viewer static assets at root (must be last - acts as fallback)
+# Specific routes like /logs, /report take precedence over this catch-all
 app.mount(
-    "/static",
+    "/",
     StaticFiles(directory=LOG_VIEWER_DIST_DIR, html=False),
     name="log-viewer-static",
 )
