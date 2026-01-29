@@ -105,6 +105,13 @@ logging.setLoggerClass(AtoLogger)
 # =============================================================================
 
 
+def _format_value(val: object) -> str:
+    """Format a value for display, using str() for strings to preserve ANSI codes."""
+    if isinstance(val, str):
+        return val
+    return repr(val)
+
+
 def _get_pretty_repr(value: object, max_len: int = 200) -> str:
     """Get pretty repr using __pretty_repr__ or __rich_repr__ or fallback to repr."""
     try:
@@ -117,13 +124,13 @@ def _get_pretty_repr(value: object, max_len: int = 200) -> str:
                     if len(item) == 2:
                         key, val = item
                         if key is None:
-                            rich_repr_parts.append(repr(val))
+                            rich_repr_parts.append(_format_value(val))
                         else:
-                            rich_repr_parts.append(f"{key}={val!r}")
+                            rich_repr_parts.append(f"{key}={_format_value(val)}")
                     elif len(item) == 1:
-                        rich_repr_parts.append(repr(item[0]))
+                        rich_repr_parts.append(_format_value(item[0]))
                 else:
-                    rich_repr_parts.append(repr(item))
+                    rich_repr_parts.append(_format_value(item))
             result = f"{type_name}({', '.join(rich_repr_parts)})"
             return result[:max_len] + "..." if len(result) > max_len else result
 

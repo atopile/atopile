@@ -8,7 +8,16 @@
  */
 
 import { useState } from 'react';
+import AnsiToHtml from 'ansi-to-html';
 import './StackInspector.css';
+
+// ANSI to HTML converter for colored repr strings
+const ansiConverter = new AnsiToHtml({
+  fg: '#e5e5e5',
+  bg: 'transparent',
+  newline: false,
+  escapeXML: true,
+});
 
 // Recursive type for serialized values
 interface SerializedValue {
@@ -74,18 +83,20 @@ function ContainerViewer({ value, name, depth = 0 }: { value: SerializedValue; n
 
   // For primitives or repr-only values, render inline
   if (!isContainerType || depth >= maxDepth) {
-    const displayValue = value.repr ?? (
+    const rawValue = value.repr ?? (
       value.value === null ? 'None' :
       typeof value.value === 'string' ? `"${value.value}"` :
       typeof value.value === 'object' ? JSON.stringify(value.value) :
       String(value.value)
     );
+    // Convert ANSI escape codes to HTML for colored output
+    const displayHtml = ansiConverter.toHtml(rawValue);
 
     return (
       <span className="cv-primitive">
         {name && <span className="cv-key">{name}: </span>}
         <span className="cv-type">{value.type}</span>
-        <span className="cv-value">{displayValue}</span>
+        <span className="cv-value" dangerouslySetInnerHTML={{ __html: displayHtml }} />
         {value.truncated && <span className="cv-truncated">…</span>}
       </span>
     );
@@ -143,16 +154,23 @@ function ContainerViewer({ value, name, depth = 0 }: { value: SerializedValue; n
 
 /**
  * Format a local variable value for display (simple inline version)
+ * Returns HTML with ANSI codes converted
  */
-function formatValueSimple(info: LocalVar): string {
-  if (info.repr) return info.repr;
-  if (info.value !== undefined) {
+function formatValueAsHtml(info: LocalVar): string {
+  let raw: string;
+  if (info.repr) {
+    raw = info.repr;
+  } else if (info.value !== undefined) {
     if (typeof info.value === 'string') {
-      return `"${info.value}"`;
+      raw = `"${info.value}"`;
+    } else {
+      raw = String(info.value);
     }
-    return String(info.value);
+  } else {
+    raw = '<unknown>';
   }
-  return '<unknown>';
+  // Convert ANSI escape codes to HTML
+  return ansiConverter.toHtml(raw);
 }
 
 export function StackInspector({ traceback }: StackInspectorProps) {
@@ -252,7 +270,7 @@ export function StackInspector({ traceback }: StackInspectorProps) {
                               <div className="si-local-simple">
                                 <span className="si-var-name">{name}</span>
                                 <span className="si-var-type">{info.type}</span>
-                                <span className="si-var-value">{formatValueSimple(info)}</span>
+                                <span className="si-var-value" dangerouslySetInnerHTML={{ __html: formatValueAsHtml(info) }} />
                               </div>
                             )}
                           </div>
