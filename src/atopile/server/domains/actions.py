@@ -270,9 +270,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
     try:
         if action == "refreshProjects":
-            if ctx.workspace_path:
+            if ctx.workspace_paths:
                 await asyncio.to_thread(
-                    core_projects.discover_projects_in_path, ctx.workspace_path
+                    core_projects.discover_projects_in_paths, ctx.workspace_paths
                 )
                 await server_state.emit_event("projects_changed")
             return {"success": True}
@@ -282,8 +282,8 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             name = payload.get("name")
 
             if not parent_directory:
-                if ctx.workspace_path:
-                    parent_directory = str(ctx.workspace_path)
+                if ctx.workspace_paths:
+                    parent_directory = str(ctx.workspace_paths[0])
                 else:
                     return {"success": False, "error": "Missing parentDirectory"}
 
@@ -303,7 +303,8 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             }
 
         if action == "refreshPackages":
-            await packages_domain.refresh_packages_state(scan_path=ctx.workspace_path)
+            scan_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
+            await packages_domain.refresh_packages_state(scan_path=scan_path)
             return {"success": True}
 
         if action == "searchPackages":
@@ -427,10 +428,11 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             version = payload.get("version")
             if package_id:
                 # Run blocking registry fetch in thread pool
+                scan_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
                 details = await asyncio.to_thread(
                     packages_domain.handle_get_package_details,
                     package_id,
-                    ctx.workspace_path,
+                    scan_path,
                     ctx,
                     version,
                 )
@@ -1216,7 +1218,8 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             if not file_path:
                 return {"success": False, "error": "Missing file path"}
 
-            resolved = path_utils.resolve_workspace_file(file_path, ctx.workspace_path)
+            workspace_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
+            resolved = path_utils.resolve_workspace_file(file_path, workspace_path)
             if not resolved:
                 return {
                     "success": False,
@@ -1409,10 +1412,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
         elif action == "setWorkspaceFolders":
             folders = payload.get("folders", [])
-            # Use first folder as workspace path (VS Code multi-root not supported)
-            workspace_path = Path(folders[0]) if folders else None
-            ctx.workspace_path = workspace_path
-            model_state.set_workspace_path(workspace_path)
+            workspace_paths = [Path(f) for f in folders] if folders else []
+            ctx.workspace_paths = workspace_paths
+            model_state.set_workspace_paths(workspace_paths)
             await handle_data_action("refreshProjects", {}, ctx)
             await handle_data_action("refreshPackages", {}, ctx)
             return {"success": True}

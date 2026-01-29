@@ -902,7 +902,7 @@ def resolve_scan_path(
 ) -> Path | None:
     if path:
         return Path(path.strip())
-    return ctx.workspace_path
+    return ctx.workspace_paths[0] if ctx.workspace_paths else None
 
 
 __all__ = [

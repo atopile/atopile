@@ -63,8 +63,8 @@ def handle_resolve_location(
         if candidate.exists():
             source_file = candidate
 
-    if not source_file and ctx.workspace_path:
-        ws_path = ctx.workspace_path
+    if not source_file and ctx.workspace_paths:
+        ws_path = ctx.workspace_paths[0]
         candidate = ws_path / file_part
         if candidate.exists():
             source_file = candidate
