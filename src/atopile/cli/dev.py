@@ -154,13 +154,23 @@ def _find_vscode_cli() -> tuple[str, str] | None:
 
 @dev_app.command()
 @capture("cli:dev_install_start", "cli:dev_install_end")
-def install():
+def install(
+    clear: bool = typer.Option(
+        False, "-c", "--clear-logs", help="Clear log databases before installing"
+    ),
+):
     """
     Install the locally built VS Code extension.
 
     Installs the latest .vsix built by 'ato dev compile vscode'.
     VS Code will prompt to reload the extension automatically.
     """
+    if clear:
+        from faebryk.libs.paths import remove_log_dir
+
+        if remove_log_dir():
+            typer.echo("Log databases cleared")
+
     repo_root = Path(__file__).resolve().parents[3]
     vscode_dir = repo_root / "src" / "vscode-atopile"
 
