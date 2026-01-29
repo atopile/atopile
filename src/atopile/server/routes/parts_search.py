@@ -107,10 +107,10 @@ async def get_part_details(lcsc_id: str):
     return PartDetailsResponse(part=details)
 
 
-@router.get("/api/parts/{lcsc_id}/footprint.kicad_mod")
+@router.get("/api/parts/{lcsc_id}/footprint.kicad_pcb")
 @router.get("/api/parts/{lcsc_id}/footprint")
 async def get_part_footprint(lcsc_id: str):
-    """Return the KiCad footprint (.kicad_mod) for a part."""
+    """Return the footprint wrapped in a kicad_pcb file for kicanvas viewing."""
     try:
         data = await asyncio.to_thread(
             parts_domain.handle_get_part_footprint,
@@ -122,8 +122,8 @@ async def get_part_footprint(lcsc_id: str):
         raise HTTPException(status_code=404, detail=f"Footprint not found: {lcsc_id}")
     return Response(
         content=data,
-        media_type="application/x-kicad-footprint",
-        headers={"Content-Disposition": f"inline; filename={lcsc_id}.kicad_mod"},
+        media_type="application/x-kicad-pcb",
+        headers={"Content-Disposition": f"inline; filename={lcsc_id}.kicad_pcb"},
     )
 
 

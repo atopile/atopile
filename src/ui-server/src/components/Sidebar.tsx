@@ -28,7 +28,6 @@ import {
 } from './sidebar-modules';
 import './Sidebar.css';
 import '../styles.css';
-import type { VariableNode } from '../types/build';
 
 // Send action to backend via WebSocket (no VS Code dependency)
 const action = (name: string, data?: Record<string, unknown>) => {
@@ -41,17 +40,6 @@ const action = (name: string, data?: Record<string, unknown>) => {
   }
   sendAction(name, data);
 };
-
-// Helper to count variables recursively (defined outside component to avoid recreation)
-function countVariables(nodes: VariableNode[] | undefined): number {
-  if (!nodes) return 0;
-  let count = 0;
-  for (const n of nodes) {
-    count += n.variables?.length || 0;
-    if (n.children) count += countVariables(n.children);
-  }
-  return count;
-}
 
 export function Sidebar() {
   // Granular selectors - only re-render when specific state changes
@@ -102,11 +90,6 @@ export function Sidebar() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Memoized computed values (previously inline in JSX)
-  const variableCount = useMemo(
-    () => countVariables(currentVariablesData?.nodes),
-    [currentVariablesData]
-  );
-
   const bomWarningCount = useMemo(() => {
     if (!bomData?.components) return 0;
     return bomData.components.filter(c => c.stock !== null && c.stock === 0).length;
@@ -155,7 +138,6 @@ export function Sidebar() {
   const {
     projects: sidebarProjects,
     projectCount,
-    packageCount,
     queuedBuilds,
   } = useSidebarData({ state });
 

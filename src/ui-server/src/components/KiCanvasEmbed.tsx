@@ -101,14 +101,8 @@ export default function KiCanvasEmbed({
     const embed = embedRef.current
     if (!embed || !isReady) return
 
-    const handleLoad = () => {
-      console.log('[KiCanvas] Load event fired')
-      setIsLoading(false)
-    }
-    const handleError = (e: Event) => {
-      console.log('[KiCanvas] Error event fired', e)
-      setIsLoading(false)
-    }
+    const handleLoad = () => setIsLoading(false)
+    const handleError = () => setIsLoading(false)
 
     // Listen for various possible event names
     embed.addEventListener('kicanvas:load', handleLoad)
@@ -118,10 +112,7 @@ export default function KiCanvasEmbed({
     embed.addEventListener('kicanvas:error', handleError)
 
     // Fallback timeout - if no events fire after 5 seconds, assume loaded
-    const timeout = setTimeout(() => {
-      console.log('[KiCanvas] Timeout reached, assuming loaded')
-      setIsLoading(false)
-    }, 5000)
+    const timeout = setTimeout(() => setIsLoading(false), 5000)
 
     return () => {
       clearTimeout(timeout)

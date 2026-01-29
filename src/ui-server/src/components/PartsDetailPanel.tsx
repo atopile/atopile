@@ -302,7 +302,7 @@ export function PartsDetailPanel({
                   )
                 ) : activeVisualTab === 'footprint' ? (
                   <KiCanvasEmbed
-                    src={`${API_URL}/api/parts/${encodeURIComponent(part.lcsc)}/footprint.kicad_mod`}
+                    src={`${API_URL}/api/parts/${encodeURIComponent(part.lcsc)}/footprint.kicad_pcb`}
                     controls="basic"
                     theme="kicad"
                     zoom="objects"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Callable
 from typing import Iterable, Optional
 
 from atopile.dataclasses import Log
@@ -24,7 +25,19 @@ def _normalize_lcsc_id(lcsc_id: str) -> tuple[str, int]:
     return candidate, int(candidate[1:])
 
 
-def _serialize_component(component: Component) -> dict:
+def serialize_component(
+    component: Component,
+    *,
+    attributes_formatter: Callable[[dict | None], dict[str, str]] | None = None,
+) -> dict:
+    """
+    Serialize a Component to a dict for API responses.
+
+    Args:
+        component: The Component to serialize.
+        attributes_formatter: Optional function to format attributes dict.
+            If provided, result includes 'attributes' key with formatted values.
+    """
     # Get the raw unit price from the first price tier (qty=1)
     # Don't use get_price() as it includes handling fees
     unit_cost = None
@@ -34,9 +47,13 @@ def _serialize_component(component: Component) -> dict:
                 unit_cost = float(p.price) if p.price is not None else None
                 break
         if unit_cost is None and component.price:
-            unit_cost = float(component.price[0].price) if component.price[0].price is not None else None
+            unit_cost = (
+                float(component.price[0].price)
+                if component.price[0].price is not None
+                else None
+            )
 
-    return {
+    result = {
         "lcsc": component.lcsc_display,
         "manufacturer": component.manufacturer_name,
         "mpn": component.part_number,
@@ -52,6 +69,15 @@ def _serialize_component(component: Component) -> dict:
             for price in component.price
         ],
     }
+
+    if attributes_formatter is not None:
+        result["attributes"] = attributes_formatter(component.attributes)
+
+    return result
+
+
+# Alias for backward compatibility
+_serialize_component = serialize_component
 
 
 def _latest_build_for(
