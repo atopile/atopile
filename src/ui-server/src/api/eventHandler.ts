@@ -220,7 +220,7 @@ export async function handleEvent(
     }
     case EventType.AtopileConfigChanged:
       updateAtopileConfig({
-        // Actual running atopile info (source of truth)
+        // Actual running atopile info
         actualVersion: typeof detail.actual_version === 'string'
           ? detail.actual_version as string
           : typeof detail.actualVersion === 'string'
@@ -238,31 +238,10 @@ export async function handleEvent(
             : undefined,
         // User selection state
         source: typeof detail.source === 'string' ? detail.source as AtopileConfig['source'] : undefined,
-        currentVersion: typeof detail.current_version === 'string'
-          ? detail.current_version as string
-          : typeof detail.currentVersion === 'string'
-            ? detail.currentVersion as string
-            : undefined,
-        branch: typeof detail.branch === 'string' ? detail.branch as string : undefined,
         localPath: typeof detail.local_path === 'string'
           ? detail.local_path as string
           : typeof detail.localPath === 'string'
             ? detail.localPath as string
-            : undefined,
-        availableVersions: Array.isArray(detail.available_versions)
-          ? detail.available_versions as string[]
-          : Array.isArray(detail.availableVersions)
-            ? detail.availableVersions as string[]
-            : undefined,
-        availableBranches: Array.isArray(detail.available_branches)
-          ? detail.available_branches as string[]
-          : Array.isArray(detail.availableBranches)
-            ? detail.availableBranches as string[]
-            : undefined,
-        detectedInstallations: Array.isArray(detail.detected_installations)
-          ? detail.detected_installations as AtopileConfig['detectedInstallations']
-          : Array.isArray(detail.detectedInstallations)
-            ? detail.detectedInstallations as AtopileConfig['detectedInstallations']
             : undefined,
         isInstalling: typeof detail.is_installing === 'boolean'
           ? detail.is_installing as boolean

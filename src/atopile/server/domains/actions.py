@@ -1282,20 +1282,6 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             )
             return {"success": True}
 
-        elif action == "setAtopileVersion":
-            await server_state.emit_event(
-                "atopile_config_changed",
-                {"current_version": payload.get("version", "")},
-            )
-            return {"success": True}
-
-        elif action == "setAtopieBranch":
-            await server_state.emit_event(
-                "atopile_config_changed",
-                {"branch": payload.get("branch")},
-            )
-            return {"success": True}
-
         elif action == "setAtopileLocalPath":
             await server_state.emit_event(
                 "atopile_config_changed",
@@ -1321,24 +1307,6 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 "error": "browseAtopilePath is not supported in the UI server",
             }
 
-        elif action == "refreshAtopileVersions":
-            from atopile.server.domains import atopile_install
-
-            versions = await atopile_install.fetch_available_versions()
-            await server_state.emit_event(
-                "atopile_config_changed", {"available_versions": versions}
-            )
-            return {"success": True, "versions": versions}
-
-        elif action == "refreshAtopileBranches":
-            from atopile.server.domains import atopile_install
-
-            branches = await atopile_install.fetch_available_branches()
-            await server_state.emit_event(
-                "atopile_config_changed", {"available_branches": branches}
-            )
-            return {"success": True, "branches": branches}
-
         elif action == "validateAtopilePath":
             from atopile.server.domains import atopile_install
 
@@ -1346,23 +1314,6 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             result = await atopile_install.validate_local_path(path)
             log.info(f"[validateAtopilePath] path={path}, result={result}")
             return {"success": True, **result}
-
-        elif action == "refreshDetectedInstallations":
-            from atopile.server.domains import atopile_install
-
-            # Get workspace paths from context
-            workspace_paths = (
-                [str(p) for p in ctx.workspace_paths] if ctx.workspace_paths else []
-            )
-
-            installations = await asyncio.to_thread(
-                atopile_install.detect_local_installations, workspace_paths
-            )
-            await server_state.emit_event(
-                "atopile_config_changed",
-                {"detected_installations": installations},
-            )
-            return {"success": True, "installations": installations}
 
         elif action == "getAtopileConfig":
             # Return the current atopile config including actual version

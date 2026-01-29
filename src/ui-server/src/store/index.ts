@@ -104,21 +104,16 @@ const initialState: AppState = {
 
   // Atopile configuration
   atopile: {
-    // Actual installed atopile (source of truth for builds)
+    // Actual running atopile info
     actualVersion: null as string | null,
     actualSource: null as string | null,
     actualBinaryPath: null as string | null,
-    // User's selection in the dropdown (may differ from actual)
-    currentVersion: '',
-    source: 'release',
-    localPath: null,
-    branch: null,
-    availableVersions: [],
-    availableBranches: [],
-    detectedInstallations: [],
+    // User selection state
+    source: 'release' as 'release' | 'local',
+    localPath: null as string | null,
     isInstalling: false,
-    installProgress: null,
-    error: null,
+    installProgress: null as { message: string; percent?: number } | null,
+    error: null as string | null,
   },
 
   // Problems

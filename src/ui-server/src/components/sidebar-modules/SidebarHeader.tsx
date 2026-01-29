@@ -30,10 +30,10 @@ const action = (name: string, data?: Record<string, unknown>) => {
 };
 
 interface AtopileState {
-  // Actual installed atopile (source of truth for builds)
+  // Actual running atopile info
   actualVersion?: string | null;
   actualSource?: string | null;
-  actualBinaryPath?: string | null;  // The actual binary path being used
+  actualBinaryPath?: string | null;
   // User selection state
   isInstalling?: boolean;
   installProgress?: {
@@ -41,14 +41,8 @@ interface AtopileState {
     percent?: number;
   } | null;
   error?: string | null;
-  source?: 'release' | 'branch' | 'local';
-  currentVersion?: string;
-  availableVersions?: string[];
-  branch?: string | null;
-  availableBranches?: string[];
+  source?: 'release' | 'local';
   localPath?: string | null;
-  // Health check status
-  healthStatus?: 'checking' | 'healthy' | 'unhealthy' | null;
 }
 
 interface SidebarHeaderProps {

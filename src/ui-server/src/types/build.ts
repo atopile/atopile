@@ -436,28 +436,19 @@ export interface AppState {
 
   // Atopile configuration
   atopile: {
-    // Actual installed atopile (source of truth for builds)
-    actualVersion: string | null;     // Version actually being used by backend
-    actualSource: string | null;      // Source actually being used (e.g., 'settings', 'local-uv')
-    actualBinaryPath: string | null;  // Actual binary path being used (for comparison)
-    // User's selection in the dropdown (may differ from actual)
-    currentVersion: string;           // Currently active version (e.g., "0.14.0")
-    source: 'release' | 'branch' | 'local';  // Source type
-    localPath: string | null;         // Local path when source is 'local'
-    branch: string | null;            // Git branch when source is 'branch'
-    availableVersions: string[];      // List of versions from PyPI
-    availableBranches: string[];      // List of branches from GitHub
-    detectedInstallations: {          // Local installations found on system
-      path: string;
-      version: string | null;
-      source: 'path' | 'venv' | 'manual';  // Where it was found
-    }[];
-    isInstalling: boolean;            // Installation in progress
-    installProgress: {                // Progress info during install
+    // Actual running atopile info
+    actualVersion: string | null;
+    actualSource: string | null;
+    actualBinaryPath: string | null;
+    // User selection state
+    source: 'release' | 'local';
+    localPath: string | null;
+    isInstalling: boolean;
+    installProgress: {
       message: string;
       percent?: number;
     } | null;
-    error: string | null;             // Any error message
+    error: string | null;
   };
 
   // Problems/diagnostics (parsed from log files)

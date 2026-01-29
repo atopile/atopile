@@ -292,7 +292,6 @@ async def _refresh_packages_for_deps_change() -> None:
 async def _load_atopile_install_options(ctx: AppContext) -> None:
     """Background task to load atopile versions, branches, and detect installations."""
     from atopile import version as ato_version
-    from atopile.server.domains import atopile_install
 
     try:
         log.info("[background] Loading atopile installation options")
@@ -321,29 +320,6 @@ async def _load_atopile_install_options(ctx: AppContext) -> None:
             )
         except Exception as e:
             log.warning(f"[background] Could not detect actual version: {e}")
-
-        # Fetch available versions from PyPI (for the selector UI)
-        versions = await atopile_install.fetch_available_versions()
-        await server_state.emit_event(
-            "atopile_config_changed", {"available_versions": versions}
-        )
-        log.info(f"[background] Loaded {len(versions)} PyPI versions")
-
-        # Fetch available branches from GitHub (for the selector UI)
-        branches = await atopile_install.fetch_available_branches()
-        await server_state.emit_event(
-            "atopile_config_changed", {"available_branches": branches}
-        )
-        log.info(f"[background] Loaded {len(branches)} GitHub branches")
-
-        # Detect local installations (for the selector UI)
-        installations = await asyncio.to_thread(
-            atopile_install.detect_local_installations
-        )
-        await server_state.emit_event(
-            "atopile_config_changed", {"detected_installations": installations}
-        )
-        log.info(f"[background] Detected {len(installations)} local installations")
 
     except Exception as exc:
         log.error(f"[background] Failed to load atopile install options: {exc}")

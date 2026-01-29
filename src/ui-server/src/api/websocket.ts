@@ -750,44 +750,12 @@ function updateAtopileConfig(data: Record<string, unknown>): void {
     update.source = data.source as AppState['atopile']['source'];
   }
 
-  const currentVersion =
-    (typeof data.current_version === 'string' && data.current_version) ||
-    (typeof data.currentVersion === 'string' && data.currentVersion) ||
-    null;
-  if (currentVersion !== null) {
-    update.currentVersion = currentVersion;
-  }
-
-  if (typeof data.branch === 'string') {
-    update.branch = data.branch;
-  }
-
   const localPath =
     (typeof data.local_path === 'string' && data.local_path) ||
     (typeof data.localPath === 'string' && data.localPath) ||
     null;
   if (localPath !== null) {
     update.localPath = localPath;
-  }
-
-  if (Array.isArray(data.available_versions)) {
-    update.availableVersions = data.available_versions as string[];
-  } else if (Array.isArray(data.availableVersions)) {
-    update.availableVersions = data.availableVersions as string[];
-  }
-
-  if (Array.isArray(data.available_branches)) {
-    update.availableBranches = data.available_branches as string[];
-  } else if (Array.isArray(data.availableBranches)) {
-    update.availableBranches = data.availableBranches as string[];
-  }
-
-  if (Array.isArray(data.detected_installations)) {
-    update.detectedInstallations =
-      data.detected_installations as AppState['atopile']['detectedInstallations'];
-  } else if (Array.isArray(data.detectedInstallations)) {
-    update.detectedInstallations =
-      data.detectedInstallations as AppState['atopile']['detectedInstallations'];
   }
 
   if (typeof data.is_installing === 'boolean') {
