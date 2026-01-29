@@ -353,7 +353,9 @@ class BuildQueue:
         with self._builds_lock:
             return list(self._builds.values())
 
-    def is_duplicate(self, project_root: str, target: str, entry: str | None) -> str | None:
+    def is_duplicate(
+        self, project_root: str, target: str, entry: str | None
+    ) -> str | None:
         """
         Check if a build with the same config is already running or queued.
 
@@ -596,7 +598,21 @@ class BuildQueue:
                 self._emit_change(msg.build_id, "stages")
 
             elif isinstance(msg, BuildCompletedMsg):
-                self._handle_completed(msg)
+                try:
+                    self._handle_completed(msg)
+                except Exception:
+                    log.exception(
+                        "BuildQueue: _handle_completed failed for %s", msg.build_id
+                    )
+                    # Still try to mark as failed even if _handle_completed() crashed
+                    with self._builds_lock:
+                        build = self._builds.get(msg.build_id)
+                        if build:
+                            build.status = BuildStatus.FAILED
+                            build.error = msg.error or "Build handling failed"
+                    with self._active_lock:
+                        self._active.discard(msg.build_id)
+                    self._emit_change(msg.build_id, "completed")
 
             elif isinstance(msg, BuildCancelledMsg):
                 with self._builds_lock:
@@ -641,6 +657,16 @@ class BuildQueue:
             started_at = existing.started_at
             elapsed_seconds = existing.elapsed_seconds
 
+        # Ensure we have valid values for required fields
+        # Use in-memory build values as fallback when database record doesn't exist
+        # (e.g., when subprocess crashes before writing to database)
+        if started_at is None and build:
+            started_at = build.started_at
+        if started_at is None:
+            started_at = time.time()  # Last resort fallback
+        if elapsed_seconds is None:
+            elapsed_seconds = 0.0
+
         with self._active_lock:
             self._active.discard(msg.build_id)
         with self._cancel_lock:
@@ -650,6 +676,8 @@ class BuildQueue:
             BuildHistory.set(
                 Build(
                     build_id=msg.build_id,
+                    name=build.name or "default",
+                    display_name=build.display_name or "default",
                     project_root=build.project_root or "",
                     target=build.target or "default",
                     entry=build.entry,
@@ -663,6 +691,11 @@ class BuildQueue:
                     errors=errors,
                 )
             )
+        else:
+            log.warning(
+                "BuildQueue: build %s not found in _builds, cannot write to history",
+                msg.build_id,
+            )
 
         self._emit_change(msg.build_id, "completed")
 
@@ -672,9 +705,7 @@ class BuildQueue:
             except Exception:
                 log.exception("BuildQueue: on_completed callback failed")
 
-        log.info(
-            "BuildQueue: Build %s completed with status %s", msg.build_id, status
-        )
+        log.info("BuildQueue: Build %s completed with status %s", msg.build_id, status)
 
     def _dispatch_next(self) -> None:
         """Dispatch next pending build if capacity available."""
@@ -858,7 +889,11 @@ class BuildQueue:
                 if status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
                     elapsed_seconds = build.elapsed_seconds or 0.0
                     completed_at = (started_at or 0.0) + elapsed_seconds
-                    if started_at and elapsed_seconds and (now - completed_at) > cleanup_delay:
+                    if (
+                        started_at
+                        and elapsed_seconds
+                        and (now - completed_at) > cleanup_delay
+                    ):
                         to_remove.append(build.build_id)
                 else:
                     if started_at and (now - started_at) > stale_threshold:
