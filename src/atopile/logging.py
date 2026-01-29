@@ -945,7 +945,10 @@ class LogHandler(RichHandler):
 
         from datetime import datetime
 
-        # Build styled prefix: time, level, logger name with consistent background
+        # Check for subprocess source identifier
+        log_source = os.environ.get("ATO_LOG_SOURCE")
+
+        # Build styled prefix: [source] time level logger_name
         timestamp = datetime.fromtimestamp(record.created).strftime("%H:%M:%S")
         level_name = record.levelname
         logger_name = record.name
@@ -960,6 +963,9 @@ class LogHandler(RichHandler):
 
         # Use dim styling which adapts to light/dark terminals
         prefix = Text()
+        # Add source prefix if running as subprocess
+        if log_source:
+            prefix.append(f"[{log_source}] ", style="dim")
         prefix.append(f"{timestamp} ", style="dim")
         prefix.append(f"{level_name:<8}", style=level_color)
         prefix.append(f" {logger_name:<25} ", style="dim")

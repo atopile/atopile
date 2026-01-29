@@ -16,7 +16,7 @@ from atopile.dataclasses import (
     BuildStatus,
 )
 from atopile.logging import get_logger
-from atopile.logging_utils import BuildPrinter
+from atopile.logging_utils import BuildPrinter, print_subprocess_output
 from atopile.model.build_queue import BuildQueue
 from atopile.telemetry import capture
 
@@ -57,8 +57,6 @@ def _run_build_queue(
     verbose: bool,
 ) -> dict[str, int]:
     """Run builds through a local BuildQueue and return build_id -> exit code."""
-    import sys
-
     from atopile.model.sqlite import BuildHistory
 
     if not builds:
@@ -91,13 +89,10 @@ def _run_build_queue(
 
     with BuildPrinter(verbose=verbose) as printer:
 
-        # For verbose mode, stream subprocess output directly to console
+        # For verbose mode, stream subprocess output to console
         if verbose:
             def on_output(build_id: str, text: str, is_stderr: bool) -> None:
-                # Write directly to stdout/stderr (text already has newline)
-                stream = sys.stderr if is_stderr else sys.stdout
-                stream.write(text)
-                stream.flush()
+                print_subprocess_output(text, is_stderr)
 
             queue.on_output = on_output
 
