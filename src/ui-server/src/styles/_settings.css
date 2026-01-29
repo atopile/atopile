@@ -951,6 +951,25 @@
   color: var(--ctp-yellow);
 }
 
+/* Health action button (e.g., Restart button) */
+.health-action-btn {
+  padding: 4px 10px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  background: var(--ctp-yellow);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--bg-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.health-action-btn:hover {
+  filter: brightness(1.1);
+}
+
 /* Health message container for multi-line messages */
 .health-message-container {
   display: flex;

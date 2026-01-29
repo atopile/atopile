@@ -385,6 +385,12 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
                       <span className="health-message">
                         Restart extension host to use specified atopile
                       </span>
+                      <button
+                        className="health-action-btn"
+                        onClick={() => postMessage({ type: 'restartExtension' })}
+                      >
+                        Restart
+                      </button>
                     </>
                   )}
                   {healthStatus === 'healthy' && (

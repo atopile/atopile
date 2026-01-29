@@ -348,10 +348,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         vscode.commands.executeCommand('workbench.action.reloadWindow');
         break;
       case 'restartExtension':
-        // Restart only the atopile backend server (not the entire VS Code window)
-        this._handleRestartExtension().catch((error) => {
-          traceError(`[SidebarProvider] Error restarting extension: ${error}`);
-        });
+        // Restart the extension host to apply new atopile settings
+        vscode.commands.executeCommand('workbench.action.restartExtensionHost');
         break;
       case 'showLogs':
         void vscode.commands.executeCommand('atopile.logViewer.focus');
