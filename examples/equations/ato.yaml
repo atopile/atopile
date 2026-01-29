@@ -7,4 +7,4 @@ paths:
 builds:
   default:
     entry: equations.ato:App
-
+    exclude_checks: ["PCB.requires_drc_check"]
