@@ -12,9 +12,6 @@ if __name__ in ("__main__", "atopile.cli.cli"):
         sys.exit(0)
 
 
-# excepthook must be installed before typer is imported
-import atopile.cli.excepthook  # noqa: F401, I001
-
 import json
 import logging
 from enum import Enum
@@ -29,22 +26,24 @@ from atopile.cli import (
     build,
     configure,
     create,
+    dev,
     inspect_,
     install,
     kicad_ipc,
+    lsp,
+    mcp,
     package,
     serve,
     view,
-    lsp,
-    mcp,
-    dev,
 )
-from atopile.logging import handler, logger
-from atopile.errors import UserException, UserNoProjectException
-from atopile.exceptions import (
+from atopile.errors import (
+    UserException,
+    UserNoProjectException,
     UserResourceException,
     iter_leaf_exceptions,
+    log_discord_banner,
 )
+from atopile.logging import handler, logger
 
 SAFE_MODE_OPTION = ConfigFlag(
     "SAFE_MODE", False, "Handle exceptions gracefully (coredump)"
@@ -199,13 +198,13 @@ def cli(
     # if ctx.invoked_subcommand:
     #    check_for_update()
 
-    configure.setup()
-
     # Set up database logging for all CLI commands (not just builds)
     # This ensures logs from validate, inspect, etc. are also stored in the database
     from atopile.logging import BuildLogger
 
     BuildLogger.setup_logging(enable_database=True, stage="cli")
+
+    configure.setup()
 
 
 app.command()(build.build)
@@ -244,11 +243,10 @@ class ConfigFormat(str, Enum):
 
 @app.command(hidden=True)
 def dump_config(format: ConfigFormat = ConfigFormat.python):
-    from rich import print
-
     from atopile.config import config
+    from atopile.logging_utils import console
 
-    print(config.project.model_dump(mode=format))
+    console.print(config.project.model_dump(mode=format))
 
 
 @app.command(help="Check file for syntax errors and internal consistency")
@@ -281,7 +279,33 @@ def validate(
 
 
 def main():
-    app()
+    """
+    CLI entry point with exception handling.
+
+    Exception Contract:
+        - UserException (and subclasses): Build failures - log error, exit(1)
+        - Other exceptions: Unexpected errors - log error, exit(1)
+        - KeyboardInterrupt: User cancelled - exit(130)
+
+    When run as a subprocess by the server (via build_queue.py), the exit
+    code determines the build status:
+        - exit(0): SUCCESS
+        - exit(1): FAILED
+        - exit(130): CANCELLED (SIGINT)
+    """
+    from atopile import telemetry
+
+    try:
+        app()
+    except KeyboardInterrupt:
+        logger.info("Interrupted")
+        raise SystemExit(130)  # Standard exit code for SIGINT
+    except Exception as exc:
+        for e in iter_leaf_exceptions(exc):
+            logger.error(e, exc_info=e)
+        telemetry.capture_exception(exc)
+        log_discord_banner()
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

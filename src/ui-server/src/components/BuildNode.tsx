@@ -175,14 +175,8 @@ export const BuildNode = memo(function BuildNode({
 
 
   // Progress calculation using totalStages from backend
-  // TODO: Replace this estimate once builds are defined in the graph
-  const ESTIMATED_TOTAL_STAGES = 20;  // Fallback if backend doesn't provide totalStages
-
   const getProgress = () => {
     if (!build.stages || build.stages.length === 0) return 0;
-
-    // Use backend-provided totalStages or fall back to estimate
-    const totalStages = build.totalStages || ESTIMATED_TOTAL_STAGES;
 
     let completedCount = 0;
     let runningCount = 0;
@@ -199,6 +193,8 @@ export const BuildNode = memo(function BuildNode({
       }
     }
 
+    // Use actual totalStages from backend, or fall back to completed + 1 to avoid 100%
+    const totalStages = build.totalStages || Math.max(completedCount + 1, 10);
     const progress = ((completedCount + runningCount) / totalStages) * 100;
     return Math.min(progress, 100);
   };

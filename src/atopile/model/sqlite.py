@@ -35,6 +35,7 @@ class BuildHistory:
                     started_at       REAL,
                     elapsed_seconds  REAL,
                     stages           TEXT,
+                    total_stages     INTEGER,
                     warnings         INTEGER,
                     errors           INTEGER,
                     timestamp        TEXT,
@@ -59,6 +60,7 @@ class BuildHistory:
             started_at=row["started_at"],
             elapsed_seconds=row["elapsed_seconds"] or 0.0,
             stages=json.loads(row["stages"]) if row["stages"] else [],
+            total_stages=row["total_stages"],
             warnings=row["warnings"],
             errors=row["errors"],
             timestamp=row["timestamp"],
@@ -68,38 +70,56 @@ class BuildHistory:
 
     @staticmethod
     def set(build: Build) -> None:
-        """Persist a Build record to the history database. Exits on error."""
+        """
+        Persist a Build record to the history database.
+
+        Merges with existing record - None values preserve existing data.
+        This allows partial updates without losing previously set fields.
+        """
         try:
             with sqlite3.connect(BUILD_HISTORY_DB) as conn:
+                conn.row_factory = sqlite3.Row
+                # Get existing record to merge with
+                existing_row = conn.execute(
+                    "SELECT * FROM build_history WHERE build_id = ?",
+                    (build.build_id,),
+                ).fetchone()
+                existing = BuildHistory._from_row(existing_row) if existing_row else None
+
+                # Helper to pick new value or fall back to existing
+                def pick(new_val, existing_val):
+                    return new_val if new_val is not None else existing_val
+
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO build_history
                         (build_id, name, display_name, project_name,
                          project_root, target, entry, status,
                          return_code, error, started_at,
-                         elapsed_seconds, stages, warnings,
+                         elapsed_seconds, stages, total_stages, warnings,
                          errors, timestamp, standalone, frozen)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         build.build_id,
-                        build.name,
-                        build.display_name,
-                        build.project_name,
-                        build.project_root,
-                        build.target,
-                        build.entry,
-                        build.status.value,
-                        build.return_code,
-                        build.error,
-                        build.started_at,
-                        build.elapsed_seconds,
-                        json.dumps(build.stages),
-                        build.warnings,
-                        build.errors,
-                        build.timestamp,
-                        int(bool(build.standalone)),
-                        int(bool(build.frozen)),
+                        pick(build.name, existing.name if existing else None),
+                        pick(build.display_name, existing.display_name if existing else None),
+                        pick(build.project_name, existing.project_name if existing else None),
+                        pick(build.project_root, existing.project_root if existing else None),
+                        pick(build.target, existing.target if existing else None),
+                        pick(build.entry, existing.entry if existing else None),
+                        build.status.value,  # status is always set
+                        pick(build.return_code, existing.return_code if existing else None),
+                        pick(build.error, existing.error if existing else None),
+                        pick(build.started_at, existing.started_at if existing else None),
+                        build.elapsed_seconds if build.elapsed_seconds else (existing.elapsed_seconds if existing else 0.0),
+                        json.dumps(build.stages) if build.stages else (json.dumps(existing.stages) if existing else "[]"),
+                        pick(build.total_stages, existing.total_stages if existing else None),
+                        build.warnings if build.warnings else (existing.warnings if existing else 0),
+                        build.errors if build.errors else (existing.errors if existing else 0),
+                        pick(build.timestamp, existing.timestamp if existing else None),
+                        int(bool(build.standalone)) if build.standalone else (int(bool(existing.standalone)) if existing else 0),
+                        int(bool(build.frozen)) if build.frozen else (int(bool(existing.frozen)) if existing else 0),
                     ),
                 )
         except Exception:

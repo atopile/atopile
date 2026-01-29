@@ -4,8 +4,12 @@ from typing import TYPE_CHECKING, Annotated, Iterator
 import typer
 from semver import Version
 
-from atopile.errors import UserBadParameterError, UserException, UserFileNotFoundError
-from atopile.exceptions import accumulate
+from atopile.errors import (
+    UserBadParameterError,
+    UserException,
+    UserFileNotFoundError,
+    accumulate,
+)
 from atopile.logging import get_logger
 from atopile.telemetry import capture
 

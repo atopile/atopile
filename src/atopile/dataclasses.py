@@ -472,9 +472,8 @@ class Build(CamelModel):
 
     # Stages and logs
     stages: list[dict[str, Any]] = Field(default_factory=list)
-    # TODO: Replace this estimate once builds are defined in the graph
-    # This is the expected total number of stages for progress calculation
-    total_stages: int = 20  # Estimated total stages for progress bar
+    # Total number of stages - set by subprocess at build start
+    total_stages: Optional[int] = None
     log_dir: Optional[str] = None
     log_file: Optional[str] = None
 
@@ -641,23 +640,6 @@ class ModulesResponse(BaseModel):
     """Response for /api/modules endpoint."""
 
     modules: list[ModuleDefinition]
-    total: int
-
-
-class FileTreeNode(BaseModel):
-    """A node in the file tree (either a file or folder)."""
-
-    name: str
-    path: str
-    type: Literal["file", "folder"]
-    extension: Optional[str] = None  # 'ato' or 'py' for files
-    children: Optional[list["FileTreeNode"]] = None
-
-
-class FilesResponse(BaseModel):
-    """Response for /api/files endpoint."""
-
-    files: list[FileTreeNode]
     total: int
 
 

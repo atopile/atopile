@@ -109,7 +109,7 @@ export interface Build {
     status?:         BuildStatus;
     target?:         null | string;
     timestamp?:      null | string;
-    totalStages?:    number;
+    totalStages?:    number | null;
     warnings?:       number;
     [property: string]: any;
 }
@@ -583,23 +583,6 @@ export interface ModuleChild {
     spec?:     null | string;
     typeName:  string;
     [property: string]: any;
-}
-
-/**
- * A node in the file tree (either a file or folder).
- */
-export interface FileTreeNode {
-    children?:  FileTreeNode[] | null;
-    extension?: null | string;
-    name:       string;
-    path:       string;
-    type:       FileTreeNodeType;
-    [property: string]: any;
-}
-
-export enum FileTreeNodeType {
-    File = "file",
-    Folder = "folder",
 }
 
 /**

@@ -453,9 +453,16 @@
         "type": "array"
       },
       "totalStages": {
-        "default": 20,
-        "title": "Totalstages",
-        "type": "integer"
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Totalstages"
       },
       "logDir": {
         "anyOf": [
@@ -2690,66 +2697,6 @@
       }
     },
     "$ref": "#/$defs/ModuleChild"
-  },
-  "FileTreeNode": {
-    "$defs": {
-      "FileTreeNode": {
-        "description": "A node in the file tree (either a file or folder).",
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "path": {
-            "title": "Path",
-            "type": "string"
-          },
-          "type": {
-            "enum": [
-              "file",
-              "folder"
-            ],
-            "title": "Type",
-            "type": "string"
-          },
-          "extension": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Extension"
-          },
-          "children": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/$defs/FileTreeNode"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Children"
-          }
-        },
-        "required": [
-          "name",
-          "path",
-          "type"
-        ],
-        "title": "FileTreeNode",
-        "type": "object"
-      }
-    },
-    "$ref": "#/$defs/FileTreeNode"
   },
   "DependencyInfo": {
     "description": "A project dependency with version info.",

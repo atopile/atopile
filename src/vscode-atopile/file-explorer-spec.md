@@ -10,40 +10,16 @@ Build a file explorer panel **inside the atopile sidebar webview** that provides
 
 ---
 
-## Options Analysis
+## Decisions Made
 
-### Option 1: Native TreeView API (Not Recommended for This Use Case)
-
-VSCode provides a [TreeView API](https://code.visualstudio.com/api/extension-guides/tree-view) that creates native tree views. Microsoft has an official [file explorer sample](https://github.com/microsoft/vscode-extension-samples/blob/main/tree-view-sample/src/fileExplorer.ts).
-
-**Pros:**
-- Identical look to native VSCode
-- Performance optimized by VSCode
-- Drag-and-drop, context menus come free
-
-**Cons:**
-- Creates a **separate view** in the sidebar (doesn't solve the Cursor problem!)
-- Can't be embedded inside our webview panel
-- Would add another panel that competes for sidebar space
-
-**Verdict:** Not suitable - this creates another native view that would still conflict with the native file explorer in Cursor.
-
-### Option 2: React File Tree in Webview (Recommended)
-
-Build a custom React-based file tree component that lives inside the existing sidebar webview.
-
-**Pros:**
-- Lives inside the atopile sidebar - no panel conflicts
-- Full control over features and styling
-- Can be themed to match VSCode exactly using CSS variables
-- Already have a basic implementation (`FileExplorer.tsx`)
-
-**Cons:**
-- Need to implement features ourselves
-- Need backend endpoints for file system operations
-- Performance needs careful handling for large directories
-
-**Verdict:** This is the right approach for the stated problem.
+| Question | Decision |
+|----------|----------|
+| **File types** | All file types (not just `.ato`/`.py`) |
+| **Root scope** | Selected project root only |
+| **Filtering** | No filtering initially (show everything including `.git`, `node_modules`) |
+| **State persistence** | Not initially, but plan for it |
+| **Tab position** | First tab on the left |
+| **Implementation** | Fresh build, clone VSCode exactly |
 
 ---
 
@@ -211,17 +187,28 @@ Add "Files" as a new tab in the existing tab bar:
 
 ---
 
-## Open Questions
+## Implementation Status
 
-1. **Scope:** Should this show all workspace files or just atopile project files (`.ato`, `.py`, `ato.yaml`)?
+### Completed
+- [x] Created `FileExplorerPanel.tsx` - VSCode-styled React component
+- [x] Created `FileExplorerPanel.css` - VSCode CSS variable theming
+- [x] Added "Files" tab as first tab in Sidebar
+- [x] Updated backend to support `include_all=true` parameter
+- [x] Updated API client to pass `include_all` flag
+- [x] Component fetches files via `/api/files` endpoint
 
-2. **Root:** Should the root be the workspace folder or the selected project's root?
+### Files Modified
+- `src/ui-server/src/components/FileExplorerPanel.tsx` (new)
+- `src/ui-server/src/components/FileExplorerPanel.css` (new)
+- `src/ui-server/src/components/Sidebar.tsx` (added Files tab)
+- `src/ui-server/src/api/client.ts` (added `includeAll` param)
+- `src/atopile/server/core/projects.py` (added `include_all` param)
+- `src/atopile/server/domains/projects.py` (added `include_all` param)
+- `src/atopile/server/routes/projects.py` (added query param)
 
-3. **Filtering:** Should we support `.gitignore`-style filtering? Hide `node_modules`, `.git`, `__pycache__`?
-
-4. **Integration:** Should clicking a file also:
-   - Update the Structure panel?
-   - Trigger a build check?
-   - Show file-specific actions?
-
-5. **State:** Should expanded folders be persisted across sessions?
+### TODO
+- [ ] Add refresh button to refetch files
+- [ ] Keyboard navigation (arrow keys)
+- [ ] Context menu (right-click)
+- [ ] Persist expanded state across sessions
+- [ ] Add filter toggle to hide/show dotfiles

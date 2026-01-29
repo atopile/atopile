@@ -70,8 +70,15 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
   const [maxConcurrentValue, setMaxConcurrentValue] = useState(detectedCores);
   const [defaultMaxConcurrent, setDefaultMaxConcurrent] = useState(detectedCores);
 
-  // Use local toggle state - derived from atopile.source
-  const useLocalAtopile = atopile?.source === 'local';
+  // Local state for toggle (allows UI to work even when backend is down)
+  const [useLocalAtopile, setUseLocalAtopile] = useState(atopile?.source === 'local');
+
+  // Sync toggle state when backend state changes
+  useEffect(() => {
+    if (atopile?.source !== undefined) {
+      setUseLocalAtopile(atopile.source === 'local');
+    }
+  }, [atopile?.source]);
 
   // Local state for path input (controlled input needs synchronous state updates)
   const [localPathInput, setLocalPathInput] = useState(atopile?.localPath || '');
@@ -80,9 +87,10 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
 
   // Sync local input state when store value changes externally
   // BUT only when the input is not focused (user not actively typing)
+  // AND only when backend provides a non-empty path (don't clear user input when backend is down)
   useEffect(() => {
-    if (!inputFocused && atopile?.localPath !== undefined && atopile.localPath !== localPathInput) {
-      setLocalPathInput(atopile.localPath || '');
+    if (!inputFocused && atopile?.localPath && atopile.localPath !== localPathInput) {
+      setLocalPathInput(atopile.localPath);
     }
   }, [atopile?.localPath, inputFocused]);
 
@@ -150,10 +158,12 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
   const pendingRestartNeeded = (() => {
     if (useLocalAtopile) {
       // Toggle is ON - user wants to use their specified localPath
-      // Show restart if we have a path but it doesn't match what's running
-      return atopile?.localPath != null &&
-        atopile?.actualBinaryPath != null &&
-        !pathMatchesActualBinary(atopile.localPath);
+      // Show restart if we have a path (either from backend or local input) but it doesn't match what's running
+      const pathToUse = atopile?.localPath || localPathInput;
+      if (!pathToUse) return false;
+      // If backend is down (no actualBinaryPath), show restart if user has entered a path
+      if (!atopile?.actualBinaryPath) return !!localPathInput;
+      return !pathMatchesActualBinary(pathToUse);
     } else {
       // Toggle is OFF - user wants to use default (extension-managed uv)
       // Only show restart if we're running an EXPLICITLY configured binary
@@ -307,9 +317,20 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
 
   // Handle toggle change
   const handleToggleChange = (checked: boolean) => {
+    // Update local state immediately (works even when backend is down)
+    setUseLocalAtopile(checked);
+
     if (checked) {
       // Switch to local mode
       action('setAtopileSource', { source: 'local' });
+      // Also save to VS Code settings with current path
+      postMessage({
+        type: 'atopileSettings',
+        atopile: {
+          source: 'local',
+          localPath: localPathInput || null,
+        },
+      });
     } else {
       // Switch back to default (extension-managed uv) - just clear atopile.ato
       postMessage({
@@ -396,18 +417,11 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
                   {healthStatus === 'healthy' && (
                     <>
                       <Check size={14} />
-                      <div className="health-message-container">
-                        <span className="health-message">
-                          {useLocalAtopile
-                            ? `Using local atopile v${atopile?.actualVersion || '?'}`
-                            : `Using atopile v${atopile?.actualVersion || '?'}`}
-                        </span>
-                        {useLocalAtopile && atopile?.actualBinaryPath && (
-                          <span className="health-message-path">
-                            from {atopile.actualBinaryPath.replace(/^\/Users\/[^/]+/, '~')}
-                          </span>
-                        )}
-                      </div>
+                      <span className="health-message">
+                        {useLocalAtopile
+                          ? `Using local atopile v${atopile?.actualVersion || '?'}`
+                          : `Using atopile v${atopile?.actualVersion || '?'}`}
+                      </span>
                     </>
                   )}
                   {healthStatus === 'unhealthy' && (
@@ -457,8 +471,9 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
                     <input
                       type="text"
                       className={`settings-input${localPathValidation.valid === true ? ' valid' : ''}${localPathValidation.valid === false ? ' invalid' : ''}`}
-                      placeholder="/path/to/atopile or ato binary"
+                      placeholder={atopile?.actualBinaryPath || "/path/to/atopile or ato binary"}
                       value={localPathInput}
+                      title={atopile?.actualBinaryPath || "/path/to/atopile or ato binary"}
                       onFocus={() => setInputFocused(true)}
                       onBlur={() => setInputFocused(false)}
                       onChange={(e) => {
@@ -466,6 +481,14 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
                         setLocalPathInput(e.target.value);
                         // Sync to backend store (async, for validation trigger)
                         action('setAtopileLocalPath', { path: e.target.value });
+                        // Also save directly to VS Code settings (works even when backend is down)
+                        postMessage({
+                          type: 'atopileSettings',
+                          atopile: {
+                            source: 'local',
+                            localPath: e.target.value || null,
+                          },
+                        });
                       }}
                     />
                     <button

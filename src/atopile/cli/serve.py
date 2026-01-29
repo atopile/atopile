@@ -87,18 +87,10 @@ def backend(
     ),
 ) -> None:
     """Start the backend server in the current terminal."""
-    cmd = [sys.executable, "-m", "atopile.server", "--port", str(port)]
-    for path in workspace or []:
-        cmd.extend(["--workspace", str(path)])
-    if force:
-        cmd.append("--force")
-    if ato_source:
-        cmd.extend(["--ato-source", ato_source])
-    if ato_ui_source:
-        cmd.extend(["--ato-ui-source", ato_ui_source])
-    if ato_binary_path:
-        cmd.extend(["--ato-binary-path", ato_binary_path])
-    raise typer.Exit(subprocess.run(cmd).returncode)
+    from atopile.server.server import run_server
+
+    workspace_paths = list(workspace) if workspace else None
+    run_server(port=port, workspace_paths=workspace_paths, force=force)
 
 
 @serve_app.command()

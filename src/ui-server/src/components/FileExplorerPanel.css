@@ -1,0 +1,497 @@
+/**
+ * FileExplorerPanel - VSCode-style file explorer styling.
+ *
+ * Uses official VSCode CSS variables for exact theming match.
+ */
+
+/* ============================================================================
+   Container
+   ============================================================================ */
+
+.file-explorer-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0; /* Important for flex children to shrink properly */
+  overflow: hidden;
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-foreground, var(--text-primary));
+  background: var(--vscode-sideBar-background, var(--bg-primary));
+  user-select: none;
+}
+
+.file-explorer-panel.empty,
+.file-explorer-panel.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--vscode-disabledForeground, var(--text-muted));
+}
+
+.empty-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.empty-icon {
+  opacity: 0.5;
+  color: var(--text-muted);
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--vscode-progressBar-background, var(--accent));
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ============================================================================
+   Search Bar
+   ============================================================================ */
+
+.file-explorer-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--vscode-sideBar-background, var(--bg-primary));
+  border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, var(--border-subtle));
+  flex-shrink: 0;
+}
+
+.file-explorer-search-bar svg {
+  color: var(--vscode-input-placeholderForeground, var(--text-muted));
+  flex-shrink: 0;
+}
+
+.file-explorer-search-bar input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--vscode-foreground, var(--text-primary));
+  font-size: 13px;
+  font-family: inherit;
+  min-width: 0;
+}
+
+.file-explorer-search-bar input::placeholder {
+  color: var(--vscode-input-placeholderForeground, var(--text-muted));
+}
+
+.search-clear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--vscode-input-placeholderForeground, var(--text-muted));
+}
+
+.search-clear-btn:hover {
+  background: var(--vscode-list-hoverBackground, var(--bg-hover));
+  color: var(--vscode-foreground, var(--text-primary));
+}
+
+/* Search option buttons (Aa, .*) */
+.search-option-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--vscode-input-placeholderForeground, var(--text-muted));
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--vscode-editor-font-family, monospace);
+  min-width: 20px;
+  height: 18px;
+}
+
+.search-option-btn:hover {
+  background: var(--vscode-list-hoverBackground, var(--bg-hover));
+  color: var(--vscode-foreground, var(--text-primary));
+}
+
+.search-option-btn.active {
+  background: var(--vscode-inputOption-activeBackground, var(--accent-subtle));
+  border-color: var(--vscode-inputOption-activeBorder, var(--accent));
+  color: var(--vscode-inputOption-activeForeground, var(--text-primary));
+}
+
+.no-results {
+  padding: 16px;
+  text-align: center;
+  color: var(--vscode-disabledForeground, var(--text-muted));
+  font-size: 12px;
+}
+
+/* ============================================================================
+   Tree Container
+   ============================================================================ */
+
+.tree-container {
+  flex: 1;
+  min-height: 0; /* Critical for flex child scrolling */
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Custom scrollbar matching VSCode */
+.tree-container::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.tree-container::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background, rgba(255, 255, 255, 0.1));
+  border-radius: 0;
+}
+
+.tree-container::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground, rgba(255, 255, 255, 0.2));
+}
+
+.tree-container::-webkit-scrollbar-thumb:active {
+  background: var(--vscode-scrollbarSlider-activeBackground, rgba(255, 255, 255, 0.3));
+}
+
+.tree-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ============================================================================
+   Tree Node
+   ============================================================================ */
+
+.tree-node {
+  /* No margin - rows should be flush */
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  height: 22px; /* VSCode standard row height */
+  padding-right: 8px;
+  cursor: pointer;
+  outline: none;
+  color: var(--vscode-foreground, var(--text-primary));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Hover state */
+.tree-row:hover {
+  background: var(--vscode-list-hoverBackground, var(--bg-hover));
+}
+
+/* Selected state */
+.tree-row.selected {
+  background: var(--vscode-list-activeSelectionBackground, var(--accent-subtle));
+  color: var(--vscode-list-activeSelectionForeground, var(--text-primary));
+}
+
+/* Focus state */
+.tree-row:focus {
+  outline: 1px solid var(--vscode-focusBorder, var(--accent));
+  outline-offset: -1px;
+}
+
+/* Selected + not focused (inactive selection) */
+.file-explorer-panel:not(:focus-within) .tree-row.selected {
+  background: var(--vscode-list-inactiveSelectionBackground, var(--bg-tertiary));
+  color: var(--vscode-list-inactiveSelectionForeground, var(--text-primary));
+}
+
+/* ============================================================================
+   Twistie (Expand/Collapse Arrow)
+   ============================================================================ */
+
+.twistie {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 22px;
+  flex-shrink: 0;
+  color: var(--vscode-foreground, var(--text-secondary));
+  opacity: 0.8;
+}
+
+.twistie-icon {
+  transition: transform 0.1s ease;
+}
+
+.twistie.hidden {
+  visibility: hidden;
+}
+
+.twistie-loading {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--vscode-progressBar-background, var(--accent));
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* ============================================================================
+   Icons
+   ============================================================================ */
+
+.icon-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 22px;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.icon {
+  flex-shrink: 0;
+}
+
+/* Folder icons */
+.icon.folder,
+.icon.folder-open {
+  color: var(--vscode-symbolIcon-folderForeground, #dcb67a);
+}
+
+/* File type specific colors */
+.icon.file-ato {
+  color: var(--accent, #ee9d28);
+}
+
+.icon.file-python {
+  color: #4B8BBE;
+}
+
+.icon.file-json {
+  color: #e8c27d;
+}
+
+.icon.file-yaml,
+.icon.file-toml {
+  color: #9b59b6;
+}
+
+.icon.file-md,
+.icon.file-text {
+  color: #6cb6ff;
+}
+
+.icon.file-ts {
+  color: #3178c6;
+}
+
+.icon.file-css {
+  color: #563d7c;
+}
+
+.icon.file-html {
+  color: #e34c26;
+}
+
+.icon.file-csv {
+  color: #22863a;
+}
+
+.icon.file-xml {
+  color: #e34c26;
+}
+
+.icon.file-kicad {
+  color: #314cb0;
+}
+
+.icon.file-image {
+  color: #a855f7;
+}
+
+.icon.file-archive {
+  color: #f59e0b;
+}
+
+.icon.file-shell {
+  color: #4ade80;
+}
+
+.icon.file-git {
+  color: #f14e32;
+}
+
+.icon.file-default {
+  color: var(--vscode-foreground, var(--text-secondary));
+}
+
+/* ============================================================================
+   Label
+   ============================================================================ */
+
+.tree-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 22px;
+}
+
+/* ============================================================================
+   Tree Children (Indent Guides)
+   ============================================================================ */
+
+.tree-children {
+  position: relative;
+}
+
+/* Indent guide lines (VSCode style) */
+.tree-children::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 12px; /* Align with parent twistie */
+  bottom: 0;
+  width: 1px;
+  background: var(--vscode-tree-indentGuidesStroke, var(--border-subtle));
+  opacity: 0.5;
+}
+
+/* Active indent guide on hover */
+.tree-node:hover > .tree-children::before {
+  background: var(--vscode-tree-indentGuidesStroke, var(--border-color));
+  opacity: 1;
+}
+
+/* ============================================================================
+   Rename Input
+   ============================================================================ */
+
+.tree-rename-input {
+  flex: 1;
+  height: 18px;
+  padding: 0 4px;
+  margin: 0;
+  border: 1px solid var(--vscode-focusBorder, var(--accent));
+  border-radius: 2px;
+  background: var(--vscode-input-background, var(--bg-secondary));
+  color: var(--vscode-input-foreground, var(--text-primary));
+  font-family: inherit;
+  font-size: inherit;
+  outline: none;
+  min-width: 0;
+}
+
+.tree-rename-input:focus {
+  border-color: var(--vscode-focusBorder, var(--accent));
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, var(--accent)) inset;
+}
+
+/* ============================================================================
+   Drag and Drop
+   ============================================================================ */
+
+.tree-row.dragging {
+  opacity: 0.5;
+}
+
+.tree-row.drag-over {
+  background: var(--vscode-list-dropBackground, rgba(255, 255, 255, 0.1));
+  outline: 1px dashed var(--vscode-focusBorder, var(--accent));
+  outline-offset: -1px;
+}
+
+.tree-row.drag-over-invalid {
+  background: var(--vscode-inputValidation-errorBackground, rgba(255, 0, 0, 0.1));
+  outline: 1px dashed var(--vscode-inputValidation-errorBorder, #f14c4c);
+  outline-offset: -1px;
+}
+
+/* ============================================================================
+   Action Buttons (Header)
+   ============================================================================ */
+
+.file-explorer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, var(--border-subtle));
+  background: var(--vscode-sideBar-background, var(--bg-primary));
+  flex-shrink: 0;
+}
+
+.file-explorer-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-sideBarSectionHeader-foreground, var(--text-secondary));
+}
+
+.file-explorer-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.file-explorer-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-foreground, var(--text-secondary));
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.file-explorer-action-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, var(--bg-hover));
+  opacity: 1;
+}
+
+.file-explorer-action-btn:active {
+  background: var(--vscode-toolbar-activeBackground, var(--bg-tertiary));
+}
+
+.file-explorer-action-btn:focus {
+  outline: 1px solid var(--vscode-focusBorder, var(--accent));
+  outline-offset: -1px;
+}
+
+.file-explorer-action-btn.active {
+  background: var(--vscode-toolbar-activeBackground, var(--bg-tertiary));
+  color: var(--vscode-foreground, var(--text-primary));
+  opacity: 1;
+}
+
+/* Multi-select indicator */
+.tree-row.multi-selected {
+  background: var(--vscode-list-activeSelectionBackground, var(--accent-subtle));
+}

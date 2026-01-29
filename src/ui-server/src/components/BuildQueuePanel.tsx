@@ -20,6 +20,7 @@ export interface QueuedBuild {
     status: string;
     elapsedSeconds?: number;
   }>;
+  totalStages?: number | null;
   error?: string;
 }
 

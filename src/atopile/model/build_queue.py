@@ -48,7 +48,14 @@ class BuildCancelledMsg:
     build_id: str
 
 
-BuildResultMsg = BuildStartedMsg | BuildStageMsg | BuildCompletedMsg | BuildCancelledMsg
+@dataclass(frozen=True)
+class BuildOutputMsg:
+    build_id: str
+    text: str
+    is_stderr: bool = False
+
+
+BuildResultMsg = BuildStartedMsg | BuildStageMsg | BuildCompletedMsg | BuildCancelledMsg | BuildOutputMsg
 
 log = logging.getLogger(__name__)
 
@@ -86,6 +93,12 @@ def _build_subprocess_env(build: Build) -> dict[str, str]:
     env["PYTHONUNBUFFERED"] = "1"
     env["ATO_BUILD_WORKER"] = "1"
 
+    # Force Rich to output ANSI colors even when piped (for verbose mode)
+    if build.verbose:
+        env["FORCE_COLOR"] = "1"
+        # Set log source for prefix in log output
+        env["ATO_LOG_SOURCE"] = build.display_name or build.name or "build"
+
     if build.build_id:
         env["ATO_BUILD_ID"] = build.build_id
     if build.timestamp:
@@ -107,6 +120,17 @@ def _build_subprocess_env(build: Build) -> dict[str, str]:
         env["ATO_KEEP_DESIGNATORS"] = "1" if build.keep_designators else "0"
     if build.verbose:
         env["ATO_VERBOSE"] = "1"
+        # Force Rich to emit ANSI formatting even when stdout is piped.
+        env["ATO_FORCE_TERMINAL"] = "1"
+        # Propagate parent width so rich bars scale correctly in subprocess.
+        try:
+            from atopile.logging_utils import get_terminal_width
+
+            width = str(get_terminal_width())
+            env["COLUMNS"] = width
+            env["TERMINAL_WIDTH"] = width
+        except Exception:
+            pass
     if os.environ.get("ATO_SAFE"):
         env["ATO_SAFE"] = "1"
 
@@ -162,19 +186,74 @@ def _run_build_subprocess(
             build.project_root,
         )
 
-        # Worker writes all logs to the build DB; no need to capture stdout/stderr.
-        process = subprocess.Popen(
-            cmd,
-            cwd=build.project_root,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env=env,
-            preexec_fn=preexec_fn,
-        )
+        # For verbose mode, pipe stdout/stderr to stream output to parent
+        # For non-verbose mode, capture stderr for error reporting but discard stdout
+        stderr_output: list[str] = []
+        stderr_thread: threading.Thread | None = None
+
+        if build.verbose:
+            process = subprocess.Popen(
+                cmd,
+                cwd=build.project_root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                preexec_fn=preexec_fn,
+                text=True,
+                bufsize=1,  # Line buffered
+            )
+
+            # Start threads to read stdout/stderr and forward to result_q
+            def stream_output(pipe, is_stderr: bool) -> None:
+                try:
+                    for line in pipe:
+                        result_q.put(BuildOutputMsg(
+                            build_id=build.build_id,
+                            text=line,
+                            is_stderr=is_stderr,
+                        ))
+                except Exception:
+                    pass
+                finally:
+                    pipe.close()
+
+            stdout_thread = threading.Thread(
+                target=stream_output, args=(process.stdout, False), daemon=True
+            )
+            stderr_thread = threading.Thread(
+                target=stream_output, args=(process.stderr, True), daemon=True
+            )
+            stdout_thread.start()
+            stderr_thread.start()
+        else:
+            # Capture stderr for error reporting even in non-verbose mode
+            process = subprocess.Popen(
+                cmd,
+                cwd=build.project_root,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                env=env,
+                preexec_fn=preexec_fn,
+                text=True,
+            )
+            # Collect stderr in background thread
+            def collect_stderr(pipe) -> None:
+                try:
+                    for line in pipe:
+                        stderr_output.append(line)
+                except Exception:
+                    pass
+                finally:
+                    pipe.close()
+
+            stderr_thread = threading.Thread(
+                target=collect_stderr, args=(process.stderr,), daemon=True
+            )
+            stderr_thread.start()
 
         # Poll for completion while monitoring the DB for stage updates
         last_stages: list[dict[str, Any]] = []
-        poll_interval = 0.25
+        poll_interval = 0.1 if build.verbose else 0.25
         last_emit = 0.0
         while process.poll() is None:
             if cancel_flags.get(build.build_id, False):
@@ -209,12 +288,20 @@ def _run_build_subprocess(
 
         return_code = process.returncode
 
+        # Wait for stderr collection to complete (non-verbose mode)
+        if stderr_thread is not None:
+            stderr_thread.join(timeout=2.0)
+
         build_info = BuildHistory.get(build.build_id)
         if build_info:
             final_stages = build_info.stages
 
         if return_code != 0:
-            error_msg = f"Build failed with code {return_code}"
+            # Include captured stderr in error message
+            if stderr_output:
+                error_msg = "".join(stderr_output)
+            else:
+                error_msg = f"Build failed with code {return_code}"
 
     except Exception as exc:
         error_msg = str(exc)
@@ -270,6 +357,7 @@ class BuildQueue:
         # Callbacks
         self.on_change: Callable[[str, str], None] | None = None
         self.on_completed: Callable[[Build], None] | None = None
+        self.on_output: Callable[[str, str, bool], None] | None = None  # build_id, text, is_stderr
 
     def start(self) -> None:
         """Start the thread pool and orchestrator thread."""
@@ -336,6 +424,22 @@ class BuildQueue:
                 len(self._active),
             )
 
+        # Write initial record to database immediately so find_build() works
+        BuildHistory.set(
+            Build(
+                build_id=build.build_id,
+                name=build.name,
+                display_name=build.display_name,
+                project_name=build.project_name,
+                project_root=build.project_root or "",
+                target=build.target or "default",
+                entry=build.entry,
+                status=BuildStatus.QUEUED,
+                started_at=build.started_at,
+                stages=[],
+            )
+        )
+
         self._emit_change(build.build_id, "queued")
 
         # Ensure workers are running
@@ -344,9 +448,13 @@ class BuildQueue:
         return True
 
     def find_build(self, build_id: str) -> Build | None:
-        """Find a build by ID."""
+        """Find a build by ID. Reads from database (single source of truth)."""
+        # Check if build is tracked by queue
         with self._builds_lock:
-            return self._builds.get(build_id)
+            if build_id not in self._builds:
+                return None
+        # Read live data from database
+        return BuildHistory.get(build_id)
 
     def get_all_builds(self) -> list[Build]:
         """Return all builds tracked by the queue."""
@@ -589,10 +697,7 @@ class BuildQueue:
                 self._emit_change(msg.build_id, "started")
 
             elif isinstance(msg, BuildStageMsg):
-                with self._builds_lock:
-                    build = self._builds.get(msg.build_id)
-                    if build:
-                        build.stages = msg.stages
+                # Note: stages are tracked in DB, this just triggers change notification
                 self._emit_change(msg.build_id, "stages")
 
             elif isinstance(msg, BuildCompletedMsg):
@@ -611,6 +716,13 @@ class BuildQueue:
                     self._cancel_flags.pop(msg.build_id, None)
 
                 self._emit_change(msg.build_id, "cancelled")
+
+            elif isinstance(msg, BuildOutputMsg):
+                if self.on_output:
+                    try:
+                        self.on_output(msg.build_id, msg.text, msg.is_stderr)
+                    except Exception:
+                        log.exception("BuildQueue: on_output callback failed")
 
     def _handle_completed(self, msg: BuildCompletedMsg) -> None:
         """Handle a build-completed message."""
@@ -672,9 +784,14 @@ class BuildQueue:
             except Exception:
                 log.exception("BuildQueue: on_completed callback failed")
 
-        log.info(
-            "BuildQueue: Build %s completed with status %s", msg.build_id, status
-        )
+        if msg.error and status == BuildStatus.FAILED:
+            log.error(
+                "BuildQueue: Build %s failed:\n%s", msg.build_id, msg.error
+            )
+        else:
+            log.info(
+                "BuildQueue: Build %s completed with status %s", msg.build_id, status
+            )
 
     def _dispatch_next(self) -> None:
         """Dispatch next pending build if capacity available."""
