@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react'
 import {
   ChevronDown, ChevronRight, Box, Zap,
   Hash, Percent, CircuitBoard, RefreshCw,
-  Check, AlertTriangle, Loader2
+  AlertTriangle, Loader2, Check
 } from 'lucide-react'
 import { smartTruncatePair } from './sidebar-modules/sidebarUtils'
 import { PanelSearchBox, EmptyState } from './shared'
@@ -355,7 +355,6 @@ export function VariablesPanel({
 }: VariablesPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
-  const [copiedValue, setCopiedValue] = useState<string | null>(null)
   // Always show all sources (filter removed per user request)
   const sourceFilter: SourceFilter = 'all'
   const [lastDataVersion, setLastDataVersion] = useState<string | null>(null)
@@ -410,8 +409,6 @@ export function VariablesPanel({
 
   const handleCopyValue = useCallback((value: string) => {
     navigator.clipboard.writeText(value)
-    setCopiedValue(value)
-    setTimeout(() => setCopiedValue(null), 2000)
   }, [])
 
   // Helper for empty state description
@@ -505,16 +502,6 @@ export function VariablesPanel({
           />
         ))}
       </div>
-
-      {/* Copied toast */}
-      {copiedValue && (
-        <div className="variables-status">
-          <span className="copied-toast">
-            <Check size={10} />
-            Copied: {copiedValue}
-          </span>
-        </div>
-      )}
     </div>
   )
 }

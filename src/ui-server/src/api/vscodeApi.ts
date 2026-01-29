@@ -105,6 +105,18 @@ export interface OpenInSimpleBrowserMessage {
   url: string;
 }
 
+export interface ListFilesMessage {
+  type: 'listFiles';
+  projectRoot: string;
+  includeAll?: boolean;
+}
+
+export interface LoadDirectoryMessage {
+  type: 'loadDirectory';
+  projectRoot: string;
+  directoryPath: string;
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -115,7 +127,9 @@ export type ExtensionMessage =
   | RestartExtensionMessage
   | ShowLogsMessage
   | ShowBackendMenuMessage
-  | OpenInSimpleBrowserMessage;
+  | OpenInSimpleBrowserMessage
+  | ListFilesMessage
+  | LoadDirectoryMessage;
 
 /**
  * Type-safe helper to post messages to the extension.
@@ -166,6 +180,31 @@ export interface ServerReadyMessage {
   port: number;
 }
 
+export interface FileNode {
+  name: string;
+  path: string;
+  type: 'file' | 'folder';
+  extension?: string;
+  children?: FileNode[];
+  lazyLoad?: boolean;  // True if directory contents not yet loaded
+}
+
+export interface FilesListedMessage {
+  type: 'filesListed';
+  projectRoot: string;
+  files: FileNode[];
+  total: number;
+  error?: string;
+}
+
+export interface DirectoryLoadedMessage {
+  type: 'directoryLoaded';
+  projectRoot: string;
+  directoryPath: string;
+  children: FileNode[];
+  error?: string;
+}
+
 export type ExtensionToWebviewMessage =
   | TriggerBuildMessage
   | SetAtopileInstallingMessage
@@ -173,7 +212,9 @@ export type ExtensionToWebviewMessage =
   | BrowseAtopilePathResultMessage
   | AtopileInstallingMessage
   | AtopileInstallErrorMessage
-  | ServerReadyMessage;
+  | ServerReadyMessage
+  | FilesListedMessage
+  | DirectoryLoadedMessage;
 
 // Callback type for extension message handlers
 type ExtensionMessageHandler = (message: ExtensionToWebviewMessage) => void;
@@ -208,7 +249,9 @@ export function initExtensionMessageListener(): void {
       message.type === 'atopileInstallError' ||
       message.type === 'activeFile' ||
       message.type === 'browseAtopilePathResult' ||
-      message.type === 'serverReady'
+      message.type === 'serverReady' ||
+      message.type === 'filesListed' ||
+      message.type === 'directoryLoaded'
     ) {
       for (const handler of extensionMessageHandlers) {
         handler(message as ExtensionToWebviewMessage);

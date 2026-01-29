@@ -514,8 +514,8 @@ export interface AppState {
   projectModules: Record<string, ModuleDefinition[]>;
   isLoadingModules: boolean;
 
-  // Project files (from /api/files endpoint)
-  // Map of project root to file tree (.ato and .py files)
+  // Project files (from VS Code extension)
+  // Map of project root to file tree
   projectFiles: Record<string, FileTreeNode[]>;
   isLoadingFiles: boolean;
 
@@ -596,13 +596,14 @@ export interface ModuleDefinition {
   children?: ModuleChild[];  // Nested children from TypeGraph introspection
 }
 
-// File Tree Types (from /api/files endpoint)
+// File Tree Types (from VS Code extension file enumeration)
 export interface FileTreeNode {
   name: string;
   path: string;
   type: 'file' | 'folder';
   extension?: string;  // 'ato' | 'py'
   children?: FileTreeNode[];
+  lazyLoad?: boolean;  // True if directory contents not yet loaded
 }
 
 // --- Variable Types (from /api/variables endpoint) ---

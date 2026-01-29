@@ -16,7 +16,6 @@ from atopile.dataclasses import (
     BuildStatus,
     BuildTarget,
     BuildTargetStatus,
-    FileTreeNode,
     ModuleDefinition,
     Project,
 )
@@ -252,77 +251,6 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
     # Sort by path (root) to group projects in the same directory together
     projects.sort(key=lambda p: p.root.lower())
     return projects
-
-
-def build_file_tree(directory: Path, base_path: Path) -> list[FileTreeNode]:
-    """
-    Build a file tree of .ato and .py files for UI display.
-    """
-    nodes: list[FileTreeNode] = []
-
-    excluded_dirs = {
-        "build",
-        ".ato",
-        "__pycache__",
-        ".git",
-        ".venv",
-        "venv",
-        "node_modules",
-        ".pytest_cache",
-        ".mypy_cache",
-        "dist",
-        "egg-info",
-    }
-
-    try:
-        items = sorted(
-            directory.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())
-        )
-    except PermissionError:
-        return nodes
-
-    for item in items:
-        if item.name.startswith(".") and item.name not in {".ato"}:
-            continue
-        if item.name in excluded_dirs:
-            continue
-        if item.name.endswith(".egg-info"):
-            continue
-
-        rel_path = str(item.relative_to(base_path))
-
-        if item.is_dir():
-            children = build_file_tree(item, base_path)
-            if children:
-                nodes.append(
-                    FileTreeNode(
-                        name=item.name,
-                        path=rel_path,
-                        type="folder",
-                        children=children,
-                    )
-                )
-        elif item.is_file():
-            if item.suffix == ".ato":
-                nodes.append(
-                    FileTreeNode(
-                        name=item.name,
-                        path=rel_path,
-                        type="file",
-                        extension="ato",
-                    )
-                )
-            elif item.suffix == ".py":
-                nodes.append(
-                    FileTreeNode(
-                        name=item.name,
-                        path=rel_path,
-                        type="file",
-                        extension="py",
-                    )
-                )
-
-    return nodes
 
 
 def create_project(

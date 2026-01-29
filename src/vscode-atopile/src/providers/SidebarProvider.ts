@@ -77,6 +77,56 @@ interface OpenInSimpleBrowserMessage {
   url: string;
 }
 
+interface RevealInFinderMessage {
+  type: 'revealInFinder';
+  path: string;
+}
+
+interface RenameFileMessage {
+  type: 'renameFile';
+  oldPath: string;
+  newPath: string;
+}
+
+interface DeleteFileMessage {
+  type: 'deleteFile';
+  path: string;
+}
+
+interface CreateFileMessage {
+  type: 'createFile';
+  path: string;
+}
+
+interface CreateFolderMessage {
+  type: 'createFolder';
+  path: string;
+}
+
+interface DuplicateFileMessage {
+  type: 'duplicateFile';
+  sourcePath: string;
+  destPath: string;
+  newRelativePath: string;
+}
+
+interface OpenInTerminalMessage {
+  type: 'openInTerminal';
+  path: string;
+}
+
+interface ListFilesMessage {
+  type: 'listFiles';
+  projectRoot: string;
+  includeAll?: boolean;
+}
+
+interface LoadDirectoryMessage {
+  type: 'loadDirectory';
+  projectRoot: string;
+  directoryPath: string;  // Relative path to directory
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -87,7 +137,16 @@ type WebviewMessage =
   | RestartExtensionMessage
   | ShowLogsMessage
   | ShowBackendMenuMessage
-  | OpenInSimpleBrowserMessage;
+  | OpenInSimpleBrowserMessage
+  | RevealInFinderMessage
+  | RenameFileMessage
+  | DeleteFileMessage
+  | CreateFileMessage
+  | CreateFolderMessage
+  | DuplicateFileMessage
+  | OpenInTerminalMessage
+  | ListFilesMessage
+  | LoadDirectoryMessage;
 
 /**
  * Check if we're running in development mode.
@@ -132,6 +191,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;
   private _lastAtopileSettingsKey: string | null = null;
+  private _fileWatcher?: vscode.FileSystemWatcher;
+  private _watchedProjectRoot: string | null = null;
+  private _fileChangeDebounce: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -168,6 +230,66 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       d.dispose();
     }
     this._disposables = [];
+    this._disposeFileWatcher();
+  }
+
+  private _disposeFileWatcher(): void {
+    if (this._fileWatcher) {
+      this._fileWatcher.dispose();
+      this._fileWatcher = undefined;
+    }
+    if (this._fileChangeDebounce) {
+      clearTimeout(this._fileChangeDebounce);
+      this._fileChangeDebounce = null;
+    }
+  }
+
+  /**
+   * Set up a file watcher for the given project root.
+   * Notifies the webview when files change so it can refresh.
+   */
+  private _setupFileWatcher(projectRoot: string): void {
+    // Skip if already watching this project
+    if (this._watchedProjectRoot === projectRoot && this._fileWatcher) {
+      return;
+    }
+
+    // Dispose existing watcher
+    this._disposeFileWatcher();
+    this._watchedProjectRoot = projectRoot;
+
+    // Watch all files in the project
+    const pattern = new vscode.RelativePattern(projectRoot, '**/*');
+    this._fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
+
+    // Debounced notification to avoid flooding on bulk operations
+    const notifyChange = (uri: vscode.Uri) => {
+      // Ignore changes in .git directory
+      const relativePath = uri.fsPath.substring(projectRoot.length);
+      if (relativePath.includes('/.git/') || relativePath.includes('\\.git\\')) {
+        return;
+      }
+
+      if (this._fileChangeDebounce) {
+        clearTimeout(this._fileChangeDebounce);
+      }
+      this._fileChangeDebounce = setTimeout(() => {
+        traceInfo(`[SidebarProvider] Files changed in ${projectRoot}`);
+        this._view?.webview.postMessage({
+          type: 'filesChanged',
+          projectRoot,
+        });
+      }, 300); // 300ms debounce
+    };
+
+    this._fileWatcher.onDidCreate(notifyChange);
+    this._fileWatcher.onDidDelete(notifyChange);
+    this._fileWatcher.onDidChange(() => {
+      // Don't notify on content changes, only create/delete/rename
+      // Renames appear as delete + create, so they're covered
+    });
+
+    traceInfo(`[SidebarProvider] File watcher set up for ${projectRoot}`);
   }
 
   private _refreshWebview(): void {
@@ -234,6 +356,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         : [
           vscode.Uri.file(path.join(extensionPath, 'resources')),
           vscode.Uri.file(path.join(extensionPath, 'resources', 'webviews')),
+          vscode.Uri.file(path.join(extensionPath, 'resources', 'model-viewer')),
           vscode.Uri.file(path.join(extensionPath, 'webviews', 'dist')),
         ],
     };
@@ -366,6 +489,158 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'openInSimpleBrowser':
         void vscode.commands.executeCommand('simpleBrowser.show', message.url);
         break;
+      case 'revealInFinder':
+        // Reveal file in OS file explorer (Finder on Mac, Explorer on Windows)
+        void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(message.path));
+        break;
+      case 'renameFile':
+        // Rename file using workspace.fs
+        {
+          const oldUri = vscode.Uri.file(message.oldPath);
+          const newUri = vscode.Uri.file(message.newPath);
+          vscode.workspace.fs.rename(oldUri, newUri).then(
+            () => {
+              traceInfo(`[SidebarProvider] Renamed ${message.oldPath} to ${message.newPath}`);
+            },
+            (err) => {
+              traceError(`[SidebarProvider] Failed to rename file: ${err}`);
+              vscode.window.showErrorMessage(`Failed to rename: ${err.message || err}`);
+            }
+          );
+        }
+        break;
+      case 'deleteFile':
+        // Delete file with confirmation
+        {
+          const deleteUri = vscode.Uri.file(message.path);
+          const fileName = path.basename(message.path);
+          vscode.window.showWarningMessage(
+            `Are you sure you want to delete "${fileName}"?`,
+            { modal: true },
+            'Delete'
+          ).then((choice) => {
+            if (choice === 'Delete') {
+              vscode.workspace.fs.delete(deleteUri, { recursive: true, useTrash: true }).then(
+                () => {
+                  traceInfo(`[SidebarProvider] Deleted ${message.path}`);
+                },
+                (err) => {
+                  traceError(`[SidebarProvider] Failed to delete file: ${err}`);
+                  vscode.window.showErrorMessage(`Failed to delete: ${err.message || err}`);
+                }
+              );
+            }
+          });
+        }
+        break;
+      case 'createFile':
+        // Create new file - open input box for name
+        {
+          vscode.window.showInputBox({
+            prompt: 'Enter the file name',
+            placeHolder: 'filename.ato',
+            validateInput: (value) => {
+              if (!value || !value.trim()) {
+                return 'File name cannot be empty';
+              }
+              if (value.includes('/') || value.includes('\\')) {
+                return 'File name cannot contain path separators';
+              }
+              return null;
+            }
+          }).then((fileName) => {
+            if (fileName) {
+              const newFilePath = path.join(message.path, fileName);
+              const newUri = vscode.Uri.file(newFilePath);
+              vscode.workspace.fs.writeFile(newUri, new Uint8Array()).then(
+                () => {
+                  traceInfo(`[SidebarProvider] Created file ${newFilePath}`);
+                  // Open the new file
+                  vscode.workspace.openTextDocument(newUri).then((doc) => {
+                    vscode.window.showTextDocument(doc);
+                  });
+                },
+                (err) => {
+                  traceError(`[SidebarProvider] Failed to create file: ${err}`);
+                  vscode.window.showErrorMessage(`Failed to create file: ${err.message || err}`);
+                }
+              );
+            }
+          });
+        }
+        break;
+      case 'createFolder':
+        // Create new folder - open input box for name
+        {
+          vscode.window.showInputBox({
+            prompt: 'Enter the folder name',
+            placeHolder: 'new-folder',
+            validateInput: (value) => {
+              if (!value || !value.trim()) {
+                return 'Folder name cannot be empty';
+              }
+              if (value.includes('/') || value.includes('\\')) {
+                return 'Folder name cannot contain path separators';
+              }
+              return null;
+            }
+          }).then((folderName) => {
+            if (folderName) {
+              const newFolderPath = path.join(message.path, folderName);
+              const newUri = vscode.Uri.file(newFolderPath);
+              vscode.workspace.fs.createDirectory(newUri).then(
+                () => {
+                  traceInfo(`[SidebarProvider] Created folder ${newFolderPath}`);
+                },
+                (err) => {
+                  traceError(`[SidebarProvider] Failed to create folder: ${err}`);
+                  vscode.window.showErrorMessage(`Failed to create folder: ${err.message || err}`);
+                }
+              );
+            }
+          });
+        }
+        break;
+      case 'duplicateFile':
+        // Duplicate a file or folder
+        {
+          const sourceUri = vscode.Uri.file(message.sourcePath);
+          const destUri = vscode.Uri.file(message.destPath);
+          vscode.workspace.fs.copy(sourceUri, destUri, { overwrite: false }).then(
+            () => {
+              traceInfo(`[SidebarProvider] Duplicated ${message.sourcePath} to ${message.destPath}`);
+              // Notify webview to start rename mode on the new file
+              this._view?.webview.postMessage({
+                type: 'fileDuplicated',
+                newRelativePath: message.newRelativePath,
+              });
+            },
+            (err) => {
+              traceError(`[SidebarProvider] Failed to duplicate: ${err}`);
+              vscode.window.showErrorMessage(`Failed to duplicate: ${err.message || err}`);
+            }
+          );
+        }
+        break;
+      case 'openInTerminal':
+        // Open terminal at the specified path
+        {
+          const terminal = vscode.window.createTerminal({
+            cwd: message.path,
+            name: `Terminal: ${path.basename(message.path)}`,
+          });
+          terminal.show();
+          traceInfo(`[SidebarProvider] Opened terminal at ${message.path}`);
+        }
+        break;
+      case 'listFiles':
+        // List files in a project directory
+        this._handleListFiles(message.projectRoot, message.includeAll ?? true);
+        break;
+      case 'loadDirectory':
+        // Load contents of a lazy-loaded directory
+        this._handleLoadDirectory(message.projectRoot, message.directoryPath);
+        break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
     }
@@ -374,6 +649,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private async _handleSelectionChanged(message: SelectionChangedMessage): Promise<void> {
     const projectRoot = message.projectRoot ?? null;
     setProjectRoot(projectRoot ?? undefined);
+
+    // Set up file watcher for the selected project
+    if (projectRoot) {
+      this._setupFileWatcher(projectRoot);
+    } else {
+      this._disposeFileWatcher();
+      this._watchedProjectRoot = null;
+    }
 
     await loadBuilds();
     const builds = getBuilds();
@@ -496,6 +779,229 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
     setCurrentThreeDModel({ path: modelPath, exists: true });
     void openModelViewerPreview();
+  }
+
+  /**
+   * Handle listFiles request - enumerate files in a project directory.
+   * File enumeration is handled entirely by the VS Code extension.
+   * Hidden directories (starting with .) are shown but not recursed into (lazy loaded).
+   */
+  private async _handleListFiles(projectRoot: string, includeAll: boolean): Promise<void> {
+    traceInfo(`[SidebarProvider] Listing files for: ${projectRoot}, includeAll: ${includeAll}`);
+
+    // Directories to completely exclude (not even show)
+    const excludedDirs = new Set([
+      '__pycache__',
+      'node_modules',
+      '.pytest_cache',
+      '.mypy_cache',
+      'dist',
+      'egg-info',
+    ]);
+
+    // Hidden directories to show but lazy load (don't recurse into by default)
+    const lazyLoadDirs = new Set([
+      '.git',
+      '.venv',
+      '.ato',
+      'build',
+      'venv',
+    ]);
+
+    interface FileNode {
+      name: string;
+      path: string;
+      type: 'file' | 'folder';
+      extension?: string;
+      children?: FileNode[];
+      lazyLoad?: boolean;  // True if directory contents not yet loaded
+    }
+
+    const buildFileTree = async (dirUri: vscode.Uri, basePath: string): Promise<FileNode[]> => {
+      const nodes: FileNode[] = [];
+
+      try {
+        const entries = await vscode.workspace.fs.readDirectory(dirUri);
+
+        // Sort: directories first, then alphabetically
+        entries.sort((a, b) => {
+          const aIsDir = a[1] === vscode.FileType.Directory;
+          const bIsDir = b[1] === vscode.FileType.Directory;
+          if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
+          return a[0].toLowerCase().localeCompare(b[0].toLowerCase());
+        });
+
+        for (const [name, fileType] of entries) {
+          // Skip completely excluded directories
+          if (excludedDirs.has(name)) continue;
+          if (name.endsWith('.egg-info')) continue;
+
+          const relativePath = basePath ? `${basePath}/${name}` : name;
+          const itemUri = vscode.Uri.joinPath(dirUri, name);
+          const isHidden = name.startsWith('.');
+
+          if (fileType === vscode.FileType.Directory) {
+            // Check if this directory should be lazy loaded
+            const shouldLazyLoad = lazyLoadDirs.has(name) || (isHidden && !includeAll);
+
+            if (shouldLazyLoad) {
+              // Show the directory but mark it for lazy loading
+              nodes.push({
+                name,
+                path: relativePath,
+                type: 'folder',
+                children: [],  // Empty - will be loaded on demand
+                lazyLoad: true,
+              });
+            } else {
+              const children = await buildFileTree(itemUri, relativePath);
+              // Skip empty directories unless includeAll
+              if (children.length > 0 || includeAll) {
+                nodes.push({
+                  name,
+                  path: relativePath,
+                  type: 'folder',
+                  children,
+                });
+              }
+            }
+          } else if (fileType === vscode.FileType.File) {
+            // Skip hidden files unless includeAll
+            if (isHidden && !includeAll) continue;
+
+            // If not includeAll, only include .ato and .py files
+            if (!includeAll) {
+              const ext = name.split('.').pop()?.toLowerCase();
+              if (ext !== 'ato' && ext !== 'py') continue;
+            }
+
+            const ext = name.includes('.') ? name.split('.').pop()?.toLowerCase() : undefined;
+            nodes.push({
+              name,
+              path: relativePath,
+              type: 'file',
+              extension: ext,
+            });
+          }
+        }
+      } catch (err) {
+        traceError(`[SidebarProvider] Error reading directory ${dirUri.fsPath}: ${err}`);
+      }
+
+      return nodes;
+    };
+
+    try {
+      const rootUri = vscode.Uri.file(projectRoot);
+      const files = await buildFileTree(rootUri, '');
+
+      // Count total files (excluding lazy-loaded directories)
+      const countFiles = (nodes: FileNode[]): number => {
+        let count = 0;
+        for (const node of nodes) {
+          if (node.type === 'file') {
+            count++;
+          } else if (node.children && !node.lazyLoad) {
+            count += countFiles(node.children);
+          }
+        }
+        return count;
+      };
+
+      const total = countFiles(files);
+
+      // Send result back to webview
+      this._view?.webview.postMessage({
+        type: 'filesListed',
+        projectRoot,
+        files,
+        total,
+      });
+
+      traceInfo(`[SidebarProvider] Listed ${total} files for ${projectRoot}`);
+    } catch (err) {
+      traceError(`[SidebarProvider] Failed to list files: ${err}`);
+      this._view?.webview.postMessage({
+        type: 'filesListed',
+        projectRoot,
+        files: [],
+        total: 0,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /**
+   * Handle loadDirectory request - load contents of a lazy-loaded directory.
+   */
+  private async _handleLoadDirectory(projectRoot: string, directoryPath: string): Promise<void> {
+    traceInfo(`[SidebarProvider] Loading directory: ${directoryPath} in ${projectRoot}`);
+
+    interface FileNode {
+      name: string;
+      path: string;
+      type: 'file' | 'folder';
+      extension?: string;
+      children?: FileNode[];
+      lazyLoad?: boolean;
+    }
+
+    try {
+      const dirUri = vscode.Uri.file(path.join(projectRoot, directoryPath));
+      const entries = await vscode.workspace.fs.readDirectory(dirUri);
+      const nodes: FileNode[] = [];
+
+      // Sort: directories first, then alphabetically
+      entries.sort((a, b) => {
+        const aIsDir = a[1] === vscode.FileType.Directory;
+        const bIsDir = b[1] === vscode.FileType.Directory;
+        if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
+        return a[0].toLowerCase().localeCompare(b[0].toLowerCase());
+      });
+
+      for (const [name, fileType] of entries) {
+        const relativePath = `${directoryPath}/${name}`;
+
+        if (fileType === vscode.FileType.Directory) {
+          // All directories inside a lazy-loaded parent are also lazy-loaded
+          // This allows them to be expanded on demand
+          nodes.push({
+            name,
+            path: relativePath,
+            type: 'folder',
+            children: [],
+            lazyLoad: true,  // All nested dirs are lazy-loaded
+          });
+        } else if (fileType === vscode.FileType.File) {
+          const ext = name.includes('.') ? name.split('.').pop()?.toLowerCase() : undefined;
+          nodes.push({
+            name,
+            path: relativePath,
+            type: 'file',
+            extension: ext,
+          });
+        }
+      }
+
+      // Send result back to webview
+      this._view?.webview.postMessage({
+        type: 'directoryLoaded',
+        projectRoot,
+        directoryPath,
+        children: nodes,
+      });
+
+      traceInfo(`[SidebarProvider] Loaded ${nodes.length} items in ${directoryPath}`);
+    } catch (err) {
+      traceError(`[SidebarProvider] Failed to load directory: ${err}`);
+      this._view?.webview.postMessage({
+        type: 'directoryLoaded',
+        projectRoot,
+        directoryPath,
+        children: [],
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /**
@@ -740,6 +1246,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       ? webview.asWebviewUri(vscode.Uri.file(wasmPath)).toString()
       : '';
 
+    // Model-viewer script for GLB/GLTF 3D models
+    const modelViewerPath = path.join(extensionPath, 'resources', 'model-viewer', 'model-viewer.min.js');
+    const modelViewerUri = fs.existsSync(modelViewerPath)
+      ? webview.asWebviewUri(vscode.Uri.file(modelViewerPath)).toString()
+      : '';
+
     // Get backend URLs from backendServer (uses discovered port or config)
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
@@ -778,6 +1290,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     window.__ATOPILE_ICON_URL__ = '${iconUri}';
     window.__ATOPILE_EXTENSION_VERSION__ = '${this._extensionVersion}';
     window.__ATOPILE_WASM_URL__ = '${wasmUri}';
+    window.__ATOPILE_MODEL_VIEWER_URL__ = '${modelViewerUri}';
     // Inject workspace root for the React app
     window.__ATOPILE_WORKSPACE_ROOT__ = ${JSON.stringify(workspaceRoot || '')};
   </script>

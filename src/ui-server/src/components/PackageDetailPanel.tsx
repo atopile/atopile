@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { API_URL } from '../api/config'
+import { postMessage } from '../api/vscodeApi'
 import type { PackageDetails } from '../types/build'
 import KiCanvasEmbed from './KiCanvasEmbed'
 import MarkdownRenderer from './MarkdownRenderer'
@@ -246,23 +247,14 @@ export function PackageDetailPanel({
     <div className="package-detail-panel">
       {/* Header */}
       <div className="detail-panel-header">
-        <div className="detail-header-left">
-          <div className="detail-header-left-stack">
-            <button className="detail-back-btn" onClick={onClose} title="Back">
-              <ArrowLeft size={18} />
-            </button>
-            <Package size={20} className="detail-package-icon" />
-          </div>
-          <div className="detail-header-info">
-            <div className="detail-title-row">
-              <h2 className="detail-package-name">{packageTitle}</h2>
-            </div>
-            <div className="detail-package-meta">
-              <p className="detail-package-blurb">
-                {description || 'No description available.'}
-              </p>
-            </div>
-          </div>
+        <button className="detail-back-btn" onClick={onClose} title="Back">
+          <ArrowLeft size={18} />
+        </button>
+        <div className="detail-header-info">
+          <h2 className="detail-package-name">{packageTitle}</h2>
+          <p className="detail-package-blurb">
+            {description || 'No description available.'}
+          </p>
         </div>
       </div>
 
@@ -346,31 +338,30 @@ export function PackageDetailPanel({
         {/* Information */}
         <section className={`detail-section detail-section-collapsible ${infoCollapsed ? 'collapsed' : ''}`}>
           <div className="detail-section-header">
-            <div className="detail-section-header-left">
-              <button
-                type="button"
-                className="detail-collapse-toggle"
-                onClick={() => setInfoCollapsed((prev) => !prev)}
-                aria-expanded={!infoCollapsed}
-                aria-label={infoCollapsed ? 'Expand information' : 'Collapse information'}
-              >
+            <button
+              type="button"
+              className="detail-section-header-left"
+              onClick={() => setInfoCollapsed((prev) => !prev)}
+              aria-expanded={!infoCollapsed}
+              aria-label={infoCollapsed ? 'Expand information' : 'Collapse information'}
+            >
+              <span className="detail-collapse-toggle">
                 {infoCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-              </button>
+              </span>
               <h3 className="detail-section-title">
                 <Package size={14} />
                 Information
               </h3>
-            </div>
+            </button>
             {(details?.homepage || pkg.homepage) && (
-              <a
-                href={details?.homepage || pkg.homepage}
-                target="_blank"
-                rel="noopener"
+              <button
+                type="button"
+                onClick={() => postMessage({ type: 'openInSimpleBrowser', url: details?.homepage || pkg.homepage || '' })}
                 className="detail-open-icon"
                 title="Open in browser"
               >
                 <ExternalLink size={12} />
-              </a>
+              </button>
             )}
           </div>
           {!infoCollapsed && (
@@ -445,52 +436,21 @@ export function PackageDetailPanel({
 
         {/* Visuals */}
         <section className="package-visual-section">
-          <div className="package-visual-header">
-            <div className="package-visual-tabs">
-              <button
-                className={`package-visual-tab ${activeVisualTab === '3d' ? 'active' : ''}`}
-                onClick={() => setActiveVisualTab('3d')}
-              >
-                <Cuboid size={14} />
-                3D Model
-              </button>
-              <button
-                className={`package-visual-tab ${activeVisualTab === 'layout' ? 'active' : ''}`}
-                onClick={() => setActiveVisualTab('layout')}
-              >
-                <Layers size={14} />
-                Layout
-              </button>
-            </div>
-            {buildTargets.length > 1 && (
-              <div className="build-selector detail-target-dropdown" ref={buildDropdownRef}>
-                <button
-                  className={`selector-trigger ${buildDropdownOpen ? 'open' : ''}`}
-                  onClick={() => setBuildDropdownOpen(!buildDropdownOpen)}
-                >
-                  <span className="selector-label">{selectedBuildTarget || 'Select build'}</span>
-                  <ChevronDown className={`selector-chevron ${buildDropdownOpen ? 'rotated' : ''}`} />
-                </button>
-                {buildDropdownOpen && (
-                  <div className="selector-dropdown">
-                    <div className="selector-list">
-                      {buildTargets.map(target => (
-                        <div
-                          key={target}
-                          className={`selector-item ${target === selectedBuildTarget ? 'selected' : ''}`}
-                          onClick={() => {
-                            setSelectedBuildTarget(target)
-                            setBuildDropdownOpen(false)
-                          }}
-                        >
-                          <span className="selector-item-label">{target}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+          <div className="package-visual-tabs">
+            <button
+              className={`package-visual-tab ${activeVisualTab === '3d' ? 'active' : ''}`}
+              onClick={() => setActiveVisualTab('3d')}
+            >
+              <Cuboid size={14} />
+              3D Model
+            </button>
+            <button
+              className={`package-visual-tab ${activeVisualTab === 'layout' ? 'active' : ''}`}
+              onClick={() => setActiveVisualTab('layout')}
+            >
+              <Layers size={14} />
+              Layout
+            </button>
           </div>
           <div className="package-visual-content">
             {activeVisualTab === '3d' ? (
@@ -514,6 +474,9 @@ export function PackageDetailPanel({
                 <KiCanvasEmbed
                   key={layoutForTarget.url}
                   src={proxyAssetUrl(layoutForTarget.url)}
+                  controls="basic"
+                  controlslist="nodownload"
+                  hideReferences
                   className="detail-visual-frame"
                 />
               ) : (
@@ -523,6 +486,33 @@ export function PackageDetailPanel({
               )
             ) : (
               <div className="detail-visual-empty">Select a build target to preview layout.</div>
+            )}
+            {buildTargets.length > 1 && (
+              <div className="package-build-selector" ref={buildDropdownRef}>
+                <button
+                  className={`package-build-trigger ${buildDropdownOpen ? 'open' : ''}`}
+                  onClick={() => setBuildDropdownOpen(!buildDropdownOpen)}
+                >
+                  <span>{selectedBuildTarget || 'Select build'}</span>
+                  <ChevronDown size={12} className={buildDropdownOpen ? 'rotated' : ''} />
+                </button>
+                {buildDropdownOpen && (
+                  <div className="package-build-dropdown">
+                    {buildTargets.map(target => (
+                      <button
+                        key={target}
+                        className={`package-build-option ${target === selectedBuildTarget ? 'selected' : ''}`}
+                        onClick={() => {
+                          setSelectedBuildTarget(target)
+                          setBuildDropdownOpen(false)
+                        }}
+                      >
+                        {target}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </section>

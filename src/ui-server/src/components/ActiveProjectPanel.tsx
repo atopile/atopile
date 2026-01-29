@@ -1032,7 +1032,18 @@ function BuildQueueItem({
           </div>
           {hasStages ? (
             build.stages!.map((stage, index) => (
-              <div key={index} className={`build-stage ${stage.status}`}>
+              <div
+                key={index}
+                className={`build-stage ${stage.status}`}
+                onClick={() => {
+                  if (build.buildId) {
+                    useStore.getState().setLogViewerBuildId(build.buildId)
+                    sendAction('setLogViewCurrentId', { buildId: build.buildId, stage: stage.stageId || stage.name })
+                    postMessage({ type: 'showLogs' })
+                  }
+                }}
+                title={`View logs for ${stage.displayName || stage.name}`}
+              >
                 <StageStatusIcon status={stage.status} />
                 <span className="stage-name">{stage.displayName || stage.name}</span>
                 {(() => {
@@ -1045,20 +1056,6 @@ function BuildQueueItem({
                     <span className="stage-time">{formatDuration(stageElapsed)}</span>
                   )
                 })()}
-                <button
-                  className="stage-logs-btn"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    if (build.buildId) {
-                      useStore.getState().setLogViewerBuildId(build.buildId)
-                      sendAction('setLogViewCurrentId', { buildId: build.buildId, stage: stage.stageId || stage.name })
-                      postMessage({ type: 'showLogs' })
-                    }
-                  }}
-                  title={`View logs for ${stage.displayName || stage.name}`}
-                >
-                  <ScrollText size={10} />
-                </button>
               </div>
             ))
           ) : (

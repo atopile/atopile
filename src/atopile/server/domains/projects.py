@@ -18,8 +18,6 @@ from atopile.dataclasses import (
     DeleteBuildTargetResponse,
     DependenciesResponse,
     DependencyInfo,
-    FilesResponse,
-    FileTreeNode,
     ModulesResponse,
     ProjectsResponse,
     RenameProjectRequest,
@@ -63,31 +61,6 @@ def handle_get_modules(
 
     modules.sort(key=lambda m: (m.file, m.name))
     return ModulesResponse(modules=modules, total=len(modules))
-
-
-def handle_get_files(project_root: str) -> FilesResponse | None:
-    """
-    Get file tree for a project.
-
-    Returns None if project not found.
-    """
-    project_path = Path(project_root)
-    if not project_path.exists():
-        return None
-
-    file_tree = core_projects.build_file_tree(project_path, project_path)
-
-    def count_files(nodes: list[FileTreeNode]) -> int:
-        count = 0
-        for node in nodes:
-            if node.type == "file":
-                count += 1
-            elif node.children:
-                count += count_files(node.children)
-        return count
-
-    total = count_files(file_tree)
-    return FilesResponse(files=file_tree, total=total)
 
 
 def _dependency_display_parts(identifier: str) -> tuple[str, str]:
@@ -450,7 +423,6 @@ __all__ = [
     "UpdateDependencyVersionResponse",
     "handle_get_projects",
     "handle_get_modules",
-    "handle_get_files",
     "handle_get_dependencies",
     "handle_create_project",
     "handle_rename_project",

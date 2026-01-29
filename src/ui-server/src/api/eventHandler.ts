@@ -74,16 +74,14 @@ async function fetchProblems(): Promise<void> {
   }
 }
 
-async function fetchProjectFiles(projectRoot: string): Promise<void> {
+/**
+ * Clear project files cache to trigger a refresh.
+ * The FileExplorerPanel will request fresh files from the VS Code extension.
+ */
+function clearProjectFilesCache(projectRoot: string): void {
   const store = useStore.getState();
-  store.setLoadingFiles(true);
-  try {
-    const result = await api.files.list(projectRoot);
-    store.setProjectFiles(projectRoot, result.files);
-  } catch (error) {
-    console.error('[events] Failed to fetch files:', error);
-    store.setLoadingFiles(false);
-  }
+  // Clear the cache - FileExplorerPanel will detect this and request files from extension
+  store.setProjectFiles(projectRoot, []);
 }
 
 async function fetchProjectModules(projectRoot: string): Promise<void> {
@@ -201,7 +199,7 @@ export async function handleEvent(
       const projectRoot = typeof detail.project_root === 'string'
         ? detail.project_root
         : store.selectedProjectRoot;
-      if (projectRoot) await fetchProjectFiles(projectRoot);
+      if (projectRoot) clearProjectFilesCache(projectRoot);
       break;
     }
     case EventType.ProjectModulesChanged: {
