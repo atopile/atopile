@@ -7,7 +7,10 @@ import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
+
+if TYPE_CHECKING:
+    from faebryk.libs.kicad.fileformats import kicad
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -45,7 +48,7 @@ def _pretty_attributes(attributes: dict[str, object] | None) -> dict[str, str]:
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    # Create unit instances so decode_symbol_runtime can find them during deserialization
+    # Create unit instances for decode_symbol_runtime during deserialization
     from faebryk.library.Units import Ampere, Farad, Henry, Ohm, Volt, Watt
 
     for unit_type in [Ohm, Volt, Watt, Farad, Ampere, Henry]:
@@ -268,11 +271,10 @@ def _lib_fp_to_pcb_fp(
         **common_fields,
     )
 
-    # Hide all text elements (REF**, VALUE, etc.)
-    for prop in pcb_fp.propertys:
-        prop.hide = True
-    for fp_text in pcb_fp.fp_texts:
-        fp_text.hide = True
+    # Remove all text elements entirely (REF**, VALUE, etc.)
+    # Hiding them isn't enough - KiCanvas still calculates bounding box including them
+    pcb_fp.propertys.clear()
+    pcb_fp.fp_texts.clear()
 
     return pcb_fp
 
@@ -282,6 +284,7 @@ def handle_get_part_footprint(lcsc_id: str) -> bytes | None:
     from easyeda2kicad.easyeda.easyeda_api import EasyedaApi
     from easyeda2kicad.easyeda.easyeda_importer import EasyedaFootprintImporter
     from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
+
     from faebryk.libs.kicad.fileformats import kicad
     from faebryk.libs.test.fileformats import PCBFILE
     from faebryk.libs.util import call_with_file_capture
@@ -409,7 +412,8 @@ def handle_uninstall_part(lcsc_id: str, project_root: str) -> dict:
 
         if not part.auto_generated:
             raise errors.UserException(
-                f"Part `{part.path}` is manually modified; remove is_auto_generated to delete."
+                f"Part `{part.path}` is manually modified; "
+                "remove is_auto_generated to delete."
             )
 
         robustly_rm_dir(part.path)

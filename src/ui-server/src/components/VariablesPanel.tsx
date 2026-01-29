@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react'
 import {
   ChevronDown, ChevronRight, Search, Box, Zap,
   Hash, Percent, CircuitBoard, RefreshCw,
-  Check, AlertTriangle, Loader2
+  AlertTriangle, Loader2, Check
 } from 'lucide-react'
 import { smartTruncatePair } from './sidebar-modules/sidebarUtils'
 
@@ -352,7 +352,6 @@ export function VariablesPanel({
 }: VariablesPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
-  const [copiedValue, setCopiedValue] = useState<string | null>(null)
   // Always show all sources (filter removed per user request)
   const sourceFilter: SourceFilter = 'all'
   const [lastDataVersion, setLastDataVersion] = useState<string | null>(null)
@@ -407,16 +406,7 @@ export function VariablesPanel({
 
   const handleCopyValue = useCallback((value: string) => {
     navigator.clipboard.writeText(value)
-    setCopiedValue(value)
-    setTimeout(() => setCopiedValue(null), 2000)
   }, [])
-
-  // Extract short build ID for display (e.g., "build-42-1674520800" -> "#42")
-  const buildIdShort = (() => {
-    if (!variablesData?.build_id) return null
-    const match = variablesData.build_id.match(/^build-(\d+)-/)
-    return match ? `#${match[1]}` : variablesData.build_id.substring(0, 12)
-  })()
 
   return (
     <div className="variables-panel">
@@ -494,21 +484,6 @@ export function VariablesPanel({
             onCopyValue={handleCopyValue}
           />
         ))}
-      </div>
-
-      {/* Status bar */}
-      <div className="variables-status">
-        {buildIdShort && (
-          <span className="build-id-badge" title={`Build: ${variablesData?.build_id}`}>
-            build {buildIdShort}
-          </span>
-        )}
-        {copiedValue && (
-          <span className="copied-toast">
-            <Check size={10} />
-            Copied: {copiedValue}
-          </span>
-        )}
       </div>
     </div>
   )
