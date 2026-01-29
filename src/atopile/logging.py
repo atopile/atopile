@@ -1012,11 +1012,7 @@ class LogHandler(RichHandler):
 
     def _should_log_to_console(self, record: logging.LogRecord) -> bool:
         """
-        Determine if a record should be logged to console.
-
-        All logs go to the database unfiltered. Console filtering rules:
-        - Only atopile/faebryk/test loggers (exclude watchdog, httpcore, etc.)
-        - Only INFO level and above (DEBUG goes to database only)
+        Common log filter for both server console and CLI builds
         """
         # name = record.name
 

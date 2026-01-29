@@ -8,7 +8,6 @@ import time
 from pathlib import Path
 
 import typer
-from rich.console import Console
 from typing_extensions import Annotated
 
 from atopile.buildutil import generate_build_id, generate_build_timestamp
@@ -17,10 +16,7 @@ from atopile.dataclasses import (
     BuildStatus,
 )
 from atopile.logging import get_logger
-from atopile.logging_utils import (
-    BuildPrinter,
-    console,
-)
+from atopile.logging_utils import BuildPrinter
 from atopile.model.build_queue import BuildQueue
 from atopile.telemetry import capture
 
@@ -54,49 +50,6 @@ def discover_projects(root: Path) -> list[Path]:
 
 
 
-def _run_builds_verbose(builds: list[Build]) -> dict[str, int]:
-    """
-    Run builds sequentially in-process for verbose mode.
-
-    Logs stream directly to console with Rich formatting.
-    """
-    from atopile import buildutil
-    from atopile.buildutil import BuildStepContext
-    from atopile.config import config
-    from atopile.errors import iter_leaf_exceptions
-
-    results: dict[str, int] = {}
-
-    for build_obj in builds:
-        build_id = build_obj.build_id
-        display_name = build_obj.display_name
-        build_name = build_obj.name
-
-        console.print(f"[bold cyan]▶ Building {display_name}[/bold cyan]")
-
-        ctx = BuildStepContext(build=None, build_id=build_id)
-        exit_code = 0
-
-        try:
-            with config.select_build(build_name):
-                buildutil.build(ctx=ctx)
-        except Exception as exc:
-            exit_code = 1
-            for e in iter_leaf_exceptions(exc):
-                logger.error(e, exc_info=e)
-
-        # Print completion status
-        if exit_code == 0:
-            console.print(f"[green]✓ {display_name} completed[/green]")
-        else:
-            console.print(f"[red]✗ {display_name} failed[/red]")
-
-        if build_id:
-            results[build_id] = exit_code
-
-    return results
-
-
 def _run_build_queue(
     builds: list[Build],
     *,
@@ -104,19 +57,19 @@ def _run_build_queue(
     verbose: bool,
 ) -> dict[str, int]:
     """Run builds through a local BuildQueue and return build_id -> exit code."""
+    import sys
+
     from atopile.model.sqlite import BuildHistory
 
     if not builds:
         return {}
 
-    # Verbose mode: run in-process for direct console output
-    if verbose:
-        return _run_builds_verbose(builds)
-
-    # Non-verbose mode: use subprocess queue for parallel builds
+    # Initialize database
     BuildHistory.init_db()
 
-    queue = BuildQueue(max_concurrent=jobs)
+    # Verbose mode runs sequentially (one build at a time)
+    max_concurrent = 1 if verbose else jobs
+    queue = BuildQueue(max_concurrent=max_concurrent)
 
     build_ids = [build.build_id for build in builds if build.build_id]
     display_names = {
@@ -136,7 +89,17 @@ def _run_build_queue(
         BuildStatus.CANCELLED,
     )
 
-    with BuildPrinter(verbose=False) as printer:
+    with BuildPrinter(verbose=verbose) as printer:
+
+        # For verbose mode, stream subprocess output directly to console
+        if verbose:
+            def on_output(build_id: str, text: str, is_stderr: bool) -> None:
+                # Write directly to stdout/stderr (text already has newline)
+                stream = sys.stderr if is_stderr else sys.stdout
+                stream.write(text)
+                stream.flush()
+
+            queue.on_output = on_output
 
         def on_update() -> None:
             for build_id in build_ids:
@@ -168,7 +131,7 @@ def _run_build_queue(
                     )
                     reported.add(build_id)
 
-        return queue.wait_for_builds(build_ids, on_update=on_update, poll_interval=0.25)
+        return queue.wait_for_builds(build_ids, on_update=on_update, poll_interval=0.1)
 
 
 def _run_single_build() -> None:
