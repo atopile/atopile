@@ -12,8 +12,8 @@ import { BOMPanel } from './BOMPanel';
 import { PackageDetailPanel } from './PackageDetailPanel';
 import { StructurePanel } from './StructurePanel';
 import { PackagesPanel } from './PackagesPanel';
-import { PartsSearchPanel } from './PartsSearchPanel';
 import { PartsDetailPanel } from './PartsDetailPanel';
+import { PartsSearchPanel } from './PartsSearchPanel';
 import { sendAction, sendActionWithResponse } from '../api/websocket';
 import { postMessage, isVsCodeWebview } from '../api/vscodeApi';
 import { useStore } from '../store';
@@ -239,12 +239,6 @@ export function Sidebar() {
     setSelectedPart(null);
   }, []);
 
-  const handleOpenPartDetail = useCallback((part: SelectedPart) => {
-    setSelectedPackage(null);
-    action('clearPackageDetails');
-    setSelectedPart(part);
-  }, []);
-
   const handlePackageInstall = useCallback(async (version?: string) => {
     if (!selectedPackage) return;
     const projectRoot = selectedProjectRoot || sidebarProjects?.[0]?.root;
@@ -397,6 +391,13 @@ export function Sidebar() {
               {isLoadingPackages && <span className="tab-loading" />}
             </button>
             <button
+              className={`tab-button ${activeTab === 'parts' ? 'active' : ''}`}
+              onClick={() => setActiveTab('parts')}
+              title="Parts"
+            >
+              Parts
+            </button>
+            <button
               className={`tab-button ${activeTab === 'stdlib' ? 'active' : ''}`}
               onClick={() => setActiveTab('stdlib')}
               title="Standard Library"
@@ -438,6 +439,12 @@ export function Sidebar() {
                 selectedProjectRoot={selectedProjectRoot}
                 installError={installError}
                 onOpenPackageDetail={handlers.handleOpenPackageDetail}
+              />
+            )}
+            {activeTab === 'parts' && (
+              <PartsSearchPanel
+                selectedProjectRoot={selectedProjectRoot}
+                onOpenPartDetail={handlers.handleOpenPartDetail}
               />
             )}
             {activeTab === 'stdlib' && (

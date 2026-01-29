@@ -65,6 +65,11 @@ export function useSidebarHandlers({
     action('cancelBuild', { buildId: build_id });
   };
 
+  const handleOpenPartDetail = (part: SelectedPart) => {
+    setSelectedPart(part);
+    setSelectedPackage(null);
+  };
+
   const handleOpenPackageDetail = async (pkg: SelectedPackage) => {
     setSelectedPackage(pkg);
     setSelectedPart(null);
@@ -258,6 +263,7 @@ export function useSidebarHandlers({
     handleBuild,
     handleCancelBuild,
     handleCancelQueuedBuild,
+    handleOpenPartDetail,
     handleOpenPackageDetail,
     handlePackageInstall,
     handleCreateProject,
