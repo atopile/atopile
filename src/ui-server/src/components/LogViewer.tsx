@@ -4,7 +4,7 @@
  * Always streams; automatically restarts when filters change.
  */
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useStore } from '../store';
 import { sendAction } from '../api/websocket';
 import {
@@ -21,6 +21,8 @@ import {
   LogDisplay,
   ChevronDown,
   getStoredSetting,
+  isValidRegex,
+  SearchOptions,
 } from './log-viewer';
 import './LogViewer.css';
 
@@ -58,6 +60,10 @@ export function LogViewer() {
   const [audience, setAudience] = useState<Audience>('developer');
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
+  const [searchRegex, setSearchRegex] = useState(false);
+  const [sourceRegex, setSourceRegex] = useState(false);
+  const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
+  const [sourceCaseSensitive, setSourceCaseSensitive] = useState(false);
 
   // Build log specific parameters - buildId lives in the shared store
   const buildId = useStore((state) => state.logViewerBuildId) ?? '';
@@ -215,6 +221,21 @@ export function LogViewer() {
   const handleAutoScrollChange = useCallback((value: boolean) => {
     setAutoScroll(value);
   }, []);
+
+  // Search options for regex support
+  const searchOptions: SearchOptions = useMemo(() => ({
+    isRegex: searchRegex,
+    caseSensitive: searchCaseSensitive,
+  }), [searchRegex, searchCaseSensitive]);
+
+  const sourceOptions: SearchOptions = useMemo(() => ({
+    isRegex: sourceRegex,
+    caseSensitive: sourceCaseSensitive,
+  }), [sourceRegex, sourceCaseSensitive]);
+
+  // Validate regex patterns
+  const searchRegexError = searchRegex ? isValidRegex(search).error : undefined;
+  const sourceRegexError = sourceRegex ? isValidRegex(sourceFilter).error : undefined;
 
   return (
     <div className="lv-container">
@@ -389,22 +410,56 @@ export function LogViewer() {
           >
             {sourceMode === 'source' ? 'Src' : 'Log'}
           </button>
-          <input
-            type="text"
-            value={sourceFilter}
-            onChange={(e) => setSourceFilter(e.target.value)}
-            placeholder={sourceMode === 'source' ? 'file:line' : 'logger'}
-            className="lv-col-search"
-          />
+          <div className={`lv-search-wrapper ${sourceRegexError ? 'lv-search-error' : ''}`}>
+            <input
+              type="text"
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value)}
+              placeholder={sourceMode === 'source' ? 'file:line' : 'logger'}
+              className="lv-col-search"
+              title={sourceRegexError || ''}
+            />
+            <button
+              className={`lv-search-toggle ${sourceCaseSensitive ? 'active' : ''}`}
+              onClick={() => setSourceCaseSensitive(!sourceCaseSensitive)}
+              title={sourceCaseSensitive ? 'Case sensitive' : 'Case insensitive'}
+            >
+              Aa
+            </button>
+            <button
+              className={`lv-search-toggle lv-search-toggle-last ${sourceRegex ? 'active' : ''}`}
+              onClick={() => setSourceRegex(!sourceRegex)}
+              title={sourceRegex ? 'Regex enabled' : 'Enable regex'}
+            >
+              .*
+            </button>
+          </div>
         </div>
         <div className="lv-col-header lv-col-message">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Message"
-            className="lv-col-search lv-col-search-message"
-          />
+          <div className={`lv-search-wrapper lv-search-wrapper-message ${searchRegexError ? 'lv-search-error' : ''}`}>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Message"
+              className="lv-col-search lv-col-search-message"
+              title={searchRegexError || ''}
+            />
+            <button
+              className={`lv-search-toggle ${searchCaseSensitive ? 'active' : ''}`}
+              onClick={() => setSearchCaseSensitive(!searchCaseSensitive)}
+              title={searchCaseSensitive ? 'Case sensitive' : 'Case insensitive'}
+            >
+              Aa
+            </button>
+            <button
+              className={`lv-search-toggle lv-search-toggle-last ${searchRegex ? 'active' : ''}`}
+              onClick={() => setSearchRegex(!searchRegex)}
+              title={searchRegex ? 'Regex enabled' : 'Enable regex'}
+            >
+              .*
+            </button>
+          </div>
         </div>
       </div>
 
@@ -413,6 +468,8 @@ export function LogViewer() {
         logs={logs}
         search={search}
         sourceFilter={sourceFilter}
+        searchOptions={searchOptions}
+        sourceOptions={sourceOptions}
         levelFull={levelFull}
         timeMode={timeMode}
         sourceMode={sourceMode}

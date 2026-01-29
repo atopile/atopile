@@ -5,6 +5,11 @@
 import AnsiToHtml from 'ansi-to-html';
 import { SOURCE_COLORS, LogEntry, TreeNode, LogTreeGroup, TimeMode } from './logTypes';
 import type { StructuredTraceback } from '../StackInspector';
+import { highlightMatches, createSearchMatcher, SearchOptions } from '../../utils/searchUtils';
+
+// Re-export search utilities for convenience
+export { isValidRegex } from '../../utils/searchUtils';
+export type { SearchOptions } from '../../utils/searchUtils';
 
 // ANSI to HTML converter
 export const ansiConverter = new AnsiToHtml({
@@ -25,11 +30,12 @@ export function hashStringToColor(str: string): string {
 }
 
 // Highlight search matches in text
-export function highlightText(text: string, search: string): string {
-  if (!search.trim()) return text;
-  const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(`(${escaped})`, 'gi');
-  return text.replace(regex, '<mark class="lv-highlight">$1</mark>');
+export function highlightText(
+  text: string,
+  search: string,
+  searchOptions: SearchOptions = { isRegex: false }
+): string {
+  return highlightMatches(text, search, searchOptions);
 }
 
 // Detect separator lines: messages with >5 consecutive '-' or '=' characters
@@ -202,19 +208,24 @@ export function groupLogsIntoTrees(logs: LogEntry[]): LogTreeGroup[] {
 export function filterLogs(
   logs: LogEntry[],
   search: string,
-  sourceFilter: string
+  sourceFilter: string,
+  searchOptions: SearchOptions = { isRegex: false },
+  sourceOptions: SearchOptions = { isRegex: false }
 ): LogEntry[] {
+  const messageMatcher = createSearchMatcher(search, searchOptions);
+  const sourceMatcher = createSearchMatcher(sourceFilter, sourceOptions);
+
   return logs.filter(log => {
     // Message search
-    if (search.trim() && !log.message.toLowerCase().includes(search.toLowerCase())) {
+    if (search.trim() && !messageMatcher(log.message).matches) {
       return false;
     }
     // Source/Logger filter - searches both regardless of display mode
     if (sourceFilter.trim()) {
       const sourceStr = log.source_file ? `${log.source_file}:${log.source_line || ''}` : '';
       const loggerStr = log.logger_name || '';
-      const combined = `${sourceStr} ${loggerStr}`.toLowerCase();
-      if (!combined.includes(sourceFilter.toLowerCase())) {
+      const combined = `${sourceStr} ${loggerStr}`;
+      if (!sourceMatcher(combined).matches) {
         return false;
       }
     }
