@@ -109,12 +109,12 @@ def _run_build_queue(
                     build.status in (BuildStatus.BUILDING, *TERMINAL_STATUSES)
                     and build_id not in started
                 ):
-                    printer.build_started(build_id, display_name)
+                    printer.build_started(build_id, display_name, total=build.total_stages)
                     started.add(build_id)
 
                 # Stage updates
                 if build.stages:
-                    printer.stage_update(build_id, build.stages)
+                    printer.stage_update(build_id, build.stages, build.total_stages)
 
                 # Build completed
                 if build.status in TERMINAL_STATUSES and build_id not in reported:
@@ -126,7 +126,17 @@ def _run_build_queue(
                     )
                     reported.add(build_id)
 
-        return queue.wait_for_builds(build_ids, on_update=on_update, poll_interval=0.1)
+        results = queue.wait_for_builds(build_ids, on_update=on_update, poll_interval=0.1)
+
+        # Print build summary boxes after all builds complete
+        completed_builds = [
+            queue.find_build(build_id)
+            for build_id in build_ids
+            if queue.find_build(build_id)
+        ]
+        printer.print_summary(completed_builds)
+
+        return results
 
 
 def _run_single_build() -> None:

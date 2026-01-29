@@ -21,11 +21,11 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 import rich
-from rich.console import Console, ConsoleOptions, ConsoleRenderable
+from rich.console import Console, ConsoleRenderable
 from rich.highlighter import RegexHighlighter, ReprHighlighter
-from rich.logging import RichHandler
 from rich.markdown import Markdown
 from rich.padding import Padding
+from rich.panel import Panel
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -36,15 +36,12 @@ from rich.progress import (
     TextColumn,
     TimeElapsedColumn,
 )
-from rich.syntax import Syntax
 from rich.table import Column, Table
 from rich.text import Text
 from rich.theme import Theme
-from rich.traceback import Traceback
-
-from faebryk.libs.util import ConfigFlag, ConfigFlagInt
 
 from atopile.dataclasses import BuildStatus
+from faebryk.libs.util import ConfigFlag, ConfigFlagInt
 
 if TYPE_CHECKING:
     from rich.console import RenderableType
@@ -65,14 +62,22 @@ LEVEL_STYLES: dict[str, str] = {
     "CRITICAL": "red bold reverse",
 }
 
-# Abbreviated level names with Rich markup (for compact displays)
-LEVEL_ABBREV: dict[str, str] = {
-    "DEBUG": f"[{LEVEL_STYLES['DEBUG']}]D[/{LEVEL_STYLES['DEBUG']}]",
-    "INFO": f"[{LEVEL_STYLES['INFO']}]I[/{LEVEL_STYLES['INFO']}]",
-    "WARNING": f"[{LEVEL_STYLES['WARNING']}]W[/{LEVEL_STYLES['WARNING']}]",
-    "ERROR": f"[{LEVEL_STYLES['ERROR']}]E[/{LEVEL_STYLES['ERROR']}]",
-    "CRITICAL": f"[{LEVEL_STYLES['CRITICAL']}]C[/{LEVEL_STYLES['CRITICAL']}]",
+# Single character level indicators
+LEVEL_CHAR: dict[str, str] = {
+    "DEBUG": "D",
+    "INFO": "I",
+    "ALERT": "A",
+    "WARNING": "W",
+    "ERROR": "E",
+    "CRITICAL": "C",
 }
+
+
+def level_char_styled(level: str) -> str:
+    """Get single-character level indicator with Rich markup styling."""
+    char = LEVEL_CHAR.get(level, level[0] if level else "?")
+    style = LEVEL_STYLES.get(level, "white")
+    return f"[{style}]{char}[/{style}]"
 
 # Canonical status icons and colors for build/stage status
 STATUS_ICONS: dict[str, str] = {
@@ -329,10 +334,6 @@ class NestedConsole(Console):
         return self.export_text(styles=True)
 
 
-# Legacy alias - use LEVEL_ABBREV instead
-_LEVEL_ABBREV = LEVEL_ABBREV
-
-
 class RelativeTimeFormatter(logging.Formatter):
     """Custom formatter with ms-since-start timestamp and abbreviated colored levels."""
 
@@ -346,7 +347,7 @@ class RelativeTimeFormatter(logging.Formatter):
         record.elapsed_ms = f"{elapsed_s:>3.2f}s".rjust(7)
 
         # Replace level name with abbreviated colored version
-        record.level_abbrev = _LEVEL_ABBREV.get(record.levelname, record.levelname)
+        record.level_abbrev = level_char_styled(record.levelname)
 
         INDENT = " " * (FMT_HEADER_LEN + 1)
         message = record.getMessage()
@@ -466,6 +467,31 @@ def print_subprocess_output(
             console.print(output, highlight=False)
 
 
+def print_bar(
+    text: str,
+    style: str = "cyan",
+    console_: "Console | None" = None,
+    char: str = "═",
+) -> None:
+    """
+    Print a full-width colored bar with left-justified text.
+
+    Example: ══ BUILD START: default ══════════════════════════════
+    """
+    _console = console_ or console
+    width = _console.width or 80
+
+    # Left justified: short prefix, text, then fill
+    prefix = f"{char * 2} "
+    suffix = f" {char * 2}"
+    text_part = f"{prefix}{text}{suffix}"
+    remaining = width - len(text_part)
+    fill = char * max(0, remaining)
+
+    bar = f"{text_part}{fill}"
+    _console.print(f"[{style}]{bar}[/{style}]")
+
+
 def status_rich_icon(status: BuildStatus | str) -> str:
     """Get Rich-formatted icon for status (for terminal display)."""
     icon, color = get_status_style(status)
@@ -517,11 +543,12 @@ class _BuildState:
 
     display_name: str
     stages: list[dict] = field(default_factory=list)
-    total_stages: int = 15  # Default estimate
+    total_stages: int = 10  # Initial estimate until subprocess reports actual count
     status: "BuildStatus" = field(default_factory=lambda: BuildStatus.QUEUED)
     started: bool = False
     reported: bool = False
     last_printed_stage: int = 0  # for verbose mode
+    start_time: float = 0.0  # for total build time
 
 
 class BuildPrinter:
@@ -545,8 +572,8 @@ class BuildPrinter:
             printer.build_completed(build_id, BuildStatus.SUCCESS)
     """
 
-    # Estimated stage count for progress display
-    DEFAULT_STAGE_COUNT = 15
+    # Estimated stage count for progress display (will adjust dynamically)
+    DEFAULT_STAGE_COUNT = 10
     _VERBOSE_INDENT = 10
 
     def __init__(self, verbose: bool = False, console_: "Console | None" = None):
@@ -585,13 +612,13 @@ class BuildPrinter:
             total_stages=total_stages,
             status=BuildStatus.BUILDING,
             started=True,
+            start_time=time.time(),
         )
 
         if self.verbose:
-            # Print header for verbose mode
-            self._console.print(
-                f"[bold cyan]▶ Building {display_name} (build_id={build_id})[/bold cyan]"
-            )
+            # Print header bar for verbose mode
+            id_suffix = f" [{build_id}]" if build_id else ""
+            print_bar(f"BUILD START: {display_name}{id_suffix}", style="bold cyan", console_=self._console)
         else:
             # Add task to progress display
             if self._progress:
@@ -602,7 +629,9 @@ class BuildPrinter:
                 )
                 self._tasks[build_id] = task_id
 
-    def stage_update(self, build_id: str, stages: list[dict]) -> None:
+    def stage_update(
+        self, build_id: str, stages: list[dict], total_stages: int | None = None
+    ) -> None:
         """Called when stages change - updates progress or prints new stages."""
         state = self._builds.get(build_id)
         if not state:
@@ -610,18 +639,20 @@ class BuildPrinter:
 
         state.stages = stages
 
+        # Update total if subprocess reported actual count
+        if total_stages is not None and total_stages > 0:
+            state.total_stages = total_stages
+
         # Terminal statuses indicate a stage is done
         terminal_statuses = {"success", "warning", "failed", "error", "cancelled", "skipped"}
 
         if self.verbose:
-            # Print only completed stages that haven't been printed yet
-            for i, stage in enumerate(stages):
-                if i < state.last_printed_stage:
-                    continue
-                status = stage.get("status", "").lower()
-                if status in terminal_statuses:
-                    self._print_verbose_stage(stage)
-                    state.last_printed_stage = i + 1
+            # In verbose mode, the subprocess prints stage bars directly
+            # (so they appear in correct order relative to logs)
+            # We just track completion count here
+            state.last_printed_stage = sum(
+                1 for s in stages if s.get("status", "").lower() in terminal_statuses
+            )
         else:
             # Count completed stages for progress bar
             completed_count = sum(
@@ -637,12 +668,12 @@ class BuildPrinter:
                     if status not in terminal_statuses:
                         current_stage = stage.get("name", "")
                         break
-                # Update total if we've exceeded our estimate
-                new_total = max(state.total_stages, completed_count + 1)
+                # Use actual total if known, otherwise estimate
+                display_total = state.total_stages
                 self._progress.update(
                     task_id,
                     completed=completed_count,
-                    total=new_total,
+                    total=display_total,
                     stage=f"[dim]{current_stage}[/dim]" if current_stage else "",
                 )
 
@@ -661,17 +692,15 @@ class BuildPrinter:
         state.status = status
         state.reported = True
         display_name = state.display_name
+        elapsed = time.time() - state.start_time if state.start_time else 0.0
 
         if self.verbose:
-            self._print_verbose_result(display_name, status, warnings, errors)
+            self._print_verbose_result(display_name, status, warnings, errors, elapsed)
         else:
-            # Remove from progress display
+            # Remove from progress display (summary box will show final status)
             if self._progress and build_id in self._tasks:
                 task_id = self._tasks[build_id]
                 self._progress.update(task_id, visible=False)
-
-            # Print final status line
-            self._print_compact_result(display_name, status, warnings)
 
     def get_display_name(self, build_id: str) -> str:
         """Get display name for a build, falling back to truncated build_id."""
@@ -679,7 +708,7 @@ class BuildPrinter:
         return state.display_name if state else build_id[:8]
 
     def _print_verbose_stage(self, stage: dict) -> None:
-        """Print a single verbose stage line."""
+        """Print a stage completion bar."""
         from atopile.dataclasses import StageStatus
 
         status_raw = stage.get("status", StageStatus.SUCCESS.value)
@@ -689,15 +718,12 @@ class BuildPrinter:
             status = StageStatus.SUCCESS
 
         elapsed = stage.get("elapsedSeconds", 0.0)
+        name = stage.get("name", "")
+        icon, color = get_status_style(status)
 
-        formatted = format_stage_status(
-            status=status,
-            description=stage.get("name", ""),
-            duration=elapsed,
-            errors=stage.get("errors", 0),
-            warnings=stage.get("warnings", 0),
-        )
-        self._console.print(f"{'':>{self._VERBOSE_INDENT}}{formatted}")
+        # Format: ═══════════ ✓ Stage Name [0.5s] ═══════════
+        text = f"{icon} {name} [{elapsed:.1f}s]"
+        print_bar(text, style=color, console_=self._console)
 
     def _print_verbose_result(
         self,
@@ -705,18 +731,23 @@ class BuildPrinter:
         status: "BuildStatus",
         warnings: int,
         errors: int,
+        elapsed: float = 0.0,
     ) -> None:
-        """Print verbose mode completion message."""
+        """Print verbose mode completion bar."""
+        icon, color = get_status_style(status)
+        time_str = f"[{elapsed:.1f}s]"
+
         if status in (BuildStatus.SUCCESS, BuildStatus.WARNING):
             if warnings > 0:
-                self._console.print(
-                    f"[yellow]⚠ {display_name} completed with "
-                    f"{warnings} warning(s)[/yellow]"
-                )
+                text = f"{icon} BUILD COMPLETE: {display_name} {time_str} ({warnings} warnings)"
             else:
-                self._console.print(f"[green]✓ {display_name} completed[/green]")
+                text = f"{icon} BUILD COMPLETE: {display_name} {time_str}"
         else:
-            self._console.print(f"[red]✗ {display_name} failed[/red]")
+            text = f"{icon} BUILD FAILED: {display_name} {time_str}"
+            if errors > 0:
+                text += f" ({errors} errors)"
+
+        print_bar(text, style=f"bold {color}", console_=self._console)
 
     def _print_compact_result(
         self,
@@ -730,3 +761,131 @@ class BuildPrinter:
         elif status == BuildStatus.WARNING or warnings > 0:
             self._console.print(f"[yellow bold]⚠ {display_name}[/yellow bold]")
         # Success is silent in compact mode
+
+    def print_summary(self, builds: list["Build"]) -> None:
+        """
+        Print a summary of all completed builds in nice boxes.
+
+        Fetches warnings/errors/tracebacks from the database.
+        """
+        from atopile.dataclasses import Build
+
+        if not builds:
+            return
+
+        self._console.print()  # Blank line before summary
+
+        for build in builds:
+            self._print_build_box(build)
+
+    def _print_build_box(self, build: "Build") -> None:
+        """Print a single build's summary in a box with logs from database."""
+        from rich.console import Group
+
+        from atopile.dataclasses import Build
+        from atopile.model.sqlite import Logs
+
+        icon, color = get_status_style(build.status)
+        display_name = build.display_name or build.name
+        build_id = build.build_id or ""
+
+        # Fetch errors and warnings from the database
+        errors_list: list[dict] = []
+        warnings_list: list[dict] = []
+        if build_id:
+            errors_list, _ = Logs.fetch_chunk(
+                build_id, levels=["ERROR", "CRITICAL"], count=50
+            )
+            warnings_list, _ = Logs.fetch_chunk(
+                build_id, levels=["WARNING"], count=50
+            )
+
+        # Build content as a list of renderables
+        renderables: list = []
+
+        # Header line with build info
+        header = Text()
+        header.append(f"{icon} ", style=color)
+        header.append(f"{display_name}", style=f"bold {color}")
+        if build_id:
+            header.append(f"  [{build_id}]", style="dim")
+        renderables.append(header)
+        renderables.append(Text())  # Blank line
+
+        # Add stages with their times
+        renderables.append(Text("Stages:", style="bold"))
+        terminal_statuses = {"success", "warning", "failed", "error", "cancelled", "skipped"}
+        total_stage_time = 0.0
+        for stage in build.stages:
+            status_str = stage.get("status", "").lower()
+            if status_str not in terminal_statuses:
+                continue  # Skip running/pending stages
+
+            stage_name = stage.get("name", stage.get("displayName", ""))
+            elapsed = stage.get("elapsedSeconds", 0.0)
+            total_stage_time += elapsed
+            stage_icon, stage_color = get_status_style(status_str)
+
+            line = Text()
+            line.append(f"  {stage_icon} ", style=stage_color)
+            line.append(f"{stage_name}", style="")
+            line.append(f" [{elapsed:.2f}s]", style="dim")
+            renderables.append(line)
+
+        # Add errors section with proper traceback rendering
+        if errors_list:
+            renderables.append(Text())
+            renderables.append(Text(f"Errors ({len(errors_list)}):", style="bold red"))
+            for err in errors_list[:5]:  # Limit to first 5
+                # Render ato_traceback with ANSI codes preserved (includes the message)
+                ato_tb = err.get("ato_traceback")
+                if ato_tb:
+                    # Parse ANSI text and indent each line
+                    for tb_line in ato_tb.strip().split("\n"):
+                        if tb_line.strip():
+                            indented_line = Text("  ")
+                            indented_line.append_text(Text.from_ansi(tb_line))
+                            renderables.append(indented_line)
+                    renderables.append(Text())  # Blank line between errors
+                else:
+                    # No traceback, just show the message
+                    msg = err.get("message", "")
+                    renderables.append(Text(f"  • {msg}", style="red"))
+
+            if len(errors_list) > 5:
+                renderables.append(Text(f"  ... and {len(errors_list) - 5} more errors", style="dim red"))
+
+        # Add warnings section
+        if warnings_list:
+            renderables.append(Text())
+            renderables.append(Text(f"Warnings ({len(warnings_list)}):", style="bold yellow"))
+            for warn in warnings_list[:5]:  # Limit to first 5
+                msg = warn.get("message", "")
+                renderables.append(Text(f"  • {msg}", style="yellow"))
+            if len(warnings_list) > 5:
+                renderables.append(Text(f"  ... and {len(warnings_list) - 5} more warnings", style="dim yellow"))
+
+        # Add error message from build if present (fallback)
+        if build.error and not errors_list:
+            renderables.append(Text())
+            renderables.append(Text("Error:", style="bold red"))
+            renderables.append(Text(f"  {build.error}", style="red"))
+
+        # Calculate total elapsed time
+        total_elapsed = build.elapsed_seconds or total_stage_time
+
+        # Footer with total time
+        renderables.append(Text())
+        renderables.append(Text(f"Total: {total_elapsed:.2f}s", style="dim"))
+
+        # Create panel with "Build Summary" title
+        panel = Panel(
+            Group(*renderables),
+            title="[bold]Build Summary[/bold]",
+            title_align="left",
+            border_style=color,
+            padding=(0, 1),
+            expand=False,  # Fit to content width
+        )
+        self._console.print(panel)
+        self._console.print()  # Space between builds

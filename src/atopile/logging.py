@@ -25,6 +25,12 @@ from pathlib import Path
 from types import ModuleType, TracebackType
 from typing import Any
 
+from rich.console import Console, ConsoleRenderable
+from rich.logging import RichHandler
+from rich.markdown import Markdown
+from rich.text import Text
+from rich.traceback import Traceback
+
 import atopile
 import faebryk
 from atopile.dataclasses import (
@@ -33,13 +39,8 @@ from atopile.dataclasses import (
     TestLogRow,
 )
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
-from rich.console import Console, ConsoleRenderable
-from rich.logging import RichHandler
-from rich.markdown import Markdown
-from rich.text import Text
-from rich.traceback import Traceback
-
 from atopile.logging_utils import (
+    LEVEL_CHAR,
     LEVEL_STYLES,
     PLOG,
     console,
@@ -945,37 +946,43 @@ class LogHandler(RichHandler):
 
         from datetime import datetime
 
-        # Check for subprocess source identifier
-        log_source = os.environ.get("ATO_LOG_SOURCE")
+        from rich.table import Table
 
-        # Build styled prefix: [source] time level logger_name
+        # Check for subprocess source identifier (use short form)
+        log_source = os.environ.get("ATO_LOG_SOURCE")
+        source_id = os.environ.get("ATO_BUILD_ID", "")[:4] if log_source else ""
+
+        # Build styled prefix: [id] time L logger_name
         timestamp = datetime.fromtimestamp(record.created).strftime("%H:%M:%S")
         level_name = record.levelname
+        level_char = LEVEL_CHAR.get(level_name, level_name[0])
         logger_name = record.name
 
-        # Truncate/pad logger name to fixed width (25 chars) for alignment
-        if len(logger_name) > 25:
-            logger_name = "…" + logger_name[-24:]
-        logger_name = f"{logger_name:<25}"
+        # Truncate/pad logger name to fixed width (18 chars) for alignment
+        if len(logger_name) > 18:
+            logger_name = "…" + logger_name[-17:]
+        logger_name = f"{logger_name:<18}"
 
         # Level-specific colors (from shared constants)
         level_color = LEVEL_STYLES.get(level_name, "white")
 
-        # Use dim styling which adapts to light/dark terminals
+        # Build prefix as Text
         prefix = Text()
-        # Add source prefix if running as subprocess
-        if log_source:
-            prefix.append(f"[{log_source}] ", style="dim")
-        prefix.append(f"{timestamp} ", style="dim")
-        prefix.append(f"{level_name:<8}", style=level_color)
-        prefix.append(f" {logger_name:<25} ", style="dim")
-        prefix.append(" ", style="default")  # Space separator instead of divider
+        if source_id:
+            prefix.append(f"[{source_id}]  ", style="dim")
+        prefix.append(f"{timestamp}  ", style="dim")
+        prefix.append(level_char, style=f"{level_color} bold")
+        prefix.append(f"  {logger_name}  ", style="dim")
 
-        # Combine with message
+        # Get message renderable
         msg_renderable = self._render_message(record, message)
-        if isinstance(msg_renderable, Text):
-            return prefix + msg_renderable
-        return msg_renderable
+
+        # Use a borderless table so prefix stays fixed and message wraps nicely
+        table = Table.grid(padding=0)
+        table.add_column(no_wrap=True)  # Prefix column - no wrapping
+        table.add_column()  # Message column - wraps naturally
+        table.add_row(prefix, msg_renderable)
+        return table
 
     def _write_to_db(self, record: logging.LogRecord) -> None:
         if _is_serving():

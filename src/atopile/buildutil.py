@@ -104,28 +104,62 @@ def _check_kicad_cli() -> bool:
 
 def run_build_targets(ctx: BuildStepContext) -> None:
     """Run build targets in dependency order."""
+    import os
+
     from atopile import build_steps
 
     targets = {build_steps.generate_default.name} | set(config.build.targets) - set(
         config.build.exclude_targets
     )
 
+    # Count targets from DAG without materializing the generator
+    # (the generator yields based on succeeded status which we can't check upfront)
+    subgraph = build_steps.muster.dependency_dag.get_subgraph(
+        selector_func=lambda name: name in targets
+        or any(
+            alias in targets
+            for alias in build_steps.muster.targets.get(name, build_steps.MusterTarget(name="", aliases=[], func=lambda _: None)).aliases
+        )
+    )
+    all_target_names = set(subgraph.topologically_sorted())
+
+    # Count non-virtual targets that will actually run
+    total_stages = 0
+    for name in all_target_names:
+        target = build_steps.muster.targets.get(name)
+        if not target or target.virtual:
+            continue
+        if target.name in config.build.exclude_targets:
+            continue
+        if build_steps.Tags.REQUIRES_KICAD in target.tags and not _check_kicad_cli():
+            if target.implicit:
+                continue
+        total_stages += 1
+
+    # Write total stage count to database so parent can show accurate progress
+    build_id = os.environ.get("ATO_BUILD_ID") or ctx.build_id
+    if build_id:
+        from atopile.dataclasses import Build, BuildStatus
+        from atopile.model.sqlite import BuildHistory
+
+        # Just update total_stages - set() will merge with existing record
+        BuildHistory.set(
+            Build(
+                build_id=build_id,
+                name=config.build.name,
+                display_name=config.build.name,
+                status=BuildStatus.BUILDING,
+                total_stages=total_stages,
+            )
+        )
+
+    # Iterate generator properly - it yields targets only when their deps have succeeded
     with accumulate() as accumulator:
         for target in build_steps.muster.select(targets):
-            if target.name in config.build.exclude_targets:
-                logger.warning(f"Skipping excluded build step '{target.name}'")
-                continue
-
             if (
                 build_steps.Tags.REQUIRES_KICAD in target.tags
                 and not _check_kicad_cli()
             ):
-                if target.implicit:
-                    logger.warning(
-                        f"Skipping target '{target.name}' because kicad-cli "
-                        "was not found"
-                    )
-                    continue
                 raise UserToolNotAvailableError("kicad-cli not found")
 
             with accumulator.collect():

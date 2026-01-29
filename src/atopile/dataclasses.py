@@ -472,9 +472,8 @@ class Build(CamelModel):
 
     # Stages and logs
     stages: list[dict[str, Any]] = Field(default_factory=list)
-    # TODO: Replace this estimate once builds are defined in the graph
-    # This is the expected total number of stages for progress calculation
-    total_stages: int = 20  # Estimated total stages for progress bar
+    # Total number of stages - set by subprocess at build start
+    total_stages: Optional[int] = None
     log_dir: Optional[str] = None
     log_file: Optional[str] = None
 

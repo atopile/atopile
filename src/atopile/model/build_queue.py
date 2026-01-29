@@ -94,10 +94,8 @@ def _build_subprocess_env(build: Build) -> dict[str, str]:
     env["ATO_BUILD_WORKER"] = "1"
 
     # Force Rich to output ANSI colors even when piped (for verbose mode)
-    # Also set wide terminal so Rich doesn't wrap - let parent terminal handle it
     if build.verbose:
         env["FORCE_COLOR"] = "1"
-        env["COLUMNS"] = "500"
         # Set log source for prefix in log output
         env["ATO_LOG_SOURCE"] = build.display_name or build.name or "build"
 
@@ -388,6 +386,22 @@ class BuildQueue:
                 len(self._active),
             )
 
+        # Write initial record to database immediately so find_build() works
+        BuildHistory.set(
+            Build(
+                build_id=build.build_id,
+                name=build.name,
+                display_name=build.display_name,
+                project_name=build.project_name,
+                project_root=build.project_root or "",
+                target=build.target or "default",
+                entry=build.entry,
+                status=BuildStatus.QUEUED,
+                started_at=build.started_at,
+                stages=[],
+            )
+        )
+
         self._emit_change(build.build_id, "queued")
 
         # Ensure workers are running
@@ -396,9 +410,13 @@ class BuildQueue:
         return True
 
     def find_build(self, build_id: str) -> Build | None:
-        """Find a build by ID."""
+        """Find a build by ID. Reads from database (single source of truth)."""
+        # Check if build is tracked by queue
         with self._builds_lock:
-            return self._builds.get(build_id)
+            if build_id not in self._builds:
+                return None
+        # Read live data from database
+        return BuildHistory.get(build_id)
 
     def get_all_builds(self) -> list[Build]:
         """Return all builds tracked by the queue."""
@@ -641,10 +659,7 @@ class BuildQueue:
                 self._emit_change(msg.build_id, "started")
 
             elif isinstance(msg, BuildStageMsg):
-                with self._builds_lock:
-                    build = self._builds.get(msg.build_id)
-                    if build:
-                        build.stages = msg.stages
+                # Note: stages are tracked in DB, this just triggers change notification
                 self._emit_change(msg.build_id, "stages")
 
             elif isinstance(msg, BuildCompletedMsg):
