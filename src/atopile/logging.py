@@ -827,6 +827,8 @@ class LogHandler(RichHandler):
             console=console,
             rich_tracebacks=rich_tracebacks,
             show_path=show_path,
+            show_time=False,
+            show_level=False,
             **kwargs,
         )
         self.tracebacks_suppress = list(tracebacks_suppress or ["typer"])
@@ -977,7 +979,42 @@ class LogHandler(RichHandler):
         if record.exc_info and (exc := record.exc_info[1]):
             if isinstance(exc, ConsoleRenderable) or hasattr(exc, "__rich_console__"):
                 return exc  # type: ignore
-        return self._render_message(record, message)
+
+        from datetime import datetime
+
+        # Build styled prefix: time, level, logger name with consistent background
+        timestamp = datetime.fromtimestamp(record.created).strftime("%H:%M:%S")
+        level_name = record.levelname
+        logger_name = record.name
+
+        # Truncate/pad logger name to fixed width (35 chars) for alignment
+        if len(logger_name) > 25:
+            logger_name = "…" + logger_name[-24:]
+        logger_name = f"{logger_name:<25}"
+
+        # Level-specific colors
+        level_colors = {
+            "DEBUG": "bright_black",
+            "INFO": "green",
+            "ALERT": "cyan bold",
+            "WARNING": "yellow",
+            "ERROR": "red",
+            "CRITICAL": "red bold reverse",
+        }
+        level_color = level_colors.get(level_name, "white")
+
+        # Use dim styling which adapts to light/dark terminals
+        prefix = Text()
+        prefix.append(f"{timestamp} ", style="dim")
+        prefix.append(f"{level_name:<8}", style=level_color)
+        prefix.append(f" {logger_name:<25} ", style="dim")
+        prefix.append(" ", style="default")  # Space separator instead of divider
+
+        # Combine with message
+        msg_renderable = self._render_message(record, message)
+        if isinstance(msg_renderable, Text):
+            return prefix + msg_renderable
+        return msg_renderable
 
     def _write_to_db(self, record: logging.LogRecord) -> None:
         if _is_serving():
