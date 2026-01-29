@@ -13,7 +13,7 @@ MAX_CONFLICT_RESOLUTION_ITERATIONS = 100
 
 # Pre-compiled regex for filtering unpreferred names
 _UNPREFERRED_NAMES_RE = re.compile(
-    r"^(net|\d+|0x[0-9A-Fa-f]+|part_of|output|line|unnamed\[\d+\])$"
+    r"^(net|\d+|0x[0-9A-Fa-f]+|part_of|output|line|unnamed\[\d+\]|package)$"
 )
 
 # Characters that are invalid in net names (KiCad restrictions)
@@ -527,14 +527,14 @@ def _get_parent_interface_name(processable_net: ProcessableNet) -> str | None:
     for node, _ in reversed(parents):
         if node.has_trait(fabll.is_module):
             name = node.get_name(accept_no_parent=True)
-            if name.lower() != base_name:
+            if name.lower() != base_name and filter_unpreferred_names(name):
                 return name
 
     # Priority 2: first distinct name from parents with is_interface trait
     for node, _ in reversed(parents):
         if node.has_trait(fabll.is_interface):
             name = node.get_name(accept_no_parent=True)
-            if name.lower() != base_name:
+            if name.lower() != base_name and filter_unpreferred_names(name):
                 return name
 
     return None
