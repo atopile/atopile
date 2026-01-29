@@ -301,8 +301,8 @@ export function StructurePanel({
         )}
         {state.status === 'loading' && (
           <div className="structure-loading">
-            <Loader2 size={12} className="spin" />
-            <span>Loading structure...</span>
+            <Loader2 size={24} className="spin" />
+            <span className="empty-title">Loading structure...</span>
           </div>
         )}
         {state.status === 'error' && (

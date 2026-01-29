@@ -216,16 +216,17 @@
 .packages-empty-action {
   margin-top: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-md);
-  background: var(--accent);
-  color: var(--text-on-accent);
-  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--ato-orange);
   border-radius: var(--radius-sm);
   font-family: var(--font-sans);
   font-size: var(--font-size-sm);
   cursor: pointer;
-  transition: background var(--transition-fast);
+  transition: all var(--transition-fast);
 }
 
 .packages-empty-action:hover {
-  background: var(--accent-hover);
+  background: color-mix(in srgb, var(--ato-orange) 10%, var(--bg-tertiary));
+  color: var(--ato-orange);
 }

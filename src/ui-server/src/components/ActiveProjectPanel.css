@@ -514,13 +514,65 @@
   color: var(--text-muted);
 }
 
-/* Build Controls - full-width grid with equal button widths */
+/* Build Controls - Build (2x) + MFG Data (1x) */
 .build-controls {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 2fr 1fr;
   gap: 4px;
   padding-top: var(--spacing-xs);
   border-top: 1px solid var(--border-subtle);
+}
+
+/* Global actions row - Build All (2x) and MFG Data (1x) below project selector */
+.global-actions-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 4px;
+  margin-top: var(--spacing-xs);
+}
+
+.global-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 8px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--ato-orange);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.global-action-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ato-orange) 10%, var(--bg-tertiary));
+  color: var(--ato-orange);
+}
+
+.global-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.global-action-btn svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+/* Secondary global action - not orange outlined */
+.global-action-btn.secondary {
+  border-color: var(--border-subtle);
+}
+
+.global-action-btn.secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-default);
+  color: var(--text-primary);
 }
 
 .build-outputs {
@@ -574,6 +626,7 @@
   background: color-mix(in srgb, var(--ato-orange) 10%, var(--bg-tertiary));
   color: var(--ato-orange);
 }
+
 
 .control-btn:disabled {
   opacity: 0.4;

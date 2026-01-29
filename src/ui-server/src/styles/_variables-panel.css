@@ -443,11 +443,26 @@
 }
 
 .variables-error {
-  color: var(--ctp-red);
+  color: var(--error);
 }
 
 .variables-error svg {
-  color: var(--ctp-red);
+  color: var(--error);
+  opacity: 0.6;
+}
+
+.variables-error .empty-title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--error);
+  margin-top: var(--spacing-xs);
+}
+
+.variables-error .empty-description {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  max-width: 220px;
+  line-height: 1.4;
 }
 
 .variables-error .retry-btn {

@@ -435,7 +435,7 @@ export function VariablesPanel({
         {isLoading && (
           <div className="variables-loading">
             <Loader2 size={24} className="spinner" />
-            <span>Loading variables...</span>
+            <span className="empty-title">Loading variables...</span>
           </div>
         )}
 
@@ -445,6 +445,7 @@ export function VariablesPanel({
           if (isNotFound) {
             return (
               <div className="variables-empty">
+                <Hash size={24} />
                 <span className="empty-title">No variables found</span>
                 <span className="empty-description">
                   {selectedTargetName
@@ -458,14 +459,16 @@ export function VariablesPanel({
           }
           return (
             <div className="variables-error">
-              <AlertTriangle size={16} />
-              <span>{error}</span>
+              <AlertTriangle size={24} />
+              <span className="empty-title">Error loading variables</span>
+              <span className="empty-description">{error}</span>
             </div>
           );
         })()}
 
         {!isLoading && !error && variables.length === 0 && (
           <div className="variables-empty">
+            <Hash size={24} />
             <span className="empty-title">No variables found</span>
             <span className="empty-description">
               {selectedTargetName
@@ -491,20 +494,22 @@ export function VariablesPanel({
         ))}
       </div>
 
-      {/* Status bar */}
-      <div className="variables-status">
-        {buildIdShort && (
-          <span className="build-id-badge" title={`Build: ${variablesData?.build_id}`}>
-            build {buildIdShort}
-          </span>
-        )}
-        {copiedValue && (
-          <span className="copied-toast">
-            <Check size={10} />
-            Copied: {copiedValue}
-          </span>
-        )}
-      </div>
+      {/* Status bar - only show when there's content */}
+      {(buildIdShort || copiedValue) && (
+        <div className="variables-status">
+          {buildIdShort && (
+            <span className="build-id-badge" title={`Build: ${variablesData?.build_id}`}>
+              build {buildIdShort}
+            </span>
+          )}
+          {copiedValue && (
+            <span className="copied-toast">
+              <Check size={10} />
+              Copied: {copiedValue}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }

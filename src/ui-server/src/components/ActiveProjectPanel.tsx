@@ -1224,6 +1224,39 @@ export function ActiveProjectPanel({
         )}
       </div>
 
+      {/* Global Actions Row - Build All (2x) and MFG Data (1x) */}
+      <div className="global-actions-row">
+        <button
+          className="global-action-btn"
+          onClick={() => {
+            if (!activeProject) return
+            onBuildAllTargets(activeProject.root, activeProject.name)
+          }}
+          disabled={!activeProject}
+          title={activeProject ? `Build all targets in ${activeProject.name}` : 'Select a project first'}
+        >
+          <Layers size={12} />
+          <span>Build All</span>
+        </button>
+        {onGenerateManufacturingData && (
+          <button
+            className="global-action-btn secondary"
+            onClick={() => {
+              if (!activeProject) return
+              // Generate MFG data for all targets
+              for (const target of activeProject.targets || []) {
+                onGenerateManufacturingData(activeProject.root, target.name)
+              }
+            }}
+            disabled={!activeProject || !activeProject.targets?.length}
+            title={activeProject ? `Generate manufacturing files for all targets` : 'Select a project first'}
+          >
+            <Package size={12} />
+            <span>MFG</span>
+          </button>
+        )}
+      </div>
+
       <div className="builds-section">
         <div className="builds-header">
           <span className="section-label">Builds</span>
@@ -1256,18 +1289,6 @@ export function ActiveProjectPanel({
             <Play size={12} />
             <span>Build</span>
           </button>
-          <button
-            className="control-btn"
-            onClick={() => {
-              if (!activeProject) return
-              onBuildAllTargets(activeProject.root, activeProject.name)
-            }}
-            disabled={!activeProject}
-            title={activeProject ? `Build all in ${activeProject.name}` : 'Select a project first'}
-          >
-            <Layers size={12} />
-            <span>Build All</span>
-          </button>
           {onGenerateManufacturingData && (
             <button
               className="control-btn"
@@ -1283,7 +1304,7 @@ export function ActiveProjectPanel({
               }
             >
               <Package size={12} />
-              <span>MFG Data</span>
+              <span>MFG</span>
             </button>
           )}
         </div>

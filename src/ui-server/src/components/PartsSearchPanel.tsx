@@ -375,14 +375,12 @@ export function PartsSearchPanel({
 
       {activeTab === 'project' && (
         <div className="parts-tab-content">
-          {selectedProjectRoot && installedParts.length > 0 && (
-            <PanelSearchBox
-              value={projectFilter}
-              onChange={setProjectFilter}
-              placeholder="Filter project parts..."
-              autoFocus={isExpanded && activeTab === 'project'}
-            />
-          )}
+          <PanelSearchBox
+            value={projectFilter}
+            onChange={setProjectFilter}
+            placeholder="Filter project parts..."
+            autoFocus={isExpanded && activeTab === 'project'}
+          />
           <div className="parts-results-container">
             {!selectedProjectRoot && (
               <div className="parts-empty-state">
