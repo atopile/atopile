@@ -37,7 +37,14 @@ def _asset_proxy_allowed_hosts() -> set[str]:
     if allowed:
         return allowed
     # Default allowlist for common CDN domains if not explicitly configured.
-    return {"cloudfront.net"}
+    # Includes AWS (CloudFront, S3), and atopile's own domains.
+    return {
+        "cloudfront.net",
+        "s3.amazonaws.com",
+        "s3.us-east-1.amazonaws.com",
+        "s3.us-west-2.amazonaws.com",
+        "atopileapi.com",
+    }
 
 
 def _is_host_allowed(host: str) -> bool:

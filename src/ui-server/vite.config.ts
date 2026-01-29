@@ -331,6 +331,8 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), screenshotPlugin()],
+    // Use relative base path for VS Code webviews
+    base: './',
     // Dev server settings
     server: {
       port: 5173,

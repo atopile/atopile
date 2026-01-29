@@ -7,7 +7,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import subprocess
 import sys
 import threading
 import time
@@ -25,6 +24,7 @@ from atopile.model.model_state import model_state
 from atopile.server import path_utils
 from atopile.server.client_state import client_state
 from atopile.server.connections import server_state
+from atopile.server.core import packages as core_packages
 from atopile.server.core import projects as core_projects
 from atopile.server.domains import artifacts as artifacts_domain
 from atopile.server.domains import packages as packages_domain
@@ -546,7 +546,6 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             # Build package spec with optional version
             pkg_spec = f"{package_id}@{version}" if version else package_id
-            cmd = ["ato", "add", pkg_spec]
 
             # Create a logger for this action - logs to central SQLite DB
             action_logger = BuildLogger.get(
@@ -562,14 +561,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             def run_install():
                 try:
-                    result = subprocess.run(
-                        cmd,
-                        cwd=project_root,
-                        capture_output=True,
-                        text=True,
-                        timeout=120,
-                    )
-                    if result.returncode == 0:
+                    try:
+                        core_packages.install_package_to_project(
+                            project_path, package_id, version
+                        )
                         action_logger.info(
                             f"Successfully installed {pkg_spec}",
                             audience=Log.Audience.USER,
@@ -596,13 +591,8 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                                 finalize_install(),
                                 loop,
                             )
-                    else:
-                        error_msg = (
-                            result.stderr.strip()
-                            if result.stderr
-                            else result.stdout.strip()
-                        )
-                        error_msg = error_msg[:500] if error_msg else "Unknown error"
+                    except Exception as exc:
+                        error_msg = str(exc)[:500] or "Unknown error"
                         action_logger.error(
                             f"Failed to install {pkg_spec}: {error_msg}",
                             audience=Log.Audience.USER,
@@ -660,15 +650,121 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": "Missing identifier, projectRoot, or version",
                 }
 
-            return await handle_data_action(
-                "installPackage",
-                {
-                    "packageId": package_id,
-                    "projectRoot": project_root,
-                    "version": version,
-                },
-                ctx,
+            project_path = Path(project_root)
+            if not await asyncio.to_thread(project_path.exists):
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            ato_yaml_path = project_path / "ato.yaml"
+            if not await asyncio.to_thread(ato_yaml_path.exists):
+                return {
+                    "success": False,
+                    "error": f"No ato.yaml in: {project_root}",
+                }
+
+            # Ensure dependency is direct (present in ato.yaml)
+            try:
+                data, _ = core_projects._load_ato_yaml(project_path)
+                deps = data.get("dependencies", [])
+                is_direct = False
+                if isinstance(deps, list):
+                    for dep in deps:
+                        if isinstance(dep, str):
+                            dep_id = dep.rsplit("@", 1)[0] if "@" in dep else dep
+                            if dep_id == package_id:
+                                is_direct = True
+                                break
+                        elif isinstance(dep, dict):
+                            dep_id = dep.get("identifier") or dep.get("name")
+                            if dep_id == package_id:
+                                is_direct = True
+                                break
+                elif isinstance(deps, dict):
+                    is_direct = package_id in deps
+            except Exception:
+                is_direct = False
+
+            if not is_direct:
+                return {
+                    "success": False,
+                    "error": (
+                        "Cannot change version for a transitive dependency. "
+                        "Update the direct parent dependency instead."
+                    ),
+                }
+
+            # Run remove + install sequentially in background
+            action_logger = BuildLogger.get(
+                project_path=project_root,
+                target="package-version",
+                stage="install",
             )
+            action_logger.info(
+                f"Changing {package_id} to {version}...",
+                audience=Log.Audience.USER,
+            )
+
+            def run_change():
+                try:
+                    core_packages.remove_package_from_project(project_path, package_id)
+                    core_packages.install_package_to_project(
+                        project_path, package_id, version
+                    )
+                    action_logger.info(
+                        f"Successfully installed {package_id}@{version}",
+                        audience=Log.Audience.USER,
+                    )
+                    loop = event_bus._event_loop
+
+                    async def finalize_change() -> None:
+                        from atopile.server.module_introspection import (
+                            clear_module_cache,
+                        )
+
+                        clear_module_cache()
+                        await packages_domain.refresh_packages_state(
+                            scan_path=project_path
+                        )
+                        await server_state.emit_event(
+                            "project_dependencies_changed",
+                            {"project_root": project_root},
+                        )
+
+                    if loop and loop.is_running():
+                        asyncio.run_coroutine_threadsafe(finalize_change(), loop)
+                except Exception as exc:
+                    error_msg = str(exc)[:500] or "Unknown error"
+                    action_logger.error(
+                        f"Failed to change {package_id} to {version}: {error_msg}",
+                        audience=Log.Audience.USER,
+                    )
+                    loop = event_bus._event_loop
+                    if loop and loop.is_running():
+                        error_detail = (
+                            f"Failed to change {package_id} to {version}: {error_msg}"
+                        )
+                        asyncio.run_coroutine_threadsafe(
+                            server_state.emit_event(
+                                "packages_changed",
+                                {
+                                    "error": error_detail,
+                                    "package_id": package_id,
+                                },
+                            ),
+                            loop,
+                        )
+                finally:
+                    action_logger.flush()
+
+            threading.Thread(target=run_change, daemon=True).start()
+
+            return {
+                "success": True,
+                "message": f"Changing {package_id} to {version}...",
+                "build_id": action_logger.build_id,
+            }
 
         if action == "removePackage":
             log.info("removePackage action handler started")
@@ -707,8 +803,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 }
             log.info(f"removePackage: op_id={op_id} created")
 
-            cmd = ["ato", "remove", package_id]
-            log.info(f"removePackage: cmd={cmd}")
+            log.info(f"removePackage: package_id={package_id}")
 
             log.info("removePackage: defining run_remove function")
 
@@ -731,69 +826,36 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             def run_remove():
                 try:
-                    log.info(f"Running: {' '.join(cmd)} in {project_root}")
-                    result = subprocess.run(
-                        cmd,
-                        cwd=project_root,
-                        capture_output=True,
-                        text=True,
-                        timeout=120,
-                    )
-                    log.info(
-                        f"ato remove completed with return code: {result.returncode}"
-                    )
-                    if result.stderr:
-                        log.debug(f"ato remove stderr: {result.stderr[:500]}")
+                    log.info(f"Removing {package_id} from {project_root}")
+                    core_packages.remove_package_from_project(project_path, package_id)
+                    log.info("ato remove completed successfully")
                     with packages_domain._package_op_lock:
-                        if result.returncode == 0:
-                            log.info(f"Package {package_id} removed successfully")
-                            packages_domain._active_package_ops[op_id]["status"] = (
-                                "success"
-                            )
-                            loop = event_bus._event_loop
-                            if loop and loop.is_running():
-                                # Refresh global packages state
-                                asyncio.run_coroutine_threadsafe(
-                                    packages_domain.refresh_packages_state(), loop
-                                )
-                                # Refresh project-specific dependencies
-                                asyncio.run_coroutine_threadsafe(
-                                    refresh_deps_after_remove(), loop
-                                )
-                            else:
-                                log.warning("Event loop not available to refresh state")
-                        else:
-                            log.error(f"ato remove failed: {result.stderr[:500]}")
-                            packages_domain._active_package_ops[op_id]["status"] = (
-                                "failed"
-                            )
-                            packages_domain._active_package_ops[op_id]["error"] = (
-                                result.stderr[:500]
-                            )
-                            loop = event_bus._event_loop
-                            if loop and loop.is_running():
-                                asyncio.run_coroutine_threadsafe(
-                                    server_state.emit_event(
-                                        "packages_changed",
-                                        {
-                                            "error": result.stderr[:500],
-                                            "package_id": package_id,
-                                        },
-                                    ),
-                                    loop,
-                                )
+                        packages_domain._active_package_ops[op_id]["status"] = "success"
+                    loop = event_bus._event_loop
+                    if loop and loop.is_running():
+                        # Refresh global packages state
+                        asyncio.run_coroutine_threadsafe(
+                            packages_domain.refresh_packages_state(), loop
+                        )
+                        # Refresh project-specific dependencies
+                        asyncio.run_coroutine_threadsafe(
+                            refresh_deps_after_remove(), loop
+                        )
+                    else:
+                        log.warning("Event loop not available to refresh state")
                 except Exception as exc:
-                    log.exception(f"Exception in run_remove: {exc}")
+                    error_msg = str(exc)[:500] or "Unknown error"
+                    log.exception(f"Exception in run_remove: {error_msg}")
                     with packages_domain._package_op_lock:
                         packages_domain._active_package_ops[op_id]["status"] = "failed"
-                        packages_domain._active_package_ops[op_id]["error"] = str(exc)
+                        packages_domain._active_package_ops[op_id]["error"] = error_msg
                     loop = event_bus._event_loop
                     if loop and loop.is_running():
                         asyncio.run_coroutine_threadsafe(
                             server_state.emit_event(
                                 "packages_changed",
                                 {
-                                    "error": str(exc),
+                                    "error": error_msg,
                                     "package_id": package_id,
                                 },
                             ),

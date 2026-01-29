@@ -42,6 +42,19 @@ vi.mock('../components/PackageDetailPanel', () => ({
   )),
 }));
 
+vi.mock('../components/PartsSearchPanel', () => ({
+  PartsSearchPanel: vi.fn(() => <div data-testid="parts-panel">PartsSearchPanel</div>),
+}));
+
+vi.mock('../components/PartsDetailPanel', () => ({
+  PartsDetailPanel: vi.fn(({ onClose }) => (
+    <div data-testid="parts-detail-panel">
+      PartsDetailPanel
+      <button onClick={onClose} data-testid="close-part-detail">Close</button>
+    </div>
+  )),
+}));
+
 vi.mock('../api/websocket', () => ({
   sendAction: vi.fn(),
   connect: vi.fn(),
@@ -53,6 +66,13 @@ const mockApi = {
   projects: { list: vi.fn() },
   builds: { history: vi.fn(), active: vi.fn() },
   packages: { summary: vi.fn() },
+  parts: {
+    lcsc: vi.fn(),
+    search: vi.fn(),
+    details: vi.fn(),
+    installed: vi.fn(),
+    install: vi.fn(),
+  },
   problems: { list: vi.fn() },
   stdlib: { list: vi.fn() },
 };

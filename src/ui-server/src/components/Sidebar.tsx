@@ -3,7 +3,7 @@
  * Uses unified panel sizing system for consistent expand/collapse behavior.
  */
 
-import { useState, useRef, useMemo, useCallback } from 'react';
+import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { CollapsibleSection } from './CollapsibleSection';
 import { ActiveProjectPanel } from './ActiveProjectPanel';
 import { StandardLibraryPanel } from './StandardLibraryPanel';
@@ -12,6 +12,8 @@ import { BOMPanel } from './BOMPanel';
 import { PackageDetailPanel } from './PackageDetailPanel';
 import { StructurePanel } from './StructurePanel';
 import { PackagesPanel } from './PackagesPanel';
+import { PartsSearchPanel } from './PartsSearchPanel';
+import { PartsDetailPanel } from './PartsDetailPanel';
 import { sendAction, sendActionWithResponse } from '../api/websocket';
 import { postMessage, isVsCodeWebview } from '../api/vscodeApi';
 import { useStore } from '../store';
@@ -23,10 +25,10 @@ import {
   useSidebarHandlers,
   type Selection,
   type SelectedPackage,
+  type SelectedPart,
 } from './sidebar-modules';
 import './Sidebar.css';
 import '../styles.css';
-import type { VariableNode } from '../types/build';
 
 // Send action to backend via WebSocket (no VS Code dependency)
 const action = (name: string, data?: Record<string, unknown>) => {
@@ -40,17 +42,6 @@ const action = (name: string, data?: Record<string, unknown>) => {
   sendAction(name, data);
 };
 
-// Helper to count variables recursively (defined outside component to avoid recreation)
-function countVariables(nodes: VariableNode[] | undefined): number {
-  if (!nodes) return 0;
-  let count = 0;
-  for (const n of nodes) {
-    count += n.variables?.length || 0;
-    if (n.children) count += countVariables(n.children);
-  }
-  return count;
-}
-
 export function Sidebar() {
   // Granular selectors - only re-render when specific state changes
   const isConnected = useStore((s) => s.isConnected);
@@ -59,7 +50,6 @@ export function Sidebar() {
   const selectedTargetNames = useStore((s) => s.selectedTargetNames) ?? [];
   const isLoadingProjects = useStore((s) => s.isLoadingProjects);
   const isLoadingPackages = useStore((s) => s.isLoadingPackages);
-  const packagesError = useStore((s) => s.packagesError);
   const installingPackageIds = useStore((s) => s.installingPackageIds);
   const installError = useStore((s) => s.installError);
   const stdlibItems = useStore((s) => s.stdlibItems);
@@ -94,26 +84,55 @@ export function Sidebar() {
   // Local UI state
   const [, setSelection] = useState<Selection>({ type: 'none' });
   const [selectedPackage, setSelectedPackage] = useState<SelectedPackage | null>(null);
+  const [selectedPart, setSelectedPart] = useState<SelectedPart | null>(null);
+  const [activeTab, setActiveTab] = useState<'structure' | 'packages' | 'parts' | 'stdlib' | 'parameters' | 'bom'>('packages');
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Memoized computed values (previously inline in JSX)
-  const variableCount = useMemo(
-    () => countVariables(currentVariablesData?.nodes),
-    [currentVariablesData]
-  );
+  // Keep selected package in sync with refreshed package list (e.g., after install/uninstall)
+  useEffect(() => {
+    if (!selectedPackage || !packages) return;
+    const match = packages.find((pkg) => pkg.identifier === selectedPackage.fullName);
+    if (!match) return;
 
-  const bomWarningCount = useMemo(() => {
-    if (!bomData?.components) return 0;
-    return bomData.components.filter(c => c.stock !== null && c.stock === 0).length;
-  }, [bomData]);
+    const depsForProject = selectedProjectRoot
+      ? projectDependencies?.[selectedProjectRoot] || []
+      : [];
+    const depInfo = selectedProjectRoot
+      ? depsForProject.find((dep) => dep.identifier === selectedPackage.fullName)
+      : undefined;
+    const installedForProject = selectedProjectRoot ? Boolean(depInfo) : match.installed;
+    const versionForProject = selectedProjectRoot
+      ? depInfo?.version
+      : match.version ?? selectedPackage.version;
+
+    setSelectedPackage((prev) => {
+      if (!prev || prev.fullName !== selectedPackage.fullName) return prev;
+      const next = {
+        ...prev,
+        installed: installedForProject,
+        version: versionForProject ?? prev.version,
+        latestVersion: match.latestVersion ?? prev.latestVersion,
+        description: match.description || match.summary || prev.description,
+        homepage: match.homepage ?? prev.homepage,
+        repository: match.repository ?? prev.repository,
+      };
+      const changed =
+        next.installed !== prev.installed ||
+        next.version !== prev.version ||
+        next.latestVersion !== prev.latestVersion ||
+        next.description !== prev.description ||
+        next.homepage !== prev.homepage ||
+        next.repository !== prev.repository;
+      return changed ? next : prev;
+    });
+  }, [packages, selectedPackage, selectedProjectRoot, projectDependencies]);
 
   // Use data transformation hook
   const {
     projects: sidebarProjects,
     projectCount,
-    packageCount,
     queuedBuilds,
   } = useSidebarData({ state });
 
@@ -137,24 +156,28 @@ export function Sidebar() {
     state,
     setSelection,
     setSelectedPackage,
+    setSelectedPart,
     action,
   });
 
   // Memoized callbacks for event handlers (avoid new function references each render)
   const handleBuildTarget = useCallback((projectRoot: string, targetName: string) => {
+    panels.collapseAllExceptProjects();
     action('build', { projectRoot, targets: [targetName] });
-  }, []);
+  }, [panels]);
 
   const handleBuildAllTargets = useCallback((projectRoot: string, projectName: string) => {
+    panels.collapseAllExceptProjects();
     action('build', { level: 'project', id: projectRoot, label: projectName, targets: [] });
-  }, []);
+  }, [panels]);
 
   // Generate manufacturing data - triggers a build which includes manufacturing outputs
   const handleGenerateManufacturingData = useCallback((projectRoot: string, targetName: string) => {
     // Manufacturing data is generated as part of the build process
     // The build outputs include gerbers, BOM, and pick-and-place files
+    panels.collapseAllExceptProjects();
     action('build', { projectRoot, targets: [targetName] });
-  }, []);
+  }, [panels]);
 
   const handleOpenOutput = useCallback(async (
     output: 'openKiCad' | 'open3D' | 'openLayout',
@@ -206,6 +229,10 @@ export function Sidebar() {
     action('clearPackageDetails');
   }, []);
 
+  const handlePartClose = useCallback(() => {
+    setSelectedPart(null);
+  }, []);
+
   const handlePackageInstall = useCallback(async (version?: string) => {
     if (!selectedPackage) return;
     const projectRoot = selectedProjectRoot || sidebarProjects?.[0]?.root;
@@ -213,16 +240,38 @@ export function Sidebar() {
 
     const packageId = selectedPackage.fullName;
     const store = useStore.getState();
+    const depsForProject = projectDependencies?.[projectRoot] || [];
+    const depInfo = depsForProject.find((dep) => dep.identifier === packageId);
+    const installedVersion = depInfo?.version;
+    const isDirect = depInfo?.isDirect === true;
+    const isInstalled = Boolean(depInfo);
 
     // Set installing state immediately for UI feedback
     store.addInstallingPackage(packageId);
 
     try {
-      const response = await sendActionWithResponse('installPackage', {
-        packageId,
-        projectRoot,
-        version
-      });
+      let response;
+      if (version && isInstalled && installedVersion && version !== installedVersion) {
+        if (!isDirect) {
+          const via = depInfo?.via?.length ? `Required by: ${depInfo.via.join(', ')}` : '';
+          store.setInstallError(
+            packageId,
+            `Cannot change version for a transitive dependency. ${via}`.trim()
+          );
+          return;
+        }
+        response = await sendActionWithResponse('changeDependencyVersion', {
+          packageId,
+          projectRoot,
+          version,
+        });
+      } else {
+        response = await sendActionWithResponse('installPackage', {
+          packageId,
+          projectRoot,
+          version,
+        });
+      }
 
       // The backend returns success immediately, but install runs async.
       // The installing state will be cleared when we receive the
@@ -235,6 +284,31 @@ export function Sidebar() {
       const message = error instanceof Error ? error.message : 'Install failed';
       store.setInstallError(packageId, message);
     }
+  }, [selectedPackage, selectedProjectRoot, sidebarProjects, projectDependencies]);
+
+  const handlePackageUninstall = useCallback(async () => {
+    if (!selectedPackage) return;
+    const projectRoot = selectedProjectRoot || sidebarProjects?.[0]?.root;
+    if (!projectRoot) return;
+
+    const packageId = selectedPackage.fullName;
+    const store = useStore.getState();
+
+    store.addInstallingPackage(packageId);
+
+    try {
+      const response = await sendActionWithResponse('removePackage', {
+        packageId,
+        projectRoot,
+      });
+
+      if (!response.result?.success) {
+        store.setInstallError(packageId, response.result?.error || 'Uninstall failed');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Uninstall failed';
+      store.setInstallError(packageId, message);
+    }
   }, [selectedPackage, selectedProjectRoot, sidebarProjects]);
 
   // Loading state
@@ -243,7 +317,7 @@ export function Sidebar() {
   }
 
   return (
-    <div className={`unified-layout ${selectedPackage ? 'package-detail-open' : ''}`}>
+    <div className={`unified-layout ${selectedPackage || selectedPart ? 'package-detail-open' : ''}`}>
       {/* Header with settings */}
       <SidebarHeader
         atopile={atopile}
@@ -292,111 +366,124 @@ export function Sidebar() {
           />
         </CollapsibleSection>
 
-        {/* Structure Section */}
-        <CollapsibleSection
-          id="structure"
-          title="Structure"
-          collapsed={panels.isCollapsed('structure')}
-          onToggle={() => panels.togglePanel('structure')}
-          height={panels.calculatedHeights['structure']}
-          onResizeStart={(e) => panels.handleResizeStart('structure', e)}
-        >
-          <StructurePanel
-            activeFilePath={activeEditorFile}
-            lastAtoFile={lastAtoFile}
-            projects={projects || []}
-            onRefreshStructure={handlers.handleStructureRefresh}
-            isExpanded={!panels.isCollapsed('structure')}
-          />
-        </CollapsibleSection>
+        {/* Tabbed Panels Section */}
+        <div className="tabbed-panels">
+          <div className="tab-bar">
+            <button
+              className={`tab-button ${activeTab === 'packages' ? 'active' : ''}`}
+              onClick={() => setActiveTab('packages')}
+              title="Packages"
+            >
+              Packages
+              {isLoadingPackages && <span className="tab-loading" />}
+            </button>
+            <button
+              className={`tab-button ${activeTab === 'parts' ? 'active' : ''}`}
+              onClick={() => setActiveTab('parts')}
+              title="Parts"
+            >
+              Parts
+            </button>
+            <button
+              className={`tab-button ${activeTab === 'stdlib' ? 'active' : ''}`}
+              onClick={() => setActiveTab('stdlib')}
+              title="Standard Library"
+            >
+              Standard Library
+            </button>
+            <button
+              className={`tab-button ${activeTab === 'structure' ? 'active' : ''}`}
+              onClick={() => setActiveTab('structure')}
+              title="Structure"
+            >
+              Structure
+            </button>
+            <button
+              className={`tab-button ${activeTab === 'parameters' ? 'active' : ''}`}
+              onClick={() => setActiveTab('parameters')}
+              title="Parameters"
+            >
+              Parameters
+            </button>
+            <button
+              className={`tab-button ${activeTab === 'bom' ? 'active' : ''}`}
+              onClick={() => setActiveTab('bom')}
+              title="Bill of Materials"
+            >
+              BOM
+            </button>
+          </div>
 
-        {/* Build Queue is now integrated into Projects panel above */}
-
-        {/* Packages Section */}
-        <CollapsibleSection
-          id="packages"
-          title="Packages"
-          badge={packageCount}
-          loading={isLoadingPackages}
-          warningMessage={packagesError || null}
-          collapsed={panels.isCollapsed('packages')}
-          onToggle={() => panels.togglePanel('packages')}
-          height={panels.calculatedHeights['packages']}
-          onResizeStart={(e) => panels.handleResizeStart('packages', e)}
-        >
-          <PackagesPanel
-            packages={packages || []}
-            installedDependencies={selectedProjectRoot ? (projectDependencies?.[selectedProjectRoot] || []) : []}
-            selectedProjectRoot={selectedProjectRoot}
-            installError={installError}
-            onOpenPackageDetail={handlers.handleOpenPackageDetail}
-            isExpanded={!panels.isCollapsed('packages')}
-          />
-        </CollapsibleSection>
-
-        {/* Standard Library Section */}
-        <CollapsibleSection
-          id="stdlib"
-          title="Standard Library"
-          badge={stdlibItems?.length || 0}
-          collapsed={panels.isCollapsed('stdlib')}
-          onToggle={() => panels.togglePanel('stdlib')}
-          height={panels.calculatedHeights['stdlib']}
-          onResizeStart={(e) => panels.handleResizeStart('stdlib', e)}
-        >
-          <StandardLibraryPanel
-            items={stdlibItems}
-            isLoading={isLoadingStdlib}
-            onRefresh={handleRefreshStdlib}
-            isExpanded={!panels.isCollapsed('stdlib')}
-          />
-        </CollapsibleSection>
-
-        {/* Variables Section */}
-        <CollapsibleSection
-          id="variables"
-          title="Variables"
-          badge={variableCount}
-          collapsed={panels.isCollapsed('variables')}
-          onToggle={() => panels.togglePanel('variables')}
-          height={panels.calculatedHeights['variables']}
-          onResizeStart={(e) => panels.handleResizeStart('variables', e)}
-        >
-          <VariablesPanel
-            variablesData={currentVariablesData}
-            isLoading={isLoadingVariables}
-            error={variablesError}
-            selectedTargetName={selectedTargetName}
-            hasActiveProject={!!selectedProjectRoot}
-            isExpanded={!panels.isCollapsed('variables')}
-          />
-        </CollapsibleSection>
-
-        {/* BOM Section */}
-        <CollapsibleSection
-          id="bom"
-          title="BOM"
-          badge={bomData?.components?.length ?? 0}
-          warningCount={bomWarningCount}
-          collapsed={panels.isCollapsed('bom')}
-          onToggle={() => panels.togglePanel('bom')}
-          height={panels.calculatedHeights['bom']}
-          onResizeStart={(e) => panels.handleResizeStart('bom', e)}
-        >
-          <BOMPanel
-            bomData={bomData}
-            isLoading={isLoadingBom}
-            error={bomError}
-            selectedProjectRoot={selectedProjectRoot}
-            selectedTargetNames={selectedTargetNames}
-            onGoToSource={handleGoToSource}
-            isExpanded={!panels.isCollapsed('bom')}
-          />
-        </CollapsibleSection>
+          <div className="tab-content">
+            {activeTab === 'packages' && (
+              <PackagesPanel
+                packages={packages || []}
+                installedDependencies={selectedProjectRoot ? (projectDependencies?.[selectedProjectRoot] || []) : []}
+                selectedProjectRoot={selectedProjectRoot}
+                installError={installError}
+                onOpenPackageDetail={handlers.handleOpenPackageDetail}
+                isExpanded={activeTab === 'packages'}
+              />
+            )}
+            {activeTab === 'parts' && (
+              <PartsSearchPanel
+                selectedProjectRoot={selectedProjectRoot}
+                onOpenPartDetail={handlers.handleOpenPartDetail}
+                isExpanded={activeTab === 'parts'}
+              />
+            )}
+            {activeTab === 'stdlib' && (
+              <StandardLibraryPanel
+                items={stdlibItems}
+                isLoading={isLoadingStdlib}
+                onRefresh={handleRefreshStdlib}
+                isExpanded={activeTab === 'stdlib'}
+              />
+            )}
+            {activeTab === 'structure' && (
+              <StructurePanel
+                activeFilePath={activeEditorFile}
+                lastAtoFile={lastAtoFile}
+                projects={projects || []}
+                onRefreshStructure={handlers.handleStructureRefresh}
+                isExpanded={activeTab === 'structure'}
+              />
+            )}
+            {activeTab === 'parameters' && (
+              <VariablesPanel
+                variablesData={currentVariablesData}
+                isLoading={isLoadingVariables}
+                error={variablesError}
+                selectedTargetName={selectedTargetName}
+                hasActiveProject={!!selectedProjectRoot}
+                isExpanded={activeTab === 'parameters'}
+              />
+            )}
+            {activeTab === 'bom' && (
+              <BOMPanel
+                bomData={bomData}
+                isLoading={isLoadingBom}
+                error={bomError}
+                selectedProjectRoot={selectedProjectRoot}
+                selectedTargetNames={selectedTargetNames}
+                onGoToSource={handleGoToSource}
+                isExpanded={activeTab === 'bom'}
+              />
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Detail Panel (slides in when package selected) */}
-      {selectedPackage && (
+      {selectedPart ? (
+        <div className="detail-panel-container">
+          <PartsDetailPanel
+            part={selectedPart}
+            projectRoot={selectedProjectRoot}
+            onClose={handlePartClose}
+          />
+        </div>
+      ) : selectedPackage && (
         <div className="detail-panel-container">
           <PackageDetailPanel
             package={selectedPackage}
@@ -407,6 +494,7 @@ export function Sidebar() {
             error={packageDetailsError || null}
             onClose={handlePackageClose}
             onInstall={handlePackageInstall}
+            onUninstall={handlePackageUninstall}
           />
         </div>
       )}

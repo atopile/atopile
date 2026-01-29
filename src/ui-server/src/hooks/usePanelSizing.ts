@@ -39,6 +39,7 @@ interface UsePanelSizingReturn {
   togglePanel: (panelId: PanelId) => void;
   expandPanel: (panelId: PanelId) => void;
   collapsePanel: (panelId: PanelId) => void;
+  collapseAllExceptProjects: () => void;
   handleResizeStart: (panelId: PanelId, e: React.MouseEvent) => void;
   isCollapsed: (panelId: PanelId) => boolean;
 }
@@ -301,6 +302,22 @@ export function usePanelSizing(options: UsePanelSizingOptions): UsePanelSizingRe
     });
   }, [priorityPanel]);
 
+  // Collapse all panels except projects (used when starting a build)
+  const collapseAllExceptProjects = useCallback(() => {
+    setPanelStates(prev => {
+      const nextState = { ...prev };
+      for (const id of PANEL_IDS) {
+        if (id !== 'projects') {
+          nextState[id] = { ...nextState[id], collapsed: true, userHeight: undefined };
+        }
+      }
+      // Ensure projects is expanded
+      nextState.projects = { ...nextState.projects, collapsed: false };
+      return nextState;
+    });
+    setPriorityPanel('projects');
+  }, []);
+
   // Resize handlers
   const handleResizeMove = useCallback((e: MouseEvent) => {
     if (!resizingRef.current) return;
@@ -368,6 +385,7 @@ export function usePanelSizing(options: UsePanelSizingOptions): UsePanelSizingRe
     togglePanel,
     expandPanel,
     collapsePanel,
+    collapseAllExceptProjects,
     handleResizeStart,
     isCollapsed,
   };

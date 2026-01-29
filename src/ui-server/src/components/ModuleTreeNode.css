@@ -154,6 +154,13 @@
   /* Nested children container */
 }
 
+.module-tree-empty {
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-style: italic;
+}
+
 /* Connecting lines (optional visual) */
 .module-tree-node .module-tree-children {
   position: relative;

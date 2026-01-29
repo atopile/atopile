@@ -23,6 +23,7 @@ import {
   tryParseStructuredTraceback,
   groupLogsIntoTrees,
   filterLogs,
+  SearchOptions,
 } from './logUtils';
 
 // Chevron icon component
@@ -76,6 +77,7 @@ function TraceDetails({
 function TreeNodeRow({
   node,
   search,
+  searchOptions,
   levelFull,
   timeMode,
   sourceMode,
@@ -86,6 +88,7 @@ function TreeNodeRow({
 }: {
   node: TreeNode;
   search: string;
+  searchOptions: SearchOptions;
   levelFull: boolean;
   timeMode: TimeMode;
   sourceMode: SourceMode;
@@ -99,7 +102,7 @@ function TreeNodeRow({
 
   const { entry, content } = node;
   const ts = formatTs(entry.timestamp, timeMode, firstTimestamp);
-  const html = highlightText(ansiConverter.toHtml(content), search);
+  const html = highlightText(ansiConverter.toHtml(content), search, searchOptions);
   const sourceLabel = formatSrc(entry.source_file, entry.source_line);
   const sourceColor = sourceMode === 'source'
     ? (entry.source_file ? hashStringToColor(entry.source_file) : undefined)
@@ -177,6 +180,7 @@ function TreeNodeRow({
           key={idx}
           node={child}
           search={search}
+          searchOptions={searchOptions}
           levelFull={levelFull}
           timeMode={timeMode}
           sourceMode={sourceMode}
@@ -194,6 +198,7 @@ function TreeNodeRow({
 function TreeLogGroup({
   group,
   search,
+  searchOptions,
   levelFull,
   timeMode,
   sourceMode,
@@ -203,6 +208,7 @@ function TreeLogGroup({
 }: {
   group: LogTreeGroup;
   search: string;
+  searchOptions: SearchOptions;
   levelFull: boolean;
   timeMode: TimeMode;
   sourceMode: SourceMode;
@@ -215,6 +221,7 @@ function TreeLogGroup({
       <TreeNodeRow
         node={group.root}
         search={search}
+        searchOptions={searchOptions}
         levelFull={levelFull}
         timeMode={timeMode}
         sourceMode={sourceMode}
@@ -232,6 +239,7 @@ function StandaloneLogRow({
   entry,
   content,
   search,
+  searchOptions,
   levelFull,
   timeMode,
   sourceMode,
@@ -242,6 +250,7 @@ function StandaloneLogRow({
   entry: LogEntry;
   content: string;
   search: string;
+  searchOptions: SearchOptions;
   levelFull: boolean;
   timeMode: TimeMode;
   sourceMode: SourceMode;
@@ -250,7 +259,7 @@ function StandaloneLogRow({
   setTimeMode: (value: TimeMode) => void;
 }) {
   const ts = formatTs(entry.timestamp, timeMode, firstTimestamp);
-  const html = highlightText(ansiConverter.toHtml(content), search);
+  const html = highlightText(ansiConverter.toHtml(content), search, searchOptions);
   const sourceLabel = formatSrc(entry.source_file, entry.source_line);
   const sourceColor = sourceMode === 'source'
     ? (entry.source_file ? hashStringToColor(entry.source_file) : undefined)
@@ -317,6 +326,8 @@ export interface LogDisplayProps {
   logs: LogEntry[];
   search: string;
   sourceFilter: string;
+  searchOptions?: SearchOptions;
+  sourceOptions?: SearchOptions;
   levelFull: boolean;
   timeMode: TimeMode;
   sourceMode: SourceMode;
@@ -331,6 +342,8 @@ export function LogDisplay({
   logs,
   search,
   sourceFilter,
+  searchOptions = { isRegex: false },
+  sourceOptions = { isRegex: false },
   levelFull,
   timeMode,
   sourceMode,
@@ -350,8 +363,8 @@ export function LogDisplay({
 
   // Filter logs
   const filteredLogs = useMemo(
-    () => filterLogs(logs, search, sourceFilter),
-    [logs, search, sourceFilter]
+    () => filterLogs(logs, search, sourceFilter, searchOptions, sourceOptions),
+    [logs, search, sourceFilter, searchOptions, sourceOptions]
   );
 
   // First timestamp for delta calculation
@@ -400,6 +413,7 @@ export function LogDisplay({
                 key={groupIdx}
                 group={group}
                 search={search}
+                searchOptions={searchOptions}
                 levelFull={levelFull}
                 timeMode={timeMode}
                 sourceMode={sourceMode}
@@ -417,6 +431,7 @@ export function LogDisplay({
               entry={group.root.entry}
               content={group.root.content}
               search={search}
+              searchOptions={searchOptions}
               levelFull={levelFull}
               timeMode={timeMode}
               sourceMode={sourceMode}

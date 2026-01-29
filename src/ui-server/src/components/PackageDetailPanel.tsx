@@ -1,14 +1,20 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
 import {
-  ArrowLeft, Package, Download, ExternalLink,
-  CheckCircle, FileCode,
-  Loader2, AlertCircle, Layers, Cuboid, ChevronDown, ChevronRight
+  AlertCircle,
+  ArrowLeft,
+  ChevronDown, ChevronRight,
+  Cuboid,
+  Download, ExternalLink,
+  FileCode,
+  Layers,
+  Loader2,
+  Package
 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { API_URL } from '../api/config'
 import type { PackageDetails } from '../types/build'
+import KiCanvasEmbed from './KiCanvasEmbed'
 import MarkdownRenderer from './MarkdownRenderer'
 import ModelViewer from './ModelViewer'
-import KiCanvasEmbed from './KiCanvasEmbed'
-import { API_URL } from '../api/config'
 
 interface PackageDetailProps {
   package: {
@@ -28,6 +34,7 @@ interface PackageDetailProps {
   error: string | null
   onClose: () => void
   onInstall: (version: string) => void
+  onUninstall: () => void
   onBuild?: (entry?: string) => void  // Optional, no longer used in UI
 }
 
@@ -112,6 +119,7 @@ export function PackageDetailPanel({
   error,
   onClose,
   onInstall,
+  onUninstall,
 }: PackageDetailProps) {
   const [infoCollapsed, setInfoCollapsed] = useState(true)
   // Use details from API if available, fallback to basic package info
@@ -147,8 +155,16 @@ export function PackageDetailPanel({
 
   // Get description from details or package
   const description = details?.description || details?.summary || pkg.description
-  const isInstalled = details?.installed ?? pkg.installed
-  const installedVersion = details?.installedVersion || pkg.version
+  const installedFromList = typeof pkg.installed === 'boolean' ? pkg.installed : undefined
+  const isInstalled = installedFromList ?? details?.installed ?? false
+  const installedVersion = isInstalled ? (pkg.version || details?.installedVersion) : undefined
+  const isUpdateAvailable = Boolean(
+    isInstalled &&
+    selectedVersion &&
+    installedVersion &&
+    selectedVersion !== installedVersion
+  )
+  const showUninstall = Boolean(isInstalled && !isUpdateAvailable)
   const packageTitle = pkg.fullName || pkg.name
   const releaseDate = sortedVersions.find(v => v.version === selectedVersion)?.releasedAt
 
@@ -269,11 +285,7 @@ export function PackageDetailPanel({
       {/* Content */}
       <div className="detail-panel-content">
         {/* Install */}
-        <section className="detail-section">
-          <h3 className="detail-section-title">
-            <Download size={14} />
-            Install
-          </h3>
+        <div>
           <div className="detail-install-row">
             {/* Version dropdown */}
             {sortedVersions.length > 0 ? (
@@ -299,19 +311,24 @@ export function PackageDetailPanel({
             )}
 
             <button
-              className={`detail-install-btn ${isInstalled ? 'update' : 'install'} ${isInstalling ? 'installing' : ''}`}
-              onClick={() => onInstall(selectedVersion || details?.version || pkg.version || '')}
+              className={`detail-install-btn ${isUpdateAvailable ? 'update' : showUninstall ? 'uninstall' : 'install'
+                } ${isInstalling ? 'installing' : ''}`}
+              onClick={() =>
+                showUninstall
+                  ? onUninstall()
+                  : onInstall(selectedVersion || details?.version || pkg.version || '')
+              }
               disabled={isLoading || isInstalling}
             >
               {isInstalling ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
-                  Installing...
+                  {showUninstall ? 'Uninstalling...' : 'Installing...'}
                 </>
               ) : (
                 <>
                   <Download size={14} />
-                  {isInstalled ? 'Update' : 'Install'}
+                  {isUpdateAvailable ? 'Update' : showUninstall ? 'Uninstall' : 'Install'}
                 </>
               )}
             </button>
@@ -324,18 +341,7 @@ export function PackageDetailPanel({
               <span>{installError}</span>
             </div>
           )}
-
-          <div className="detail-install-meta">
-            {isInstalled ? (
-              <>
-                <CheckCircle size={12} />
-                Installed{installedVersion ? ` (v${installedVersion})` : ''}
-              </>
-            ) : (
-              <span>Not installed</span>
-            )}
-          </div>
-        </section>
+        </div>
 
         {/* Information */}
         <section className={`detail-section detail-section-collapsible ${infoCollapsed ? 'collapsed' : ''}`}>
@@ -369,90 +375,90 @@ export function PackageDetailPanel({
           </div>
           {!infoCollapsed && (
             <dl className="detail-info-list">
-            {details?.publisher && (
+              {details?.publisher && (
+                <div className="detail-info-row">
+                  <dt>Publisher</dt>
+                  <dd className="detail-info-value">{details.publisher}</dd>
+                </div>
+              )}
               <div className="detail-info-row">
-                <dt>Publisher</dt>
-                <dd className="detail-info-value">{details.publisher}</dd>
+                <dt>Published</dt>
+                <dd className="detail-info-value">{formatDate(details?.createdAt)}</dd>
               </div>
-            )}
-            <div className="detail-info-row">
-              <dt>Published</dt>
-              <dd className="detail-info-value">{formatDate(details?.createdAt)}</dd>
-            </div>
-            <div className="detail-info-row">
-              <dt>Last updated</dt>
-              <dd className="detail-info-value">{formatDate(details?.releasedAt)}</dd>
-            </div>
-            {sortedVersions.length > 0 && (
               <div className="detail-info-row">
-                <dt>Latest version</dt>
+                <dt>Last updated</dt>
+                <dd className="detail-info-value">{formatDate(details?.releasedAt)}</dd>
+              </div>
+              {sortedVersions.length > 0 && (
+                <div className="detail-info-row">
+                  <dt>Latest version</dt>
+                  <dd className="detail-info-value">
+                    <span className="detail-info-mono">v{latestAvailableVersion}</span>
+                  </dd>
+                </div>
+              )}
+              {sortedVersions.length > 0 && (
+                <div className="detail-info-row">
+                  <dt>Latest release</dt>
+                  <dd className="detail-info-value">{formatReleaseDate(releaseDate)}</dd>
+                </div>
+              )}
+              <div className="detail-info-row">
+                <dt>Authors</dt>
+                <dd className="detail-info-value">{authorLine}</dd>
+              </div>
+              <div className="detail-info-row">
+                <dt>License</dt>
                 <dd className="detail-info-value">
-                  <span className="detail-info-mono">v{latestAvailableVersion}</span>
+                  {details?.license || 'N/A'}
                 </dd>
               </div>
-            )}
-            {sortedVersions.length > 0 && (
+              {details?.downloads !== undefined && (
+                <div className="detail-info-row">
+                  <dt>Downloads</dt>
+                  <dd className="detail-info-value">
+                    {formatDownloads(details.downloads)}
+                  </dd>
+                </div>
+              )}
+              {details?.versionCount !== undefined && (
+                <div className="detail-info-row">
+                  <dt>Versions</dt>
+                  <dd className="detail-info-value">{details.versionCount}</dd>
+                </div>
+              )}
               <div className="detail-info-row">
-                <dt>Latest release</dt>
-                <dd className="detail-info-value">{formatReleaseDate(releaseDate)}</dd>
-              </div>
-            )}
-            <div className="detail-info-row">
-              <dt>Authors</dt>
-              <dd className="detail-info-value">{authorLine}</dd>
-            </div>
-            <div className="detail-info-row">
-              <dt>License</dt>
-              <dd className="detail-info-value">
-                {details?.license || 'N/A'}
-              </dd>
-            </div>
-            {details?.downloads !== undefined && (
-              <div className="detail-info-row">
-                <dt>Downloads</dt>
+                <dt>ato version compatibility</dt>
                 <dd className="detail-info-value">
-                  {formatDownloads(details.downloads)}
+                  <span className="detail-info-mono">{selectedVersionInfo?.requiresAtopile || 'N/A'}</span>
                 </dd>
               </div>
-            )}
-            {details?.versionCount !== undefined && (
               <div className="detail-info-row">
-                <dt>Versions</dt>
-                <dd className="detail-info-value">{details.versionCount}</dd>
+                <dt>File size</dt>
+                <dd className="detail-info-value">
+                  {formatBytes(selectedVersionInfo?.size)}
+                </dd>
               </div>
-            )}
-            <div className="detail-info-row">
-              <dt>ato version compatibility</dt>
-              <dd className="detail-info-value">
-                <span className="detail-info-mono">{selectedVersionInfo?.requiresAtopile || 'N/A'}</span>
-              </dd>
-            </div>
-            <div className="detail-info-row">
-              <dt>File size</dt>
-              <dd className="detail-info-value">
-                {formatBytes(selectedVersionInfo?.size)}
-              </dd>
-            </div>
             </dl>
           )}
         </section>
 
         {/* Visuals */}
-        <section className="detail-section">
-          <div className="detail-visual-bar">
-            <div className="detail-visual-tabs">
+        <section className="package-visual-section">
+          <div className="package-visual-header">
+            <div className="package-visual-tabs">
               <button
-                className={`detail-visual-tab ${activeVisualTab === '3d' ? 'active' : ''}`}
+                className={`package-visual-tab ${activeVisualTab === '3d' ? 'active' : ''}`}
                 onClick={() => setActiveVisualTab('3d')}
               >
-                <Cuboid size={12} />
-                3D
+                <Cuboid size={14} />
+                3D Model
               </button>
               <button
-                className={`detail-visual-tab ${activeVisualTab === 'layout' ? 'active' : ''}`}
+                className={`package-visual-tab ${activeVisualTab === 'layout' ? 'active' : ''}`}
                 onClick={() => setActiveVisualTab('layout')}
               >
-                <Layers size={12} />
+                <Layers size={14} />
                 Layout
               </button>
             </div>
@@ -486,7 +492,7 @@ export function PackageDetailPanel({
               </div>
             )}
           </div>
-          <div className="detail-visual-content">
+          <div className="package-visual-content">
             {activeVisualTab === '3d' ? (
               selectedBuildTarget ? (
                 modelArtifact ? (

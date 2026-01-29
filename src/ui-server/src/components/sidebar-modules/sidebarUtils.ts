@@ -105,6 +105,17 @@ export interface SelectedPackage {
   repository?: string;
 }
 
+export interface SelectedPart {
+  lcsc: string;
+  mpn: string;
+  manufacturer: string;
+  description?: string;
+  package?: string;
+  datasheet_url?: string;
+  image_url?: string;
+  installed?: boolean;
+}
+
 /**
  * Find a build for a specific target in a project.
  *

@@ -423,3 +423,108 @@
   color: var(--text-secondary);
   margin-bottom: var(--spacing-xs);
 }
+
+/* Tabbed Panels */
+.tabbed-panels {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tab-bar {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tab-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, var(--text-muted));
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+
+.tab-button:hover {
+  background: var(--vscode-list-hoverBackground, var(--bg-hover));
+  color: var(--vscode-foreground, var(--text-secondary));
+}
+
+.tab-button.active {
+  background: var(--bg-tertiary);
+  color: var(--vscode-foreground, var(--text-primary));
+}
+
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background: var(--vscode-badge-background, var(--bg-tertiary));
+  border-radius: 8px;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--vscode-badge-foreground, var(--text-muted));
+}
+
+.tab-button.active .tab-badge {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
+.tab-warning {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background: var(--warning-bg);
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--warning);
+}
+
+.tab-loading {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--border-subtle);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.tab-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
