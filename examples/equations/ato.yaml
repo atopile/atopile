@@ -7,7 +7,3 @@ paths:
 builds:
   default:
     entry: equations.ato:App
-dependencies:
-- type: registry
-  identifier: atopile/ti-tps563201
-  release: 0.1.9
