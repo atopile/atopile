@@ -633,8 +633,8 @@ def test_literal_folding_add_multiplicative_1():
     => 8A + 2AB
     """
     E = BoundExpressions()
-    A = E.parameter_op(units=E.U.dl)
-    B = E.parameter_op(units=E.U.dl)
+    A_po, B_po = _create_letters(E, 2)
+    A, B = (A_po.as_operand.get(), B_po.as_operand.get())
 
     expr = E.subtract(
         E.add(

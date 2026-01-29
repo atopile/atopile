@@ -1,6 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-
+import string
 from enum import Enum
 from typing import cast
 
@@ -240,6 +240,7 @@ class BoundExpressions:
         self.tg = tg or fbrk.TypeGraph.create(g=self.g)
 
         self.u = self.U(self)
+        self._letters = (letter for letter in string.ascii_uppercase)
 
     def _resolve_unit(self, unit: type[fabll.Node]) -> F.Units.is_unit | None:
         instance = unit.bind_typegraph(tg=self.tg).create_instance(g=self.g)
@@ -276,8 +277,8 @@ class BoundExpressions:
             )
         )
 
-        if name is not None:
-            param.is_parameter.get().set_name(name)
+        name = name or next(self._letters)
+        param.is_parameter.get().set_name(name)
 
         out = param.can_be_operand.get()
 
@@ -300,8 +301,8 @@ class BoundExpressions:
             .create_instance(g=self.g)
             .setup(enum=enum_type)
         )
-        if name is not None:
-            param.is_parameter.get().set_name(name)
+        name = name or next(self._letters)
+        param.is_parameter.get().set_name(name)
         return param.can_be_operand.get()
 
     def bool_parameter_op(
@@ -310,8 +311,8 @@ class BoundExpressions:
         param = F.Parameters.BooleanParameter.bind_typegraph(
             tg=self.tg
         ).create_instance(g=self.g)
-        if name is not None:
-            param.is_parameter.get().set_name(name)
+        name = name or next(self._letters)
+        param.is_parameter.get().set_name(name)
         return param.can_be_operand.get()
 
     def add(
