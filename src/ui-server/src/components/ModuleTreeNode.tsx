@@ -381,7 +381,9 @@ export function ModuleTree({
         </div>
         {isRootExpanded && (
           <div className="module-tree-children">
-            {grouped ? (
+            {children.length === 0 ? (
+              <div className="module-tree-empty">No structure found</div>
+            ) : grouped ? (
               <GroupedChildren
                 children={children}
                 depth={1}

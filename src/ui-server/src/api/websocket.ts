@@ -7,6 +7,8 @@
 
 import { useStore } from '../store';
 import type { AppState, Build, BuildStatus } from '../types/build';
+import type { EventMessage } from '../types/gen/generated';
+import { EventMessageType, EventType } from '../types/gen/generated';
 import { api } from './client';
 import { WS_STATE_URL, getWorkspaceFolders } from './config';
 import { postMessage } from './vscodeApi';
@@ -21,12 +23,6 @@ const CONNECTION_TIMEOUT_MS = 5000; // Timeout for connection handshake
 interface StateMessage {
   type: 'state';
   data: AppState;
-}
-
-interface EventMessage {
-  type: 'event';
-  event: string;
-  data?: Record<string, unknown>;
 }
 
 interface ActionResultMessage {
@@ -218,6 +214,9 @@ function handleOpen(): void {
     sendAction('setWorkspaceFolders', { folders: workspaceFolders });
   }
 
+  // Get atopile config (including actual version) - this clears any "installing" state
+  sendAction('getAtopileConfig');
+
   void refreshProjects();
   void refreshBuilds();
   void fetchLogViewCurrentId();
@@ -253,18 +252,9 @@ function handleMessage(event: MessageEvent): void {
             });
           }
 
-          // Forward atopile settings changes to VS Code extension
-          if (state.atopile) {
-            postMessage({
-              type: 'atopileSettings',
-              atopile: {
-                source: state.atopile.source,
-                currentVersion: state.atopile.currentVersion,
-                branch: state.atopile.branch,
-                localPath: state.atopile.localPath,
-              },
-            });
-          }
+          // NOTE: Don't forward backend atopile state to VS Code settings here.
+          // The backend state is informational (what's currently running).
+          // User settings are only saved when explicitly changed in SidebarHeader.
         }
         break;
 
@@ -301,7 +291,7 @@ function handleMessage(event: MessageEvent): void {
             : (Array.isArray(multiIds) && typeof multiIds[0] === 'string' ? multiIds[0] : null);
           if (buildId) {
             useStore.getState().setLogViewerBuildId(buildId);
-            sendAction('setLogViewCurrentId', { buildId });
+            sendAction('setLogViewCurrentId', { buildId, stage: null });
           }
         }
         if (typeof window !== 'undefined') {
@@ -310,7 +300,7 @@ function handleMessage(event: MessageEvent): void {
           );
         }
         break;
-      case 'event':
+      case EventMessageType.Event:
         handleEventMessage(message);
         break;
 
@@ -587,9 +577,15 @@ async function fetchLogViewCurrentId(): Promise<void> {
     const buildId = typeof response.result?.buildId === 'string'
       ? response.result.buildId
       : null;
+    const stage = typeof response.result?.stage === 'string'
+      ? response.result.stage
+      : null;
     if (buildId) {
       useStore.getState().setLogViewerBuildId(buildId);
     }
+    window.dispatchEvent(
+      new CustomEvent('atopile:log_view_stage_changed', { detail: { stage } })
+    );
   } catch (error) {
     console.warn('[WS] Failed to fetch log view current ID:', error);
   }
@@ -603,7 +599,7 @@ function handleEventMessage(message: EventMessage): void {
     null;
 
   switch (message.event) {
-    case 'open_layout': {
+    case EventType.OpenLayout: {
       const path = typeof data.path === 'string' ? data.path : null;
       postMessage({
         type: 'openSignals',
@@ -613,7 +609,7 @@ function handleEventMessage(message: EventMessage): void {
       });
       break;
     }
-    case 'open_kicad': {
+    case EventType.OpenKicad: {
       const path = typeof data.path === 'string' ? data.path : null;
       postMessage({
         type: 'openSignals',
@@ -623,7 +619,7 @@ function handleEventMessage(message: EventMessage): void {
       });
       break;
     }
-    case 'open_3d': {
+    case EventType.Open3D: {
       const path = typeof data.path === 'string' ? data.path : null;
       postMessage({
         type: 'openSignals',
@@ -633,24 +629,24 @@ function handleEventMessage(message: EventMessage): void {
       });
       break;
     }
-    case 'projects_changed':
+    case EventType.ProjectsChanged:
       void refreshProjects();
       break;
-    case 'builds_changed':
+    case EventType.BuildsChanged:
       void refreshBuilds();
       break;
-    case 'project_dependencies_changed':
+    case EventType.ProjectDependenciesChanged:
       // Clear all installing packages - a dependency change means install completed
       useStore.getState().clearInstallingPackages();
       void refreshDependencies(projectRoot);
       break;
-    case 'bom_changed':
+    case EventType.BOMChanged:
       void refreshBom();
       break;
-    case 'variables_changed':
+    case EventType.VariablesChanged:
       void refreshVariables();
       break;
-    case 'packages_changed':
+    case EventType.PackagesChanged:
       // Check if this is an install error event
       if (data.error && data.package_id) {
         const packageId = data.package_id as string;
@@ -659,19 +655,24 @@ function handleEventMessage(message: EventMessage): void {
       }
       void refreshPackages();
       break;
-    case 'stdlib_changed':
+    case EventType.StdlibChanged:
       void refreshStdlib();
       break;
-    case 'problems_changed':
+    case EventType.ProblemsChanged:
       void refreshProblems();
       break;
     case 'atopile_config_changed':
+      console.log('[WS] Received atopile_config_changed raw data:', JSON.stringify(data, null, 2));
       updateAtopileConfig(data);
       break;
-    case 'log_view_current_id_changed':
+    case EventType.LogViewCurrentIDChanged:
       {
         const buildId = typeof data.buildId === 'string' ? data.buildId : null;
+        const stage = typeof data.stage === 'string' ? data.stage : null;
         useStore.getState().setLogViewerBuildId(buildId);
+        window.dispatchEvent(
+          new CustomEvent('atopile:log_view_stage_changed', { detail: { stage } })
+        );
       }
       break;
     default:
@@ -708,20 +709,45 @@ function handleError(event: Event): void {
 function updateAtopileConfig(data: Record<string, unknown>): void {
   const update: Partial<AppState['atopile']> = {};
 
+  // Actual installed atopile (source of truth)
+  const actualVersion =
+    (typeof data.actual_version === 'string' && data.actual_version) ||
+    (typeof data.actualVersion === 'string' && data.actualVersion) ||
+    null;
+  if (actualVersion !== null) {
+    update.actualVersion = actualVersion;
+    // When we receive actualVersion, the server has started - clear installing state
+    update.isInstalling = false;
+    update.installProgress = null;
+  }
+
+  const actualSource =
+    (typeof data.actual_source === 'string' && data.actual_source) ||
+    (typeof data.actualSource === 'string' && data.actualSource) ||
+    null;
+  if (actualSource !== null) {
+    update.actualSource = actualSource;
+  }
+
+  const actualBinaryPath =
+    (typeof data.actual_binary_path === 'string' && data.actual_binary_path) ||
+    (typeof data.actualBinaryPath === 'string' && data.actualBinaryPath) ||
+    null;
+  if (actualBinaryPath !== null) {
+    update.actualBinaryPath = actualBinaryPath;
+  }
+
+  console.log('[WS] updateAtopileConfig received:', {
+    actualVersion,
+    actualSource,
+    actualBinaryPath,
+    source: data.source,
+    localPath: data.local_path || data.localPath,
+  });
+
+  // User's selection in the dropdown
   if (typeof data.source === 'string') {
     update.source = data.source as AppState['atopile']['source'];
-  }
-
-  const currentVersion =
-    (typeof data.current_version === 'string' && data.current_version) ||
-    (typeof data.currentVersion === 'string' && data.currentVersion) ||
-    null;
-  if (currentVersion !== null) {
-    update.currentVersion = currentVersion;
-  }
-
-  if (typeof data.branch === 'string') {
-    update.branch = data.branch;
   }
 
   const localPath =
@@ -730,26 +756,6 @@ function updateAtopileConfig(data: Record<string, unknown>): void {
     null;
   if (localPath !== null) {
     update.localPath = localPath;
-  }
-
-  if (Array.isArray(data.available_versions)) {
-    update.availableVersions = data.available_versions as string[];
-  } else if (Array.isArray(data.availableVersions)) {
-    update.availableVersions = data.availableVersions as string[];
-  }
-
-  if (Array.isArray(data.available_branches)) {
-    update.availableBranches = data.available_branches as string[];
-  } else if (Array.isArray(data.availableBranches)) {
-    update.availableBranches = data.availableBranches as string[];
-  }
-
-  if (Array.isArray(data.detected_installations)) {
-    update.detectedInstallations =
-      data.detected_installations as AppState['atopile']['detectedInstallations'];
-  } else if (Array.isArray(data.detectedInstallations)) {
-    update.detectedInstallations =
-      data.detectedInstallations as AppState['atopile']['detectedInstallations'];
   }
 
   if (typeof data.is_installing === 'boolean') {
@@ -772,6 +778,9 @@ function updateAtopileConfig(data: Record<string, unknown>): void {
 
   if (Object.keys(update).length > 0) {
     useStore.getState().setAtopileConfig(update);
+    // NOTE: Don't forward backend state to VS Code settings here.
+    // Settings are only saved when the user explicitly changes them in SidebarHeader.
+    // The backend state is informational (what's currently running), not the user's preference.
   }
 }
 

@@ -340,11 +340,6 @@ export function StructurePanel({
                       expandedPaths={expandedPaths}
                       onExpandedPathsChange={(paths) => handleExpandedPathsChange(key, paths)}
                     />
-                    {module.children.length === 0 && !searchTerm && (
-                      <div className="structure-empty">
-                        <span>No structure found</span>
-                      </div>
-                    )}
                   </div>
                 )
               })}

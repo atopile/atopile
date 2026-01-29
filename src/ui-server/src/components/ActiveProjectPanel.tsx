@@ -4,6 +4,7 @@ import type { Project, BuildTarget } from '../types/build'
 import type { QueuedBuild } from '../types/build'
 import { useStore } from '../store'
 import { sendAction } from '../api/websocket'
+import { postMessage } from '../api/vscodeApi'
 import './ActiveProjectPanel.css'
 
 interface NewProjectData {
@@ -899,7 +900,6 @@ function BuildQueueItem({
   onCancel?: (buildId: string) => void
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
-  const [elapsed, setElapsed] = useState(build.elapsedSeconds || 0)
 
   // Calculate progress from stages
   const progress = useMemo(() => {
@@ -918,64 +918,22 @@ function BuildQueueItem({
   const buildCounter = useMemo(() => getBuildCounter(build.buildId), [build.buildId])
   const currentStage = useMemo(() => getCurrentStage(build), [build])
 
-  useEffect(() => {
-    const isActive = build.status === 'queued' || build.status === 'building'
-    if (!isActive) {
-      setElapsed(build.elapsedSeconds || 0)
-      return
-    }
+  const elapsed = build.elapsedSeconds ?? 0
 
-    const startTime = build.startedAt ? build.startedAt * 1000 : 0
-    if (!startTime) {
-      setElapsed(build.elapsedSeconds || 0)
-      return
-    }
-
-    const updateElapsed = () => {
-      setElapsed((Date.now() - startTime) / 1000)
-    }
-
-    updateElapsed()
-    const interval = setInterval(updateElapsed, 1000)
-    return () => clearInterval(interval)
-  }, [build.status, build.startedAt, build.elapsedSeconds])
-
-  const totalDuration = useMemo(() => {
-    if (typeof build.elapsedSeconds === 'number' && build.elapsedSeconds > 0) {
-      return build.elapsedSeconds
-    }
-    if (!build.stages || build.stages.length === 0) return null
-    const sum = build.stages.reduce((acc, stage) => acc + (stage.elapsedSeconds ?? 0), 0)
-    return sum > 0 ? sum : null
-  }, [build.elapsedSeconds, build.stages])
-
-  const completedStageSeconds = useMemo(() => {
-    if (!build.stages || build.stages.length === 0) return 0
-    return build.stages
-      .filter((stage) =>
-        stage.status === 'success' ||
-        stage.status === 'warning' ||
-        stage.status === 'failed' ||
-        stage.status === 'error'
-      )
-      .reduce((acc, stage) => acc + (stage.elapsedSeconds ?? 0), 0)
-  }, [build.stages])
+  const totalDuration = build.elapsedSeconds ?? null
 
   const runningStageElapsed = useMemo(() => {
     if (!build.stages || build.stages.length === 0) return null
-    const hasRunning = build.stages.some((stage) => stage.status === 'running')
-    if (!hasRunning) return null
-    const computed = elapsed - completedStageSeconds
-    if (!Number.isFinite(computed)) return null
-    return Math.max(0, computed)
-  }, [build.stages, elapsed, completedStageSeconds])
+    const running = build.stages.find((stage) => stage.status === 'running')
+    return running?.elapsedSeconds ?? null
+  }, [build.stages])
 
   const completedAt = useMemo(() => {
     if (!build.startedAt) return null
     if (build.elapsedSeconds && build.elapsedSeconds > 0) {
       return build.startedAt + build.elapsedSeconds
     }
-    return build.startedAt
+    return null
   }, [build.startedAt, build.elapsedSeconds])
 
   const statusLabel = useMemo(() => {
@@ -1034,6 +992,20 @@ function BuildQueueItem({
             />
           </div>
         )}
+        {build.buildId && (
+          <button
+            className="build-queue-logs-btn"
+            onClick={(e) => {
+              e.stopPropagation()
+              useStore.getState().setLogViewerBuildId(build.buildId)
+              sendAction('setLogViewCurrentId', { buildId: build.buildId, stage: null })
+              postMessage({ type: 'showLogs' })
+            }}
+            title="View all logs for this build"
+          >
+            <ScrollText size={10} />
+          </button>
+        )}
         {(build.status === 'queued' || build.status === 'building') && onCancel && build.buildId && (
           <button
             className="build-queue-cancel"
@@ -1073,6 +1045,20 @@ function BuildQueueItem({
                     <span className="stage-time">{formatDuration(stageElapsed)}</span>
                   )
                 })()}
+                <button
+                  className="stage-logs-btn"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (build.buildId) {
+                      useStore.getState().setLogViewerBuildId(build.buildId)
+                      sendAction('setLogViewCurrentId', { buildId: build.buildId, stage: stage.stageId || stage.name })
+                      postMessage({ type: 'showLogs' })
+                    }
+                  }}
+                  title={`View logs for ${stage.displayName || stage.name}`}
+                >
+                  <ScrollText size={10} />
+                </button>
               </div>
             ))
           ) : (
@@ -1346,22 +1332,6 @@ export function ActiveProjectPanel({
           >
             <Layout size={12} />
             <span>Layout</span>
-          </button>
-          <button
-            className="control-btn output-btn"
-            onClick={() => {
-              const targetBuilds = projectBuilds.filter(b => b.target === activeTargetName)
-              const latestBuild = targetBuilds.length > 0 ? targetBuilds[0] : projectBuilds[0]
-              if (latestBuild?.buildId) {
-                useStore.getState().setLogViewerBuildId(latestBuild.buildId)
-                sendAction('setLogViewCurrentId', { buildId: latestBuild.buildId })
-              }
-            }}
-            disabled={!activeProject || projectBuilds.length === 0}
-            title={projectBuilds.length > 0 ? 'View build logs' : 'No builds available'}
-          >
-            <ScrollText size={12} />
-            <span>Logs</span>
           </button>
         </div>
 

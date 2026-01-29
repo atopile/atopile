@@ -70,8 +70,6 @@ export interface AtopileSettingsMessage {
   type: 'atopileSettings';
   atopile: {
     source?: string;
-    currentVersion?: string;
-    branch?: string | null;
     localPath?: string | null;
   };
 }
@@ -82,11 +80,36 @@ export interface SelectionChangedMessage {
   targetNames: string[];
 }
 
+export interface BrowseAtopilePathMessage {
+  type: 'browseAtopilePath';
+}
+
+export interface ReloadWindowMessage {
+  type: 'reloadWindow';
+}
+
+export interface RestartExtensionMessage {
+  type: 'restartExtension';
+}
+
+export interface ShowLogsMessage {
+  type: 'showLogs';
+}
+
+export interface ShowBackendMenuMessage {
+  type: 'showBackendMenu';
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
   | AtopileSettingsMessage
-  | SelectionChangedMessage;
+  | SelectionChangedMessage
+  | BrowseAtopilePathMessage
+  | ReloadWindowMessage
+  | RestartExtensionMessage
+  | ShowLogsMessage
+  | ShowBackendMenuMessage;
 
 /**
  * Type-safe helper to post messages to the extension.
@@ -114,10 +137,37 @@ export interface ActiveFileMessage {
   filePath: string | null;
 }
 
+export interface BrowseAtopilePathResultMessage {
+  type: 'browseAtopilePathResult';
+  path: string | null;
+}
+
+export interface AtopileInstallingMessage {
+  type: 'atopileInstalling';
+  message?: string;
+  source?: string;
+  version?: string;
+  branch?: string;
+}
+
+export interface AtopileInstallErrorMessage {
+  type: 'atopileInstallError';
+  error?: string;
+}
+
+export interface ServerReadyMessage {
+  type: 'serverReady';
+  port: number;
+}
+
 export type ExtensionToWebviewMessage =
   | TriggerBuildMessage
   | SetAtopileInstallingMessage
-  | ActiveFileMessage;
+  | ActiveFileMessage
+  | BrowseAtopilePathResultMessage
+  | AtopileInstallingMessage
+  | AtopileInstallErrorMessage
+  | ServerReadyMessage;
 
 // Callback type for extension message handlers
 type ExtensionMessageHandler = (message: ExtensionToWebviewMessage) => void;
@@ -145,11 +195,14 @@ export function initExtensionMessageListener(): void {
     const message = event.data;
     if (!message || typeof message !== 'object') return;
 
-    // Handle messages from extension (triggerBuild, setAtopileInstalling, etc.)
+    // Handle messages from extension (triggerBuild, atopileInstalling, etc.)
     if (
       message.type === 'triggerBuild' ||
-      message.type === 'setAtopileInstalling' ||
-      message.type === 'activeFile'
+      message.type === 'atopileInstalling' ||
+      message.type === 'atopileInstallError' ||
+      message.type === 'activeFile' ||
+      message.type === 'browseAtopilePathResult' ||
+      message.type === 'serverReady'
     ) {
       for (const handler of extensionMessageHandlers) {
         handler(message as ExtensionToWebviewMessage);
