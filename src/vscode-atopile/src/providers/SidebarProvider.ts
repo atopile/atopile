@@ -20,6 +20,7 @@ import { setProjectRoot, setSelectedTargets } from '../common/target';
 import { loadBuilds, getBuilds } from '../common/manifest';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openModelViewerPreview } from '../ui/modelviewer';
+import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
 // Message types from the webview
 interface OpenSignalsMessage {
@@ -41,8 +42,6 @@ interface AtopileSettingsMessage {
   type: 'atopileSettings';
   atopile: {
     source?: string;
-    currentVersion?: string;
-    branch?: string | null;
     localPath?: string | null;
   };
 }
@@ -51,6 +50,18 @@ interface SelectionChangedMessage {
   type: 'selectionChanged';
   projectRoot: string | null;
   targetNames: string[];
+}
+
+interface BrowseAtopilePathMessage {
+  type: 'browseAtopilePath';
+}
+
+interface ReloadWindowMessage {
+  type: 'reloadWindow';
+}
+
+interface RestartExtensionMessage {
+  type: 'restartExtension';
 }
 
 interface ShowLogsMessage {
@@ -66,6 +77,9 @@ type WebviewMessage =
   | ConnectionStatusMessage
   | AtopileSettingsMessage
   | SelectionChangedMessage
+  | BrowseAtopilePathMessage
+  | ReloadWindowMessage
+  | RestartExtensionMessage
   | ShowLogsMessage
   | ShowBackendMenuMessage;
 
@@ -111,6 +125,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _lastWorkspaceRoot: string | null = null;
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;
+  private _lastAtopileSettingsKey: string | null = null;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -211,10 +226,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       localResourceRoots: isDev
         ? [] // No local resources in dev mode
         : [
-            vscode.Uri.file(path.join(extensionPath, 'resources')),
-            vscode.Uri.file(path.join(extensionPath, 'resources', 'webviews')),
-            vscode.Uri.file(path.join(extensionPath, 'webviews', 'dist')),
-          ],
+          vscode.Uri.file(path.join(extensionPath, 'resources')),
+          vscode.Uri.file(path.join(extensionPath, 'resources', 'webviews')),
+          vscode.Uri.file(path.join(extensionPath, 'webviews', 'dist')),
+        ],
     };
     webviewView.webview.options = webviewOptions;
 
@@ -245,19 +260,34 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Get workspace folder paths from VS Code.
+   * Get workspace folder path synchronously (for HTML generation).
+   * Just returns the first workspace folder.
    */
-  private _getWorkspaceRoot(): string | null {
+  private _getWorkspaceRootSync(): string | null {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) return null;
     return folders[0].uri.fsPath;
   }
 
-  private _postWorkspaceRoot(): void {
+  /**
+   * Get workspace folder path, preferring folders with atopile projects.
+   */
+  private async _getWorkspaceRoot(): Promise<string | null> {
+    // Prefer workspace folders that contain atopile projects (ato.yaml)
+    const atopileWorkspaces = await getAtopileWorkspaceFolders();
+    if (atopileWorkspaces.length > 0) {
+      return atopileWorkspaces[0].uri.fsPath;
+    }
+
+    // Fall back to first workspace folder
+    return this._getWorkspaceRootSync();
+  }
+
+  private async _postWorkspaceRoot(): Promise<void> {
     if (!this._view) {
       return;
     }
-    const root = this._getWorkspaceRoot();
+    const root = await this._getWorkspaceRoot();
     if (this._lastWorkspaceRoot === root) {
       return;
     }
@@ -300,10 +330,26 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         backendServer.setConnected(message.isConnected);
         break;
       case 'atopileSettings':
-        this._handleAtopileSettings(message.atopile);
+        // Handle async - fire and forget but log errors
+        this._handleAtopileSettings(message.atopile).catch((error) => {
+          traceError(`[SidebarProvider] Error handling atopile settings: ${error}`);
+        });
+        break;
+      case 'browseAtopilePath':
+        this._handleBrowseAtopilePath().catch((error) => {
+          traceError(`[SidebarProvider] Error browsing atopile path: ${error}`);
+        });
         break;
       case 'selectionChanged':
         void this._handleSelectionChanged(message);
+        break;
+      case 'reloadWindow':
+        // Reload the VS Code window to apply new atopile settings
+        vscode.commands.executeCommand('workbench.action.reloadWindow');
+        break;
+      case 'restartExtension':
+        // Restart the extension host to apply new atopile settings
+        vscode.commands.executeCommand('workbench.action.restartExtensionHost');
         break;
       case 'showLogs':
         void vscode.commands.executeCommand('atopile.logViewer.focus');
@@ -465,62 +511,102 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   /**
+   * Handle request to browse for a local atopile path.
+   * Shows a native folder picker dialog and sends the selected path back to the webview.
+   */
+  private async _handleBrowseAtopilePath(): Promise<void> {
+    traceInfo('[SidebarProvider] Browsing for local atopile path');
+
+    const result = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: true,
+      canSelectMany: false,
+      openLabel: 'Select atopile installation',
+      title: 'Select atopile installation directory or binary',
+    });
+
+    const selectedPath = result?.[0]?.fsPath ?? null;
+    traceInfo(`[SidebarProvider] Browse result: ${selectedPath}`);
+
+    // Send the result back to the webview
+    this._view?.webview.postMessage({
+      type: 'browseAtopilePathResult',
+      path: selectedPath,
+    });
+  }
+
+  /**
    * Handle atopile settings changes from the UI.
    * Syncs atopile settings to VS Code configuration.
+   * Note: Does NOT restart the server - user must click the restart button.
    */
-  private _handleAtopileSettings(atopile: AtopileSettingsMessage['atopile']): void {
+  private async _handleAtopileSettings(atopile: AtopileSettingsMessage['atopile']): Promise<void> {
     if (!atopile) return;
 
-    // Store for comparison to avoid unnecessary updates
+    traceInfo(`[SidebarProvider] _handleAtopileSettings received: ${JSON.stringify(atopile)}`);
+
+    // Build a key for comparison to avoid unnecessary updates
     const settingsKey = JSON.stringify({
       source: atopile.source,
-      currentVersion: atopile.currentVersion,
-      branch: atopile.branch,
       localPath: atopile.localPath,
     });
 
-    // Skip if nothing changed (we'd need to track this, but for simplicity we'll always update)
-    // This is called on every state update, so we should be careful not to spam config changes
+    // Skip if nothing changed - this is called on every state update
+    if (settingsKey === this._lastAtopileSettingsKey) {
+      traceInfo(`[SidebarProvider] Skipping - settings unchanged: ${settingsKey}`);
+      return;
+    }
+
+    traceInfo(`[SidebarProvider] Processing new settings: ${settingsKey}`);
+    this._lastAtopileSettingsKey = settingsKey;
 
     const config = vscode.workspace.getConfiguration('atopile');
     const hasWorkspace = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0;
     const target = hasWorkspace ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
 
     try {
+      // Only manage atopile.ato setting - never touch atopile.from
+      // When local mode is on with a path, set ato; otherwise clear it
       if (atopile.source === 'local' && atopile.localPath) {
-        // For local mode, set the 'ato' setting directly
         traceInfo(`[SidebarProvider] Setting atopile.ato = ${atopile.localPath}`);
-        config.update('ato', atopile.localPath, target);
-        config.update('from', undefined, target);
+        await config.update('ato', atopile.localPath, target);
       } else {
-        // For release/branch mode, set the 'from' setting
-        const fromValue = this._atopileSettingsToFrom(atopile);
-        traceInfo(`[SidebarProvider] Setting atopile.from = ${fromValue}`);
-        config.update('from', fromValue, target);
-        config.update('ato', undefined, target);
+        // Clear ato setting to fall back to extension-managed uv
+        traceInfo(`[SidebarProvider] Clearing atopile.ato (using uv fallback)`);
+        await config.update('ato', undefined, target);
       }
+      traceInfo(`[SidebarProvider] Atopile settings saved. User must restart to apply.`);
     } catch (error) {
       traceError(`[SidebarProvider] Failed to update atopile settings: ${error}`);
+
+      // Notify UI of the error
+      backendServer.sendToWebview({
+        type: 'atopileInstallError',
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   /**
-   * Convert UI atopile settings to a VS Code 'atopile.from' setting value.
+   * Restart the atopile backend server without reloading the entire VS Code window.
+   * This applies new atopile settings by restarting just the backend process.
    */
-  private _atopileSettingsToFrom(atopile: AtopileSettingsMessage['atopile']): string {
-    if (!atopile) return 'atopile';
+  private async _handleRestartExtension(): Promise<void> {
+    traceInfo('[SidebarProvider] Restarting atopile backend...');
 
-    switch (atopile.source) {
-      case 'release':
-        return atopile.currentVersion
-          ? `atopile@${atopile.currentVersion}`
-          : 'atopile';
-      case 'branch':
-        return `git+https://github.com/atopile/atopile.git@${atopile.branch || 'main'}`;
-      case 'local':
-        return atopile.localPath || '';
-      default:
-        return 'atopile';
+    // Restart the backend server - this will pick up new settings
+    const success = await backendServer.restartServer();
+
+    if (success) {
+      traceInfo('[SidebarProvider] Backend restarted successfully');
+      // The webview will reconnect automatically via WebSocket
+    } else {
+      traceError('[SidebarProvider] Failed to restart backend');
+      // Notify the webview of the error
+      backendServer.sendToWebview({
+        type: 'atopileInstallError',
+        error: 'Failed to restart atopile backend. Try reloading the window.',
+      });
     }
   }
 
@@ -534,7 +620,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const backendUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
     const wsOrigin = getWsOrigin(wsUrl);
-    const workspaceRoot = this._getWorkspaceRoot();
+    const workspaceRoot = this._getWorkspaceRootSync();
 
     const workspaceParam = workspaceRoot
       ? `?workspace=${encodeURIComponent(workspaceRoot)}`
@@ -640,7 +726,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
     const wsOrigin = getWsOrigin(wsUrl);
-    const workspaceRoot = this._getWorkspaceRoot();
+    const workspaceRoot = this._getWorkspaceRootSync();
 
     // Debug: log URLs being used
     traceInfo('SidebarProvider: Generating HTML with apiUrl:', apiUrl, 'wsUrl:', wsUrl);

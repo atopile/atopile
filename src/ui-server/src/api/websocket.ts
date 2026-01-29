@@ -214,6 +214,9 @@ function handleOpen(): void {
     sendAction('setWorkspaceFolders', { folders: workspaceFolders });
   }
 
+  // Get atopile config (including actual version) - this clears any "installing" state
+  sendAction('getAtopileConfig');
+
   void refreshProjects();
   void refreshBuilds();
   void fetchLogViewCurrentId();
@@ -249,18 +252,9 @@ function handleMessage(event: MessageEvent): void {
             });
           }
 
-          // Forward atopile settings changes to VS Code extension
-          if (state.atopile) {
-            postMessage({
-              type: 'atopileSettings',
-              atopile: {
-                source: state.atopile.source,
-                currentVersion: state.atopile.currentVersion,
-                branch: state.atopile.branch,
-                localPath: state.atopile.localPath,
-              },
-            });
-          }
+          // NOTE: Don't forward backend atopile state to VS Code settings here.
+          // The backend state is informational (what's currently running).
+          // User settings are only saved when explicitly changed in SidebarHeader.
         }
         break;
 
@@ -667,7 +661,8 @@ function handleEventMessage(message: EventMessage): void {
     case EventType.ProblemsChanged:
       void refreshProblems();
       break;
-    case EventType.AtopileConfigChanged:
+    case 'atopile_config_changed':
+      console.log('[WS] Received atopile_config_changed raw data:', JSON.stringify(data, null, 2));
       updateAtopileConfig(data);
       break;
     case EventType.LogViewCurrentIDChanged:
@@ -714,20 +709,45 @@ function handleError(event: Event): void {
 function updateAtopileConfig(data: Record<string, unknown>): void {
   const update: Partial<AppState['atopile']> = {};
 
+  // Actual installed atopile (source of truth)
+  const actualVersion =
+    (typeof data.actual_version === 'string' && data.actual_version) ||
+    (typeof data.actualVersion === 'string' && data.actualVersion) ||
+    null;
+  if (actualVersion !== null) {
+    update.actualVersion = actualVersion;
+    // When we receive actualVersion, the server has started - clear installing state
+    update.isInstalling = false;
+    update.installProgress = null;
+  }
+
+  const actualSource =
+    (typeof data.actual_source === 'string' && data.actual_source) ||
+    (typeof data.actualSource === 'string' && data.actualSource) ||
+    null;
+  if (actualSource !== null) {
+    update.actualSource = actualSource;
+  }
+
+  const actualBinaryPath =
+    (typeof data.actual_binary_path === 'string' && data.actual_binary_path) ||
+    (typeof data.actualBinaryPath === 'string' && data.actualBinaryPath) ||
+    null;
+  if (actualBinaryPath !== null) {
+    update.actualBinaryPath = actualBinaryPath;
+  }
+
+  console.log('[WS] updateAtopileConfig received:', {
+    actualVersion,
+    actualSource,
+    actualBinaryPath,
+    source: data.source,
+    localPath: data.local_path || data.localPath,
+  });
+
+  // User's selection in the dropdown
   if (typeof data.source === 'string') {
     update.source = data.source as AppState['atopile']['source'];
-  }
-
-  const currentVersion =
-    (typeof data.current_version === 'string' && data.current_version) ||
-    (typeof data.currentVersion === 'string' && data.currentVersion) ||
-    null;
-  if (currentVersion !== null) {
-    update.currentVersion = currentVersion;
-  }
-
-  if (typeof data.branch === 'string') {
-    update.branch = data.branch;
   }
 
   const localPath =
@@ -736,26 +756,6 @@ function updateAtopileConfig(data: Record<string, unknown>): void {
     null;
   if (localPath !== null) {
     update.localPath = localPath;
-  }
-
-  if (Array.isArray(data.available_versions)) {
-    update.availableVersions = data.available_versions as string[];
-  } else if (Array.isArray(data.availableVersions)) {
-    update.availableVersions = data.availableVersions as string[];
-  }
-
-  if (Array.isArray(data.available_branches)) {
-    update.availableBranches = data.available_branches as string[];
-  } else if (Array.isArray(data.availableBranches)) {
-    update.availableBranches = data.availableBranches as string[];
-  }
-
-  if (Array.isArray(data.detected_installations)) {
-    update.detectedInstallations =
-      data.detected_installations as AppState['atopile']['detectedInstallations'];
-  } else if (Array.isArray(data.detectedInstallations)) {
-    update.detectedInstallations =
-      data.detectedInstallations as AppState['atopile']['detectedInstallations'];
   }
 
   if (typeof data.is_installing === 'boolean') {
@@ -778,6 +778,9 @@ function updateAtopileConfig(data: Record<string, unknown>): void {
 
   if (Object.keys(update).length > 0) {
     useStore.getState().setAtopileConfig(update);
+    // NOTE: Don't forward backend state to VS Code settings here.
+    // Settings are only saved when the user explicitly changes them in SidebarHeader.
+    // The backend state is informational (what's currently running), not the user's preference.
   }
 }
 

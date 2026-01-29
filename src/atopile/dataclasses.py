@@ -1268,6 +1268,10 @@ class BuildReport:
 class AppContext:
     summary_file: Optional[Path] = None
     workspace_paths: list[Path] = field(default_factory=list)
+    ato_source: Optional[str] = None
+    ato_ui_source: Optional[str] = None
+    ato_local_path: Optional[str] = None
+    ato_binary_path: Optional[str] = None  # Actual resolved binary path
 
 
 @dataclass(frozen=True)

@@ -19,7 +19,8 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 1000;
+  /* Ensure settings dropdown is above disconnected overlay */
+  z-index: calc(var(--z-modal) + 200);
   padding: var(--spacing-sm);
 }
 
@@ -453,11 +454,71 @@
   gap: 6px;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-  padding: var(--spacing-xs) 0;
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.settings-status svg {
+  flex-shrink: 0;
 }
 
 .settings-status .status-ok {
   color: var(--success);
+}
+
+/* Status variants */
+.settings-status-success {
+  background: rgba(166, 227, 161, 0.1);
+  border: 1px solid var(--success);
+  color: var(--success);
+}
+
+.settings-status-success svg {
+  color: var(--success);
+}
+
+.settings-status-warning {
+  background: rgba(249, 226, 175, 0.1);
+  border: 1px solid var(--ctp-yellow);
+  color: var(--ctp-yellow);
+}
+
+.settings-status-warning svg {
+  color: var(--ctp-yellow);
+}
+
+.settings-status-error {
+  background: rgba(243, 139, 168, 0.1);
+  border: 1px solid var(--ctp-red);
+  color: var(--ctp-red);
+}
+
+.settings-status-error svg {
+  color: var(--ctp-red);
+}
+
+.settings-status-info {
+  background: rgba(137, 180, 250, 0.1);
+  border: 1px solid var(--ctp-blue);
+  color: var(--ctp-blue);
+}
+
+.settings-status-info svg {
+  color: var(--ctp-blue);
+}
+
+.settings-status-info svg.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Detected Installations */
@@ -469,29 +530,36 @@
 
 .detected-installations {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  align-items: center;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .detected-label {
-  font-size: var(--font-size-xxs);
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
-  margin-right: 2px;
+  font-weight: 500;
+}
+
+.detected-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .detected-item {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  font-size: var(--font-size-xs);
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: var(--font-size-sm);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
+  text-align: left;
 }
 
 .detected-item:hover {
@@ -505,6 +573,11 @@
   color: var(--ato-orange);
 }
 
+.detected-project {
+  font-weight: 500;
+  font-family: var(--font-mono);
+}
+
 .detected-source {
   font-weight: 500;
   text-transform: uppercase;
@@ -513,7 +586,8 @@
 
 .detected-version {
   color: var(--text-muted);
-  font-size: var(--font-size-xxs);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
 }
 
 .detected-item.active .detected-version {
@@ -734,4 +808,190 @@
   background: var(--bg-tertiary);
   color: var(--text-primary);
   opacity: 1;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  transition: all 0.2s ease;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 2px;
+  bottom: 2px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--ato-orange);
+  border-color: var(--ato-orange);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  background: white;
+  transform: translateX(16px);
+}
+
+.toggle-switch:hover .toggle-slider {
+  border-color: var(--ato-orange);
+}
+
+.toggle-switch input:focus + .toggle-slider {
+  box-shadow: 0 0 0 2px rgba(249, 80, 21, 0.2);
+}
+
+/* Settings Toggle Row (label + toggle inline) */
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+/* Atopile Health Status Indicator */
+.atopile-health-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  transition: all 0.2s ease;
+}
+
+.atopile-health-status svg {
+  flex-shrink: 0;
+}
+
+.health-message {
+  flex: 1;
+  line-height: 1.3;
+}
+
+/* Health status: healthy (green) */
+.atopile-health-status.health-healthy {
+  background: rgba(166, 227, 161, 0.1);
+  border: 1px solid var(--success);
+  color: var(--success);
+}
+
+.atopile-health-status.health-healthy svg {
+  color: var(--success);
+}
+
+/* Health status: unhealthy/error (red) */
+.atopile-health-status.health-unhealthy {
+  background: rgba(243, 139, 168, 0.1);
+  border: 1px solid var(--ctp-red);
+  color: var(--ctp-red);
+}
+
+.atopile-health-status.health-unhealthy svg {
+  color: var(--ctp-red);
+}
+
+/* Health status: installing (blue with spinner) */
+.atopile-health-status.health-installing {
+  background: rgba(137, 180, 250, 0.1);
+  border: 1px solid var(--ctp-blue);
+  color: var(--ctp-blue);
+}
+
+.atopile-health-status.health-installing svg {
+  color: var(--ctp-blue);
+}
+
+/* Health status: unknown/checking (neutral with spinner) */
+.atopile-health-status.health-unknown {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+}
+
+.atopile-health-status.health-unknown svg {
+  color: var(--text-muted);
+}
+
+/* Health status: restart-needed (yellow warning) */
+.atopile-health-status.health-restart-needed {
+  background: rgba(249, 226, 175, 0.15);
+  border: 1px solid var(--ctp-yellow);
+  color: var(--ctp-yellow);
+}
+
+.atopile-health-status.health-restart-needed svg {
+  color: var(--ctp-yellow);
+}
+
+/* Health action button (e.g., Restart button) */
+.health-action-btn {
+  padding: 4px 10px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  background: var(--ctp-yellow);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--bg-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.health-action-btn:hover {
+  filter: brightness(1.1);
+}
+
+/* Health message container for multi-line messages */
+.health-message-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.health-message-path {
+  font-size: 10px;
+  opacity: 0.8;
+  word-break: break-all;
+}
+
+/* Validation success with resolved path */
+.validation-success {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.validation-success .resolved-path {
+  font-size: 10px;
+  opacity: 0.8;
+  word-break: break-all;
 }
