@@ -176,7 +176,10 @@ def _run_build_subprocess(
         )
 
         # For verbose mode, pipe stdout/stderr to stream output to parent
-        # For non-verbose mode, discard output (stages come from DB)
+        # For non-verbose mode, capture stderr for error reporting but discard stdout
+        stderr_output: list[str] = []
+        stderr_thread: threading.Thread | None = None
+
         if build.verbose:
             process = subprocess.Popen(
                 cmd,
@@ -212,14 +215,30 @@ def _run_build_subprocess(
             stdout_thread.start()
             stderr_thread.start()
         else:
+            # Capture stderr for error reporting even in non-verbose mode
             process = subprocess.Popen(
                 cmd,
                 cwd=build.project_root,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
                 env=env,
                 preexec_fn=preexec_fn,
+                text=True,
             )
+            # Collect stderr in background thread
+            def collect_stderr(pipe) -> None:
+                try:
+                    for line in pipe:
+                        stderr_output.append(line)
+                except Exception:
+                    pass
+                finally:
+                    pipe.close()
+
+            stderr_thread = threading.Thread(
+                target=collect_stderr, args=(process.stderr,), daemon=True
+            )
+            stderr_thread.start()
 
         # Poll for completion while monitoring the DB for stage updates
         last_stages: list[dict[str, Any]] = []
@@ -258,12 +277,20 @@ def _run_build_subprocess(
 
         return_code = process.returncode
 
+        # Wait for stderr collection to complete (non-verbose mode)
+        if stderr_thread is not None:
+            stderr_thread.join(timeout=2.0)
+
         build_info = BuildHistory.get(build.build_id)
         if build_info:
             final_stages = build_info.stages
 
         if return_code != 0:
-            error_msg = f"Build failed with code {return_code}"
+            # Include captured stderr in error message
+            if stderr_output:
+                error_msg = "".join(stderr_output)
+            else:
+                error_msg = f"Build failed with code {return_code}"
 
     except Exception as exc:
         error_msg = str(exc)
@@ -746,9 +773,14 @@ class BuildQueue:
             except Exception:
                 log.exception("BuildQueue: on_completed callback failed")
 
-        log.info(
-            "BuildQueue: Build %s completed with status %s", msg.build_id, status
-        )
+        if msg.error and status == BuildStatus.FAILED:
+            log.error(
+                "BuildQueue: Build %s failed:\n%s", msg.build_id, msg.error
+            )
+        else:
+            log.info(
+                "BuildQueue: Build %s completed with status %s", msg.build_id, status
+            )
 
     def _dispatch_next(self) -> None:
         """Dispatch next pending build if capacity available."""

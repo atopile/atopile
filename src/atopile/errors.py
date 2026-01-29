@@ -441,6 +441,14 @@ class UserNoProjectException(SourceLocatedUserException):
         super().__init__(msg, *args, **kwargs)
 
 
+class UserConfigurationError(UserException):
+    """An error in the config file."""
+
+
+class UserConfigNotFoundError(UserException):
+    """No project config file was found."""
+
+
 class UserFeatureNotAvailableError(SourceLocatedUserException):
     """Raised when an experimental feature is not recognized."""
 
