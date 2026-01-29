@@ -39,7 +39,7 @@ export default function KiCanvasEmbed({
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Set kicanvas board colors from computed theme values
+  // Set kicanvas board colors from computed theme values and trigger redraw
   // This resolves the nested CSS variable issue where getPropertyValue returns unresolved vars
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -50,6 +50,24 @@ export default function KiCanvasEmbed({
         document.documentElement.style.setProperty('--kicanvas-board-bg', bgColor)
         document.documentElement.style.setProperty('--kicanvas-board-grid', bgColor)
       }
+
+      // Also trigger kicanvas to update its theme and redraw
+      const embed = embedRef.current
+      if (embed) {
+        const viewer = (embed as unknown as {
+          viewer?: {
+            update_theme?: () => void
+            theme?: { background?: unknown; grid?: unknown }
+            renderer?: { background_color?: unknown }
+            draw?: () => void
+          }
+        }).viewer
+
+        if (viewer?.update_theme) {
+          viewer.update_theme()
+          viewer.draw?.()
+        }
+      }
     }
 
     // Update on mount and when theme changes
@@ -59,14 +77,15 @@ export default function KiCanvasEmbed({
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.attributeName === 'data-theme' || mutation.attributeName === 'class') {
-          updateBoardColors()
+          // Small delay to let CSS variables update first
+          setTimeout(updateBoardColors, 50)
         }
       }
     })
     observer.observe(document.documentElement, { attributes: true })
 
     return () => observer.disconnect()
-  }, [])
+  }, [isReady])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

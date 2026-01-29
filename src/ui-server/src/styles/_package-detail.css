@@ -83,19 +83,18 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  margin-top: -2px;
+  width: 24px;
+  height: 24px;
   border: none;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  background: transparent;
+  color: var(--text-muted);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .detail-back-btn:hover {
-  background: var(--bg-hover);
+  background: transparent;
   color: var(--text-primary);
 }
 

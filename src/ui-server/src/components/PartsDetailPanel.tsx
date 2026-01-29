@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ExternalLink, Loader2, CheckCircle, AlertCircle, Download, Layers, Cuboid, Image } from 'lucide-react'
 import type { PartSearchItem } from '../types/build'
 import type { SelectedPart } from './sidebar-modules'
@@ -38,11 +38,10 @@ export function PartsDetailPanel({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isInstalling, setIsInstalling] = useState(false)
-  const [installError, setInstallError] = useState<string | null>(null)
-  const [installSuccess, setInstallSuccess] = useState(false)
   const [isUninstalling, setIsUninstalling] = useState(false)
-  const [uninstallError, setUninstallError] = useState<string | null>(null)
-  const [uninstallSuccess, setUninstallSuccess] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  // Track local override of installed state: null = use part.installed, true/false = override
+  const [installedOverride, setInstalledOverride] = useState<boolean | null>(null)
   const [activeVisualTab, setActiveVisualTab] = useState<'image' | 'footprint' | '3d'>('image')
 
   useEffect(() => {
@@ -74,27 +73,57 @@ export function PartsDetailPanel({
     return Object.entries(details.attributes).slice(0, 12)
   }, [details?.attributes])
 
+  // Cooldown timestamp to debounce rapid clicking
+  const cooldownUntil = useRef(0)
+  const COOLDOWN_MS = 1000 // 1 second cooldown between operations
+
   const handleInstall = async () => {
     if (!projectRoot) {
-      setInstallError('Select a project to install parts.')
+      setActionError('Select a project to install parts.')
       return
     }
-    setUninstallError(null)
-    setUninstallSuccess(false)
+    if (Date.now() < cooldownUntil.current) return
+    if (isInstalling || isUninstalling) return
+
     setIsInstalling(true)
-    setInstallError(null)
-    setInstallSuccess(false)
+    setActionError(null)
     try {
       const response = await api.parts.install(part.lcsc, projectRoot)
       if (!response.success) {
-        setInstallError(response.error || 'Install failed')
+        setActionError(response.error || 'Install failed')
       } else {
-        setInstallSuccess(true)
+        setInstalledOverride(true)
+        cooldownUntil.current = Date.now() + COOLDOWN_MS
       }
     } catch (err) {
-      setInstallError(err instanceof Error ? err.message : 'Install failed')
+      setActionError(err instanceof Error ? err.message : 'Install failed')
     } finally {
       setIsInstalling(false)
+    }
+  }
+
+  const handleUninstall = async () => {
+    if (!projectRoot) {
+      setActionError('Select a project to uninstall parts.')
+      return
+    }
+    if (Date.now() < cooldownUntil.current) return
+    if (isInstalling || isUninstalling) return
+
+    setIsUninstalling(true)
+    setActionError(null)
+    try {
+      const response = await api.parts.uninstall(part.lcsc, projectRoot)
+      if (!response.success) {
+        setActionError(response.error || 'Uninstall failed')
+      } else {
+        setInstalledOverride(false)
+        cooldownUntil.current = Date.now() + COOLDOWN_MS
+      }
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Uninstall failed')
+    } finally {
+      setIsUninstalling(false)
     }
   }
 
@@ -102,8 +131,7 @@ export function PartsDetailPanel({
   const displayManufacturer = details?.manufacturer || part.manufacturer
   const displayMpn = details?.mpn || part.mpn
   const imageUrl = details?.image_url || part.image_url
-  const isInstalled = (part.installed || installSuccess) && !uninstallSuccess
-  const actionError = uninstallError || installError
+  const isInstalled = installedOverride !== null ? installedOverride : part.installed
 
   return (
     <div className="package-detail-panel parts-detail-panel">
@@ -148,28 +176,7 @@ export function PartsDetailPanel({
                   className={`detail-install-btn ${
                     isInstalled ? 'uninstall' : 'install'
                   } ${(isInstalling || isUninstalling) ? 'installing' : ''}`}
-                  onClick={isInstalled ? async () => {
-                    if (!projectRoot) {
-                      setUninstallError('Select a project to uninstall parts.')
-                      return
-                    }
-                    setIsUninstalling(true)
-                    setInstallError(null)
-                    setUninstallError(null)
-                    try {
-                      const response = await api.parts.uninstall(part.lcsc, projectRoot)
-                      if (!response.success) {
-                        setUninstallError(response.error || 'Uninstall failed')
-                      } else {
-                        setUninstallSuccess(true)
-                        setInstallSuccess(false)
-                      }
-                    } catch (err) {
-                      setUninstallError(err instanceof Error ? err.message : 'Uninstall failed')
-                    } finally {
-                      setIsUninstalling(false)
-                    }
-                  } : handleInstall}
+                  onClick={isInstalled ? handleUninstall : handleInstall}
                   disabled={isInstalling || isUninstalling}
                 >
                   {(isInstalling || isUninstalling) ? (
