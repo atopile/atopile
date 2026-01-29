@@ -111,7 +111,7 @@ export function buildWebviewHtml(options: WebviewHtmlOptions): string {
         style-src ${webview.cspSource} 'unsafe-inline';
         script-src 'nonce-${nonce}';
         font-src ${webview.cspSource};
-        img-src ${webview.cspSource};
+        img-src ${webview.cspSource} https: http: data:;
     ">
     <title>${title}</title>
     ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}

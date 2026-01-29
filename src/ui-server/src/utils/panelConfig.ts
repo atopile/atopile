@@ -37,6 +37,14 @@ export const PANEL_CONFIGS: Record<string, PanelConfig> = {
     priority: 'normal',
     collapseWhenEmpty: false,
   },
+  parts: {
+    id: 'parts',
+    minHeight: 120,
+    preferredHeight: 240,
+    maxHeight: 500,
+    priority: 'normal',
+    collapseWhenEmpty: false,
+  },
   stdlib: {
     id: 'stdlib',
     minHeight: 80,
@@ -68,6 +76,7 @@ export const PANEL_IDS = [
   'projects',
   'structure',
   'packages',
+  'parts',
   'stdlib',
   'variables',
   'bom',

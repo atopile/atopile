@@ -377,6 +377,52 @@ export interface LcscPartsResponse {
   parts: Record<string, LcscPartData | null>;
 }
 
+export interface PartSearchItem {
+  lcsc: string;
+  manufacturer: string;
+  mpn: string;
+  package: string;
+  description: string;
+  datasheet_url: string;
+  image_url?: string | null;
+  stock: number;
+  unit_cost: number;
+  is_basic: boolean;
+  is_preferred: boolean;
+  price: { qFrom: number | null; qTo: number | null; price: number }[];
+  attributes: Record<string, string>;
+}
+
+export interface PartSearchResponse {
+  parts: PartSearchItem[];
+  total: number;
+  query: string;
+  error?: string | null;
+}
+
+export interface PartDetailsResponse {
+  part: PartSearchItem | null;
+}
+
+export interface InstalledPartItem {
+  identifier: string;
+  manufacturer: string;
+  mpn: string;
+  lcsc?: string | null;
+  datasheet_url?: string | null;
+  description?: string | null;
+  image_url?: string | null;
+  package?: string | null;
+  stock?: number | null;
+  unit_cost?: number | null;
+  path: string;
+}
+
+export interface InstalledPartsResponse {
+  parts: InstalledPartItem[];
+  total: number;
+}
+
 export interface AppState {
   // Connection
   isConnected: boolean;

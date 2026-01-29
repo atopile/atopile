@@ -1273,6 +1273,21 @@ class AppContext:
     ato_local_path: Optional[str] = None
     ato_binary_path: Optional[str] = None  # Actual resolved binary path
 
+    @property
+    def workspace_path(self) -> Optional[Path]:
+        """Return the first workspace path, or None if no workspaces."""
+        return self.workspace_paths[0] if self.workspace_paths else None
+
+    @workspace_path.setter
+    def workspace_path(self, value: Optional[Path]) -> None:
+        """Set the first workspace path."""
+        if value is None:
+            self.workspace_paths = []
+        elif self.workspace_paths:
+            self.workspace_paths[0] = value
+        else:
+            self.workspace_paths = [value]
+
 
 @dataclass(frozen=True)
 class InstalledPackage:

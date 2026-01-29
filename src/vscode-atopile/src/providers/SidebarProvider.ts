@@ -72,6 +72,11 @@ interface ShowBackendMenuMessage {
   type: 'showBackendMenu';
 }
 
+interface OpenInSimpleBrowserMessage {
+  type: 'openInSimpleBrowser';
+  url: string;
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -81,7 +86,8 @@ type WebviewMessage =
   | ReloadWindowMessage
   | RestartExtensionMessage
   | ShowLogsMessage
-  | ShowBackendMenuMessage;
+  | ShowBackendMenuMessage
+  | OpenInSimpleBrowserMessage;
 
 /**
  * Check if we're running in development mode.
@@ -356,6 +362,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         break;
       case 'showBackendMenu':
         void vscode.commands.executeCommand('atopile.backendStatus');
+        break;
+      case 'openInSimpleBrowser':
+        void vscode.commands.executeCommand('simpleBrowser.show', message.url);
         break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
@@ -636,6 +645,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     frame-src ${viteDevServer};
     style-src 'unsafe-inline';
     script-src 'unsafe-inline';
+    img-src https: http: data:;
     connect-src ${viteDevServer} ${backendUrl} ${wsOrigin};
   ">
   <title>atopile</title>
@@ -712,6 +722,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     const jsUri = webview.asWebviewUri(vscode.Uri.file(jsPath));
+    // Base URI for relative imports in bundled JS (e.g., ./index-xxx.js)
+    const baseUri = webview.asWebviewUri(vscode.Uri.file(webviewsDir + '/'));
     const cssUri = fs.existsSync(cssPath)
       ? webview.asWebviewUri(vscode.Uri.file(cssPath))
       : null;
@@ -720,6 +732,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       : null;
     const iconUri = fs.existsSync(iconPath)
       ? webview.asWebviewUri(vscode.Uri.file(iconPath)).toString()
+      : '';
+
+    // WASM file for 3D viewer
+    const wasmPath = path.join(webviewsDir, 'occt-import-js.wasm');
+    const wasmUri = fs.existsSync(wasmPath)
+      ? webview.asWebviewUri(vscode.Uri.file(wasmPath)).toString()
       : '';
 
     // Get backend URLs from backendServer (uses discovered port or config)
@@ -736,13 +754,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="${baseUri}">
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'none';
     style-src ${webview.cspSource} 'unsafe-inline';
-    script-src ${webview.cspSource} 'nonce-${nonce}';
+    script-src ${webview.cspSource} 'nonce-${nonce}' 'wasm-unsafe-eval' 'unsafe-eval';
     font-src ${webview.cspSource};
-    img-src ${webview.cspSource} data:;
-    connect-src ${apiUrl} ${wsOrigin};
+    img-src ${webview.cspSource} data: https: http:;
+    connect-src ${webview.cspSource} ${apiUrl} ${wsOrigin} blob:;
   ">
   <title>atopile</title>
   ${baseCssUri ? `<link rel="stylesheet" href="${baseCssUri}">` : ''}
@@ -758,6 +777,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     window.__ATOPILE_WS_URL__ = '${wsOrigin}';
     window.__ATOPILE_ICON_URL__ = '${iconUri}';
     window.__ATOPILE_EXTENSION_VERSION__ = '${this._extensionVersion}';
+    window.__ATOPILE_WASM_URL__ = '${wasmUri}';
     // Inject workspace root for the React app
     window.__ATOPILE_WORKSPACE_ROOT__ = ${JSON.stringify(workspaceRoot || '')};
   </script>
