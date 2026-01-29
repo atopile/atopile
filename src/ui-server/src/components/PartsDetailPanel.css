@@ -65,6 +65,11 @@
   color: var(--accent-primary);
   font-size: var(--font-size-sm);
   text-decoration: none;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
 }
 
 .parts-detail-link:hover {

@@ -72,6 +72,11 @@ interface ShowBackendMenuMessage {
   type: 'showBackendMenu';
 }
 
+interface OpenInSimpleBrowserMessage {
+  type: 'openInSimpleBrowser';
+  url: string;
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -81,7 +86,8 @@ type WebviewMessage =
   | ReloadWindowMessage
   | RestartExtensionMessage
   | ShowLogsMessage
-  | ShowBackendMenuMessage;
+  | ShowBackendMenuMessage
+  | OpenInSimpleBrowserMessage;
 
 /**
  * Check if we're running in development mode.
@@ -356,6 +362,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         break;
       case 'showBackendMenu':
         void vscode.commands.executeCommand('atopile.backendStatus');
+        break;
+      case 'openInSimpleBrowser':
+        void vscode.commands.executeCommand('simpleBrowser.show', message.url);
         break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);

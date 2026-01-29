@@ -3,6 +3,7 @@ import { ArrowLeft, Cpu, ExternalLink, Loader2, CheckCircle, AlertCircle, Downlo
 import type { PartSearchItem } from '../types/build'
 import type { SelectedPart } from './sidebar-modules'
 import { api } from '../api/client'
+import { postMessage } from '../api/vscodeApi'
 import { API_URL } from '../api/config'
 import KiCanvasEmbed from './KiCanvasEmbed'
 import StepViewer from './StepViewer'
@@ -241,14 +242,12 @@ export function PartsDetailPanel({
                   <div className="detail-info-row">
                     <dt>Datasheet</dt>
                     <dd className="detail-info-value">
-                      <a
+                      <button
                         className="parts-detail-link"
-                        href={details.datasheet_url}
-                        target="_blank"
-                        rel="noreferrer"
+                        onClick={() => postMessage({ type: 'openInSimpleBrowser', url: details.datasheet_url! })}
                       >
                         Datasheet <ExternalLink size={12} />
-                      </a>
+                      </button>
                     </dd>
                   </div>
                 )}

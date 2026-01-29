@@ -1,7 +1,7 @@
 import { createElement, useEffect, useRef, useState } from 'react'
 
 const SCRIPT_ID = 'kicanvas-script'
-const SCRIPT_SRC = '/vendored/kicanvas.js'
+const SCRIPT_SRC = 'vendored/kicanvas.js'
 
 interface KiCanvasEmbedProps {
   src: string
@@ -122,7 +122,7 @@ export default function KiCanvasEmbed({
       embed.removeEventListener('error', handleError)
       embed.removeEventListener('kicanvas:error', handleError)
     }
-  }, [isReady])
+  }, [isReady, src])
 
   return (
     <div className="detail-visual-frame detail-visual-stack">
