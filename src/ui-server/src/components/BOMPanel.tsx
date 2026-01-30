@@ -708,16 +708,13 @@ export function BOMPanel({
         {toolbar}
         {is404 ? (
           <EmptyState
-            icon={Package}
             title="No BOM data available"
             description={getEmptyDescription()}
           />
         ) : (
           <EmptyState
-            icon={AlertTriangle}
             title="Error loading BOM"
             description={error}
-            className="error"
           />
         )}
       </div>
@@ -730,7 +727,6 @@ export function BOMPanel({
       <div className="bom-panel">
         {toolbar}
         <EmptyState
-          icon={Package}
           title="No BOM data available"
           description={getEmptyDescription()}
         />

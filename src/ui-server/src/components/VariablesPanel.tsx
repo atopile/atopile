@@ -452,16 +452,13 @@ export function VariablesPanel({
         {toolbar}
         {isNotFound ? (
           <EmptyState
-            icon={Hash}
             title="No variables found"
             description={getEmptyDescription()}
           />
         ) : (
           <EmptyState
-            icon={AlertTriangle}
             title="Error loading variables"
             description={error}
-            className="error"
           />
         )}
       </div>
@@ -474,7 +471,6 @@ export function VariablesPanel({
       <div className="variables-panel">
         {toolbar}
         <EmptyState
-          icon={Hash}
           title="No variables found"
           description={getEmptyDescription()}
         />

@@ -8,12 +8,14 @@
    Container
    ============================================================================ */
 
+/* Extends .sidebar-panel from _base.css */
 .file-explorer-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 0; /* Important for flex children to shrink properly */
+  position: relative;
   overflow: hidden;
+  min-width: 0;
   font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
   font-size: var(--vscode-font-size, 13px);
   color: var(--vscode-foreground, var(--text-primary));
@@ -59,17 +61,29 @@
 }
 
 /* ============================================================================
-   Search Bar
+   Search Bar - Matches PanelSearchBox styling
    ============================================================================ */
 
 .file-explorer-search-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  background: var(--vscode-sideBar-background, var(--bg-primary));
-  border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, var(--border-subtle));
+  gap: 6px;
+  margin: 6px 8px;
+  padding: 3px 8px;
+  background: var(--vscode-input-background, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 4px;
   flex-shrink: 0;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.file-explorer-search-bar:hover {
+  border-color: var(--vscode-input-border, rgba(255, 255, 255, 0.1));
+}
+
+.file-explorer-search-bar:focus-within {
+  border-color: var(--vscode-focusBorder, var(--ato-orange));
+  background: var(--vscode-input-background, rgba(255, 255, 255, 0.08));
 }
 
 .file-explorer-search-bar svg {
@@ -82,9 +96,9 @@
   background: transparent;
   border: none;
   outline: none;
-  color: var(--vscode-foreground, var(--text-primary));
-  font-size: 13px;
-  font-family: inherit;
+  color: var(--vscode-input-foreground, var(--text-primary));
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
   min-width: 0;
 }
 
@@ -96,16 +110,20 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
   background: transparent;
   border: none;
-  border-radius: 2px;
+  border-radius: 3px;
   cursor: pointer;
   color: var(--vscode-input-placeholderForeground, var(--text-muted));
+  flex-shrink: 0;
+  transition: background 0.1s ease, color 0.1s ease;
 }
 
 .search-clear-btn:hover {
-  background: var(--vscode-list-hoverBackground, var(--bg-hover));
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.1));
   color: var(--vscode-foreground, var(--text-primary));
 }
 
@@ -120,22 +138,24 @@
   border-radius: 3px;
   cursor: pointer;
   color: var(--vscode-input-placeholderForeground, var(--text-muted));
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   font-family: var(--vscode-editor-font-family, monospace);
-  min-width: 20px;
+  min-width: 18px;
   height: 18px;
+  flex-shrink: 0;
+  transition: background 0.1s ease, color 0.1s ease;
 }
 
 .search-option-btn:hover {
-  background: var(--vscode-list-hoverBackground, var(--bg-hover));
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.1));
   color: var(--vscode-foreground, var(--text-primary));
 }
 
 .search-option-btn.active {
-  background: var(--vscode-inputOption-activeBackground, var(--accent-subtle));
-  border-color: var(--vscode-inputOption-activeBorder, var(--accent));
-  color: var(--vscode-inputOption-activeForeground, var(--text-primary));
+  background: var(--bg-tertiary);
+  border-color: var(--text-muted);
+  color: var(--text-primary);
 }
 
 .no-results {
@@ -436,9 +456,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
+  height: var(--row-height-section-header);
+  min-height: var(--row-height-section-header);
+  padding: 0 var(--spacing-sm);
   border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, var(--border-subtle));
-  background: var(--vscode-sideBar-background, var(--bg-primary));
+  background: var(--bg-secondary);
   flex-shrink: 0;
 }
 

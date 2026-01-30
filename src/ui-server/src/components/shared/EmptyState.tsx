@@ -1,7 +1,4 @@
-import type { LucideIcon } from 'lucide-react'
-
 interface EmptyStateProps {
-  icon?: LucideIcon
   title: string
   description?: string
   className?: string
@@ -12,7 +9,6 @@ interface EmptyStateProps {
  * Uses the panel-empty-state class from _utilities.css.
  */
 export function EmptyState({
-  icon: Icon,
   title,
   description,
   className = '',

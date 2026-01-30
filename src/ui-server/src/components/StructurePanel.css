@@ -1,6 +1,11 @@
+/* Extends .sidebar-panel from _base.css */
 .structure-panel {
   display: flex;
   flex-direction: column;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
   gap: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-md);
 }

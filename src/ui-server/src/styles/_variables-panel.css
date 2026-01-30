@@ -4,10 +4,14 @@
    Variable Nodes, Variables Table, Variables States
    ========================================== */
 
+/* Extends .sidebar-panel from _base.css */
 .variables-panel {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .variables-toolbar {

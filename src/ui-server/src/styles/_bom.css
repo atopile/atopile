@@ -4,11 +4,14 @@
    BOM Rows, BOM Details, Component Icons, Usage Trees
    ========================================== */
 
+/* Extends .sidebar-panel from _base.css */
 .bom-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
   position: relative;
+  overflow: hidden;
+  min-width: 0;
 }
 
 /* Summary bar - matches Structure header style */

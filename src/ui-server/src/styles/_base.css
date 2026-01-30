@@ -36,33 +36,30 @@ body {
   overflow: hidden;
 }
 
-/* Refined scrollbars */
+/* Refined scrollbars - track matches background, thumb slightly darker */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--bg-primary);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--ctp-surface1);
-  border-radius: 3px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  border: 2px solid var(--bg-primary);  /* Creates padding effect around thumb */
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--ctp-surface2);
+  background: var(--border-color);
 }
 
-/* Hide scrollbar until hover */
-.section-body {
+/* Firefox scrollbar styling */
+* {
   scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-
-.section-body:hover {
-  scrollbar-color: var(--ctp-surface1) transparent;
+  scrollbar-color: var(--bg-tertiary) var(--bg-primary);
 }
 
 /* ============================================
@@ -77,6 +74,20 @@ body {
   max-width: 320px;
   background: var(--bg-primary);
   border-right: 1px solid var(--border-color);
+}
+
+/* ============================================
+   Sidebar Panel Base
+   Unified base styles for all sidebar content panels
+   ============================================ */
+
+.sidebar-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
 }
 
 /* ============================================

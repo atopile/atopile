@@ -225,9 +225,12 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  padding: var(--spacing-xs) var(--spacing-sm);
+  height: var(--row-height-section-header);
+  min-height: var(--row-height-section-header);
+  padding: 0 var(--spacing-sm);
   margin-bottom: var(--spacing-xs);
   border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
 }
 
 .project-selector {
@@ -259,7 +262,7 @@
 
 .project-name {
   flex: 1;
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-primary);
   overflow: hidden;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { FileCode, Loader2, RefreshCw, Network } from 'lucide-react'
+import { FileCode, Loader2, RefreshCw } from 'lucide-react'
 import type { ModuleChild, Project } from '../types/build'
 import { sendActionWithResponse } from '../api/websocket'
 import { ModuleTree } from './ModuleTreeNode'
@@ -307,7 +307,6 @@ export function StructurePanel({
         )}
         {state.status === 'error' && (
           <EmptyState
-            icon={Network}
             title="Error loading structure"
             description={state.message}
           />

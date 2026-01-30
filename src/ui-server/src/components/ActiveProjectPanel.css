@@ -32,16 +32,16 @@
   flex-shrink: 0;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
-  background: var(--bg-tertiary);
+  background: transparent;
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .new-project-btn:hover {
-  border-color: var(--ctp-blue);
-  background: color-mix(in srgb, var(--ctp-blue) 15%, var(--bg-tertiary));
-  color: var(--ctp-blue);
+  border-color: var(--border-default);
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 /* Project Combobox - True input-style combobox */
@@ -409,16 +409,16 @@
   flex-shrink: 0;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
-  background: var(--bg-tertiary);
+  background: transparent;
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .create-target-btn:hover:not(:disabled) {
-  border-color: var(--ctp-blue);
-  background: color-mix(in srgb, var(--ctp-blue) 15%, var(--bg-tertiary));
-  color: var(--ctp-blue);
+  border-color: var(--border-default);
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .create-target-btn:disabled {
