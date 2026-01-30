@@ -23,6 +23,8 @@ import {
   getStoredSetting,
   isValidRegex,
   SearchOptions,
+  LoggerFilter,
+  loadEnabledLoggers,
 } from './log-viewer';
 import './LogViewer.css';
 
@@ -64,6 +66,9 @@ export function LogViewer() {
   const [sourceRegex, setSourceRegex] = useState(false);
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
   const [sourceCaseSensitive, setSourceCaseSensitive] = useState(false);
+
+  // Logger filter state - persisted in localStorage
+  const [enabledLoggers, setEnabledLoggers] = useState<Set<string> | null>(() => loadEnabledLoggers());
 
   // Build log specific parameters - buildId lives in the shared store
   const buildId = useStore((state) => state.logViewerBuildId) ?? '';
@@ -369,6 +374,13 @@ export function LogViewer() {
               )}
             </div>
 
+            {/* Logger filter dropdown */}
+            <LoggerFilter
+              logs={logs}
+              enabledLoggers={enabledLoggers}
+              onEnabledLoggersChange={setEnabledLoggers}
+            />
+
             <select
               value={audience}
               onChange={(e) => setAudience(e.target.value as Audience)}
@@ -484,6 +496,7 @@ export function LogViewer() {
         sourceFilter={sourceFilter}
         searchOptions={searchOptions}
         sourceOptions={sourceOptions}
+        enabledLoggers={enabledLoggers}
         levelFull={levelFull}
         timeMode={timeMode}
         sourceMode={sourceMode}

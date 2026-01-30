@@ -16,6 +16,8 @@ import {
   LogDisplay,
   ChevronDown,
   getStoredSetting,
+  LoggerFilter,
+  loadEnabledLoggers,
 } from './log-viewer';
 import './LogViewer.css';
 
@@ -42,6 +44,9 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
   const [audience] = useState<Audience>('developer');
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
+
+  // Logger filter state - persisted in localStorage (shared with LogViewer)
+  const [enabledLoggers, setEnabledLoggers] = useState<Set<string> | null>(() => loadEnabledLoggers());
 
   // Display toggles
   const [levelFull, setLevelFull] = useState(() =>
@@ -218,6 +223,13 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
                 </div>
               )}
             </div>
+
+            {/* Logger filter dropdown */}
+            <LoggerFilter
+              logs={logs}
+              enabledLoggers={enabledLoggers}
+              onEnabledLoggersChange={setEnabledLoggers}
+            />
           </div>
 
           <div className="lv-controls-right">
@@ -312,6 +324,7 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
         logs={logs}
         search={search}
         sourceFilter={sourceFilter}
+        enabledLoggers={enabledLoggers}
         levelFull={levelFull}
         timeMode={timeMode}
         sourceMode={sourceMode}

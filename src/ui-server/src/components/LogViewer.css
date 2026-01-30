@@ -1132,3 +1132,51 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* Logger Filter Dropdown Styles */
+.lv-logger-dropdown {
+  min-width: 140px;
+  max-width: 200px;
+}
+
+.lv-logger-actions {
+  display: flex;
+  gap: 4px;
+  padding: var(--spacing-xs);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--spacing-xs);
+}
+
+.lv-logger-action-btn {
+  flex: 1;
+  padding: 2px var(--spacing-xs);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.lv-logger-action-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.lv-logger-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lv-logger-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.lv-logger-name {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+}

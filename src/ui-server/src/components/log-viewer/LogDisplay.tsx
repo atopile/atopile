@@ -25,6 +25,7 @@ import {
   filterLogs,
   SearchOptions,
 } from './logUtils';
+import { filterByLoggers } from './LoggerFilter';
 
 // Chevron icon component
 function ChevronDown({ className }: { className?: string }) {
@@ -334,6 +335,7 @@ export interface LogDisplayProps {
   sourceFilter: string;
   searchOptions?: SearchOptions;
   sourceOptions?: SearchOptions;
+  enabledLoggers?: Set<string> | null;
   levelFull: boolean;
   timeMode: TimeMode;
   sourceMode: SourceMode;
@@ -355,6 +357,7 @@ export function LogDisplay({
   sourceFilter,
   searchOptions = { isRegex: false },
   sourceOptions = { isRegex: false },
+  enabledLoggers,
   levelFull,
   timeMode,
   sourceMode,
@@ -376,11 +379,11 @@ export function LogDisplay({
     autoScrollRef.current = autoScroll;
   }, [autoScroll]);
 
-  // Filter logs
-  const filteredLogs = useMemo(
-    () => filterLogs(logs, search, sourceFilter, searchOptions, sourceOptions),
-    [logs, search, sourceFilter, searchOptions, sourceOptions]
-  );
+  // Filter logs by search/source, then by enabled loggers
+  const filteredLogs = useMemo(() => {
+    const searchFiltered = filterLogs(logs, search, sourceFilter, searchOptions, sourceOptions);
+    return filterByLoggers(searchFiltered, enabledLoggers ?? null);
+  }, [logs, search, sourceFilter, searchOptions, sourceOptions, enabledLoggers]);
 
   // First timestamp for delta calculation
   const firstTimestamp = filteredLogs.length > 0 ? new Date(filteredLogs[0].timestamp).getTime() : 0;
