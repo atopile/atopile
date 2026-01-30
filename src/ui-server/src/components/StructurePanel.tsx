@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { FileCode, Loader2, AlertTriangle, Search, X, RefreshCw } from 'lucide-react'
+import { FileCode, Loader2, RefreshCw } from 'lucide-react'
 import type { ModuleChild, Project } from '../types/build'
 import { sendActionWithResponse } from '../api/websocket'
 import { ModuleTree } from './ModuleTreeNode'
+import { PanelSearchBox, EmptyState } from './shared'
 import './StructurePanel.css'
 
 interface StructurePanelProps {
@@ -10,6 +11,7 @@ interface StructurePanelProps {
   lastAtoFile: string | null
   projects: Project[]
   onRefreshStructure: () => void
+  isExpanded?: boolean
 }
 
 type ExplorerState =
@@ -75,6 +77,7 @@ export function StructurePanel({
   lastAtoFile,
   projects,
   onRefreshStructure,
+  isExpanded = false,
 }: StructurePanelProps) {
   const [state, setState] = useState<ExplorerState>({ status: 'idle' })
   const [searchTerm, setSearchTerm] = useState('')
@@ -84,7 +87,6 @@ export function StructurePanel({
   )
   const requestIdRef = useRef(0)
   const lastRequestKeyRef = useRef<string | null>(null)
-  const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Store expanded paths per file so they persist when switching files
   const expandedPathsPerFile = useRef<Map<string, Map<string, Set<string>>>>(new Map())
@@ -166,11 +168,6 @@ export function StructurePanel({
     setRefreshToken((value) => value + 1)
     onRefreshStructure()
   }, [effectiveAtoFile, activeProject, onRefreshStructure])
-
-  const handleClearSearch = useCallback(() => {
-    setSearchTerm('')
-    searchInputRef.current?.focus()
-  }, [])
 
   // Restore expansion state when switching files
   useEffect(() => {
@@ -280,51 +277,38 @@ export function StructurePanel({
           title="Refresh structure"
           disabled={!effectiveAtoFile || !activeProject}
         >
-          <RefreshCw size={14} />
+          <RefreshCw size={12} />
         </button>
       </div>
 
       {/* Search bar - only show when we have content */}
       {state.status === 'ready' && state.modules.some((m) => m.children.length > 0) && (
-        <div className="structure-search">
-          <Search size={14} className="structure-search-icon" />
-          <input
-            ref={searchInputRef}
-            type="text"
-            className="structure-search-input"
-            placeholder="Filter structure..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          {searchTerm && (
-            <button
-              className="structure-search-clear"
-              onClick={handleClearSearch}
-              title="Clear search"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
+        <PanelSearchBox
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="Filter structure..."
+          autoFocus={isExpanded}
+        />
       )}
 
       <div className="structure-body">
         {state.status === 'idle' && (
           <div className="structure-empty">
-            <span>Open an .ato file to view the structure</span>
+            <span className="empty-title">No structure available</span>
+            <span className="empty-description">Open an .ato file to view the module structure</span>
           </div>
         )}
         {state.status === 'loading' && (
           <div className="structure-loading">
-            <Loader2 size={16} className="spin" />
-            <span>Loading structure...</span>
+            <Loader2 size={24} className="spin" />
+            <span className="empty-title">Loading structure...</span>
           </div>
         )}
         {state.status === 'error' && (
-          <div className="structure-error">
-            <AlertTriangle size={14} />
-            <span>{state.message}</span>
-          </div>
+          <EmptyState
+            title="Error loading structure"
+            description={state.message}
+          />
         )}
         {state.status === 'ready' && (
           filteredModules.length > 0 ? (
@@ -346,11 +330,13 @@ export function StructurePanel({
             </div>
           ) : searchTerm ? (
             <div className="structure-empty">
-              <span>No matches for "{searchTerm}"</span>
+              <span className="empty-title">No matches found</span>
+              <span className="empty-description">No results for "{searchTerm}"</span>
             </div>
           ) : (
             <div className="structure-empty">
-              <span>No structure found</span>
+              <span className="empty-title">No structure found</span>
+              <span className="empty-description">This file contains no modules</span>
             </div>
           )
         )}

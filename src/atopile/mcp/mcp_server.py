@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from atopile.logging import get_logger

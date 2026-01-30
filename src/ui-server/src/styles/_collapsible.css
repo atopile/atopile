@@ -45,56 +45,46 @@ body.resizing .collapsible-section {
 .section-title-bar {
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
-  /* Edge-to-edge: minimal padding, border-left is visual indicator */
-  padding: 5px var(--spacing-xs) 5px 0;
-  background: var(--bg-secondary);
+  gap: 2px;
+  /* Match VS Code native sidebar item styling */
+  padding: 0 4px 0 0;
+  background: transparent;
   cursor: pointer;
   user-select: none;
   flex-shrink: 0;
+  height: 26px;
   min-height: 26px;
-  border-left: 2px solid transparent;
-  transition: all var(--transition-fast);
+  border-left: none;
+  transition: background var(--transition-fast);
 }
 
 .section-title-bar:hover {
-  background: var(--bg-tertiary);
-  border-left-color: var(--ato-orange);
-}
-
-.collapsible-section:not(.collapsed) .section-title-bar {
-  border-left-color: var(--ato-orange);
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
 }
 
 .section-chevron {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  /* Match VS Code native expand/collapse icon sizing */
+  width: 20px;
+  height: 26px;
   border: none;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--vscode-foreground, var(--text-primary));
   cursor: pointer;
   transition: color var(--transition-fast);
 }
 
-.collapsible-section:not(.collapsed) .section-chevron {
-  color: var(--ato-orange);
-}
-
 .section-title {
   flex: 1;
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: var(--text-muted);
-  transition: color var(--transition-fast);
-}
-
-.collapsible-section:not(.collapsed) .section-title {
-  color: var(--text-primary);
+  /* Match VS Code native sidebar item exactly */
+  font-family: var(--vscode-font-family, var(--font-sans));
+  font-size: var(--vscode-font-size, 13px);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--vscode-foreground, var(--text-primary));
 }
 
 .section-loading {
@@ -109,14 +99,16 @@ body.resizing .collapsible-section {
 }
 
 .section-badge {
-  font-size: var(--font-size-xxs);
+  /* Match VS Code native badge styling */
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   background: var(--bg-tertiary);
-  padding: 2px 5px;
-  border-radius: 6px;
+  padding: 1px 4px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
+  min-height: 16px;
 }
 
 .section-badge.filter-badge {
@@ -149,9 +141,10 @@ body.resizing .collapsible-section {
   display: flex;
   align-items: center;
   gap: 2px;
-  font-size: var(--font-size-xxs);
+  font-size: var(--font-size-xs);
   padding: 1px 4px;
-  border-radius: 6px;
+  border-radius: 4px;
+  min-height: 16px;
 }
 
 .section-error-count {

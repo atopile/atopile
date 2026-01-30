@@ -2,19 +2,19 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
-  padding: var(--spacing-xs);
+  padding: var(--spacing-xs) 8px;
   flex: 1 1 auto;
   min-height: 0;
 }
 
-/* Section Labels - matches Variables panel table headers */
+/* Section Labels - sub-headers within panels, smaller than main panel headers */
 .section-label {
+  font-family: var(--vscode-font-family, var(--font-sans));
   font-size: var(--font-size-xxs);
-  font-weight: 600;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  letter-spacing: 0.05em;
-  opacity: 0.7;
+  font-weight: 400;
+  text-transform: none;
+  color: var(--vscode-descriptionForeground, var(--text-muted));
+  letter-spacing: 0;
 }
 
 /* Project Selector Row */
@@ -32,16 +32,16 @@
   flex-shrink: 0;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
-  background: var(--bg-tertiary);
+  background: transparent;
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .new-project-btn:hover {
-  border-color: var(--ctp-blue);
-  background: color-mix(in srgb, var(--ctp-blue) 15%, var(--bg-tertiary));
-  color: var(--ctp-blue);
+  border-color: var(--border-default);
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 /* Project Combobox - True input-style combobox */
@@ -58,7 +58,7 @@
   min-height: 28px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
-  background: var(--bg-tertiary);
+  background: transparent;
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
@@ -69,7 +69,7 @@
 .combobox-input-wrapper.open,
 .combobox-input-wrapper:focus-within {
   border-color: var(--ctp-blue);
-  background: var(--bg-secondary);
+  background: transparent;
 }
 
 .combobox-icon {
@@ -86,8 +86,8 @@
   background: transparent;
   border: none;
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
   outline: none;
 }
 
@@ -184,9 +184,9 @@
 }
 
 .combobox-option-name {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
   font-weight: 500;
-  font-family: var(--font-mono);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -195,10 +195,10 @@
 
 .combobox-option-path {
   flex: 1;
+  font-family: var(--font-sans);
   font-size: var(--font-size-xs);
   color: var(--text-muted);
   opacity: 0.7;
-  font-family: var(--font-mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -255,7 +255,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-xs);
-  padding: 2px 4px;
+  padding: 2px 0;
 }
 
 .builds-badge {
@@ -293,7 +293,7 @@
   min-height: 28px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  background: var(--bg-tertiary);
+  background: transparent;
   color: var(--text-primary);
   font-size: var(--font-size-sm);
   cursor: pointer;
@@ -307,7 +307,7 @@
 
 .target-combobox-trigger.open {
   border-color: var(--ctp-blue);
-  background: var(--bg-secondary);
+  background: transparent;
 }
 
 .target-combobox-trigger:disabled {
@@ -316,20 +316,29 @@
 }
 
 .target-combobox-trigger .target-icon {
-  flex-shrink: 0;
   color: var(--ctp-blue);
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
 }
 
 .target-trigger-name {
-  font-weight: 500;
-  font-family: var(--font-mono);
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  outline: none;
 }
 
 .target-trigger-entry {
   flex: 1;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -350,7 +359,7 @@
 }
 
 .target-combobox-list {
-  max-height: 160px;
+  max-height: 200px;
   overflow-y: auto;
   padding: 2px;
 }
@@ -385,20 +394,22 @@
 }
 
 .target-option-name {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
   font-weight: 500;
-  font-family: var(--font-mono);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .target-option-entry {
-  flex: 1;
+  font-family: var(--font-sans);
   font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  text-align: right;
+  color: var(--text-primary);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .create-target-btn {
@@ -409,16 +420,16 @@
   flex-shrink: 0;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
-  background: var(--bg-tertiary);
+  background: transparent;
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .create-target-btn:hover:not(:disabled) {
-  border-color: var(--ctp-blue);
-  background: color-mix(in srgb, var(--ctp-blue) 15%, var(--bg-tertiary));
-  color: var(--ctp-blue);
+  border-color: var(--border-default);
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .create-target-btn:disabled {
@@ -514,13 +525,65 @@
   color: var(--text-muted);
 }
 
-/* Build Controls - full-width grid with equal button widths */
+/* Build Controls - Build (2x) + MFG Data (1x) */
 .build-controls {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 2fr 1fr;
   gap: 4px;
   padding-top: var(--spacing-xs);
   border-top: 1px solid var(--border-subtle);
+}
+
+/* Global actions row - Build All (2x) and MFG Data (1x) below project selector */
+.global-actions-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 4px;
+  margin-top: var(--spacing-xs);
+}
+
+.global-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 8px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--ato-orange);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.global-action-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ato-orange) 10%, var(--bg-tertiary));
+  color: var(--ato-orange);
+}
+
+.global-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.global-action-btn svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+/* Secondary global action - not orange outlined */
+.global-action-btn.secondary {
+  border-color: var(--border-subtle);
+}
+
+.global-action-btn.secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-default);
+  color: var(--text-primary);
 }
 
 .build-outputs {
@@ -539,7 +602,7 @@
   font-weight: 500;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
-  background: var(--bg-tertiary);
+  background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -565,14 +628,16 @@
 }
 
 .control-btn.primary {
-  border-color: var(--ctp-blue);
-  background: color-mix(in srgb, var(--ctp-blue) 20%, var(--bg-tertiary));
-  color: var(--ctp-blue);
+  border-color: var(--ato-orange);
+  background: transparent;
+  color: var(--text-secondary);
 }
 
 .control-btn.primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ctp-blue) 30%, var(--bg-tertiary));
+  background: color-mix(in srgb, var(--ato-orange) 10%, var(--bg-tertiary));
+  color: var(--ato-orange);
 }
+
 
 .control-btn:disabled {
   opacity: 0.4;
@@ -605,14 +670,15 @@
   align-items: center;
   gap: 4px;
   width: 100%;
-  padding: 3px 6px;
+  padding: 3px 0;
   border: none;
   background: transparent;
-  color: var(--text-muted);
-  font-size: var(--font-size-xxs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--vscode-descriptionForeground, var(--text-muted));
+  font-family: var(--vscode-font-family, var(--font-sans));
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition: all 0.15s ease;
@@ -913,8 +979,15 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .build-stage .stage-name {

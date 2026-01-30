@@ -376,10 +376,13 @@ export const ProjectCard = memo(function ProjectCard({
   }
 
   // Package mode state
+  // Always default to latest version - we'll update when details load
+  // Track if user has manually changed the version to avoid overwriting their choice
+  const userHasSelectedVersion = useRef(false)
   const [selectedVersion, setSelectedVersion] = useState(() => {
+    // Prefer latestVersion, but mark that user hasn't explicitly chosen yet
     const latestVersion = project.latestVersion && project.latestVersion !== 'unknown' ? project.latestVersion : null
-    const version = project.version && project.version !== 'unknown' ? project.version : null
-    return latestVersion || version || ''
+    return latestVersion || ''
   })
   const [selectedProjectId, setSelectedProjectId] = useState(() => {
     return availableProjects.find(p => p.isActive)?.id || availableProjects[0]?.id || ''
@@ -410,10 +413,8 @@ export const ProjectCard = memo(function ProjectCard({
             .map((v) => v.version)
             .filter((v) => v && v !== 'unknown')
             .sort(compareVersionsDesc)
-          if (
-            sortedDetailVersions.length > 0 &&
-            (!selectedVersion || selectedVersion === project.version)
-          ) {
+          // Always update to latest version unless user has explicitly selected a different version
+          if (sortedDetailVersions.length > 0 && !userHasSelectedVersion.current) {
             setSelectedVersion(sortedDetailVersions[0])
           }
         } else {
@@ -715,8 +716,11 @@ export const ProjectCard = memo(function ProjectCard({
             <VersionSelector
               versions={versions}
               selectedVersion={selectedVersion}
-              onVersionChange={setSelectedVersion}
-              latestVersion={project.latestVersion}
+              onVersionChange={(v) => {
+                userHasSelectedVersion.current = true
+                setSelectedVersion(v)
+              }}
+              latestVersion={versions[0]}  // First version after sorting is always latest
             />
           )}
           <button

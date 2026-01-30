@@ -1,9 +1,10 @@
 import { useState, memo, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
-  ChevronDown, ChevronRight, Search, Package,
+  ChevronDown, ChevronRight, Package,
   ExternalLink, Copy, Check, AlertTriangle,
   RefreshCw
 } from 'lucide-react'
+import { PanelSearchBox, EmptyState } from './shared'
 import type {
   BOMComponent as BOMComponentAPI,
   BOMData,
@@ -415,6 +416,7 @@ interface BOMPanelProps {
   onGoToSource?: (path: string, line?: number) => void
   selectedProjectRoot?: string | null
   selectedTargetNames?: string[]
+  isExpanded?: boolean
 }
 
 export function BOMPanel({
@@ -423,6 +425,7 @@ export function BOMPanel({
   error = null,
   onGoToSource: externalGoToSource,
   selectedProjectRoot,
+  isExpanded = false,
   selectedTargetNames,
 }: BOMPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
@@ -620,19 +623,12 @@ export function BOMPanel({
   }, [externalGoToSource])
 
   const toolbar = (
-    <div className="panel-toolbar">
-        <div className="panel-toolbar-row">
-          <div className="search-box">
-            <Search size={14} />
-            <input
-              type="text"
-              placeholder="Search value, MPN..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-        </div>
-      </div>
+    <PanelSearchBox
+      value={searchQuery}
+      onChange={setSearchQuery}
+      placeholder="Search value, MPN..."
+      autoFocus={isExpanded}
+    />
   )
 
   // Memoize filtered and sorted components
@@ -710,19 +706,17 @@ export function BOMPanel({
     return (
       <div className="bom-panel">
         {toolbar}
-        <div className="bom-empty-state">
-          {is404 ? (
-            <>
-              <span className="empty-title">No BOM data available</span>
-              <span className="empty-description">{getEmptyDescription()}</span>
-            </>
-          ) : (
-            <>
-              <AlertTriangle size={24} />
-              <span>{error}</span>
-            </>
-          )}
-        </div>
+        {is404 ? (
+          <EmptyState
+            title="No BOM data available"
+            description={getEmptyDescription()}
+          />
+        ) : (
+          <EmptyState
+            title="Error loading BOM"
+            description={error}
+          />
+        )}
       </div>
     )
   }
@@ -732,10 +726,10 @@ export function BOMPanel({
     return (
       <div className="bom-panel">
         {toolbar}
-        <div className="bom-empty-state">
-          <span className="empty-title">No BOM data available</span>
-          <span className="empty-description">{getEmptyDescription()}</span>
-        </div>
+        <EmptyState
+          title="No BOM data available"
+          description={getEmptyDescription()}
+        />
       </div>
     )
   }
