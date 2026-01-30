@@ -26,7 +26,8 @@ export const onDidChangeAtoBinInfoEvent = new EventEmitter<AtoBinInfo>();
 export const onDidChangeAtoBinInfo: Event<AtoBinInfo> = onDidChangeAtoBinInfoEvent.event;
 
 // Default atopile installation: use the feature branch from git
-const UV_ATO_DEFAULT_FROM = 'git+https://github.com/atopile/atopile.git@feature/extension_default_ato_install';
+// TODO: Switch to 'atopile' before release
+const UV_ATO_DEFAULT_FROM = 'git+https://github.com/atopile/atopile.git@stage/0.14.x';
 
 export var g_uv_path_local: string | null = null;
 

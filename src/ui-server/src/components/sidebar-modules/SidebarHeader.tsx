@@ -157,11 +157,18 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
 
   const pendingRestartNeeded = (() => {
     if (useLocalAtopile) {
-      // Toggle is ON - user wants to use their specified localPath
-      // Show restart if we have a path (either from backend or local input) but it doesn't match what's running
+      // Toggle is ON - user wants to use an explicitly configured local path
       const pathToUse = atopile?.localPath || localPathInput;
+
+      if (atopile?.actualSource !== 'settings') {
+        // Currently running from default (local-uv/git branch), not from explicit local path
+        // Need restart only if user has entered a valid path to switch to
+        return !!pathToUse;
+      }
+
+      // Already running from settings (explicit local path)
+      // Check if the configured path differs from what's running
       if (!pathToUse) return false;
-      // If backend is down (no actualBinaryPath), show restart if user has entered a path
       if (!atopile?.actualBinaryPath) return !!localPathInput;
       return !pathMatchesActualBinary(pathToUse);
     } else {
@@ -173,6 +180,13 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
       return isRunningExplicitlyConfigured;
     }
   })();
+
+  // Check if toggle is ON but we're not running from local and no path entered yet
+  // This is a "needs configuration" state - user turned on local but hasn't set it up
+  const needsLocalConfig = useLocalAtopile
+    && atopile?.actualSource !== 'settings'
+    && !atopile?.localPath
+    && !localPathInput;
 
   // Debug logging for restart detection
   console.log('[SidebarHeader] Restart detection state:', {
@@ -345,11 +359,16 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
   };
 
   // Determine health status
-  const getHealthStatus = (): 'installing' | 'healthy' | 'unhealthy' | 'unknown' | 'restart-needed' => {
+  const getHealthStatus = (): 'installing' | 'healthy' | 'unhealthy' | 'unknown' | 'restart-needed' | 'needs-config' => {
     // Check if restart is needed first (settings differ from actual binary)
     if (pendingRestartNeeded) {
       console.log('[SidebarHeader] getHealthStatus: restart-needed');
       return 'restart-needed';
+    }
+    // Check if toggle is ON but needs configuration (no path entered yet)
+    if (needsLocalConfig) {
+      console.log('[SidebarHeader] getHealthStatus: needs-config');
+      return 'needs-config';
     }
     if (atopile?.isInstalling) {
       console.log('[SidebarHeader] getHealthStatus: installing');
@@ -403,7 +422,7 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
                     <>
                       <AlertCircle size={14} />
                       <span className="health-message">
-                        Restart extension host to use specified atopile
+                        Restart to use selected atopile
                       </span>
                       <button
                         className="health-action-btn"
@@ -413,11 +432,19 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
                       </button>
                     </>
                   )}
+                  {healthStatus === 'needs-config' && (
+                    <>
+                      <AlertCircle size={14} />
+                      <span className="health-message">
+                        Enter a path to use local atopile
+                      </span>
+                    </>
+                  )}
                   {healthStatus === 'healthy' && (
                     <>
                       <Check size={14} />
                       <span className="health-message">
-                        {useLocalAtopile
+                        {useLocalAtopile && atopile?.actualSource === 'settings'
                           ? `Using local atopile v${atopile?.actualVersion || '?'}`
                           : atopile?.fromBranch
                             ? `Using atopile v${atopile?.actualVersion || '?'} (${atopile.fromBranch})`

@@ -959,6 +959,17 @@
   color: var(--ctp-yellow);
 }
 
+/* Health status: needs-config (yellow/orange warning - toggle on but no path) */
+.atopile-health-status.health-needs-config {
+  background: rgba(249, 226, 175, 0.15);
+  border: 1px solid var(--ctp-peach);
+  color: var(--ctp-peach);
+}
+
+.atopile-health-status.health-needs-config svg {
+  color: var(--ctp-peach);
+}
+
 /* Health action button (e.g., Restart button) */
 .health-action-btn {
   padding: 4px 10px;
