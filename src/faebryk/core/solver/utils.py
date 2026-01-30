@@ -641,6 +641,7 @@ class MutatorUtils:
         op!(op_inv(A), ...) -> A!
         '''
         """
+        from faebryk.core.solver.mutator import ExpressionBuilder
         from faebryk.core.solver.symbolic.invariants import AliasClass
 
         inner_expr_rep = expr.get_operands()[0]
@@ -665,10 +666,22 @@ class MutatorUtils:
             expr.as_parameter_operatable.get(),
             self.mutator.get_copy(inner_operand).as_parameter_operatable.force_get(),
         )
-        if expr.try_get_sibling_trait(F.Expressions.is_predicate) and (
-            out_assertable := out.try_get_sibling_trait(F.Expressions.is_assertable)
-        ):
-            self.mutator.assert_(out_assertable)
+        if expr.try_get_sibling_trait(F.Expressions.is_predicate):
+            if out_assertable := out.try_get_sibling_trait(F.Expressions.is_assertable):
+                self.mutator.assert_(out_assertable)
+            else:
+                self.mutator.create_check_and_insert_expression_from_builder(
+                    ExpressionBuilder(
+                        F.Expressions.IsSubset,
+                        [
+                            out.as_operand.get(),
+                            self.mutator.make_singleton(True).can_be_operand.get(),
+                        ],
+                        assert_=True,
+                        terminate=True,
+                        traits=[],
+                    )
+                )
         return out
 
     def mutate_unpack_expression(
@@ -683,6 +696,8 @@ class MutatorUtils:
         op!(P, ...) -> P & P is! True
         ```
         """
+        from faebryk.core.solver.mutator import ExpressionBuilder
+
         unpacked = (
             expr.get_operands()[0].as_parameter_operatable.force_get()
             if operands is None
@@ -690,25 +705,30 @@ class MutatorUtils:
         )
         if unpacked is None:
             raise ValueError("Unpacked operand can't be a literal")
-        out = self.mutator._mutate(
-            expr.as_parameter_operatable.get(),
-            self.mutator.get_copy(
-                unpacked.as_operand.get()
-            ).as_parameter_operatable.force_get(),
-        )
+        unpacked_op = unpacked.as_operand.get()
+        unpacked_copy_op = self.mutator.get_copy(unpacked_op)
+        unpacked_copy_po = unpacked_copy_op.as_parameter_operatable.force_get()
+        expr_po = expr.as_parameter_operatable.get()
+
+        out = self.mutator._mutate(expr_po, unpacked_copy_po)
+
         if expr.try_get_sibling_trait(F.Expressions.is_predicate):
             if (expression := out.as_expression.try_get()) and (
                 assertable := expression.as_assertable.try_get()
             ):
                 self.mutator.assert_(assertable)
             else:
-                self.mutator.create_check_and_insert_expression(
-                    F.Expressions.IsSubset,
-                    out.as_operand.get(),
-                    self.mutator.make_singleton(True).can_be_operand.get(),
-                    from_ops=[out, expr.as_parameter_operatable.get()],
-                    assert_=True,
-                    terminate=True,
+                self.mutator.create_check_and_insert_expression_from_builder(
+                    ExpressionBuilder(
+                        F.Expressions.IsSubset,
+                        [
+                            out.as_operand.get(),
+                            self.mutator.make_singleton(True).can_be_operand.get(),
+                        ],
+                        assert_=True,
+                        terminate=True,
+                        traits=[],
+                    )
                 )
         return out
 
