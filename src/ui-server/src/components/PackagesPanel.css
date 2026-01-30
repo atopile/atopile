@@ -213,6 +213,15 @@
   white-space: nowrap;
 }
 
+.packages-row-downloads {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 /* Empty states */
 .packages-empty-state {
   display: flex;

@@ -704,7 +704,7 @@ def handle_packages_summary(
 
     packages_list = sorted(
         packages_map.values(),
-        key=lambda p: (not p.installed, p.identifier.lower()),
+        key=lambda p: (not p.installed, -(p.downloads or 0), p.identifier.lower()),
     )
 
     return PackagesSummaryResponse(

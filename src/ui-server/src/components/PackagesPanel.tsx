@@ -8,9 +8,9 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CheckCircle, Package, PackageSearch, Search } from 'lucide-react'
+import { CheckCircle, Download, Package, PackageSearch, Search } from 'lucide-react'
 import type { PackageInfo, ProjectDependency } from '../types/build'
-import { isInstalledInProject } from '../utils/packageUtils'
+import { formatDownloads, isInstalledInProject } from '../utils/packageUtils'
 import type { SelectedPackage } from './sidebar-modules'
 import './PackagesPanel.css'
 
@@ -81,6 +81,10 @@ function MarketplacePackageRow({
       </div>
       <div className="packages-row-meta">
         <span className="packages-row-publisher">{pkg.publisher}</span>
+        <span className="packages-row-downloads">
+          <Download size={10} />
+          {formatDownloads(pkg.downloads)}
+        </span>
       </div>
     </div>
   )
