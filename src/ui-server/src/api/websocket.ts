@@ -653,6 +653,11 @@ function handleEventMessage(message: EventMessage): void {
         const errorMsg = data.error as string;
         useStore.getState().setInstallError(packageId, errorMsg);
       }
+      // Check if this is a successful install event
+      if (data.installed && data.package_id) {
+        const packageId = data.package_id as string;
+        useStore.getState().removeInstallingPackage(packageId);
+      }
       void refreshPackages();
       break;
     case EventType.StdlibChanged:
@@ -660,6 +665,26 @@ function handleEventMessage(message: EventMessage): void {
       break;
     case EventType.ProblemsChanged:
       void refreshProblems();
+      break;
+    case 'parts_changed':
+      // Dispatch custom event for PartsSearchPanel to refresh installed parts
+      window.dispatchEvent(
+        new CustomEvent('atopile:parts_changed', {
+          detail: {
+            projectRoot: data.project_root,
+            lcscId: data.lcsc_id,
+            installed: data.installed,
+          },
+        })
+      );
+      break;
+    case EventType.PackagesDownloadsUpdated:
+      // Update package download counts from background enrichment
+      if (data.downloads && typeof data.downloads === 'object') {
+        useStore.getState().updatePackageDownloads(
+          data.downloads as Record<string, number>
+        );
+      }
       break;
     case 'atopile_config_changed':
       console.log('[WS] Received atopile_config_changed raw data:', JSON.stringify(data, null, 2));

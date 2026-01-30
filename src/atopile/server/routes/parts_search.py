@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from atopile.server.connections import get_server_state
 from atopile.server.domains import parts_search as parts_domain
 
 router = APIRouter(tags=["parts-search"])
@@ -168,6 +169,16 @@ async def install_part(payload: InstallPartRequest):
             payload.lcsc_id,
             payload.project_root,
         )
+        # Emit parts_changed event so UI refreshes
+        server_state = get_server_state()
+        await server_state.emit_event(
+            "parts_changed",
+            {
+                "project_root": payload.project_root,
+                "lcsc_id": payload.lcsc_id,
+                "installed": True,
+            },
+        )
         return InstallPartResponse(
             success=True,
             identifier=result.get("identifier"),
@@ -185,6 +196,16 @@ async def uninstall_part(payload: InstallPartRequest):
             parts_domain.handle_uninstall_part,
             payload.lcsc_id,
             payload.project_root,
+        )
+        # Emit parts_changed event so UI refreshes
+        server_state = get_server_state()
+        await server_state.emit_event(
+            "parts_changed",
+            {
+                "project_root": payload.project_root,
+                "lcsc_id": payload.lcsc_id,
+                "installed": False,
+            },
         )
         return InstallPartResponse(
             success=True,

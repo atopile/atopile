@@ -690,6 +690,8 @@ export enum EventType {
     OpenKicad = "open_kicad",
     OpenLayout = "open_layout",
     PackagesChanged = "packages_changed",
+    PackagesDownloadsUpdated = "packages_downloads_updated",
+    PartsChanged = "parts_changed",
     ProblemsChanged = "problems_changed",
     ProjectDependenciesChanged = "project_dependencies_changed",
     ProjectFilesChanged = "project_files_changed",

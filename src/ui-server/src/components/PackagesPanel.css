@@ -259,3 +259,17 @@
 .packages-empty-action:hover {
   background: var(--accent-hover);
 }
+
+/* Downloads spinner animation */
+.packages-downloads-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

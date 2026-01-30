@@ -90,6 +90,99 @@ export function Sidebar() {
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
+  const tabBarRef = useRef<HTMLDivElement>(null);
+
+  // Track tab bar width to shorten labels when needed
+  const [tabBarWidth, setTabBarWidth] = useState(0);
+
+  useEffect(() => {
+    const tabBar = tabBarRef.current;
+    if (!tabBar) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setTabBarWidth(entry.contentRect.width);
+      }
+    });
+
+    observer.observe(tabBar);
+    return () => observer.disconnect();
+  }, []);
+
+  // Determine which labels to shorten based on available width
+  // Shortening order (deterministic): Standard Library -> Parameters -> Structure -> Packages
+  // Files, Parts, BOM always stay the same
+  const getTabLabels = useCallback((width: number) => {
+    // Thresholds tuned to allow tabs to get close together before shortening
+    if (width < 340) {
+      // Most compact: all shortened
+      return {
+        files: 'Files',
+        packages: 'Pkgs',
+        parts: 'Parts',
+        stdlib: 'Lib',
+        structure: 'Struct',
+        parameters: 'Params',
+        bom: 'BOM',
+      };
+    } else if (width < 380) {
+      // Shorten: Standard Library, Parameters, Structure
+      return {
+        files: 'Files',
+        packages: 'Pkgs',
+        parts: 'Parts',
+        stdlib: 'Lib',
+        structure: 'Struct',
+        parameters: 'Params',
+        bom: 'BOM',
+      };
+    } else if (width < 420) {
+      // Shorten: Standard Library, Parameters, Structure
+      return {
+        files: 'Files',
+        packages: 'Packages',
+        parts: 'Parts',
+        stdlib: 'Lib',
+        structure: 'Struct',
+        parameters: 'Params',
+        bom: 'BOM',
+      };
+    } else if (width < 480) {
+      // Shorten: Standard Library, Parameters
+      return {
+        files: 'Files',
+        packages: 'Packages',
+        parts: 'Parts',
+        stdlib: 'Lib',
+        structure: 'Structure',
+        parameters: 'Params',
+        bom: 'BOM',
+      };
+    } else if (width < 560) {
+      // Shorten: Standard Library only
+      return {
+        files: 'Files',
+        packages: 'Packages',
+        parts: 'Parts',
+        stdlib: 'Lib',
+        structure: 'Structure',
+        parameters: 'Parameters',
+        bom: 'BOM',
+      };
+    }
+    // Full labels
+    return {
+      files: 'Files',
+      packages: 'Packages',
+      parts: 'Parts',
+      stdlib: 'Standard Library',
+      structure: 'Structure',
+      parameters: 'Parameters',
+      bom: 'BOM',
+    };
+  }, []);
+
+  const tabLabels = useMemo(() => getTabLabels(tabBarWidth), [getTabLabels, tabBarWidth]);
 
   // Keep selected package in sync with refreshed package list (e.g., after install/uninstall)
   useEffect(() => {
@@ -371,20 +464,20 @@ export function Sidebar() {
 
         {/* Tabbed Panels Section */}
         <div className="tabbed-panels">
-          <div className="tab-bar">
+          <div className="tab-bar" ref={tabBarRef}>
             <button
               className={`tab-button ${activeTab === 'files' ? 'active' : ''}`}
               onClick={() => setActiveTab('files')}
               title="Files"
             >
-              Files
+              {tabLabels.files}
             </button>
             <button
               className={`tab-button ${activeTab === 'packages' ? 'active' : ''}`}
               onClick={() => setActiveTab('packages')}
               title="Packages"
             >
-              Packages
+              {tabLabels.packages}
               {isLoadingPackages && <span className="tab-loading" />}
             </button>
             <button
@@ -392,35 +485,35 @@ export function Sidebar() {
               onClick={() => setActiveTab('parts')}
               title="Parts"
             >
-              Parts
+              {tabLabels.parts}
             </button>
             <button
               className={`tab-button ${activeTab === 'stdlib' ? 'active' : ''}`}
               onClick={() => setActiveTab('stdlib')}
               title="Standard Library"
             >
-              Standard Library
+              {tabLabels.stdlib}
             </button>
             <button
               className={`tab-button ${activeTab === 'structure' ? 'active' : ''}`}
               onClick={() => setActiveTab('structure')}
               title="Structure"
             >
-              Structure
+              {tabLabels.structure}
             </button>
             <button
               className={`tab-button ${activeTab === 'parameters' ? 'active' : ''}`}
               onClick={() => setActiveTab('parameters')}
               title="Parameters"
             >
-              Parameters
+              {tabLabels.parameters}
             </button>
             <button
               className={`tab-button ${activeTab === 'bom' ? 'active' : ''}`}
               onClick={() => setActiveTab('bom')}
               title="Bill of Materials"
             >
-              BOM
+              {tabLabels.bom}
             </button>
           </div>
 

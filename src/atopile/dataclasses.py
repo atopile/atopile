@@ -62,6 +62,8 @@ class EventType(StrEnum):
     # Data state changes - client should refetch
     PROJECTS_CHANGED = "projects_changed"
     PACKAGES_CHANGED = "packages_changed"
+    PACKAGES_DOWNLOADS_UPDATED = "packages_downloads_updated"
+    PARTS_CHANGED = "parts_changed"
     STDLIB_CHANGED = "stdlib_changed"
     BOM_CHANGED = "bom_changed"
     VARIABLES_CHANGED = "variables_changed"

@@ -16,6 +16,7 @@ This LSP server provides:
 from __future__ import annotations
 
 import inspect
+import logging
 import re
 import textwrap
 from dataclasses import dataclass, field

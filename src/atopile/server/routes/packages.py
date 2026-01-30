@@ -92,10 +92,24 @@ async def get_packages_summary(
             "If not provided, uses configured workspace path."
         ),
     ),
+    background_tasks: BackgroundTasks = None,
     ctx: AppContext = Depends(get_ctx),
 ):
     scan_path = packages_domain.resolve_scan_path(ctx, path)
-    return await asyncio.to_thread(packages_domain.handle_packages_summary, scan_path)
+    result = await asyncio.to_thread(packages_domain.handle_packages_summary, scan_path)
+
+    # Find packages without download counts and enrich in background
+    # TODO: Remove when /v1/packages/all includes downloads
+    packages_needing_downloads = [
+        pkg.identifier for pkg in result.packages if pkg.downloads is None
+    ]
+    if packages_needing_downloads:
+        # Run enrichment as a background coroutine
+        asyncio.create_task(
+            packages_domain.enrich_packages_with_downloads(packages_needing_downloads)
+        )
+
+    return result
 
 
 @router.get("/api/packages", response_model=PackagesResponse)

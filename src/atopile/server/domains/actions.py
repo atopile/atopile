@@ -583,6 +583,11 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                             await packages_domain.refresh_packages_state(
                                 scan_path=project_path
                             )
+                            # Emit packages_changed so UI refreshes
+                            await server_state.emit_event(
+                                "packages_changed",
+                                {"package_id": package_id, "installed": True},
+                            )
                             await server_state.emit_event(
                                 "project_dependencies_changed",
                                 {"project_root": project_root},

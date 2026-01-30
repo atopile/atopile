@@ -204,6 +204,7 @@ def search_registry_packages(query: str) -> list[PackageInfo]:
                     repository=pkg.repository,
                     installed=False,
                     installed_in=[],
+                    downloads=pkg.downloads,
                 )
             )
 
@@ -245,6 +246,7 @@ def get_all_registry_packages() -> list[PackageInfo]:
                     repository=pkg.repository,
                     installed=False,
                     installed_in=[],
+                    downloads=pkg.downloads,
                 )
             )
 
@@ -713,6 +715,70 @@ def handle_packages_summary(
         installed_count=installed_count,
         registry_status=registry_status,
     )
+
+
+def fetch_package_downloads(identifier: str) -> int | None:
+    """
+    Fetch download count for a single package from the registry.
+    Returns None if fetch fails.
+
+    TODO: Remove this when /v1/packages/all includes downloads.
+    """
+    try:
+        api = _get_api()
+        pkg_response = api.get_package(identifier)
+        pkg_info = pkg_response.info
+        stats = pkg_info.stats if hasattr(pkg_info, "stats") else None
+        return stats.total_downloads if stats else None
+    except Exception as exc:
+        log.debug(f"Failed to fetch downloads for {identifier}: {exc}")
+        return None
+
+
+async def enrich_packages_with_downloads(identifiers: list[str]) -> None:
+    """
+    Background task to fetch downloads for packages and emit updates.
+    Fetches in batches to avoid overwhelming the API.
+
+    TODO: Remove this when /v1/packages/all includes downloads.
+    """
+    if not identifiers:
+        return
+
+    # Fetch downloads in small batches
+    batch_size = 5
+    downloads_map: dict[str, int | None] = {}
+
+    for i in range(0, len(identifiers), batch_size):
+        batch = identifiers[i : i + batch_size]
+
+        # Fetch batch concurrently
+        results = await asyncio.gather(
+            *[asyncio.to_thread(fetch_package_downloads, pkg_id) for pkg_id in batch],
+            return_exceptions=True,
+        )
+
+        for pkg_id, result in zip(batch, results):
+            if isinstance(result, Exception):
+                downloads_map[pkg_id] = None
+            else:
+                downloads_map[pkg_id] = result
+
+        # Emit incremental update after each batch
+        batch_updates = {
+            pkg_id: downloads_map[pkg_id]
+            for pkg_id in batch
+            if downloads_map.get(pkg_id) is not None
+        }
+        if batch_updates:
+            await server_state.emit_event(
+                "packages_downloads_updated",
+                {"downloads": batch_updates},
+            )
+
+        # Small delay between batches to be nice to the API
+        if i + batch_size < len(identifiers):
+            await asyncio.sleep(0.1)
 
 
 def handle_get_packages(

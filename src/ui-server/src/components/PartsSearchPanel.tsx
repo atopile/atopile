@@ -140,6 +140,28 @@ export function PartsSearchPanel({
     }
   }, [selectedProjectRoot])
 
+  // Listen for parts_changed events to refresh installed parts list
+  useEffect(() => {
+    const handlePartsChanged = (event: CustomEvent<{ projectRoot?: string; lcscId?: string; installed?: boolean }>) => {
+      // Only refresh if the event is for our project
+      if (selectedProjectRoot && event.detail.projectRoot === selectedProjectRoot) {
+        // Refetch installed parts
+        api.parts.installed(selectedProjectRoot)
+          .then((response) => {
+            setInstalledParts(response.parts || [])
+          })
+          .catch((error) => {
+            console.warn('Failed to refresh installed parts:', error)
+          })
+      }
+    }
+
+    window.addEventListener('atopile:parts_changed', handlePartsChanged as EventListener)
+    return () => {
+      window.removeEventListener('atopile:parts_changed', handlePartsChanged as EventListener)
+    }
+  }, [selectedProjectRoot])
+
   useEffect(() => {
     const query = searchQuery.trim()
     if (!query) {
