@@ -8,10 +8,18 @@ import { postMessage } from '../api/vscodeApi'
 import './ActiveProjectPanel.css'
 
 interface NewProjectData {
-  name?: string
+  name: string
   license?: string
   description?: string
   parentDirectory?: string
+}
+
+// Get workspace root from window object (set by VS Code extension)
+const getWorkspaceRoot = (): string => {
+  if (typeof window !== 'undefined') {
+    return (window as Window & { __ATOPILE_WORKSPACE_ROOT__?: string }).__ATOPILE_WORKSPACE_ROOT__ || ''
+  }
+  return ''
 }
 
 interface ActiveProjectPanelProps {
@@ -581,9 +589,22 @@ function NewTargetForm({
     }
   }
 
+  // Validate entry format: should be file.ato:ModuleName
+  const isValidEntryFormat = (value: string): boolean => {
+    const trimmed = value.trim()
+    if (!trimmed) return false
+    // Must contain .ato: followed by at least one character
+    const match = trimmed.match(/\.ato:(.+)$/)
+    return match !== null && match[1].length > 0
+  }
+
+  const entryFormatError = entry.trim() && !isValidEntryFormat(entry)
+    ? 'Entry must be in format: file.ato:ModuleName'
+    : null
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim() || !entry.trim()) return
+    if (!name.trim() || !entry.trim() || !isValidEntryFormat(entry)) return
     onSubmit({
       name: name.trim(),
       entry: entry.trim(),
@@ -598,6 +619,7 @@ function NewTargetForm({
 
   // Entry status message
   const getEntryStatusMessage = () => {
+    if (entryFormatError) return entryFormatError
     if (isCheckingEntry) return 'Checking...'
     if (!entryStatus) return 'Format: file.ato:ModuleName'
     if (entryStatus.module_exists) return '✓ Module exists'
@@ -606,6 +628,7 @@ function NewTargetForm({
   }
 
   const getEntryStatusClass = () => {
+    if (entryFormatError) return 'status-error'
     if (!entryStatus || isCheckingEntry) return ''
     if (entryStatus.module_exists) return 'status-exists'
     return 'status-create'
@@ -702,7 +725,7 @@ function NewTargetForm({
         <button
           type="submit"
           className="form-btn primary"
-          disabled={isCreating || !name.trim() || !entry.trim()}
+          disabled={isCreating || !name.trim() || !entry.trim() || !isValidEntryFormat(entry)}
         >
           {isCreating ? 'Creating...' : 'Create'}
         </button>
@@ -724,6 +747,7 @@ function NewProjectForm({
   error?: string | null
 }) {
   const [name, setName] = useState('')
+  const [parentDirectory, setParentDirectory] = useState(getWorkspaceRoot())
   const [license, setLicense] = useState('')
   const [description, setDescription] = useState('')
   const nameRef = useRef<HTMLInputElement>(null)
@@ -733,12 +757,31 @@ function NewProjectForm({
     nameRef.current?.focus()
   }, [])
 
+  // Listen for browse result from VS Code
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const message = event.data
+      if (message?.type === 'browseProjectPathResult' && message.path) {
+        setParentDirectory(message.path)
+      }
+    }
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [])
+
+  const handleBrowse = () => {
+    postMessage({ type: 'browseProjectPath' })
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    const trimmedName = name.trim()
+    if (!trimmedName) return
     onSubmit({
-      name: name.trim() || undefined,
+      name: trimmedName,
       license: license || undefined,
       description: description.trim() || undefined,
+      parentDirectory: parentDirectory || undefined,
     })
   }
 
@@ -747,6 +790,8 @@ function NewProjectForm({
       onCancel()
     }
   }
+
+  const isValid = name.trim().length > 0
 
   return (
     <form className="new-project-form" onSubmit={handleSubmit} onKeyDown={handleKeyDown}>
@@ -770,16 +815,41 @@ function NewProjectForm({
       )}
 
       <div className="form-field">
-        <label htmlFor="project-name">Name</label>
+        <label htmlFor="project-name">Name <span className="required">*</span></label>
         <input
           ref={nameRef}
           id="project-name"
           type="text"
-          placeholder="my-project (optional)"
+          placeholder="my-project"
           value={name}
           onChange={(e) => setName(e.target.value)}
           disabled={isCreating}
+          required
         />
+      </div>
+
+      <div className="form-field">
+        <label htmlFor="project-path">Location</label>
+        <div className="form-path-input">
+          <input
+            id="project-path"
+            type="text"
+            placeholder="/path/to/projects"
+            value={parentDirectory}
+            onChange={(e) => setParentDirectory(e.target.value)}
+            disabled={isCreating}
+            title={parentDirectory}
+          />
+          <button
+            type="button"
+            className="form-browse-btn"
+            onClick={handleBrowse}
+            disabled={isCreating}
+            title="Browse..."
+          >
+            <FolderOpen size={12} />
+          </button>
+        </div>
       </div>
 
       <div className="form-field">
@@ -822,7 +892,7 @@ function NewProjectForm({
         <button
           type="submit"
           className="form-btn primary"
-          disabled={isCreating}
+          disabled={isCreating || !isValid}
         >
           {isCreating ? 'Creating...' : 'Create'}
         </button>
@@ -1093,7 +1163,7 @@ export function ActiveProjectPanel({
   const [createProjectError, setCreateProjectError] = useState<string | null>(null)
   const [createTargetError, setCreateTargetError] = useState<string | null>(null)
 
-  const handleCreateProject = useCallback(async (data?: NewProjectData) => {
+  const handleCreateProject = useCallback(async (data: NewProjectData) => {
     if (!onCreateProject) return
     setIsCreatingProject(true)
     setCreateProjectError(null)
