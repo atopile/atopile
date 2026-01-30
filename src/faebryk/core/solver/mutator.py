@@ -455,7 +455,6 @@ class MutationStage:
         self.tg_out = tg_out
         self.G_in = G_in
         self.G_out = G_out
-        self._processed_predicate_uuids: set[int] = _processed_predicate_uuids or set()
         self.input_operables: OrderedSet[F.Parameters.is_parameter_operatable] = (
             OrderedSet(
                 po
@@ -1115,9 +1114,8 @@ class MutationMap:
             if (p_new_p := p_new.as_parameter.try_get()) is not None:
                 p_old_p = p_old.as_parameter.force_get()
                 if not MutatorUtils.try_copy_trait(
-                    g=g_out,
-                    from_param=p_old_p,
-                    to_param=p_new_p,
+                    from_op=p_old_p.as_operand.get(),
+                    to_op=p_new_p.as_operand.get(),
                     trait_t=F.has_name_override,
                 ):
                     # Preserve the location-based name before it's lost
@@ -1196,139 +1194,6 @@ class MutationMap:
                     ],
                     use_repr=False,
                 )
-            )
-
-        current_pred_uuids = {
-            pred.instance.node().get_uuid() for pred in relevant_root_predicates
-        }
-        prev_pred_uuids = (
-            initial_state.processed_predicate_uuids
-            if initial_state is not None
-            else set()
-        )
-        new_pred_uuids = current_pred_uuids - prev_pred_uuids
-        logger.info(f"new_pred_uuids: {new_pred_uuids}")
-        logger.info(f"new_pred_uuids: {len(new_pred_uuids)}")
-        removed_pred_uuids = prev_pred_uuids - current_pred_uuids
-
-        if initial_state is not None and not new_pred_uuids and not removed_pred_uuids:
-            # no changes
-            return initial_state
-
-        if initial_state is None:
-            g_out, tg_out = cls._bootstrap_copy(g, tg)
-            logger.info("initial_state is None")
-            for pred in relevant_root_predicates:
-                pred.copy_into(g_out)
-        elif not removed_pred_uuids:
-            logger.info("resuming; no removed_pred_uuids")
-            g_out = initial_state.G_out
-            tg_out = initial_state.tg_out
-
-            for pred in relevant_root_predicates:
-                # if pred.instance.node().get_uuid() in new_pred_uuids:
-                pred.copy_into(g_out)
-                for op in pred.as_expression.get().get_operand_operatables():
-                    op.copy_into(g_out)
-
-        else:
-            logger.info("resuming; have removals")
-            prev_tg_out = initial_state.tg_out
-            g_out = graph.GraphView.create()
-            tg_out = prev_tg_out.copy_into(target_graph=g_out, minimal=True)
-            relevant_op_uuids = {
-                op.instance.node().get_uuid()
-                for pred in relevant_root_predicates
-                for op in pred.as_expression.get().get_operand_operatables()
-            }
-            relevant_op_uuids |= {p.instance.node().get_uuid() for p in relevant}
-
-            # only relevant solved ops from initial_state
-            for op in initial_state.output_operables:
-                if op.instance.node().get_uuid() in relevant_op_uuids:
-                    logger.info(f"copying {op.compact_repr()} into {g_out}")
-                    op.copy_into(g_out)
-
-            # plus current predicates
-            for pred in relevant_root_predicates:
-                logger.info(
-                    f"copying {pred.as_expression.get().compact_repr()} into {g_out}"
-                )
-                pred.copy_into(g_out)
-
-        out_pos = F.Parameters.is_parameter_operatable.bind_typegraph(
-            tg_out
-        ).get_instances(g=g_out)
-
-        forward_mapping = {
-            F.Parameters.is_parameter_operatable.bind_instance(bound): po
-            for po in out_pos
-            # only if po exists in source graph
-            if fbrk.EdgeTrait.get_owner_node_of(
-                bound_node=(bound := g.bind(node=po.instance.node()))
-            )
-        }
-
-        if initial_state is not None:
-            forwarded_pos = {
-                k: F.Parameters.is_parameter_operatable.bind_instance(
-                    g_out.bind(node=v.instance.node())
-                )
-                for k, v in initial_state.compressed_mapping_forwards_complete.items()
-                if v.is_in_graph(g_out)
-            }
-            forward_mapping |= forwarded_pos
-        else:
-            forwarded_pos = None
-
-        for p_old, p_new in forward_mapping.items():
-            if forwarded_pos is not None and p_old in forwarded_pos:
-                continue
-
-            if (p_new_p := p_new.as_parameter.try_get()) is not None:
-                p_old_p = p_old.as_parameter.force_get()
-                if not MutatorUtils.try_copy_trait(
-                    g=g_out,
-                    from_param=p_old_p,
-                    to_param=p_new_p,
-                    trait_t=F.has_name_override,
-                ):
-                    # Preserve the location-based name before it's lost
-                    p_old_obj = fabll.Traits(p_old_p).get_obj_raw()
-                    p_new_p.set_name(p_old_obj.get_full_name())
-
-        nodes_uuids = {p.instance.node().get_uuid() for p in relevant}
-
-        for p_out in (
-            p
-            for p in fabll.Traits.get_implementors(
-                F.Parameters.can_be_operand.bind_typegraph(tg_out)
-            )
-            if p.instance.node().get_uuid() in nodes_uuids
-            and not p.try_get_sibling_trait(is_relevant)
-        ):
-            fabll.Traits.create_and_add_instance_to(p_out.get_obj_raw(), is_relevant)
-
-        if S_LOG:
-            expr_count = len(
-                fabll.Traits.get_implementors(
-                    F.Expressions.is_expression.bind_typegraph(tg_out)
-                )
-            )
-            param_count = len(
-                fabll.Traits.get_implementors(
-                    F.Parameters.is_parameter.bind_typegraph(tg_out)
-                )
-            )
-            lit_count = len(
-                fabll.Traits.get_implementors(
-                    F.Literals.is_literal.bind_typegraph(tg_out)
-                )
-            )
-            logger.debug(
-                f"|lits|={lit_count}"
-                f", |exprs|={expr_count}"
-                f", |params|={param_count} {g_out}"
             )
 
         return MutationMap(
@@ -1438,12 +1303,6 @@ class MutationMap:
     @property
     def input_operables(self) -> OrderedSet[F.Parameters.is_parameter_operatable]:
         return self.first_stage.input_operables
-
-    @property
-    def processed_predicate_uuids(self) -> set[int]:
-        return set.union(
-            *(stage._processed_predicate_uuids for stage in self.mutation_stages)
-        )
 
     def get_iteration_mutation(self, algo: SolverAlgorithm) -> "MutationMap | None":
         last = first(
@@ -1576,7 +1435,6 @@ class MutationMap:
                     removed=OrderedSet(removed),
                     created=created,
                 ),
-                _processed_predicate_uuids=self.processed_predicate_uuids,
             )
         )
 
@@ -1601,7 +1459,8 @@ class ExpressionBuilder[
     operands: list[F.Parameters.can_be_operand]
     assert_: bool
     terminate: bool
-    traits: list[fabll.NodeT | None]
+    # TODO check type(t) is not Node (has to be fabll typed)
+    traits: list[fabll.NodeT]
     # TODO make non-default
     # TODO consider including in matches
     irrelevant: bool = False
@@ -1616,8 +1475,7 @@ class ExpressionBuilder[
             traits=[
                 t
                 for trait_t in _EXPRESSION_BUILDER_TRAIT_ALLOWLIST
-                if trait_t is not None
-                and (t := e.try_get_sibling_trait(trait_t)) is not None
+                if (t := e.try_get_sibling_trait(trait_t))
             ],
             irrelevant=bool(e.try_get_sibling_trait(is_irrelevant)),
         )
@@ -1802,6 +1660,7 @@ class Mutator:
         param: F.Parameters.is_parameter,
     ) -> F.Parameters.is_parameter:
         p_po = param.as_parameter_operatable.get()
+        p_op = param.as_operand.get()
         if p_mutated := self.try_get_mutated(p_po):
             return p_mutated.as_parameter.force_get()
 
@@ -1823,17 +1682,13 @@ class Mutator:
             )
 
         new_param_p = new_param.as_parameter.force_get()
-        if (
-            MutatorUtils.try_copy_trait(
-                self.G_out, param, new_param_p, F.has_name_override
-            )
-            is None
-        ):
+        new_param_op = new_param_p.as_operand.get()
+        if MutatorUtils.try_copy_trait(p_op, new_param_op, F.has_name_override) is None:
             # Preserve the location-based name before it's lost
             new_param_p.set_name(param_obj.get_full_name())
 
         for trait_t in (is_relevant, is_irrelevant):
-            MutatorUtils.try_copy_trait(self.G_out, param, new_param_p, trait_t)
+            MutatorUtils.try_copy_trait(p_op, new_param_op, trait_t)
 
         return self._mutate(
             p_po,
@@ -1882,10 +1737,9 @@ class Mutator:
             self.mark_irrelevant(new_expr.is_parameter_operatable.get())
 
         for trait in traits:
-            if trait is not None:
-                fabll.Traits.add_instance_to(
-                    node=new_expr, trait_instance=trait.copy_into(self.G_out)
-                )
+            if not trait.is_in_graph(self.G_out):
+                trait = self.utils.get_copy_trait(self.G_out, self.tg_out, trait)
+            fabll.Traits.add_instance_to(node=new_expr, trait_instance=trait)
 
         from faebryk.core.solver.symbolic.invariants import I_LOG
 

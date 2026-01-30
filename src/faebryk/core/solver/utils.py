@@ -723,9 +723,8 @@ class MutatorUtils:
 
     @staticmethod
     def try_copy_trait[T: fabll.NodeT](
-        g: graph.GraphView,
-        from_param: F.Parameters.is_parameter,
-        to_param: F.Parameters.is_parameter,
+        from_op: F.Parameters.can_be_operand,
+        to_op: F.Parameters.can_be_operand,
         trait_t: type[T],
     ) -> T | None:
         """
@@ -737,24 +736,44 @@ class MutatorUtils:
         Important: Recreates trait, doesn't copy it.
         Else would result in owner being copied too.
         """
+        if (already := to_op.try_get_sibling_trait(trait_t)) is not None:
+            return already
+
+        trait = from_op.try_get_sibling_trait(trait_t)
+        if trait is None:
+            return None
+
+        copy = MutatorUtils.get_copy_trait(to_op.g, to_op.tg, trait)
+        if not copy:
+            return None
+
+        fabll.Traits.add_instance_to(fabll.Traits(to_op).get_obj_raw(), copy)
+        return copy
+
+    @staticmethod
+    def get_copy_trait[T: fabll.NodeT](
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+        trait: T,
+    ) -> T:
+        # TODO should be somewhere else
         from faebryk.core.solver.mutator import is_irrelevant, is_relevant
 
-        from_param_obj = fabll.Traits(from_param).get_obj_raw()
-        to_param_obj = fabll.Traits(to_param).get_obj_raw()
-        if to_param_obj.has_trait(trait_t):
-            return to_param_obj.get_trait(trait_t)
-        if trait := from_param_obj.try_get_trait(trait_t):
-            new_t = fabll.Traits.create_and_add_instance_to(to_param_obj, trait_t)
-            match new_t:
-                case F.has_name_override():
-                    assert isinstance(trait, F.has_name_override)
-                    assert isinstance(new_t, F.has_name_override)
-                    new_t.setup(
-                        name=trait.name.get().get_single(),
-                        detail=trait.detail.get().get_single() or None,
-                    )
-                case is_relevant() | is_irrelevant():
-                    pass
-                case _:
-                    raise ValueError(f"Unknown trait type: {trait_t}")
-            return new_t
+        trait_t = type(trait)
+        assert trait_t is not fabll.Node
+
+        trait_instance = trait_t.bind_typegraph(tg).create_instance(g)
+        match trait_instance:
+            case F.has_name_override():
+                assert isinstance(trait, F.has_name_override)
+                assert isinstance(trait_instance, F.has_name_override)
+                trait_instance.setup(
+                    name=trait.name.get().get_single(),
+                    detail=trait.detail.get().get_single() or None,
+                )
+            case is_relevant() | is_irrelevant():
+                pass
+            case _:
+                raise ValueError(f"Unknown trait type: {trait_t}")
+
+        return trait_instance
