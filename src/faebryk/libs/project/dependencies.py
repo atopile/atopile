@@ -10,6 +10,12 @@ from atopile import errors, version
 from faebryk.libs.backend.packages.api import Errors as ApiErrors
 from faebryk.libs.backend.packages.api import PackagesAPIClient
 from faebryk.libs.package.dist import Dist, DistValidationError
+from faebryk.libs.package.meta import (
+    PackageModifiedError,
+    PackageSource,
+    PackageState,
+    get_package_state,
+)
 from faebryk.libs.util import (
     DAG,
     clone_repo,
@@ -259,6 +265,30 @@ class ProjectDependency:
             return
         self.cfg = config.ProjectConfig.from_path(self.target_path)
 
+    def get_package_source(self) -> PackageSource:
+        """Create a PackageSource from this dependency's spec."""
+        if isinstance(self.spec, config.RegistryDependencySpec):
+            return PackageSource(
+                type="registry",
+                url="https://packages.atopileapi.com",
+            )
+        elif isinstance(self.spec, config.GitDependencySpec):
+            return PackageSource(
+                type="git",
+                url=self.spec.repo_url,
+                ref=self.spec.ref,
+                path=str(self.spec.path_within_repo)
+                if self.spec.path_within_repo
+                else None,
+            )
+        elif isinstance(self.spec, config.FileDependencySpec):
+            return PackageSource(
+                type="file",
+                path=str(self.spec.path),
+            )
+        else:
+            return PackageSource(type="unknown")
+
     def __str__(self) -> str:
         return f"{type(self).__name__}(spec={self.spec}, path={self.target_path})"
 
@@ -277,6 +307,7 @@ class ProjectDependencies:
         clean_unmanaged_dirs: bool = False,
         pin_versions: bool = False,
         update_versions: bool = False,
+        force_sync: bool = False,
     ):
         if pcfg is None:
             if self.gcfg is None:
@@ -308,7 +339,7 @@ class ProjectDependencies:
         self.dag = self.resolve_dependencies()
 
         if sync_versions:
-            self.sync_versions()
+            self.sync_versions(force=force_sync)
         if install_missing:
             self.install_missing_dependencies()
         if clean_unmanaged_dirs:
@@ -335,7 +366,7 @@ class ProjectDependencies:
         for dep in self.not_installed_dependencies:
             assert dep.dist is not None
             _log_add_package(dep.identifier, dep.dist.version)
-            dep.dist.install(dep.target_path)
+            dep.dist.install(dep.target_path, source=dep.get_package_source())
 
     def clean_unmanaged_directories(self):
         module_dir = self.pcfg.paths.modules
@@ -539,7 +570,7 @@ class ProjectDependencies:
         dep.load_dist()
         assert dep.dist is not None
 
-        dep.dist.install(target_path)
+        dep.dist.install(target_path, source=dep.get_package_source())
         dep.add_to_manifest()
         _log_add_package(dep.identifier, dep.dist.version)
 
@@ -626,9 +657,13 @@ class ProjectDependencies:
         self.reload()
         self.clean_unmanaged_directories()
 
-    def sync_versions(self):
+    def sync_versions(self, force: bool = False):
         """
-        Ensure that installed dependency versions match the manifest
+        Ensure that installed dependency versions match the manifest.
+
+        Args:
+            force: If True, overwrite locally modified packages without error.
+                   If False (default), raise PackageModifiedError for modified packages.
         """
 
         def _sync_dep(dep: ProjectDependency, installed_version: str) -> bool:
@@ -644,27 +679,79 @@ class ProjectDependencies:
                 robustly_rm_dir(target_path)
 
             _log_add_package(dep.identifier, dep.dist.version)
-            dep.dist.install(target_path)
+            dep.dist.install(target_path, source=dep.get_package_source())
             return True
 
         dirty = False
         for dep in self.direct_deps:
             match dep.spec.type:
                 case "registry":
-                    if dep.cfg is None or dep.cfg.package is None:
-                        installed_version = "<unknown>"
-                    else:
-                        installed_version = dep.cfg.package.version
-
                     spec = cast(config.RegistryDependencySpec, dep.spec)
                     desired_version = spec.release
 
-                    if installed_version != desired_version:
-                        logger.info(
-                            f"Syncing {dep.identifier}: "
-                            f"{installed_version} -> {desired_version}"
-                        )
-                        dirty |= _sync_dep(dep, installed_version)
+                    # Use metadata-based state checking
+                    state, meta, modified_files = get_package_state(
+                        dep.target_path,
+                        expected_version=desired_version,
+                        check_integrity=True,
+                    )
+
+                    match state:
+                        case PackageState.NOT_INSTALLED:
+                            logger.info(
+                                f"Installing missing dependency: "
+                                f"{dep.identifier}@{desired_version}"
+                            )
+                            dirty |= _sync_dep(dep, "<not installed>")
+
+                        case PackageState.INSTALLED_FRESH:
+                            # Package is up to date and unmodified
+                            pass
+
+                        case PackageState.INSTALLED_WRONG_VERSION:
+                            installed_version = meta.version if meta else "<unknown>"
+                            logger.info(
+                                f"Syncing {dep.identifier}: "
+                                f"{installed_version} -> {desired_version}"
+                            )
+                            dirty |= _sync_dep(dep, installed_version)
+
+                        case PackageState.INSTALLED_MODIFIED:
+                            if force:
+                                logger.warning(
+                                    f"Force overwriting modified package: "
+                                    f"{dep.identifier}"
+                                )
+                                installed_version = (
+                                    meta.version if meta else "<unknown>"
+                                )
+                                dirty |= _sync_dep(dep, installed_version)
+                            else:
+                                raise PackageModifiedError(
+                                    dep.identifier,
+                                    modified_files,
+                                    package_path=dep.target_path,
+                                )
+
+                        case PackageState.INSTALLED_NO_META:
+                            # Legacy package without metadata - reinstall to add
+                            # tracking
+                            if dep.cfg is None or dep.cfg.package is None:
+                                installed_version = "<unknown>"
+                            else:
+                                installed_version = dep.cfg.package.version
+
+                            if installed_version != desired_version:
+                                logger.info(
+                                    f"Syncing {dep.identifier}: "
+                                    f"{installed_version} -> {desired_version}"
+                                )
+                                dirty |= _sync_dep(dep, installed_version)
+                            else:
+                                logger.info(
+                                    f"Upgrading {dep.identifier} to tracked format"
+                                )
+                                dirty |= _sync_dep(dep, installed_version)
 
                 case "file" | "git":
                     logger.warning(

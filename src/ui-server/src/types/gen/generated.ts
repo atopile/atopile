@@ -596,6 +596,7 @@ export interface DependencyInfo {
     name:           string;
     publisher:      string;
     repository?:    null | string;
+    status?:        null | string;
     version:        string;
     via?:           string[] | null;
     [property: string]: any;

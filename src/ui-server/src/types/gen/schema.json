@@ -2765,6 +2765,18 @@
         ],
         "default": null,
         "title": "Via"
+      },
+      "status": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Status"
       }
     },
     "required": [

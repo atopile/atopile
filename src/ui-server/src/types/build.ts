@@ -103,6 +103,9 @@ export interface QueuedBuild {
   error?: string;
 }
 
+// Package integrity status
+export type PackageStatus = 'installed_fresh' | 'modified' | 'wrong_version' | 'not_installed' | 'no_meta' | 'unknown';
+
 // Dependency info (from ato.yaml)
 export interface ProjectDependency {
   identifier: string;  // e.g., "atopile/resistors"
@@ -119,6 +122,7 @@ export interface ProjectDependency {
   usageContent?: string;  // Content of usage.ato if it exists
   license?: string;  // License from ato.yaml package section
   homepage?: string;  // Homepage URL from ato.yaml package section
+  status?: PackageStatus;  // Package integrity status
 }
 
 export interface Project {

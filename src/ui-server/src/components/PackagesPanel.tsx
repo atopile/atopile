@@ -8,8 +8,8 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CheckCircle, Package, PackageSearch, Search } from 'lucide-react'
-import type { PackageInfo, ProjectDependency } from '../types/build'
+import { AlertTriangle, CheckCircle, Package, PackageSearch, Search, AlertCircle } from 'lucide-react'
+import type { PackageInfo, PackageStatus, ProjectDependency } from '../types/build'
 import { isInstalledInProject } from '../utils/packageUtils'
 import type { SelectedPackage } from './sidebar-modules'
 import './PackagesPanel.css'
@@ -30,6 +30,46 @@ interface PackagesPanelProps {
 
 type TabId = 'browse' | 'project'
 
+// Status badge component
+function PackageStatusBadge({ status }: { status?: PackageStatus }) {
+  if (!status || status === 'installed_fresh') {
+    return (
+      <span title="Up to date">
+        <CheckCircle size={12} className="packages-status-badge status-fresh" />
+      </span>
+    )
+  }
+  if (status === 'modified') {
+    return (
+      <span title="Locally modified">
+        <AlertTriangle size={12} className="packages-status-badge status-modified" />
+      </span>
+    )
+  }
+  if (status === 'wrong_version') {
+    return (
+      <span title="Version mismatch">
+        <AlertCircle size={12} className="packages-status-badge status-wrong-version" />
+      </span>
+    )
+  }
+  if (status === 'not_installed') {
+    return (
+      <span title="Not installed">
+        <AlertCircle size={12} className="packages-status-badge status-not-installed" />
+      </span>
+    )
+  }
+  if (status === 'no_meta') {
+    return (
+      <span title="Untracked - run sync to enable integrity checking">
+        <AlertTriangle size={12} className="packages-status-badge status-no-meta" />
+      </span>
+    )
+  }
+  return null
+}
+
 // Installed package row
 function InstalledPackageRow({
   dependency,
@@ -44,6 +84,7 @@ function InstalledPackageRow({
       <div className="packages-row-info">
         <div className="packages-row-header">
           <span className="packages-row-name">{dependency.name}</span>
+          <PackageStatusBadge status={dependency.status} />
         </div>
         {dependency.summary && (
           <div className="packages-row-summary">{dependency.summary}</div>

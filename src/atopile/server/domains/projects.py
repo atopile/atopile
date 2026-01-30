@@ -29,6 +29,7 @@ from atopile.dataclasses import (
 )
 from atopile.server.core import projects as core_projects
 from atopile.server.domains import packages as packages_domain
+from faebryk.libs.package.meta import get_package_state
 
 log = logging.getLogger(__name__)
 
@@ -97,6 +98,23 @@ def _read_module_package_info(
     )
 
 
+def _get_dependency_status(
+    modules_root: Path, identifier: str, expected_version: str | None
+) -> str:
+    """Get the integrity status of an installed dependency."""
+    package_path = modules_root / identifier
+    try:
+        state, _, _ = get_package_state(
+            package_path,
+            expected_version=expected_version,
+            check_integrity=True,
+        )
+        return state.value
+    except Exception as e:
+        log.debug(f"Error checking package state for {identifier}: {e}")
+        return "unknown"
+
+
 def _collect_dependency_sources(
     project_path: Path, direct_identifiers: list[str]
 ) -> dict[str, set[str]]:
@@ -133,6 +151,7 @@ def _build_dependencies(project_path: Path) -> list[DependencyInfo]:
     installed = packages_domain.get_installed_packages_for_project(project_path)
     installed_versions = {pkg.identifier: pkg.version for pkg in installed}
 
+    modules_root = project_path / ".ato" / "modules"
     dependencies: list[DependencyInfo] = []
 
     try:
@@ -163,6 +182,10 @@ def _build_dependencies(project_path: Path) -> list[DependencyInfo]:
             has_update = packages_domain.version_is_newer(version, latest_version)
             repository = cached_pkg.repository
 
+        # Get package integrity status
+        expected_version = getattr(dep, "release", None)
+        status = _get_dependency_status(modules_root, identifier, expected_version)
+
         dependencies.append(
             DependencyInfo(
                 identifier=identifier,
@@ -174,11 +197,11 @@ def _build_dependencies(project_path: Path) -> list[DependencyInfo]:
                 has_update=has_update,
                 is_direct=True,
                 via=None,
+                status=status,
             )
         )
 
     transitive_sources = _collect_dependency_sources(project_path, direct_identifiers)
-    modules_root = project_path / ".ato" / "modules"
 
     for identifier, sources in sorted(transitive_sources.items()):
         if identifier in direct_identifiers_set:
@@ -198,6 +221,9 @@ def _build_dependencies(project_path: Path) -> list[DependencyInfo]:
             has_update = packages_domain.version_is_newer(version, latest_version)
             repository = cached_pkg.repository or repository
 
+        # Get package integrity status (no expected version for transitive deps)
+        status = _get_dependency_status(modules_root, identifier, version)
+
         dependencies.append(
             DependencyInfo(
                 identifier=identifier,
@@ -209,6 +235,7 @@ def _build_dependencies(project_path: Path) -> list[DependencyInfo]:
                 has_update=has_update,
                 is_direct=False,
                 via=sorted(sources),
+                status=status,
             )
         )
 

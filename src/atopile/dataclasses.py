@@ -655,6 +655,7 @@ class DependencyInfo(BaseModel):
     has_update: bool = False
     is_direct: bool = False
     via: Optional[list[str]] = None
+    status: Optional[str] = None
 
 
 class DependenciesResponse(BaseModel):

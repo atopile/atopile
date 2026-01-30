@@ -250,3 +250,29 @@
 .packages-empty-action:hover {
   background: var(--accent-hover);
 }
+
+/* Package status badges */
+.packages-status-badge {
+  flex-shrink: 0;
+}
+
+.packages-status-badge.status-fresh {
+  color: var(--ctp-green);
+}
+
+.packages-status-badge.status-modified {
+  color: var(--ctp-yellow);
+}
+
+.packages-status-badge.status-wrong-version {
+  color: var(--ctp-red);
+}
+
+.packages-status-badge.status-not-installed {
+  color: var(--ctp-red);
+}
+
+.packages-status-badge.status-no-meta {
+  color: var(--ctp-peach);
+  /* Untracked: package installed before metadata tracking was added */
+}
