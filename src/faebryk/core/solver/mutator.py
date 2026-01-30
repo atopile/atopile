@@ -1237,13 +1237,14 @@ class MutationMap:
             ]:
                 raise ValueError(f"Invalid relevant operable(s): {invalid_ops}")
 
-        if relevant and initial_state:
-            # mut_map = MutationMap._with_relevance_set_resume(
-            #    g, tg, relevant, initial_state, iteration
-            # )
-            mut_map = MutationMap._with_relevance_set(g, tg, relevant, iteration)
-        elif relevant:
-            mut_map = MutationMap._with_relevance_set(g, tg, relevant, iteration)
+        if relevant:
+            # TODO re-enable if resume implemented
+            if initial_state and False:
+                mut_map = MutationMap._with_relevance_set_resume(
+                    g, tg, relevant, initial_state, iteration
+                )
+            else:
+                mut_map = MutationMap._with_relevance_set(g, tg, relevant, iteration)
         else:
             mut_map = MutationMap._identity(tg, g, iteration)
 
@@ -1805,7 +1806,7 @@ class Mutator:
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
         assert_: bool = False,
         terminate: bool = False,
-        traits: list[fabll.NodeT | None] | None = None,
+        traits: list[fabll.NodeT] | None = None,
         allow_uncorrelated_congruence_match: bool = False,
     ) -> "InsertExpressionResult":
         return self.create_check_and_insert_expression_from_builder(
