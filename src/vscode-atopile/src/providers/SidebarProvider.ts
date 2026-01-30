@@ -72,6 +72,10 @@ interface ShowLogsMessage {
   type: 'showLogs';
 }
 
+interface ShowBuildLogsMessage {
+  type: 'showBuildLogs';
+}
+
 interface ShowBackendMenuMessage {
   type: 'showBackendMenu';
 }
@@ -141,6 +145,7 @@ type WebviewMessage =
   | ReloadWindowMessage
   | RestartExtensionMessage
   | ShowLogsMessage
+  | ShowBuildLogsMessage
   | ShowBackendMenuMessage
   | OpenInSimpleBrowserMessage
   | RevealInFinderMessage
@@ -492,6 +497,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         break;
       case 'showLogs':
         backendServer.showLogs();
+        break;
+      case 'showBuildLogs':
+        void vscode.commands.executeCommand('atopile.logViewer.focus');
         break;
       case 'showBackendMenu':
         void vscode.commands.executeCommand('atopile.backendStatus');
