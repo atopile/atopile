@@ -1624,6 +1624,70 @@ def test_nested_override_trait():
     assert power.hv.get().has_trait(F.requires_external_usage)
 
 
+def test_requires_parameter():
+    """
+    Test that .required = True on a parameter adds the requires_external_usage trait.
+    """
+    _, _, _, _, app_instance = build_instance(
+        """
+        module App:
+            voltage: voltage
+            voltage.required = True
+        """,
+        "App",
+    )
+    voltage = _get_child(app_instance, "voltage")
+    assert fabll.Node.bind_instance(voltage).has_trait(F.requires_external_usage)
+
+
+def test_requires_parameter_unconstrained_fails():
+    """Test that an unconstrained required parameter fails the POST_SOLVE check."""
+    from atopile.errors import UserDesignCheckException
+    from faebryk.libs.app.checks import check_design
+
+    _, _, _, _, app_instance = build_instance(
+        """
+        module App:
+            voltage: voltage
+            voltage.required = True
+        """,
+        "App",
+    )
+
+    # Unconstrained parameter should fail POST_SOLVE check
+    with pytest.raises((ExceptionGroup, UserDesignCheckException)) as excinfo:
+        check_design(
+            fabll.Node.bind_instance(app_instance),
+            stage=F.implements_design_check.CheckStage.POST_SOLVE,
+        )
+    if isinstance(excinfo.value, ExceptionGroup):
+        assert excinfo.group_contains(
+            UserDesignCheckException,
+            match="Parameter requires to be constrained but is not",
+        )
+
+
+def test_requires_parameter_constrained_passes():
+    """Test that a constrained required parameter passes the POST_SOLVE check."""
+    from faebryk.libs.app.checks import check_design
+
+    _, _, _, _, app_instance = build_instance(
+        """
+        module App:
+            voltage: voltage
+            voltage.required = True
+            assert voltage within 3.3V +/- 10%
+        """,
+        "App",
+    )
+
+    # Constrained parameter should pass POST_SOLVE check
+    check_design(
+        fabll.Node.bind_instance(app_instance),
+        stage=F.implements_design_check.CheckStage.POST_SOLVE,
+    )
+
+
 def test_slice_for_loop():
     _, _, _, result, app_instance = build_instance(
         """
