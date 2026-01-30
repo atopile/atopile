@@ -9,7 +9,7 @@ import {
   Loader2,
   Package
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { API_URL } from '../api/config'
 import { postMessage } from '../api/vscodeApi'
 import type { PackageDetails } from '../types/build'
@@ -142,17 +142,27 @@ export function PackageDetailPanel({
   })
 
   const latestAvailableVersion = sortedVersions[0]?.version || ''
+
+  // Track if user has manually selected a version to avoid overwriting their choice
+  const userHasSelectedVersion = useRef(false)
   const [selectedVersion, setSelectedVersion] = useState(
-    latestAvailableVersion || details?.version || pkg.version || ''
+    latestAvailableVersion || ''
   )
 
-  // Update selected version when details load
+  // Handler that tracks user selection
+  const handleVersionChange = useCallback((version: string) => {
+    userHasSelectedVersion.current = true
+    setSelectedVersion(version)
+  }, [])
+
+  // Update selected version when details load - always default to latest
   useEffect(() => {
     if (!sortedVersions.length) return
-    if (!selectedVersion || selectedVersion === details?.installedVersion || selectedVersion === pkg.version) {
-      setSelectedVersion(sortedVersions[0]?.version || selectedVersion)
+    // Only update to latest if user hasn't explicitly selected a different version
+    if (!userHasSelectedVersion.current) {
+      setSelectedVersion(sortedVersions[0]?.version || '')
     }
-  }, [sortedVersions, details?.installedVersion, pkg.version, selectedVersion])
+  }, [sortedVersions])
 
   // Get description from details or package
   const description = details?.description || details?.summary || pkg.description
@@ -284,7 +294,7 @@ export function PackageDetailPanel({
               <select
                 className="detail-version-select"
                 value={selectedVersion}
-                onChange={(e) => setSelectedVersion(e.target.value)}
+                onChange={(e) => handleVersionChange(e.target.value)}
               >
                 {sortedVersions.map((v, idx) => (
                   <option key={v.version} value={v.version}>
