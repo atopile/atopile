@@ -25,6 +25,7 @@ import {
   SearchOptions,
   LoggerFilter,
   loadEnabledLoggers,
+  calculateSourceColumnWidth,
 } from './log-viewer';
 import './LogViewer.css';
 
@@ -256,8 +257,17 @@ export function LogViewer() {
   const searchRegexError = searchRegex ? isValidRegex(search).error : undefined;
   const sourceRegexError = sourceRegex ? isValidRegex(sourceFilter).error : undefined;
 
+  // Calculate dynamic source column width based on content
+  const sourceColumnWidth = useMemo(
+    () => calculateSourceColumnWidth(logs, sourceMode),
+    [logs, sourceMode]
+  );
+
   return (
-    <div className="lv-container">
+    <div
+      className="lv-container"
+      style={{ '--lv-source-width': `${sourceColumnWidth}px` } as React.CSSProperties}
+    >
       {/* Fixed Toolbar */}
       <div className="lv-toolbar">
         <div className="lv-controls">

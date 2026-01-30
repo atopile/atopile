@@ -4,7 +4,7 @@
  * Uses shared log-viewer modules for consistent behavior with LogViewer.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   LOG_LEVELS,
   LogLevel,
@@ -18,6 +18,7 @@ import {
   getStoredSetting,
   LoggerFilter,
   loadEnabledLoggers,
+  calculateSourceColumnWidth,
 } from './log-viewer';
 import './LogViewer.css';
 
@@ -175,8 +176,17 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
     setExpandKey(k => k + 1);
   }, []);
 
+  // Calculate dynamic source column width based on content
+  const sourceColumnWidth = useMemo(
+    () => calculateSourceColumnWidth(logs, sourceMode),
+    [logs, sourceMode]
+  );
+
   return (
-    <div className="lv-container">
+    <div
+      className="lv-container"
+      style={{ '--lv-source-width': `${sourceColumnWidth}px` } as React.CSSProperties}
+    >
       {/* Toolbar */}
       <div className="lv-toolbar">
         <div className="lv-controls">

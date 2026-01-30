@@ -409,7 +409,7 @@
 /* Column Headers - CSS Grid for static positioning */
 .lv-column-headers {
   display: grid;
-  grid-template-columns: 58px 55px 165px 1fr;
+  grid-template-columns: 58px 55px var(--lv-source-width, 100px) 1fr;
   gap: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-sm);
   background: var(--bg-tertiary);
@@ -420,15 +420,15 @@
 
 /* Compact modes for column headers */
 .lv-column-headers.lv-time-compact {
-  grid-template-columns: 48px 55px 165px 1fr;
+  grid-template-columns: 48px 55px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-column-headers.lv-level-compact {
-  grid-template-columns: 58px 24px 165px 1fr;
+  grid-template-columns: 58px 24px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-column-headers.lv-time-compact.lv-level-compact {
-  grid-template-columns: 48px 24px 165px 1fr;
+  grid-template-columns: 48px 24px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-col-header {
@@ -643,22 +643,22 @@
 
 .lv-entry-row {
   display: grid;
-  grid-template-columns: 58px 55px 165px 1fr;
+  grid-template-columns: 58px 55px var(--lv-source-width, 100px) 1fr;
   gap: var(--spacing-sm);
   align-items: flex-start;
 }
 
 /* Compact modes for entry rows - must match header */
 .lv-entry-row.lv-time-compact {
-  grid-template-columns: 48px 55px 165px 1fr;
+  grid-template-columns: 48px 55px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-entry-row.lv-level-compact {
-  grid-template-columns: 58px 24px 165px 1fr;
+  grid-template-columns: 58px 24px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-entry-row.lv-time-compact.lv-level-compact {
-  grid-template-columns: 48px 24px 165px 1fr;
+  grid-template-columns: 48px 24px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-ts {
@@ -890,7 +890,7 @@
 /* Tree row - uses same grid as regular entries */
 .lv-tree-row {
   display: grid;
-  grid-template-columns: 58px 55px 165px 1fr;
+  grid-template-columns: 58px 55px var(--lv-source-width, 100px) 1fr;
   gap: var(--spacing-sm);
   padding: 2px var(--spacing-sm);
   font-size: var(--font-size-sm);
@@ -900,15 +900,15 @@
 
 /* Compact modes for tree rows - must match header */
 .lv-tree-row.lv-time-compact {
-  grid-template-columns: 48px 55px 165px 1fr;
+  grid-template-columns: 48px 55px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-tree-row.lv-level-compact {
-  grid-template-columns: 58px 24px 165px 1fr;
+  grid-template-columns: 58px 24px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-tree-row.lv-time-compact.lv-level-compact {
-  grid-template-columns: 48px 24px 165px 1fr;
+  grid-template-columns: 48px 24px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-tree-row:hover {
