@@ -1272,8 +1272,7 @@ class BuildReport:
 class AppContext:
     summary_file: Optional[Path] = None
     workspace_paths: list[Path] = field(default_factory=list)
-    ato_source: Optional[str] = None
-    ato_ui_source: Optional[str] = None
+    ato_source: Optional[str] = None  # 'settings' or 'local-uv'
     ato_local_path: Optional[str] = None
     ato_binary_path: Optional[str] = None  # Actual resolved binary path
     ato_from_branch: Optional[str] = None  # Git branch when installed via uv from git

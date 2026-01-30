@@ -1515,7 +1515,8 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 actual_version = None
 
             actual_source = ctx.ato_source or "unknown"
-            ui_source = ctx.ato_ui_source or "release"
+            # Derive UI source from ato_source: 'settings' means local, otherwise release
+            ui_source = "local" if actual_source == "settings" else "release"
 
             # Emit the config so it gets to the frontend
             await server_state.emit_event(
@@ -1523,7 +1524,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 {
                     "actual_version": actual_version,
                     "actual_source": actual_source,
+                    "actual_binary_path": ctx.ato_binary_path,
                     "source": ui_source,
+                    "local_path": ctx.ato_local_path,
+                    "from_branch": ctx.ato_from_branch,
                 },
             )
             return {

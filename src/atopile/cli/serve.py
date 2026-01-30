@@ -75,11 +75,6 @@ def backend(
         "--ato-source",
         help="Source of the atopile binary (e.g., 'settings', 'local-uv')",
     ),
-    ato_ui_source: Optional[str] = typer.Option(
-        None,
-        "--ato-ui-source",
-        help="UI source type ('local' or 'release')",
-    ),
     ato_binary_path: Optional[str] = typer.Option(
         None,
         "--ato-binary-path",
@@ -105,7 +100,6 @@ def backend(
         workspace_paths=workspace_paths,
         force=force,
         ato_source=ato_source,
-        ato_ui_source=ato_ui_source,
         ato_binary_path=ato_binary_path,
         ato_local_path=ato_local_path,
         ato_from_branch=ato_from_branch,

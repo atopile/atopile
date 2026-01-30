@@ -548,16 +548,11 @@ class BackendServerManager implements vscode.Disposable {
                 message: `Starting backend server (${atoBin.source})...`,
             });
 
-            // Determine UI source type based on how the binary was resolved
-            // 'local' if running from a local filesystem path (settings)
-            // 'release' if running via uv (which installs from git branch)
-            let uiSourceType = 'release';
             let localPathForUI: string | undefined;
             let fromBranch: string | undefined;
 
             if (atoBin.source === 'settings') {
                 // Running from a local path (explicitly configured)
-                uiSourceType = 'local';
                 localPathForUI = settings.ato || atoBin.command[0];
             }
 
@@ -595,7 +590,6 @@ class BackendServerManager implements vscode.Disposable {
                 'serve', 'backend',
                 '--port', String(this.port),
                 '--ato-source', atoBin.source,
-                '--ato-ui-source', uiSourceType,
                 '--ato-binary-path', atoBinaryPath,
             ];
             // Pass local path if we're in local mode (for UI display)

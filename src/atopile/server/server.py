@@ -314,22 +314,22 @@ async def _load_atopile_install_options(ctx: AppContext) -> None:
             version_obj = ato_version.get_installed_atopile_version()
             actual_version = str(version_obj)
             actual_source = ctx.ato_source or "unknown"
-            # Include UI source type so the dropdown shows the correct initial state
-            ui_source = ctx.ato_ui_source or "release"
+            # Derive UI source from ato_source: 'settings' means local, otherwise release
+            ui_source = "local" if actual_source == "settings" else "release"
             await server_state.emit_event(
                 "atopile_config_changed",
                 {
                     "actual_version": actual_version,
                     "actual_source": actual_source,
-                    "actual_binary_path": ctx.ato_binary_path,  # Actual binary path
+                    "actual_binary_path": ctx.ato_binary_path,
                     "source": ui_source,  # Sets the active toggle state
-                    "local_path": ctx.ato_local_path,  # Path for display in UI
-                    "from_branch": ctx.ato_from_branch,  # Git branch (when installed via uv)
+                    "local_path": ctx.ato_local_path,
+                    "from_branch": ctx.ato_from_branch,
                 },
             )
             log.info(
                 f"[background] Actual atopile: {actual_version} from {actual_source} "
-                f"(binary: {ctx.ato_binary_path}, UI: {ui_source}"
+                f"(binary: {ctx.ato_binary_path}"
                 f"{', branch: ' + ctx.ato_from_branch if ctx.ato_from_branch else ''})"
             )
         except Exception as e:
@@ -439,7 +439,6 @@ def create_app(
     summary_file: Optional[Path] = None,
     workspace_paths: Optional[list[Path]] = None,
     ato_source: Optional[str] = None,
-    ato_ui_source: Optional[str] = None,
     ato_local_path: Optional[str] = None,
     ato_binary_path: Optional[str] = None,
     ato_from_branch: Optional[str] = None,
@@ -472,7 +471,6 @@ def create_app(
         summary_file=summary_file,
         workspace_paths=workspace_paths or [],
         ato_source=ato_source,
-        ato_ui_source=ato_ui_source,
         ato_local_path=ato_local_path,
         ato_binary_path=ato_binary_path,
         ato_from_branch=ato_from_branch,
@@ -651,7 +649,6 @@ class DashboardServer:
         port: Optional[int] = None,
         workspace_paths: Optional[list[Path]] = None,
         ato_source: Optional[str] = None,
-        ato_ui_source: Optional[str] = None,
         ato_local_path: Optional[str] = None,
         ato_binary_path: Optional[str] = None,
         ato_from_branch: Optional[str] = None,
@@ -661,7 +658,6 @@ class DashboardServer:
         self.app = create_app(
             workspace_paths=self.workspace_paths,
             ato_source=ato_source,
-            ato_ui_source=ato_ui_source,
             ato_local_path=ato_local_path,
             ato_binary_path=ato_binary_path,
             ato_from_branch=ato_from_branch,
@@ -746,7 +742,6 @@ def run_server(
     workspace_paths: Optional[list[Path]] = None,
     force: bool = False,
     ato_source: Optional[str] = None,
-    ato_ui_source: Optional[str] = None,
     ato_binary_path: Optional[str] = None,
     ato_local_path: Optional[str] = None,
     ato_from_branch: Optional[str] = None,
@@ -759,7 +754,6 @@ def run_server(
         workspace_paths: Workspace paths to scan for projects (defaults to cwd)
         force: Kill existing server on the port if True
         ato_source: Source of the atopile binary (e.g., 'settings', 'local-uv')
-        ato_ui_source: UI source type ('local' or 'release')
         ato_binary_path: Actual resolved path to the ato binary
         ato_local_path: Local path to display in the UI (when in local mode)
         ato_from_branch: Git branch name when installed from git via uv
@@ -775,7 +769,6 @@ def run_server(
             workspace_paths,
             force,
             ato_source=ato_source,
-            ato_ui_source=ato_ui_source,
             ato_binary_path=ato_binary_path,
             ato_local_path=ato_local_path,
             ato_from_branch=ato_from_branch,
@@ -796,7 +789,6 @@ def _run_server_impl(
     workspace_paths: Optional[list[Path]],
     force: bool,
     ato_source: Optional[str] = None,
-    ato_ui_source: Optional[str] = None,
     ato_binary_path: Optional[str] = None,
     ato_local_path: Optional[str] = None,
     ato_from_branch: Optional[str] = None,
@@ -845,7 +837,6 @@ def _run_server_impl(
         port=port,
         workspace_paths=workspace_paths,
         ato_source=ato_source,
-        ato_ui_source=ato_ui_source,
         ato_local_path=ato_local_path,
         ato_binary_path=ato_binary_path,
         ato_from_branch=ato_from_branch,
