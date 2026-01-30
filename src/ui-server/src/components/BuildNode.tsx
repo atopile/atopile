@@ -15,6 +15,7 @@ import { NameValidationDropdown } from './NameValidationDropdown';
 import { validateName } from '../utils/nameValidation';
 import { useStore } from '../store';
 import { sendAction } from '../api/websocket';
+import { postMessage } from '../api/vscodeApi';
 import './BuildNode.css';
 
 // Format time in mm:ss or hh:mm:ss
@@ -634,6 +635,8 @@ export const BuildNode = memo(function BuildNode({
                 if (id) {
                   useStore.getState().setLogViewerBuildId(id);
                   sendAction('setLogViewCurrentId', { buildId: id });
+                  // Open the ATOPILE LOGS panel (not the OUTPUT panel)
+                  postMessage({ type: 'showBuildLogs' });
                 }
               }}
               title="Click to view logs for this build"
