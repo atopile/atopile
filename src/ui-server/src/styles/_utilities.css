@@ -691,8 +691,69 @@
   border-radius: var(--radius-sm) !important;
   font-size: var(--font-size-body-small) !important;
   padding: var(--spacing-xs) var(--spacing-sm) !important;
+  font-weight: 500 !important;
+  transition: background var(--transition-fast) !important;
 }
 
 [data-sonner-toast] [data-button]:hover {
   background: var(--accent-hover) !important;
+}
+
+/* Cancel button - more subtle styling */
+[data-sonner-toast] [data-cancel] {
+  background: transparent !important;
+  color: var(--text-muted) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-sm) !important;
+  font-size: var(--font-size-xs) !important;
+  padding: var(--spacing-xs) var(--spacing-sm) !important;
+  transition: all var(--transition-fast) !important;
+}
+
+[data-sonner-toast] [data-cancel]:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* Custom toast class overrides for consistency */
+.ato-toast {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 4px 16px var(--shadow-color) !important;
+}
+
+.ato-toast-title {
+  color: var(--text-primary) !important;
+  font-weight: 500 !important;
+  font-size: var(--font-size-sm) !important;
+  line-height: 1.4 !important;
+}
+
+.ato-toast-description {
+  color: var(--text-muted) !important;
+  font-size: var(--font-size-xs) !important;
+  line-height: 1.4 !important;
+  margin-top: 2px !important;
+}
+
+.ato-toast-action {
+  background: var(--ato-orange) !important;
+  color: var(--bg-primary) !important;
+  font-weight: 500 !important;
+}
+
+.ato-toast-action:hover {
+  background: var(--ato-orange-hover, #e67e22) !important;
+}
+
+.ato-toast-close {
+  color: var(--text-muted) !important;
+  opacity: 0.6 !important;
+}
+
+.ato-toast-close:hover {
+  opacity: 1 !important;
+  background: var(--bg-hover) !important;
 }

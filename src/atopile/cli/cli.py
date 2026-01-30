@@ -1,6 +1,5 @@
 import sys
 
-from faebryk.libs.util import ConfigFlag
 
 # fast-path for self-check
 # makes extension a lot faster
@@ -12,6 +11,7 @@ if __name__ in ("__main__", "atopile.cli.cli"):
         sys.exit(0)
 
 
+from faebryk.libs.util import ConfigFlag
 import json
 import logging
 from enum import Enum

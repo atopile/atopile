@@ -422,10 +422,7 @@
 }
 
 .te-page-explorer {
-  width: 350px;
-  min-width: 280px;
-  max-width: 500px;
-  border-right: 1px solid var(--border-subtle);
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
 }
@@ -460,8 +457,21 @@
   background: var(--border-subtle);
   cursor: col-resize;
   transition: background 0.15s;
+  flex-shrink: 0;
+  position: relative;
 }
 
-.te-resize-handle:hover {
+/* Wider hit area for easier grabbing */
+.te-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
+}
+
+.te-resize-handle:hover,
+.te-resize-handle:active {
   background: var(--ato-orange);
 }

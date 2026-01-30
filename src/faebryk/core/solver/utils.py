@@ -15,8 +15,8 @@ from typing import (
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core import graph
 from atopile.logging_utils import rich_to_string
+from faebryk.core import graph
 from faebryk.libs.util import (
     ConfigFlag,
     ConfigFlagFloat,
@@ -27,7 +27,7 @@ from faebryk.libs.util import (
 )
 
 if TYPE_CHECKING:
-    from faebryk.core.solver.mutator import ExpressionBuilder, Mutator
+    from faebryk.core.solver.mutator import Mutator
 
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,6 @@ class Contradiction(Exception):
         tracebacks = {
             p: self.mutator.mutation_map.get_traceback(p) for p in self.involved_exprs
         }
-        print_ctx = self.mutator.mutation_map.print_ctx
 
         def _get_origins(
             p: F.Parameters.is_parameter_operatable,
@@ -94,9 +93,9 @@ class Contradiction(Exception):
         origins = {p: _get_origins(p) for p in self.involved_exprs}
         origins_str = "\n".join(
             [
-                f" - {origin.compact_repr(print_ctx, use_name=True)}\n"
+                f" - {origin.compact_repr(use_full_name=True)}\n"
                 + "\n".join(
-                    f"   - {o.compact_repr(print_ctx, use_name=True)}"
+                    f"   - {o.compact_repr(use_full_name=True)}"
                     for o in set(origins[origin])
                 )
                 for origin in origins
@@ -158,7 +157,6 @@ class ContradictionByLiteral(Contradiction):
         parts = [super().__str__()]
 
         if self.constraint_sources:
-            context = self.mutator.mutation_map.print_ctx
 
             def _has_bounded_literal(
                 expr: F.Parameters.is_parameter_operatable,
@@ -192,7 +190,7 @@ class ContradictionByLiteral(Contradiction):
                 expr: F.Parameters.is_parameter_operatable,
             ) -> str:
                 try:
-                    return expr.compact_repr(context, use_name=True)
+                    return expr.compact_repr(use_full_name=True)
                 except Exception as exc:
                     return f"<unprintable constraint {type(exc).__name__}>"
 
@@ -316,12 +314,12 @@ class MutatorUtils:
         operator: Callable[[T, T], T],
         lit_t: type[T],
         identity: F.Literals.LiteralValues,
-    ) -> list[F.Literals.is_literal]:
+    ) -> F.Literals.is_literal | None:
         """
         Return 'sum' of all literals in the iterable, or empty list if sum is identity.
         """
         if not operands:
-            return []
+            return None
 
         literal_it = iter(operands)
         const_sum = fabll.Traits(next(literal_it)).get_obj(lit_t)
@@ -333,9 +331,9 @@ class MutatorUtils:
 
         # TODO make work with all the types
         if const_sum_lit.op_setic_equals_singleton(identity):
-            return []
+            return None
 
-        return [const_sum_lit]
+        return const_sum_lit
 
     @staticmethod
     def are_aliased(
@@ -428,30 +426,6 @@ class MutatorUtils:
             return False
         return op.op_setic_is_singleton() or op.op_setic_is_empty()
 
-    def no_other_predicates(
-        self,
-        po: F.Parameters.is_parameter_operatable,
-        *other: F.Expressions.is_assertable,
-        unfulfilled_only: bool = False,
-    ) -> bool:
-        no_other_predicates = (
-            len(
-                [
-                    x
-                    for x in MutatorUtils.get_predicates_involved_in(po).difference(
-                        other
-                    )
-                    if not unfulfilled_only
-                    or not (
-                        (expr := x.try_get_trait(F.Expressions.is_expression))
-                        and self.mutator.is_terminated(expr)
-                    )
-                ]
-            )
-            == 0
-        )
-        return no_other_predicates and not po.has_implicit_predicates_recursive()
-
     @staticmethod
     def get_params_for_expr(
         expr: F.Expressions.is_expression,
@@ -464,52 +438,30 @@ class MutatorUtils:
             result.update(MutatorUtils.get_params_for_expr(e))
         return result
 
-    # TODO make generator
-    @staticmethod
-    def get_expressions_involved_in[T: fabll.NodeT](
-        p: F.Parameters.is_parameter_operatable,
-        type_filter: type[T] = fabll.Node,
-        include_root: bool = False,
-        up_only: bool = True,
-        require_trait: type[fabll.NodeT] | None = None,
-    ) -> OrderedSet[T]:
-        dependants = p.get_operations(recursive=True)
-        if e := p.as_expression.try_get():
-            if include_root:
-                dependants.add(fabll.Traits(e).get_obj_raw())
-
-            if not up_only:
-                dependants.update(
-                    fabll.Traits(op).get_obj_raw()
-                    for op in e.get_operands_with_trait(
-                        F.Expressions.is_expression, recursive=True
-                    )
-                )
-
-        res: OrderedSet[T] = OrderedSet(
-            t
-            for p in dependants
-            if (t := p.try_cast(type_filter))
-            and (not require_trait or p.has_trait(require_trait))
-        )
-        return res
-
-    @staticmethod
-    def get_predicates_involved_in[T: fabll.NodeT](
-        p: F.Parameters.is_parameter_operatable,
-        type_filter: type[T] = fabll.Node,
-    ) -> OrderedSet[T]:
-        return MutatorUtils.get_expressions_involved_in(
-            p, type_filter, require_trait=F.Expressions.is_predicate
-        )
-
     @staticmethod
     def get_relevant_predicates(
         *op: F.Parameters.can_be_operand,
     ) -> OrderedSet[F.Expressions.is_predicate]:
-        # get all root predicates
-        leaves: OrderedSet[F.Parameters.can_be_operand] = OrderedSet(op)
+        from faebryk.core.solver.mutator import is_irrelevant
+
+        if not op:
+            return OrderedSet()
+
+        first_op = next(iter(op))
+        tg = first_op.tg
+        g = first_op.g
+
+        anticorrelated_pairs = MutatorUtils.get_anticorrelated_pairs(tg, g)
+        original_params = {
+            p
+            for o in op
+            if (po := o.as_parameter_operatable.try_get())
+            and (p := po.as_parameter.try_get())
+        }
+        visited_params = OrderedSet(original_params)
+        leaves = OrderedSet(op)
         roots: OrderedSet[F.Expressions.is_predicate] = OrderedSet()
+
         while True:
             new_roots = (
                 OrderedSet(
@@ -517,21 +469,37 @@ class MutatorUtils:
                     for e in F.Parameters.can_be_operand.get_root_operands(
                         *leaves, predicates_only=True
                     )
+                    if not e.get_sibling_trait(
+                        F.Expressions.is_expression
+                    ).is_non_constraining()
+                    and not e.try_get_sibling_trait(is_irrelevant)
                 )
                 - roots
             )
 
             # get leaves for transitive predicates
             # A >! B, B >! C => only A >! B is in roots
-            leaves = (
-                OrderedSet(
-                    leaf.as_operand.get()
-                    for root in new_roots
-                    for leaf in root.as_expression.get().get_operand_leaves_operatable()
-                )
-                - leaves
-            )
+            # Skip leaves that are anticorrelated with any original relevant param
+            new_leaves: OrderedSet[F.Parameters.can_be_operand] = OrderedSet()
+            for root in new_roots:
+                for leaf_po in root.as_expression.get().get_operand_leaves_operatable():
+                    if (
+                        leaf_param := leaf_po.as_parameter.try_get()
+                    ) is None or leaf_param in visited_params:
+                        continue
 
+                    # Prevent Not(Correlated(A,B,C,...)) from creating a spurious
+                    # transitive closure
+                    if any(
+                        frozenset({orig, leaf_param}) in anticorrelated_pairs
+                        for orig in original_params
+                    ):
+                        continue
+
+                    new_leaves.add(leaf_po.as_operand.get())
+                    visited_params.add(leaf_param)
+
+            leaves = new_leaves
             roots.update(new_roots)
 
             if not leaves:
@@ -573,31 +541,23 @@ class MutatorUtils:
 
     @staticmethod
     def get_anticorrelated_pairs(
-        tg: "fbrk.TypeGraph",
+        tg: "fbrk.TypeGraph", g: "graph.GraphView | None" = None
     ) -> set[frozenset["F.Parameters.is_parameter"]]:
         """
         Collect all parameter pairs that are explicitly marked as uncorrelated
-        via Not(Correlated(...)) expressions.
+        via Anticorrelated expressions.
         """
         from itertools import combinations
 
         out: set[frozenset[F.Parameters.is_parameter]] = set()
 
-        for expr in F.Expressions.Correlated.bind_typegraph(tg).get_instances():
-            expr_op = expr.can_be_operand.get()
-            expr_e = expr.is_expression.get()
-            if not expr_op.get_operations(
-                types=F.Expressions.Not, recursive=False, predicates_only=True
+        for expr in F.Expressions.Anticorrelated.bind_typegraph(tg).get_instances(g):
+            for p1, p2 in combinations(
+                expr.is_expression.get().get_operands_with_trait(
+                    F.Parameters.is_parameter
+                ),
+                2,
             ):
-                continue
-
-            corr_params = [
-                p
-                for leaf in expr_e.get_operand_leaves_operatable()
-                if (p := leaf.as_parameter.try_get())
-            ]
-
-            for p1, p2 in combinations(corr_params, 2):
                 out.add(frozenset([p1, p2]))
 
         return out
@@ -648,10 +608,7 @@ class MutatorUtils:
         else:
             raise TypeError(f"Unknown parameter type: {p_type_repr}")
         new_p = new.is_parameter.get()
-        self.mutator.print_ctx.override_name(
-            new_p,
-            self.mutator.print_ctx.get_or_create_name(params[0]),
-        )
+        new_p.set_name(f"Merge({', '.join([p.get_full_name() for p in params])})")
         return new_p
 
     @staticmethod
@@ -673,23 +630,47 @@ class MutatorUtils:
         op!(op_inv(A), ...) -> A!
         '''
         """
-        inner_expr = expr.get_operands()[0]
-        if not (
-            (inner_expr_po := inner_expr.as_parameter_operatable.try_get())
-            and (inner_expr_e := inner_expr_po.as_expression.try_get())
-        ):
-            raise ValueError("Inner operand must be an expression")
+        from faebryk.core.solver.mutator import ExpressionBuilder
+        from faebryk.core.solver.symbolic.invariants import AliasClass
+
+        inner_expr_rep = expr.get_operands()[0]
+        # After flattening, operands are alias representatives (parameters),
+        # so we need to find the aliased expression via AliasClass
+        inner_exprs = AliasClass.of(inner_expr_rep).get_with_trait(
+            F.Expressions.is_expression
+        )
+        # Find the inner expression with matching type (for involutory ops like Not(Not(...)))
+        expr_type = fabll.Traits(expr).get_obj_raw().get_type_node()
+        inner_expr_e = None
+        for candidate in inner_exprs:
+            if fabll.Traits(candidate).get_obj_raw().get_type_node() == expr_type:
+                inner_expr_e = candidate
+                break
+        if inner_expr_e is None:
+            raise ValueError("No matching inner expression found")
         inner_operand = inner_expr_e.get_operands()[0]
-        if not (inner_operand_po := inner_operand.as_parameter_operatable.try_get()):
+        if not inner_operand.as_parameter_operatable.try_get():
             raise ValueError("Unpacked operand can't be a literal")
         out = self.mutator._mutate(
             expr.as_parameter_operatable.get(),
-            self.mutator.get_copy_po(inner_operand_po),
+            self.mutator.get_copy(inner_operand).as_parameter_operatable.force_get(),
         )
-        if expr.try_get_sibling_trait(F.Expressions.is_predicate) and (
-            out_assertable := out.try_get_sibling_trait(F.Expressions.is_assertable)
-        ):
-            self.mutator.assert_(out_assertable)
+        if expr.try_get_sibling_trait(F.Expressions.is_predicate):
+            if out_assertable := out.try_get_sibling_trait(F.Expressions.is_assertable):
+                self.mutator.assert_(out_assertable)
+            else:
+                self.mutator.create_check_and_insert_expression_from_builder(
+                    ExpressionBuilder(
+                        F.Expressions.IsSubset,
+                        [
+                            out.as_operand.get(),
+                            self.mutator.make_singleton(True).can_be_operand.get(),
+                        ],
+                        assert_=True,
+                        terminate=True,
+                        traits=[],
+                    )
+                )
         return out
 
     def mutate_unpack_expression(
@@ -704,6 +685,8 @@ class MutatorUtils:
         op!(P, ...) -> P & P is! True
         ```
         """
+        from faebryk.core.solver.mutator import ExpressionBuilder
+
         unpacked = (
             expr.get_operands()[0].as_parameter_operatable.force_get()
             if operands is None
@@ -711,75 +694,86 @@ class MutatorUtils:
         )
         if unpacked is None:
             raise ValueError("Unpacked operand can't be a literal")
-        out = self.mutator._mutate(
-            expr.as_parameter_operatable.get(),
-            self.mutator.get_copy_po(unpacked),
-        )
+        unpacked_op = unpacked.as_operand.get()
+        unpacked_copy_op = self.mutator.get_copy(unpacked_op)
+        unpacked_copy_po = unpacked_copy_op.as_parameter_operatable.force_get()
+        expr_po = expr.as_parameter_operatable.get()
+
+        out = self.mutator._mutate(expr_po, unpacked_copy_po)
+
         if expr.try_get_sibling_trait(F.Expressions.is_predicate):
             if (expression := out.as_expression.try_get()) and (
                 assertable := expression.as_assertable.try_get()
             ):
                 self.mutator.assert_(assertable)
             else:
-                self.mutator.create_check_and_insert_expression(
-                    F.Expressions.IsSubset,
-                    out.as_operand.get(),
-                    self.mutator.make_singleton(True).can_be_operand.get(),
-                    from_ops=[out, expr.as_parameter_operatable.get()],
-                    assert_=True,
-                    terminate=True,
+                self.mutator.create_check_and_insert_expression_from_builder(
+                    ExpressionBuilder(
+                        F.Expressions.IsSubset,
+                        [
+                            out.as_operand.get(),
+                            self.mutator.make_singleton(True).can_be_operand.get(),
+                        ],
+                        assert_=True,
+                        terminate=True,
+                        traits=[],
+                    )
                 )
         return out
 
+    @staticmethod
+    def try_copy_trait[T: fabll.NodeT](
+        from_op: F.Parameters.can_be_operand,
+        to_op: F.Parameters.can_be_operand,
+        trait_t: type[T],
+    ) -> T | None:
+        """
+        Copies the specified trait from the from_param to the to_param.
 
-def pretty_expr(
-    expr: "F.Expressions.is_expression | ExpressionBuilder",
-    mutator: "Mutator | None" = None,
-    context: "F.Parameters.ReprContext | None" = None,
-    use_name: bool = False,
-    no_lit_suffix: bool = False,
-) -> str:
-    from faebryk.core.solver.mutator import ExpressionBuilder
+        Returns the trait if copied or if already present. Returns None if the trait
+        is not present on the from_param.
 
-    context = context or (mutator.print_ctx if mutator else F.Parameters.ReprContext())
+        Important: Recreates trait, doesn't copy it.
+        Else would result in owner being copied too.
+        """
+        if (already := to_op.try_get_sibling_trait(trait_t)) is not None:
+            return already
 
-    match expr:
-        case ExpressionBuilder():
-            if expr.operands:
-                tg = expr.operands[0].tg
-            else:
-                g = graph.GraphView.create()
-                tg = fbrk.TypeGraph.create(g=g)
+        trait = from_op.try_get_sibling_trait(trait_t)
+        if trait is None:
+            return None
 
-            factory_type = fabll.TypeNodeBoundTG(tg, expr.factory)
-            is_expr_type = factory_type.try_get_type_trait(
-                F.Expressions.is_expression_type
-            )
-            if is_expr_type is None:
-                raise ValueError(
-                    f"Factory {expr.factory} has no is_expression_type trait"
+        copy = MutatorUtils.get_copy_trait(to_op.g, to_op.tg, trait)
+        if not copy:
+            return None
+
+        fabll.Traits.add_instance_to(fabll.Traits(to_op).get_obj_raw(), copy)
+        return copy
+
+    @staticmethod
+    def get_copy_trait[T: fabll.NodeT](
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+        trait: T,
+    ) -> T:
+        # TODO should be somewhere else
+        from faebryk.core.solver.mutator import is_irrelevant, is_relevant
+
+        trait_t = type(trait)
+        assert trait_t is not fabll.Node
+
+        trait_instance = trait_t.bind_typegraph(tg).create_instance(g)
+        match trait_instance:
+            case F.has_name_override():
+                assert isinstance(trait, F.has_name_override)
+                assert isinstance(trait_instance, F.has_name_override)
+                trait_instance.setup(
+                    name=trait.name.get().get_single(),
+                    detail=trait.detail.get().get_single() or None,
                 )
-            repr_style = is_expr_type.get_repr_style()
+            case is_relevant() | is_irrelevant():
+                pass
+            case _:
+                raise ValueError(f"Unknown trait type: {trait_t}")
 
-            return F.Expressions.is_expression._compact_repr(
-                context,
-                repr_style,
-                repr_style.symbol
-                if repr_style.symbol is not None
-                else expr.factory.__name__,
-                bool(expr.assert_),
-                bool(expr.terminate),
-                "",
-                False,
-                factory_type.get_type_name(),
-                expr.operands or [],
-                no_lit_suffix=no_lit_suffix,
-            )
-        case F.Expressions.is_expression():
-            return expr.compact_repr(
-                context,
-                use_name=use_name,
-                no_lit_suffix=no_lit_suffix,
-            )
-        case _:
-            raise ValueError(f"Unknown expression type: {type(expr)}")
+        return trait_instance
