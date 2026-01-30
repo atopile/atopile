@@ -155,7 +155,7 @@
 /* Live badge */
 .lv-live-badge {
   padding: 1px 4px;
-  background: rgba(166, 227, 161, 0.2);
+  background: rgba(var(--ctp-green-rgb), 0.2);
   border-radius: 2px;
   color: var(--ctp-green);
   font-size: var(--font-size-xs);
@@ -327,23 +327,23 @@
 }
 
 .lv-btn-success {
-  background: rgba(166, 227, 161, 0.2);
+  background: rgba(var(--ctp-green-rgb), 0.2);
   border-color: var(--ctp-green);
   color: var(--ctp-green);
 }
 
 .lv-btn-success:hover:not(:disabled) {
-  background: rgba(166, 227, 161, 0.3);
+  background: rgba(var(--ctp-green-rgb), 0.3);
 }
 
 .lv-btn-danger {
-  background: rgba(243, 139, 168, 0.2);
+  background: rgba(var(--ctp-red-rgb), 0.2);
   border-color: var(--ctp-red);
   color: var(--ctp-red);
 }
 
 .lv-btn-danger:hover:not(:disabled) {
-  background: rgba(243, 139, 168, 0.3);
+  background: rgba(var(--ctp-red-rgb), 0.3);
 }
 
 .lv-btn-small {
@@ -352,13 +352,13 @@
 }
 
 .lv-btn-active {
-  background: rgba(137, 180, 250, 0.3);
+  background: rgba(var(--ctp-blue-rgb), 0.3);
   border-color: var(--ctp-blue);
   color: var(--ctp-blue);
 }
 
 .lv-btn-active:hover:not(:disabled) {
-  background: rgba(137, 180, 250, 0.4);
+  background: rgba(var(--ctp-blue-rgb), 0.4);
 }
 
 /* Disabled inputs */
@@ -400,7 +400,7 @@
 .lv-error {
   margin-top: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-md);
-  background: rgba(243, 139, 168, 0.15);
+  background: rgba(var(--ctp-red-rgb), 0.15);
   border-radius: var(--radius-sm);
   color: var(--ctp-red);
   font-size: var(--font-size-sm);
@@ -505,7 +505,7 @@
 
 .lv-search-error .lv-col-search {
   border-color: var(--ctp-red);
-  background: rgba(243, 139, 168, 0.1);
+  background: rgba(var(--ctp-red-rgb), 0.1);
 }
 
 .lv-search-toggle {
@@ -634,11 +634,11 @@
 }
 
 .lv-entry.error {
-  background: rgba(243, 139, 168, 0.08);
+  background: rgba(var(--ctp-red-rgb), 0.08);
 }
 
 .lv-entry.error:hover {
-  background: rgba(243, 139, 168, 0.12);
+  background: rgba(var(--ctp-red-rgb), 0.12);
 }
 
 .lv-entry-row {
@@ -705,22 +705,22 @@
 }
 
 .lv-level-badge.info {
-  background: rgba(137, 180, 250, 0.2);
+  background: rgba(var(--ctp-blue-rgb), 0.2);
   color: var(--info);
 }
 
 .lv-level-badge.warning {
-  background: rgba(249, 226, 175, 0.2);
+  background: rgba(var(--ctp-yellow-rgb), 0.2);
   color: var(--warning);
 }
 
 .lv-level-badge.error {
-  background: rgba(243, 139, 168, 0.2);
+  background: rgba(var(--ctp-red-rgb), 0.2);
   color: var(--error);
 }
 
 .lv-level-badge.alert {
-  background: rgba(250, 179, 135, 0.2);
+  background: rgba(var(--ctp-peach-rgb), 0.2);
   color: var(--ctp-peach);
 }
 
@@ -764,7 +764,7 @@
   border-radius: var(--radius-sm);
   font-size: var(--font-size-xs);
   font-weight: 500;
-  background: rgba(137, 180, 250, 0.15);
+  background: rgba(var(--ctp-blue-rgb), 0.15);
   color: var(--info);
   flex-shrink: 0;
   max-width: 180px;
@@ -825,7 +825,7 @@
 }
 
 .lv-highlight {
-  background: rgba(249, 226, 175, 0.4);
+  background: rgba(var(--ctp-yellow-rgb), 0.4);
   color: var(--warning);
   border-radius: 2px;
   padding: 0 1px;
@@ -916,11 +916,11 @@
 }
 
 .lv-tree-row.error {
-  background: rgba(243, 139, 168, 0.08);
+  background: rgba(var(--ctp-red-rgb), 0.08);
 }
 
 .lv-tree-row.error:hover {
-  background: rgba(243, 139, 168, 0.12);
+  background: rgba(var(--ctp-red-rgb), 0.12);
 }
 
 /* Tree root styling */
@@ -1096,19 +1096,19 @@
 }
 
 .lv-log-row.error {
-  background: rgba(243, 139, 168, 0.08);
+  background: rgba(var(--ctp-red-rgb), 0.08);
 }
 
 .lv-log-row.error:hover {
-  background: rgba(243, 139, 168, 0.12);
+  background: rgba(var(--ctp-red-rgb), 0.12);
 }
 
 .lv-log-row.warning {
-  background: rgba(249, 226, 175, 0.05);
+  background: rgba(var(--ctp-yellow-rgb), 0.05);
 }
 
 .lv-log-row.warning:hover {
-  background: rgba(249, 226, 175, 0.08);
+  background: rgba(var(--ctp-yellow-rgb), 0.08);
 }
 
 .lv-log-row .lv-ts {
