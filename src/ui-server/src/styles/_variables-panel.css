@@ -101,44 +101,8 @@
   margin-right: 2px;
 }
 
-.variable-node-header {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  height: var(--row-height-tree-item);
-  min-height: var(--row-height-tree-item);
-  padding: 2px 4px;
-  border-radius: 0;
-  cursor: pointer;
-  transition: background 0.1s ease;
-}
-
-.variable-node-header:hover {
-  background: var(--bg-tertiary);
-}
-
-.variable-node-header.expanded {
-  background: var(--bg-tertiary);
-}
-
-.variable-node-header .tree-expand {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.variable-node-header .tree-expand-spacer {
-  width: 16px;
-  flex-shrink: 0;
-}
+/* Variable node header - extends TreeRowHeader */
+/* Base styles are in shared/TreeRowHeader.css */
 
 .node-type-icon {
   flex-shrink: 0;

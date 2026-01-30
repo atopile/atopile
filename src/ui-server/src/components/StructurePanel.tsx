@@ -294,7 +294,6 @@ export function StructurePanel({
       <div className="structure-body">
         {state.status === 'idle' && (
           <div className="structure-empty">
-            <FileCode size={24} />
             <span className="empty-title">No structure available</span>
             <span className="empty-description">Open an .ato file to view the module structure</span>
           </div>

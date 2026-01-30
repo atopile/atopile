@@ -316,13 +316,22 @@
 }
 
 .target-combobox-trigger .target-icon {
-  flex-shrink: 0;
   color: var(--ctp-blue);
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
 }
 
 .target-trigger-name {
-  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
   font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  outline: none;
 }
 
 .target-trigger-entry {
@@ -350,7 +359,7 @@
 }
 
 .target-combobox-list {
-  max-height: 160px;
+  max-height: 200px;
   overflow-y: auto;
   padding: 2px;
 }
@@ -385,20 +394,22 @@
 }
 
 .target-option-name {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
   font-weight: 500;
-  font-family: var(--font-mono);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .target-option-entry {
-  flex: 1;
+  font-family: var(--font-sans);
   font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  text-align: right;
+  color: var(--text-primary);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .create-target-btn {
@@ -968,8 +979,15 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .build-stage .stage-name {

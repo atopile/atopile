@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react'
 import {
-  ChevronDown, ChevronRight, Box, Zap,
+  Box, Zap,
   Hash, Percent, CircuitBoard, RefreshCw,
   AlertTriangle, Loader2, Check
 } from 'lucide-react'
 import { smartTruncatePair } from './sidebar-modules/sidebarUtils'
-import { PanelSearchBox, EmptyState } from './shared'
+import { PanelSearchBox, EmptyState, TreeRowHeader } from './shared'
 
 // Variable types
 type VariableType = 'voltage' | 'current' | 'resistance' | 'capacitance' | 'ratio' | 'frequency' | 'power' | 'percentage' | 'dimensionless'
@@ -258,9 +258,6 @@ const VariableNodeComponent = memo(function VariableNodeComponent({
 
   if (!matchesFilters) return null
 
-  // Use minimal indentation with visual depth indicator
-  const depthIndicator = depth > 0 ? '· '.repeat(depth) : ''
-
   // Smart truncation for name and type to prevent overflow
   // Max 35 total characters for name + type combined (fits sidebar width)
   const [displayName, displayTypeName] = node.typeName
@@ -269,27 +266,17 @@ const VariableNodeComponent = memo(function VariableNodeComponent({
 
   return (
     <div className={`variable-tree-node depth-${Math.min(depth, 4)}`}>
-      <div
-        className={`variable-node-header ${isExpanded ? 'expanded' : ''}`}
+      <TreeRowHeader
+        className="variable-node-header"
+        isExpandable={hasChildren}
+        isExpanded={isExpanded}
         onClick={() => onToggleExpand(node.path)}
-      >
-        {hasChildren ? (
-          <span className="tree-expand">
-            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          </span>
-        ) : (
-          <span className="tree-expand-spacer" />
-        )}
-        {depth > 0 && <span className="depth-indicator">{depthIndicator}</span>}
-        {getNodeIcon(node.type)}
-        <span className="node-name" title={node.name}>{displayName}</span>
-        {node.typeName && (
-          <span className="node-type-name" title={node.typeName}>{displayTypeName}</span>
-        )}
-        {node.variables && node.variables.length > 0 && (
-          <span className="var-count">{node.variables.length}</span>
-        )}
-      </div>
+        icon={getNodeIcon(node.type)}
+        label={displayName}
+        secondaryLabel={displayTypeName || undefined}
+        count={node.variables?.length}
+        title={node.name}
+      />
 
       {isExpanded && (
         <div className="variable-node-content">

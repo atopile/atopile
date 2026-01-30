@@ -212,7 +212,12 @@ function ProjectSelector({
   return (
     <div className="project-combobox" ref={comboboxRef}>
       <div className={`combobox-input-wrapper ${isOpen ? 'open' : ''}`}>
-        <FolderOpen size={14} className="combobox-icon" />
+        <FolderOpen
+          size={12}
+          className="combobox-icon"
+          onClick={() => inputRef.current?.focus()}
+          style={{ marginRight: '2px' }}
+        />
         <input
           ref={inputRef}
           type="text"
@@ -384,12 +389,12 @@ function TargetSelector({
           aria-haspopup="listbox"
           aria-expanded={isOpen}
         >
-          <Target size={12} className="target-icon" />
+          <Target size={14} className="target-icon" />
           <span className="target-trigger-name">{activeTarget?.name || 'Select build'}</span>
           {activeTarget?.entry && (
             <span className="target-trigger-entry">{activeTarget.entry.split(':').pop()}</span>
           )}
-          <ChevronDown size={12} className={`chevron ${isOpen ? 'open' : ''}`} />
+          <ChevronDown size={14} className={`chevron ${isOpen ? 'open' : ''}`} />
         </button>
 
         {isOpen && (
@@ -557,7 +562,7 @@ function NewTargetForm({
     if (!showSuggestions) return
     const handleClickOutside = (e: MouseEvent) => {
       if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node) &&
-          entryRef.current && !entryRef.current.contains(e.target as Node)) {
+        entryRef.current && !entryRef.current.contains(e.target as Node)) {
         setShowSuggestions(false)
       }
     }
@@ -671,22 +676,22 @@ function NewTargetForm({
       <div className="form-field entry-field">
         <label htmlFor="target-entry">Entry Point</label>
         <div className="entry-input-wrapper">
-        <input
-          ref={entryRef}
-          id="target-entry"
-          type="text"
-          placeholder="e.g., main.ato:SensorBoard"
-          value={entry}
+          <input
+            ref={entryRef}
+            id="target-entry"
+            type="text"
+            placeholder="e.g., main.ato:SensorBoard"
+            value={entry}
             onChange={(e) => {
               setEntry(e.target.value)
               setShowSuggestions(true)
             }}
             onFocus={() => setShowSuggestions(true)}
             onKeyDown={handleEntryKeyDown}
-          disabled={isCreating}
-          autoComplete="off"
-          required
-        />
+            disabled={isCreating}
+            autoComplete="off"
+            required
+          />
           {showSuggestions && suggestions.length > 0 && (
             <div className="entry-suggestions" ref={suggestionsRef}>
               {suggestions.map((module, index) => (
