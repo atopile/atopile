@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import {
-  ChevronDown, ChevronRight, Search, Box, Zap, Cpu,
-  Cable, Hash
+  ChevronDown, ChevronRight, Box, Zap, Cpu,
+  Cable, Hash, Search
 } from 'lucide-react'
-import { CopyableCodeBlock } from './shared'
+import { CopyableCodeBlock, PanelSearchBox } from './shared'
 
 // Standard library item types
 type StdLibType = 'interface' | 'module' | 'component' | 'trait' | 'parameter'
@@ -48,6 +48,7 @@ interface StandardLibraryPanelProps {
   isLoading?: boolean
   onOpenDetail?: (item: StdLibItem) => void
   onRefresh?: () => void
+  isExpanded?: boolean
 }
 
 interface StdLibCardProps {
@@ -155,6 +156,7 @@ export function StandardLibraryPanel({
   isLoading = false,
   onOpenDetail: _onOpenDetail,
   onRefresh: _onRefresh,
+  isExpanded = false,
 }: StandardLibraryPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -236,16 +238,11 @@ export function StandardLibraryPanel({
   if (isLoading) {
     return (
       <div className="stdlib-panel">
-        <div className="stdlib-toolbar">
-          <div className="search-box">
-            <Search size={12} />
-            <input 
-              type="text"
-              placeholder="Search standard library..."
-              disabled
-            />
-          </div>
-        </div>
+        <PanelSearchBox
+          value=""
+          onChange={() => {}}
+          placeholder="Search standard library..."
+        />
         <div className="stdlib-list">
           <div className="stdlib-loading">
             <div className="loading-spinner" />
@@ -255,21 +252,15 @@ export function StandardLibraryPanel({
       </div>
     )
   }
-  
+
   return (
     <div className="stdlib-panel">
-      {/* Search and filters */}
-      <div className="stdlib-toolbar">
-        <div className="search-box">
-          <Search size={12} />
-          <input 
-            type="text"
-            placeholder="Search standard library..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-      </div>
+      <PanelSearchBox
+        value={searchQuery}
+        onChange={setSearchQuery}
+        placeholder="Search standard library..."
+        autoFocus={isExpanded}
+      />
       
       {/* Items list */}
       <div className="stdlib-list">
@@ -311,7 +302,7 @@ export function StandardLibraryPanel({
             
             return (
               <div key={type} className={`stdlib-group ${isCollapsed ? 'collapsed' : ''}`}>
-                <button 
+                <button
                   className="stdlib-group-header"
                   onClick={() => toggleGroup(type)}
                   style={{ '--group-color': config.color } as React.CSSProperties}
@@ -323,7 +314,7 @@ export function StandardLibraryPanel({
                     <Icon size={12} />
                   </span>
                   <span className="group-label">{config.label}s</span>
-                  <span className="group-count">({items.length})</span>
+                  <span className="group-count">{items.length}</span>
                 </button>
                 {!isCollapsed && (
                   <div className="stdlib-group-items">

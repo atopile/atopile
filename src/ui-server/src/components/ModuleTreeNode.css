@@ -78,14 +78,14 @@
 
 .module-tree-name {
   color: var(--text-primary);
-  font-weight: 500;
+  font-weight: 400;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .module-tree-name.root-name {
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .module-tree-type {
@@ -128,7 +128,7 @@
 }
 
 .module-tree-group-header {
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .module-tree-group-header:hover {
@@ -136,14 +136,17 @@
 }
 
 .module-tree-group-label {
-  font-weight: 600;
+  font-weight: 400;
   font-size: var(--font-size-sm);
 }
 
 .module-tree-group-count {
+  margin-left: auto;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-  margin-left: 4px;
+  background: var(--bg-tertiary);
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
 }
 
 .module-tree-group-items {

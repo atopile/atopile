@@ -30,7 +30,6 @@ interface ActiveProjectPanelProps {
   onSelectProject: (projectRoot: string | null) => void
   onSelectTarget: (projectRoot: string, targetName: string) => void
   onBuildTarget: (projectRoot: string, targetName: string) => void
-  onBuildAllTargets: (projectRoot: string, projectName: string) => void
   onOpenKiCad: (projectRoot: string, targetName: string) => void
   onOpen3D: (projectRoot: string, targetName: string) => void
   onOpenLayout: (projectRoot: string, targetName: string) => void
@@ -213,7 +212,12 @@ function ProjectSelector({
   return (
     <div className="project-combobox" ref={comboboxRef}>
       <div className={`combobox-input-wrapper ${isOpen ? 'open' : ''}`}>
-        <FolderOpen size={14} className="combobox-icon" />
+        <FolderOpen
+          size={12}
+          className="combobox-icon"
+          onClick={() => inputRef.current?.focus()}
+          style={{ marginRight: '2px' }}
+        />
         <input
           ref={inputRef}
           type="text"
@@ -385,12 +389,12 @@ function TargetSelector({
           aria-haspopup="listbox"
           aria-expanded={isOpen}
         >
-          <Target size={12} className="target-icon" />
+          <Target size={14} className="target-icon" />
           <span className="target-trigger-name">{activeTarget?.name || 'Select build'}</span>
           {activeTarget?.entry && (
             <span className="target-trigger-entry">{activeTarget.entry.split(':').pop()}</span>
           )}
-          <ChevronDown size={12} className={`chevron ${isOpen ? 'open' : ''}`} />
+          <ChevronDown size={14} className={`chevron ${isOpen ? 'open' : ''}`} />
         </button>
 
         {isOpen && (
@@ -558,7 +562,7 @@ function NewTargetForm({
     if (!showSuggestions) return
     const handleClickOutside = (e: MouseEvent) => {
       if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node) &&
-          entryRef.current && !entryRef.current.contains(e.target as Node)) {
+        entryRef.current && !entryRef.current.contains(e.target as Node)) {
         setShowSuggestions(false)
       }
     }
@@ -672,22 +676,22 @@ function NewTargetForm({
       <div className="form-field entry-field">
         <label htmlFor="target-entry">Entry Point</label>
         <div className="entry-input-wrapper">
-        <input
-          ref={entryRef}
-          id="target-entry"
-          type="text"
-          placeholder="e.g., main.ato:SensorBoard"
-          value={entry}
+          <input
+            ref={entryRef}
+            id="target-entry"
+            type="text"
+            placeholder="e.g., main.ato:SensorBoard"
+            value={entry}
             onChange={(e) => {
               setEntry(e.target.value)
               setShowSuggestions(true)
             }}
             onFocus={() => setShowSuggestions(true)}
             onKeyDown={handleEntryKeyDown}
-          disabled={isCreating}
-          autoComplete="off"
-          required
-        />
+            disabled={isCreating}
+            autoComplete="off"
+            required
+          />
           {showSuggestions && suggestions.length > 0 && (
             <div className="entry-suggestions" ref={suggestionsRef}>
               {suggestions.map((module, index) => (
@@ -1146,7 +1150,6 @@ export function ActiveProjectPanel({
   onSelectProject,
   onSelectTarget,
   onBuildTarget,
-  onBuildAllTargets,
   onOpenKiCad,
   onOpen3D,
   onOpenLayout,
@@ -1324,18 +1327,6 @@ export function ActiveProjectPanel({
             <Play size={12} />
             <span>Build</span>
           </button>
-          <button
-            className="control-btn"
-            onClick={() => {
-              if (!activeProject) return
-              onBuildAllTargets(activeProject.root, activeProject.name)
-            }}
-            disabled={!activeProject}
-            title={activeProject ? `Build all in ${activeProject.name}` : 'Select a project first'}
-          >
-            <Layers size={12} />
-            <span>Build All</span>
-          </button>
           {onGenerateManufacturingData && (
             <button
               className="control-btn"
@@ -1351,7 +1342,7 @@ export function ActiveProjectPanel({
               }
             >
               <Package size={12} />
-              <span>MFG Data</span>
+              <span>MFG</span>
             </button>
           )}
         </div>

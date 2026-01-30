@@ -14,9 +14,10 @@
   padding: 3px 8px;
   font-size: var(--font-size-xs);
   font-weight: 500;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-subtle);
+  /* Use VS Code native dropdown styling */
+  background: var(--vscode-dropdown-background, var(--bg-tertiary));
+  color: var(--vscode-dropdown-foreground, var(--text-secondary));
+  border: 1px solid var(--vscode-dropdown-border, var(--border-subtle));
   border-right: none;
   border-radius: var(--radius-sm) 0 0 var(--radius-sm);
   cursor: pointer;
@@ -24,26 +25,27 @@
 }
 
 .install-btn:hover:not(.installed) {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  background: var(--vscode-dropdown-background, var(--bg-hover));
+  border-color: var(--vscode-focusBorder, var(--border-default));
+  color: var(--vscode-dropdown-foreground, var(--text-primary));
 }
 
 .install-btn.installed {
-  background: var(--bg-tertiary);
+  background: var(--vscode-dropdown-background, var(--bg-tertiary));
   color: var(--success);
   cursor: default;
   border-radius: var(--radius-sm) 0 0 var(--radius-sm);
 }
 
 .install-btn.update-available {
-  background: var(--bg-tertiary);
+  background: var(--vscode-dropdown-background, var(--bg-tertiary));
   color: var(--ato-orange);
   cursor: pointer;
   border-radius: var(--radius-sm) 0 0 var(--radius-sm);
 }
 
 .install-btn.update-available:hover {
-  background: var(--bg-hover);
+  background: var(--vscode-dropdown-background, var(--bg-hover));
 }
 
 /* Wide install button variant - shows "Install to <project>" */
@@ -76,9 +78,10 @@
   align-items: center;
   justify-content: center;
   padding: 3px 5px;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-subtle);
+  /* Use VS Code native dropdown styling */
+  background: var(--vscode-dropdown-background, var(--bg-tertiary));
+  color: var(--vscode-dropdown-foreground, var(--text-secondary));
+  border: 1px solid var(--vscode-dropdown-border, var(--border-subtle));
   border-left: none;
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   cursor: pointer;
@@ -86,7 +89,8 @@
 }
 
 .install-dropdown-toggle:hover {
-  background: var(--bg-hover);
+  background: var(--vscode-dropdown-background, var(--bg-hover));
+  border-color: var(--vscode-focusBorder, var(--border-default));
 }
 
 .install-btn:disabled,
@@ -97,21 +101,21 @@
 
 /* Match toggle color to button state */
 .install-btn.update-available + .install-dropdown-toggle {
-  background: var(--bg-tertiary);
+  background: var(--vscode-dropdown-background, var(--bg-tertiary));
   color: var(--ato-orange);
 }
 
 .install-btn.update-available + .install-dropdown-toggle:hover {
-  background: var(--bg-hover);
+  background: var(--vscode-dropdown-background, var(--bg-hover));
 }
 
 .install-btn.installed + .install-dropdown-toggle {
-  background: var(--bg-tertiary);
+  background: var(--vscode-dropdown-background, var(--bg-tertiary));
   color: var(--success);
 }
 
 .install-btn.installed + .install-dropdown-toggle:hover {
-  background: var(--bg-hover);
+  background: var(--vscode-dropdown-background, var(--bg-hover));
 }
 
 .install-dropdown-menu {
@@ -119,10 +123,11 @@
   top: 100%;
   right: 0;
   margin-top: 3px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
+  /* Use VS Code native dropdown styling */
+  background: var(--vscode-dropdown-listBackground, var(--vscode-dropdown-background, var(--bg-secondary)));
+  border: 1px solid var(--vscode-dropdown-border, var(--border-subtle));
   border-radius: var(--radius-sm);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 12px var(--vscode-widget-shadow, rgba(0,0,0,0.3));
   min-width: 180px;
   z-index: 1000;
   overflow: hidden;
@@ -255,7 +260,7 @@
   width: 100%;
   padding: var(--spacing-xs) var(--spacing-sm);
   font-size: var(--font-size-base);
-  color: var(--text-primary);
+  color: var(--vscode-dropdown-foreground, var(--text-primary));
   background: none;
   border: none;
   cursor: pointer;
@@ -264,15 +269,17 @@
 }
 
 .dropdown-item:hover {
-  background: var(--bg-hover);
+  background: var(--vscode-list-hoverBackground, var(--bg-hover));
 }
 
 .dropdown-item.active {
-  background: var(--bg-active);
+  background: var(--vscode-list-activeSelectionBackground, var(--bg-active));
+  color: var(--vscode-list-activeSelectionForeground, var(--text-primary));
 }
 
 .dropdown-item.selected {
-  background: var(--bg-active);
+  background: var(--vscode-list-activeSelectionBackground, var(--bg-active));
+  color: var(--vscode-list-activeSelectionForeground, var(--text-primary));
 }
 
 .dropdown-item .selected-check {

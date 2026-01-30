@@ -35,9 +35,9 @@
   --radius-md: 5px;
   --radius-lg: 6px;
 
-  /* Font */
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* Font - use VS Code's native fonts */
+  --font-mono: var(--vscode-editor-font-family, 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace);
+  --font-sans: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
 
   /* Transitions */
   --transition-fast: 0.1s ease;
@@ -46,15 +46,21 @@
   /* Theme transition for smooth switching */
   --theme-transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 
-  /* Font Sizes (scale from VS Code UI font size) */
-  --font-size-base: var(--vscode-font-size, 13px);
-  --font-size-xxs: calc(var(--font-size-base) * 0.69);
-  --font-size-xs: calc(var(--font-size-base) * 0.77);
-  --font-size-sm: calc(var(--font-size-base) * 0.85);
-  --font-size-md: calc(var(--font-size-base) * 0.92);
+  /* Font Sizes - aligned with VS Code native UI */
+  --font-size-base: var(--vscode-font-size, 14px);
+  /* VS Code section header font size (matches activity bar labels) */
+  --font-size-section-header: var(--vscode-font-size, 12px);
+  --font-size-xxs: 10px;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-md: var(--font-size-base);
   --font-size-lg: calc(var(--font-size-base) * 1.08);
   --font-size-xl: calc(var(--font-size-base) * 1.23);
   --font-size-xxl: calc(var(--font-size-base) * 1.38);
+
+  /* VS Code standard row heights */
+  --row-height-section-header: 26px;  /* Sidebar section headers */
+  --row-height-tree-item: 22px;
 
   /* Icon Sizes */
   --icon-size-sm: 12px;   /* Row icons, inline icons */

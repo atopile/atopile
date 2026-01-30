@@ -4,20 +4,24 @@
    BOM Rows, BOM Details, Component Icons, Usage Trees
    ========================================== */
 
+/* Extends .sidebar-panel from _base.css */
 .bom-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
   position: relative;
+  overflow: hidden;
+  min-width: 0;
 }
 
-/* Summary bar */
+/* Summary bar - matches Structure header style */
 .bom-summary {
   display: flex;
   gap: var(--spacing-sm);
+  margin: var(--spacing-sm) var(--spacing-md);
   padding: var(--spacing-xs) var(--spacing-sm);
   background: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
 }
 
 .bom-summary-item {
@@ -203,7 +207,10 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  padding: 6px 8px;
+  /* Match VS Code native tree item height */
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+  padding: 0 8px;
   transition: background 0.15s ease;
 }
 
@@ -923,34 +930,35 @@
   font-size: var(--font-size-md);
 }
 
-/* Empty state - when no BOM data available */
+/* Empty state - when no BOM data available - unified pattern */
 .bom-empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-xl) var(--spacing-lg);
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xl) var(--spacing-md);
   color: var(--text-muted);
   text-align: center;
-  min-height: 150px;
+  min-height: 120px;
 }
 
 .bom-empty-state svg {
-  color: var(--ctp-overlay0);
-  opacity: 0.6;
+  opacity: 0.4;
 }
 
 .bom-empty-state .empty-title {
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-secondary);
+  margin-top: var(--spacing-xs);
 }
 
 .bom-empty-state .empty-description {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
-  max-width: 200px;
+  max-width: 220px;
+  line-height: 1.4;
 }
 
 .bom-empty-state .refresh-btn {

@@ -167,11 +167,6 @@ export function Sidebar() {
     action('build', { projectRoot, targets: [targetName] });
   }, [panels]);
 
-  const handleBuildAllTargets = useCallback((projectRoot: string, projectName: string) => {
-    panels.collapseAllExceptProjects();
-    action('build', { level: 'project', id: projectRoot, label: projectName, targets: [] });
-  }, [panels]);
-
   // Generate manufacturing data - triggers a build which includes manufacturing outputs
   const handleGenerateManufacturingData = useCallback((projectRoot: string, targetName: string) => {
     // Manufacturing data is generated as part of the build process
@@ -347,7 +342,6 @@ export function Sidebar() {
             onSelectProject={handlers.handleSelectProject}
             onSelectTarget={handlers.handleSelectTarget}
             onBuildTarget={handleBuildTarget}
-            onBuildAllTargets={handleBuildAllTargets}
             onOpenKiCad={(projectRoot, targetName) => handleOpenOutput('openKiCad', projectRoot, targetName)}
             onOpen3D={(projectRoot, targetName) => handleOpenOutput('open3D', projectRoot, targetName)}
             onOpenLayout={(projectRoot, targetName) => handleOpenOutput('openLayout', projectRoot, targetName)}
@@ -440,12 +434,14 @@ export function Sidebar() {
                 selectedProjectRoot={selectedProjectRoot}
                 installError={installError}
                 onOpenPackageDetail={handlers.handleOpenPackageDetail}
+                isExpanded={activeTab === 'packages'}
               />
             )}
             {activeTab === 'parts' && (
               <PartsSearchPanel
                 selectedProjectRoot={selectedProjectRoot}
                 onOpenPartDetail={handlers.handleOpenPartDetail}
+                isExpanded={activeTab === 'parts'}
               />
             )}
             {activeTab === 'stdlib' && (
@@ -453,6 +449,7 @@ export function Sidebar() {
                 items={stdlibItems}
                 isLoading={isLoadingStdlib}
                 onRefresh={handleRefreshStdlib}
+                isExpanded={activeTab === 'stdlib'}
               />
             )}
             {activeTab === 'structure' && (
@@ -461,6 +458,7 @@ export function Sidebar() {
                 lastAtoFile={lastAtoFile}
                 projects={projects || []}
                 onRefreshStructure={handlers.handleStructureRefresh}
+                isExpanded={activeTab === 'structure'}
               />
             )}
             {activeTab === 'parameters' && (
@@ -470,6 +468,7 @@ export function Sidebar() {
                 error={variablesError}
                 selectedTargetName={selectedTargetName}
                 hasActiveProject={!!selectedProjectRoot}
+                isExpanded={activeTab === 'parameters'}
               />
             )}
             {activeTab === 'bom' && (
@@ -480,6 +479,7 @@ export function Sidebar() {
                 selectedProjectRoot={selectedProjectRoot}
                 selectedTargetNames={selectedTargetNames}
                 onGoToSource={handleGoToSource}
+                isExpanded={activeTab === 'bom'}
               />
             )}
           </div>

@@ -4,10 +4,14 @@
    Variable Nodes, Variables Table, Variables States
    ========================================== */
 
+/* Extends .sidebar-panel from _base.css */
 .variables-panel {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .variables-toolbar {
@@ -79,59 +83,26 @@
 .variables-tree {
   flex: 1;
   overflow-y: auto;
-  padding: var(--spacing-xs);
+  padding: 2px 0;
 }
 
 /* Minimal indentation tree structure */
 .variable-tree-node {
-  margin-bottom: 1px;
+  margin-bottom: 4px;
 }
 
 /* Depth indicator for implied tree structure */
 .depth-indicator {
-  color: var(--text-muted);
+  color: var(--vscode-descriptionForeground, var(--text-muted));
   opacity: 0.4;
+  font-family: var(--font-sans);
   font-size: var(--font-size-sm);
   letter-spacing: -1px;
   margin-right: 2px;
 }
 
-.variable-node-header {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 6px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.variable-node-header:hover {
-  background: var(--bg-tertiary);
-}
-
-.variable-node-header.expanded {
-  background: var(--bg-tertiary);
-}
-
-.variable-node-header .tree-expand {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--icon-size-md);
-  height: var(--icon-size-md);
-  padding: 0;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.variable-node-header .tree-expand-spacer {
-  width: var(--icon-size-md);
-  flex-shrink: 0;
-}
+/* Variable node header - extends TreeRowHeader */
+/* Base styles are in shared/TreeRowHeader.css */
 
 .node-type-icon {
   flex-shrink: 0;
@@ -152,16 +123,16 @@
 }
 
 .variable-node-header .node-name {
-  font-size: var(--font-size-base);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
   font-weight: 500;
-  color: var(--text-primary);
-  font-family: var(--font-mono);
+  color: var(--vscode-foreground, var(--text-primary));
 }
 
 .variable-node-header .node-type-name {
+  font-family: var(--font-sans);
   font-size: var(--font-size-sm);
-  color: var(--text-muted);
-  font-family: var(--font-mono);
+  color: var(--vscode-descriptionForeground, var(--text-muted));
   margin-left: 6px;
   opacity: 0.7;
 }
@@ -171,27 +142,27 @@
 }
 
 .variable-node-header .var-count {
+  margin-left: auto;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-  background: var(--bg-secondary);
-  padding: 0px 4px;
-  border-radius: 6px;
-  margin-left: auto;
+  background: var(--bg-tertiary);
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
 }
 
-/* Variable node content - minimal indent */
+/* Variable node content - match stdlib indentation */
 .variable-node-content {
-  margin-left: 4px;
-  padding-left: 6px;
-  border-left: 1px solid var(--border-subtle);
-  margin-top: 1px;
+  margin-left: 16px;
+  padding-left: 0;
+  border-left: none;
+  margin-top: 0;
 }
 
 /* Variables list */
 .variables-list {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
   margin-bottom: var(--spacing-xs);
 }
 
@@ -200,8 +171,8 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
+  color: var(--vscode-foreground, var(--text-secondary));
+  font-family: var(--font-sans);
   flex-shrink: 0;
   min-width: 80px;
 }
@@ -245,12 +216,15 @@
   display: grid;
   grid-template-columns: minmax(80px, 1.2fr) minmax(80px, 1fr) minmax(80px, 1fr) 16px;
   gap: 4px;
-  padding: 2px 4px;
+  /* Match VS Code native tree item height */
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+  padding: 0 4px;
   align-items: center;
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition: background 0.15s ease;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
 }
 
 .variable-table-row:hover {
@@ -277,7 +251,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-secondary);
+  color: var(--vscode-foreground, var(--text-secondary));
+  font-family: var(--font-sans);
   font-size: var(--font-size-sm);
 }
 
@@ -286,9 +261,10 @@
   display: flex;
   align-items: center;
   gap: 1px;
-  color: var(--text-secondary);
+  color: var(--vscode-descriptionForeground, var(--text-secondary));
   justify-content: flex-end;
   text-align: right;
+  font-family: var(--font-sans);
   font-size: var(--font-size-sm);
   min-width: 0;
   overflow: hidden;
@@ -310,6 +286,7 @@
   text-align: right;
   padding: 1px 3px;
   border-radius: 2px;
+  font-family: var(--font-sans);
   font-size: var(--font-size-sm);
   min-width: 0;
   overflow: hidden;
@@ -415,7 +392,7 @@
   to { opacity: 1; }
 }
 
-/* Variables loading, error, and empty states */
+/* Variables loading, error, and empty states - unified pattern */
 .variables-loading,
 .variables-error,
 .variables-empty {
@@ -423,11 +400,11 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-xl) var(--spacing-lg);
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xl) var(--spacing-md);
   color: var(--text-muted);
   text-align: center;
-  min-height: 150px;
+  min-height: 120px;
 }
 
 .variables-loading .spinner {
@@ -440,11 +417,26 @@
 }
 
 .variables-error {
-  color: var(--ctp-red);
+  color: var(--error);
 }
 
 .variables-error svg {
-  color: var(--ctp-red);
+  color: var(--error);
+  opacity: 0.6;
+}
+
+.variables-error .empty-title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--error);
+  margin-top: var(--spacing-xs);
+}
+
+.variables-error .empty-description {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  max-width: 220px;
+  line-height: 1.4;
 }
 
 .variables-error .retry-btn {
@@ -509,20 +501,26 @@
   flex-shrink: 0;
 }
 
+.variables-loading svg,
+.variables-empty svg {
+  opacity: 0.4;
+}
+
 .variables-empty .empty-title {
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-secondary);
+  margin-top: var(--spacing-xs);
 }
 
 .variables-empty .empty-description {
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
-  max-width: 200px;
+  max-width: 220px;
+  line-height: 1.4;
 }
 
 /* Variables Build Selector placement */
 .variables-build-selector {
   padding: var(--spacing-xs) var(--spacing-sm);
-  border-bottom: 1px solid var(--border-subtle);
 }
