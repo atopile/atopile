@@ -1180,6 +1180,7 @@ class MutationMap:
         # oeprands automatically mapped to new graph
         # mark in target as relevant (if mapped through)
         # else create with mapped operands (and mark relevant)
+        # action relevance markers
 
         relevant_root_predicates = MutatorUtils.get_relevant_predicates(*relevant)
         if S_LOG:
@@ -1236,13 +1237,13 @@ class MutationMap:
             ]:
                 raise ValueError(f"Invalid relevant operable(s): {invalid_ops}")
 
-        if relevant:
-            if initial_state:
-                mut_map = MutationMap._with_relevance_set_resume(
-                    g, tg, relevant, initial_state, iteration
-                )
-            else:
-                mut_map = MutationMap._with_relevance_set(g, tg, relevant, iteration)
+        if relevant and initial_state:
+            # mut_map = MutationMap._with_relevance_set_resume(
+            #    g, tg, relevant, initial_state, iteration
+            # )
+            mut_map = MutationMap._with_relevance_set(g, tg, relevant, iteration)
+        elif relevant:
+            mut_map = MutationMap._with_relevance_set(g, tg, relevant, iteration)
         else:
             mut_map = MutationMap._identity(tg, g, iteration)
 
