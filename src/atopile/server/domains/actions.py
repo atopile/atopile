@@ -31,6 +31,7 @@ from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import parts as parts_domain
 from atopile.server.domains import projects as projects_domain
 from atopile.server.events import event_bus
+from faebryk.libs.package.meta import PackageModifiedError
 
 log = logging.getLogger(__name__)
 
@@ -134,6 +135,38 @@ def _handle_build_sync(payload: dict) -> dict:
                 "error": f"No ato.yaml found in: {project_root}",
                 "needs_state_sync": False,
             }
+
+        # Pre-build check: verify package integrity before building
+        try:
+            from atopile.config import config
+            from faebryk.libs.project.dependencies import ProjectDependencies
+
+            config.apply_options(None, working_dir=project_path)
+            # This will raise PackageModifiedError if packages are modified
+            ProjectDependencies(sync_versions=True, install_missing=True)
+        except PackageModifiedError as e:
+            # Emit event for UI to display, then block the build
+            from atopile.dataclasses import EventType
+
+            event_bus.emit_sync(
+                EventType.PACKAGE_MODIFIED,
+                {
+                    "identifier": e.identifier,
+                    "modified_files": e.modified_files,
+                    "package_path": str(e.package_path) if e.package_path else None,
+                    "project_root": project_root,
+                    "message": str(e),
+                },
+            )
+            return {
+                "success": False,
+                "error": f"Package '{e.identifier}' has local modifications",
+                "error_type": "package_modified",
+                "needs_state_sync": False,
+            }
+        except Exception as e:
+            log.warning(f"Pre-build sync check failed: {e}")
+            # Don't block the build for other errors, let the subprocess handle it
 
         if build_all_targets:
             log.info(
@@ -1236,6 +1269,66 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 message = f"{message[:1000]}… (truncated)"
             log_method(f"[ui] {message}")
             return {"success": True}
+
+        if action == "syncPackages":
+            # Handle force sync to discard local changes to packages
+            project_root = payload.get("projectRoot") or payload.get("project_root", "")
+            force = payload.get("force", False)
+
+            if not project_root:
+                return {"success": False, "error": "Missing projectRoot"}
+
+            project_path = Path(project_root)
+            if not await asyncio.to_thread(project_path.exists):
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            def run_sync():
+                try:
+                    log.info(f"Syncing packages for {project_root}, force={force}")
+                    core_packages.sync_packages_for_project(project_path, force=force)
+                    log.info("Package sync completed successfully")
+
+                    # Emit success event
+                    loop = event_bus._event_loop
+                    if loop and loop.is_running():
+                        from atopile.server.module_introspection import (
+                            clear_module_cache,
+                        )
+
+                        async def finalize_sync():
+                            clear_module_cache()
+                            await packages_domain.refresh_packages_state(
+                                scan_path=project_path
+                            )
+                            await server_state.emit_event(
+                                "packages_changed",
+                                {"synced": True, "project_root": project_root},
+                            )
+
+                        asyncio.run_coroutine_threadsafe(finalize_sync(), loop)
+
+                except Exception as exc:
+                    error_msg = str(exc)[:500] or "Unknown error"
+                    log.exception(f"Package sync failed: {error_msg}")
+                    loop = event_bus._event_loop
+                    if loop and loop.is_running():
+                        asyncio.run_coroutine_threadsafe(
+                            server_state.emit_event(
+                                "packages_changed",
+                                {"error": error_msg, "project_root": project_root},
+                            ),
+                            loop,
+                        )
+
+            threading.Thread(target=run_sync, daemon=True).start()
+
+            return {
+                "success": True,
+                "message": f"Syncing packages{' (force)' if force else ''}...",
+            }
 
         if action == "ping":
             return {"success": True}

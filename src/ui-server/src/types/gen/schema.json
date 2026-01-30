@@ -3027,6 +3027,7 @@
           "project_modules_changed",
           "project_dependencies_changed",
           "atopile_config_changed",
+          "package_modified",
           "log_view_current_id_changed",
           "open_layout",
           "open_kicad",

@@ -729,7 +729,9 @@ class ProjectDependencies:
                                 installed_version = (
                                     meta.version if meta else "<unknown>"
                                 )
-                                dirty |= _sync_dep(dep, installed_version)
+                                dirty |= _sync_dep(
+                                    dep, installed_version, force_reinstall=True
+                                )
                             else:
                                 raise PackageModifiedError(
                                     dep.identifier,

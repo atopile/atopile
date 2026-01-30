@@ -78,6 +78,9 @@ class EventType(StrEnum):
     # Configuration changes
     ATOPILE_CONFIG_CHANGED = "atopile_config_changed"
 
+    # Package integrity
+    PACKAGE_MODIFIED = "package_modified"
+
     # Shared UI state
     LOG_VIEW_CURRENT_ID_CHANGED = "log_view_current_id_changed"
 
