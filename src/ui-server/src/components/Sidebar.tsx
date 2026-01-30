@@ -354,6 +354,8 @@ export function Sidebar() {
                 throw new Error(errorMsg);
               }
               action('refreshProjects');
+              // Select the newly created target
+              useStore.getState().setSelectedTargets([data.name]);
             }}
             onGenerateManufacturingData={handleGenerateManufacturingData}
             queuedBuilds={queuedBuilds}

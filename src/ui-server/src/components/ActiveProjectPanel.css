@@ -1081,6 +1081,46 @@
   letter-spacing: 0.05em;
 }
 
+.form-field label .required {
+  color: var(--ctp-red);
+}
+
+.form-path-input {
+  display: flex;
+  gap: 4px;
+}
+
+.form-path-input input {
+  flex: 1;
+  min-width: 0;
+}
+
+.form-browse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.form-browse-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--ctp-blue);
+}
+
+.form-browse-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .form-field input,
 .form-field select,
 .form-field textarea {
@@ -1123,6 +1163,10 @@
 
 .form-hint.status-create {
   color: var(--ctp-yellow);
+}
+
+.form-hint.status-error {
+  color: var(--ctp-red);
 }
 
 /* Entry field with autocomplete */

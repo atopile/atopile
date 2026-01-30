@@ -56,6 +56,10 @@ interface BrowseAtopilePathMessage {
   type: 'browseAtopilePath';
 }
 
+interface BrowseProjectPathMessage {
+  type: 'browseProjectPath';
+}
+
 interface ReloadWindowMessage {
   type: 'reloadWindow';
 }
@@ -133,6 +137,7 @@ type WebviewMessage =
   | AtopileSettingsMessage
   | SelectionChangedMessage
   | BrowseAtopilePathMessage
+  | BrowseProjectPathMessage
   | ReloadWindowMessage
   | RestartExtensionMessage
   | ShowLogsMessage
@@ -467,6 +472,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'browseAtopilePath':
         this._handleBrowseAtopilePath().catch((error) => {
           traceError(`[SidebarProvider] Error browsing atopile path: ${error}`);
+        });
+        break;
+      case 'browseProjectPath':
+        this._handleBrowseProjectPath().catch((error) => {
+          traceError(`[SidebarProvider] Error browsing project path: ${error}`);
         });
         break;
       case 'selectionChanged':
@@ -1049,6 +1059,34 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // Send the result back to the webview
     this._view?.webview.postMessage({
       type: 'browseAtopilePathResult',
+      path: selectedPath,
+    });
+  }
+
+  /**
+   * Handle request to browse for a project directory.
+   * Shows a native folder picker dialog and sends the selected path back to the webview.
+   */
+  private async _handleBrowseProjectPath(): Promise<void> {
+    traceInfo('[SidebarProvider] Browsing for project directory');
+
+    const defaultUri = vscode.workspace.workspaceFolders?.[0]?.uri;
+
+    const result = await vscode.window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+      defaultUri,
+      openLabel: 'Select folder',
+      title: 'Select project directory',
+    });
+
+    const selectedPath = result?.[0]?.fsPath ?? null;
+    traceInfo(`[SidebarProvider] Browse project path result: ${selectedPath}`);
+
+    // Send the result back to the webview
+    this._view?.webview.postMessage({
+      type: 'browseProjectPathResult',
       path: selectedPath,
     });
   }

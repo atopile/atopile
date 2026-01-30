@@ -98,11 +98,16 @@ export function useSidebarHandlers({
 
   const handleCreateProject = async (data?: { name?: string; license?: string; description?: string; parentDirectory?: string }) => {
     const response = await sendActionWithResponse('createProject', data || {});
-    if (!response.result?.success) {
-      const errorMsg = response.result?.error || 'Failed to create project';
+    const result = response.result as { success?: boolean; error?: string; project_root?: string } | undefined;
+    if (!result?.success) {
+      const errorMsg = result?.error || 'Failed to create project';
       throw new Error(errorMsg);
     }
     // Projects are refreshed by the backend automatically
+    // Select the newly created project
+    if (result?.project_root) {
+      useStore.getState().selectProject(result.project_root);
+    }
   };
 
   const handleStructureRefresh = () => {
