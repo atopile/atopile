@@ -107,6 +107,10 @@ def _is_user_facing_child(attr_name: str) -> bool:
     # These are traits attached to the module, not user-facing children
     if attr_name.startswith(("is_", "has_", "can_", "implements_")):
         return False
+    # Skip pure numeric names (raw pad numbers like "1", "2", "3")
+    # These are shown as part of signal names via pin links
+    if attr_name.isdigit():
+        return False
     # Skip known internal field names (these are implementation details)
     internal_names = {
         "design_check",
@@ -124,6 +128,39 @@ def _is_user_facing_child(attr_name: str) -> bool:
 
 # Pattern to match array indices like "name[0]", "name[123]"
 _ARRAY_PATTERN = re.compile(r"^(.+)\[(\d+)\]$")
+
+
+def _extract_signal_to_pin_mapping(
+    tg: "fbrk.TypeGraph",
+    type_node: "graph.BoundNode",
+) -> dict[str, str]:
+    """
+    Extract signal-to-pin mappings from MakeLinks in the TypeGraph.
+
+    For `signal GND ~ pin 2`, this returns {"GND": "2"}.
+    Used to show Electrical signals with their connected pin numbers.
+    """
+    mapping: dict[str, str] = {}
+
+    try:
+        make_links = tg.collect_make_links(type_node=type_node)
+    except Exception:
+        return mapping
+
+    for _link_node, lhs_path, rhs_path in make_links:
+        # Look for patterns like ("signal_name",) ~ ("pin_number",)
+        # where pin_number is a digit
+        if len(lhs_path) == 1 and len(rhs_path) == 1:
+            lhs_name = lhs_path[0]
+            rhs_name = rhs_path[0]
+
+            # Check which side is the pin number
+            if rhs_name.isdigit() and not lhs_name.isdigit():
+                mapping[lhs_name] = rhs_name
+            elif lhs_name.isdigit() and not rhs_name.isdigit():
+                mapping[rhs_name] = lhs_name
+
+    return mapping
 
 
 def _group_array_children(children: list[ModuleChild]) -> list[ModuleChild]:
@@ -189,6 +226,7 @@ def _extract_children_from_typegraph(
     type_node: "graph.BoundNode",
     depth: int = 0,
     max_depth: int = 2,
+    signal_to_pin: dict[str, str] | None = None,
 ) -> list[ModuleChild]:
     """Extract children from the TypeGraph for a given type node."""
     import faebryk.core.faebrykpy as fbrk
@@ -197,6 +235,10 @@ def _extract_children_from_typegraph(
 
     if depth >= max_depth:
         return children
+
+    # Extract signal-to-pin mappings at the top level
+    if signal_to_pin is None and depth == 0:
+        signal_to_pin = _extract_signal_to_pin_mapping(tg, type_node)
 
     try:
         make_children = tg.collect_make_children(type_node=type_node)
@@ -237,10 +279,6 @@ def _extract_children_from_typegraph(
         # Determine item type from the graph
         item_type = _get_item_type(tg, resolved_type, type_name)
 
-        # Skip traits - but keep unresolved types as modules
-        if item_type == "trait":
-            continue
-
         # If type couldn't be determined (unresolved import), treat as module
         if item_type is None:
             # Check if it looks like a module/component based on naming convention
@@ -254,6 +292,12 @@ def _extract_children_from_typegraph(
         # TODO: Implement spec extraction from TypeGraph operand/constraint nodes
         spec: str | None = None
 
+        # For Electrical interfaces, add pin number info if available
+        display_name = identifier
+        if signal_to_pin and identifier in signal_to_pin:
+            pin_number = signal_to_pin[identifier]
+            display_name = f"{identifier} ~ pin {pin_number}"
+
         # Recursively extract nested children
         nested_children: list[ModuleChild] = []
         if resolved_type is not None and depth < max_depth:
@@ -262,11 +306,12 @@ def _extract_children_from_typegraph(
                 type_node=resolved_type,
                 depth=depth + 1,
                 max_depth=max_depth,
+                signal_to_pin=signal_to_pin,
             )
 
         children.append(
             ModuleChild(
-                name=identifier,
+                name=display_name,
                 type_name=type_name,
                 item_type=item_type,
                 children=nested_children,
@@ -331,9 +376,10 @@ def introspect_module(
             log.warning("Module %s not found in %s", module_name, file_path)
             return None
 
-        # Try to link imports for multi-file projects
+        # Try to link imports and execute deferred operations (inheritance, retypes)
         try:
             from atopile.compiler.build import Linker, StdlibRegistry
+            from atopile.compiler.deferred_executor import DeferredExecutor
             from atopile.config import config
 
             # Apply config for the project
@@ -348,6 +394,17 @@ def introspect_module(
             # Use _link_recursive to avoid raising on unresolved refs
             # (packages may not be installed)
             linker._link_recursive(g, result.state)
+
+            # Execute deferred operations - this runs copy_type_structure for
+            # inheritance, so derived types get their parent's children
+            DeferredExecutor(
+                g=g,
+                tg=tg,
+                state=result.state,
+                visitor=result.visitor,
+                stdlib=stdlib,
+                file_imports=linker,
+            ).execute()
         except Exception as link_exc:
             # Linking is optional - continue without it
             log.debug("Import linking skipped: %s", link_exc)

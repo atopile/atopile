@@ -248,10 +248,13 @@ export function StructurePanel({
     setExpandedPathsByModule(prev => {
       const next = new Map(prev)
       let changed = false
+      // Only auto-expand if there's a single module
+      const shouldAutoExpand = state.modules.length === 1
       for (const module of state.modules) {
         const key = module.entry || module.name
         if (!next.has(key)) {
-          next.set(key, new Set(['__root__']))
+          // Expand root only if single module, otherwise start collapsed
+          next.set(key, shouldAutoExpand ? new Set(['__root__']) : new Set())
           changed = true
         }
       }

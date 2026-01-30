@@ -513,6 +513,9 @@ def create_app(
             event_bus.emit_sync(
                 EventType.BOM_CHANGED, {"project_root": build.project_root}
             )
+            event_bus.emit_sync(
+                EventType.VARIABLES_CHANGED, {"project_root": build.project_root}
+            )
 
         _build_queue.on_change = _handle_build_change
         _build_queue.on_completed = _handle_build_completed
