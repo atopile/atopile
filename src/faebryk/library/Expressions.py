@@ -302,14 +302,14 @@ class is_expression(fabll.Node):
         if is_terminated:
             symbol_suffix += "$"
 
+        if relevant is not None:
+            symbol_suffix += "★" if relevant else "⊘"
+
         if not no_lit_suffix:
             symbol_suffix += lit_suffix
 
         if not no_class_suffix:
             symbol_suffix += class_suffix
-
-        if relevant is not None:
-            symbol_suffix += "★" if relevant else "⊘"
 
         symbol += symbol_suffix
 
@@ -378,7 +378,7 @@ class is_expression(fabll.Node):
         no_class_suffix: bool = False,
     ) -> str:
         """Return compact math repr with symbols (+, *, ≥, ¬, ∧) and precedence."""
-        from faebryk.core.solver.mutator import is_terminated
+        from faebryk.core.solver.mutator import is_irrelevant, is_terminated
 
         aliases = self.as_operand.get().get_operations(Is, predicates_only=True)
         ps = [
@@ -389,7 +389,11 @@ class is_expression(fabll.Node):
             )
         ]
         alias_suffix = ",".join(
-            [p.compact_repr(use_full_name=use_full_name, with_detail=False) for p in ps]
+            [
+                p.compact_repr(use_full_name=use_full_name, with_detail=False)
+                for p in ps
+                if not p.try_get_sibling_trait(is_irrelevant)
+            ]
         )
         if alias_suffix:
             alias_suffix = f"[{alias_suffix}]"
