@@ -15,7 +15,7 @@ from atopile.compiler import DslException
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
-from atopile.errors import DeprecatedException, downgrade
+from atopile.errors import DeprecatedException, UserSyntaxError, downgrade
 from atopile.logging import get_logger
 
 logger = get_logger(__name__)
@@ -493,9 +493,17 @@ class ANTLRVisitor(AtoParserVisitor):
                     literal_physical_ctx
                 )._is_assignable.get()
             case (None, None, arithmetic_expression_ctx, None, None):
-                return self.visitArithmetic_expression(
-                    arithmetic_expression_ctx
-                ).as_assignable.get()
+                arith_result = self.visitArithmetic_expression(arithmetic_expression_ctx)
+                # Check if this is just a field reference (e.g., `r1 = Resistor`)
+                # which is not a valid assignable - user likely forgot `new`
+                underlying = fabll.Traits(arith_result).get_obj_raw()
+                if underlying.isinstance(AST.FieldRef):
+                    ref_text = arithmetic_expression_ctx.getText()
+                    raise UserSyntaxError.from_ctx(
+                        arithmetic_expression_ctx,
+                        f"Cannot assign type reference. To create an instance, use: `new {ref_text}`",
+                    )
+                return arith_result.as_assignable.get()
             case (None, None, None, string_ctx, None):
                 text, source_info = self.visitString(string_ctx)
                 return (
