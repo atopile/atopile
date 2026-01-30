@@ -34,25 +34,35 @@ def _configure_watchdog_logging() -> None:
         logger.disabled = True
 
 
-_IGNORED_DIR_NAMES = frozenset({
-    ".git",
-    ".hg",
-    ".svn",
-    ".ato",
-    ".cache",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".venv",
-    ".vscode",
-    ".cursor",
-    "__pycache__",
-    "node_modules",
-    "dist",
-    "zig-out",
-})
+_IGNORED_DIR_NAMES = frozenset(
+    {
+        ".git",
+        ".hg",
+        ".svn",
+        ".ato",
+        ".cache",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".venv",
+        ".vscode",
+        ".cursor",
+        "__pycache__",
+        "node_modules",
+        "dist",
+        "zig-out",
+    }
+)
 
-# Patterns for watchdog's built-in filtering (applied early, before events reach handlers)
+# Directories whose creation/deletion we DO want to track (but not their contents)
+_TRACK_DIR_EVENTS = frozenset(
+    {
+        ".ato",
+        ".git",
+    }
+)
+
+# Patterns for watchdog's built-in filtering (applied early, before handlers)
 _WATCH_PATTERNS = [
     "*.ato",
     "*.py",
@@ -66,12 +76,10 @@ _WATCH_PATTERNS = [
     "*.kicad_sym",
 ]
 
-# Ignore patterns for watchdog (applied early, skips entire directories)
-_IGNORE_PATTERNS = [
-    f"*/{name}/*" for name in _IGNORED_DIR_NAMES
-] + [
-    f"*/{name}" for name in _IGNORED_DIR_NAMES
-]
+# Ignore patterns for watchdog (applied early, skips contents of ignored directories)
+# Note: We only ignore contents (*/{name}/*), not the directories themselves,
+# so we can detect when tracked directories like .ato and .git are created/deleted
+_IGNORE_PATTERNS = [f"*/{name}/*" for name in _IGNORED_DIR_NAMES]
 
 
 @dataclass
@@ -105,7 +113,7 @@ class _EventDispatcher(PatternMatchingEventHandler):
         super().__init__(
             patterns=_WATCH_PATTERNS,
             ignore_patterns=_IGNORE_PATTERNS,
-            ignore_directories=True,
+            ignore_directories=False,  # Allow directory events for tracked dirs
             case_sensitive=False,
         )
         self._lock = Lock()
@@ -185,20 +193,33 @@ class _EventDispatcher(PatternMatchingEventHandler):
 
                 self._timers[hid] = loop.call_later(debounce_s, fire)
 
-    def on_created(self, event: FileSystemEvent) -> None:
+    def _should_process_event(self, event: FileSystemEvent) -> bool:
+        """Check if we should process this event.
+
+        For files: always process (filtering done by patterns)
+        For directories: only process if it's a tracked directory like .ato or .git
+        """
         if not event.is_directory:
+            return True
+        # For directories, only track creation/deletion of specific ones
+        dir_name = Path(self._path_str(event.src_path)).name
+        return dir_name in _TRACK_DIR_EVENTS
+
+    def on_created(self, event: FileSystemEvent) -> None:
+        if self._should_process_event(event):
             self._dispatch(self._path_str(event.src_path), "created")
 
     def on_deleted(self, event: FileSystemEvent) -> None:
-        if not event.is_directory:
+        if self._should_process_event(event):
             self._dispatch(self._path_str(event.src_path), "deleted")
 
     def on_modified(self, event: FileSystemEvent) -> None:
+        # Don't track directory modifications, only files
         if not event.is_directory:
             self._dispatch(self._path_str(event.src_path), "changed")
 
     def on_moved(self, event: FileSystemEvent) -> None:
-        if event.is_directory:
+        if not self._should_process_event(event):
             return
         self._dispatch(self._path_str(event.src_path), "deleted")
         if hasattr(event, "dest_path"):
@@ -210,11 +231,18 @@ class _EventDispatcher(PatternMatchingEventHandler):
 
     @staticmethod
     def _is_ignored(path: Path) -> bool:
-        """Secondary filter for paths that slip through watchdog's pattern matching."""
-        # Check if any path component is in ignored directories
-        # This catches edge cases the glob patterns might miss
-        for part in path.parts:
+        """Secondary filter for paths that slip through watchdog's pattern matching.
+
+        Allows tracked directories (.ato, .git) themselves but ignores their contents.
+        """
+        parts = path.parts
+        for i, part in enumerate(parts):
             if part in _IGNORED_DIR_NAMES:
+                # If this is the last component and it's a tracked dir, allow it
+                # (this is the directory itself, not its contents)
+                if i == len(parts) - 1 and part in _TRACK_DIR_EVENTS:
+                    return False
+                # Otherwise it's contents of an ignored dir, or untracked ignored dir
                 return True
         return False
 
@@ -242,9 +270,7 @@ def _get_observer() -> tuple[Any, _EventDispatcher]:
                 obs.start()
                 log.info("Using native file observer")
             except Exception as e:
-                log.warning(
-                    "Native observer failed (%s), falling back to polling", e
-                )
+                log.warning("Native observer failed (%s), falling back to polling", e)
                 obs = PollingObserver(timeout=2.0)
                 obs.start()
                 log.info("Using polling file observer")
