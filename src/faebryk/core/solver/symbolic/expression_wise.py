@@ -232,7 +232,11 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
     )
 
     # if non-lit factors all 1 and no literal folding, nothing to do
-    if not new_factors and len(literal_operands) <= 1:
+    # Exception: literals that sum to identity (0) should be dropped
+    has_droppable_identity = (
+        literal_sum is None and len(literal_operands) > 0 and len(p_operands) > 0
+    )
+    if not new_factors and len(literal_operands) <= 1 and not has_droppable_identity:
         return
 
     factored_operands = [
@@ -274,9 +278,6 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
     TODO doc other simplifications
     A * (A + B)^-1 -> 1 + (B * A^-1)^-1
     """
-    # TODO
-    return
-
     e = expr.is_expression.get()
     e_po = e.as_parameter_operatable.get()
     literal_operands = list(e.get_operand_literals().values())
@@ -301,10 +302,10 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
     # if non-lit powers all 1 and no literal folding, nothing to do
     if not (
         not new_powers
-        and len(literal_prod) == len(literal_operands)
+        and len(literal_operands) <= 1
         and not (
             literal_prod
-            and literal_prod[0].op_setic_equals_singleton(0)
+            and literal_prod.op_setic_equals_singleton(0)
             and len(replacable_nonliteral_operands)
             + len(non_replacable_nonliteral_operands)
             > 0
@@ -312,22 +313,23 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
     ):
         # Careful, modifying old graph, but should be ok
         powered_operands = [
-            pe
+            pe_res.out.as_operand.get()
             for n, m in new_powers.items()
             if (
-                pe := mutator.create_check_and_insert_expression(
+                pe_res := mutator.create_check_and_insert_expression(
                     F.Expressions.Power,
                     n.as_operand.get(),
                     m.can_be_operand.get(),
                     from_ops=[e_po],
-                ).out.as_operand.get()
+                )
             )
+            and pe_res.out is not None
         ]
 
         new_operands: list[F.Parameters.can_be_operand] = [
             *powered_operands,
             *(x.as_operand.get() for x in old_powers),
-            *(x.as_operand.get() for x in literal_prod),
+            *([literal_prod.as_operand.get()] if literal_prod else []),
             *(x.as_operand.get() for x in non_replacable_nonliteral_operands),
         ]
 
@@ -347,7 +349,7 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
             mutator.utils.mutate_unpack_expression(e, [no_po])
             return
 
-        if new_operands != expr.operands:
+        if new_operands != e.get_operands():
             mutator.mutate_expression(
                 e, operands=new_operands, expression_factory=F.Expressions.Multiply
             )
