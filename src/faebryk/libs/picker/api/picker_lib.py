@@ -1,6 +1,5 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-
 import logging
 import re
 from dataclasses import fields
@@ -14,7 +13,8 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserInfraError
 from faebryk.core import graph
-from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
+from faebryk.core.solver.solver import Solver
+from faebryk.core.solver.utils import LOG_PICK_SOLVE
 from faebryk.libs.http import RequestError
 from faebryk.libs.picker.api.api import ApiHTTPError, get_api_client
 from faebryk.libs.picker.api.models import (
@@ -274,13 +274,14 @@ def _find_modules(
         )
     except RequestError as e:
         cause = e.args[0]
-        while not isinstance(cause, gaierror):
+        while not isinstance(cause, gaierror) and hasattr(cause, "__cause__"):
             cause = cause.__cause__
             if cause is None:
                 break
         else:
             raise UserInfraError(
-                f"Fetching component data failed: connection error: {cause.strerror}"
+                f"Fetching component data failed: connection error:"
+                f" {cause.strerror if hasattr(cause, 'strerror') else cause}"
             ) from e
 
         raise UserInfraError("Fetching component data failed: connection error") from e

@@ -23,6 +23,9 @@ import {
   getStoredSetting,
   isValidRegex,
   SearchOptions,
+  LoggerFilter,
+  loadEnabledLoggers,
+  calculateSourceColumnWidth,
 } from './log-viewer';
 import './LogViewer.css';
 
@@ -64,6 +67,9 @@ export function LogViewer() {
   const [sourceRegex, setSourceRegex] = useState(false);
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
   const [sourceCaseSensitive, setSourceCaseSensitive] = useState(false);
+
+  // Logger filter state - persisted in localStorage
+  const [enabledLoggers, setEnabledLoggers] = useState<Set<string> | null>(() => loadEnabledLoggers());
 
   // Build log specific parameters - buildId lives in the shared store
   const buildId = useStore((state) => state.logViewerBuildId) ?? '';
@@ -109,6 +115,10 @@ export function LogViewer() {
     getStoredSetting('lv-sourceMode', 'source' as SourceMode, v => v === 'source' || v === 'logger')
   );
   const [autoScroll, setAutoScroll] = useState(true);
+
+  // Expand/collapse all state - start collapsed
+  const [allExpanded, setAllExpanded] = useState(false);
+  const [expandKey, setExpandKey] = useState(0);
 
   // Level dropdown state
   const [levelDropdownOpen, setLevelDropdownOpen] = useState(false);
@@ -222,6 +232,16 @@ export function LogViewer() {
     setAutoScroll(value);
   }, []);
 
+  const handleExpandAll = useCallback(() => {
+    setAllExpanded(true);
+    setExpandKey(k => k + 1);
+  }, []);
+
+  const handleCollapseAll = useCallback(() => {
+    setAllExpanded(false);
+    setExpandKey(k => k + 1);
+  }, []);
+
   // Search options for regex support
   const searchOptions: SearchOptions = useMemo(() => ({
     isRegex: searchRegex,
@@ -237,8 +257,17 @@ export function LogViewer() {
   const searchRegexError = searchRegex ? isValidRegex(search).error : undefined;
   const sourceRegexError = sourceRegex ? isValidRegex(sourceFilter).error : undefined;
 
+  // Calculate dynamic source column width based on content
+  const sourceColumnWidth = useMemo(
+    () => calculateSourceColumnWidth(logs, sourceMode),
+    [logs, sourceMode]
+  );
+
   return (
-    <div className="lv-container">
+    <div
+      className="lv-container"
+      style={{ '--lv-source-width': `${sourceColumnWidth}px` } as React.CSSProperties}
+    >
       {/* Fixed Toolbar */}
       <div className="lv-toolbar">
         <div className="lv-controls">
@@ -355,6 +384,13 @@ export function LogViewer() {
               )}
             </div>
 
+            {/* Logger filter dropdown */}
+            <LoggerFilter
+              logs={logs}
+              enabledLoggers={enabledLoggers}
+              onEnabledLoggersChange={setEnabledLoggers}
+            />
+
             <select
               value={audience}
               onChange={(e) => setAudience(e.target.value as Audience)}
@@ -470,6 +506,7 @@ export function LogViewer() {
         sourceFilter={sourceFilter}
         searchOptions={searchOptions}
         sourceOptions={sourceOptions}
+        enabledLoggers={enabledLoggers}
         levelFull={levelFull}
         timeMode={timeMode}
         sourceMode={sourceMode}
@@ -478,6 +515,10 @@ export function LogViewer() {
         onAutoScrollChange={handleAutoScrollChange}
         setLevelFull={setLevelFull}
         setTimeMode={setTimeMode}
+        allExpanded={allExpanded}
+        expandKey={expandKey}
+        onExpandAll={handleExpandAll}
+        onCollapseAll={handleCollapseAll}
       />
     </div>
   );

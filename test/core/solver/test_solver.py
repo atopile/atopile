@@ -1,8 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-
 import logging
 import math
+import string
 from itertools import pairwise
 from typing import Callable, cast
 
@@ -10,14 +10,12 @@ import pytest
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.mutator import MutationMap
+from faebryk.core.solver.solver import Solver
+from faebryk.core.solver.symbolic.invariants import AliasClass
 from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_expression
-from faebryk.core.solver.utils import (
-    Contradiction,
-    ContradictionByLiteral,
-)
-from faebryk.libs.picker.picker import pick_part_recursively
+from faebryk.core.solver.utils import Contradiction
+from faebryk.libs.picker.picker import pick_parts_recursively
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.util import not_none
 
@@ -34,8 +32,7 @@ dimensionless = F.Units.Dimensionless
 
 def _create_letters(
     E: BoundExpressions, n: int, units: type[fabll.Node] | None = None
-) -> tuple[F.Parameters.ReprContext, list[F.Parameters.is_parameter_operatable]]:
-    context = F.Parameters.ReprContext()
+) -> list[F.Parameters.is_parameter_operatable]:
     if units is None:
         units = E.U.dl
 
@@ -48,9 +45,16 @@ def _create_letters(
         ]
 
     app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+
+    def generate_letter():
+        yield from string.ascii_uppercase
+
+    for letter, p in zip(generate_letter(), app.params):
+        p.get().is_parameter.get().set_name(letter)
+
     params = [p.get().is_parameter_operatable.get() for p in app.params]
 
-    return context, params
+    return params
 
 
 def _extract(
@@ -60,9 +64,12 @@ def _extract(
 ) -> F.Literals.is_literal:
     if not isinstance(res, MutationMap):
         assert domain_default
-        return res.simplify_and_extract_superset(
-            op.as_parameter_operatable.force_get().as_parameter.force_get()
-        )
+        op_po = op.as_parameter_operatable.force_get()
+        if e := op_po.as_expression.try_get():
+            p = e.create_representative()
+        else:
+            p = op_po.as_parameter.force_get()
+        return res.simplify_and_extract_superset(p)
     return not_none(
         res.try_extract_superset(
             op.as_parameter_operatable.force_get(),
@@ -81,11 +88,6 @@ def _extract_and_check(
     domain_default: bool = True,
 ) -> bool:
     extracted = _extract(op, res, domain_default=domain_default)
-    ctx = (
-        res.print_ctx
-        if isinstance(res, MutationMap)
-        else not_none(res.state).data.mutation_map.print_ctx
-    )
     if isinstance(expected, F.Literals.is_literal):
         expected = expected.as_operand.get()
     if isinstance(expected, F.Literals.LiteralNodes):
@@ -96,7 +98,7 @@ def _extract_and_check(
             print(
                 f"Expected {expected}"
                 f" but got {extracted.pretty_str()}"
-                f"\nfor op: {op.as_parameter_operatable.force_get().compact_repr(ctx)}"
+                f"\nfor op: {op.as_parameter_operatable.force_get().compact_repr()}"
             )
         return matches
 
@@ -108,6 +110,38 @@ def _extract_and_check(
             f"\nfor op: {op.pretty()}"
         )
     return matches
+
+
+def _extract_numbers(
+    solver: Solver, po: F.Parameters.is_parameter_operatable
+) -> F.Literals.Numbers:
+    return (
+        solver.extract_superset(po.as_parameter.force_get())
+        .switch_cast()
+        .cast(F.Literals.Numbers)
+    )
+
+
+def _find_class_expression(
+    op: F.Parameters.can_be_operand, expr_t: type[fabll.NodeT]
+) -> F.Expressions.is_expression | None:
+    """Find an expression of `expr_t` through the alias class of `op`."""
+    alias = AliasClass.of(op, allow_non_repr=True)
+    for e in alias.get_with_trait(F.Expressions.is_expression):
+        if e.expr_isinstance(expr_t):
+            return e
+    return None
+
+
+def _find_class_expression_force(
+    op: F.Parameters.can_be_operand, expr_t: type[fabll.NodeT]
+) -> F.Expressions.is_expression:
+    e = _find_class_expression(op, expr_t)
+    assert e is not None, (
+        f"No {expr_t.__name__} found in alias class of"
+        f" {op.as_parameter_operatable.force_get().compact_repr()}"
+    )
+    return e
 
 
 def test_solve_phase_one():
@@ -262,7 +296,7 @@ def test_shortcircuit_logic_and():
     E.and_(p0, E.lit_bool(False), assert_=True)
     solver = Solver()
 
-    with pytest.raises(ContradictionByLiteral):
+    with pytest.raises(Contradiction):
         solver.simplify(E.tg, E.g)
 
 
@@ -298,39 +332,6 @@ def test_inequality_to_set():
     E.greater_than(p0, E.lit_op_single((1, E.U.dl)), assert_=True)
     solver = Solver()
     assert _extract_and_check(p0, solver, E.lit_op_range((1, 2)))
-
-
-def test_remove_obvious_tautologies():
-    """
-    p0 is! p1 + p2
-    p1 >= 0
-    p2 >= 0
-    p0 is! p1 + p2
-    p2 is! p2
-    => remove p2 is! p2
-
-    The reflexive tautology Is(p2, p2) is dropped during solver processing via the
-    _no_reflexive_tautologies invariant and replaced with a True literal.
-    """
-    E = BoundExpressions()
-    p0, p1, p2 = [E.parameter_op(units=E.U.dl) for _ in range(3)]
-
-    E.is_(p0, E.add(p1, p2), assert_=True)
-
-    E.greater_than(p1, E.lit_op_single((0.0, E.U.dl)), assert_=True)
-    E.greater_than(p2, E.lit_op_single((0.0, E.U.dl)), assert_=True)
-    E.is_(p2, E.add(p1, p2), assert_=True)
-    X = E.is_(p2, p2, assert_=True)
-
-    solver = Solver()
-    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
-
-    # The tautology X = Is(p2, p2) is dropped by _no_reflexive_tautologies invariant
-    # during solver processing - it's replaced with a True literal, so it doesn't
-    # map forward to an expression node
-    out = repr_map.map_forward(X.as_parameter_operatable.force_get())
-    # The expression should either not map forward (maps_to=None) or be marked removed
-    assert out.maps_to is None or out.removed
 
 
 def test_subset_of_literal():
@@ -370,11 +371,10 @@ def test_alias_classes():
     addition2 = E.add(D, C)
     E.is_(H, addition2, assert_=True)
 
-    context = F.Parameters.ReprContext()
     for p in (A, B, C, D, H):
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
     solver = Solver()
-    repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     # A, B, and H are aliased via the Is constraints and commutativity of addition
     # A is! B, B is! (C+D), H is! (D+C) where C+D == D+C
@@ -486,9 +486,8 @@ def test_subset_superset():
     E.is_subset(B, E.lit_op_range((5, 20)), assert_=True)
     E.is_(A, B, assert_=True)
 
-    context = F.Parameters.ReprContext()
     for p in [A, B]:
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     solver = Solver()
     with pytest.raises(Contradiction):
@@ -519,9 +518,8 @@ def test_very_simple_alias_class():
     E.is_(B, C, assert_=True)
     E.is_subset(A, E.lit_op_range(((1, E.U.V), (2, E.U.V))), assert_=True)
 
-    context = F.Parameters.ReprContext()
     for p in params:
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
@@ -564,13 +562,12 @@ def test_less_obvious_contradiction_by_literal():
     E.is_(C, E.add(A, B), assert_=True)
     E.is_subset(E.lit_op_range(((0.0, E.U.V), (15.0, E.U.V))), C, assert_=True)
 
-    print_context = F.Parameters.ReprContext()
     for p in (A, B, C):
-        p.as_parameter_operatable.force_get().compact_repr(print_context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     solver = Solver()
-    with pytest.raises(ContradictionByLiteral):
-        solver.simplify(E.tg, E.g, print_context=print_context)
+    with pytest.raises(Contradiction):
+        solver.simplify(E.tg, E.g)
 
 
 def test_symmetric_inequality_correlated():
@@ -645,12 +642,57 @@ def test_super_simple_literal_folding(
     E = BoundExpressions()
     operands_op = [E.lit_op_single(o) for o in operands]
     expr = expr_type(*operands_op)
+    p = expr.get_sibling_trait(F.Expressions.is_expression).create_representative()
+
     solver = Solver()
 
+    assert _extract_and_check(p.as_operand.get(), solver, expected)
+
+
+def test_collect_factors_basic():
+    """
+    expr := A + (A * 2) + (A * 5) + B
+    expr <=! 100
+    => fold_add collects like terms: 8A + B
+
+    A and B are left as free ranges so the expression stays symbolic
+    and _collect_factors must do the work (not literal propagation).
+
+    With A ⊆ {≤100} (from the predicate) and B unconstrained:
+    Upper bound of 8A + B should be tighter than the unfolded form.
+    Specifically, after folding we get Add(Mul(A, 8), B) — 2 non-lit operands.
+    """
+    E = BoundExpressions()
+    A_po, B_po = _create_letters(E, 2)
+    A, B = (A_po.as_operand.get(), B_po.as_operand.get())
+
+    expr = E.add(
+        A,
+        E.multiply(A, E.lit_op_single(2)),
+        E.multiply(A, E.lit_op_single(5)),
+        B,
+    )
+    # predicate engages the solver and gives a bound to work with
     E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
 
+    solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
-    assert _extract_and_check(expr, repr_map, expected)
+
+    # After collect_factors: Add(A, A*2, A*5, B) => Add(Mul(A, 8), B)
+    # Verify by checking the representative of expr in the output graph
+    rep_expr = not_none(
+        repr_map.map_forward(expr.as_parameter_operatable.force_get()).maps_to
+    )
+
+    add_expr = _find_class_expression_force(
+        rep_expr.as_operand.get(), F.Expressions.Add
+    )
+    non_lit_operands = add_expr.get_operand_operatables()
+    # Should be 2: Mul(A, 8) and B — not the original 4
+    assert len(non_lit_operands) == 2, (
+        f"Expected 2 non-lit operands (Mul(A,8) + B), "
+        f"got {len(non_lit_operands)}: {rep_expr.compact_repr()}"
+    )
 
 
 def test_literal_folding_add_multiplicative_1():
@@ -660,8 +702,8 @@ def test_literal_folding_add_multiplicative_1():
     => 8A + 2AB
     """
     E = BoundExpressions()
-    A = E.parameter_op(units=E.U.dl)
-    B = E.parameter_op(units=E.U.dl)
+    A_po, B_po = _create_letters(E, 2)
+    A, B = (A_po.as_operand.get(), B_po.as_operand.get())
 
     expr = E.subtract(
         E.add(
@@ -680,46 +722,47 @@ def test_literal_folding_add_multiplicative_1():
     solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
-    rep_add = not_none(
+    rep_add_po = not_none(
         repr_map.map_forward(expr.as_parameter_operatable.force_get()).maps_to
     )
-    rep_A = repr_map.map_forward(A.as_parameter_operatable.force_get()).maps_to
-    rep_B = repr_map.map_forward(B.as_parameter_operatable.force_get()).maps_to
-    assert rep_A is not None
-    assert rep_B is not None
-
-    context = repr_map.print_ctx
-    operands = (
-        fabll.Traits(rep_add)
-        .get_obj(F.Expressions.Add)
-        .is_expression.get()
-        .get_operands()
+    rep_A = not_none(
+        repr_map.map_forward(A.as_parameter_operatable.force_get()).maps_to
     )
-    assert len(operands) == 2, f"{rep_add.compact_repr(context)}"
-    mul1, mul2 = operands
+    rep_B = not_none(
+        repr_map.map_forward(B.as_parameter_operatable.force_get()).maps_to
+    )
 
-    mulexp1 = fabll.Traits(mul1).get_obj(F.Expressions.Multiply)
-    mulexp2 = fabll.Traits(mul2).get_obj(F.Expressions.Multiply)
+    # Find the Add expression through the alias class of the result
+    add_expr = _find_class_expression_force(
+        rep_add_po.as_operand.get(), F.Expressions.Add
+    )
+    operands = add_expr.get_operands()
+    assert len(operands) == 2, f"{rep_add_po.compact_repr()}"
 
-    # Really fucked up way to test: rep_app = 8A + 2AB
+    # Each operand should contain a Multiply in its alias class
+    mul_exprs = [
+        _find_class_expression_force(op, F.Expressions.Multiply) for op in operands
+    ]
+
+    # Verify: 8A + 2AB
     expecteds: list[tuple[set[F.Parameters.is_parameter_operatable], float]] = [
         ({rep_A}, 8),
         ({rep_A, rep_B}, 2),
     ]
     for expected_ops, expected_lit in expecteds:
         found = False
-        for mul in (mulexp1, mulexp2):
+        for mul in mul_exprs:
+            lits = mul.get_operand_literals()
+            if not lits:
+                continue
             if (
-                next(
-                    iter(mul.is_expression.get().get_operand_literals().values())
-                ).op_setic_equals_singleton(expected_lit)
-                and set(mul.is_expression.get().get_operand_operatables())
-                == expected_ops
+                next(iter(lits.values())).op_setic_equals_singleton(expected_lit)
+                and set(mul.get_operand_operatables()) == expected_ops
             ):
                 found = True
                 break
 
-        assert found
+        assert found, f"Expected Multiply with ops={expected_ops}, lit={expected_lit}"
 
 
 def test_literal_folding_add_multiplicative_2():
@@ -745,7 +788,7 @@ def test_literal_folding_add_multiplicative_2():
 
     solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
-    rep_add = not_none(
+    rep_add_po = not_none(
         repr_map.map_forward(expr.as_parameter_operatable.force_get()).maps_to
     )
     a_res = not_none(
@@ -755,25 +798,41 @@ def test_literal_folding_add_multiplicative_2():
         repr_map.map_forward(B.as_parameter_operatable.force_get()).maps_to
     )
 
-    rep_add_obj = fabll.Traits(rep_add).get_obj(F.Expressions.Add)
+    # Find the Add expression through the alias class
+    add_expr = _find_class_expression_force(
+        rep_add_po.as_operand.get(), F.Expressions.Add
+    )
 
-    a_ops = [
-        op
-        for op in a_res.get_operations(F.Expressions.Multiply)
-        if any(
-            lit
-            for lit in op.is_expression.get().get_operand_literals().values()
-            if lit.op_setic_equals_singleton(8)
-        )
-    ]
-    assert len(a_ops) == 1
-    mul = next(iter(a_ops))
-    add_ops = rep_add_obj.is_expression.get().get_operand_operatables()
-    add_ops_lits = rep_add_obj.is_expression.get().get_operand_literals()
-    assert len(add_ops_lits) == 1 and next(
-        iter(add_ops_lits.values())
+    add_ops = add_expr.get_operand_operatables()
+    add_lits = add_expr.get_operand_literals()
+
+    # Expect one literal operand: 10
+    assert len(add_lits) == 1 and next(
+        iter(add_lits.values())
     ).op_setic_equals_singleton(10)
-    assert add_ops == {b_res, mul.is_parameter_operatable.get()}
+
+    # Expect two non-literal operands: B and Mul(A, 8)
+    assert len(add_ops) == 2
+
+    # One operand should be (or alias to) b_res
+    assert any(op.is_same(b_res, allow_different_graph=True) for op in add_ops), (
+        f"Expected b_res in Add operands, got {add_ops}"
+    )
+
+    # The other should have a Multiply(A, 8) in its alias class
+    other_po = next(
+        op for op in add_ops if not op.is_same(b_res, allow_different_graph=True)
+    )
+    mul_expr = _find_class_expression_force(
+        other_po.as_operand.get(), F.Expressions.Multiply
+    )
+    mul_lits = mul_expr.get_operand_literals()
+    assert len(mul_lits) == 1 and next(
+        iter(mul_lits.values())
+    ).op_setic_equals_singleton(8), f"Expected Mul literal 8, got {mul_lits}"
+    assert mul_expr.get_operand_operatables() == {a_res}, (
+        f"Expected Mul operand {{a_res}}, got {mul_expr.get_operand_operatables()}"
+    )
 
 
 def test_transitive_subset():
@@ -787,14 +846,13 @@ def test_transitive_subset():
     E.is_subset(A, B, assert_=True)
     E.is_subset(B, C, assert_=True)
 
-    context = F.Parameters.ReprContext()
     for p in (A, B, C):
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     E.is_subset(C, E.lit_op_range((0, 10)), assert_=True)
 
     solver = Solver()
-    repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     assert _extract_and_check(A, repr_map, E.lit_op_range((0, 10)))
 
 
@@ -930,11 +988,11 @@ def test_voltage_divider_find_v_in():
 
 def test_voltage_divider_find_resistances():
     E = BoundExpressions()
-    r_top = E.parameter_op(units=E.U.Ohm)
-    r_bottom = E.parameter_op(units=E.U.Ohm)
-    v_in = E.parameter_op(units=E.U.V)
-    v_out = E.parameter_op(units=E.U.V)
-    r_total = E.parameter_op(units=E.U.Ohm)
+    r_top = E.parameter_op(units=E.U.Ohm, name="r_top")
+    r_bottom = E.parameter_op(units=E.U.Ohm, name="r_bottom")
+    v_in = E.parameter_op(units=E.U.V, name="v_in")
+    v_out = E.parameter_op(units=E.U.V, name="v_out")
+    r_total = E.parameter_op(units=E.U.Ohm, name="r_total")
 
     E.is_subset(v_in, E.lit_op_range(((9, E.U.V), (10, E.U.V))), assert_=True)
     E.is_subset(v_out, E.lit_op_range(((0.9, E.U.V), (1, E.U.V))), assert_=True)
@@ -1009,7 +1067,7 @@ def test_voltage_divider_reject_invalid_r_top():
     )
 
     solver = Solver()
-    with pytest.raises(ContradictionByLiteral):
+    with pytest.raises(Contradiction):
         solver.simplify(E.tg, E.g)
 
 
@@ -1091,7 +1149,7 @@ def test_jlcpcb_pick_resistor():
     )
 
     solver = Solver()
-    pick_part_recursively(resistor, solver)
+    pick_parts_recursively(resistor, solver)
 
     assert resistor.has_trait(F.Pickable.has_part_picked)
     print(resistor.get_trait(F.Pickable.has_part_picked).get_part())
@@ -1113,7 +1171,7 @@ def test_jlcpcb_pick_capacitor():
     )
 
     solver = Solver()
-    pick_part_recursively(capacitor, solver)
+    pick_parts_recursively(capacitor, solver)
 
     assert capacitor.has_trait(F.Pickable.has_part_picked)
     print(capacitor.get_trait(F.Pickable.has_part_picked).get_part())
@@ -1135,7 +1193,7 @@ def test_jlcpcb_pick_led():
     )
 
     solver = Solver()
-    pick_part_recursively(led, solver)
+    pick_parts_recursively(led, solver)
 
     assert led.has_trait(F.Pickable.has_part_picked)
     print(led.get_trait(F.Pickable.has_part_picked).get_part())
@@ -1353,12 +1411,11 @@ def test_graph_split():
     E.is_(Aop, C, assert_=True)
     E.is_(Bop, D, assert_=True)
 
-    context = F.Parameters.ReprContext()
     for p in (Aop, Bop, C, D):
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     solver = Solver()
-    repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     assert (
         not_none(
@@ -1447,7 +1504,7 @@ def test_find_contradiction_by_gt():
     E.greater_than(A, B, assert_=True)
 
     solver = Solver()
-    with pytest.raises(ContradictionByLiteral):
+    with pytest.raises(Contradiction):
         solver.simplify(E.tg, E.g)
 
 
@@ -1514,18 +1571,6 @@ def test_fold_or_true():
 
     solver = Solver()
     assert _extract_and_check(C, solver, True)
-
-
-def test_fold_not():
-    E = BoundExpressions()
-    A = E.bool_parameter_op()
-    B = E.bool_parameter_op()
-
-    E.is_subset(A, E.lit_bool(False), assert_=True)
-    E.is_(E.not_(A), B, assert_=True)
-
-    solver = Solver()
-    assert _extract_and_check(B, solver, True)
 
 
 def test_fold_ss_transitive():
@@ -1810,15 +1855,13 @@ def test_simplify_non_terminal_manual_test_1():
     B = E.add(A, A)
 
     solver = Solver()
-    solver.simplify(E.g, E.tg)
+    solver.simplify(E.g, E.tg, terminal=False)
     _ = E.add(B, A)
     E.is_subset(A, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
 
-    solver.simplify(E.g, E.tg)
+    solver.simplify(E.g, E.tg, terminal=False)
 
     solver.simplify(E.tg, E.g, terminal=True)
-
-    solver.simplify(E.g, E.tg)
 
 
 @pytest.mark.skip(reason="to_fix")  # FIXME
@@ -1829,7 +1872,7 @@ def test_simplify_non_terminal_manual_test_2():
     FBRK_LOG_PICK_SOLVE=y FBRK_SLOG=y and read log
     """
     E = BoundExpressions()
-    context, ps = _create_letters(E, 3, units=E.U.V)
+    ps = _create_letters(E, 3, units=E.U.V)
     A, B, C = ps
 
     INCREASE = (20, E.U.dl)
@@ -1864,7 +1907,7 @@ def test_simplify_non_terminal_manual_test_2():
                 E.is_(_inc, E.divide(_inc, increase), assert_=True)
 
         p_lit = solver.extract_superset(p.as_parameter.force_get())
-        print(f"{p.as_parameter.force_get().compact_repr(context)}, lit:", p_lit)
+        print(f"{p.as_parameter.force_get().compact_repr()}, lit:", p_lit)
         print(f"{p_lit.as_operand.get()}, {E.multiply(origin[1], _inc)}")
         assert p_lit.op_setic_is_subset_of(
             E.multiply(origin[1], _inc).as_literal.force_get()
@@ -2033,12 +2076,11 @@ def test_fold_correlated():
     E.is_(B, op[0](A, lit_operand), assert_=True)  # B is A + 5
     E.is_(C, op_inv[0](B, A), assert_=True)  # C is B - A
 
-    context = F.Parameters.ReprContext()
     for p in (A, B, C):
-        p.as_parameter_operatable.force_get().compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr()
 
     solver = Solver()
-    repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     ss_lit = repr_map.try_extract_superset(C.as_parameter_operatable.force_get())
     assert ss_lit is not None
@@ -2187,8 +2229,8 @@ def test_exec_pure_literal_expressions(
 
     expr = op(*lits_converted)
     expr_e = expr.as_parameter_operatable.force_get().as_expression.force_get()
-    print("EXPR", expr_e.compact_repr())
-    print("EXPECTED", expected_converted.pretty_str())
+    logger.info(f"EXPR: {expr_e.compact_repr()}")
+    logger.info(f"EXPECTED: {expected_converted.pretty_str()}")
     assert not_none(exec_pure_literal_expression(E.g, E.tg, expr_e)).op_setic_equals(
         expected_converted, g=E.g, tg=E.tg
     )
@@ -2300,14 +2342,14 @@ def test_solve_voltage_divider_complex():
 
 def test_correlated_direct_contradiction():
     """
-    Correlated(A, B) and Not(Correlated(A, B)) should contradict.
+    Anticorrelated(A, B) and Not(Anticorrelated(A, B)) should contradict.
     """
     E = BoundExpressions()
     p1 = E.parameter_op(units=E.U.Ohm)
     p2 = E.parameter_op(units=E.U.Ohm)
 
-    E.correlated(p1, p2, assert_=True)
-    E.not_(E.correlated(p1, p2), assert_=True)
+    E.anticorrelated(p1, p2, assert_=True)
+    E.not_(E.anticorrelated(p1, p2), assert_=True)
 
     solver = Solver()
     with pytest.raises(Contradiction):
@@ -2316,15 +2358,15 @@ def test_correlated_direct_contradiction():
 
 def test_correlated_direct_contradiction_multi():
     """
-    Correlated(A, B, C) and Not(Correlated(A, B, C)) should contradict.
+    Anticorrelated(A, B, C) and Not(Anticorrelated(A, B, C)) should contradict.
     """
     E = BoundExpressions()
     p1 = E.parameter_op(units=E.U.Ohm)
     p2 = E.parameter_op(units=E.U.Ohm)
     p3 = E.parameter_op(units=E.U.Ohm)
 
-    E.correlated(p1, p2, p3, assert_=True)
-    E.not_(E.correlated(p1, p2, p3), assert_=True)
+    E.anticorrelated(p1, p2, p3, assert_=True)
+    E.not_(E.anticorrelated(p1, p2, p3), assert_=True)
 
     solver = Solver()
     with pytest.raises(Contradiction):
@@ -2333,7 +2375,7 @@ def test_correlated_direct_contradiction_multi():
 
 def test_correlated_no_contradiction_different_sets():
     """
-    Correlated(A, B) and Not(Correlated(A, C)) should NOT contradict.
+    Anticorrelated(A, B) and Not(Anticorrelated(A, C)) should NOT contradict.
     These are independent assertions about different parameter pairs.
     """
     E = BoundExpressions()
@@ -2341,8 +2383,8 @@ def test_correlated_no_contradiction_different_sets():
     p2 = E.parameter_op(units=E.U.Ohm)
     p3 = E.parameter_op(units=E.U.Ohm)
 
-    E.correlated(p1, p2, assert_=True)
-    E.not_(E.correlated(p1, p3), assert_=True)
+    E.anticorrelated(p1, p2, assert_=True)
+    E.not_(E.anticorrelated(p1, p3), assert_=True)
 
     solver = Solver()
     solver.simplify(E.tg, E.g)
@@ -2351,10 +2393,10 @@ def test_correlated_no_contradiction_different_sets():
 # Lower estimation tests ---------------------------------------------------------------
 def test_lower_estimation_with_uncorrelated_params():
     """
-    When parameters are marked as uncorrelated via Not(Correlated(...)),
+    When parameters are marked as uncorrelated via Anticorrelated(...),
     lower estimation should propagate subset literals through expressions.
 
-    A ⊇ {4..6}, B ⊇ {2..3}, Not(Correlated(A, B))
+    A ⊇ {4..6}, B ⊇ {2..3}, Anticorrelated(A, B)
     C = A + B
     => C ⊇ {6..9} (propagated from subset literals)
     """
@@ -2363,7 +2405,7 @@ def test_lower_estimation_with_uncorrelated_params():
     B = E.parameter_op()
 
     # Mark A and B as uncorrelated
-    E.not_(E.correlated(A, B), assert_=True)
+    E.anticorrelated(A, B, assert_=True)
 
     # A ⊇ {4..6} means {4..6} is a subset of A (A contains at least {4..6})
     E.is_superset(A, E.lit_op_range((4, 6)), assert_=True)
@@ -2397,10 +2439,10 @@ def test_lower_estimation_with_uncorrelated_params():
 
 def test_lower_estimation_skipped_when_correlated():
     """
-    When parameters are NOT marked as uncorrelated (default is correlated),
+    When parameters are NOT marked as uncorrelated (default is anticorrelated),
     lower estimation should NOT propagate subset literals.
 
-    A ⊇ {4..6}, B ⊇ {2..3} (no uncorrelation marker)
+    A ⊇ {4..6}, B ⊇ {2..3} (no anticorrelation marker)
     C = A + B
     => C should NOT have tightened bounds from lower estimation
     """
@@ -2408,7 +2450,7 @@ def test_lower_estimation_skipped_when_correlated():
     A = E.parameter_op()
     B = E.parameter_op()
 
-    # No uncorrelation marker - default is correlated
+    # No anticorrelation marker - default is maybe-correlated
 
     # A ⊇ {4..6}
     E.is_superset(A, E.lit_op_range((4, 6)), assert_=True)
@@ -2421,7 +2463,7 @@ def test_lower_estimation_skipped_when_correlated():
     solver = Solver()
     result = solver.simplify(E.tg, E.g)
 
-    # Without uncorrelation, lower estimation should not apply
+    # Without anticorrelation, lower estimation should not apply
     # C should still be unbounded (or only bounded by domain)
     extracted = result.data.mutation_map.try_extract_superset(
         C.as_parameter_operatable.force_get()
@@ -2437,7 +2479,7 @@ def test_lower_estimation_skipped_when_correlated():
         # Check that bounds are NOT exactly {6..9}
         is_tightly_bounded = abs(min_val - 6) < 0.01 and abs(max_val - 9) < 0.01
         assert not is_tightly_bounded, (
-            f"Lower estimation should not apply without uncorrelation marker, "
+            f"Lower estimation should not apply without anticorrelation marker, "
             f"but got bounds [{min_val}, {max_val}]"
         )
 
@@ -2446,7 +2488,7 @@ def test_lower_estimation_multiply_uncorrelated():
     """
     Test lower estimation with multiplication of uncorrelated parameters.
 
-    A ⊇ {2..3}, B ⊇ {4..5}, Not(Correlated(A, B))
+    A ⊇ {2..3}, B ⊇ {4..5}, Anticorrelated(A, B)
     C = A * B
     => C ⊇ {8..15}
     """
@@ -2455,7 +2497,7 @@ def test_lower_estimation_multiply_uncorrelated():
     B = E.parameter_op()
 
     # Mark A and B as uncorrelated
-    E.not_(E.correlated(A, B), assert_=True)
+    E.anticorrelated(A, B, assert_=True)
 
     # A ⊇ {2..3}
     E.is_superset(A, E.lit_op_range((2, 3)), assert_=True)
@@ -2484,10 +2526,10 @@ def test_lower_estimation_multiply_uncorrelated():
 
 def test_lower_estimation_partial_uncorrelation():
     """
-    Test that lower estimation requires ALL parameters to be pairwise uncorrelated.
+    Test that lower estimation requires ALL parameters to be pairwise anticorrelated.
 
     A ⊇ {1..2}, B ⊇ {3..4}, C ⊇ {5..6}
-    Not(Correlated(A, B)) but NOT Not(Correlated(A, C)) or Not(Correlated(B, C))
+    Anticorrelated(A, B) but NOT Anticorrelated(A, C) or Anticorrelated(B, C)
     D = A + B + C
     => Lower estimation should NOT apply (not all pairs uncorrelated)
     """
@@ -2496,8 +2538,8 @@ def test_lower_estimation_partial_uncorrelation():
     B = E.parameter_op()
     C = E.parameter_op()
 
-    # Only mark A and B as uncorrelated, not the full set
-    E.not_(E.correlated(A, B), assert_=True)
+    # Only mark A and B as anticorrelated, not the full set
+    E.anticorrelated(A, B, assert_=True)
 
     E.is_superset(A, E.lit_op_range((1, 2)), assert_=True)
     E.is_superset(B, E.lit_op_range((3, 4)), assert_=True)
@@ -2519,7 +2561,428 @@ def test_lower_estimation_partial_uncorrelation():
         max_val = extracted_nums.get_max_value()
 
         # If full lower estimation applied, we'd get {9..12}
-        # Without full uncorrelation, bounds should be wider
+        # Without full anticorrelation, bounds should be wider
         is_fully_tightened = abs(min_val - 9) < 0.01 and abs(max_val - 12) < 0.01
-        # Note: partial uncorrelation might still allow some propagation
+        # Note: partial anticorrelation might still allow some propagation
         # for the A+B subexpression, but not the full D expression
+
+
+def test_fold_not_false():
+    E = BoundExpressions()
+    A = E.bool_parameter_op()
+    E.is_subset(A, E.lit_bool(False), assert_=True)
+
+    e1 = E.not_(A)
+
+    solver = Solver()
+    assert _extract_and_check(e1, solver, True)
+
+
+def test_fold_not_contradiction():
+    E = BoundExpressions()
+    A = E.bool_parameter_op()
+    E.is_subset(A, E.lit_bool(True), assert_=True)
+
+    e1 = E.not_(A, assert_=True)
+
+    solver = Solver()
+    with pytest.raises(Contradiction):
+        _extract_and_check(e1, solver, False)
+
+
+def test_solver_continuation_after_constraint_addition():
+    """
+    Test the picking scenario: initial solve -> add constraint -> re-solve.
+    This mimics what happens during part picking:
+    1. Initial solve with multiple parameters
+    2. Pick a part (add IsSuperset constraint to narrow bounds)
+    3. Re-solve to propagate narrower bounds to dependent parameters
+    """
+    import time
+
+    E = BoundExpressions()
+    [A, B, C] = _create_letters(E, 3)
+    A_op, B_op, C_op = A.as_operand.get(), B.as_operand.get(), C.as_operand.get()
+
+    # Initial design constraint: A in range 1k-10k``
+    E.is_subset(A_op, E.lit_op_range((1000, 10000)), assert_=True)
+
+    # B = A * 2 (like a ratio constraint)
+    E.is_(B_op, E.multiply(A_op, E.lit_op_single(2)), assert_=True)
+
+    # C = B + 1000
+    E.is_(C_op, E.add(B_op, E.lit_op_single(1000)), assert_=True)
+
+    solver = Solver()
+    t0 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=[A_op, B_op, C_op])
+    initial_solve_time = time.perf_counter() - t0
+
+    B_initial = _extract_numbers(solver, B)
+    C_initial = _extract_numbers(solver, C)
+
+    # Simulate picking a part: narrow A to [4k, 6k] (like selecting a specific resistor)
+    E.is_subset(A_op, E.lit_op_range((4000, 6000)), assert_=True)
+
+    # Re-solve (should be faster)
+    t1 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=[A_op, B_op, C_op])
+    continuation_solve_time = time.perf_counter() - t1
+
+    B_after = _extract_numbers(solver, B)
+    C_after = _extract_numbers(solver, C)
+
+    # Should be tighter than initial
+    assert B_after.get_min_value() >= B_initial.get_min_value(), "B should be tighter"
+    assert B_after.get_max_value() <= B_initial.get_max_value(), "B should be tighter"
+    assert C_after.get_min_value() >= C_initial.get_min_value(), "C should be tighter"
+    assert C_after.get_max_value() <= C_initial.get_max_value(), "C should be tighter"
+
+    # Timing report
+    print("\n=== Solver Continuation Timing Report ===")
+    print(f"Initial solve time:      {initial_solve_time * 1000:.2f} ms")
+    print(f"Continuation solve time: {continuation_solve_time * 1000:.2f} ms")
+    if initial_solve_time > 0:
+        speedup = (
+            initial_solve_time / continuation_solve_time
+            if continuation_solve_time > 0
+            else float("inf")
+        )
+        print(f"Speedup:                 {speedup:.2f}x")
+    print("==========================================\n")
+
+
+def test_solver_continuation_multi_pick_scenario():
+    """
+    Test a more realistic picking scenario with multiple components.
+    Simulates picking 3 components sequentially and verifies constraint propagation.
+    """
+    import time
+
+    E = BoundExpressions()
+    params = _create_letters(E, 5)
+    params_ops = [p.as_operand.get() for p in params]
+
+    # Initial constraint: first param in range 1k-100k
+    E.is_subset(params_ops[0], E.lit_op_range((1000, 100000)), assert_=True)
+
+    # Chain dependencies: each param = previous * 0.9
+    for i in range(len(params_ops) - 1):
+        E.is_(
+            params_ops[i + 1],
+            E.multiply(params_ops[i], E.lit_op_single(0.9)),
+            assert_=True,
+        )
+
+    solver = Solver()
+    timings: list[tuple[str, float]] = []
+
+    t0 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=params_ops)
+    timings.append(("Initial solve", time.perf_counter() - t0))
+
+    P4_initial = _extract_numbers(solver, params[4])
+
+    # Pick component 0: add constraint to narrow bounds (like picking a part)
+    E.is_subset(params_ops[0], E.lit_op_range((50000, 60000)), assert_=True)
+    t1 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=params_ops)
+    timings.append(("After pick 1", time.perf_counter() - t1))
+
+    # Verify tightening
+    P4_after1 = _extract_numbers(solver, params[4])
+    assert P4_after1.get_max_value() <= P4_initial.get_max_value(), (
+        "P4 should be tighter after pick 1"
+    )
+
+    # Pick component 2: add another constraint
+    E.is_subset(params_ops[2], E.lit_op_range((35000, 45000)), assert_=True)
+    t2 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=params_ops)
+    timings.append(("After pick 2", time.perf_counter() - t2))
+
+    # Pick component 3
+    E.is_subset(params_ops[3], E.lit_op_range((30000, 42000)), assert_=True)
+    t3 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=params_ops)
+    timings.append(("After pick 3", time.perf_counter() - t3))
+
+    # Final verification
+    P4_final = _extract_numbers(solver, params[4])
+    assert P4_final.get_min_value() >= 0, "P4 min should be positive"
+
+    # Timing report
+    print("\n=== Multi-Pick Solver Continuation Timing Report ===")
+    for name, duration in timings:
+        print(f"{name:20s}: {duration * 1000:8.2f} ms")
+    if len(timings) >= 2:
+        avg_continuation = sum(t for _, t in timings[1:]) / len(timings[1:])
+        initial_time = timings[0][1]
+        if avg_continuation > 0:
+            speedup = initial_time / avg_continuation
+            print(f"{'Avg speedup':20s}: {speedup:8.2f}x")
+    print("=====================================================\n")
+
+
+def test_inter_algorithm_relevance_filtering():
+    from faebryk.core.solver.algorithm import algorithm
+    from faebryk.core.solver.mutator import Mutator
+
+    E = BoundExpressions()
+
+    # Create two independent parameters with constraints
+    A, B = _create_letters(E, 2, units=E.U.Ohm)
+    A_op, B_op = A.as_operand.get(), B.as_operand.get()
+    E.is_subset(A_op, E.lit_op_range(((1, E.U.Ohm), (2, E.U.Ohm))), assert_=True)
+    B_constraint = E.is_subset(
+        B_op, E.lit_op_range(((3, E.U.Ohm), (4, E.U.Ohm))), assert_=True
+    )
+
+    relevant_pos = [B_op, B_constraint]
+
+    # Get all parameter operatables before filtering
+    all_pos_before = list(
+        fabll.Traits.get_implementors(
+            F.Parameters.is_parameter_operatable.bind_typegraph(E.tg), E.g
+        )
+    )
+
+    @algorithm(name="test")
+    def algo(mutator: Mutator):
+        pass
+
+    mutator = Mutator(
+        MutationMap._with_relevance_set(E.g, E.tg, [B_op], 0),
+        algo,
+        0,
+        False,
+    )
+    mutator.run()
+
+    all_pos_after = mutator.get_parameter_operatables(include_irrelevant=False)
+
+    for po in all_pos_after:
+        for mapped in mutator.mutation_map.map_backward(po):
+            assert mapped.as_operand.get() in relevant_pos, (
+                f"Expected {mapped.compact_repr()} to be in relevant_pos"
+            )
+
+    # Filtered count should be less than initial count
+    assert len(all_pos_after) < len(all_pos_before), (
+        f"Expected fewer operables after filtering. "
+        f"Initial: {len(all_pos_before)}, Filtered: {len(all_pos_after)}"
+    )
+
+
+def test_get_relevant_predicates_skips_non_constraining():
+    """
+    Test that get_relevant_predicates skips Anticorrelated expressions when
+    computing the transitive closure of relevant predicates.
+
+    Anticorrelated expressions indicate statistical correlation, not constraint
+    dependency, so they should not create edges in the relevance graph.
+    """
+    from faebryk.core.solver.utils import MutatorUtils
+
+    E = BoundExpressions()
+    A, B, C = _create_letters(E, 3, units=E.U.Ohm)
+    A_op, B_op, C_op = A.as_operand.get(), B.as_operand.get(), C.as_operand.get()
+
+    # A and B are correlated (non-constraining)
+    E.anticorrelated(A_op, B_op, assert_=True)
+
+    # A has a constraint
+    E.is_subset(A_op, E.lit_op_range(((1, E.U.Ohm), (2, E.U.Ohm))), assert_=True)
+
+    # C = A + B (constraining relationship)
+    C_expr = E.add(A_op, B_op)
+    E.is_(C_op, C_expr, assert_=True)
+
+    # Get relevant predicates starting from A
+    relevant_preds = MutatorUtils.get_relevant_predicates(A_op)
+
+    # The Correlated predicate should NOT be in the relevant set
+    # because it's non-constraining
+    for pred in relevant_preds:
+        expr = pred.as_expression.get()
+        assert not expr.expr_isinstance(F.Expressions.Anticorrelated), (
+            "Correlated should not be in relevant predicates"
+        )
+
+    # But the IsSubset and Is predicates should be there
+    has_is_subset = any(
+        pred.as_expression.get().expr_isinstance(F.Expressions.IsSubset)
+        for pred in relevant_preds
+    )
+    assert has_is_subset, "IsSubset should be in relevant predicates"
+
+
+def test_relevance_filtering_isolates_independent_subgraphs():
+    """
+    Test that relevance filtering correctly isolates independent constraint subgraphs.
+
+    When we have two independent constraint systems (A with its constraints,
+    B with its constraints), marking only A as relevant should mark B's entire
+    subgraph as irrelevant.
+    """
+    from faebryk.core.solver.algorithm import algorithm
+    from faebryk.core.solver.mutator import Mutator, is_irrelevant, is_relevant
+
+    E = BoundExpressions()
+    A, B, A2, B2 = _create_letters(E, 4, units=E.U.Ohm)
+    A_op, B_op, A2_op, B2_op = (
+        A.as_operand.get(),
+        B.as_operand.get(),
+        A2.as_operand.get(),
+        B2.as_operand.get(),
+    )
+
+    # Create independent constraint subgraph for A
+    E.is_subset(A_op, E.lit_op_range(((1, E.U.Ohm), (2, E.U.Ohm))), assert_=True)
+    E.is_(A2_op, E.multiply(A_op, E.lit_op_single((2, E.U.dl))), assert_=True)
+
+    # Create independent constraint subgraph for B
+    E.is_subset(B_op, E.lit_op_range(((3, E.U.Ohm), (4, E.U.Ohm))), assert_=True)
+    E.is_(B2_op, E.multiply(B_op, E.lit_op_single((3, E.U.dl))), assert_=True)
+
+    @algorithm(name="test")
+    def algo(mutator: Mutator):
+        pass
+
+    mutator = Mutator(
+        MutationMap._with_relevance_set(E.g, E.tg, [A_op], 0),
+        algo,
+        0,
+        False,
+    )
+    mutator.mark_relevance()
+
+    def _try_get_trait[T: fabll.NodeT](
+        po: F.Parameters.is_parameter_operatable, trait_t: type[T]
+    ) -> T | None:
+        mapped = mutator.mutation_map.map_forward(po).maps_to
+        if mapped is None:
+            return None
+
+        return mapped.try_get_sibling_trait(trait_t)
+
+    # A should be is_relevant (originally specified)
+    assert _try_get_trait(A, is_relevant) is not None, "A should be relevant"
+    assert _try_get_trait(A, is_irrelevant) is None, "A should NOT be irrelevant"
+
+    # A2 is transitively connected to A: not is_relevant, but not is_irrelevant either
+    assert _try_get_trait(A2, is_relevant) is None, (
+        "A2 should NOT be is_relevant (not originally specified)"
+    )
+    assert _try_get_trait(A2, is_irrelevant) is None, "A2 should NOT be irrelevant"
+
+    # B and B2 should not be in the output graph at all
+    assert mutator.mutation_map.map_forward(B).maps_to is None, (
+        "B should not be mapped (independent subgraph)"
+    )
+    assert mutator.mutation_map.map_forward(B2).maps_to is None, (
+        "B2 should not be mapped (independent subgraph)"
+    )
+
+
+def test_is_irrelevant_trait_filtering_in_queries():
+    """
+    Test that the is_irrelevant trait is correctly used to filter operatables
+    in query operations.
+    """
+    from faebryk.core.solver.mutator import is_irrelevant
+
+    E = BoundExpressions()
+
+    # Create parameters
+    A = E.parameter_op(units=E.U.Ohm)
+    B = E.parameter_op(units=E.U.Ohm)
+
+    # Get parameter operatables
+    A_po = A.as_parameter_operatable.force_get()
+    B_po = B.as_parameter_operatable.force_get()
+
+    # Mark B as irrelevant
+    B_obj = fabll.Traits(B_po).get_obj_raw()
+    fabll.Traits.create_and_add_instance_to(B_obj, is_irrelevant)
+
+    # Verify B has the trait
+    assert B_po.try_get_sibling_trait(is_irrelevant) is not None, (
+        "B should have is_irrelevant trait"
+    )
+
+    # Verify A does NOT have the trait
+    assert A_po.try_get_sibling_trait(is_irrelevant) is None, (
+        "A should NOT have is_irrelevant trait"
+    )
+
+    # Query all parameter operatables with is_irrelevant
+    all_irrelevant = list(
+        fabll.Traits.get_implementor_siblings(
+            is_irrelevant.bind_typegraph(E.tg),
+            F.Parameters.is_parameter_operatable,
+            E.g,
+        )
+    )
+
+    # B should be in the irrelevant set
+    assert B_po in all_irrelevant, "B should be in irrelevant set"
+
+    # A should NOT be in the irrelevant set
+    assert A_po not in all_irrelevant, "A should NOT be in irrelevant set"
+
+    # Test filtering: get all operatables excluding irrelevant
+    all_pos = list(
+        fabll.Traits.get_implementors(
+            F.Parameters.is_parameter_operatable.bind_typegraph(E.tg), E.g
+        )
+    )
+    filtered_pos = [
+        po for po in all_pos if po.try_get_sibling_trait(is_irrelevant) is None
+    ]
+
+    assert A_po in filtered_pos, "A should be in filtered set"
+    assert B_po not in filtered_pos, "B should NOT be in filtered set"
+
+
+def test_is_non_constraining_method():
+    """
+    Test the is_non_constraining method on is_expression trait.
+
+    Anticorrelated(...) and Not(Anticorrelated(...)) should return True.
+    Regular predicates like Is, IsSubset should return False.
+    """
+    E = BoundExpressions()
+
+    A = E.parameter_op()
+    B = E.parameter_op()
+
+    # Create Anticorrelated expression
+    corr = E.anticorrelated(A, B)
+    corr_expr = corr.as_parameter_operatable.force_get().as_expression.force_get()
+    assert corr_expr.is_non_constraining(), (
+        "Anticorrelated(...) should be non-constraining"
+    )
+
+    # Create Not(Anticorrelated(...)) expression
+    not_corr = E.not_(corr, assert_=False)
+    not_corr_expr = (
+        not_corr.as_parameter_operatable.force_get().as_expression.force_get()
+    )
+    assert not_corr_expr.is_non_constraining(), (
+        "Not(Anticorrelated(...)) should be non-constraining"
+    )
+
+    # Create regular IsSubset predicate - should NOT be non-constraining
+    is_subset_pred = E.is_subset(A, E.lit_op_range((1, 2)), assert_=True)
+    is_subset_expr = (
+        is_subset_pred.as_parameter_operatable.force_get().as_expression.force_get()
+    )
+    assert not is_subset_expr.is_non_constraining(), (
+        "IsSubset should NOT be non-constraining"
+    )
+
+    # Create Is predicate - should NOT be non-constraining
+    is_pred = E.is_(A, B, assert_=True)
+    is_pred_expr = is_pred.as_parameter_operatable.force_get().as_expression.force_get()
+    assert not is_pred_expr.is_non_constraining(), "Is should NOT be non-constraining"

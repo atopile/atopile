@@ -83,8 +83,6 @@ def _is_serving() -> bool:
     )
 
 
-
-
 class AtoLogger(logging.Logger):
     """Logger with custom alert level."""
 
@@ -101,30 +99,32 @@ logging.setLoggerClass(AtoLogger)
 # =============================================================================
 
 
+def _format_value(val: object) -> str:
+    """Format a value for display, using str() for strings to preserve ANSI codes."""
+    if isinstance(val, str):
+        return val
+    return repr(val)
+
+
 def _get_pretty_repr(value: object, max_len: int = 200) -> str:
     """Get pretty repr using __pretty_repr__ or __rich_repr__ or fallback to repr."""
     try:
-        # Try pretty_repr first (faebryk convention)
-        if hasattr(value, "pretty_repr"):
-            result = str(value.pretty_repr())
-            return result[:max_len] + "..." if len(result) > max_len else result
-
         # Try __rich_repr__ (Rich library protocol)
         if hasattr(value, "__rich_repr__"):
             type_name = type(value).__name__
             rich_repr_parts = []
-            for item in value.__rich_repr__():
+            for item in getattr(value, "__rich_repr__")():
                 if isinstance(item, tuple):
                     if len(item) == 2:
                         key, val = item
                         if key is None:
-                            rich_repr_parts.append(repr(val))
+                            rich_repr_parts.append(_format_value(val))
                         else:
-                            rich_repr_parts.append(f"{key}={val!r}")
+                            rich_repr_parts.append(f"{key}={_format_value(val)}")
                     elif len(item) == 1:
-                        rich_repr_parts.append(repr(item[0]))
+                        rich_repr_parts.append(_format_value(item[0]))
                 else:
-                    rich_repr_parts.append(repr(item))
+                    rich_repr_parts.append(_format_value(item))
             result = f"{type_name}({', '.join(rich_repr_parts)})"
             return result[:max_len] + "..." if len(result) > max_len else result
 
@@ -146,6 +146,7 @@ def _serialize_local_var(
 
     Containers (dict, list, set, tuple) are serialized recursively with their
     structure preserved. Non-container values use pretty_repr/repr for display.
+    Objects with __rich_repr__ are always serialized using pretty repr.
     """
     type_name = type(value).__name__
     max_depth = 5  # Prevent infinite recursion
@@ -164,6 +165,12 @@ def _serialize_local_var(
             }
         return {"type": type_name, "value": value}
 
+    # Objects with __rich_repr__ should use pretty repr instead of container serialization
+    # This handles custom classes that may be iterable but have a preferred repr
+    if hasattr(value, "__rich_repr__"):
+        repr_str = _get_pretty_repr(value, max_repr_len)
+        return {"type": type_name, "repr": repr_str}
+
     # Handle containers recursively (if not too deep)
     if depth < max_depth:
         if isinstance(value, dict):
@@ -181,6 +188,22 @@ def _serialize_local_var(
                 "length": len(value),
             }
             if len(value) > max_container_items:
+                result["truncated"] = True
+            return result
+
+        # Namedtuples: serialize as dict with field names for readability
+        if isinstance(value, tuple) and hasattr(value, "_fields"):
+            serialized = {}
+            for field in value._fields[:max_container_items]:
+                serialized[field] = _serialize_local_var(
+                    getattr(value, field), max_repr_len, max_container_items, depth + 1
+                )
+            result = {
+                "type": type_name,
+                "value": serialized,
+                "length": len(value._fields),
+            }
+            if len(value._fields) > max_container_items:
                 result["truncated"] = True
             return result
 
@@ -589,6 +612,14 @@ class LoggerForTest(BaseLogger):
         """Flush pending logs without closing the writer."""
         if (h := _get_log_handler()) and h._test_logger:
             h._test_logger.flush()
+
+    @classmethod
+    def flush_all(cls) -> None:
+        """Flush pending logs without closing the writer."""
+        with SQLiteLogWriter._lock:
+            writer = SQLiteLogWriter._instances.get("test")
+            if writer:
+                writer.flush()
 
     @classmethod
     def setup_logging(cls, test_run_id: str, test: str = "") -> "LoggerForTest | None":

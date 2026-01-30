@@ -259,11 +259,11 @@ class TestJLCBom:
             attach_random_designators,
             load_kicad_pcb_designators,
         )
-        from faebryk.libs.picker.picker import pick_part_recursively
+        from faebryk.libs.picker.picker import pick_parts_recursively
 
         load_kicad_pcb_designators(app.tg, attach=True)
         solver = Solver()
-        pick_part_recursively(app, solver)
+        pick_parts_recursively(app, solver)
         attach_random_designators(app.tg)
 
     @pytest.mark.usefixtures("setup_project_config")
