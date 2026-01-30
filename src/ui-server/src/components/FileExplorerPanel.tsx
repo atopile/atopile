@@ -823,6 +823,19 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
     postToExtension({ type: 'createFolder', path: projectRoot });
   }, [projectRoot]);
 
+  // Delete selected files/folders
+  const handleDeleteSelected = useCallback(() => {
+    if (!projectRoot || selectedPaths.size === 0) return;
+
+    // Delete each selected path
+    for (const relativePath of selectedPaths) {
+      const fullPath = `${projectRoot}/${relativePath}`;
+      postToExtension({ type: 'deleteFile', path: fullPath });
+    }
+
+    // Clear selection after delete
+    setSelectedPaths(new Set());
+  }, [projectRoot, selectedPaths]);
 
   // Handle keyboard events for the panel
   useEffect(() => {
@@ -840,6 +853,17 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
         e.preventDefault();
         setRenamingPath(firstSelected);
       }
+      // Delete/Backspace to delete selected files
+      // Mac: Cmd+Backspace, Windows/Linux: Delete key
+      const isMac = navigator.platform.includes('Mac');
+      const isDeleteKey = isMac
+        ? (e.key === 'Backspace' && e.metaKey)
+        : (e.key === 'Delete');
+
+      if (isDeleteKey && selectedPaths.size > 0 && !renamingPath) {
+        e.preventDefault();
+        handleDeleteSelected();
+      }
     };
 
     const container = containerRef.current;
@@ -847,7 +871,7 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
       container.addEventListener('keydown', handleKeyDown);
       return () => container.removeEventListener('keydown', handleKeyDown);
     }
-  }, [selectedPaths, renamingPath]);
+  }, [selectedPaths, renamingPath, handleDeleteSelected]);
 
   // Convert flat FileTreeNode[] to nested FileNode structure
   const fileTree = useMemo(() => {
@@ -1222,9 +1246,12 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
         <FileContextMenu
           position={contextMenu.position}
           target={contextMenu.target}
+          selectedPaths={selectedPaths}
+          projectRoot={projectRoot}
           onClose={handleCloseContextMenu}
           onStartRename={handleStartRename}
           onDuplicate={handleDuplicate}
+          onDeleteSelected={handleDeleteSelected}
         />
       )}
     </div>

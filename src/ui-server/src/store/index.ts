@@ -197,6 +197,7 @@ interface StoreActions {
 
   // Packages
   setPackages: (packages: PackageInfo[]) => void;
+  updatePackageDownloads: (downloads: Record<string, number>) => void;
   setLoadingPackages: (loading: boolean) => void;
   setPackagesError: (error: string | null) => void;
   setPackageDetails: (details: PackageDetails | null) => void;
@@ -440,6 +441,15 @@ export const useStore = create<Store>()(
 
       // Packages
       setPackages: (packages) => set({ packages, isLoadingPackages: false }),
+
+      updatePackageDownloads: (downloads) =>
+        set((state) => ({
+          packages: state.packages.map((pkg) =>
+            downloads[pkg.identifier] !== undefined
+              ? { ...pkg, downloads: downloads[pkg.identifier] }
+              : pkg
+          ),
+        })),
 
       setLoadingPackages: (loading) => set({ isLoadingPackages: loading }),
 

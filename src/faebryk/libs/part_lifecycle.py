@@ -242,15 +242,16 @@ class PartLifecycle:
                 )
 
             # load all existing parts into new table
-            for part_dir in sorted(
-                Gcfg.project.paths.parts.iterdir(), key=lambda x: x.name
-            ):
-                part_identifier = part_dir.name
-                if not part_dir.is_dir():
-                    continue
-                if not (part_dir / (part_identifier + ".ato")).is_file():
-                    continue
-                self.__insert_fp_lib(part_identifier, fp_table)
+            if Gcfg.project.paths.parts.exists():
+                for part_dir in sorted(
+                    Gcfg.project.paths.parts.iterdir(), key=lambda x: x.name
+                ):
+                    part_identifier = part_dir.name
+                    if not part_dir.is_dir():
+                        continue
+                    if not (part_dir / (part_identifier + ".ato")).is_file():
+                        continue
+                    self.__insert_fp_lib(part_identifier, fp_table)
 
             return fp_table_path, fp_table
 
