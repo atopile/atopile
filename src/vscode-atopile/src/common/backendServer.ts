@@ -325,6 +325,10 @@ class BackendServerManager implements vscode.Disposable {
             this._statusBarItem.text = `$(check) ato: ${this.port}`;
             this._statusBarItem.backgroundColor = undefined;
             this._statusBarItem.tooltip = 'Backend connected. Click to manage.';
+        } else if (this._serverState === 'running') {
+            this._statusBarItem.text = `$(sync~spin) ato: Connecting...`;
+            this._statusBarItem.backgroundColor = undefined;
+            this._statusBarItem.tooltip = 'Connecting to atopile backend...';
         } else {
             this._statusBarItem.text = '$(warning) ato: Disconnected';
             this._statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
@@ -343,6 +347,8 @@ class BackendServerManager implements vscode.Disposable {
             statusText = `Connected to port ${this.port}`;
         } else if (this._serverState === 'starting') {
             statusText = 'Starting...';
+        } else if (this._serverState === 'running') {
+            statusText = 'Connecting...';
         } else {
             statusText = 'Disconnected';
         }

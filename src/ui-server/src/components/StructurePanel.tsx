@@ -4,7 +4,6 @@ import type { ModuleChild, Project } from '../types/build'
 import { sendActionWithResponse } from '../api/websocket'
 import { ModuleTree } from './ModuleTreeNode'
 import { PanelSearchBox, EmptyState } from './shared'
-import { useSearch } from '../utils/useSearch'
 import './StructurePanel.css'
 
 interface StructurePanelProps {
@@ -36,22 +35,20 @@ function findProjectRoot(filePath: string, projects: Project[]): Project | null 
 }
 
 /**
- * Recursively filter children based on search matcher.
- * A node matches if its name, typeName, or spec matches the search.
+ * Recursively filter children based on search term.
+ * A node matches if its name or typeName contains the search term (case-insensitive).
  * Parent nodes are included if any of their descendants match.
  */
-function filterChildren(
-  children: ModuleChild[],
-  matches: (text: string) => boolean,
-  hasQuery: boolean
-): ModuleChild[] {
-  if (!hasQuery) return children
+function filterChildren(children: ModuleChild[], searchTerm: string): ModuleChild[] {
+  if (!searchTerm) return children
+
+  const lowerSearch = searchTerm.toLowerCase()
 
   function nodeMatches(node: ModuleChild): boolean {
     return (
-      matches(node.name) ||
-      matches(node.typeName) ||
-      (node.spec ? matches(node.spec) : false)
+      node.name.toLowerCase().includes(lowerSearch) ||
+      node.typeName.toLowerCase().includes(lowerSearch) ||
+      (node.spec?.toLowerCase().includes(lowerSearch) ?? false)
     )
   }
 
@@ -83,7 +80,7 @@ export function StructurePanel({
   isExpanded = false,
 }: StructurePanelProps) {
   const [state, setState] = useState<ExplorerState>({ status: 'idle' })
-  const search = useSearch()
+  const [searchTerm, setSearchTerm] = useState('')
   const [refreshToken, setRefreshToken] = useState(0)
   const [expandedPathsByModule, setExpandedPathsByModule] = useState<Map<string, Set<string>>>(
     new Map()
@@ -132,24 +129,26 @@ export function StructurePanel({
     return normalized.startsWith(prefix) ? normalized.slice(prefix.length) : effectiveAtoFile
   }, [effectiveAtoFile, activeProject])
 
-  // Filter children based on search
+  // Filter children based on search term
   const filteredModules = useMemo(() => {
     if (state.status !== 'ready') return []
-    if (!search.hasQuery) return state.modules
+    if (!searchTerm) return state.modules
+
+    const lowerSearch = searchTerm.toLowerCase()
 
     return state.modules
       .map((module) => {
-        if (search.matches(module.name)) {
+        if (module.name.toLowerCase().includes(lowerSearch)) {
           return module
         }
-        const filteredChildren = filterChildren(module.children, search.matches, search.hasQuery)
+        const filteredChildren = filterChildren(module.children, searchTerm)
         return {
           ...module,
           children: filteredChildren,
         }
       })
-      .filter((module) => module.children.length > 0 || search.matches(module.name))
-  }, [state, search.hasQuery, search.matches])
+      .filter((module) => module.children.length > 0 || module.name.toLowerCase().includes(lowerSearch))
+  }, [state, searchTerm])
 
   // Handle expansion state changes - persist per file
   const handleExpandedPathsChange = useCallback((moduleKey: string, newPaths: Set<string>) => {
@@ -285,13 +284,10 @@ export function StructurePanel({
       {/* Search bar - only show when we have content */}
       {state.status === 'ready' && state.modules.some((m) => m.children.length > 0) && (
         <PanelSearchBox
-          value={search.query}
-          onChange={search.setQuery}
+          value={searchTerm}
+          onChange={setSearchTerm}
           placeholder="Filter structure..."
           autoFocus={isExpanded}
-          enableRegex
-          isRegex={search.isRegex}
-          onRegexToggle={search.setIsRegex}
         />
       )}
 
@@ -332,10 +328,10 @@ export function StructurePanel({
                 )
               })}
             </div>
-          ) : search.hasQuery ? (
+          ) : searchTerm ? (
             <div className="structure-empty">
               <span className="empty-title">No matches found</span>
-              <span className="empty-description">No results for "{search.query}"</span>
+              <span className="empty-description">No results for "{searchTerm}"</span>
             </div>
           ) : (
             <div className="structure-empty">

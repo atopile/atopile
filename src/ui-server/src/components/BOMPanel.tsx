@@ -5,7 +5,6 @@ import {
   RefreshCw
 } from 'lucide-react'
 import { PanelSearchBox, EmptyState } from './shared'
-import { useSearch } from '../utils/useSearch'
 import type {
   BOMComponent as BOMComponentAPI,
   BOMData,
@@ -429,7 +428,7 @@ export function BOMPanel({
   isExpanded = false,
   selectedTargetNames,
 }: BOMPanelProps) {
-  const search = useSearch()
+  const [searchQuery, setSearchQuery] = useState('')
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [copiedValue, setCopiedValue] = useState<string | null>(null)
   const [lcscParts, setLcscParts] = useState<Record<string, LcscPartData | null>>({})
@@ -625,34 +624,32 @@ export function BOMPanel({
 
   const toolbar = (
     <PanelSearchBox
-      value={search.query}
-      onChange={search.setQuery}
+      value={searchQuery}
+      onChange={setSearchQuery}
       placeholder="Search value, MPN..."
       autoFocus={isExpanded}
-      enableRegex
-      isRegex={search.isRegex}
-      onRegexToggle={search.setIsRegex}
     />
   )
 
   // Memoize filtered and sorted components
   const filteredComponents = useMemo(() => {
+    const searchLower = searchQuery.toLowerCase()
     return bomComponents
       .filter(c => {
         // Search filter
-        if (search.hasQuery) {
+        if (searchLower) {
           return (
-            search.matches(c.value) ||
-            (c.mpn ? search.matches(c.mpn) : false) ||
-            (c.lcsc ? search.matches(c.lcsc) : false) ||
-            (c.manufacturer ? search.matches(c.manufacturer) : false) ||
-            (c.description ? search.matches(c.description) : false)
+            c.value.toLowerCase().includes(searchLower) ||
+            c.mpn?.toLowerCase().includes(searchLower) ||
+            c.lcsc?.toLowerCase().includes(searchLower) ||
+            c.manufacturer?.toLowerCase().includes(searchLower) ||
+            c.description?.toLowerCase().includes(searchLower)
           )
         }
         return true
       })
       .sort((a, b) => (b.totalCost || 0) - (a.totalCost || 0))
-  }, [bomComponents, search.hasQuery, search.matches])
+  }, [bomComponents, searchQuery])
 
   // Memoize totals calculation - single pass for efficiency
   const { totalComponents, totalCost, uniqueParts, outOfStock } = useMemo(() => {

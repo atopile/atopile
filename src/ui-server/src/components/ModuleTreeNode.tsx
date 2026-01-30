@@ -1,16 +1,14 @@
 /**
  * ModuleTreeNode - Shared tree node component for displaying module children.
- * Used by StructurePanel for displaying module structure.
- *
- * Uses the shared TreeRowHeader component for consistent rendering with
- * StandardLibraryPanel and VariablesPanel.
+ * Used by both BuildNode (lazy-loaded module structure) and StandardLibraryPanel.
+ * Displays interfaces, parameters, modules with appropriate icons and colors.
+ * Supports grouping children by type (components, modules, interfaces, parameters).
  */
 
-import { useState, useMemo, KeyboardEvent } from 'react'
-import { Box, Zap, Cable, Hash, Cpu } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { ChevronDown, ChevronRight, Box, Zap, Cable, Hash, Cpu } from 'lucide-react'
 import type { ModuleChild } from '../types/build'
 import { smartTruncatePair } from './sidebar-modules/sidebarUtils'
-import { TreeRowHeader } from './shared'
 import './ModuleTreeNode.css'
 
 // Max characters for name + type combined (fits typical sidebar width)
@@ -100,13 +98,14 @@ export function ModuleTreeNode({
   const nameTruncated = displayName !== child.name
   const typeTruncated = displayType !== displayValue
 
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
     if (hasChildren) {
       onToggle(path)
     }
   }
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       if (hasChildren) {
@@ -121,31 +120,44 @@ export function ModuleTreeNode({
     }
   }
 
-  // Determine if right value should show unconstrained styling
-  const isUnconstrained = itemType === 'parameter' && !child.spec
-
   return (
-    <div className="tree-row-node">
-      <TreeRowHeader
-        isExpandable={hasChildren}
-        isExpanded={isExpanded}
+    <div className="module-tree-node">
+      <div
+        className={`module-tree-row ${hasChildren ? 'expandable' : ''}`}
+        style={{ paddingLeft: `${depth * 6 + 4}px` }}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
-        icon={<Icon size={12} style={{ color: config.color }} />}
-        label={displayName}
-        rightValue={displayType}
-        depth={depth}
-        title={nameTruncated || typeTruncated ? `${child.name}: ${displayValue}` : undefined}
         tabIndex={0}
         role="treeitem"
-        ariaExpanded={hasChildren ? isExpanded : undefined}
-        labelTruncated={nameTruncated}
-        rightValueTruncated={typeTruncated}
-        className={isUnconstrained ? 'unconstrained-param' : ''}
-      />
+        aria-expanded={hasChildren ? isExpanded : undefined}
+        title={nameTruncated || typeTruncated ? `${child.name}: ${displayValue}` : undefined}
+      >
+        {hasChildren ? (
+          <button className="module-tree-expand-btn" onClick={handleClick}>
+            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          </button>
+        ) : (
+          <span className="module-tree-expand-spacer" />
+        )}
+        <span className="module-tree-icon" style={{ color: config.color }}>
+          <Icon size={12} />
+        </span>
+        <span
+          className={`module-tree-name ${nameTruncated ? 'truncated' : ''}`}
+          title={nameTruncated ? child.name : undefined}
+        >
+          {displayName}
+        </span>
+        <span
+          className={`module-tree-type ${itemType === 'parameter' && !child.spec ? 'unconstrained' : ''} ${typeTruncated ? 'truncated' : ''}`}
+          title={typeTruncated ? displayValue : undefined}
+        >
+          {displayType}
+        </span>
+      </div>
 
       {isExpanded && hasChildren && (
-        <div className="tree-row-children">
+        <div className="module-tree-children">
           {grouped ? (
             <GroupedChildren
               children={child.children!}
@@ -187,33 +199,23 @@ function TypeGroupHeader({ type, count, isExpanded, onToggle, depth }: TypeGroup
   const Icon = config.icon
   const label = count === 1 ? config.label : config.pluralLabel
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      onToggle()
-    } else if (e.key === 'ArrowRight' && !isExpanded) {
-      e.preventDefault()
-      onToggle()
-    } else if (e.key === 'ArrowLeft' && isExpanded) {
-      e.preventDefault()
-      onToggle()
-    }
-  }
-
   return (
-    <TreeRowHeader
-      isExpandable={true}
-      isExpanded={isExpanded}
+    <div
+      className="module-tree-row module-tree-group-header expandable"
+      style={{ paddingLeft: `${depth * 6 + 4}px` }}
       onClick={onToggle}
-      onKeyDown={handleKeyDown}
-      icon={<Icon size={12} style={{ color: config.color }} />}
-      label={label}
-      count={count}
-      depth={depth}
-      tabIndex={0}
-      role="treeitem"
-      ariaExpanded={isExpanded}
-    />
+    >
+      <button className="module-tree-expand-btn" onClick={(e) => { e.stopPropagation(); onToggle() }}>
+        {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+      </button>
+      <span className="module-tree-icon" style={{ color: config.color }}>
+        <Icon size={12} />
+      </span>
+      <span className="module-tree-group-label">
+        {label}
+      </span>
+      <span className="module-tree-group-count">({count})</span>
+    </div>
   )
 }
 
@@ -262,7 +264,7 @@ function GroupedChildren({ children, depth, expandedPaths, onToggle, basePath }:
         const isGroupExpanded = expandedPaths.has(groupPath)
 
         return (
-          <div key={type} className="tree-row-type-group">
+          <div key={type} className="module-tree-type-group">
             <TypeGroupHeader
               type={type}
               count={items.length}
@@ -271,7 +273,7 @@ function GroupedChildren({ children, depth, expandedPaths, onToggle, basePath }:
               depth={depth}
             />
             {isGroupExpanded && (
-              <div className="tree-row-group-items">
+              <div className="module-tree-group-items">
                 {items.map((child, idx) => (
                   <ModuleTreeNode
                     key={`${basePath}-${child.name}-${idx}`}
@@ -341,7 +343,7 @@ export function ModuleTree({
       : rootName
     const rootNameTruncated = displayRootName !== rootName
 
-    const handleRootKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const handleRootKeyDown = (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault()
         handleToggle('__root__')
@@ -356,24 +358,28 @@ export function ModuleTree({
 
     return (
       <div className="module-tree" role="tree">
-        <TreeRowHeader
-          className="root-row"
-          isExpandable={true}
-          isExpanded={isRootExpanded}
+        <div
+          className="module-tree-row expandable root"
           onClick={() => handleToggle('__root__')}
           onKeyDown={handleRootKeyDown}
-          icon={<Icon size={14} style={{ color: config.color }} />}
-          label={displayRootName}
-          count={children.length}
-          depth={0}
-          title={rootNameTruncated ? rootName : undefined}
           tabIndex={0}
           role="treeitem"
-          ariaExpanded={isRootExpanded}
-          labelTruncated={rootNameTruncated}
-        />
+          aria-expanded={isRootExpanded}
+          title={rootNameTruncated ? rootName : undefined}
+        >
+          <button className="module-tree-expand-btn">
+            {isRootExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          </button>
+          <span className="module-tree-icon" style={{ color: config.color }}>
+            <Icon size={14} />
+          </span>
+          <span className={`module-tree-name root-name ${rootNameTruncated ? 'truncated' : ''}`}>
+            {displayRootName}
+          </span>
+          <span className="module-tree-count">{children.length}</span>
+        </div>
         {isRootExpanded && (
-          <div className="tree-row-children">
+          <div className="module-tree-children">
             {children.length === 0 ? (
               <div className="module-tree-empty">No structure found</div>
             ) : grouped ? (

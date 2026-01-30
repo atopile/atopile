@@ -8,7 +8,6 @@ import type { PartSearchItem, InstalledPartItem } from '../types/build'
 import type { SelectedPart } from './sidebar-modules'
 import { api } from '../api/client'
 import { PanelSearchBox } from './shared'
-import { useSearch } from '../utils/useSearch'
 import './PartsSearchPanel.css'
 
 interface PartsSearchPanelProps {
@@ -45,7 +44,7 @@ export function PartsSearchPanel({
   isExpanded = false,
 }: PartsSearchPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('search')
-  const [searchQuery, setSearchQuery] = useState('')  // API search - plain text
+  const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<PartSearchItem[]>([])
   const [searchError, setSearchError] = useState<string | null>(null)
   const [searchLoading, setSearchLoading] = useState(false)
@@ -54,7 +53,7 @@ export function PartsSearchPanel({
   const [enrichingLcscs, setEnrichingLcscs] = useState<Set<string>>(new Set())
   const [installedLoading, setInstalledLoading] = useState(false)
   const [sort, setSort] = useState<SortState>({ column: 'stock', direction: 'desc' })
-  const projectFilter = useSearch()  // Local filter with regex support
+  const [projectFilter, setProjectFilter] = useState('')
 
   const searchRequestId = useRef(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -144,6 +143,28 @@ export function PartsSearchPanel({
     }
   }, [selectedProjectRoot])
 
+  // Listen for parts_changed events to refresh installed parts list
+  useEffect(() => {
+    const handlePartsChanged = (event: CustomEvent<{ projectRoot?: string; lcscId?: string; installed?: boolean }>) => {
+      // Only refresh if the event is for our project
+      if (selectedProjectRoot && event.detail.projectRoot === selectedProjectRoot) {
+        // Refetch installed parts
+        api.parts.installed(selectedProjectRoot)
+          .then((response) => {
+            setInstalledParts(response.parts || [])
+          })
+          .catch((error) => {
+            console.warn('Failed to refresh installed parts:', error)
+          })
+      }
+    }
+
+    window.addEventListener('atopile:parts_changed', handlePartsChanged as EventListener)
+    return () => {
+      window.removeEventListener('atopile:parts_changed', handlePartsChanged as EventListener)
+    }
+  }, [selectedProjectRoot])
+
   useEffect(() => {
     const query = searchQuery.trim()
     if (!query) {
@@ -188,16 +209,17 @@ export function PartsSearchPanel({
   }, [installedParts])
 
   const filteredAndSortedInstalledParts = useMemo(() => {
-    const filtered = projectFilter.hasQuery
+    const filter = projectFilter.trim().toLowerCase()
+    const filtered = filter
       ? installedParts.filter((part) => {
-          // Check if any field matches
-          return (
-            (part.mpn ? projectFilter.matches(part.mpn) : false) ||
-            projectFilter.matches(part.identifier) ||
-            (part.manufacturer ? projectFilter.matches(part.manufacturer) : false) ||
-            (part.description ? projectFilter.matches(part.description) : false) ||
-            (part.lcsc ? projectFilter.matches(part.lcsc) : false)
-          )
+          const searchable = [
+            part.mpn,
+            part.identifier,
+            part.manufacturer,
+            part.description,
+            part.lcsc,
+          ].filter(Boolean).join(' ').toLowerCase()
+          return searchable.includes(filter)
         })
       : installedParts
 
@@ -222,7 +244,7 @@ export function PartsSearchPanel({
       }
       return sort.direction === 'desc' ? -cmp : cmp
     })
-  }, [installedParts, sort, projectFilter.hasQuery, projectFilter.matches])
+  }, [installedParts, sort, projectFilter])
 
   const sortedSearchResults = useMemo(() => {
     return [...searchResults].sort((a, b) => {
@@ -311,7 +333,6 @@ export function PartsSearchPanel({
             onChange={setSearchQuery}
             placeholder="Search JLCPCB parts..."
             autoFocus={isExpanded && activeTab === 'search'}
-            // Note: No regex for API search - JLCPCB API uses plain text
           />
 
           {searchError && (
@@ -377,13 +398,10 @@ export function PartsSearchPanel({
       {activeTab === 'project' && (
         <div className="parts-tab-content">
           <PanelSearchBox
-            value={projectFilter.query}
-            onChange={projectFilter.setQuery}
+            value={projectFilter}
+            onChange={setProjectFilter}
             placeholder="Filter project parts..."
             autoFocus={isExpanded && activeTab === 'project'}
-            enableRegex
-            isRegex={projectFilter.isRegex}
-            onRegexToggle={projectFilter.setIsRegex}
           />
           <div className="parts-results-container">
             {!selectedProjectRoot && (
@@ -418,7 +436,7 @@ export function PartsSearchPanel({
             {selectedProjectRoot && !installedLoading && installedParts.length > 0 && filteredAndSortedInstalledParts.length === 0 && (
               <div className="parts-empty-state">
                 <Package size={24} />
-                <span>No parts match "{projectFilter.query}"</span>
+                <span>No parts match "{projectFilter}"</span>
               </div>
             )}
             {selectedProjectRoot && !installedLoading && filteredAndSortedInstalledParts.length > 0 && (

@@ -8,12 +8,12 @@
  */
 
 import { useMemo, useState } from 'react'
-import { CheckCircle, Package, PackageSearch, Search } from 'lucide-react'
-import type { PackageInfo, ProjectDependency } from '../types/build'
+import { AlertTriangle, CheckCircle, Package, PackageSearch, Search, AlertCircle } from 'lucide-react'
+import type { PackageInfo, PackageStatus, ProjectDependency } from '../types/build'
+
 import { isInstalledInProject } from '../utils/packageUtils'
 import type { SelectedPackage } from './sidebar-modules'
 import { PanelSearchBox } from './shared'
-import { useSearch } from '../utils/useSearch'
 import './PackagesPanel.css'
 
 interface PackagesPanelProps {
@@ -33,6 +33,46 @@ interface PackagesPanelProps {
 
 type TabId = 'browse' | 'project'
 
+// Status badge component
+function PackageStatusBadge({ status }: { status?: PackageStatus }) {
+  if (!status || status === 'installed_fresh') {
+    return (
+      <span title="Up to date">
+        <CheckCircle size={12} className="packages-status-badge status-fresh" />
+      </span>
+    )
+  }
+  if (status === 'modified') {
+    return (
+      <span title="Locally modified">
+        <AlertTriangle size={12} className="packages-status-badge status-modified" />
+      </span>
+    )
+  }
+  if (status === 'wrong_version') {
+    return (
+      <span title="Version mismatch">
+        <AlertCircle size={12} className="packages-status-badge status-wrong-version" />
+      </span>
+    )
+  }
+  if (status === 'not_installed') {
+    return (
+      <span title="Not installed">
+        <AlertCircle size={12} className="packages-status-badge status-not-installed" />
+      </span>
+    )
+  }
+  if (status === 'no_meta') {
+    return (
+      <span title="Untracked - run sync to enable integrity checking">
+        <AlertTriangle size={12} className="packages-status-badge status-no-meta" />
+      </span>
+    )
+  }
+  return null
+}
+
 // Installed package row
 function InstalledPackageRow({
   dependency,
@@ -47,6 +87,7 @@ function InstalledPackageRow({
       <div className="packages-row-info">
         <div className="packages-row-header">
           <span className="packages-row-name">{dependency.name}</span>
+          <PackageStatusBadge status={dependency.status} />
         </div>
         {dependency.summary && (
           <div className="packages-row-summary">{dependency.summary}</div>
@@ -84,6 +125,12 @@ function MarketplacePackageRow({
       </div>
       <div className="packages-row-meta">
         <span className="packages-row-publisher">{pkg.publisher}</span>
+        {/* TODO: Re-enable download counts once /v1/packages/all includes downloads
+        <span className="packages-row-downloads">
+          <Download size={10} />
+          {formatDownloads(pkg.downloads)}
+        </span>
+        */}
       </div>
     </div>
   )
@@ -98,28 +145,45 @@ export function PackagesPanel({
   isExpanded = false,
 }: PackagesPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('browse')
-  const search = useSearch()
+  const [searchQuery, setSearchQuery] = useState('')
 
   // Filter installed packages by search query (for project tab)
   const filteredInstalled = useMemo(() => {
-    if (!search.hasQuery) return installedDependencies
+    if (!searchQuery.trim()) return installedDependencies
+    const query = searchQuery.toLowerCase()
     return installedDependencies.filter((dep) =>
-      search.matches(dep.name) ||
-      search.matches(dep.identifier) ||
-      (dep.summary ? search.matches(dep.summary) : false)
+      dep.name.toLowerCase().includes(query) ||
+      dep.identifier.toLowerCase().includes(query) ||
+      (dep.summary || '').toLowerCase().includes(query)
     )
-  }, [installedDependencies, search.hasQuery, search.matches])
+  }, [installedDependencies, searchQuery])
 
-  // Filter marketplace packages by search query
+  // Filter and sort marketplace packages by search query and downloads
   const filteredMarketplace = useMemo(() => {
-    if (!search.hasQuery) return packages
-    return packages.filter((pkg) =>
-      search.matches(pkg.name) ||
-      search.matches(pkg.identifier) ||
-      (pkg.description ? search.matches(pkg.description) : false) ||
-      (pkg.summary ? search.matches(pkg.summary) : false)
-    )
-  }, [packages, search.hasQuery, search.matches])
+    let filtered = packages
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      filtered = packages.filter((pkg) =>
+        pkg.name.toLowerCase().includes(query) ||
+        pkg.identifier.toLowerCase().includes(query) ||
+        (pkg.description || '').toLowerCase().includes(query) ||
+        (pkg.summary || '').toLowerCase().includes(query)
+      )
+    }
+    // Sort by: installed first (in selected project), then by downloads (highest first)
+    return [...filtered].sort((a, b) => {
+      const aInstalled = selectedProjectRoot
+        ? isInstalledInProject(a.installedIn || [], selectedProjectRoot)
+        : false
+      const bInstalled = selectedProjectRoot
+        ? isInstalledInProject(b.installedIn || [], selectedProjectRoot)
+        : false
+      // Installed packages first
+      if (aInstalled !== bInstalled) return aInstalled ? -1 : 1
+      // Then by downloads (highest first, null/undefined treated as 0)
+      return (b.downloads ?? 0) - (a.downloads ?? 0)
+    })
+  }, [packages, searchQuery, selectedProjectRoot])
 
   const handleOpenInstalledPackage = (dep: ProjectDependency) => {
     onOpenPackageDetail({
@@ -148,6 +212,8 @@ export function PackagesPanel({
     })
   }
 
+  const hasSearchQuery = searchQuery.trim().length > 0
+
   return (
     <div className="packages-panel">
       <div className="packages-tabs">
@@ -173,13 +239,10 @@ export function PackagesPanel({
       {activeTab === 'browse' && (
         <div className="packages-tab-content">
           <PanelSearchBox
-            value={search.query}
-            onChange={search.setQuery}
+            value={searchQuery}
+            onChange={setSearchQuery}
             placeholder="Search packages..."
             autoFocus={isExpanded && activeTab === 'browse'}
-            enableRegex
-            isRegex={search.isRegex}
-            onRegexToggle={search.setIsRegex}
           />
 
           {installError && (
@@ -187,13 +250,13 @@ export function PackagesPanel({
           )}
 
           <div className="packages-results-container">
-            {!search.hasQuery && packages.length === 0 && (
+            {!hasSearchQuery && packages.length === 0 && (
               <div className="packages-empty-state">
                 <PackageSearch size={32} />
                 <span>Search for packages to install</span>
               </div>
             )}
-            {search.hasQuery && filteredMarketplace.length === 0 && (
+            {hasSearchQuery && filteredMarketplace.length === 0 && (
               <div className="packages-empty-state">
                 <PackageSearch size={24} />
                 <span>No packages found</span>

@@ -205,6 +205,15 @@
   white-space: nowrap;
 }
 
+.packages-row-downloads {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 /* Empty states */
 .packages-empty-state {
   display: flex;
@@ -245,4 +254,30 @@
   background: var(--bg-hover);
   color: var(--text-primary);
   border-color: var(--text-muted);
+}
+
+/* Package status badges */
+.packages-status-badge {
+  flex-shrink: 0;
+}
+
+.packages-status-badge.status-fresh {
+  color: var(--ctp-green);
+}
+
+.packages-status-badge.status-modified {
+  color: var(--ctp-yellow);
+}
+
+.packages-status-badge.status-wrong-version {
+  color: var(--ctp-red);
+}
+
+.packages-status-badge.status-not-installed {
+  color: var(--ctp-red);
+}
+
+.packages-status-badge.status-no-meta {
+  color: var(--ctp-peach);
+  /* Untracked: package installed before metadata tracking was added */
 }
