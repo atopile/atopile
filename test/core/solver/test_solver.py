@@ -12,6 +12,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.mutator import MutationMap
 from faebryk.core.solver.solver import Solver
+from faebryk.core.solver.symbolic.invariants import AliasClass
 from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_expression
 from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.picker.picker import pick_parts_recursively
@@ -119,6 +120,28 @@ def _extract_numbers(
         .switch_cast()
         .cast(F.Literals.Numbers)
     )
+
+
+def _find_class_expression(
+    op: F.Parameters.can_be_operand, expr_t: type[fabll.NodeT]
+) -> F.Expressions.is_expression | None:
+    """Find an expression of `expr_t` through the alias class of `op`."""
+    alias = AliasClass.of(op, allow_non_repr=True)
+    for e in alias.get_with_trait(F.Expressions.is_expression):
+        if e.expr_isinstance(expr_t):
+            return e
+    return None
+
+
+def _find_class_expression_force(
+    op: F.Parameters.can_be_operand, expr_t: type[fabll.NodeT]
+) -> F.Expressions.is_expression:
+    e = _find_class_expression(op, expr_t)
+    assert e is not None, (
+        f"No {expr_t.__name__} found in alias class of"
+        f" {op.as_parameter_operatable.force_get().compact_repr()}"
+    )
+    return e
 
 
 def test_solve_phase_one():
@@ -624,6 +647,52 @@ def test_super_simple_literal_folding(
     solver = Solver()
 
     assert _extract_and_check(p.as_operand.get(), solver, expected)
+
+
+def test_collect_factors_basic():
+    """
+    expr := A + (A * 2) + (A * 5) + B
+    expr <=! 100
+    => fold_add collects like terms: 8A + B
+
+    A and B are left as free ranges so the expression stays symbolic
+    and _collect_factors must do the work (not literal propagation).
+
+    With A ⊆ {≤100} (from the predicate) and B unconstrained:
+    Upper bound of 8A + B should be tighter than the unfolded form.
+    Specifically, after folding we get Add(Mul(A, 8), B) — 2 non-lit operands.
+    """
+    E = BoundExpressions()
+    A_po, B_po = _create_letters(E, 2)
+    A, B = (A_po.as_operand.get(), B_po.as_operand.get())
+
+    expr = E.add(
+        A,
+        E.multiply(A, E.lit_op_single(2)),
+        E.multiply(A, E.lit_op_single(5)),
+        B,
+    )
+    # predicate engages the solver and gives a bound to work with
+    E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
+
+    solver = Solver()
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
+
+    # After collect_factors: Add(A, A*2, A*5, B) => Add(Mul(A, 8), B)
+    # Verify by checking the representative of expr in the output graph
+    rep_expr = not_none(
+        repr_map.map_forward(expr.as_parameter_operatable.force_get()).maps_to
+    )
+
+    add_expr = _find_class_expression_force(
+        rep_expr.as_operand.get(), F.Expressions.Add
+    )
+    non_lit_operands = add_expr.get_operand_operatables()
+    # Should be 2: Mul(A, 8) and B — not the original 4
+    assert len(non_lit_operands) == 2, (
+        f"Expected 2 non-lit operands (Mul(A,8) + B), "
+        f"got {len(non_lit_operands)}: {rep_expr.compact_repr()}"
+    )
 
 
 def test_literal_folding_add_multiplicative_1():

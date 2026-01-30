@@ -14,6 +14,7 @@ from faebryk.core.solver.symbolic.invariants import AliasClass
 from faebryk.core.solver.utils import (
     MutatorUtils,
 )
+from faebryk.library.Expressions import is_expression
 from faebryk.libs.util import not_none, partition_as_list
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,23 @@ def expression_wise_algorithm[T: fabll.NodeT](expr_type: type[T]):
 # Arithmetic ---------------------------------------------------------------------------
 
 
+def _get_class_expr(
+    po: F.Parameters.is_parameter_operatable,
+    expr_t: type[F.Expressions.ExpressionNodes],
+) -> is_expression | None:
+    """Find the single expression of expr_type in op's alias class."""
+    alias = AliasClass.of(po.as_operand.get(), allow_non_repr=True)
+    exprs = [
+        e
+        for e in alias.get_with_trait(F.Expressions.is_expression)
+        if e.expr_isinstance(expr_t)
+    ]
+    if len(exprs) != 1:
+        return None
+
+    return exprs[0]
+
+
 def _collect_factors[T: F.Expressions.Multiply | F.Expressions.Power](
     mutator: Mutator,
     counter: Counter[F.Parameters.is_parameter_operatable],
@@ -108,9 +126,10 @@ def _collect_factors[T: F.Expressions.Multiply | F.Expressions.Power](
 
     # Look for operations matching collect_type and gather them
     for collect_op in set(factors.keys()):
-        if not collect_op.get_obj().isinstance(collect_type):
+        if (collect_op_expr := _get_class_expr(collect_op, collect_type)) is None:
             continue
-        expr = collect_op.as_expression.force_get()
+
+        expr = collect_op_expr
         # Skip if operation doesn't have exactly two operands
         # TODO unnecessary strict
         if len(expr.get_operands()) != 2:
@@ -165,7 +184,7 @@ def _collect_factors[T: F.Expressions.Multiply | F.Expressions.Power](
         mul_lits = [
             next(
                 fabll.Traits(o_lit).get_obj(F.Literals.Numbers)
-                for o_lit in mul.as_expression.force_get()
+                for o_lit in not_none(_get_class_expr(mul, collect_type))
                 .get_operand_literals()
                 .values()
             )
