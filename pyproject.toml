@@ -17,7 +17,6 @@ requires-python = ">=3.14,<3.15"
 dynamic = ["version"]
 license = { file = "LICENSE" }
 authors = [
-    { name = "Matthew Wildoer", email = "matt@atopile.io" },
     { name = "Ioannis Papamanoglou", email = "ioannis@atopile.io" },
     { name = "Narayan Powderly", email = "narayan@atopile.io" },
 ]
