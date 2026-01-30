@@ -1,11 +1,13 @@
 /**
- * PackagesPanel - Tab-based layout
+ * PackagesPanel - Tab-based layout with VS Code native styling
  */
 
+/* Extends .sidebar-panel from _base.css */
 .packages-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
+  position: relative;
   overflow: hidden;
   min-width: 0;
 }
@@ -14,36 +16,50 @@
 .packages-tabs {
   display: flex;
   gap: 0;
+  height: 26px;
+  min-height: 26px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.packages-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .packages-tab {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 1;
-  padding: var(--spacing-sm) var(--spacing-md);
+  flex: 1 1 auto;
+  min-width: fit-content;
+  height: 100%;
+  padding: 0 var(--spacing-sm);
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  color: var(--text-muted);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  color: var(--vscode-descriptionForeground, var(--text-muted));
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
   cursor: pointer;
   transition: all var(--transition-fast);
   justify-content: center;
+  white-space: nowrap;
 }
 
 .packages-tab:hover {
-  color: var(--text-secondary);
-  background: var(--bg-hover);
+  color: var(--vscode-foreground, var(--text-secondary));
+  background: var(--vscode-list-hoverBackground, var(--bg-hover));
 }
 
 .packages-tab.active {
-  color: var(--text-primary);
-  border-bottom-color: var(--accent);
+  color: var(--vscode-foreground, var(--text-primary));
+  border-bottom-color: var(--text-primary);
 }
 
 .packages-tab svg {
@@ -56,17 +72,18 @@
 }
 
 .packages-tab-count {
+  font-family: var(--font-sans);
   font-size: var(--font-size-xs);
-  background: var(--bg-tertiary);
-  color: var(--text-muted);
+  background: var(--vscode-badge-background, var(--bg-tertiary));
+  color: var(--vscode-badge-foreground, var(--text-muted));
   padding: 1px 6px;
   border-radius: var(--radius-sm);
   margin-left: 2px;
 }
 
 .packages-tab.active .packages-tab-count {
-  background: var(--accent);
-  color: var(--text-on-accent);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 /* Tab content */
@@ -78,41 +95,13 @@
   min-width: 0;
 }
 
-/* Search bar */
-.packages-search-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--bg-primary);
-  border-bottom: 1px solid var(--border-subtle);
-  flex-shrink: 0;
-}
-
-.packages-search-bar svg {
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.packages-search-bar input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-}
-
-.packages-search-bar input::placeholder {
-  color: var(--text-muted);
-}
-
 /* Error message */
 .packages-error {
   padding: var(--spacing-sm) var(--spacing-md);
   background: rgba(243, 139, 168, 0.1);
   border-bottom: 1px solid var(--ctp-red);
   color: var(--ctp-red);
+  font-family: var(--font-sans);
   font-size: var(--font-size-xs);
   flex-shrink: 0;
 }
@@ -142,7 +131,7 @@
 }
 
 .packages-row:hover {
-  background: var(--bg-hover);
+  background: var(--vscode-list-hoverBackground, var(--bg-hover));
 }
 
 .packages-row.installed {
@@ -167,9 +156,10 @@
 }
 
 .packages-row-name {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--vscode-foreground, var(--text-primary));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -181,8 +171,9 @@
 }
 
 .packages-row-summary {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  color: var(--vscode-descriptionForeground, var(--text-secondary));
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -201,15 +192,16 @@
 }
 
 .packages-row-publisher {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, var(--text-muted));
   white-space: nowrap;
 }
 
 .packages-row-version {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
   font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, var(--text-muted));
   white-space: nowrap;
 }
 
@@ -221,7 +213,7 @@
   justify-content: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-xl);
-  color: var(--text-muted);
+  color: var(--vscode-descriptionForeground, var(--text-muted));
   text-align: center;
   min-height: 200px;
 }
@@ -231,22 +223,26 @@
 }
 
 .packages-empty-state span {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+  font-size: var(--vscode-font-size, 13px);
   max-width: 240px;
 }
 
 .packages-empty-action {
   margin-top: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-md);
-  background: var(--accent);
-  color: var(--text-on-accent);
-  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
   font-size: var(--font-size-sm);
   cursor: pointer;
-  transition: background var(--transition-fast);
+  transition: all var(--transition-fast);
 }
 
 .packages-empty-action:hover {
-  background: var(--accent-hover);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
 }

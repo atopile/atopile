@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react'
 import {
-  ChevronDown, ChevronRight, Search, Box, Zap,
+  Box, Zap,
   Hash, Percent, CircuitBoard, RefreshCw,
   AlertTriangle, Loader2, Check
 } from 'lucide-react'
 import { smartTruncatePair } from './sidebar-modules/sidebarUtils'
+import { PanelSearchBox, EmptyState, TreeRowHeader } from './shared'
 
 // Variable types
 type VariableType = 'voltage' | 'current' | 'resistance' | 'capacitance' | 'ratio' | 'frequency' | 'power' | 'percentage' | 'dimensionless'
@@ -257,9 +258,6 @@ const VariableNodeComponent = memo(function VariableNodeComponent({
 
   if (!matchesFilters) return null
 
-  // Use minimal indentation with visual depth indicator
-  const depthIndicator = depth > 0 ? '· '.repeat(depth) : ''
-
   // Smart truncation for name and type to prevent overflow
   // Max 35 total characters for name + type combined (fits sidebar width)
   const [displayName, displayTypeName] = node.typeName
@@ -268,27 +266,17 @@ const VariableNodeComponent = memo(function VariableNodeComponent({
 
   return (
     <div className={`variable-tree-node depth-${Math.min(depth, 4)}`}>
-      <div
-        className={`variable-node-header ${isExpanded ? 'expanded' : ''}`}
+      <TreeRowHeader
+        className="variable-node-header"
+        isExpandable={hasChildren}
+        isExpanded={isExpanded}
         onClick={() => onToggleExpand(node.path)}
-      >
-        {hasChildren ? (
-          <span className="tree-expand">
-            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          </span>
-        ) : (
-          <span className="tree-expand-spacer" />
-        )}
-        {depth > 0 && <span className="depth-indicator">{depthIndicator}</span>}
-        {getNodeIcon(node.type)}
-        <span className="node-name" title={node.name}>{displayName}</span>
-        {node.typeName && (
-          <span className="node-type-name" title={node.typeName}>{displayTypeName}</span>
-        )}
-        {node.variables && node.variables.length > 0 && (
-          <span className="var-count">{node.variables.length}</span>
-        )}
-      </div>
+        icon={getNodeIcon(node.type)}
+        label={displayName}
+        secondaryLabel={displayTypeName || undefined}
+        count={node.variables?.length}
+        title={node.name}
+      />
 
       {isExpanded && (
         <div className="variable-node-content">
@@ -341,6 +329,7 @@ interface VariablesPanelProps {
   // Active context for empty state messages
   selectedTargetName?: string | null
   hasActiveProject?: boolean
+  isExpanded?: boolean
 }
 
 export function VariablesPanel({
@@ -349,6 +338,7 @@ export function VariablesPanel({
   error = null,
   selectedTargetName = null,
   hasActiveProject = false,
+  isExpanded = false,
 }: VariablesPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
@@ -408,71 +398,81 @@ export function VariablesPanel({
     navigator.clipboard.writeText(value)
   }, [])
 
-  return (
-    <div className="variables-panel">
-      {/* Toolbar */}
-      <div className="panel-toolbar">
-        <div className="panel-toolbar-row">
-          <div className="search-box">
-            <Search size={14} />
-            <input
-              type="text"
-              placeholder="Search variables..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
+  // Helper for empty state description
+  const getEmptyDescription = () => {
+    if (selectedTargetName) {
+      return `Run a build for "${selectedTargetName}" to generate variable data`
+    }
+    if (hasActiveProject) {
+      return 'Select a build and run it to generate variable data'
+    }
+    return 'Select a project and build, then run it'
+  }
+
+  const toolbar = (
+    <PanelSearchBox
+      value={searchQuery}
+      onChange={setSearchQuery}
+      placeholder="Search variables..."
+      autoFocus={isExpanded}
+    />
+  )
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="variables-panel">
+        {toolbar}
+        <div className="variables-loading">
+          <Loader2 size={24} className="spinner" />
+          <span>Loading variables...</span>
         </div>
       </div>
+    )
+  }
+
+  // Error state - treat "not found" as empty state
+  if (error) {
+    const isNotFound = error.includes('404') || error.includes('not found') || error.includes('not_found') || error.toLowerCase().includes('run build')
+    return (
+      <div className="variables-panel">
+        {toolbar}
+        {isNotFound ? (
+          <EmptyState
+            title="No variables found"
+            description={getEmptyDescription()}
+          />
+        ) : (
+          <EmptyState
+            title="Error loading variables"
+            description={error}
+          />
+        )}
+      </div>
+    )
+  }
+
+  // Empty state - no variables
+  if (variables.length === 0) {
+    return (
+      <div className="variables-panel">
+        {toolbar}
+        <EmptyState
+          title="No variables found"
+          description={getEmptyDescription()}
+        />
+      </div>
+    )
+  }
+
+  // Normal state - has variables
+  return (
+    <div className="variables-panel">
+      {toolbar}
 
       {/* Variable tree */}
       <div className="variables-tree">
-        {isLoading && (
-          <div className="variables-loading">
-            <Loader2 size={24} className="spinner" />
-            <span>Loading variables...</span>
-          </div>
-        )}
-
-        {error && !isLoading && (() => {
-          // Treat "not found" errors as empty state, not error state
-          const isNotFound = error.includes('404') || error.includes('not found') || error.includes('not_found') || error.toLowerCase().includes('run build');
-          if (isNotFound) {
-            return (
-              <div className="variables-empty">
-                <span className="empty-title">No variables found</span>
-                <span className="empty-description">
-                  {selectedTargetName
-                    ? `Run a build for "${selectedTargetName}" to generate variable data`
-                    : hasActiveProject
-                      ? 'Select a build and run it to generate variable data'
-                      : 'Select a project and build, then run it'}
-                </span>
-              </div>
-            );
-          }
-          return (
-            <div className="variables-error">
-              <AlertTriangle size={16} />
-              <span>{error}</span>
-            </div>
-          );
-        })()}
-
-        {!isLoading && !error && variables.length === 0 && (
-          <div className="variables-empty">
-            <span className="empty-title">No variables found</span>
-            <span className="empty-description">
-              {selectedTargetName
-                ? `Run a build for "${selectedTargetName}" to generate variable data`
-                : hasActiveProject
-                  ? 'Select a build and run it to generate variable data'
-                  : 'Select a project and build, then run it'}
-            </span>
-          </div>
-        )}
-
-        {!isLoading && !error && variables.map((node, idx) => (
+        {variables.map((node, idx) => (
           <VariableNodeComponent
             key={`${node.path}-${idx}`}
             node={node}

@@ -14,8 +14,8 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { PANEL_CONFIGS, PANEL_IDS, type PanelId } from '../utils/panelConfig';
 
-// Constants
-const TITLE_BAR_HEIGHT = 36; // Height of each panel's title bar
+// Constants - must match CSS .section-title-bar height
+const TITLE_BAR_HEIGHT = 26; // Height of each panel's title bar (matches native VS Code/Cursor sidebar items)
 const MIN_BODY_HEIGHT = 60; // Fallback minimum for panel body (content area)
 
 interface PanelState {
