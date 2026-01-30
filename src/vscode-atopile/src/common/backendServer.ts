@@ -571,7 +571,8 @@ class BackendServerManager implements vscode.Disposable {
                 }
 
                 if (gitUrl) {
-                    const gitUrlMatch = gitUrl.match(/@([^@/]+)$/);
+                    // Match branch after @ (allow slashes for branches like feature/xxx)
+                    const gitUrlMatch = gitUrl.match(/@([^@]+)$/);
                     if (gitUrlMatch) {
                         fromBranch = gitUrlMatch[1];
                         traceInfo(`[BackendServer] Extracted branch from git URL: ${fromBranch}`);
