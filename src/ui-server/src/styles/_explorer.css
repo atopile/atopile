@@ -40,15 +40,18 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  padding: var(--spacing-sm);
-  background: var(--bg-secondary);
-  border-radius: var(--radius-sm);
+  /* Match VS Code native tree item height */
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+  padding: 0 var(--spacing-sm);
+  background: transparent;
+  border-radius: 0;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.1s ease;
 }
 
 .section-row:hover {
-  background: var(--bg-tertiary);
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
 }
 
 .section-expand {
@@ -65,17 +68,20 @@
 
 .section-label {
   flex: 1;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-secondary);
+  /* Match VS Code native tree item text */
+  font-family: var(--font-sans);
+  font-size: var(--vscode-font-size, 13px);
+  font-weight: inherit;
+  color: var(--vscode-foreground, var(--text-primary));
 }
 
 .section-count {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  background: var(--bg-tertiary);
-  padding: 2px 6px;
-  border-radius: 8px;
+  font-family: var(--font-sans);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-descriptionForeground, var(--text-muted));
+  background: transparent;
+  padding: 0;
+  margin-left: 4px;
 }
 
 .section-content {
@@ -91,14 +97,17 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--radius-sm);
+  /* Match VS Code native tree item height */
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+  padding: 0 var(--spacing-sm);
+  border-radius: 0;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.1s ease;
 }
 
 .package-row:hover {
-  background: var(--bg-hover);
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
 }
 
 .package-expand {
@@ -127,8 +136,10 @@
 }
 
 .package-name {
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
+  /* Match VS Code native tree item text */
+  font-family: var(--font-sans);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-foreground, var(--text-primary));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -168,9 +179,12 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 0;
-  border-radius: var(--radius-sm);
-  transition: background 0.15s ease;
+  /* Match VS Code native tree item height */
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+  padding: 0 var(--spacing-sm);
+  border-radius: 0;
+  transition: background 0.1s ease;
 }
 
 .symbol-row.expandable {
@@ -178,7 +192,7 @@
 }
 
 .symbol-row:hover {
-  background: var(--bg-hover);
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
 }
 
 .symbol-expand {
@@ -219,9 +233,10 @@
 }
 
 .symbol-name {
-  font-size: var(--font-size-sm);
-  font-family: var(--font-mono);
-  color: var(--text-primary);
+  /* Match VS Code native tree item text */
+  font-family: var(--font-sans);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-foreground, var(--text-primary));
 }
 
 .export-badge {
@@ -310,15 +325,18 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background: var(--bg-secondary);
-  border-radius: var(--radius-sm);
+  /* Match VS Code native tree item height */
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+  padding: 0 var(--spacing-sm);
+  background: transparent;
+  border-radius: 0;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.1s ease;
 }
 
 .vendor-row:hover {
-  background: var(--bg-tertiary);
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
 }
 
 .vendor-expand {
@@ -340,17 +358,20 @@
 
 .vendor-name {
   flex: 1;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-secondary);
+  /* Match VS Code native tree item text */
+  font-family: var(--font-sans);
+  font-size: var(--vscode-font-size, 13px);
+  font-weight: inherit;
+  color: var(--vscode-foreground, var(--text-primary));
 }
 
 .vendor-count {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  background: var(--bg-tertiary);
-  padding: 2px 6px;
-  border-radius: 8px;
+  font-family: var(--font-sans);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-descriptionForeground, var(--text-muted));
+  background: transparent;
+  padding: 0;
+  margin-left: 4px;
 }
 
 .vendor-packages {

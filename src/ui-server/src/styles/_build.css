@@ -78,7 +78,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-xs) var(--spacing-sm);
+  height: 26px;
+  min-height: 26px;
+  padding: 0 var(--spacing-sm);
   font-size: var(--font-size-xs);
   font-weight: 500;
   text-transform: uppercase;

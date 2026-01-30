@@ -225,9 +225,12 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  padding: var(--spacing-xs) var(--spacing-sm);
+  height: 26px;
+  min-height: 26px;
+  padding: 0 var(--spacing-sm);
   margin-bottom: var(--spacing-xs);
   border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
 }
 
 .project-selector {
@@ -259,7 +262,7 @@
 
 .project-name {
   flex: 1;
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-primary);
   overflow: hidden;
@@ -437,10 +440,20 @@
   display: flex;
   gap: 0;
   padding: 0;
+  height: 30px;
+  min-height: 30px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
   width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.tab-bar::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 
 .tab-button {
@@ -449,31 +462,31 @@
   justify-content: center;
   gap: 4px;
   flex: 1 1 auto;
-  min-width: 0;
-  padding: 8px 12px;
+  min-width: fit-content;
+  height: 100%;
+  padding: 0 12px;
   border: none;
   border-bottom: 2px solid transparent;
   background: transparent;
   color: var(--text-muted);
+  font-family: var(--font-sans);
   font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   border-radius: 0;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   transition: all var(--transition-fast);
 }
 
 .tab-button:hover {
-  background: var(--bg-hover);
-  color: var(--text-secondary);
+  background: var(--vscode-list-hoverBackground, var(--bg-hover));
+  color: var(--vscode-foreground, var(--text-secondary));
 }
 
 .tab-button.active {
   background: transparent;
   color: var(--text-primary);
-  border-bottom-color: var(--accent);
+  border-bottom-color: var(--text-primary);
 }
 
 .tab-badge {
@@ -483,16 +496,17 @@
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  background: var(--bg-tertiary);
+  background: var(--vscode-badge-background, var(--bg-tertiary));
   border-radius: 8px;
+  font-family: var(--font-sans);
   font-size: 10px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--vscode-badge-foreground, var(--text-muted));
 }
 
 .tab-button.active .tab-badge {
-  background: var(--accent-subtle);
-  color: var(--accent);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .tab-warning {

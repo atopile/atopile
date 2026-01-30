@@ -7,11 +7,12 @@
  * - Project tab: Packages installed in current project
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { CheckCircle, Package, PackageSearch, Search } from 'lucide-react'
 import type { PackageInfo, ProjectDependency } from '../types/build'
 import { isInstalledInProject } from '../utils/packageUtils'
 import type { SelectedPackage } from './sidebar-modules'
+import { PanelSearchBox } from './shared'
 import './PackagesPanel.css'
 
 interface PackagesPanelProps {
@@ -26,6 +27,7 @@ interface PackagesPanelProps {
   onOpenPackageDetail: (pkg: SelectedPackage) => void
   onDependencyVersionChange?: (projectRoot: string, identifier: string, newVersion: string) => void
   onRemoveDependency?: (projectRoot: string, identifier: string) => void
+  isExpanded?: boolean
 }
 
 type TabId = 'browse' | 'project'
@@ -92,17 +94,10 @@ export function PackagesPanel({
   selectedProjectRoot,
   installError,
   onOpenPackageDetail,
+  isExpanded = false,
 }: PackagesPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('browse')
   const [searchQuery, setSearchQuery] = useState('')
-  const searchInputRef = useRef<HTMLInputElement>(null)
-
-  // Focus search input when switching to browse tab
-  useEffect(() => {
-    if (activeTab === 'browse' && searchInputRef.current) {
-      searchInputRef.current.focus()
-    }
-  }, [activeTab])
 
   // Filter installed packages by search query (for project tab)
   const filteredInstalled = useMemo(() => {
@@ -180,16 +175,12 @@ export function PackagesPanel({
 
       {activeTab === 'browse' && (
         <div className="packages-tab-content">
-          <div className="packages-search-bar">
-            <Search size={14} />
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search packages..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
+          <PanelSearchBox
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search packages..."
+            autoFocus={isExpanded && activeTab === 'browse'}
+          />
 
           {installError && (
             <div className="packages-error">{installError}</div>

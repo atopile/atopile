@@ -1,8 +1,97 @@
 /* ==========================================
    _utilities.css
-   Build Selector, Connection Status, Z-Index Rules,
-   Overflow Handling, Toast Notifications
+   Shared Empty States, Build Selector, Connection Status,
+   Z-Index Rules, Overflow Handling, Toast Notifications
    ========================================== */
+
+/* ==========================================
+   Unified Empty States
+   Use these classes for consistent empty/no-data states
+   across all panels for visual cohesion.
+   ========================================== */
+
+/* Base empty state - centered, muted content */
+.panel-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xl) var(--spacing-md);
+  color: var(--text-muted);
+  text-align: center;
+  min-height: 120px;
+}
+
+/* Fixed-height icon container ensures consistent text positioning */
+.panel-empty-state .empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.panel-empty-state svg {
+  opacity: 0.4;
+  color: var(--text-muted);
+}
+
+.panel-empty-state .empty-title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.panel-empty-state .empty-description {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  max-width: 220px;
+  line-height: 1.4;
+}
+
+/* Error variant of empty state */
+.panel-empty-state.error .empty-icon svg {
+  color: var(--error);
+  opacity: 0.6;
+}
+
+.panel-empty-state.error .empty-title {
+  color: var(--error);
+}
+
+/* Inline empty state - for within lists, more compact */
+.inline-empty-state {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-style: italic;
+}
+
+/* Search empty state - when search returns no results */
+.search-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-lg) var(--spacing-md);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.search-empty-state svg {
+  opacity: 0.4;
+}
+
+.search-empty-state .search-query {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
 
 /* ==========================================
    Build Selector - Unified Project/Build Filter
@@ -22,7 +111,8 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xxs);
   cursor: pointer;
   transition: all var(--transition-fast);
   min-width: 80px;
@@ -258,7 +348,10 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 6px;
+  /* Match VS Code native tree item height */
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+  padding: 0 6px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: var(--font-size-sm);
@@ -343,7 +436,10 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 6px;
+  /* Match VS Code native tree item height */
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+  padding: 0 6px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: var(--font-size-sm);
@@ -420,10 +516,13 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 6px;
+  /* Match VS Code native tree item height */
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+  padding: 0 6px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   transition: background var(--transition-fast);
 }
