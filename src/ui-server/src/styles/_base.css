@@ -18,13 +18,15 @@ html, body {
 }
 
 body {
+  /* Use VS Code's native UI font throughout */
   font-family: var(--font-sans);
-  font-size: var(--font-size-base);
+  font-size: var(--vscode-font-size, 14px);
+  font-weight: var(--vscode-font-weight, 400);
   line-height: 1.4;
-  color: var(--text-primary);
-  background: var(--bg-primary);
+  color: var(--vscode-foreground, var(--text-primary));
+  background: var(--vscode-sideBar-background, var(--bg-primary));
   -webkit-font-smoothing: antialiased;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   transition: var(--theme-transition);
 }
 
@@ -34,33 +36,30 @@ body {
   overflow: hidden;
 }
 
-/* Refined scrollbars */
+/* Refined scrollbars - track matches background, thumb slightly darker */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--bg-primary);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--ctp-surface1);
-  border-radius: 3px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  border: 2px solid var(--bg-primary);  /* Creates padding effect around thumb */
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--ctp-surface2);
+  background: var(--border-color);
 }
 
-/* Hide scrollbar until hover */
-.section-body {
+/* Firefox scrollbar styling */
+* {
   scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-
-.section-body:hover {
-  scrollbar-color: var(--ctp-surface1) transparent;
+  scrollbar-color: var(--bg-tertiary) var(--bg-primary);
 }
 
 /* ============================================
@@ -78,6 +77,20 @@ body {
 }
 
 /* ============================================
+   Sidebar Panel Base
+   Unified base styles for all sidebar content panels
+   ============================================ */
+
+.sidebar-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* ============================================
    Header
    ============================================ */
 
@@ -87,10 +100,12 @@ body {
   justify-content: space-between;
   /* Edge-to-edge: minimal horizontal padding */
   position: relative;
-  padding: var(--spacing-sm) var(--spacing-xs);
+  padding: 0 var(--spacing-xs);
   border-bottom: 1px solid var(--accent);
   background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
-  min-height: 36px;
+  /* Match VS Code native header height (35px is standard for view titles) */
+  height: 35px;
+  min-height: 35px;
   /* Ensure header stays above disconnected overlay so settings gear is always accessible */
   z-index: calc(var(--z-modal) + 100);
 }
@@ -109,11 +124,12 @@ body {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  font-weight: 600;
-  font-size: var(--font-size-md);
+  /* Match VS Code native view title styling */
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
-  text-transform: lowercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
 }
 
 .header-logo {

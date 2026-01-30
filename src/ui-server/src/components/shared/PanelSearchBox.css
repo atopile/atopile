@@ -1,0 +1,69 @@
+/**
+ * PanelSearchBox - Standardized search input for all panels
+ * Consistent styling across Structure, Packages, Standard Library, Variables, BOM
+ */
+
+.panel-search-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* Consistent padding from panel edges */
+  margin: 6px 8px;
+  padding: 3px 8px;
+  /* Light shaded background matching VS Code input */
+  background: var(--vscode-input-background, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 4px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.panel-search-box:hover {
+  border-color: var(--vscode-input-border, rgba(255, 255, 255, 0.1));
+}
+
+.panel-search-box:focus-within {
+  border-color: var(--vscode-focusBorder, var(--ato-orange));
+  background: var(--vscode-input-background, rgba(255, 255, 255, 0.08));
+}
+
+.panel-search-icon {
+  flex-shrink: 0;
+  color: var(--vscode-input-placeholderForeground, var(--text-muted));
+}
+
+.panel-search-box input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  /* Match VS Code native font */
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  color: var(--vscode-input-foreground, var(--text-primary));
+}
+
+.panel-search-box input::placeholder {
+  color: var(--vscode-input-placeholderForeground, var(--text-muted));
+}
+
+.panel-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--vscode-input-placeholderForeground, var(--text-muted));
+  border-radius: 3px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.panel-search-clear:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.1));
+  color: var(--vscode-foreground, var(--text-primary));
+}

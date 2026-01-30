@@ -7,11 +7,13 @@ import { ArrowDown, ArrowUp, CheckCircle, Loader2, Package, PackageSearch, Searc
 import type { PartSearchItem, InstalledPartItem } from '../types/build'
 import type { SelectedPart } from './sidebar-modules'
 import { api } from '../api/client'
+import { PanelSearchBox } from './shared'
 import './PartsSearchPanel.css'
 
 interface PartsSearchPanelProps {
   selectedProjectRoot: string | null
   onOpenPartDetail: (part: SelectedPart) => void
+  isExpanded?: boolean
 }
 
 type TabId = 'search' | 'project'
@@ -39,6 +41,7 @@ function formatStock(stock: number | null | undefined): string {
 export function PartsSearchPanel({
   selectedProjectRoot,
   onOpenPartDetail,
+  isExpanded = false,
 }: PartsSearchPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('search')
   const [searchQuery, setSearchQuery] = useState('')
@@ -325,16 +328,12 @@ export function PartsSearchPanel({
 
       {activeTab === 'search' && (
         <div className="parts-tab-content">
-          <div className="parts-search-bar">
-            <Search size={14} />
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search parts..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
+          <PanelSearchBox
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search JLCPCB parts..."
+            autoFocus={isExpanded && activeTab === 'search'}
+          />
 
           {searchError && (
             <div className="parts-error">{searchError}</div>
@@ -398,18 +397,12 @@ export function PartsSearchPanel({
 
       {activeTab === 'project' && (
         <div className="parts-tab-content">
-          {selectedProjectRoot && installedParts.length > 0 && (
-            <div className="parts-search-bar">
-              <Search size={14} />
-              <input
-                ref={projectInputRef}
-                type="text"
-                placeholder="Filter project parts..."
-                value={projectFilter}
-                onChange={(e) => setProjectFilter(e.target.value)}
-              />
-            </div>
-          )}
+          <PanelSearchBox
+            value={projectFilter}
+            onChange={setProjectFilter}
+            placeholder="Filter project parts..."
+            autoFocus={isExpanded && activeTab === 'project'}
+          />
           <div className="parts-results-container">
             {!selectedProjectRoot && (
               <div className="parts-empty-state">
