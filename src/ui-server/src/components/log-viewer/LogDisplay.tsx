@@ -50,13 +50,15 @@ function ChevronDown({ className }: { className?: string }) {
 function TraceDetails({
   label,
   content,
-  className
+  className,
+  defaultOpen = false
 }: {
   label: string;
   content: string;
   className: string;
+  defaultOpen?: boolean;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
     <div className={`lv-trace ${className}`}>
@@ -182,6 +184,7 @@ function TreeNodeRow({
                 label="ato traceback"
                 content={entry.ato_traceback}
                 className="lv-trace-ato"
+                defaultOpen
               />
             )}
             {structuredTb && structuredTb.frames.length > 0 ? (
@@ -330,6 +333,7 @@ function StandaloneLogRow({
                 label="ato traceback"
                 content={entry.ato_traceback}
                 className="lv-trace-ato"
+                defaultOpen
               />
             )}
             {structuredTb && structuredTb.frames.length > 0 ? (
