@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
 from atopile.server.routes.logs import router as logs_router
@@ -262,6 +262,27 @@ async def serve_log_viewer(request: Request):
     content = content.replace("<head>", f"<head>\n    {inject_script}", 1)
 
     return HTMLResponse(content=content)
+
+
+@router.websocket("/ws/state")
+async def websocket_state_stub(websocket: WebSocket):
+    """
+    Stub WebSocket endpoint for /ws/state.
+
+    The log viewer UI (shared with the main build server) tries to connect to
+    /ws/state for app state updates. In the test runner context, we don't need
+    this connection, so we accept and immediately close it gracefully.
+
+    Without this stub, WebSocket requests would fall through to the StaticFiles
+    catch-all mount, which only handles HTTP and throws an assertion error.
+    """
+    await websocket.accept()
+    try:
+        # Just wait for the client to disconnect
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
 
 
 # Include the logs WebSocket router from atopile.server
