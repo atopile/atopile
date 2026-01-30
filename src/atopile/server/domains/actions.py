@@ -47,11 +47,12 @@ def _handle_build_sync(payload: dict) -> dict:
     entry = payload.get("entry")
     standalone = payload.get("standalone", False)
     frozen = payload.get("frozen", False)
+    include_targets = payload.get("includeTargets") or payload.get("include_targets", [])
     level = payload.get("level")
     payload_id = payload.get("id")
     payload_label = payload.get("label")
     log.info(
-        f"Parsed: project_root={project_root}, targets={targets}, level={level}, id={payload_id}"  # noqa: E501
+        f"Parsed: project_root={project_root}, targets={targets}, include_targets={include_targets}, level={level}, id={payload_id}"  # noqa: E501
     )
 
     build_all_targets = False
@@ -202,13 +203,14 @@ def _handle_build_sync(payload: dict) -> dict:
                                 entry=entry,
                                 standalone=standalone,
                                 frozen=frozen,
+                                include_targets=include_targets,
                                 status=BuildStatus.QUEUED,
                                 started_at=time.time(),
                             )
                         )
 
                         log.info(
-                            f"Enqueueing build {build_id} for target {target_name}"
+                            f"Enqueueing build {build_id} for target {target_name} with include_targets={include_targets}"
                         )
                         build_ids.append(build_id)
 
@@ -237,7 +239,7 @@ def _handle_build_sync(payload: dict) -> dict:
             build_ids.append(existing_build_id)
             continue
 
-        log.info(f"Creating build for target={target_name}, entry={entry}")
+        log.info(f"Creating build for target={target_name}, entry={entry}, include_targets={include_targets}")
         build_id = generate_build_id(project_root, target_name, timestamp)
         log.info(f"Allocated build_id={build_id}")
         _build_queue.enqueue(
@@ -249,12 +251,13 @@ def _handle_build_sync(payload: dict) -> dict:
                 entry=entry,
                 standalone=standalone,
                 frozen=frozen,
+                include_targets=include_targets,
                 status=BuildStatus.QUEUED,
                 started_at=time.time(),
             )
         )
 
-        log.info(f"Enqueueing build {build_id}")
+        log.info(f"Enqueueing build {build_id} with include_targets={include_targets}")
         build_ids.append(build_id)
 
     log.info(f"All {len(build_ids)} builds enqueued successfully")
@@ -1541,6 +1544,121 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             await handle_data_action("refreshProjects", {}, ctx)
             await handle_data_action("refreshPackages", {}, ctx)
             return {"success": True}
+
+        # Manufacturing wizard actions
+        elif action == "getManufacturingGitStatus":
+            from atopile.server.domains import manufacturing as manufacturing_domain
+
+            project_root = payload.get("projectRoot", "")
+            if not project_root:
+                return {"success": False, "error": "Missing projectRoot"}
+
+            result = await asyncio.to_thread(
+                manufacturing_domain.check_git_status, project_root
+            )
+            return {
+                "success": True,
+                "hasUncommittedChanges": result.has_uncommitted_changes,
+                "changedFiles": result.changed_files,
+            }
+
+        elif action == "getManufacturingOutputs":
+            from atopile.server.domains import manufacturing as manufacturing_domain
+
+            project_root = payload.get("projectRoot", "")
+            target = payload.get("target", "")
+            if not project_root or not target:
+                return {"success": False, "error": "Missing projectRoot or target"}
+
+            outputs = await asyncio.to_thread(
+                manufacturing_domain.get_build_outputs, project_root, target
+            )
+            return {
+                "success": True,
+                "outputs": {
+                    "gerbers": outputs.gerbers,
+                    "bomJson": outputs.bom_json,
+                    "bomCsv": outputs.bom_csv,
+                    "pickAndPlace": outputs.pick_and_place,
+                    "step": outputs.step,
+                    "glb": outputs.glb,
+                    "kicadPcb": outputs.kicad_pcb,
+                    "kicadSch": outputs.kicad_sch,
+                    "pcbSummary": outputs.pcb_summary,
+                },
+            }
+
+        elif action == "estimateManufacturingCost":
+            from atopile.server.domains import manufacturing as manufacturing_domain
+
+            project_root = payload.get("projectRoot", "")
+            targets = payload.get("targets", [])
+            quantity = int(payload.get("quantity", 1))
+
+            if not project_root or not targets:
+                return {"success": False, "error": "Missing projectRoot or targets"}
+
+            estimate = await asyncio.to_thread(
+                manufacturing_domain.estimate_cost, project_root, targets, quantity
+            )
+
+            estimate_dict = {
+                "pcbCost": estimate.pcb_cost,
+                "componentsCost": estimate.components_cost,
+                "assemblyCost": estimate.assembly_cost,
+                "totalCost": estimate.total_cost,
+                "currency": estimate.currency,
+                "quantity": estimate.quantity,
+            }
+
+            if estimate.pcb_breakdown:
+                estimate_dict["pcbBreakdown"] = {
+                    "baseCost": estimate.pcb_breakdown.base_cost,
+                    "areaCost": estimate.pcb_breakdown.area_cost,
+                    "layerCost": estimate.pcb_breakdown.layer_cost,
+                }
+
+            if estimate.components_breakdown:
+                estimate_dict["componentsBreakdown"] = {
+                    "uniqueParts": estimate.components_breakdown.unique_parts,
+                    "totalParts": estimate.components_breakdown.total_parts,
+                }
+
+            if estimate.assembly_breakdown:
+                estimate_dict["assemblyBreakdown"] = {
+                    "baseCost": estimate.assembly_breakdown.base_cost,
+                    "perPartCost": estimate.assembly_breakdown.per_part_cost,
+                }
+
+            return {"success": True, "estimate": estimate_dict}
+
+        elif action == "exportManufacturingFiles":
+            from atopile.server.domains import manufacturing as manufacturing_domain
+
+            project_root = payload.get("projectRoot", "")
+            targets = payload.get("targets", [])
+            directory = payload.get("directory", "")
+            file_types = payload.get("fileTypes", [])
+
+            if not project_root or not targets or not directory:
+                return {
+                    "success": False,
+                    "error": "Missing projectRoot, targets, or directory",
+                }
+
+            result = await asyncio.to_thread(
+                manufacturing_domain.export_files,
+                project_root,
+                targets,
+                directory,
+                file_types,
+            )
+
+            return {
+                "success": result["success"],
+                "files": result["files"],
+                "error": result.get("errors", [None])[0] if result.get("errors") else None,
+            }
 
         return {"success": False, "error": f"Unknown action: {action}"}
 

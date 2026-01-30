@@ -60,6 +60,24 @@ interface BrowseProjectPathMessage {
   type: 'browseProjectPath';
 }
 
+interface BrowseExportDirectoryMessage {
+  type: 'browseExportDirectory';
+}
+
+interface OpenSourceControlMessage {
+  type: 'openSourceControl';
+}
+
+interface ShowInfoMessage {
+  type: 'showInfo';
+  message: string;
+}
+
+interface ShowErrorMessage {
+  type: 'showError';
+  message: string;
+}
+
 interface ReloadWindowMessage {
   type: 'reloadWindow';
 }
@@ -142,6 +160,10 @@ type WebviewMessage =
   | SelectionChangedMessage
   | BrowseAtopilePathMessage
   | BrowseProjectPathMessage
+  | BrowseExportDirectoryMessage
+  | OpenSourceControlMessage
+  | ShowInfoMessage
+  | ShowErrorMessage
   | ReloadWindowMessage
   | RestartExtensionMessage
   | ShowLogsMessage
@@ -483,6 +505,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this._handleBrowseProjectPath().catch((error) => {
           traceError(`[SidebarProvider] Error browsing project path: ${error}`);
         });
+        break;
+      case 'browseExportDirectory':
+        this._handleBrowseExportDirectory().catch((error) => {
+          traceError(`[SidebarProvider] Error browsing export directory: ${error}`);
+        });
+        break;
+      case 'openSourceControl':
+        void vscode.commands.executeCommand('workbench.view.scm');
+        break;
+      case 'showInfo':
+        void vscode.window.showInformationMessage(message.message);
+        break;
+      case 'showError':
+        void vscode.window.showErrorMessage(message.message);
         break;
       case 'selectionChanged':
         void this._handleSelectionChanged(message);
@@ -1066,6 +1102,34 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // Send the result back to the webview
     this._view?.webview.postMessage({
       type: 'browseProjectPathResult',
+      path: selectedPath,
+    });
+  }
+
+  /**
+   * Handle request to browse for an export directory.
+   * Shows a native folder picker dialog and sends the selected path back to the webview.
+   */
+  private async _handleBrowseExportDirectory(): Promise<void> {
+    traceInfo('[SidebarProvider] Browsing for export directory');
+
+    const defaultUri = vscode.workspace.workspaceFolders?.[0]?.uri;
+
+    const result = await vscode.window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+      defaultUri,
+      openLabel: 'Select export folder',
+      title: 'Select export directory for manufacturing files',
+    });
+
+    const selectedPath = result?.[0]?.fsPath ?? null;
+    traceInfo(`[SidebarProvider] Browse export directory result: ${selectedPath}`);
+
+    // Send the result back to the webview
+    this._view?.webview.postMessage({
+      type: 'browseExportDirectoryResult',
       path: selectedPath,
     });
   }

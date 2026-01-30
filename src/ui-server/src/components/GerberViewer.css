@@ -1,0 +1,89 @@
+/**
+ * GerberViewer Styles
+ */
+
+.gerber-viewer {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-secondary);
+}
+
+.gerber-viewer-loading,
+.gerber-viewer-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.gerber-viewer-error {
+  color: var(--error);
+}
+
+.gerber-viewer-container {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-md);
+}
+
+.gerber-svg {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.gerber-layer-controls {
+  width: 160px;
+  padding: var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border-left: 1px solid var(--border-subtle);
+  overflow-y: auto;
+}
+
+.gerber-layer-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding-bottom: var(--spacing-xs);
+  margin-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.gerber-layer-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 4px 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.gerber-layer-toggle input {
+  width: 12px;
+  height: 12px;
+}
+
+.gerber-layer-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.gerber-layer-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

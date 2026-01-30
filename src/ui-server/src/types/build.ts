@@ -3,6 +3,8 @@
  * This is the SINGLE source of truth for all types.
  */
 
+import type { ManufacturingWizardState } from '../components/manufacturing/types';
+
 export type BuildStatus = 'queued' | 'building' | 'success' | 'warning' | 'failed' | 'cancelled';
 export type StageStatus = 'pending' | 'running' | 'success' | 'warning' | 'failed' | 'error' | 'skipped';
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR' | 'ALERT';
@@ -558,7 +560,19 @@ export interface AppState {
   testFilter: string;
   testPaths: string;
   testMarkers: string;
+
+  // Manufacturing Wizard
+  manufacturingWizard: ManufacturingWizardState | null;
 }
+
+// Re-export manufacturing types for convenience
+export type {
+  ManufacturingBuild,
+  ManufacturingWizardState,
+  CostEstimate,
+  FileExportType,
+  BuildOutputs,
+} from '../components/manufacturing/types';
 
 // --- Problem Types ---
 

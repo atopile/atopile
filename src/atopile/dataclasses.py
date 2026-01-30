@@ -520,6 +520,8 @@ class BuildRequest(CamelModel):
     # For standalone builds (entry point without ato.yaml build config)
     entry: Optional[str] = None  # e.g., "main.ato:App" - if set, runs standalone build
     standalone: bool = False  # Whether to use standalone mode
+    # Muster targets to include (e.g., "all", "mfg-data") - defaults to "default"
+    include_targets: list[str] = []
 
 
 class BuildTargetInfo(CamelModel):

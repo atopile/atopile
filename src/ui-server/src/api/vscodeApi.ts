@@ -125,6 +125,24 @@ export interface LoadDirectoryMessage {
   directoryPath: string;
 }
 
+export interface BrowseExportDirectoryMessage {
+  type: 'browseExportDirectory';
+}
+
+export interface OpenSourceControlMessage {
+  type: 'openSourceControl';
+}
+
+export interface ShowInfoMessage {
+  type: 'showInfo';
+  message: string;
+}
+
+export interface ShowErrorMessage {
+  type: 'showError';
+  message: string;
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -139,7 +157,11 @@ export type ExtensionMessage =
   | ShowBackendMenuMessage
   | OpenInSimpleBrowserMessage
   | ListFilesMessage
-  | LoadDirectoryMessage;
+  | LoadDirectoryMessage
+  | BrowseExportDirectoryMessage
+  | OpenSourceControlMessage
+  | ShowInfoMessage
+  | ShowErrorMessage;
 
 /**
  * Type-safe helper to post messages to the extension.
@@ -174,6 +196,11 @@ export interface BrowseAtopilePathResultMessage {
 
 export interface BrowseProjectPathResultMessage {
   type: 'browseProjectPathResult';
+  path: string | null;
+}
+
+export interface BrowseExportDirectoryResultMessage {
+  type: 'browseExportDirectoryResult';
   path: string | null;
 }
 
@@ -226,6 +253,7 @@ export type ExtensionToWebviewMessage =
   | ActiveFileMessage
   | BrowseAtopilePathResultMessage
   | BrowseProjectPathResultMessage
+  | BrowseExportDirectoryResultMessage
   | AtopileInstallingMessage
   | AtopileInstallErrorMessage
   | ServerReadyMessage
@@ -265,6 +293,7 @@ export function initExtensionMessageListener(): void {
       message.type === 'atopileInstallError' ||
       message.type === 'activeFile' ||
       message.type === 'browseAtopilePathResult' ||
+      message.type === 'browseExportDirectoryResult' ||
       message.type === 'serverReady' ||
       message.type === 'filesListed' ||
       message.type === 'directoryLoaded'
