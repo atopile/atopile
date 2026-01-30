@@ -83,18 +83,19 @@
 .variables-tree {
   flex: 1;
   overflow-y: auto;
-  padding: var(--spacing-xs);
+  padding: 2px 0;
 }
 
 /* Minimal indentation tree structure */
 .variable-tree-node {
-  margin-bottom: 1px;
+  margin-bottom: 4px;
 }
 
 /* Depth indicator for implied tree structure */
 .depth-indicator {
-  color: var(--text-muted);
+  color: var(--vscode-descriptionForeground, var(--text-muted));
   opacity: 0.4;
+  font-family: var(--font-sans);
   font-size: var(--font-size-sm);
   letter-spacing: -1px;
   margin-right: 2px;
@@ -104,10 +105,12 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 6px;
-  border-radius: var(--radius-sm);
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+  padding: 2px 4px;
+  border-radius: 0;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.1s ease;
 }
 
 .variable-node-header:hover {
@@ -156,16 +159,16 @@
 }
 
 .variable-node-header .node-name {
-  font-size: var(--font-size-base);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
   font-weight: 500;
-  color: var(--text-primary);
-  font-family: var(--font-mono);
+  color: var(--vscode-foreground, var(--text-primary));
 }
 
 .variable-node-header .node-type-name {
+  font-family: var(--font-sans);
   font-size: var(--font-size-sm);
-  color: var(--text-muted);
-  font-family: var(--font-mono);
+  color: var(--vscode-descriptionForeground, var(--text-muted));
   margin-left: 6px;
   opacity: 0.7;
 }
@@ -183,19 +186,19 @@
   margin-left: auto;
 }
 
-/* Variable node content - minimal indent */
+/* Variable node content - match stdlib indentation */
 .variable-node-content {
-  margin-left: 4px;
-  padding-left: 6px;
-  border-left: 1px solid var(--border-subtle);
-  margin-top: 1px;
+  margin-left: 16px;
+  padding-left: 0;
+  border-left: none;
+  margin-top: 0;
 }
 
 /* Variables list */
 .variables-list {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
   margin-bottom: var(--spacing-xs);
 }
 
@@ -204,8 +207,8 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
+  color: var(--vscode-foreground, var(--text-secondary));
+  font-family: var(--font-sans);
   flex-shrink: 0;
   min-width: 80px;
 }
@@ -257,7 +260,7 @@
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition: background 0.15s ease;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
 }
 
 .variable-table-row:hover {
@@ -284,7 +287,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-secondary);
+  color: var(--vscode-foreground, var(--text-secondary));
+  font-family: var(--font-sans);
   font-size: var(--font-size-sm);
 }
 
@@ -293,9 +297,10 @@
   display: flex;
   align-items: center;
   gap: 1px;
-  color: var(--text-secondary);
+  color: var(--vscode-descriptionForeground, var(--text-secondary));
   justify-content: flex-end;
   text-align: right;
+  font-family: var(--font-sans);
   font-size: var(--font-size-sm);
   min-width: 0;
   overflow: hidden;
@@ -317,6 +322,7 @@
   text-align: right;
   padding: 1px 3px;
   border-radius: 2px;
+  font-family: var(--font-sans);
   font-size: var(--font-size-sm);
   min-width: 0;
   overflow: hidden;

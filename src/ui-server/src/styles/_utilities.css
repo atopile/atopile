@@ -111,7 +111,8 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xxs);
   cursor: pointer;
   transition: all var(--transition-fast);
   min-width: 80px;

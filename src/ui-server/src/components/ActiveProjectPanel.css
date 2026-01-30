@@ -10,7 +10,7 @@
 /* Section Labels - sub-headers within panels, smaller than main panel headers */
 .section-label {
   font-family: var(--vscode-font-family, var(--font-sans));
-  font-size: 11px;
+  font-size: var(--font-size-xxs);
   font-weight: 400;
   text-transform: none;
   color: var(--vscode-descriptionForeground, var(--text-muted));
@@ -86,8 +86,8 @@
   background: transparent;
   border: none;
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
   outline: none;
 }
 
@@ -184,9 +184,9 @@
 }
 
 .combobox-option-name {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
   font-weight: 500;
-  font-family: var(--font-mono);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -195,10 +195,10 @@
 
 .combobox-option-path {
   flex: 1;
+  font-family: var(--font-sans);
   font-size: var(--font-size-xs);
   color: var(--text-muted);
   opacity: 0.7;
-  font-family: var(--font-mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -322,14 +322,14 @@
 
 .target-trigger-name {
   font-weight: 500;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
 }
 
 .target-trigger-entry {
   flex: 1;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
