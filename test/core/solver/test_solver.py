@@ -901,11 +901,11 @@ def test_voltage_divider_find_v_in():
 
 def test_voltage_divider_find_resistances():
     E = BoundExpressions()
-    r_top = E.parameter_op(units=E.U.Ohm)
-    r_bottom = E.parameter_op(units=E.U.Ohm)
-    v_in = E.parameter_op(units=E.U.V)
-    v_out = E.parameter_op(units=E.U.V)
-    r_total = E.parameter_op(units=E.U.Ohm)
+    r_top = E.parameter_op(units=E.U.Ohm, name="r_top")
+    r_bottom = E.parameter_op(units=E.U.Ohm, name="r_bottom")
+    v_in = E.parameter_op(units=E.U.V, name="v_in")
+    v_out = E.parameter_op(units=E.U.V, name="v_out")
+    r_total = E.parameter_op(units=E.U.Ohm, name="r_total")
 
     E.is_subset(v_in, E.lit_op_range(((9, E.U.V), (10, E.U.V))), assert_=True)
     E.is_subset(v_out, E.lit_op_range(((0.9, E.U.V), (1, E.U.V))), assert_=True)
