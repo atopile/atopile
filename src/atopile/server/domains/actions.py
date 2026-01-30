@@ -1271,9 +1271,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             return {"success": True}
 
         if action == "syncPackages":
-            # Handle force sync to discard local changes to packages
+            # Handle sync/upgrade packages
             project_root = payload.get("projectRoot") or payload.get("project_root", "")
             force = payload.get("force", False)
+            upgrade = payload.get("upgrade", False)
 
             if not project_root:
                 return {"success": False, "error": "Missing projectRoot"}
@@ -1287,8 +1288,13 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             def run_sync():
                 try:
-                    log.info(f"Syncing packages for {project_root}, force={force}")
-                    core_packages.sync_packages_for_project(project_path, force=force)
+                    log.info(
+                        f"Syncing packages for {project_root}, "
+                        f"force={force}, upgrade={upgrade}"
+                    )
+                    core_packages.sync_packages_for_project(
+                        project_path, force=force, upgrade=upgrade
+                    )
                     log.info("Package sync completed successfully")
 
                     # Emit success event
@@ -1306,6 +1312,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                             await server_state.emit_event(
                                 "packages_changed",
                                 {"synced": True, "project_root": project_root},
+                            )
+                            await server_state.emit_event(
+                                "project_dependencies_changed",
+                                {"project_root": project_root},
                             )
 
                         asyncio.run_coroutine_threadsafe(finalize_sync(), loop)
@@ -1325,9 +1335,11 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             threading.Thread(target=run_sync, daemon=True).start()
 
+            mode = "Upgrading" if upgrade else "Syncing"
+            flags = " (force)" if force else ""
             return {
                 "success": True,
-                "message": f"Syncing packages{' (force)' if force else ''}...",
+                "message": f"{mode} packages{flags}...",
             }
 
         if action == "ping":

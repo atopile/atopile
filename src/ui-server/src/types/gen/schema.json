@@ -2719,7 +2719,7 @@
           }
         ],
         "default": null,
-        "title": "Latest Version"
+        "title": "Latestversion"
       },
       "name": {
         "title": "Name",
@@ -2743,12 +2743,12 @@
       },
       "hasUpdate": {
         "default": false,
-        "title": "Has Update",
+        "title": "Hasupdate",
         "type": "boolean"
       },
       "isDirect": {
         "default": false,
-        "title": "Is Direct",
+        "title": "Isdirect",
         "type": "boolean"
       },
       "via": {
@@ -3078,6 +3078,11 @@
       "force": {
         "default": false,
         "title": "Force",
+        "type": "boolean"
+      },
+      "upgrade": {
+        "default": false,
+        "title": "Upgrade",
         "type": "boolean"
       }
     },

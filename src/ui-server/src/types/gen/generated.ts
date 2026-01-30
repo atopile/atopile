@@ -713,6 +713,7 @@ export enum EventMessageType {
 export interface SyncPackagesRequest {
     force?:      boolean;
     projectRoot: string;
+    upgrade?:    boolean;
     [property: string]: any;
 }
 

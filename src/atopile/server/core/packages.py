@@ -135,7 +135,11 @@ def remove_package_from_project(project_root: Path, package_identifier: str) -> 
         raise RuntimeError(_format_install_error(exc)) from exc
 
 
-def sync_packages_for_project(project_root: Path, force: bool = False) -> None:
+def sync_packages_for_project(
+    project_root: Path,
+    force: bool = False,
+    upgrade: bool = False,
+) -> None:
     """
     Sync packages for a project - ensure installed versions match manifest.
 
@@ -143,6 +147,8 @@ def sync_packages_for_project(project_root: Path, force: bool = False) -> None:
         project_root: Path to the project directory
         force: If True, overwrite locally modified packages without error.
                If False (default), raise error for modified packages.
+        upgrade: If True, upgrade dependencies to latest compatible versions.
+                 If False (default), only ensure installed versions match manifest.
 
     Raises:
         RuntimeError: If sync fails (with formatted error message)
@@ -160,6 +166,7 @@ def sync_packages_for_project(project_root: Path, force: bool = False) -> None:
             install_missing=True,
             clean_unmanaged_dirs=True,
             force_sync=force,
+            update_versions=upgrade,
         )
     except PackageModifiedError:
         # Re-raise as-is so the caller can handle it specially

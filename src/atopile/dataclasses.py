@@ -937,6 +937,7 @@ class SyncPackagesRequest(CamelModel):
 
     project_root: str
     force: bool = False  # If True, overwrite locally modified packages
+    upgrade: bool = False  # If True, upgrade to latest compatible versions
 
 
 class SyncPackagesResponse(CamelModel):

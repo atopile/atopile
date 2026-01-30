@@ -281,3 +281,99 @@
   color: var(--ctp-peach);
   /* Untracked: package installed before metadata tracking was added */
 }
+
+/* Sync container */
+.packages-sync-container {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+/* Sync buttons */
+.packages-sync-buttons {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex: 1;
+}
+
+.packages-sync-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex: 1;
+  min-width: 0;
+}
+
+.packages-sync-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.packages-sync-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Primary sync button is twice as wide */
+.packages-sync-btn-primary {
+  flex: 2;
+}
+
+.packages-sync-btn svg {
+  flex-shrink: 0;
+}
+
+/* Force checkbox */
+.packages-sync-force {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.packages-sync-force:hover {
+  color: var(--text-secondary);
+}
+
+.packages-sync-force input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+}
+
+.packages-sync-force input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+}
+
+/* Spinning animation for sync in progress */
+.packages-sync-btn svg.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

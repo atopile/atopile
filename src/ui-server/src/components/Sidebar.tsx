@@ -11,7 +11,7 @@ import { VariablesPanel } from './VariablesPanel';
 import { BOMPanel } from './BOMPanel';
 import { PackageDetailPanel } from './PackageDetailPanel';
 import { StructurePanel } from './StructurePanel';
-import { PackagesPanel } from './PackagesPanel';
+import { PackagesPanel, type SyncOptions } from './PackagesPanel';
 import { PartsSearchPanel } from './PartsSearchPanel';
 import { PartsDetailPanel } from './PartsDetailPanel';
 import { FileExplorerPanel } from './FileExplorerPanel';
@@ -87,6 +87,7 @@ export function Sidebar() {
   const [selectedPackage, setSelectedPackage] = useState<SelectedPackage | null>(null);
   const [selectedPart, setSelectedPart] = useState<SelectedPart | null>(null);
   const [activeTab, setActiveTab] = useState<'files' | 'structure' | 'packages' | 'parts' | 'stdlib' | 'parameters' | 'bom'>('files');
+  const [isSyncingPackages, setIsSyncingPackages] = useState(false);
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
@@ -403,6 +404,21 @@ export function Sidebar() {
     }
   }, [selectedPackage, selectedProjectRoot, sidebarProjects]);
 
+  const handleSyncPackages = useCallback(async (projectRoot: string, options: SyncOptions) => {
+    setIsSyncingPackages(true);
+    try {
+      await sendActionWithResponse('syncPackages', {
+        projectRoot,
+        force: options.force ?? false,
+        upgrade: options.upgrade ?? false,
+      });
+    } catch (error) {
+      console.error('Sync failed:', error);
+    } finally {
+      setIsSyncingPackages(false);
+    }
+  }, []);
+
   // Loading state
   if (!state) {
     return <div className="sidebar loading">Loading...</div>;
@@ -527,6 +543,8 @@ export function Sidebar() {
                 selectedProjectRoot={selectedProjectRoot}
                 installError={installError}
                 onOpenPackageDetail={handlers.handleOpenPackageDetail}
+                onSyncPackages={handleSyncPackages}
+                isSyncing={isSyncingPackages}
                 isExpanded={activeTab === 'packages'}
               />
             )}

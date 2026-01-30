@@ -8,13 +8,18 @@
  */
 
 import { useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle, Package, PackageSearch, Search, AlertCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Package, PackageSearch, Search, AlertCircle, RefreshCw, ArrowUpCircle } from 'lucide-react'
 import type { PackageInfo, PackageStatus, ProjectDependency } from '../types/build'
 
 import { isInstalledInProject } from '../utils/packageUtils'
 import type { SelectedPackage } from './sidebar-modules'
 import { PanelSearchBox } from './shared'
 import './PackagesPanel.css'
+
+export interface SyncOptions {
+  force?: boolean
+  upgrade?: boolean
+}
 
 interface PackagesPanelProps {
   packages: PackageInfo[]
@@ -28,6 +33,8 @@ interface PackagesPanelProps {
   onOpenPackageDetail: (pkg: SelectedPackage) => void
   onDependencyVersionChange?: (projectRoot: string, identifier: string, newVersion: string) => void
   onRemoveDependency?: (projectRoot: string, identifier: string) => void
+  onSyncPackages?: (projectRoot: string, options: SyncOptions) => void
+  isSyncing?: boolean
   isExpanded?: boolean
 }
 
@@ -101,6 +108,54 @@ function InstalledPackageRow({
   )
 }
 
+// Sync buttons component with force checkbox
+function SyncButtons({
+  projectRoot,
+  onSync,
+  isSyncing,
+  hasUpdatesAvailable,
+}: {
+  projectRoot: string
+  onSync: (projectRoot: string, options: SyncOptions) => void
+  isSyncing: boolean
+  hasUpdatesAvailable: boolean
+}) {
+  const [forceSync, setForceSync] = useState(false)
+
+  return (
+    <div className="packages-sync-container">
+      <div className="packages-sync-buttons">
+        <button
+          className="packages-sync-btn packages-sync-btn-primary"
+          onClick={() => onSync(projectRoot, { force: forceSync })}
+          disabled={isSyncing}
+          title="Sync packages: Ensure installed versions match the manifest. Fixes version mismatches and installs missing packages."
+        >
+          <RefreshCw size={14} className={isSyncing ? 'spinning' : ''} />
+          <span>Sync</span>
+        </button>
+        <button
+          className="packages-sync-btn"
+          onClick={() => onSync(projectRoot, { upgrade: true, force: forceSync })}
+          disabled={isSyncing || !hasUpdatesAvailable}
+          title="Upgrade: Update all packages to their latest compatible versions."
+        >
+          <ArrowUpCircle size={14} />
+        </button>
+      </div>
+      <label className="packages-sync-force" title="Force: Discard local modifications and reinstall packages fresh.">
+        <input
+          type="checkbox"
+          checked={forceSync}
+          onChange={(e) => setForceSync(e.target.checked)}
+          disabled={isSyncing}
+        />
+        <span>Force</span>
+      </label>
+    </div>
+  )
+}
+
 // Marketplace package row
 function MarketplacePackageRow({
   pkg,
@@ -142,10 +197,28 @@ export function PackagesPanel({
   selectedProjectRoot,
   installError,
   onOpenPackageDetail,
+  onSyncPackages,
+  isSyncing = false,
   isExpanded = false,
 }: PackagesPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('browse')
   const [searchQuery, setSearchQuery] = useState('')
+
+  // Check if any packages need attention (updates available or sync issues)
+  const hasPackagesNeedingSync = useMemo(() => {
+    return installedDependencies.some(
+      (dep) =>
+        dep.hasUpdate ||
+        dep.status === 'wrong_version' ||
+        dep.status === 'not_installed' ||
+        dep.status === 'modified' ||
+        dep.status === 'no_meta'
+    )
+  }, [installedDependencies])
+
+  const hasUpdatesAvailable = useMemo(() => {
+    return installedDependencies.some((dep) => dep.hasUpdate)
+  }, [installedDependencies])
 
   // Filter installed packages by search query (for project tab)
   const filteredInstalled = useMemo(() => {
@@ -285,6 +358,15 @@ export function PackagesPanel({
 
       {activeTab === 'project' && (
         <div className="packages-tab-content">
+          {/* Sync buttons - show when packages need attention */}
+          {selectedProjectRoot && installedDependencies.length > 0 && hasPackagesNeedingSync && onSyncPackages && (
+            <SyncButtons
+              projectRoot={selectedProjectRoot}
+              onSync={onSyncPackages}
+              isSyncing={isSyncing}
+              hasUpdatesAvailable={hasUpdatesAvailable}
+            />
+          )}
           <div className="packages-results-container">
             {!selectedProjectRoot && (
               <div className="packages-empty-state">
