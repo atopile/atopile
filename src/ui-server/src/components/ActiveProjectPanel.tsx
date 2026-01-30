@@ -1070,7 +1070,7 @@ function BuildQueueItem({
               e.stopPropagation()
               useStore.getState().setLogViewerBuildId(build.buildId)
               sendAction('setLogViewCurrentId', { buildId: build.buildId, stage: null })
-              postMessage({ type: 'showLogs' })
+              postMessage({ type: 'showBuildLogs' })
             }}
             title="View all logs for this build"
           >
@@ -1110,7 +1110,7 @@ function BuildQueueItem({
                   if (build.buildId) {
                     useStore.getState().setLogViewerBuildId(build.buildId)
                     sendAction('setLogViewCurrentId', { buildId: build.buildId, stage: stage.stageId || stage.name })
-                    postMessage({ type: 'showLogs' })
+                    postMessage({ type: 'showBuildLogs' })
                   }
                 }}
                 title={`View logs for ${stage.displayName || stage.name}`}

@@ -100,6 +100,10 @@ export interface ShowLogsMessage {
   type: 'showLogs';
 }
 
+export interface ShowBuildLogsMessage {
+  type: 'showBuildLogs';
+}
+
 export interface ShowBackendMenuMessage {
   type: 'showBackendMenu';
 }
@@ -131,6 +135,7 @@ export type ExtensionMessage =
   | ReloadWindowMessage
   | RestartExtensionMessage
   | ShowLogsMessage
+  | ShowBuildLogsMessage
   | ShowBackendMenuMessage
   | OpenInSimpleBrowserMessage
   | ListFilesMessage
