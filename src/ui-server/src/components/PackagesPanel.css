@@ -256,16 +256,28 @@
   border-color: var(--text-muted);
 }
 
-/* Downloads spinner animation */
-.packages-downloads-spinner {
-  animation: spin 1s linear infinite;
+/* Package status badges */
+.packages-status-badge {
+  flex-shrink: 0;
 }
 
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.packages-status-badge.status-fresh {
+  color: var(--ctp-green);
+}
+
+.packages-status-badge.status-modified {
+  color: var(--ctp-yellow);
+}
+
+.packages-status-badge.status-wrong-version {
+  color: var(--ctp-red);
+}
+
+.packages-status-badge.status-not-installed {
+  color: var(--ctp-red);
+}
+
+.packages-status-badge.status-no-meta {
+  color: var(--ctp-peach);
+  /* Untracked: package installed before metadata tracking was added */
 }

@@ -92,6 +92,12 @@ def sync(
         bool,
         typer.Option("--pin", "-p", help="Pin package versions if not already pinned"),
     ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force", "-f", help="Overwrite locally modified packages without error"
+        ),
+    ] = False,
     path: Annotated[
         Path | None, typer.Option("--project-path", "-C", help="Path to the project")
     ] = None,
@@ -102,6 +108,7 @@ def sync(
     """
     from atopile.config import config
     from faebryk.libs.backend.packages import api
+    from faebryk.libs.package.meta import PackageModifiedError
     from faebryk.libs.project.dependencies import ProjectDependencies
 
     config.apply_options(None, working_dir=path)
@@ -112,8 +119,11 @@ def sync(
             clean_unmanaged_dirs=True,
             pin_versions=pin,
             update_versions=upgrade,
+            force_sync=force,
         )
 
+    except PackageModifiedError as e:
+        raise errors.UserException(str(e)) from e
     except (
         api.Errors.PackageNotFoundError,
         api.Errors.ReleaseNotFoundError,
@@ -200,12 +210,11 @@ def list_():
     """
     List all dependencies in the project
     """
-    from faebryk.libs.project.dependencies import ProjectDependencies, ProjectDependency
-    from faebryk.libs.util import md_list
-
     from rich.markdown import Markdown
 
     from atopile.logging_utils import console
+    from faebryk.libs.project.dependencies import ProjectDependencies, ProjectDependency
+    from faebryk.libs.util import md_list
 
     deps = ProjectDependencies()
     # TODO bug, if A -> B, B deps

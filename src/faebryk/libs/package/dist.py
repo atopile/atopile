@@ -15,6 +15,7 @@ from ruamel.yaml import YAML
 import atopile.config
 from atopile import version
 from atopile.errors import UserBadParameterError
+from faebryk.libs.package.meta import PackageMeta, PackageSource
 from faebryk.libs.util import not_none, once
 
 logger = logging.getLogger(__name__)
@@ -198,7 +199,7 @@ class Dist:
 
             return Dist(out_file)
 
-    def install(self, path: Path):
+    def install(self, path: Path, source: PackageSource | None = None):
         if path.exists():
             raise FileExistsError(f"Path {path} already exists")
 
@@ -214,3 +215,16 @@ class Dist:
 
         with zipfile.ZipFile(self.path, "r") as zip_file:
             zip_file.extractall(path)
+
+        # Write package metadata for integrity tracking
+        if source is None:
+            # Default to registry source if not specified
+            source = PackageSource(type="registry")
+
+        meta = PackageMeta.create(
+            identifier=self.identifier,
+            version=self.version,
+            source=source,
+            package_path=path,
+        )
+        meta.save(path)
