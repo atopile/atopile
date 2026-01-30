@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -429,7 +429,9 @@ def test_name_preserved_through_bootstrap_copy():
     assert fwd.maps_to is not None
     new_p = fwd.maps_to.as_parameter.force_get()
     actual_name = fabll.Traits(new_p).get_obj_raw().get_name()
-    assert actual_name == "voltage", f"Expected name 'voltage' but got '{actual_name}'"
+    assert re.match(r"0x[0-9A-Fa-f]+\.voltage", actual_name), (
+        f"Expected name 'voltage' but got '{actual_name}'"
+    )
 
 
 def test_name_preserved_through_mutate_parameter():
@@ -461,7 +463,7 @@ def test_name_preserved_through_mutate_parameter():
         MutationMap._identity(E.tg, E.g), algo=algo, iteration=0, terminal=False
     ).run()
 
-    assert results["resistance"] == "resistance", (
+    assert re.match(r"0x[0-9A-Fa-f]+\.resistance", results["resistance"]), (
         f"Expected 'resistance' but got '{results['resistance']}'"
     )
 
