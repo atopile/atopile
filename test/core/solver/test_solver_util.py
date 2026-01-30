@@ -21,6 +21,7 @@ from faebryk.core.solver.mutator import (
 )
 from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import (
+    Contradiction,
     ContradictionByLiteral,
 )
 
@@ -381,7 +382,6 @@ def test_contradiction_message_subset():
         solver.simplify(E.tg, E.g, terminal=True)
 
 
-@pytest.mark.skip(reason="to_fix")  # FIXME
 def test_contradiction_message_superset():
     E = BoundExpressions()
     variables = _create_letters(E, 1)
@@ -392,7 +392,7 @@ def test_contradiction_message_superset():
 
     solver = Solver()
 
-    with pytest.raises(ContradictionByLiteral, match=r"P!\{⊆\|False\}"):
+    with pytest.raises(Contradiction, match=r"Deduced predicate to false"):
         solver.simplify(E.tg, E.g, terminal=True)
 
 
