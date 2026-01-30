@@ -162,6 +162,10 @@ const initialState: AppState = {
   testFilter: '',
   testPaths: 'test src',
   testMarkers: '',
+
+  // Part enrichment cache (stock/price by LCSC ID)
+  // Avoids re-fetching when switching projects back and forth
+  enrichedParts: {} as Record<string, { stock: number; unit_cost: number; fetchedAt: number }>,
 };
 
 // Store actions interface
@@ -253,6 +257,10 @@ interface StoreActions {
   clearTestSelection: () => void;
   startTestRun: (testRunId: string) => void;
   completeTestRun: () => void;
+
+  // Part enrichment cache
+  setEnrichedParts: (parts: Record<string, { stock: number; unit_cost: number }>) => void;
+  getEnrichedPart: (lcscId: string) => { stock: number; unit_cost: number; fetchedAt: number } | null;
 
   // Reset
   reset: () => void;
@@ -682,6 +690,29 @@ export const useStore = create<Store>()(
 
       completeTestRun: () =>
         set((state) => ({ testRun: { ...state.testRun, isRunning: false } })),
+
+      // Part enrichment cache
+      setEnrichedParts: (parts) =>
+        set((state) => {
+          const now = Date.now();
+          const updated = { ...state.enrichedParts };
+          for (const [lcscId, data] of Object.entries(parts)) {
+            const key = lcscId.toUpperCase();
+            updated[key] = { ...data, fetchedAt: now };
+          }
+          return { enrichedParts: updated };
+        }),
+
+      getEnrichedPart: (lcscId: string): { stock: number; unit_cost: number; fetchedAt: number } | null => {
+        const state: AppState = useStore.getState() as AppState;
+        const key = lcscId.toUpperCase();
+        const cached = state.enrichedParts[key];
+        if (!cached) return null;
+        // Consider stale after 5 minutes
+        const CACHE_TTL_MS = 5 * 60 * 1000;
+        if (Date.now() - cached.fetchedAt > CACHE_TTL_MS) return null;
+        return cached;
+      },
 
       // Reset
       reset: () => set(initialState),

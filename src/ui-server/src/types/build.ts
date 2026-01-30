@@ -554,6 +554,10 @@ export interface AppState {
   testFilter: string;
   testPaths: string;
   testMarkers: string;
+
+  // Part enrichment cache (stock/price by LCSC ID)
+  // Avoids re-fetching when switching between projects
+  enrichedParts: Record<string, { stock: number; unit_cost: number; fetchedAt: number }>;
 }
 
 // --- Problem Types ---
