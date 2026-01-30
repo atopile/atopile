@@ -166,6 +166,7 @@ class _Schemas:
         url: str
         repository: str
         homepage: str | None
+        downloads: int | None = None
 
     @dataclass_json
     @dataclass(frozen=True)
