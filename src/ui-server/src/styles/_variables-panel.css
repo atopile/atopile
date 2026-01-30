@@ -88,7 +88,7 @@
 
 /* Minimal indentation tree structure */
 .variable-tree-node {
-  margin-bottom: 4px;
+  margin-bottom: 0;
 }
 
 /* Depth indicator for implied tree structure */

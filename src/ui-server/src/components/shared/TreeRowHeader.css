@@ -7,10 +7,9 @@
 .tree-row-header {
   display: flex;
   align-items: center;
-  gap: 3px;
-  height: var(--row-height-tree-item, 22px);
-  min-height: var(--row-height-tree-item, 22px);
-  padding: 2px 4px;
+  gap: 4px;
+  height: var(--row-height-tree-item);
+  padding: 0 var(--spacing-sm);
   border-radius: 0;
   cursor: pointer;
   transition: background 0.1s ease;

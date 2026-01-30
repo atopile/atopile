@@ -133,7 +133,7 @@
 
 .parts-empty-state span {
   font-family: var(--font-sans);
-  font-size: var(--vscode-font-size, 13px);
+  font-size: var(--font-size-sm);
   max-width: 240px;
 }
 
@@ -194,7 +194,7 @@
   cursor: pointer;
   transition: background var(--transition-fast);
   font-family: var(--font-sans);
-  font-size: var(--vscode-font-size, 13px);
+  font-size: var(--font-size-sm);
 }
 
 .parts-results-row:hover {

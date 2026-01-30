@@ -14,10 +14,11 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 4px;
-  border-radius: var(--radius-sm);
+  height: var(--row-height-tree-item);
+  padding: 0 var(--spacing-sm);
+  border-radius: 0;
   cursor: default;
-  transition: background var(--transition-fast);
+  transition: background 0.1s ease;
 }
 
 .module-tree-row.expandable {
@@ -40,8 +41,9 @@
 }
 
 .module-tree-row.root {
-  padding: 4px;
-  margin-bottom: 2px;
+  height: var(--row-height-tree-item);
+  padding: 0 var(--spacing-sm);
+  margin-bottom: 0;
 }
 
 .module-tree-expand-btn {
