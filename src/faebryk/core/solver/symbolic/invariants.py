@@ -19,6 +19,7 @@ from faebryk.core.solver.mutator import (
     ExpressionBuilder,
     MutationMap,
     Mutator,
+    is_irrelevant,
     is_monotone,
 )
 from faebryk.core.solver.utils import (
@@ -42,6 +43,23 @@ INVARIANT_LOG = ConfigFlag(
 I_LOG = S_LOG and INVARIANT_LOG
 
 
+class _Query:
+    @staticmethod
+    def _get_operations[T: "fabll.NodeT"](
+        op: F.Parameters.can_be_operand | F.Parameters.is_parameter_operatable,
+        types: type[T] = fabll.Node,
+        predicates_only: bool = False,
+        recursive: bool = False,
+        allow_irrelevant: bool = False,
+    ) -> set[T]:
+        out = op.get_operations(
+            types=types, predicates_only=predicates_only, recursive=recursive
+        )
+        if not allow_irrelevant:
+            out = {op for op in out if not op.has_trait(is_irrelevant)}
+        return out
+
+
 class AliasClass:
     @classmethod
     def of(
@@ -51,13 +69,26 @@ class AliasClass:
     ) -> "AliasClass":
         if isinstance(is_or_member, F.Expressions.Is):
             return AliasClassIs(is_or_member)
-        aliases = is_or_member.get_operations(F.Expressions.Is, predicates_only=True)
+        irrelevant = bool(is_or_member.try_get_sibling_trait(is_irrelevant))
+        aliases = _Query._get_operations(
+            is_or_member,
+            types=F.Expressions.Is,
+            predicates_only=True,
+            # allow irrelevant aliases, for irrelevant operands
+            allow_irrelevant=irrelevant,
+        )
 
         if not aliases:
             return AliasClassStub(is_or_member, allow_non_repr=allow_non_repr)
 
+        # irrelevant operand might have non-irrelevant alias
+        if len(aliases) > 1 and irrelevant:
+            aliases = {a for a in aliases if not a.has_trait(is_irrelevant)}
+
         assert len(aliases) == 1, f"Broken invariant: multiple aliases: {
-            indented_container([a.is_expression.get().compact_repr() for a in aliases])
+            indented_container(
+                [a.is_expression.get().compact_repr() for a in aliases], use_repr=False
+            )
         }"
         return AliasClassIs(next(iter(aliases)))
 
@@ -381,21 +412,26 @@ class SubsumptionCheck:
         if not builder.assert_:
             return SubsumptionCheck.Result()
 
+        # get other aliases of operands in Is
         existing_aliases = {
             alias
             for op in builder.operands
-            for alias in op.get_operations(F.Expressions.Is, predicates_only=True)
+            for alias in _Query._get_operations(
+                op, types=F.Expressions.Is, predicates_only=True
+            )
         }
         if not existing_aliases:
             # TODO filter multi param
             return SubsumptionCheck.Result()
 
+        # Get full class through transitive property
         ops = {
             op
             for alias in existing_aliases
             for op in alias.is_expression.get().get_operands()
         } | set(builder.operands)
 
+        # Params in class
         param_ops = {
             p
             for op in ops
@@ -403,6 +439,24 @@ class SubsumptionCheck:
         }
 
         if len(param_ops) > 1 and len(param_ops) != len(ops):
+            builder_params = {
+                p
+                for op in builder.operands
+                if (p := op.try_get_sibling_trait(F.Parameters.is_parameter))
+            }
+            non_builder_params = param_ops - builder_params
+            # case 4: Is!(P1, P2), Is!(P2, E1, E2) -> remutate P1 to P2
+            if len(builder_params) == len(builder.operands) and not non_builder_params:
+                # TODO better candidate finding
+                ps = list(builder_params)
+                target_p, to_merge = ps[0], ps[1:]
+                for to_merge_p in to_merge:
+                    _merge_alias(mutator, to_merge_p, target_p)
+                # return alias
+                return SubsumptionCheck.Result(
+                    most_constrained_expr=SubsumptionCheck.Result._DISCARD()
+                )
+
             raise NotImplementedError("I dont want to deal with this")
 
         # case 1: Is!(A,B,C), Is!(A, B) => Is!(A,B,C)
@@ -468,6 +522,8 @@ def find_congruent_expression[T: F.Expressions.ExpressionNodes](
         def _matches(op: T) -> bool:
             if not mutator.utils.is_literal_expression(op.can_be_operand.get()):
                 return False
+            if op.has_trait(is_irrelevant):
+                return False
             return F.Expressions.is_expression.are_pos_congruent(
                 op.is_expression.get().get_operands(),
                 builder.operands,
@@ -482,7 +538,7 @@ def find_congruent_expression[T: F.Expressions.ExpressionNodes](
 
         return None
 
-    parents = [non_lit.get_operations() for non_lit in non_lits]
+    parents = [_Query._get_operations(non_lit) for non_lit in non_lits]
     common = [
         e.get_trait(F.Expressions.is_expression)
         for e in reduce(lambda x, y: x & y, parents)
@@ -529,7 +585,7 @@ def _no_empty_superset(
     ):
         constraint_ops = [
             op.is_parameter_operatable.get()
-            for op in po.get_operations(types=IsSubset, predicates_only=True)
+            for op in _Query._get_operations(po, types=IsSubset, predicates_only=True)
         ]
         raise ContradictionByLiteral(
             "Empty superset for parameter operatable",
@@ -1025,7 +1081,9 @@ def _operands_mutated_and_expressions_flat(
             and not op_e.try_get_sibling_trait(F.Expressions.is_information_predicate)
             # non-constraining expressions (e.g. Correlated) don't have aliases
             and not op_e.obj_type_has_trait(F.Expressions.has_independent_operands)
-            and not op.get_operations(F.Expressions.Is, predicates_only=True)
+            and not _Query._get_operations(
+                op, types=F.Expressions.Is, predicates_only=True
+            )
         ) and not mutator.has_been_mutated(op_po):
             # Create an alias representative now
             alias_param = op_e.create_representative(alias=True)
@@ -1156,6 +1214,28 @@ def insert_expression(
     super_lit, sub_lit = None, None
 
     _ss_lits_available(mutator)
+
+    # deal with irrelevant operands
+    # TODO this is kinda ugly because it duplicates a lot of the other invariants
+    def _deal_with_irrelevant_operand(
+        op: F.Parameters.can_be_operand,
+    ) -> F.Parameters.can_be_operand:
+        # if irrelevant and ss lit, good chance there is no alias class
+        if (
+            op.try_get_sibling_trait(is_irrelevant)
+            and (
+                ss_lit := mutator.utils.try_extract_superset(
+                    op.as_parameter_operatable.force_get()
+                )
+            )
+            and mutator.utils.is_correlatable_literal(ss_lit)
+        ):
+            return ss_lit.as_operand.get()
+        return op
+
+    builder = builder.with_(
+        operands=[_deal_with_irrelevant_operand(op) for op in builder.operands]
+    )
 
     # no irrelevant predicates
     # if builder.assert_ and any(
