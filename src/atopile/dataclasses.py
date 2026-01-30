@@ -927,6 +927,22 @@ class PackageActionResponse(CamelModel):
     action: str  # 'install', 'update', 'remove'
 
 
+class SyncPackagesRequest(CamelModel):
+    """Request to sync packages for a project."""
+
+    project_root: str
+    force: bool = False  # If True, overwrite locally modified packages
+
+
+class SyncPackagesResponse(CamelModel):
+    """Response from sync packages action."""
+
+    success: bool
+    message: str
+    operation_id: Optional[str] = None  # For tracking async operation status
+    modified_packages: Optional[list[str]] = None  # Packages that were modified
+
+
 class PackageInfoVeryBrief(CamelModel):
     identifier: str
     version: str

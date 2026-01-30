@@ -133,3 +133,36 @@ def remove_package_from_project(project_root: Path, package_identifier: str) -> 
         cli_install.remove([package_identifier], path=project_root)
     except Exception as exc:
         raise RuntimeError(_format_install_error(exc)) from exc
+
+
+def sync_packages_for_project(project_root: Path, force: bool = False) -> None:
+    """
+    Sync packages for a project - ensure installed versions match manifest.
+
+    Args:
+        project_root: Path to the project directory
+        force: If True, overwrite locally modified packages without error.
+               If False (default), raise error for modified packages.
+
+    Raises:
+        RuntimeError: If sync fails (with formatted error message)
+        PackageModifiedError: If packages have local modifications and force=False
+    """
+    from atopile.config import config
+    from faebryk.libs.package.meta import PackageModifiedError
+    from faebryk.libs.project.dependencies import ProjectDependencies
+
+    # Apply config for this project
+    config.apply_options(None, working_dir=project_root)
+
+    try:
+        ProjectDependencies(
+            install_missing=True,
+            clean_unmanaged_dirs=True,
+            force_sync=force,
+        )
+    except PackageModifiedError:
+        # Re-raise as-is so the caller can handle it specially
+        raise
+    except Exception as exc:
+        raise RuntimeError(_format_install_error(exc)) from exc

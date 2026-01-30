@@ -570,7 +570,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 }
 
             # Build package spec with optional version
-            pkg_spec = f"{package_id}@{version}" if version else package_id
+            # Filter out invalid versions like "unknown" - default to latest
+            clean_version = version if version and version != "unknown" else None
+            pkg_spec = f"{package_id}@{clean_version}" if clean_version else package_id
 
             # Create a logger for this action - logs to central SQLite DB
             action_logger = BuildLogger.get(

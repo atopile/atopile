@@ -297,19 +297,23 @@ export function PackageDetailPanel({
                 <option>Loading versions...</option>
               </select>
             ) : (
-              <select className="detail-version-select" disabled>
-                <option>v{pkg.version || 'unknown'}</option>
+              <select className="detail-version-select">
+                <option>latest</option>
               </select>
             )}
 
             <button
               className={`detail-install-btn ${isUpdateAvailable ? 'update' : showUninstall ? 'uninstall' : 'install'
                 } ${isInstalling ? 'installing' : ''}`}
-              onClick={() =>
-                showUninstall
-                  ? onUninstall()
-                  : onInstall(selectedVersion || details?.version || pkg.version || '')
-              }
+              onClick={() => {
+                if (showUninstall) {
+                  onUninstall()
+                } else {
+                  // Don't pass 'unknown' as version - let backend use latest
+                  const ver = selectedVersion || details?.version || pkg.version
+                  onInstall(ver && ver !== 'unknown' ? ver : '')
+                }
+              }}
               disabled={isLoading || isInstalling}
             >
               {isInstalling ? (

@@ -239,6 +239,9 @@ export function Sidebar() {
     const projectRoot = selectedProjectRoot || sidebarProjects?.[0]?.root;
     if (!projectRoot) return;
 
+    // Filter out invalid versions - let backend use latest if version is unknown/empty
+    const cleanVersion = version && version !== 'unknown' && version !== '' ? version : undefined;
+
     const packageId = selectedPackage.fullName;
     const store = useStore.getState();
     const depsForProject = projectDependencies?.[projectRoot] || [];
@@ -252,7 +255,7 @@ export function Sidebar() {
 
     try {
       let response;
-      if (version && isInstalled && installedVersion && version !== installedVersion) {
+      if (cleanVersion && isInstalled && installedVersion && cleanVersion !== installedVersion) {
         if (!isDirect) {
           const via = depInfo?.via?.length ? `Required by: ${depInfo.via.join(', ')}` : '';
           store.setInstallError(
@@ -264,13 +267,13 @@ export function Sidebar() {
         response = await sendActionWithResponse('changeDependencyVersion', {
           packageId,
           projectRoot,
-          version,
+          version: cleanVersion,
         });
       } else {
         response = await sendActionWithResponse('installPackage', {
           packageId,
           projectRoot,
-          version,
+          version: cleanVersion,
         });
       }
 

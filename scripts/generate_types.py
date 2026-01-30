@@ -45,6 +45,8 @@ MODELS_TO_EXPORT = [
     "DetectedInstallation",
     "InstallProgress",
     "EventMessage",
+    "SyncPackagesRequest",
+    "SyncPackagesResponse",
 ]
 
 

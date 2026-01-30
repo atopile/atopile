@@ -666,11 +666,15 @@ class ProjectDependencies:
                    If False (default), raise PackageModifiedError for modified packages.
         """
 
-        def _sync_dep(dep: ProjectDependency, installed_version: str) -> bool:
+        def _sync_dep(
+            dep: ProjectDependency,
+            installed_version: str,
+            force_reinstall: bool = False,
+        ) -> bool:
             dep.load_dist()
             assert dep.dist is not None
 
-            if dep.dist.version == installed_version:
+            if dep.dist.version == installed_version and not force_reinstall:
                 return False
 
             target_path = dep.target_path
@@ -751,7 +755,11 @@ class ProjectDependencies:
                                 logger.info(
                                     f"Upgrading {dep.identifier} to tracked format"
                                 )
-                                dirty |= _sync_dep(dep, installed_version)
+                                # Force reinstall to add metadata even though
+                                # version matches
+                                dirty |= _sync_dep(
+                                    dep, installed_version, force_reinstall=True
+                                )
 
                 case "file" | "git":
                     logger.warning(

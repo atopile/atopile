@@ -703,3 +703,23 @@ export enum EventType {
 export enum EventMessageType {
     Event = "event",
 }
+
+/**
+ * Request to sync packages for a project.
+ */
+export interface SyncPackagesRequest {
+    force?:      boolean;
+    projectRoot: string;
+    [property: string]: any;
+}
+
+/**
+ * Response from sync packages action.
+ */
+export interface SyncPackagesResponse {
+    message:           string;
+    modifiedPackages?: string[] | null;
+    operationId?:      null | string;
+    success:           boolean;
+    [property: string]: any;
+}

@@ -31,6 +31,8 @@ from atopile.dataclasses import (
     PackageVersion,
     RegistrySearchResponse,
     RegistryStatus,
+    SyncPackagesRequest,
+    SyncPackagesResponse,
 )
 from atopile.model.model_state import model_state
 from atopile.server.connections import server_state
@@ -896,6 +898,68 @@ def handle_remove_package(
     )
 
 
+def handle_sync_packages(
+    request: SyncPackagesRequest,
+    background_tasks: BackgroundTasks,
+) -> SyncPackagesResponse:
+    """
+    Handle sync packages request - ensure installed versions match manifest.
+
+    This runs the sync operation in a background task and returns immediately.
+    The operation tracks modified packages and handles the PackageModifiedError
+    specially to provide useful feedback to the UI.
+    """
+    from faebryk.libs.package.meta import PackageModifiedError
+
+    project_path = Path(request.project_root)
+    if not project_path.exists():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Project path does not exist: {request.project_root}",
+        )
+
+    if not (project_path / "ato.yaml").exists():
+        raise HTTPException(
+            status_code=400,
+            detail=f"No ato.yaml found in: {request.project_root}",
+        )
+
+    with _package_op_lock:
+        op_id = next_package_op_id("pkg-sync")
+        _active_package_ops[op_id] = {
+            "action": "sync",
+            "status": "running",
+            "project_root": request.project_root,
+            "force": request.force,
+            "error": None,
+            "modified_packages": None,
+        }
+
+    def run_sync():
+        try:
+            core_packages.sync_packages_for_project(project_path, force=request.force)
+            with _package_op_lock:
+                _active_package_ops[op_id]["status"] = "success"
+        except PackageModifiedError as exc:
+            with _package_op_lock:
+                _active_package_ops[op_id]["status"] = "blocked"
+                _active_package_ops[op_id]["error"] = str(exc)
+                _active_package_ops[op_id]["modified_packages"] = exc.modified_files
+        except Exception as exc:
+            with _package_op_lock:
+                _active_package_ops[op_id]["status"] = "failed"
+                _active_package_ops[op_id]["error"] = str(exc)[:500] or "sync failed"
+
+    background_tasks.add_task(run_sync)
+
+    force_msg = " (force mode)" if request.force else ""
+    return SyncPackagesResponse(
+        success=True,
+        message=f"Syncing packages{force_msg}...",
+        operation_id=op_id,
+    )
+
+
 def resolve_scan_path(
     ctx: AppContext,
     path: Optional[str],
@@ -921,6 +985,7 @@ __all__ = [
     "handle_packages_summary",
     "handle_remove_package",
     "handle_search_registry",
+    "handle_sync_packages",
     "next_package_op_id",
     "refresh_packages_state",
     "resolve_scan_path",

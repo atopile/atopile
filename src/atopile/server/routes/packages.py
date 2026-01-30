@@ -20,6 +20,8 @@ from atopile.dataclasses import (
     PackagesResponse,
     PackagesSummaryResponse,
     RegistrySearchResponse,
+    SyncPackagesRequest,
+    SyncPackagesResponse,
 )
 
 from ..domains import packages as packages_domain
@@ -205,4 +207,25 @@ async def remove_package(
 ):
     return await asyncio.to_thread(
         packages_domain.handle_remove_package, request, background_tasks
+    )
+
+
+@router.post("/api/packages/sync", response_model=SyncPackagesResponse)
+async def sync_packages(
+    request: SyncPackagesRequest,
+    background_tasks: BackgroundTasks,
+):
+    """
+    Sync packages for a project - ensure installed versions match manifest.
+
+    This checks package integrity and reinstalls any packages that:
+    - Are missing
+    - Have wrong versions
+    - Have been locally modified (requires force=true to overwrite)
+    - Were installed before metadata tracking (legacy packages)
+
+    Returns an operation_id that can be used to track the sync status.
+    """
+    return await asyncio.to_thread(
+        packages_domain.handle_sync_packages, request, background_tasks
     )

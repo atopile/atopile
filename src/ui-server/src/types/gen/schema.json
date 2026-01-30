@@ -3064,5 +3064,70 @@
     ],
     "title": "EventMessage",
     "type": "object"
+  },
+  "SyncPackagesRequest": {
+    "description": "Request to sync packages for a project.",
+    "properties": {
+      "projectRoot": {
+        "title": "Projectroot",
+        "type": "string"
+      },
+      "force": {
+        "default": false,
+        "title": "Force",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "projectRoot"
+    ],
+    "title": "SyncPackagesRequest",
+    "type": "object"
+  },
+  "SyncPackagesResponse": {
+    "description": "Response from sync packages action.",
+    "properties": {
+      "success": {
+        "title": "Success",
+        "type": "boolean"
+      },
+      "message": {
+        "title": "Message",
+        "type": "string"
+      },
+      "operationId": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Operationid"
+      },
+      "modifiedPackages": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Modifiedpackages"
+      }
+    },
+    "required": [
+      "success",
+      "message"
+    ],
+    "title": "SyncPackagesResponse",
+    "type": "object"
   }
 }
