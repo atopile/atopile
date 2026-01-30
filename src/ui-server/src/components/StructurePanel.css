@@ -153,10 +153,9 @@
   gap: var(--spacing-xs);
 }
 
-/* Unified empty/loading/error states - matches other panels */
+/* Unified empty/loading states - matches other panels */
 .structure-loading,
-.structure-empty,
-.structure-error {
+.structure-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -185,15 +184,6 @@
   color: var(--text-muted);
   max-width: 220px;
   line-height: 1.4;
-}
-
-.structure-error {
-  color: var(--error);
-}
-
-.structure-error svg {
-  opacity: 0.6;
-  color: var(--error);
 }
 
 /* Spin animation for loader */

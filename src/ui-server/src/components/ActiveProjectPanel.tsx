@@ -22,7 +22,6 @@ interface ActiveProjectPanelProps {
   onSelectProject: (projectRoot: string | null) => void
   onSelectTarget: (projectRoot: string, targetName: string) => void
   onBuildTarget: (projectRoot: string, targetName: string) => void
-  onBuildAllTargets: (projectRoot: string, projectName: string) => void
   onOpenKiCad: (projectRoot: string, targetName: string) => void
   onOpen3D: (projectRoot: string, targetName: string) => void
   onOpenLayout: (projectRoot: string, targetName: string) => void
@@ -1075,7 +1074,6 @@ export function ActiveProjectPanel({
   onSelectProject,
   onSelectTarget,
   onBuildTarget,
-  onBuildAllTargets,
   onOpenKiCad,
   onOpen3D,
   onOpenLayout,
@@ -1217,39 +1215,6 @@ export function ActiveProjectPanel({
             title="Create new project"
           >
             <Plus size={14} />
-          </button>
-        )}
-      </div>
-
-      {/* Global Actions Row - Build All (2x) and MFG Data (1x) */}
-      <div className="global-actions-row">
-        <button
-          className="global-action-btn"
-          onClick={() => {
-            if (!activeProject) return
-            onBuildAllTargets(activeProject.root, activeProject.name)
-          }}
-          disabled={!activeProject}
-          title={activeProject ? `Build all targets in ${activeProject.name}` : 'Select a project first'}
-        >
-          <Layers size={12} />
-          <span>Build All</span>
-        </button>
-        {onGenerateManufacturingData && (
-          <button
-            className="global-action-btn secondary"
-            onClick={() => {
-              if (!activeProject) return
-              // Generate MFG data for all targets
-              for (const target of activeProject.targets || []) {
-                onGenerateManufacturingData(activeProject.root, target.name)
-              }
-            }}
-            disabled={!activeProject || !activeProject.targets?.length}
-            title={activeProject ? `Generate manufacturing files for all targets` : 'Select a project first'}
-          >
-            <Package size={12} />
-            <span>MFG</span>
           </button>
         )}
       </div>

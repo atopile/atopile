@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { FileCode, Loader2, AlertTriangle, RefreshCw } from 'lucide-react'
+import { FileCode, Loader2, RefreshCw, Network } from 'lucide-react'
 import type { ModuleChild, Project } from '../types/build'
 import { sendActionWithResponse } from '../api/websocket'
 import { ModuleTree } from './ModuleTreeNode'
-import { PanelSearchBox } from './shared'
+import { PanelSearchBox, EmptyState } from './shared'
 import './StructurePanel.css'
 
 interface StructurePanelProps {
@@ -306,11 +306,11 @@ export function StructurePanel({
           </div>
         )}
         {state.status === 'error' && (
-          <div className="structure-error">
-            <AlertTriangle size={24} />
-            <span className="empty-title">Error loading structure</span>
-            <span className="empty-description">{state.message}</span>
-          </div>
+          <EmptyState
+            icon={Network}
+            title="Error loading structure"
+            description={state.message}
+          />
         )}
         {state.status === 'ready' && (
           filteredModules.length > 0 ? (

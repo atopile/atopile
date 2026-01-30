@@ -167,11 +167,6 @@ export function Sidebar() {
     action('build', { projectRoot, targets: [targetName] });
   }, [panels]);
 
-  const handleBuildAllTargets = useCallback((projectRoot: string, projectName: string) => {
-    panels.collapseAllExceptProjects();
-    action('build', { level: 'project', id: projectRoot, label: projectName, targets: [] });
-  }, [panels]);
-
   // Generate manufacturing data - triggers a build which includes manufacturing outputs
   const handleGenerateManufacturingData = useCallback((projectRoot: string, targetName: string) => {
     // Manufacturing data is generated as part of the build process
@@ -344,7 +339,6 @@ export function Sidebar() {
             onSelectProject={handlers.handleSelectProject}
             onSelectTarget={handlers.handleSelectTarget}
             onBuildTarget={handleBuildTarget}
-            onBuildAllTargets={handleBuildAllTargets}
             onOpenKiCad={(projectRoot, targetName) => handleOpenOutput('openKiCad', projectRoot, targetName)}
             onOpen3D={(projectRoot, targetName) => handleOpenOutput('open3D', projectRoot, targetName)}
             onOpenLayout={(projectRoot, targetName) => handleOpenOutput('openLayout', projectRoot, targetName)}
