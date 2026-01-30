@@ -78,8 +78,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: var(--row-height-section-header);
-  min-height: var(--row-height-section-header);
+  height: 26px;
+  min-height: 26px;
   padding: 0 var(--spacing-sm);
   font-size: var(--font-size-xs);
   font-weight: 500;

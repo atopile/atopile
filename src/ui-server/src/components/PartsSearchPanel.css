@@ -16,8 +16,8 @@
 .parts-tabs {
   display: flex;
   gap: 0;
-  height: var(--row-height-section-header);
-  min-height: var(--row-height-section-header);
+  height: 26px;
+  min-height: 26px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
@@ -37,7 +37,8 @@
   gap: 6px;
   flex: 1 1 auto;
   min-width: fit-content;
-  padding: var(--spacing-xs) var(--spacing-sm);
+  height: 100%;
+  padding: 0 var(--spacing-sm);
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;

@@ -225,8 +225,8 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  height: var(--row-height-section-header);
-  min-height: var(--row-height-section-header);
+  height: 26px;
+  min-height: 26px;
   padding: 0 var(--spacing-sm);
   margin-bottom: var(--spacing-xs);
   border-bottom: 1px solid var(--border-subtle);
@@ -440,6 +440,8 @@
   display: flex;
   gap: 0;
   padding: 0;
+  height: 30px;
+  min-height: 30px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
@@ -461,7 +463,8 @@
   gap: 4px;
   flex: 1 1 auto;
   min-width: fit-content;
-  padding: 8px 12px;
+  height: 100%;
+  padding: 0 12px;
   border: none;
   border-bottom: 2px solid transparent;
   background: transparent;

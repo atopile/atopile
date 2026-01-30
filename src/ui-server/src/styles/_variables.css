@@ -59,7 +59,7 @@
   --font-size-xxl: calc(var(--font-size-base) * 1.38);
 
   /* VS Code standard row heights */
-  --row-height-section-header: 32px;  /* Sidebar section headers (~25% taller than native VS Code) */
+  --row-height-section-header: 26px;  /* Sidebar section headers */
   --row-height-tree-item: 22px;
 
   /* Icon Sizes */

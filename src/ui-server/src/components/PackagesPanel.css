@@ -16,8 +16,8 @@
 .packages-tabs {
   display: flex;
   gap: 0;
-  height: var(--row-height-section-header);
-  min-height: var(--row-height-section-header);
+  height: 26px;
+  min-height: 26px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
