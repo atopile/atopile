@@ -210,7 +210,6 @@ function TypeGroupHeader({ type, count, isExpanded, onToggle, depth }: TypeGroup
       label={label}
       count={count}
       depth={depth}
-      isGroupHeader={true}
       tabIndex={0}
       role="treeitem"
       ariaExpanded={isExpanded}

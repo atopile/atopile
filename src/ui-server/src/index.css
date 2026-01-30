@@ -103,45 +103,18 @@
   display: none;
 }
 
+/* stdlib-group-header - inherits from TreeRowHeader.css
+   Only add panel-specific overrides here, not base row styling */
 .stdlib-group-header {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  width: 100%;
-  padding: 2px 4px;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  letter-spacing: 0.15px;
-  text-align: left;
-  line-height: 1.1;
-  cursor: pointer;
-  transition: background var(--transition-fast);
+  /* Base styling comes from .tree-row-header in TreeRowHeader.css */
 }
 
-.stdlib-group-header:hover {
-  background: var(--bg-hover);
-}
-
-.stdlib-group-header .group-chevron {
-  color: var(--text-muted);
-}
-
-.stdlib-group-header .group-icon {
-  display: flex;
-}
-
-.stdlib-group-header .group-label {
-  flex: 1;
-}
-
+/* Legacy selectors - no longer needed as TreeRowHeader handles this */
+.stdlib-group-header .group-chevron,
+.stdlib-group-header .group-icon,
+.stdlib-group-header .group-label,
 .stdlib-group-header .group-count {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  font-weight: normal;
+  /* Handled by TreeRowHeader component */
 }
 
 .stdlib-group-items {
@@ -170,11 +143,9 @@
   background: transparent;
 }
 
+/* stdlib-card-header - inherits from TreeRowHeader.css */
 .stdlib-card-header {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  line-height: 1.1;
+  /* Base styling comes from .tree-row-header in TreeRowHeader.css */
 }
 
 .stdlib-expand-icon {
