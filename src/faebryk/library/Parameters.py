@@ -213,7 +213,10 @@ class is_parameter_operatable(fabll.Node):
                 no_class_suffix=no_class_suffix,
             )
 
-        assert False
+        # Fallback for nodes with is_parameter_operatable trait but no
+        # is_parameter or is_expression (e.g., UnitExpression)
+        obj = fabll.Traits(self).get_obj_raw()
+        return f"<compact_repr fallback: {obj.get_full_name(types=True)}>"
 
     def __rich_repr__(self):
         """Yield values for rich text display (compact repr and full type name)."""
