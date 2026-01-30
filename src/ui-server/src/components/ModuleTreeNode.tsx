@@ -150,7 +150,6 @@ export function ModuleTreeNode({
         </span>
         <span
           className={`module-tree-type ${itemType === 'parameter' && !child.spec ? 'unconstrained' : ''} ${typeTruncated ? 'truncated' : ''}`}
-          style={{ color: itemType === 'parameter' ? 'var(--ctp-subtext0)' : config.color }}
           title={typeTruncated ? displayValue : undefined}
         >
           {displayType}
@@ -212,7 +211,7 @@ function TypeGroupHeader({ type, count, isExpanded, onToggle, depth }: TypeGroup
       <span className="module-tree-icon" style={{ color: config.color }}>
         <Icon size={12} />
       </span>
-      <span className="module-tree-group-label" style={{ color: config.color }}>
+      <span className="module-tree-group-label">
         {label}
       </span>
       <span className="module-tree-group-count">({count})</span>

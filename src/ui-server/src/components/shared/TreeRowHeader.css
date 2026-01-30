@@ -16,6 +16,7 @@
   transition: background 0.1s ease;
   font-family: var(--font-sans);
   font-size: var(--font-size-sm);
+  text-transform: none;
 }
 
 .tree-row-header:hover {

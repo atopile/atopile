@@ -3,7 +3,7 @@ import {
   ChevronDown, ChevronRight, Box, Zap, Cpu,
   Cable, Hash, Search
 } from 'lucide-react'
-import { CopyableCodeBlock, PanelSearchBox, TreeRowHeader } from './shared'
+import { CopyableCodeBlock, PanelSearchBox } from './shared'
 
 // Standard library item types
 type StdLibType = 'interface' | 'module' | 'component' | 'trait' | 'parameter'
@@ -302,15 +302,20 @@ export function StandardLibraryPanel({
             
             return (
               <div key={type} className={`stdlib-group ${isCollapsed ? 'collapsed' : ''}`}>
-                <TreeRowHeader
-                  className="stdlib-group-header group-header"
-                  isExpandable={true}
-                  isExpanded={!isCollapsed}
+                <button
+                  className="stdlib-group-header"
                   onClick={() => toggleGroup(type)}
-                  icon={<Icon size={12} style={{ color: config.color }} />}
-                  label={`${config.label}s`}
-                  count={items.length}
-                />
+                  style={{ '--group-color': config.color } as React.CSSProperties}
+                >
+                  <span className="group-chevron">
+                    {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                  </span>
+                  <span className="group-icon" style={{ color: config.color }}>
+                    <Icon size={12} />
+                  </span>
+                  <span className="group-label">{config.label}s</span>
+                  <span className="group-count">({items.length})</span>
+                </button>
                 {!isCollapsed && (
                   <div className="stdlib-group-items">
                     {items.map(item => (

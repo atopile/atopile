@@ -96,10 +96,59 @@
   margin-bottom: 2px;
 }
 
-/* Stdlib group header - extends TreeRowHeader */
-/* Base styles are in shared/TreeRowHeader.css */
 .stdlib-group-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   width: 100%;
+  /* Match content item sizing */
+  font-family: var(--vscode-font-family, var(--font-sans));
+  font-size: var(--vscode-font-size, 13px);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  height: var(--row-height-tree-item);
+  padding: 0 var(--spacing-sm);
+  margin-bottom: 0;
+  background: none;
+  border: none;
+  color: var(--vscode-foreground, var(--text-primary));
+  cursor: pointer;
+  border-radius: 0;
+  transition: background 0.1s ease;
+}
+
+.stdlib-group-header:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+.stdlib-group-header .group-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex-shrink: 0;
+  color: var(--vscode-foreground, var(--text-primary));
+}
+
+.stdlib-group-header .group-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.stdlib-group-header .group-label {
+  color: var(--vscode-foreground, var(--text-primary));
+}
+
+.stdlib-group-header .group-count {
+  color: var(--vscode-descriptionForeground, var(--text-muted));
+  font-weight: inherit;
+  margin-left: 4px;
+}
+
+.stdlib-group.collapsed .stdlib-group-header {
+  margin-bottom: 0;
 }
 
 .stdlib-group-items {
