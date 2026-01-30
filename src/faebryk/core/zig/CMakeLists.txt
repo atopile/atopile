@@ -33,13 +33,28 @@ set(ZIG_BUILD_STAMP "${ZIG_WORKDIR}/zig-out/pyzig.build.stamp")
 set(ZIG_ENV_PREFIX "")
 set(ZIG_TARGET_ARG "")
 if (APPLE)
-  if (CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
+  # Determine target architecture:
+  # 1. Use CMAKE_OSX_ARCHITECTURES if explicitly set (cross-compile)
+  # 2. Otherwise detect native architecture
+  if (CMAKE_OSX_ARCHITECTURES)
+    set(_TARGET_ARCH "${CMAKE_OSX_ARCHITECTURES}")
+  else()
+    # Detect native architecture when not cross-compiling
+    execute_process(
+      COMMAND uname -m
+      OUTPUT_VARIABLE _TARGET_ARCH
+      OUTPUT_STRIP_TRAILING_WHITESPACE)
+  endif()
+
+  if (_TARGET_ARCH MATCHES "arm64")
     set(_ZIG_ARCH "aarch64")
     set(_MAC_DEPLOY "11.0")      # first macOS with arm64
   else()
     set(_ZIG_ARCH "x86_64")
     set(_MAC_DEPLOY "10.13")
   endif()
+
+  message(STATUS "Building for macOS ${_ZIG_ARCH} (detected arch: ${_TARGET_ARCH})")
 
   execute_process(
     COMMAND xcrun --sdk macosx --show-sdk-path
