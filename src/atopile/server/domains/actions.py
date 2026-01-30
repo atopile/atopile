@@ -417,10 +417,33 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             except Exception:
                 module_exists = False
 
+            # Check if this entry is already defined as a build target in ato.yaml
+            target_exists = False
+            try:
+                ato_file = project_path / "ato.yaml"
+                if await asyncio.to_thread(ato_file.exists):
+                    import yaml
+
+                    def read_ato_yaml():
+                        with open(ato_file, "r") as f:
+                            return yaml.safe_load(f) or {}
+
+                    data = await asyncio.to_thread(read_ato_yaml)
+                    builds = data.get("builds", {})
+                    # Check if any existing build target uses this entry
+                    target_exists = any(
+                        build.get("entry") == entry
+                        for build in builds.values()
+                        if isinstance(build, dict)
+                    )
+            except Exception:
+                target_exists = False
+
             return {
                 "success": True,
                 "file_exists": file_exists,
                 "module_exists": module_exists,
+                "target_exists": target_exists,
             }
 
         if action == "getPackageDetails":
