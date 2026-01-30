@@ -50,13 +50,15 @@ function ChevronDown({ className }: { className?: string }) {
 function TraceDetails({
   label,
   content,
-  className
+  className,
+  defaultOpen = false
 }: {
   label: string;
   content: string;
   className: string;
+  defaultOpen?: boolean;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
     <div className={`lv-trace ${className}`}>
@@ -70,6 +72,25 @@ function TraceDetails({
           dangerouslySetInnerHTML={{ __html: ansiConverter.toHtml(content) }}
         />
       )}
+    </div>
+  );
+}
+
+// Collapsible wrapper for StackInspector
+function CollapsibleStackTrace({
+  traceback,
+}: {
+  traceback: Parameters<typeof StackInspector>[0]['traceback'];
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="lv-trace lv-trace-python">
+      <button className="lv-trace-summary" onClick={() => setIsOpen(!isOpen)}>
+        <span className={`lv-trace-arrow ${isOpen ? 'open' : ''}`}>▸</span>
+        python traceback
+      </button>
+      {isOpen && <StackInspector traceback={traceback} />}
     </div>
   );
 }
@@ -163,10 +184,11 @@ function TreeNodeRow({
                 label="ato traceback"
                 content={entry.ato_traceback}
                 className="lv-trace-ato"
+                defaultOpen
               />
             )}
             {structuredTb && structuredTb.frames.length > 0 ? (
-              <StackInspector traceback={structuredTb} />
+              <CollapsibleStackTrace traceback={structuredTb} />
             ) : entry.python_traceback ? (
               <TraceDetails
                 label="python traceback"
@@ -311,10 +333,11 @@ function StandaloneLogRow({
                 label="ato traceback"
                 content={entry.ato_traceback}
                 className="lv-trace-ato"
+                defaultOpen
               />
             )}
             {structuredTb && structuredTb.frames.length > 0 ? (
-              <StackInspector traceback={structuredTb} />
+              <CollapsibleStackTrace traceback={structuredTb} />
             ) : entry.python_traceback ? (
               <TraceDetails
                 label="python traceback"
