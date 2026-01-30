@@ -1498,7 +1498,7 @@ class _UnitExpressionResolver:
     def visit(self, node: fabll.Node) -> "is_unit | None":
         if op := node.try_cast(F.Parameters.can_be_operand):
             # unwrap and try again
-            return self.visit(op.get_raw_obj())
+            return self.visit(op.get_obj_raw())
 
         if unit := node.try_get_trait(is_unit):
             # already resolved

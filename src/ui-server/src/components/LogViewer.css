@@ -409,7 +409,7 @@
 /* Column Headers - CSS Grid for static positioning */
 .lv-column-headers {
   display: grid;
-  grid-template-columns: 58px 55px 165px 1fr;
+  grid-template-columns: 58px 55px var(--lv-source-width, 100px) 1fr;
   gap: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-sm);
   background: var(--bg-tertiary);
@@ -420,15 +420,15 @@
 
 /* Compact modes for column headers */
 .lv-column-headers.lv-time-compact {
-  grid-template-columns: 48px 55px 165px 1fr;
+  grid-template-columns: 48px 55px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-column-headers.lv-level-compact {
-  grid-template-columns: 58px 24px 165px 1fr;
+  grid-template-columns: 58px 24px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-column-headers.lv-time-compact.lv-level-compact {
-  grid-template-columns: 48px 24px 165px 1fr;
+  grid-template-columns: 48px 24px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-col-header {
@@ -548,6 +548,57 @@
   border-color: var(--ctp-red);
 }
 
+/* Display container wraps expand toolbar + content */
+.lv-display-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Expand/Collapse toolbar */
+.lv-expand-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px var(--spacing-sm);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.lv-expand-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.1s ease;
+}
+
+.lv-expand-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+
+.lv-expand-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.lv-expand-icon {
+  font-family: monospace;
+  font-weight: bold;
+}
+
 /* Scrollable log content */
 .lv-content {
   flex: 1;
@@ -592,22 +643,22 @@
 
 .lv-entry-row {
   display: grid;
-  grid-template-columns: 58px 55px 165px 1fr;
+  grid-template-columns: 58px 55px var(--lv-source-width, 100px) 1fr;
   gap: var(--spacing-sm);
   align-items: flex-start;
 }
 
 /* Compact modes for entry rows - must match header */
 .lv-entry-row.lv-time-compact {
-  grid-template-columns: 48px 55px 165px 1fr;
+  grid-template-columns: 48px 55px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-entry-row.lv-level-compact {
-  grid-template-columns: 58px 24px 165px 1fr;
+  grid-template-columns: 58px 24px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-entry-row.lv-time-compact.lv-level-compact {
-  grid-template-columns: 48px 24px 165px 1fr;
+  grid-template-columns: 48px 24px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-ts {
@@ -839,7 +890,7 @@
 /* Tree row - uses same grid as regular entries */
 .lv-tree-row {
   display: grid;
-  grid-template-columns: 58px 55px 165px 1fr;
+  grid-template-columns: 58px 55px var(--lv-source-width, 100px) 1fr;
   gap: var(--spacing-sm);
   padding: 2px var(--spacing-sm);
   font-size: var(--font-size-sm);
@@ -849,15 +900,15 @@
 
 /* Compact modes for tree rows - must match header */
 .lv-tree-row.lv-time-compact {
-  grid-template-columns: 48px 55px 165px 1fr;
+  grid-template-columns: 48px 55px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-tree-row.lv-level-compact {
-  grid-template-columns: 58px 24px 165px 1fr;
+  grid-template-columns: 58px 24px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-tree-row.lv-time-compact.lv-level-compact {
-  grid-template-columns: 48px 24px 165px 1fr;
+  grid-template-columns: 48px 24px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-tree-row:hover {
@@ -1080,4 +1131,52 @@
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Logger Filter Dropdown Styles */
+.lv-logger-dropdown {
+  min-width: 140px;
+  max-width: 200px;
+}
+
+.lv-logger-actions {
+  display: flex;
+  gap: 4px;
+  padding: var(--spacing-xs);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--spacing-xs);
+}
+
+.lv-logger-action-btn {
+  flex: 1;
+  padding: 2px var(--spacing-xs);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.lv-logger-action-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.lv-logger-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lv-logger-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.lv-logger-name {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
 }
