@@ -324,11 +324,13 @@ async def _load_atopile_install_options(ctx: AppContext) -> None:
                     "actual_binary_path": ctx.ato_binary_path,  # Actual binary path
                     "source": ui_source,  # Sets the active toggle state
                     "local_path": ctx.ato_local_path,  # Path for display in UI
+                    "from_branch": ctx.ato_from_branch,  # Git branch (when installed via uv)
                 },
             )
             log.info(
                 f"[background] Actual atopile: {actual_version} from {actual_source} "
-                f"(binary: {ctx.ato_binary_path}, UI: {ui_source})"
+                f"(binary: {ctx.ato_binary_path}, UI: {ui_source}"
+                f"{', branch: ' + ctx.ato_from_branch if ctx.ato_from_branch else ''})"
             )
         except Exception as e:
             log.warning(f"[background] Could not detect actual version: {e}")
@@ -440,6 +442,7 @@ def create_app(
     ato_ui_source: Optional[str] = None,
     ato_local_path: Optional[str] = None,
     ato_binary_path: Optional[str] = None,
+    ato_from_branch: Optional[str] = None,
 ) -> FastAPI:
     """
     Create the FastAPI application with API routes for the dashboard.
@@ -472,6 +475,7 @@ def create_app(
         ato_ui_source=ato_ui_source,
         ato_local_path=ato_local_path,
         ato_binary_path=ato_binary_path,
+        ato_from_branch=ato_from_branch,
     )
     app.state.ctx = ctx
 
@@ -650,6 +654,7 @@ class DashboardServer:
         ato_ui_source: Optional[str] = None,
         ato_local_path: Optional[str] = None,
         ato_binary_path: Optional[str] = None,
+        ato_from_branch: Optional[str] = None,
     ):
         self.port = port or find_free_port()
         self.workspace_paths = workspace_paths or []
@@ -659,6 +664,7 @@ class DashboardServer:
             ato_ui_source=ato_ui_source,
             ato_local_path=ato_local_path,
             ato_binary_path=ato_binary_path,
+            ato_from_branch=ato_from_branch,
         )
         self._server: Optional[uvicorn.Server] = None
         self._thread: Optional[threading.Thread] = None
@@ -739,6 +745,11 @@ def run_server(
     port: int,
     workspace_paths: Optional[list[Path]] = None,
     force: bool = False,
+    ato_source: Optional[str] = None,
+    ato_ui_source: Optional[str] = None,
+    ato_binary_path: Optional[str] = None,
+    ato_local_path: Optional[str] = None,
+    ato_from_branch: Optional[str] = None,
 ) -> None:
     """
     Run the dashboard server.
@@ -747,6 +758,11 @@ def run_server(
         port: Port to run the server on
         workspace_paths: Workspace paths to scan for projects (defaults to cwd)
         force: Kill existing server on the port if True
+        ato_source: Source of the atopile binary (e.g., 'settings', 'local-uv')
+        ato_ui_source: UI source type ('local' or 'release')
+        ato_binary_path: Actual resolved path to the ato binary
+        ato_local_path: Local path to display in the UI (when in local mode)
+        ato_from_branch: Git branch name when installed from git via uv
 
     Exit codes:
         0 - Clean shutdown (Ctrl+C or SIGTERM)
@@ -754,7 +770,16 @@ def run_server(
         2 - Server crash (unhandled exception during operation)
     """
     try:
-        _run_server_impl(port, workspace_paths, force)
+        _run_server_impl(
+            port,
+            workspace_paths,
+            force,
+            ato_source=ato_source,
+            ato_ui_source=ato_ui_source,
+            ato_binary_path=ato_binary_path,
+            ato_local_path=ato_local_path,
+            ato_from_branch=ato_from_branch,
+        )
     except KeyboardInterrupt:
         print("\nShutting down...")
         cleanup_server()
@@ -770,6 +795,11 @@ def _run_server_impl(
     port: int,
     workspace_paths: Optional[list[Path]],
     force: bool,
+    ato_source: Optional[str] = None,
+    ato_ui_source: Optional[str] = None,
+    ato_binary_path: Optional[str] = None,
+    ato_local_path: Optional[str] = None,
+    ato_from_branch: Optional[str] = None,
 ) -> None:
     """Server implementation (called by run_server with exception handling)."""
     # Generate types if in dev environment
@@ -814,6 +844,11 @@ def _run_server_impl(
     server = DashboardServer(
         port=port,
         workspace_paths=workspace_paths,
+        ato_source=ato_source,
+        ato_ui_source=ato_ui_source,
+        ato_local_path=ato_local_path,
+        ato_binary_path=ato_binary_path,
+        ato_from_branch=ato_from_branch,
     )
 
     print(f"Starting dashboard server on http://localhost:{port}")

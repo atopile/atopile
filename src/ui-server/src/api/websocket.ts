@@ -737,10 +737,19 @@ function updateAtopileConfig(data: Record<string, unknown>): void {
     update.actualBinaryPath = actualBinaryPath;
   }
 
+  const fromBranch =
+    (typeof data.from_branch === 'string' && data.from_branch) ||
+    (typeof data.fromBranch === 'string' && data.fromBranch) ||
+    null;
+  if (fromBranch !== null) {
+    update.fromBranch = fromBranch;
+  }
+
   console.log('[WS] updateAtopileConfig received:', {
     actualVersion,
     actualSource,
     actualBinaryPath,
+    fromBranch,
     source: data.source,
     localPath: data.local_path || data.localPath,
   });

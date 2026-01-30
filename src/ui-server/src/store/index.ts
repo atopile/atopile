@@ -108,6 +108,7 @@ const initialState: AppState = {
     actualVersion: null as string | null,
     actualSource: null as string | null,
     actualBinaryPath: null as string | null,
+    fromBranch: null as string | null,  // Git branch when installed via uv from git
     // User selection state
     source: 'release' as 'release' | 'local',
     localPath: null as string | null,
@@ -588,6 +589,7 @@ export const useStore = create<Store>()(
             localPath: newAtopile.localPath,
             source: newAtopile.source,
             actualVersion: newAtopile.actualVersion,
+            fromBranch: newAtopile.fromBranch,
           });
           return { atopile: newAtopile };
         });

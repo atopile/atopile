@@ -25,7 +25,8 @@ interface AtoBinLocator {
 export const onDidChangeAtoBinInfoEvent = new EventEmitter<AtoBinInfo>();
 export const onDidChangeAtoBinInfo: Event<AtoBinInfo> = onDidChangeAtoBinInfoEvent.event;
 
-const UV_ATO_VERSION = 'atopile';
+// Default atopile installation: use the feature branch from git
+const UV_ATO_DEFAULT_FROM = 'git+https://github.com/atopile/atopile.git@feature/extension_default_ato_install';
 
 export var g_uv_path_local: string | null = null;
 
@@ -73,7 +74,6 @@ async function _getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
     }
 
     // 2. If user explicitly set atopile.from, use uv with that version
-    // This takes priority over workspace venv so user can override local development
     if (settings?.from && settings.from !== '' && g_uv_path_local) {
         traceInfo(`[findbin] User explicitly set atopile.from: ${settings.from}`);
         const uvBinLocal = await which(g_uv_path_local, { nothrow: true });
@@ -81,47 +81,21 @@ async function _getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
             traceInfo(`[findbin] Using local uv to run ato: ${uvBinLocal}`);
             traceInfo(`[findbin] Using from: ${settings.from}`);
             return {
-                command: [uvBinLocal, 'tool', 'run', '-p', '3.13', '--from', settings.from, 'ato'],
+                command: [uvBinLocal, 'tool', 'run', '-p', '3.14', '--from', settings.from, 'ato'],
                 source: 'local-uv',
             };
         }
     }
 
-    // 3. Check for local .venv/bin/ato in workspace (for local development)
-    // Only used when no explicit settings are configured
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (workspaceFolders) {
-        for (const folder of workspaceFolders) {
-            const localVenvAto = path.join(folder.uri.fsPath, '.venv', 'bin', 'ato');
-            traceInfo(`[findbin] Checking workspace venv: ${localVenvAto}`);
-            if (fs.existsSync(localVenvAto)) {
-                traceInfo(`[findbin] Found local ato in workspace venv: ${localVenvAto}`);
-                return {
-                    command: [localVenvAto],
-                    source: 'workspace-venv',
-                };
-            }
-            // Also check venv/ (without dot)
-            const localVenvAtoAlt = path.join(folder.uri.fsPath, 'venv', 'bin', 'ato');
-            if (fs.existsSync(localVenvAtoAlt)) {
-                traceInfo(`[findbin] Found local ato in workspace venv: ${localVenvAtoAlt}`);
-                return {
-                    command: [localVenvAtoAlt],
-                    source: 'workspace-venv',
-                };
-            }
-        }
-    }
-
-    // 4. Fallback: Use extension-managed uv with default atopile version
+    // 3. Default: Use extension-managed uv with atopile from git branch
     if (g_uv_path_local) {
         traceInfo(`[findbin] Checking extension-managed uv: ${g_uv_path_local}`);
         const uvBinLocal = await which(g_uv_path_local, { nothrow: true });
         if (uvBinLocal) {
             traceInfo(`[findbin] Using local uv to run ato: ${uvBinLocal}`);
-            traceInfo(`[findbin] Using from: ${UV_ATO_VERSION} (default)`);
+            traceInfo(`[findbin] Using from: ${UV_ATO_DEFAULT_FROM} (default)`);
             return {
-                command: [uvBinLocal, 'tool', 'run', '-p', '3.13', '--from', UV_ATO_VERSION, 'ato'],
+                command: [uvBinLocal, 'tool', 'run', '-p', '3.14', '--from', UV_ATO_DEFAULT_FROM, 'ato'],
                 source: 'local-uv',
             };
         }

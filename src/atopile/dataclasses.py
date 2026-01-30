@@ -1254,6 +1254,7 @@ class AppContext:
     ato_ui_source: Optional[str] = None
     ato_local_path: Optional[str] = None
     ato_binary_path: Optional[str] = None  # Actual resolved binary path
+    ato_from_branch: Optional[str] = None  # Git branch when installed via uv from git
 
     @property
     def workspace_path(self) -> Optional[Path]:

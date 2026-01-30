@@ -542,12 +542,41 @@ class BackendServerManager implements vscode.Disposable {
                 message: `Starting backend server (${atoBin.source})...`,
             });
 
-            // Determine UI source type from settings
-            // 'local' ONLY if atopile.ato is explicitly set in settings
-            // The toggle should be OFF by default even if using workspace-venv as fallback
+            // Determine UI source type based on how the binary was resolved
+            // 'local' if running from a local filesystem path (settings)
+            // 'release' if running via uv (which installs from git branch)
             let uiSourceType = 'release';
-            if (settings.ato) {
+            let localPathForUI: string | undefined;
+            let fromBranch: string | undefined;
+
+            if (atoBin.source === 'settings') {
+                // Running from a local path (explicitly configured)
                 uiSourceType = 'local';
+                localPathForUI = settings.ato || atoBin.command[0];
+            }
+
+            // Extract branch name from git URL if using uv
+            // Format: git+https://github.com/org/repo.git@branch_name
+            if (atoBin.source === 'local-uv') {
+                // First check if user explicitly set atopile.from
+                let gitUrl = settings.from;
+
+                // If not explicitly set, extract from the command (contains the --from value)
+                if (!gitUrl) {
+                    // Command format: [uv, tool, run, -p, 3.14, --from, <git_url>, ato]
+                    const fromIndex = atoBin.command.indexOf('--from');
+                    if (fromIndex !== -1 && fromIndex + 1 < atoBin.command.length) {
+                        gitUrl = atoBin.command[fromIndex + 1];
+                    }
+                }
+
+                if (gitUrl) {
+                    const gitUrlMatch = gitUrl.match(/@([^@/]+)$/);
+                    if (gitUrlMatch) {
+                        fromBranch = gitUrlMatch[1];
+                        traceInfo(`[BackendServer] Extracted branch from git URL: ${fromBranch}`);
+                    }
+                }
             }
 
             // Get the actual binary path (first element of the command)
@@ -562,6 +591,14 @@ class BackendServerManager implements vscode.Disposable {
                 '--ato-ui-source', uiSourceType,
                 '--ato-binary-path', atoBinaryPath,
             ];
+            // Pass local path if we're in local mode (for UI display)
+            if (localPathForUI) {
+                args.push('--ato-local-path', localPathForUI);
+            }
+            // Pass branch name if installed from git via uv
+            if (fromBranch) {
+                args.push('--ato-from-branch', fromBranch);
+            }
             // Pass all workspace roots to the backend
             for (const root of workspaceRoots) {
                 args.push('--workspace', root);

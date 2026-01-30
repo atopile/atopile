@@ -34,6 +34,7 @@ interface AtopileState {
   actualVersion?: string | null;
   actualSource?: string | null;
   actualBinaryPath?: string | null;
+  fromBranch?: string | null;  // Git branch when installed via uv from git
   // User selection state
   isInstalling?: boolean;
   installProgress?: {
@@ -147,11 +148,10 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
   //
   // actualSource tells us HOW the backend resolved its binary on startup:
   // - 'settings' = user explicitly configured atopile.ato → this is "explicitly local"
-  // - 'workspace-venv' = fallback to workspace venv (automatic, not user-configured)
-  // - 'uv' or other = extension-managed default
+  // - 'local-uv' = extension-managed default (installs from git branch via uv)
   //
   // Only 'settings' counts as "user explicitly configured local" because:
-  // - workspace-venv is just the default fallback for workspaces that have a venv
+  // - local-uv is the default for all users
   // - If user never configured anything, they shouldn't see restart warnings
   const isRunningExplicitlyConfigured = atopile?.actualSource === 'settings';
 
@@ -165,12 +165,11 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
       if (!atopile?.actualBinaryPath) return !!localPathInput;
       return !pathMatchesActualBinary(pathToUse);
     } else {
-      // Toggle is OFF - user wants to use default (extension-managed uv)
+      // Toggle is OFF - user wants to use default (extension-managed uv from git branch)
       // Only show restart if we're running an EXPLICITLY configured binary
       // (i.e., user previously set atopile.ato and restarted with it)
       //
-      // If actualSource is 'workspace-venv' or 'uv', that's just the default
-      // fallback for this environment, so no restart needed.
+      // If actualSource is 'local-uv', that's the default, so no restart needed.
       return isRunningExplicitlyConfigured;
     }
   })();
@@ -420,7 +419,9 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
                       <span className="health-message">
                         {useLocalAtopile
                           ? `Using local atopile v${atopile?.actualVersion || '?'}`
-                          : `Using atopile v${atopile?.actualVersion || '?'}`}
+                          : atopile?.fromBranch
+                            ? `Using atopile v${atopile?.actualVersion || '?'} (${atopile.fromBranch})`
+                            : `Using atopile v${atopile?.actualVersion || '?'}`}
                       </span>
                     </>
                   )}
@@ -457,7 +458,9 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
                 <span className="settings-hint">
                   {useLocalAtopile
                     ? 'Using a local installation from filesystem'
-                    : 'Using the standard atopile from PyPI'}
+                    : atopile?.fromBranch
+                      ? `Using atopile from branch: ${atopile.fromBranch}`
+                      : 'Using the standard atopile from PyPI'}
                 </span>
               </div>
 

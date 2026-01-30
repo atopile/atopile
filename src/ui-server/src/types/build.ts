@@ -486,6 +486,7 @@ export interface AppState {
     actualVersion: string | null;
     actualSource: string | null;
     actualBinaryPath: string | null;
+    fromBranch: string | null;  // Git branch when installed via uv from git
     // User selection state
     source: 'release' | 'local';
     localPath: string | null;

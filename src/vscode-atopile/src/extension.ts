@@ -60,6 +60,17 @@ class atopileUriHandler implements vscode.UriHandler {
         } else if (path === "/restartExtensionHost") {
             traceInfo('restartExtensionHost - restarting extension host');
             vscode.commands.executeCommand('workbench.action.restartExtensionHost');
+        } else if (path === "/promptRestart") {
+            traceInfo('promptRestart - showing restart prompt');
+            vscode.window.showInformationMessage(
+                'atopile extension has been updated. Restart to apply changes.',
+                'Restart Now',
+                'Later'
+            ).then(selection => {
+                if (selection === 'Restart Now') {
+                    vscode.commands.executeCommand('workbench.action.restartExtensionHost');
+                }
+            });
         }
     }
 }

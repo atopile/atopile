@@ -1129,15 +1129,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const target = hasWorkspace ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
 
     try {
-      // Only manage atopile.ato setting - never touch atopile.from
-      // When local mode is on with a path, set ato; otherwise clear it
+      // Manage both atopile.ato and atopile.from settings
       if (atopile.source === 'local' && atopile.localPath) {
+        // Local mode: set ato path, clear from setting
         traceInfo(`[SidebarProvider] Setting atopile.ato = ${atopile.localPath}`);
         await config.update('ato', atopile.localPath, target);
+        traceInfo(`[SidebarProvider] Clearing atopile.from (local mode)`);
+        await config.update('from', undefined, target);
       } else {
-        // Clear ato setting to fall back to extension-managed uv
-        traceInfo(`[SidebarProvider] Clearing atopile.ato (using uv fallback)`);
+        // Release mode: clear both settings so the default (git branch) is used
+        traceInfo(`[SidebarProvider] Clearing atopile.ato (using default from git branch)`);
         await config.update('ato', undefined, target);
+        traceInfo(`[SidebarProvider] Clearing atopile.from (using default from git branch)`);
+        await config.update('from', undefined, target);
       }
       traceInfo(`[SidebarProvider] Atopile settings saved. User must restart to apply.`);
     } catch (error) {
