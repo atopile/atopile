@@ -1189,7 +1189,7 @@ class MutationMap:
                 ):
                     # Preserve the location-based name before it's lost
                     p_old_obj = fabll.Traits(p_old_p).get_obj_raw()
-                    p_new_p.set_name(p_old_obj.get_name())
+                    p_new_p.set_name(p_old_obj.get_full_name())
 
         nodes_uuids = {p.instance.node().get_uuid() for p in relevant}
 
@@ -1706,7 +1706,7 @@ class Mutator:
             is None
         ):
             # Preserve the location-based name before it's lost
-            new_param_p.set_name(param_obj.get_name())
+            new_param_p.set_name(param_obj.get_full_name())
 
         for trait_t in (is_relevant, is_irrelevant):
             MutatorUtils.try_copy_trait(self.G_out, param, new_param_p, trait_t)

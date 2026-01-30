@@ -608,7 +608,7 @@ class MutatorUtils:
         else:
             raise TypeError(f"Unknown parameter type: {p_type_repr}")
         new_p = new.is_parameter.get()
-        new_p.set_name(f"Merge({', '.join([p.get_name() for p in params])})")
+        new_p.set_name(f"Merge({', '.join([p.get_full_name() for p in params])})")
         return new_p
 
     @staticmethod

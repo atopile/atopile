@@ -1224,8 +1224,8 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def get_name(self, accept_no_parent: bool = True, with_detail: bool = False) -> str:
         from faebryk.library.has_name_override import has_name_override
 
-        if self.has_trait(has_name_override):
-            return self.get_trait(has_name_override).get_name(with_detail=with_detail)
+        if (has_name := self.try_get_trait(has_name_override)) is not None:
+            return has_name.get_name(with_detail=with_detail)
         elif (parent := self.get_parent()) is not None:
             return parent[1]
         elif accept_no_parent:
@@ -1523,16 +1523,23 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         fbrk.TypeGraph.copy_node_into(start_node=self.instance, target_graph=g)
         return self.bind_instance(instance=g.bind(node=self.instance.node()))
 
-    def get_full_name(self, types: bool = False, include_uuid: bool = True) -> str:
+    def get_full_name(
+        self, types: bool = False, include_uuid: bool = True, with_detail: bool = False
+    ) -> str:
         """
         Returns node name + heirarchy
         """
+        from faebryk.library.has_name_override import has_name_override
+
+        if (has_name := self.try_get_trait(has_name_override)) is not None:
+            return has_name.get_name(with_detail=with_detail)
+
         parts: list[str] = []
         if (parent := self.get_parent()) is not None:
             parent_node, name = parent
             if not parent_node.no_include_parents_in_full_name:
                 if parent_full := parent_node.get_full_name(
-                    types=types, include_uuid=include_uuid
+                    types=types, include_uuid=include_uuid, with_detail=with_detail
                 ):
                     parts.append(parent_full)
             if name:
