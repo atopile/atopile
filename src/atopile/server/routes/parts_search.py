@@ -110,12 +110,21 @@ async def get_part_details(lcsc_id: str):
 
 @router.get("/api/parts/{lcsc_id}/footprint.kicad_pcb")
 @router.get("/api/parts/{lcsc_id}/footprint")
-async def get_part_footprint(lcsc_id: str):
-    """Return the footprint wrapped in a kicad_pcb file for kicanvas viewing."""
+async def get_part_footprint(
+    lcsc_id: str,
+    project_root: Optional[str] = Query(
+        None, description="Project root for local lookup"
+    ),
+):
+    """Return the footprint wrapped in a kicad_pcb file for kicanvas viewing.
+
+    If project_root is provided, uses locally installed part files for faster loading.
+    """
     try:
         data = await asyncio.to_thread(
             parts_domain.handle_get_part_footprint,
             lcsc_id,
+            project_root,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -129,12 +138,21 @@ async def get_part_footprint(lcsc_id: str):
 
 
 @router.get("/api/parts/{lcsc_id}/model")
-async def get_part_model(lcsc_id: str):
-    """Return the STEP 3D model for a part."""
+async def get_part_model(
+    lcsc_id: str,
+    project_root: Optional[str] = Query(
+        None, description="Project root for local lookup"
+    ),
+):
+    """Return the STEP 3D model for a part.
+
+    If project_root is provided, uses locally installed part files for faster loading.
+    """
     try:
         result = await asyncio.to_thread(
             parts_domain.handle_get_part_model,
             lcsc_id,
+            project_root,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -169,7 +187,7 @@ async def install_part(payload: InstallPartRequest):
             payload.lcsc_id,
             payload.project_root,
         )
-        # Emit parts_changed event so UI refreshes
+        # Emit parts_changed event with part data for incremental UI update
         server_state = get_server_state()
         await server_state.emit_event(
             "parts_changed",
@@ -177,6 +195,16 @@ async def install_part(payload: InstallPartRequest):
                 "project_root": payload.project_root,
                 "lcsc_id": payload.lcsc_id,
                 "installed": True,
+                # Include part data so frontend can update incrementally
+                "part": {
+                    "identifier": result.get("identifier"),
+                    "path": result.get("path"),
+                    "lcsc": payload.lcsc_id,
+                    "manufacturer": result.get("manufacturer", ""),
+                    "mpn": result.get("mpn", ""),
+                    "datasheet_url": result.get("datasheet_url"),
+                    "description": result.get("description", ""),
+                },
             },
         )
         return InstallPartResponse(

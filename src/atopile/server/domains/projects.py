@@ -143,7 +143,9 @@ def _collect_dependency_sources(
     return sources
 
 
-def _build_dependencies(project_path: Path) -> list[DependencyInfo]:
+def _build_dependencies(
+    project_path: Path, *, skip_registry: bool = False
+) -> list[DependencyInfo]:
     direct_specs = _read_project_config_dependencies(project_path)
     direct_identifiers = [dep.identifier for dep in direct_specs if dep.identifier]
     direct_identifiers_set = set(direct_identifiers)
@@ -154,11 +156,15 @@ def _build_dependencies(project_path: Path) -> list[DependencyInfo]:
     modules_root = project_path / ".ato" / "modules"
     dependencies: list[DependencyInfo] = []
 
-    try:
-        registry_packages = packages_domain.get_all_registry_packages()
-    except Exception:
-        registry_packages = []
-    registry_by_id = {pkg.identifier: pkg for pkg in registry_packages}
+    # Skip registry fetch for fast local-only operations (e.g., uninstall)
+    if skip_registry:
+        registry_by_id: dict[str, packages_domain.PackageInfo] = {}
+    else:
+        try:
+            registry_packages = packages_domain.get_all_registry_packages()
+        except Exception:
+            registry_packages = []
+        registry_by_id = {pkg.identifier: pkg for pkg in registry_packages}
 
     for dep in direct_specs:
         identifier = dep.identifier

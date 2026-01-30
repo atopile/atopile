@@ -25,6 +25,10 @@ _LOG = logging.getLogger(__name__)
 _rate_lock = threading.Lock()
 _last_request_ts = 0.0
 
+# DNS cache to avoid resolution on every request (50-200ms savings)
+_dns_cache: tuple[list[str], float] | None = None
+_DNS_CACHE_TTL = 300.0  # 5 minutes
+
 _JLC_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -42,14 +46,24 @@ _JLC_HEADERS = {
 
 
 def _rate_limit(rps: float = _DEFAULT_RPS) -> None:
+    """Rate limit requests without blocking other threads."""
     min_interval = 1.0 / max(rps, 0.1)
+    global _last_request_ts
+
+    # Calculate wait time while holding lock, but sleep outside
     with _rate_lock:
-        global _last_request_ts
         now = time.time()
         wait_s = min_interval - (now - _last_request_ts)
         if wait_s > 0:
-            time.sleep(wait_s)
-        _last_request_ts = time.time()
+            # Reserve our slot by advancing the timestamp
+            _last_request_ts = now + wait_s
+        else:
+            _last_request_ts = now
+            wait_s = 0
+
+    # Sleep outside the lock so other threads aren't blocked
+    if wait_s > 0:
+        time.sleep(wait_s)
 
 
 def _resolve_ipv4(host: str, port: int) -> list[str]:
@@ -62,11 +76,24 @@ def _resolve_ipv4(host: str, port: int) -> list[str]:
     return list({addr[0] for *_rest, addr in infos})
 
 
+def _resolve_ipv4_cached(host: str, port: int) -> list[str]:
+    """Cached DNS resolution to avoid 50-200ms lookup on every request."""
+    global _dns_cache
+    now = time.time()
+    if _dns_cache is not None:
+        cached_ips, expires_at = _dns_cache
+        if now < expires_at:
+            return cached_ips
+
+    ips = _resolve_ipv4(host, port)
+    result = ips if ips else [host]
+    _dns_cache = (result, now + _DNS_CACHE_TTL)
+    return result
+
+
 def _post_jlc(payload: dict[str, Any], timeout_s: float, debug: bool) -> dict[str, Any]:
     host = "jlcpcb.com"
-    ips = _resolve_ipv4(host, 443)
-    if not ips:
-        ips = [host]
+    ips = _resolve_ipv4_cached(host, 443)
 
     last_error: Exception | None = None
     timeout = httpx.Timeout(timeout_s, connect=min(2.0, timeout_s))
@@ -183,7 +210,6 @@ def _serialize_part(product: dict[str, Any]) -> dict:
 
 
 def _fetch_jlc_response(payload: dict[str, Any]) -> dict[str, Any]:
-    url = f"{_JLC_BASE_URL}{_JLC_SEARCH_PATH}"
     last_error: Exception | None = None
     timeout_s = float(os.getenv("ATOPILE_JLC_TIMEOUT_S", str(_REQUEST_TIMEOUT_S)))
     rps = float(os.getenv("ATOPILE_JLC_RPS", str(_DEFAULT_RPS)))

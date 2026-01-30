@@ -114,6 +114,12 @@ export interface SelectedPart {
   datasheet_url?: string;
   image_url?: string;
   installed?: boolean;
+  // Optional fields that may be available from search results (for progressive loading)
+  stock?: number | null;
+  unit_cost?: number | null;
+  is_basic?: boolean;
+  is_preferred?: boolean;
+  attributes?: Record<string, string>;
 }
 
 /**

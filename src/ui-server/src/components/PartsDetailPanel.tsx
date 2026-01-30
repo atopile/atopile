@@ -46,9 +46,34 @@ export function PartsDetailPanel({
 
   useEffect(() => {
     let active = true
+
+    // Check if we already have complete data (from search results)
+    const hasCompleteData = part.stock != null && part.unit_cost != null && part.attributes != null
+
+    if (hasCompleteData) {
+      // Use the data we already have
+      setDetails({
+        lcsc: part.lcsc,
+        mpn: part.mpn,
+        manufacturer: part.manufacturer,
+        description: part.description || '',
+        package: part.package || '',
+        datasheet_url: part.datasheet_url || '',
+        image_url: part.image_url,
+        stock: part.stock!,
+        unit_cost: part.unit_cost!,
+        is_basic: part.is_basic || false,
+        is_preferred: part.is_preferred || false,
+        price: [],
+        attributes: part.attributes || {},
+      })
+      setIsLoading(false)
+      return
+    }
+
+    // Fetch additional details
     setIsLoading(true)
     setError(null)
-    setDetails(null)
     api.parts.details(part.lcsc)
       .then((response) => {
         if (!active) return
@@ -66,12 +91,25 @@ export function PartsDetailPanel({
     return () => {
       active = false
     }
-  }, [part.lcsc])
+  }, [part.lcsc, part.stock, part.unit_cost, part.attributes])
+
+  // Merge part props with fetched details (part props as fallback, details as primary)
+  const mergedDetails = useMemo(() => {
+    return {
+      stock: details?.stock ?? part.stock,
+      unit_cost: details?.unit_cost ?? part.unit_cost,
+      is_basic: details?.is_basic ?? part.is_basic,
+      is_preferred: details?.is_preferred ?? part.is_preferred,
+      attributes: details?.attributes ?? part.attributes,
+      package: details?.package ?? part.package,
+      datasheet_url: details?.datasheet_url ?? part.datasheet_url,
+    }
+  }, [details, part])
 
   const attributes = useMemo(() => {
-    if (!details?.attributes) return []
-    return Object.entries(details.attributes).slice(0, 12)
-  }, [details?.attributes])
+    if (!mergedDetails.attributes) return []
+    return Object.entries(mergedDetails.attributes).slice(0, 12)
+  }, [mergedDetails.attributes])
 
   // Cooldown timestamp to debounce rapid clicking
   const cooldownUntil = useRef(0)
@@ -153,178 +191,186 @@ export function PartsDetailPanel({
         </div>
       </div>
 
-      {isLoading && (
-        <div className="detail-panel-loading">
-          <Loader2 size={24} className="spin" />
-          <span>Loading part details...</span>
-        </div>
-      )}
-
-      {!isLoading && error && (
+      {error && (
         <div className="detail-panel-error">
           <AlertCircle size={18} />
           <span>{error}</span>
         </div>
       )}
 
-      {!isLoading && !error && (
-        <div className="detail-panel-content">
-          <div className="parts-detail-grid">
-            <div className="parts-detail-section">
-              <div className="detail-install-row">
-                <button
-                  className={`detail-install-btn ${
-                    isInstalled ? 'uninstall' : 'install'
-                  } ${(isInstalling || isUninstalling) ? 'installing' : ''}`}
-                  onClick={isInstalled ? handleUninstall : handleInstall}
-                  disabled={isInstalling || isUninstalling}
-                >
-                  {(isInstalling || isUninstalling) ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" />
-                      {isInstalled ? 'Uninstalling...' : 'Installing...'}
-                    </>
-                  ) : (
-                    <>
-                      <Download size={14} />
-                      {isInstalled ? 'Uninstall' : 'Install'}
-                    </>
-                  )}
-                </button>
+      <div className="detail-panel-content">
+        <div className="parts-detail-grid">
+          <div className="parts-detail-section">
+            <div className="detail-install-row">
+              <button
+                className={`detail-install-btn ${
+                  isInstalled ? 'uninstall' : 'install'
+                } ${(isInstalling || isUninstalling) ? 'installing' : ''}`}
+                onClick={isInstalled ? handleUninstall : handleInstall}
+                disabled={isInstalling || isUninstalling}
+              >
+                {(isInstalling || isUninstalling) ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    {isInstalled ? 'Uninstalling...' : 'Installing...'}
+                  </>
+                ) : (
+                  <>
+                    <Download size={14} />
+                    {isInstalled ? 'Uninstall' : 'Install'}
+                  </>
+                )}
+              </button>
+            </div>
+            {actionError && (
+              <div className="detail-install-error">
+                <AlertCircle size={12} />
+                <span>{actionError}</span>
               </div>
-              {actionError && (
-                <div className="detail-install-error">
-                  <AlertCircle size={12} />
-                  <span>{actionError}</span>
+            )}
+          </div>
+          <div className="detail-section parts-detail-section">
+            <div className="parts-detail-section-title">Overview</div>
+            <dl className="detail-info-list">
+              <div className="detail-info-row">
+                <dt>Manufacturer</dt>
+                <dd className="detail-info-value">{displayManufacturer || '-'}</dd>
+              </div>
+              <div className="detail-info-row">
+                <dt>MPN</dt>
+                <dd className="detail-info-value">{displayMpn}</dd>
+              </div>
+              <div className="detail-info-row">
+                <dt>LCSC</dt>
+                <dd className="detail-info-value">
+                  <span className="detail-info-mono">{part.lcsc}</span>
+                </dd>
+              </div>
+              <div className="detail-info-row">
+                <dt>Package</dt>
+                <dd className="detail-info-value">
+                  <span className="detail-info-mono">{mergedDetails.package || '-'}</span>
+                </dd>
+              </div>
+              <div className="detail-info-row">
+                <dt>Stock</dt>
+                <dd className="detail-info-value">
+                  {isLoading && mergedDetails.stock == null ? (
+                    <Loader2 size={12} className="parts-spinner" />
+                  ) : (
+                    formatStock(mergedDetails.stock)
+                  )}
+                </dd>
+              </div>
+              <div className="detail-info-row">
+                <dt>Unit price</dt>
+                <dd className="detail-info-value">
+                  {isLoading && mergedDetails.unit_cost == null ? (
+                    <Loader2 size={12} className="parts-spinner" />
+                  ) : (
+                    formatCurrency(mergedDetails.unit_cost)
+                  )}
+                </dd>
+              </div>
+              <div className="detail-info-row">
+                <dt>Type</dt>
+                <dd className="detail-info-value">
+                  {isLoading && mergedDetails.is_basic == null && mergedDetails.is_preferred == null ? (
+                    <Loader2 size={12} className="parts-spinner" />
+                  ) : (
+                    <span className={`parts-type-badge ${mergedDetails.is_basic ? 'basic' : mergedDetails.is_preferred ? 'preferred' : 'extended'}`}>
+                      {mergedDetails.is_basic ? 'Basic' : mergedDetails.is_preferred ? 'Preferred' : 'Extended'}
+                    </span>
+                  )}
+                </dd>
+              </div>
+              {(mergedDetails.datasheet_url || part.datasheet_url) && (
+                <div className="detail-info-row">
+                  <dt>Datasheet</dt>
+                  <dd className="detail-info-value">
+                    <button
+                      className="parts-detail-link"
+                      onClick={() => postMessage({ type: 'openInSimpleBrowser', url: (mergedDetails.datasheet_url || part.datasheet_url)! })}
+                    >
+                      Datasheet <ExternalLink size={12} />
+                    </button>
+                  </dd>
                 </div>
               )}
-            </div>
-            <div className="detail-section parts-detail-section">
-              <div className="parts-detail-section-title">Overview</div>
+            </dl>
+          </div>
+
+          <div className="detail-section parts-detail-section">
+            <div className="parts-detail-section-title">Attributes</div>
+            {isLoading && attributes.length === 0 ? (
+              <div className="detail-empty"><Loader2 size={12} className="parts-spinner" /> Loading...</div>
+            ) : attributes.length === 0 ? (
+              <div className="detail-empty">None</div>
+            ) : (
               <dl className="detail-info-list">
-                <div className="detail-info-row">
-                  <dt>Manufacturer</dt>
-                  <dd className="detail-info-value">{displayManufacturer || '-'}</dd>
-                </div>
-                <div className="detail-info-row">
-                  <dt>MPN</dt>
-                  <dd className="detail-info-value">{displayMpn}</dd>
-                </div>
-                <div className="detail-info-row">
-                  <dt>LCSC</dt>
-                  <dd className="detail-info-value">
-                    <span className="detail-info-mono">{part.lcsc}</span>
-                  </dd>
-                </div>
-                <div className="detail-info-row">
-                  <dt>Package</dt>
-                  <dd className="detail-info-value">
-                    <span className="detail-info-mono">{details?.package || part.package || '-'}</span>
-                  </dd>
-                </div>
-                <div className="detail-info-row">
-                  <dt>Stock</dt>
-                  <dd className="detail-info-value">{formatStock(details?.stock)}</dd>
-                </div>
-                <div className="detail-info-row">
-                  <dt>Unit price</dt>
-                  <dd className="detail-info-value">{formatCurrency(details?.unit_cost)}</dd>
-                </div>
-                <div className="detail-info-row">
-                  <dt>Type</dt>
-                  <dd className="detail-info-value">
-                    <span className={`parts-type-badge ${details?.is_basic ? 'basic' : details?.is_preferred ? 'preferred' : 'extended'}`}>
-                      {details?.is_basic ? 'Basic' : details?.is_preferred ? 'Preferred' : 'Extended'}
-                    </span>
-                  </dd>
-                </div>
-                {details?.datasheet_url && (
-                  <div className="detail-info-row">
-                    <dt>Datasheet</dt>
+                {attributes.map(([key, value]) => (
+                  <div key={key} className="detail-info-row">
+                    <dt>{key}</dt>
                     <dd className="detail-info-value">
-                      <button
-                        className="parts-detail-link"
-                        onClick={() => postMessage({ type: 'openInSimpleBrowser', url: details.datasheet_url! })}
-                      >
-                        Datasheet <ExternalLink size={12} />
-                      </button>
+                      <span className="detail-info-mono">
+                        {typeof value === 'string' ? value : JSON.stringify(value)}
+                      </span>
                     </dd>
                   </div>
-                )}
+                ))}
               </dl>
-            </div>
+            )}
+          </div>
 
-            <div className="detail-section parts-detail-section">
-              <div className="parts-detail-section-title">Attributes</div>
-              {attributes.length === 0 && (
-                <div className="detail-empty">None</div>
-              )}
-              {attributes.length > 0 && (
-                <dl className="detail-info-list">
-                  {attributes.map(([key, value]) => (
-                    <div key={key} className="detail-info-row">
-                      <dt>{key}</dt>
-                      <dd className="detail-info-value">
-                        <span className="detail-info-mono">
-                          {typeof value === 'string' ? value : JSON.stringify(value)}
-                        </span>
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              )}
+          <div className="parts-visual-section">
+            <div className="parts-visual-tabs">
+              <button
+                className={`parts-visual-tab ${activeVisualTab === 'image' ? 'active' : ''}`}
+                onClick={() => setActiveVisualTab('image')}
+              >
+                <Image size={14} />
+                Image
+              </button>
+              <button
+                className={`parts-visual-tab ${activeVisualTab === 'footprint' ? 'active' : ''}`}
+                onClick={() => setActiveVisualTab('footprint')}
+              >
+                <Layers size={14} />
+                Footprint
+              </button>
+              <button
+                className={`parts-visual-tab ${activeVisualTab === '3d' ? 'active' : ''}`}
+                onClick={() => setActiveVisualTab('3d')}
+              >
+                <Cuboid size={14} />
+                3D Model
+              </button>
             </div>
-
-            <div className="parts-visual-section">
-              <div className="parts-visual-tabs">
-                <button
-                  className={`parts-visual-tab ${activeVisualTab === 'image' ? 'active' : ''}`}
-                  onClick={() => setActiveVisualTab('image')}
-                >
-                  <Image size={14} />
-                  Image
-                </button>
-                <button
-                  className={`parts-visual-tab ${activeVisualTab === 'footprint' ? 'active' : ''}`}
-                  onClick={() => setActiveVisualTab('footprint')}
-                >
-                  <Layers size={14} />
-                  Footprint
-                </button>
-                <button
-                  className={`parts-visual-tab ${activeVisualTab === '3d' ? 'active' : ''}`}
-                  onClick={() => setActiveVisualTab('3d')}
-                >
-                  <Cuboid size={14} />
-                  3D Model
-                </button>
-              </div>
-              <div className="parts-visual-content">
-                {activeVisualTab === 'image' ? (
-                  imageUrl ? (
-                    <img src={imageUrl} alt={displayMpn} className="parts-visual-image" />
-                  ) : (
-                    <div className="parts-visual-empty">No image available</div>
-                  )
-                ) : activeVisualTab === 'footprint' ? (
-                  <KiCanvasEmbed
-                    src={`${API_URL}/api/parts/${encodeURIComponent(part.lcsc)}/footprint.kicad_pcb`}
-                    controls="basic"
-                    controlslist="nodownload"
-                    theme="kicad"
-                    zoom="objects"
-                    hideReferences
-                  />
+            <div className="parts-visual-content">
+              {activeVisualTab === 'image' ? (
+                imageUrl ? (
+                  <img src={imageUrl} alt={displayMpn} className="parts-visual-image" />
                 ) : (
-                  <StepViewer
-                    src={`${API_URL}/api/parts/${encodeURIComponent(part.lcsc)}/model`}
-                  />
-                )}
-              </div>
+                  <div className="parts-visual-empty">No image available</div>
+                )
+              ) : activeVisualTab === 'footprint' ? (
+                <KiCanvasEmbed
+                  src={`${API_URL}/api/parts/${encodeURIComponent(part.lcsc)}/footprint.kicad_pcb${projectRoot ? `?project_root=${encodeURIComponent(projectRoot)}` : ''}`}
+                  controls="basic"
+                  controlslist="nodownload"
+                  theme="kicad"
+                  zoom="objects"
+                  hideReferences
+                />
+              ) : (
+                <StepViewer
+                  src={`${API_URL}/api/parts/${encodeURIComponent(part.lcsc)}/model${projectRoot ? `?project_root=${encodeURIComponent(projectRoot)}` : ''}`}
+                />
+              )}
             </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

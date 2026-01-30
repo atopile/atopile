@@ -7,6 +7,7 @@ import { ArrowDown, ArrowUp, CheckCircle, Loader2, Package, PackageSearch, Searc
 import type { PartSearchItem, InstalledPartItem } from '../types/build'
 import type { SelectedPart } from './sidebar-modules'
 import { api } from '../api/client'
+import { useStore } from '../store'
 import { PanelSearchBox } from './shared'
 import './PartsSearchPanel.css'
 
@@ -81,28 +82,53 @@ export function PartsSearchPanel({
 
     let active = true
     setInstalledLoading(true)
+
+    const store = useStore.getState()
+
     api.parts.installed(selectedProjectRoot)
       .then((response) => {
         if (!active) return
         const parts = response.parts || []
 
-        // Determine which parts need enrichment
-        const lcscIds = parts
+        // Apply cached enrichment data and determine which parts still need fetching
+        const partsWithCache = parts.map((p) => {
+          if (!p.lcsc || (p.stock != null && p.unit_cost != null)) return p
+          const cached = store.getEnrichedPart(p.lcsc)
+          if (cached) {
+            return { ...p, stock: cached.stock, unit_cost: cached.unit_cost }
+          }
+          return p
+        })
+
+        // Determine which parts still need enrichment (not in cache)
+        const lcscIdsToFetch = partsWithCache
           .filter((p) => p.lcsc && (p.stock == null || p.unit_cost == null))
           .map((p) => p.lcsc!)
 
         // Show parts immediately with spinners for those being enriched
-        const enrichingSet = new Set(lcscIds.map((id) => id.toUpperCase()))
+        const enrichingSet = new Set(lcscIdsToFetch.map((id) => id.toUpperCase()))
         setEnrichingLcscs(enrichingSet)
-        setInstalledParts(parts)
+        setInstalledParts(partsWithCache)
         setInstalledLoading(false)
 
-        // Start enrichment in background
-        if (lcscIds.length > 0) {
-          api.parts.lcsc(lcscIds, { projectRoot: selectedProjectRoot })
+        // Fetch enrichment for parts not in cache
+        if (lcscIdsToFetch.length > 0) {
+          api.parts.lcsc(lcscIdsToFetch, { projectRoot: selectedProjectRoot })
             .then((enrichResponse) => {
               if (!active) return
               const enrichedParts = enrichResponse.parts || {}
+
+              // Store in cache for future use
+              const toCache: Record<string, { stock: number; unit_cost: number }> = {}
+              for (const [key, data] of Object.entries(enrichedParts)) {
+                if (data && data.stock != null && data.unit_cost != null) {
+                  toCache[key] = { stock: data.stock, unit_cost: data.unit_cost }
+                }
+              }
+              if (Object.keys(toCache).length > 0) {
+                useStore.getState().setEnrichedParts(toCache)
+              }
+
               setInstalledParts((prev) =>
                 prev.map((part) => {
                   if (!part.lcsc) return part
@@ -143,19 +169,71 @@ export function PartsSearchPanel({
     }
   }, [selectedProjectRoot])
 
-  // Listen for parts_changed events to refresh installed parts list
+  // Listen for parts_changed events for incremental updates (avoid full refresh)
   useEffect(() => {
-    const handlePartsChanged = (event: CustomEvent<{ projectRoot?: string; lcscId?: string; installed?: boolean }>) => {
-      // Only refresh if the event is for our project
-      if (selectedProjectRoot && event.detail.projectRoot === selectedProjectRoot) {
-        // Refetch installed parts
+    interface PartsChangedDetail {
+      projectRoot?: string
+      lcscId?: string
+      installed?: boolean
+      part?: InstalledPartItem
+    }
+
+    const handlePartsChanged = (event: CustomEvent<PartsChangedDetail>) => {
+      const { projectRoot, lcscId, installed, part } = event.detail
+
+      // Only handle if the event is for our project
+      if (!selectedProjectRoot || projectRoot !== selectedProjectRoot) return
+
+      // If we don't have lcscId, fall back to full refresh
+      if (!lcscId) {
         api.parts.installed(selectedProjectRoot)
-          .then((response) => {
-            setInstalledParts(response.parts || [])
+          .then((response) => setInstalledParts(response.parts || []))
+          .catch((error) => console.warn('Failed to refresh installed parts:', error))
+        return
+      }
+
+      if (installed && part) {
+        // Part was installed - add it to the list
+        setInstalledParts((prev) => {
+          // Check if already exists (avoid duplicates)
+          const exists = prev.some((p) => p.lcsc?.toUpperCase() === lcscId.toUpperCase())
+          if (exists) return prev
+          return [...prev, part]
+        })
+
+        // Mark for enrichment and fetch stock/price
+        setEnrichingLcscs((prev) => new Set([...prev, lcscId.toUpperCase()]))
+        api.parts.lcsc([lcscId], { projectRoot: selectedProjectRoot })
+          .then((enrichResponse) => {
+            const enriched = enrichResponse.parts?.[lcscId.toUpperCase()]
+            if (enriched && enriched.stock != null && enriched.unit_cost != null) {
+              // Store in cache
+              useStore.getState().setEnrichedParts({
+                [lcscId.toUpperCase()]: { stock: enriched.stock, unit_cost: enriched.unit_cost }
+              })
+
+              setInstalledParts((prev) =>
+                prev.map((p) =>
+                  p.lcsc?.toUpperCase() === lcscId.toUpperCase()
+                    ? { ...p, stock: enriched.stock, unit_cost: enriched.unit_cost }
+                    : p
+                )
+              )
+            }
           })
-          .catch((error) => {
-            console.warn('Failed to refresh installed parts:', error)
+          .catch((err) => console.warn('Failed to enrich new part:', err))
+          .finally(() => {
+            setEnrichingLcscs((prev) => {
+              const next = new Set(prev)
+              next.delete(lcscId.toUpperCase())
+              return next
+            })
           })
+      } else {
+        // Part was uninstalled - remove it from the list
+        setInstalledParts((prev) =>
+          prev.filter((p) => p.lcsc?.toUpperCase() !== lcscId.toUpperCase())
+        )
       }
     }
 
@@ -175,6 +253,7 @@ export function PartsSearchPanel({
     }
 
     const requestId = ++searchRequestId.current
+    // 450ms debounce to reduce API calls while typing
     const timer = setTimeout(() => {
       setSearchLoading(true)
       setSearchError(null)
@@ -195,7 +274,7 @@ export function PartsSearchPanel({
           if (requestId !== searchRequestId.current) return
           setSearchLoading(false)
         })
-    }, 250)
+    }, 450)
 
     return () => clearTimeout(timer)
   }, [searchQuery])
@@ -376,6 +455,12 @@ export function PartsSearchPanel({
                         datasheet_url: part.datasheet_url,
                         image_url: part.image_url || undefined,
                         installed: isInstalled,
+                        // Pass data we already have for immediate display
+                        stock: part.stock,
+                        unit_cost: part.unit_cost,
+                        is_basic: part.is_basic,
+                        is_preferred: part.is_preferred,
+                        attributes: part.attributes,
                       })}
                     >
                       <span className="parts-cell parts-cell-primary">
@@ -459,6 +544,9 @@ export function PartsSearchPanel({
                           datasheet_url: part.datasheet_url || undefined,
                           image_url: part.image_url || undefined,
                           installed: true,
+                          // Pass enriched data if available
+                          stock: part.stock,
+                          unit_cost: part.unit_cost,
                         })
                       }}
                     >
