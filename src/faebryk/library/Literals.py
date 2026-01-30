@@ -3789,8 +3789,12 @@ class Numbers(fabll.Node):
         """
         from faebryk.library.Units import is_unit
 
-        scale = is_unit._extract_multiplier(self.get_is_unit())
-        offset = is_unit._extract_offset(self.get_is_unit())
+        unit = self.get_is_unit()
+        if unit is None:
+            return self
+
+        scale = is_unit._extract_multiplier(unit)
+        offset = is_unit._extract_offset(unit)
 
         # Generate a numeric set for the scale
         scale_numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
@@ -4781,13 +4785,13 @@ class Numbers(fabll.Node):
 
             if max_val == math.inf:
                 if min_val == -math.inf:
-                    return "any"
+                    return "ℝ"
                 if min_val == 0:
-                    return "any ≥0"
+                    return "ℝ+"
                 return f"≥{f(min_val, scale)}"
             if min_val == -math.inf:
                 if max_val == 0:
-                    return "any ≤0"
+                    return "ℝ⁻"
                 return f"≤{f(max_val, scale)}"
 
             # Calculate relative tolerance for finite, non-zero-centered intervals

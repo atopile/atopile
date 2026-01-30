@@ -62,6 +62,8 @@ class EventType(StrEnum):
     # Data state changes - client should refetch
     PROJECTS_CHANGED = "projects_changed"
     PACKAGES_CHANGED = "packages_changed"
+    PACKAGES_DOWNLOADS_UPDATED = "packages_downloads_updated"
+    PARTS_CHANGED = "parts_changed"
     STDLIB_CHANGED = "stdlib_changed"
     BOM_CHANGED = "bom_changed"
     VARIABLES_CHANGED = "variables_changed"
@@ -75,6 +77,9 @@ class EventType(StrEnum):
 
     # Configuration changes
     ATOPILE_CONFIG_CHANGED = "atopile_config_changed"
+
+    # Package integrity
+    PACKAGE_MODIFIED = "package_modified"
 
     # Shared UI state
     LOG_VIEW_CURRENT_ID_CHANGED = "log_view_current_id_changed"
@@ -655,6 +660,7 @@ class DependencyInfo(BaseModel):
     has_update: bool = False
     is_direct: bool = False
     via: Optional[list[str]] = None
+    status: Optional[str] = None
 
 
 class DependenciesResponse(BaseModel):
@@ -924,6 +930,22 @@ class PackageActionResponse(CamelModel):
     success: bool
     message: str
     action: str  # 'install', 'update', 'remove'
+
+
+class SyncPackagesRequest(CamelModel):
+    """Request to sync packages for a project."""
+
+    project_root: str
+    force: bool = False  # If True, overwrite locally modified packages
+
+
+class SyncPackagesResponse(CamelModel):
+    """Response from sync packages action."""
+
+    success: bool
+    message: str
+    operation_id: Optional[str] = None  # For tracking async operation status
+    modified_packages: Optional[list[str]] = None  # Packages that were modified
 
 
 class PackageInfoVeryBrief(CamelModel):

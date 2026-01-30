@@ -25,9 +25,12 @@ export interface ContextMenuTarget {
 interface FileContextMenuProps {
   position: ContextMenuPosition;
   target: ContextMenuTarget;
+  selectedPaths?: Set<string>;
+  projectRoot?: string | null;
   onClose: () => void;
   onStartRename: (relativePath: string) => void;
   onDuplicate: (relativePath: string) => void;
+  onDeleteSelected?: () => void;
 }
 
 interface MenuItem {
@@ -38,7 +41,16 @@ interface MenuItem {
   isDanger?: boolean;
 }
 
-export function FileContextMenu({ position, target, onClose, onStartRename, onDuplicate }: FileContextMenuProps) {
+export function FileContextMenu({
+  position,
+  target,
+  selectedPaths,
+  projectRoot: _projectRoot,
+  onClose,
+  onStartRename,
+  onDuplicate,
+  onDeleteSelected,
+}: FileContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Close menu when clicking outside
@@ -116,9 +128,15 @@ export function FileContextMenu({ position, target, onClose, onStartRename, onDu
   }, [target.relativePath, onStartRename, onClose]);
 
   const handleDelete = useCallback(() => {
-    postToExtension({ type: 'deleteFile', path: target.path });
+    // If multiple items are selected, delete all of them
+    if (onDeleteSelected && selectedPaths && selectedPaths.size > 1) {
+      onDeleteSelected();
+    } else {
+      // Single item delete
+      postToExtension({ type: 'deleteFile', path: target.path });
+    }
     onClose();
-  }, [target.path, onClose]);
+  }, [target.path, onClose, onDeleteSelected, selectedPaths]);
 
   const handleDuplicate = useCallback(() => {
     onDuplicate(target.relativePath);
@@ -207,7 +225,9 @@ export function FileContextMenu({ position, target, onClose, onStartRename, onDu
       onClick: handleDuplicate,
     },
     {
-      label: 'Delete',
+      label: selectedPaths && selectedPaths.size > 1
+        ? `Delete ${selectedPaths.size} Items`
+        : 'Delete',
       icon: <Trash2 size={14} />,
       shortcut: isMac ? '⌘⌫' : 'Delete',
       onClick: handleDelete,

@@ -3,7 +3,7 @@
  */
 
 import AnsiToHtml from 'ansi-to-html';
-import { SOURCE_COLORS, LogEntry, TreeNode, LogTreeGroup, TimeMode } from './logTypes';
+import { SOURCE_COLORS, LogEntry, TreeNode, LogTreeGroup, TimeMode, SourceMode } from './logTypes';
 import type { StructuredTraceback } from '../StackInspector';
 import { highlightMatches, createSearchMatcher, SearchOptions } from '../../utils/searchUtils';
 
@@ -246,4 +246,47 @@ export function getStoredSetting<T>(key: string, defaultValue: T, validator?: (v
     return stored as unknown as T;
   }
   return defaultValue;
+}
+
+// Character width estimation for monospace font at font-size-xs (~11px)
+const CHAR_WIDTH_PX = 6.2;
+const SOURCE_BADGE_PADDING_PX = 8; // padding + border
+const MIN_SOURCE_WIDTH_PX = 60;
+const MAX_SOURCE_WIDTH_PX = 200;
+
+/**
+ * Calculate the pixel width needed to fit a string in the source column.
+ * Uses monospace font width estimation.
+ */
+export function estimateTextWidth(text: string): number {
+  return text.length * CHAR_WIDTH_PX + SOURCE_BADGE_PADDING_PX;
+}
+
+/**
+ * Calculate the maximum source column width needed for a set of logs.
+ * Considers both source mode (filename:line) and logger mode (short logger name).
+ */
+export function calculateSourceColumnWidth(
+  logs: LogEntry[],
+  mode: SourceMode
+): number {
+  let maxWidth = MIN_SOURCE_WIDTH_PX;
+
+  for (const log of logs) {
+    let text: string;
+    if (mode === 'source') {
+      // filename:line format
+      const source = formatSource(log.source_file, log.source_line);
+      text = source || '—';
+    } else {
+      // Short logger name (last segment)
+      text = log.logger_name?.split('.').pop() || '—';
+    }
+    const width = estimateTextWidth(text);
+    if (width > maxWidth) {
+      maxWidth = width;
+    }
+  }
+
+  return Math.min(maxWidth, MAX_SOURCE_WIDTH_PX);
 }

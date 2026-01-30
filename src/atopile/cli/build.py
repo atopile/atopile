@@ -19,6 +19,7 @@ from atopile.logging import get_logger
 from atopile.logging_utils import BuildPrinter, print_subprocess_output
 from atopile.model.build_queue import BuildQueue
 from atopile.telemetry import capture
+from faebryk.libs.package.meta import PackageModifiedError
 
 logger = get_logger(__name__)
 
@@ -46,8 +47,6 @@ def discover_projects(root: Path) -> list[Path]:
         projects.append(path.parent)
 
     return sorted(projects)
-
-
 
 
 def _run_build_queue(
@@ -88,7 +87,6 @@ def _run_build_queue(
     )
 
     with BuildPrinter(verbose=verbose) as printer:
-
         # For verbose mode, stream subprocess output to console
         if verbose:
             # Buffer output until the build header is printed to keep ordering.
@@ -120,7 +118,9 @@ def _run_build_queue(
                     build.status in (BuildStatus.BUILDING, *TERMINAL_STATUSES)
                     and build_id not in started
                 ):
-                    printer.build_started(build_id, display_name, total=build.total_stages)
+                    printer.build_started(
+                        build_id, display_name, total=build.total_stages
+                    )
                     started.add(build_id)
                     if verbose:
                         _flush_pending(build_id)
@@ -139,7 +139,9 @@ def _run_build_queue(
                     )
                     reported.add(build_id)
 
-        results = queue.wait_for_builds(build_ids, on_update=on_update, poll_interval=0.1)
+        results = queue.wait_for_builds(
+            build_ids, on_update=on_update, poll_interval=0.1
+        )
 
         # Print build summary boxes after all builds complete
         completed_builds = [
@@ -164,7 +166,7 @@ def _run_single_build() -> None:
     from atopile import buildutil
     from atopile.buildutil import BuildStepContext
     from atopile.config import config
-    from atopile.errors import UserException, iter_leaf_exceptions
+    from atopile.errors import iter_leaf_exceptions
     from atopile.model.sqlite import BuildHistory
 
     # Get the single build target from config
@@ -275,7 +277,9 @@ def _build_all_projects(
             Build(
                 build_id=build_id,
                 name=build_name,
-                display_name=f"{project_name}/{build_name}" if project_name else build_name,
+                display_name=f"{project_name}/{build_name}"
+                if project_name
+                else build_name,
                 project_root=project_path,
                 project_name=project_name,
                 target=build_name,
@@ -421,21 +425,25 @@ def build(
         )
 
         # Install dependencies if needed (same as single project mode)
-        deps = ProjectDependencies(sync_versions=False)
-        if deps.not_installed_dependencies:
-            logger.info("Installing missing dependencies")
-            for dep in deps.not_installed_dependencies:
-                try:  # protect against parallel worker race condition
-                    assert dep.dist is not None
-                    from faebryk.libs.project.dependencies import _log_add_package
+        try:
+            deps = ProjectDependencies(sync_versions=True)
+            if deps.not_installed_dependencies:
+                logger.info("Installing missing dependencies")
+                for dep in deps.not_installed_dependencies:
+                    try:  # protect against parallel worker race condition
+                        assert dep.dist is not None
+                        from faebryk.libs.project.dependencies import _log_add_package
 
-                    _log_add_package(dep.identifier, dep.dist.version)
-                    dep.dist.install(dep.target_path)
-                except FileExistsError:
-                    logger.debug(
-                        f"Dependency {dep.identifier} already exists at "
-                        f"{dep.target_path}"
-                    )
+                        _log_add_package(dep.identifier, dep.dist.version)
+                        dep.dist.install(dep.target_path)
+                    except FileExistsError:
+                        logger.debug(
+                            f"Dependency {dep.identifier} already exists at "
+                            f"{dep.target_path}"
+                        )
+        except PackageModifiedError as e:
+            logger.error(str(e))
+            raise typer.Exit(1)
 
         _run_single_build()
         return
@@ -469,10 +477,14 @@ def build(
         keep_designators=keep_designators,
     )
 
-    deps = ProjectDependencies(sync_versions=False)
-    if deps.not_installed_dependencies:
-        logger.info("Installing missing dependencies")
-        deps.install_missing_dependencies()
+    try:
+        deps = ProjectDependencies(sync_versions=True)
+        if deps.not_installed_dependencies:
+            logger.info("Installing missing dependencies")
+            deps.install_missing_dependencies()
+    except PackageModifiedError as e:
+        logger.error(str(e))
+        raise typer.Exit(1)
 
     if open_layout is not None:
         config.project.open_layout_on_build = open_layout

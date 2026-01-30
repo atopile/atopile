@@ -4,7 +4,7 @@
  * Uses shared log-viewer modules for consistent behavior with LogViewer.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   LOG_LEVELS,
   LogLevel,
@@ -16,6 +16,9 @@ import {
   LogDisplay,
   ChevronDown,
   getStoredSetting,
+  LoggerFilter,
+  loadEnabledLoggers,
+  calculateSourceColumnWidth,
 } from './log-viewer';
 import './LogViewer.css';
 
@@ -43,6 +46,9 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
 
+  // Logger filter state - persisted in localStorage (shared with LogViewer)
+  const [enabledLoggers, setEnabledLoggers] = useState<Set<string> | null>(() => loadEnabledLoggers());
+
   // Display toggles
   const [levelFull, setLevelFull] = useState(() =>
     getStoredSetting('lv-levelFull', false)
@@ -54,6 +60,10 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
     getStoredSetting('lv-sourceMode', 'source' as SourceMode, v => v === 'source' || v === 'logger')
   );
   const [autoScroll, setAutoScroll] = useState(true);
+
+  // Expand/collapse all state - start collapsed
+  const [allExpanded, setAllExpanded] = useState(false);
+  const [expandKey, setExpandKey] = useState(0);
 
   // Level dropdown
   const [levelDropdownOpen, setLevelDropdownOpen] = useState(false);
@@ -156,8 +166,27 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
     setAutoScroll(value);
   }, []);
 
+  const handleExpandAll = useCallback(() => {
+    setAllExpanded(true);
+    setExpandKey(k => k + 1);
+  }, []);
+
+  const handleCollapseAll = useCallback(() => {
+    setAllExpanded(false);
+    setExpandKey(k => k + 1);
+  }, []);
+
+  // Calculate dynamic source column width based on content
+  const sourceColumnWidth = useMemo(
+    () => calculateSourceColumnWidth(logs, sourceMode),
+    [logs, sourceMode]
+  );
+
   return (
-    <div className="lv-container">
+    <div
+      className="lv-container"
+      style={{ '--lv-source-width': `${sourceColumnWidth}px` } as React.CSSProperties}
+    >
       {/* Toolbar */}
       <div className="lv-toolbar">
         <div className="lv-controls">
@@ -204,6 +233,13 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
                 </div>
               )}
             </div>
+
+            {/* Logger filter dropdown */}
+            <LoggerFilter
+              logs={logs}
+              enabledLoggers={enabledLoggers}
+              onEnabledLoggersChange={setEnabledLoggers}
+            />
           </div>
 
           <div className="lv-controls-right">
@@ -298,6 +334,7 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
         logs={logs}
         search={search}
         sourceFilter={sourceFilter}
+        enabledLoggers={enabledLoggers}
         levelFull={levelFull}
         timeMode={timeMode}
         sourceMode={sourceMode}
@@ -306,6 +343,10 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
         onAutoScrollChange={handleAutoScrollChange}
         setLevelFull={setLevelFull}
         setTimeMode={setTimeMode}
+        allExpanded={allExpanded}
+        expandKey={expandKey}
+        onExpandAll={handleExpandAll}
+        onCollapseAll={handleCollapseAll}
       />
     </div>
   );

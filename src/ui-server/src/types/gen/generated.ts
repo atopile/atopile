@@ -596,6 +596,7 @@ export interface DependencyInfo {
     name:           string;
     publisher:      string;
     repository?:    null | string;
+    status?:        null | string;
     version:        string;
     via?:           string[] | null;
     [property: string]: any;
@@ -689,7 +690,10 @@ export enum EventType {
     Open3D = "open_3d",
     OpenKicad = "open_kicad",
     OpenLayout = "open_layout",
+    PackageModified = "package_modified",
     PackagesChanged = "packages_changed",
+    PackagesDownloadsUpdated = "packages_downloads_updated",
+    PartsChanged = "parts_changed",
     ProblemsChanged = "problems_changed",
     ProjectDependenciesChanged = "project_dependencies_changed",
     ProjectFilesChanged = "project_files_changed",
@@ -701,4 +705,24 @@ export enum EventType {
 
 export enum EventMessageType {
     Event = "event",
+}
+
+/**
+ * Request to sync packages for a project.
+ */
+export interface SyncPackagesRequest {
+    force?:      boolean;
+    projectRoot: string;
+    [property: string]: any;
+}
+
+/**
+ * Response from sync packages action.
+ */
+export interface SyncPackagesResponse {
+    message:           string;
+    modifiedPackages?: string[] | null;
+    operationId?:      null | string;
+    success:           boolean;
+    [property: string]: any;
 }

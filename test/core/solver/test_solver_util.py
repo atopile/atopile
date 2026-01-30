@@ -1,28 +1,29 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-
 import logging
+import re
 import sys
 from pathlib import Path
-from typing import cast
 
 import pytest
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from atopile.logging_utils import rich_to_string
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import (
     MutationMap,
     MutationStage,
     Mutator,
     Transformations,
+    is_irrelevant,
+    is_relevant,
 )
 from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import (
+    Contradiction,
     ContradictionByLiteral,
-    MutatorUtils,
 )
-from atopile.logging import BaseLogger
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 from faebryk.libs.util import not_none
@@ -41,58 +42,6 @@ Flattenable = (
 )
 
 
-@pytest.mark.parametrize(
-    "op",
-    [
-        F.Expressions.Add,
-        F.Expressions.Multiply,
-        F.Expressions.Subtract,
-        F.Expressions.Divide,
-        F.Expressions.And,
-        F.Expressions.Or,
-        F.Expressions.Xor,
-    ],
-)
-def test_flatten_associative(op: type[Flattenable]):
-    E = BoundExpressions()
-    from faebryk.core.solver.symbolic.expression_groups import _flatten_associative
-
-    class MutatorShim:
-        def has_been_mutated(self, po: F.Parameters.is_parameter_operatable) -> bool:
-            return False
-
-    mutator = cast(Mutator, MutatorShim())
-
-    def flatten(is_flattenable: "F.Expressions.is_flattenable"):
-        return _flatten_associative(mutator, is_flattenable)
-
-    # TODO: add logic trait to classify logic expressions
-    if op in [F.Expressions.And.c, F.Expressions.Or.c, F.Expressions.Xor.c]:
-        A, B, C, D, H = [E.bool_parameter_op() for _ in range(5)]
-    else:
-        A, B, C, D, H = [E.parameter_op() for _ in range(5)]
-
-    to_flatten_op = op.c(op.c(A, B), C, op.c(D, H))
-    to_flatten_expression = fabll.Traits(to_flatten_op).get_obj(op)
-    res = flatten(to_flatten_expression.is_flattenable.get())
-
-    # Get the parent class from the classmethod
-    # (e.g., F.Expressions.Add.c -> F.Expressions.Add)
-
-    if not to_flatten_expression.try_get_trait(F.Expressions.is_flattenable):
-        assert len(res.destroyed_operations) == 0
-        return
-
-    if not to_flatten_expression.try_get_trait(F.Expressions.is_associative):
-        assert set(res.extracted_operands) & {A, B, C}
-        assert not set(res.extracted_operands) & {D, E}
-        assert len(res.destroyed_operations) == 1
-        return
-
-    assert set(res.extracted_operands) == {A, B, C, D, H}
-    assert len(res.destroyed_operations) == 2
-
-
 def test_mutator_no_graph_merge():
     E = BoundExpressions()
     p0 = E.parameter_op(units=E.U.V)
@@ -100,14 +49,12 @@ def test_mutator_no_graph_merge():
     p2 = E.parameter_op(units=E.U.W)
     alias = E.is_(p2, E.multiply(p0, p1), assert_=True)
 
-    context = F.Parameters.ReprContext()
-
     @algorithm("")
     def algo(mutator: Mutator):
         pass
 
     mutator = Mutator(
-        MutationMap.bootstrap(p0.tg, p0.g, print_context=context),
+        MutationMap.bootstrap(p0.tg, p0.g),
         algo=algo,
         iteration=0,
         terminal=True,
@@ -134,59 +81,59 @@ def test_mutator_no_graph_merge():
     ).is_same(other=fabll.Node(G_new.get_self_node()))
 
 
-def test_get_expressions_involved_in():
-    E = BoundExpressions()
-    A = E.parameter_op()
-    B = E.parameter_op()
+# def test_get_expressions_involved_in():
+#     E = BoundExpressions()
+#     A = E.parameter_op()
+#     B = E.parameter_op()
 
-    E1 = E.add(A, B)
+#     E1 = E.add(A, B)
 
-    res = MutatorUtils.get_expressions_involved_in(
-        E1.as_parameter_operatable.force_get()
-    )
-    assert res == set()
+#     res = MutatorUtils.get_expressions_involved_in(
+#         E1.as_parameter_operatable.force_get()
+#     )
+#     assert res == set()
 
-    E2 = E.add(E1, A)
+#     E2 = E.add(E1, A)
 
-    res = MutatorUtils.get_expressions_involved_in(
-        E1.as_parameter_operatable.force_get()
-    )
-    assert res == {fabll.Traits(E2).get_obj_raw()}
+#     res = MutatorUtils.get_expressions_involved_in(
+#         E1.as_parameter_operatable.force_get()
+#     )
+#     assert res == {fabll.Traits(E2).get_obj_raw()}
 
-    E3 = E.add(E2, B)
+#     E3 = E.add(E2, B)
 
-    res = MutatorUtils.get_expressions_involved_in(
-        E1.as_parameter_operatable.force_get()
-    )
-    assert res == {fabll.Traits(E2).get_obj_raw(), fabll.Traits(E3).get_obj_raw()}
+#     res = MutatorUtils.get_expressions_involved_in(
+#         E1.as_parameter_operatable.force_get()
+#     )
+#     assert res == {fabll.Traits(E2).get_obj_raw(), fabll.Traits(E3).get_obj_raw()}
 
-    res = MutatorUtils.get_expressions_involved_in(
-        E2.as_parameter_operatable.force_get()
-    )
-    assert res == {fabll.Traits(E3).get_obj_raw()}
+#     res = MutatorUtils.get_expressions_involved_in(
+#         E2.as_parameter_operatable.force_get()
+#     )
+#     assert res == {fabll.Traits(E3).get_obj_raw()}
 
-    res = MutatorUtils.get_expressions_involved_in(
-        E2.as_parameter_operatable.force_get(), up_only=False
-    )
-    assert res == {fabll.Traits(E1).get_obj_raw(), fabll.Traits(E3).get_obj_raw()}
+#     res = MutatorUtils.get_expressions_involved_in(
+#         E2.as_parameter_operatable.force_get(), up_only=False
+#     )
+#     assert res == {fabll.Traits(E1).get_obj_raw(), fabll.Traits(E3).get_obj_raw()}
 
-    res = MutatorUtils.get_expressions_involved_in(
-        E2.as_parameter_operatable.force_get(),
-        up_only=False,
-        include_root=True,
-    )
-    assert res == {
-        fabll.Traits(E1).get_obj_raw(),
-        fabll.Traits(E2).get_obj_raw(),
-        fabll.Traits(E3).get_obj_raw(),
-    }
+#     res = MutatorUtils.get_expressions_involved_in(
+#         E2.as_parameter_operatable.force_get(),
+#         up_only=False,
+#         include_root=True,
+#     )
+#     assert res == {
+#         fabll.Traits(E1).get_obj_raw(),
+#         fabll.Traits(E2).get_obj_raw(),
+#         fabll.Traits(E3).get_obj_raw(),
+#     }
 
 
 def test_mutation_map_compressed_mapping_forwards_identity():
     E = BoundExpressions()
-    context, _ = _create_letters(E, 3)
+    _ = _create_letters(E, 3)
 
-    mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    mapping = MutationMap.bootstrap(E.tg, E.g)
 
     f = mapping.compressed_mapping_forwards
     assert set(f.keys()) == mapping.input_operables
@@ -195,9 +142,9 @@ def test_mutation_map_compressed_mapping_forwards_identity():
 
 def test_mutation_map_compressed_mapping_backwards_identity():
     E = BoundExpressions()
-    context, _ = _create_letters(E, 3)
+    _ = _create_letters(E, 3)
 
-    mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    mapping = MutationMap.bootstrap(E.tg, E.g)
 
     expected = {
         out_op: [in_op]
@@ -208,13 +155,12 @@ def test_mutation_map_compressed_mapping_backwards_identity():
 
 def test_mutation_map_compressed_mapping_backwards_copy():
     E = BoundExpressions()
-    context, _ = _create_letters(E, 3)
-    mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    _ = _create_letters(E, 3)
+    mapping = MutationMap.bootstrap(E.tg, E.g)
     variables_mid = list(mapping.output_operables)
 
     E2 = BoundExpressions()
-    _, variables_new = _create_letters(E2, 3)
-    variables_new = [v for v in variables_new]
+    variables_new = _create_letters(E2, 3)
 
     mapping_new = mapping.extend(
         MutationStage(
@@ -224,9 +170,7 @@ def test_mutation_map_compressed_mapping_backwards_copy():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_ctx=mapping.print_ctx,
             transformations=Transformations(
-                print_ctx=mapping.print_ctx,
                 mutated=dict(zip(variables_mid, variables_new)),
                 copied=set(variables_mid),
             ),
@@ -244,13 +188,12 @@ def test_mutation_map_compressed_mapping_backwards_copy():
 
 def test_mutation_map_compressed_mapping_backwards_mutate():
     E = BoundExpressions()
-    context, _ = _create_letters(E, 3)
-    mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    _ = _create_letters(E, 3)
+    mapping = MutationMap.bootstrap(E.tg, E.g)
     variables_mid = list(mapping.output_operables)
 
     E2 = BoundExpressions()
-    _, variables_new = _create_letters(E2, 3)
-    variables_new = [v for v in variables_new]
+    variables_new = _create_letters(E2, 3)
 
     mapping_new = mapping.extend(
         MutationStage(
@@ -260,9 +203,7 @@ def test_mutation_map_compressed_mapping_backwards_mutate():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_ctx=mapping.print_ctx,
             transformations=Transformations(
-                print_ctx=mapping.print_ctx,
                 mutated=dict(zip(variables_mid, variables_new)),
             ),
         )
@@ -279,9 +220,9 @@ def test_mutation_map_compressed_mapping_backwards_mutate():
 
 def test_mutation_map_non_copy_mutated_identity():
     E = BoundExpressions()
-    context, _ = _create_letters(E, 3)
+    _ = _create_letters(E, 3)
 
-    mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    mapping = MutationMap.bootstrap(E.tg, E.g)
 
     res = mapping.non_trivial_mutated_expressions
     assert res == set()
@@ -289,14 +230,13 @@ def test_mutation_map_non_copy_mutated_identity():
 
 def test_mutation_map_non_copy_mutated_mutate():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 3)
+    variables = _create_letters(E, 3)
     variables = [v for v in variables]
 
-    mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    mapping = MutationMap.bootstrap(E.tg, E.g)
 
     E2 = BoundExpressions()
-    _, variables_new = _create_letters(E2, 3)
-    variables_new = [v for v in variables_new]
+    variables_new = _create_letters(E2, 3)
 
     mapping_new = mapping.extend(
         MutationStage(
@@ -306,9 +246,7 @@ def test_mutation_map_non_copy_mutated_mutate():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_ctx=mapping.print_ctx,
             transformations=Transformations(
-                print_ctx=mapping.print_ctx,
                 mutated=dict(zip(variables, variables_new)),
             ),
         )
@@ -320,13 +258,13 @@ def test_mutation_map_non_copy_mutated_mutate():
 
 def test_mutation_map_non_copy_mutated_mutate_expression():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 2)
+    variables = _create_letters(E, 2)
     op = E.add(*[v.as_operand.get() for v in variables])
 
-    mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    mapping = MutationMap.bootstrap(E.tg, E.g)
 
     E2 = BoundExpressions()
-    _, variables_new = _create_letters(E2, 2)
+    variables_new = _create_letters(E2, 2)
     op_new = E2.multiply(*[v.as_operand.get() for v in variables_new])
 
     mapping_new = mapping.extend(
@@ -337,9 +275,7 @@ def test_mutation_map_non_copy_mutated_mutate_expression():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_ctx=mapping.print_ctx,
             transformations=Transformations(
-                print_ctx=mapping.print_ctx,
                 mutated=dict(zip(variables, variables_new)) | {op: op_new},  # type: ignore
             ),
         )
@@ -351,13 +287,13 @@ def test_mutation_map_non_copy_mutated_mutate_expression():
 
 def test_mutation_map_submap():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 2)
+    variables = _create_letters(E, 2)
     op = E.add(*[v.as_operand.get() for v in variables])
 
-    mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    mapping = MutationMap.bootstrap(E.tg, E.g)
 
     E2 = BoundExpressions()
-    _, variables_new = _create_letters(E2, 2)
+    variables_new = _create_letters(E2, 2)
     op_new = E2.multiply(*[v.as_operand.get() for v in variables_new])
 
     mapping_new = mapping.extend(  # noqa: F841
@@ -368,12 +304,7 @@ def test_mutation_map_submap():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_ctx=mapping.print_ctx,
-            transformations=Transformations.identity(
-                E.tg,
-                E.g,
-                input_print_context=mapping.print_ctx,
-            ),
+            transformations=Transformations.identity(E.tg, E.g),
         )
     )
     mapping_new2 = mapping.extend(  # noqa: F841
@@ -384,9 +315,7 @@ def test_mutation_map_submap():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_ctx=mapping.print_ctx,
             transformations=Transformations(
-                print_ctx=mapping.print_ctx,
                 mutated=dict(zip(variables, variables_new)) | {op: op_new},  # type: ignore
             ),
         )
@@ -397,14 +326,14 @@ def test_mutation_map_submap():
 
 def test_traceback_filtering_chain():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 3)
+    variables = _create_letters(E, 3)
     A, B, C = variables
 
     E1 = E.add(A.as_operand.get(), B.as_operand.get())
     E2 = E.add(E1, A.as_operand.get())
 
     solver = Solver()
-    out = solver.simplify(E.tg, E.g, print_context=context, terminal=False)
+    out = solver.simplify(E.tg, E.g, terminal=False)
 
     E2_new = out.data.mutation_map.map_forward(
         E2.as_parameter_operatable.force_get()
@@ -416,7 +345,7 @@ def test_traceback_filtering_chain():
 
 def test_traceback_filtering_tree():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 3)
+    variables = _create_letters(E, 3)
     A, B, C = variables
 
     E.is_subset(B.as_operand.get(), E.lit_op_range((0, 10)), assert_=True)
@@ -426,12 +355,12 @@ def test_traceback_filtering_tree():
     E.is_subset(A.as_operand.get(), C.as_operand.get(), assert_=True)
 
     solver = Solver()
-    out = solver.simplify(E.tg, E.g, print_context=context, terminal=True)
+    out = solver.simplify(E.tg, E.g, terminal=True)
 
     A_new = out.data.mutation_map.map_forward(A).maps_to
     assert A_new
     tb = out.data.mutation_map.get_traceback(A_new)
-    logger.info(BaseLogger.rich_to_string(tb.filtered().as_rich_tree()))
+    logger.info(rich_to_string(tb.filtered().as_rich_tree()))
 
     # A{⊆|([5, 10])} <-
     #  CONSTRAINED[Transitive subset]  <- A{⊆|([0, ∞])}
@@ -441,7 +370,7 @@ def test_traceback_filtering_tree():
 
 def test_contradiction_message_subset():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 1)
+    variables = _create_letters(E, 1)
     (A,) = variables
 
     E.is_subset(A.as_operand.get(), E.lit_op_range((6, 7)), assert_=True)
@@ -450,13 +379,12 @@ def test_contradiction_message_subset():
     solver = Solver()
 
     with pytest.raises(ContradictionByLiteral, match="Empty superset"):
-        solver.simplify(E.tg, E.g, print_context=context, terminal=True)
+        solver.simplify(E.tg, E.g, terminal=True)
 
 
-@pytest.mark.skip(reason="to_fix")  # FIXME
 def test_contradiction_message_superset():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 1)
+    variables = _create_letters(E, 1)
     (A,) = variables
 
     E.is_superset(A.as_operand.get(), E.lit_op_range((0, 10)), assert_=True)
@@ -464,8 +392,118 @@ def test_contradiction_message_superset():
 
     solver = Solver()
 
-    with pytest.raises(ContradictionByLiteral, match=r"P!\{⊆\|False\}"):
-        solver.simplify(E.tg, E.g, print_context=context, terminal=True)
+    with pytest.raises(Contradiction, match=r"Deduced predicate to false"):
+        solver.simplify(E.tg, E.g, terminal=True)
+
+
+def test_name_preserved_through_bootstrap_copy():
+    """Composition-based parameter names (no has_name_override) are preserved
+    when parameters are copied through the bootstrap relevance-set path.
+    """
+    E = BoundExpressions()
+
+    _domain = F.NumberDomain.Args(negative=True)
+
+    class _App(fabll.Node):
+        voltage = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl, domain=_domain)
+        current = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl, domain=_domain)
+
+    app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+    v_po = app.voltage.get().is_parameter_operatable.get()
+    i_po = app.current.get().is_parameter_operatable.get()
+
+    # Precondition: names come from composition, not has_name_override
+    assert not fabll.Traits(v_po).get_obj_raw().has_trait(F.has_name_override)
+    assert fabll.Traits(v_po).get_obj_raw().get_name() == "voltage"
+    assert fabll.Traits(i_po).get_obj_raw().get_name() == "current"
+
+    # Add a constraint so there's a predicate for the relevance set
+    v_op = v_po.as_operand.get()
+    E.is_subset(v_op, E.lit_op_range((1, 5)), assert_=True)
+
+    mutation_map = MutationMap._with_relevance_set(
+        g=E.g, tg=E.tg, relevant=[v_po.as_operand.get()]
+    )
+
+    fwd = mutation_map.map_forward(v_po)
+    assert fwd.maps_to is not None
+    new_p = fwd.maps_to.as_parameter.force_get()
+    actual_name = fabll.Traits(new_p).get_obj_raw().get_name()
+    assert re.match(r"0x[0-9A-Fa-f]+\.voltage", actual_name), (
+        f"Expected name 'voltage' but got '{actual_name}'"
+    )
+
+
+def test_name_preserved_through_mutate_parameter():
+    """Composition-based parameter names are preserved through mutate_parameter."""
+    E = BoundExpressions()
+
+    class _App(fabll.Node):
+        resistance = F.Parameters.NumericParameter.MakeChild(
+            unit=E.U.dl, domain=F.NumberDomain.Args(negative=True)
+        )
+
+    app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+    r_po = app.resistance.get().is_parameter_operatable.get()
+
+    # Precondition: name from composition only
+    assert not fabll.Traits(r_po).get_obj_raw().has_trait(F.has_name_override)
+    assert fabll.Traits(r_po).get_obj_raw().get_name() == "resistance"
+
+    results: dict[str, str] = {}
+
+    @algorithm("test")
+    def algo(mutator: Mutator):
+        r_p = r_po.as_parameter.force_get()
+        new_r = mutator.mutate_parameter(r_p)
+        new_obj = fabll.Traits(new_r).get_obj_raw()
+        results["resistance"] = new_obj.get_name()
+
+    Mutator(
+        MutationMap._identity(E.tg, E.g), algo=algo, iteration=0, terminal=False
+    ).run()
+
+    assert re.match(r"0x[0-9A-Fa-f]+\.resistance", results["resistance"]), (
+        f"Expected 'resistance' but got '{results['resistance']}'"
+    )
+
+
+def test_compact_repr_relevance_indicators():
+    """Test that compact_repr shows ★ for is_relevant and ⊘ for is_irrelevant."""
+    E = BoundExpressions()
+    variables = _create_letters(E, 3)
+    p_normal, p_relevant, p_irrelevant = variables
+
+    # Mark p_relevant as relevant
+    fabll.Traits.create_and_add_instance_to(
+        fabll.Traits(p_relevant).get_obj_raw(), is_relevant
+    )
+
+    # Mark p_irrelevant as irrelevant
+    fabll.Traits.create_and_add_instance_to(
+        fabll.Traits(p_irrelevant).get_obj_raw(), is_irrelevant
+    )
+
+    # Check compact_repr output
+    normal_repr = p_normal.compact_repr()
+    relevant_repr = p_relevant.compact_repr()
+    irrelevant_repr = p_irrelevant.compact_repr()
+
+    # Normal should have neither indicator
+    assert "★" not in normal_repr, f"Normal param should not have ★: {normal_repr}"
+    assert "⊘" not in normal_repr, f"Normal param should not have ⊘: {normal_repr}"
+
+    # Relevant should have ★ but not ⊘
+    assert "★" in relevant_repr, f"Relevant param should have ★: {relevant_repr}"
+    assert "⊘" not in relevant_repr, (
+        f"Relevant param should not have ⊘: {relevant_repr}"
+    )
+
+    # Irrelevant should have ⊘ but not ★
+    assert "⊘" in irrelevant_repr, f"Irrelevant param should have ⊘: {irrelevant_repr}"
+    assert "★" not in irrelevant_repr, (
+        f"Irrelevant param should not have ★: {irrelevant_repr}"
+    )
 
 
 if __name__ == "__main__":

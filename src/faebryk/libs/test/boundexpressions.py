@@ -1,6 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-
+import string
 from enum import Enum
 from typing import cast
 
@@ -240,6 +240,7 @@ class BoundExpressions:
         self.tg = tg or fbrk.TypeGraph.create(g=self.g)
 
         self.u = self.U(self)
+        self._letters = (letter for letter in string.ascii_uppercase)
 
     def _resolve_unit(self, unit: type[fabll.Node]) -> F.Units.is_unit | None:
         instance = unit.bind_typegraph(tg=self.tg).create_instance(g=self.g)
@@ -261,11 +262,12 @@ class BoundExpressions:
         within: "F.Literals.Numbers | None" = None,
         domain: "F.NumberDomain.Args | type[F.Parameters.NumericParameter.DOMAIN_SKIP] | None" = None,  # noqa: E501
         attach_to: "tuple[fabll.Node, str] | None" = None,
+        name: "str | None" = None,
     ) -> F.Parameters.can_be_operand:
         is_unit_node = (
             self._resolve_unit(units) if units else self._resolve_unit(self.U.dl)
         )
-        out = (
+        param = (
             F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
             .setup(
@@ -273,8 +275,12 @@ class BoundExpressions:
                 within=within,
                 domain=domain,
             )
-            .can_be_operand.get()
         )
+
+        name = name or next(self._letters)
+        param.is_parameter.get().set_name(name)
+
+        out = param.can_be_operand.get()
 
         if attach_to:
             parent, p_name = attach_to
@@ -287,19 +293,27 @@ class BoundExpressions:
             )
         return out
 
-    def enum_parameter_op(self, enum_type) -> F.Parameters.can_be_operand:
-        return (
+    def enum_parameter_op(
+        self, enum_type, name: "str | None" = None
+    ) -> F.Parameters.can_be_operand:
+        param = (
             F.Parameters.EnumParameter.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
             .setup(enum=enum_type)
-        ).can_be_operand.get()
+        )
+        name = name or next(self._letters)
+        param.is_parameter.get().set_name(name)
+        return param.can_be_operand.get()
 
-    def bool_parameter_op(self) -> F.Parameters.can_be_operand:
-        return (
-            F.Parameters.BooleanParameter.bind_typegraph(tg=self.tg).create_instance(
-                g=self.g
-            )
-        ).can_be_operand.get()
+    def bool_parameter_op(
+        self, name: "str | None" = None
+    ) -> F.Parameters.can_be_operand:
+        param = F.Parameters.BooleanParameter.bind_typegraph(
+            tg=self.tg
+        ).create_instance(g=self.g)
+        name = name or next(self._letters)
+        param.is_parameter.get().set_name(name)
+        return param.can_be_operand.get()
 
     def add(
         self, *operands: F.Parameters.can_be_operand
@@ -372,12 +386,12 @@ class BoundExpressions:
     ) -> F.Parameters.can_be_operand:
         return F.Expressions.Is.c(*operands, g=self.g, tg=self.tg, assert_=assert_)
 
-    def correlated(
+    def anticorrelated(
         self,
         *operands: F.Parameters.can_be_operand,
         assert_: bool = False,
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Correlated.c(
+        return F.Expressions.Anticorrelated.c(
             *operands, g=self.g, tg=self.tg, assert_=assert_
         )
 

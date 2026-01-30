@@ -1,3 +1,4 @@
+import logging
 import math
 import os
 from dataclasses import dataclass
@@ -20,6 +21,8 @@ from faebryk.libs.util import (
     once,
     zip_dicts_by_key,
 )
+
+logger = logging.getLogger(__name__)
 
 # TODO complete signatures
 # TODO consider moving to zig
@@ -278,41 +281,55 @@ class is_expression(fabll.Node):
 
     @staticmethod
     def _compact_repr(
-        context: F.Parameters.ReprContext,
         style: is_expression_type.ReprStyle,
         symbol: str,
         is_predicate: bool,
         is_terminated: bool,
+        relevant: bool | None,
         lit_suffix: str,
-        use_name: bool,
+        use_full_name: bool,
+        class_suffix: str,
         expr_name: str,
         operands: Sequence["F.Parameters.can_be_operand"],
         no_lit_suffix: bool,
+        no_class_suffix: bool,
     ):
         """Return compact math repr with symbols (+, *, ≥, ¬, ∧) and precedence."""
         symbol_suffix = ""
         if is_predicate:
-            # symbol = f"\033[4m{symbol}!\033[0m"
             symbol_suffix += "!"
 
-            if is_terminated:
-                symbol_suffix += "$"
+        if is_terminated:
+            symbol_suffix += "$"
+
+        if relevant is not None:
+            symbol_suffix += "★" if relevant else "⊘"
+
+        if not no_lit_suffix:
+            symbol_suffix += lit_suffix
+
+        if not no_class_suffix:
+            symbol_suffix += class_suffix
 
         symbol += symbol_suffix
-        symbol += lit_suffix
 
         def format_operand(op: "F.Parameters.can_be_operand"):
             if lit := op.as_literal.try_get():
                 return lit.pretty_str()
             if po := op.as_parameter_operatable.try_get():
-                op_out = po.compact_repr(
-                    context, use_name=use_name, no_lit_suffix=no_lit_suffix
-                )
-                if (op_expr := po.as_expression.try_get()) and len(
-                    op_expr.get_operands()
-                ) > 1:
-                    op_out = f"({op_out})"
-                return op_out
+                if op_expr := po.as_expression.try_get():
+                    op_out = po.compact_repr(
+                        use_full_name=use_full_name, no_lit_suffix=no_lit_suffix
+                    )
+                    if len(op_expr.get_operands()) > 1:
+                        op_out = f"({op_out})"
+                    return op_out
+                elif op_p := po.as_parameter.try_get():
+                    return op_p.compact_repr(
+                        use_full_name=use_full_name,
+                        no_lit_suffix=no_lit_suffix,
+                        with_detail=False,
+                    )
             return str(op)
 
         formatted_operands = [format_operand(op) for op in operands]
@@ -334,10 +351,7 @@ class is_expression(fabll.Node):
         elif len(formatted_operands) == 1:
             out = f"{expr_name}{symbol_suffix}({formatted_operands[0]})"
         elif lit_suffix and len(formatted_operands) > 2:
-            out = (
-                f"{expr_name}{symbol_suffix}{lit_suffix}"
-                f"({', '.join(formatted_operands)})"
-            )
+            out = f"{expr_name}{symbol_suffix}({', '.join(formatted_operands)})"
         elif style.placement == is_expression_type.ReprStyle.Placement.INFIX:
             symbol = f" {symbol} "
             out = f"{symbol.join(formatted_operands)}"
@@ -359,29 +373,55 @@ class is_expression(fabll.Node):
 
     def compact_repr(
         self,
-        context: "F.Parameters.ReprContext | None" = None,
-        use_name: bool = False,
+        use_full_name: bool = False,
         no_lit_suffix: bool = False,
+        no_class_suffix: bool = False,
     ) -> str:
         """Return compact math repr with symbols (+, *, ≥, ¬, ∧) and precedence."""
-        from faebryk.core.solver.mutator import is_terminated
+        from faebryk.core.solver.mutator import is_irrelevant, is_terminated
+
+        aliases = self.as_operand.get().get_operations(Is, predicates_only=True)
+        ps = [
+            p
+            for alias in aliases
+            for p in alias.is_expression.get().get_operands_with_trait(
+                F.Parameters.is_parameter
+            )
+        ]
+        alias_suffix = ",".join(
+            [
+                p.compact_repr(use_full_name=use_full_name, with_detail=False)
+                for p in ps
+                if not p.try_get_sibling_trait(is_irrelevant)
+            ]
+        )
+        if alias_suffix:
+            alias_suffix = f"[{alias_suffix}]"
+
+        from faebryk.core.solver.mutator import is_irrelevant, is_relevant
+
+        isrelevant = self.try_get_sibling_trait(is_relevant) is not None
+        irrelevant = self.try_get_sibling_trait(is_irrelevant) is not None
+        relevant = True if isrelevant else False if irrelevant else None
 
         style = self.get_repr_style()
         return self._compact_repr(
-            context if context is not None else F.Parameters.ReprContext(),
-            style,
-            style.symbol if style.symbol is not None else type(self).__name__,
-            bool(self.try_get_sibling_trait(is_predicate)),
-            bool(self.try_get_sibling_trait(is_terminated)),
+            style=style,
+            symbol=style.symbol if style.symbol is not None else type(self).__name__,
+            is_predicate=bool(self.try_get_sibling_trait(is_predicate)),
+            is_terminated=bool(self.try_get_sibling_trait(is_terminated)),
+            relevant=relevant,
             lit_suffix=(
                 self.as_parameter_operatable.get()._get_lit_suffix()
                 if not no_lit_suffix
                 else ""
             ),
-            use_name=use_name,
+            use_full_name=use_full_name,
+            class_suffix=alias_suffix,
             expr_name=not_none(fabll.Traits(self).get_obj_raw().get_type_name()),
             operands=self.get_operands(),
             no_lit_suffix=no_lit_suffix,
+            no_class_suffix=no_class_suffix,
         )
 
     def is_congruent_to_factory(
@@ -460,8 +500,45 @@ class is_expression(fabll.Node):
             reverse=not ascending,
         )
 
+    @staticmethod
+    def sort_by_depth_expr(
+        exprs: Iterable["is_expression"], ascending: bool = True
+    ) -> list["is_expression"]:
+        return sorted(
+            exprs,
+            key=lambda e: e.as_parameter_operatable.get().get_depth(),
+            reverse=not ascending,
+        )
+
     def get_obj_type_node(self) -> graph.BoundNode:
         return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
+
+    def obj_has_trait[T: fabll.NodeT](self, trait: type[T]) -> T | None:
+        return fabll.Traits(self).get_obj_raw().try_get_trait(trait)
+
+    def obj_type_has_trait[T: fabll.NodeT](self, trait: type[T]) -> T | None:
+        return fabll.Traits(self).get_obj_raw().try_get_trait_of_type(trait)
+
+    def is_non_constraining(self) -> bool:
+        """
+        Check if this expression is non-constraining, i.e. does not create a dependency
+        between operands.
+
+        E.g. Anticorrelated(...), Not(Anticorrelated(...)) — these indicate statistical
+        correlation, not constraint dependence.
+        """
+        # Anticorrelated(...)
+        if self.obj_type_has_trait(has_independent_operands):
+            return True
+
+        # e.g. Not(Anticorrelated(...))
+        return all(
+            (is_expr := op.try_get_sibling_trait(is_expression)) is not None
+            and is_expr.obj_type_has_trait(has_independent_operands)
+            for op in self.get_operands()
+        )
+
+        # TODO: recurse to find deeper nesting, e.g. Not(Not(Anticorrelated(...)))
 
     def get_uncorrelatable_literals(self) -> list[Literals.is_literal]:
         """
@@ -728,6 +805,52 @@ class is_expression(fabll.Node):
 
         raise ValueError(f"Unknown parameter type for expression {self}")
 
+    def create_representative(
+        self,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+        alias: bool = True,
+    ) -> F.Parameters.is_parameter:
+        """
+        Warning: Strips unit!
+        """
+        if alias:
+            assert g is None and tg is None
+
+        g = g or self.g
+        tg = tg or self.tg
+        p_type = self.get_parameter_type()
+        p_instance = p_type.bind_typegraph(tg=tg).create_instance(g=g)
+        if isinstance(p_instance, F.Parameters.NumericParameter):
+            p_instance.setup(
+                domain=F.Parameters.NumericParameter.DOMAIN_SKIP, is_unit=None
+            )
+        elif isinstance(p_instance, F.Parameters.BooleanParameter):
+            p_instance.setup()
+        else:
+            assert False
+
+        p = p_instance.is_parameter.get()
+        e_compact = self.compact_repr(no_lit_suffix=True, no_class_suffix=True)
+        # calculcate ANSII color from uuid
+        uuid = p.instance.node().get_uuid()
+        color = f"\033[38;5;{uuid % 256}m"
+        color_end = "\033[0m"
+        p.set_name(
+            f"{color}R0x{uuid:X}{color_end}",
+            detail=f"[{e_compact}])",
+        )
+        if alias:
+            Is.c(self.as_operand.get(), p.as_operand.get(), assert_=True)
+        return p
+
+    def __rich_repr__(self):
+        try:
+            yield self.compact_repr()
+        except Exception as e:
+            yield f"Error in repr: {e}"
+        yield "on " + fabll.Traits(self).get_obj_raw().get_full_name(types=True)
+
 
 # TODO
 class has_implicit_constraints(fabll.Node):
@@ -758,8 +881,11 @@ class is_assertable(fabll.Node):
 
 
 class is_predicate(fabll.Node):
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    """
+    Assertable and participates in constraining predicate semantics.
+    """
 
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     as_expression = fabll.Traits.ImpliedTrait(is_expression)
 
     def unassert(self):
@@ -888,6 +1014,14 @@ class is_flattenable(fabll.Node):
 class is_involutory(fabll.Node):
     """
     f(f(x)) == x
+    """
+
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+
+class has_independent_operands(fabll.Node):
+    """
+    f(x, y) does not create a dependency between x and y when used in a predicate
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
@@ -2041,7 +2175,7 @@ class Xor(fabll.Node):
 
 
 class Implies(fabll.Node):
-    as_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
+    can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
@@ -2113,6 +2247,10 @@ class Implies(fabll.Node):
 
 
 class IfThenElse(fabll.Node):
+    can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
+        F.Parameters.is_parameter_operatable.MakeChild()
+    )
     has_side_effects = fabll.Traits.MakeEdge(has_side_effects.MakeChild())
     is_expression_type = fabll.Traits.MakeEdge(
         is_expression_type.MakeChild(
@@ -2867,6 +3005,7 @@ class Is(fabll.Node):
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
     is_setic = fabll.Traits.MakeEdge(is_setic.MakeChild())
+    has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
 
     operands = OperandSet.MakeChild()
 
@@ -2877,6 +3016,8 @@ class Is(fabll.Node):
     ) -> Self:
         if any(op.try_get_sibling_trait(Literals.is_literal) for op in operands):
             raise ValueError("Is expression cannot have literal operands")
+        if not operands:
+            raise ValueError("Is expression cannot have no operands")
 
         self.operands.get().append(*operands)
         if assert_:
@@ -2923,7 +3064,7 @@ class Is(fabll.Node):
         return _op(cls.from_operands(*operands, g=g, tg=tg, assert_=assert_))
 
 
-class Correlated(fabll.Node):
+class Anticorrelated(fabll.Node):
     can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
@@ -2943,6 +3084,9 @@ class Correlated(fabll.Node):
     is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
     is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
     has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
+    has_independent_operands = fabll.Traits.MakeEdge(
+        has_independent_operands.MakeChild().put_on_type()
+    )
     is_setic = fabll.Traits.MakeEdge(is_setic.MakeChild())
 
     operands = OperandSet.MakeChild()
@@ -3024,7 +3168,7 @@ ExpressionNodes = (
     | Cardinality
     | IsBitSet
     | Is
-    | Correlated
+    | Anticorrelated
 )
 
 # Macro Expressions --------------------------------------------------------------------
@@ -3042,7 +3186,7 @@ class Mapping:
                 Implies.from_operands(
                     case.as_operand.get(),
                     impl.as_operand.get(),
-                ).as_operand.get()
+                ).can_be_operand.get()
                 for case, impl in cases
             ),
         ).is_expression.get()
@@ -3114,16 +3258,13 @@ def test_repr_style():
 
 
 def test_compact_repr():
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
+    from faebryk.libs.test.boundexpressions import BoundExpressions
 
-    p1 = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    p2 = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    or_ = Or.c(
-        p1.can_be_operand.get(),
-        p2.can_be_operand.get(),
-        assert_=True,
-    )
+    E = BoundExpressions()
+
+    p1_op = E.bool_parameter_op(name="A")
+    p2_op = E.bool_parameter_op(name="B")
+    or_ = E.or_(p1_op, p2_op, assert_=True)
     or_repr = (
         or_.as_parameter_operatable.force_get().as_expression.force_get().compact_repr()
     )
@@ -3154,8 +3295,6 @@ def test_compact_repr_memory_leak():
     expr = or_.as_parameter_operatable.force_get().as_expression.force_get()
     param = p1.is_parameter.get()
 
-    ctx = F.Parameters.ReprContext()
-
     process = psutil.Process()
 
     def run(n: int):
@@ -3163,8 +3302,8 @@ def test_compact_repr_memory_leak():
         mem_base = process.memory_info().rss
 
         for _ in range(n):
-            expr.compact_repr(context=ctx)
-            param.compact_repr(context=ctx)
+            expr.compact_repr()
+            param.compact_repr()
 
         gc.collect()
 

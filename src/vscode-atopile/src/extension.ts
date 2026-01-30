@@ -15,6 +15,7 @@ import { Build } from './common/manifest';
 import { openPackageExplorer } from './ui/packagexplorer';
 import * as llm from './common/llm';
 import { backendServer } from './common/backendServer';
+import { SidebarProvider, LogViewerProvider } from './providers';
 
 export let g_lsClient: LanguageClient | undefined;
 
@@ -86,79 +87,62 @@ async function handleConfigUpdate(event: vscode.ConfigurationChangeEvent) {
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const outputChannel = _setupLogging(context);
-
     traceInfo(`Activating atopile extension`);
 
-    await initializeTelemetry(context);
-    captureEvent('vsce:startup');
-
-    // Setup Language Server and Backend Server
-    let isInitialStart = true;
-
-    const _reStartServers = async () => {
-        // Restart LSP server
-        const newClient = await startOrRestartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient);
-        g_lsClient = newClient;
-
-        // On initial start, start backend server
-        // On user-initiated restarts, restart backend server if configured
-        if (isInitialStart) {
-            isInitialStart = false;
-            const success = await backendServer.startServer();
-            if (success) {
-                traceInfo('Backend server started successfully');
-            } else {
-                traceInfo('Backend server failed to start');
-            }
-        } else {
-            traceInfo('User requested restart, restarting backend server...');
-            const success = await backendServer.restartServer();
-            if (!success) {
-                traceInfo('Backend server restart failed');
-            }
-        }
-
-        // Notify backend that installation/restart completed (via webview WebSocket)
-        if (newClient) {
-            backendServer.sendToWebview({
-                type: 'setAtopileInstalling',
-                installing: false
-            });
-        } else {
-            backendServer.sendToWebview({
-                type: 'setAtopileInstalling',
-                installing: false,
-                error: 'Failed to start language server'
-            });
-        }
-    };
-
+    // 1. Register webview providers FIRST
+    // If sidebar is open, webview starts loading immediately while servers start
+    const extensionVersion = vscode.extensions.getExtension('atopile.atopile')?.packageJSON?.version ?? 'unknown';
+    const sidebarProvider = new SidebarProvider(context.extensionUri, extensionVersion);
+    const logViewerProvider = new LogViewerProvider(context.extensionUri);
     context.subscriptions.push(
-        onNeedsRestart(async () => {
-            await _reStartServers();
-        }),
-        onBuildTargetChanged(async (target: Build | undefined) => {
-            if (g_lsClient) {
-                g_lsClient.sendNotification('atopile/didChangeBuildTarget', {
-                    buildTarget: target?.entry ?? '',
-                });
-            }
-        }),
-        // Register backend server for cleanup on deactivate
+        vscode.window.registerWebviewViewProvider(SidebarProvider.viewType, sidebarProvider, { webviewOptions: { retainContextWhenHidden: true } }),
+        vscode.window.registerWebviewViewProvider(LogViewerProvider.viewType, logViewerProvider, { webviewOptions: { retainContextWhenHidden: true } }),
+        sidebarProvider,
+        vscode.window.registerUriHandler(new atopileUriHandler()),
+        vscode.workspace.onDidChangeConfiguration(handleConfigUpdate),
         backendServer,
     );
 
+    // 2. Initialize (telemetry, ato binary detection)
+    await initializeTelemetry(context);
+    captureEvent('vsce:startup');
     await initServer(context);
-    await _reStartServers();
 
-    await ui.activate(context);
-    await llm.activate(context);
+    // 3. Start servers and UI in parallel
+    let isInitialStart = true;
+    const startServers = async () => {
+        if (!isInitialStart) {
+            traceInfo('User requested restart, restarting backend server...');
+        }
 
-    // Note: Atopile settings sync is now handled by SidebarProvider via postMessage
+        const [newClient, backendSuccess] = await Promise.all([
+            startOrRestartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient),
+            isInitialStart ? backendServer.startServer() : backendServer.restartServer(),
+        ]);
+        isInitialStart = false;
+        g_lsClient = newClient;
 
-    context.subscriptions.push(vscode.window.registerUriHandler(new atopileUriHandler()));
+        if (backendSuccess) {
+            traceInfo('Backend server started successfully');
+        } else {
+            traceInfo('Backend server failed to start');
+        }
 
-    vscode.workspace.onDidChangeConfiguration(handleConfigUpdate);
+        backendServer.sendToWebview({
+            type: 'setAtopileInstalling',
+            installing: false,
+            ...(newClient ? {} : { error: 'Failed to start language server' }),
+        });
+    };
+
+    context.subscriptions.push(
+        onNeedsRestart(startServers),
+        onBuildTargetChanged((target: Build | undefined) => {
+            g_lsClient?.sendNotification('atopile/didChangeBuildTarget', { buildTarget: target?.entry ?? '' });
+        }),
+    );
+
+    await Promise.all([ui.activate(context), startServers()]);
 
     traceInfo(`atopile extension activated in IDE: ${get_ide_type()}`);
 }

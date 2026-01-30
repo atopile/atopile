@@ -5,9 +5,10 @@
 
 /**
  * Format download count for display (e.g., 1234 -> "1.2k", 1500000 -> "1.5M")
+ * Returns "-" when count is unavailable (null/undefined)
  */
 export function formatDownloads(count: number | null | undefined): string {
-  if (count == null) return '0'
+  if (count == null) return '-'
   if (count >= 1000000) {
     return (count / 1000000).toFixed(1).replace(/\.0$/, '') + 'M'
   }

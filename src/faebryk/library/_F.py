@@ -29,6 +29,7 @@ import faebryk.library.Literals as Literals
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.has_source_chunk import has_source_chunk
 import faebryk.library.Parameters as Parameters
+from faebryk.library.has_name_override import has_name_override
 from faebryk.library.can_bridge_by_name import can_bridge_by_name
 import faebryk.library.Expressions as Expressions
 import faebryk.library.Footprints as Footprints
@@ -131,6 +132,7 @@ __all__ = [
     "can_bridge",
     "has_source_chunk",
     "Parameters",
+    "has_name_override",
     "can_bridge_by_name",
     "Expressions",
     "Footprints",
