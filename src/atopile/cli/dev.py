@@ -118,77 +118,33 @@ def compile(
             print(f"Install with: code --install-extension {vsix_file}")
 
 
-def _find_vscode_cli() -> tuple[str, str] | None:
-    """Find the VS Code or Cursor CLI command. Returns (cli_path, uri_scheme)."""
-    import shutil
-
-    # Check if 'code' or 'cursor' is in PATH
-    for cmd, scheme in [("cursor", "cursor"), ("code", "vscode")]:
-        if shutil.which(cmd):
-            return cmd, scheme
-
-    # Check common macOS locations
-    macos_paths = [
-        ("/Applications/Cursor.app/Contents/Resources/app/bin/cursor", "cursor"),
-        (
-            "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
-            "vscode",
-        ),
-        (
-            Path.home() / "Applications/Cursor.app/Contents/Resources/app/bin/cursor",
-            "cursor",
-        ),
-        (
-            Path.home()
-            / "Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
-            "vscode",
-        ),
-    ]
-    for p, scheme in macos_paths:
-        path = Path(p)
-        if path.exists():
-            return str(path), scheme
-
-    return None
-
-
 @dev_app.command()
 @capture("cli:dev_install_start", "cli:dev_install_end")
-def install(
-    clear: bool = typer.Option(
-        False, "-c", "--clear-logs", help="Clear log databases before installing"
-    ),
-):
+def install():
     """
     Install the locally built VS Code extension.
 
     Installs the latest .vsix built by 'ato dev compile vscode'.
-    VS Code will prompt to reload the extension automatically.
+    Must be run from within VS Code or Cursor's integrated terminal.
     """
-    if clear:
-        from faebryk.libs.paths import remove_log_dir
-
-        if remove_log_dir():
-            typer.echo("Log databases cleared")
+    # Detect IDE from TERM_PROGRAM
+    term_program = os.environ.get("TERM_PROGRAM", "").lower()
+    if term_program == "vscode":
+        cli = "code"
+    elif term_program == "cursor":
+        cli = "cursor"
+    else:
+        typer.secho(
+            "Run this command from VS Code or Cursor's integrated terminal.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
 
     repo_root = Path(__file__).resolve().parents[3]
     vscode_dir = repo_root / "src" / "vscode-atopile"
 
     if not vscode_dir.exists():
         raise typer.BadParameter(f"vscode extension directory not found: {vscode_dir}")
-
-    # Find VS Code/Cursor CLI
-    cli_info = _find_vscode_cli()
-    if not cli_info:
-        typer.secho(
-            "Could not find VS Code or Cursor CLI.\n"
-            "Install 'code' command: Open VS Code, Cmd+Shift+P, 'Shell Command: "
-            "Install code command in PATH'",
-            fg=typer.colors.RED,
-        )
-        raise typer.Exit(1)
-
-    vscode_cli, uri_scheme = cli_info
 
     # Find the latest .vsix file
     vsix_files = list(vscode_dir.glob("*.vsix"))
@@ -200,12 +156,12 @@ def install(
         raise typer.Exit(1)
 
     vsix_file = max(vsix_files, key=lambda f: f.stat().st_mtime)
-    print(f"Installing {vsix_file.name} using {Path(vscode_cli).name}...")
+    print(f"Installing {vsix_file.name} using {cli}...")
 
     # Install with --force to replace existing installation
     # This triggers VS Code's "Reload Required" notification
     result = subprocess.run(
-        [vscode_cli, "--install-extension", str(vsix_file), "--force"],
+        [cli, "--install-extension", str(vsix_file), "--force"],
         capture_output=True,
         text=True,
     )
