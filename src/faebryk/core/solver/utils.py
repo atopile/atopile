@@ -545,30 +545,19 @@ class MutatorUtils:
     ) -> set[frozenset["F.Parameters.is_parameter"]]:
         """
         Collect all parameter pairs that are explicitly marked as uncorrelated
-        via Not(Correlated(...)) expressions.
+        via Anticorrelated expressions.
         """
         from itertools import combinations
 
         out: set[frozenset[F.Parameters.is_parameter]] = set()
 
-        for expr in F.Expressions.Correlated.bind_typegraph(tg).get_instances(g):
-            expr_op = expr.can_be_operand.get()
-            expr_e = expr.is_expression.get()
-            not_ops = expr_op.get_operations(
-                types=F.Expressions.Not, recursive=False, predicates_only=False
-            )
-            if not any(
-                n.has_trait(F.Expressions.is_information_predicate) for n in not_ops
+        for expr in F.Expressions.Anticorrelated.bind_typegraph(tg).get_instances(g):
+            for p1, p2 in combinations(
+                expr.is_expression.get().get_operands_with_trait(
+                    F.Parameters.is_parameter
+                ),
+                2,
             ):
-                continue
-
-            corr_params = [
-                p
-                for leaf in expr_e.get_operand_leaves_operatable()
-                if (p := leaf.as_parameter.try_get())
-            ]
-
-            for p1, p2 in combinations(corr_params, 2):
                 out.add(frozenset([p1, p2]))
 
         return out
@@ -744,14 +733,28 @@ class MutatorUtils:
 
         Returns the trait if copied or if already present. Returns None if the trait
         is not present on the from_param.
+
+        Important: Recreates trait, doesn't copy it.
+        Else would result in owner being copied too.
         """
+        from faebryk.core.solver.mutator import is_irrelevant, is_relevant
+
         from_param_obj = fabll.Traits(from_param).get_obj_raw()
         to_param_obj = fabll.Traits(to_param).get_obj_raw()
         if to_param_obj.has_trait(trait_t):
             return to_param_obj.get_trait(trait_t)
         if trait := from_param_obj.try_get_trait(trait_t):
-            return trait_t.bind_instance(
-                instance=fabll.Traits.add_instance_to(
-                    node=to_param_obj, trait_instance=trait.copy_into(g)
-                )
-            )
+            new_t = fabll.Traits.create_and_add_instance_to(to_param_obj, trait_t)
+            match new_t:
+                case F.has_name_override():
+                    assert isinstance(trait, F.has_name_override)
+                    assert isinstance(new_t, F.has_name_override)
+                    new_t.setup(
+                        name=trait.name.get().get_single(),
+                        detail=trait.detail.get().get_single() or None,
+                    )
+                case is_relevant() | is_irrelevant():
+                    pass
+                case _:
+                    raise ValueError(f"Unknown trait type: {trait_t}")
+            return new_t

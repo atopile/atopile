@@ -408,10 +408,7 @@ class is_expression(fabll.Node):
         return self._compact_repr(
             style=style,
             symbol=style.symbol if style.symbol is not None else type(self).__name__,
-            is_predicate=bool(
-                self.try_get_sibling_trait(is_predicate)
-                or self.try_get_sibling_trait(is_information_predicate)
-            ),
+            is_predicate=bool(self.try_get_sibling_trait(is_predicate)),
             is_terminated=bool(self.try_get_sibling_trait(is_terminated)),
             relevant=relevant,
             lit_suffix=(
@@ -527,21 +524,21 @@ class is_expression(fabll.Node):
         Check if this expression is non-constraining, i.e. does not create a dependency
         between operands.
 
-        E.g. Correlated(...), Not(Correlated(...)) — these indicate statistical
+        E.g. Anticorrelated(...), Not(Anticorrelated(...)) — these indicate statistical
         correlation, not constraint dependence.
         """
-        # Correlated(...)
+        # Anticorrelated(...)
         if self.obj_type_has_trait(has_independent_operands):
             return True
 
-        # e.g. Not(Correlated(...))
+        # e.g. Not(Anticorrelated(...))
         return all(
             (is_expr := op.try_get_sibling_trait(is_expression)) is not None
             and is_expr.obj_type_has_trait(has_independent_operands)
             for op in self.get_operands()
         )
 
-        # TODO: recurse to find deeper nesting, e.g. Not(Not(Correlated(...)))
+        # TODO: recurse to find deeper nesting, e.g. Not(Not(Anticorrelated(...)))
 
     def get_uncorrelatable_literals(self) -> list[Literals.is_literal]:
         """
@@ -875,19 +872,12 @@ class is_assertable(fabll.Node):
 
     def assert_(self):
         obj = fabll.Traits(self).get_obj_raw()
-        if obj.has_trait(is_predicate) or obj.has_trait(is_information_predicate):
+        if obj.has_trait(is_predicate):
             return
-        if self.as_expression.get().is_non_constraining():
-            return fabll.Traits.create_and_add_instance_to(
-                node=obj, trait=is_information_predicate
-            )
         return fabll.Traits.create_and_add_instance_to(node=obj, trait=is_predicate)
 
     def is_asserted(self) -> bool:
-        return (
-            self.try_get_sibling_trait(is_predicate) is not None
-            or self.try_get_sibling_trait(is_information_predicate) is not None
-        )
+        return self.try_get_sibling_trait(is_predicate) is not None
 
 
 class is_predicate(fabll.Node):
@@ -901,16 +891,6 @@ class is_predicate(fabll.Node):
     def unassert(self):
         # TODO
         pass
-
-
-class is_information_predicate(fabll.Node):
-    """
-    Asserted non-constraining expression (e.g. Correlated, Not(Correlated)).
-    Does not participate in predicate semantics.
-    """
-
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
-    as_expression = fabll.Traits.ImpliedTrait(is_expression)
 
 
 def _make_instance_from_operand_instance[T: fabll.NodeT](
@@ -3084,7 +3064,7 @@ class Is(fabll.Node):
         return _op(cls.from_operands(*operands, g=g, tg=tg, assert_=assert_))
 
 
-class Correlated(fabll.Node):
+class Anticorrelated(fabll.Node):
     can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
@@ -3126,7 +3106,7 @@ class Correlated(fabll.Node):
         out = fabll._ChildField(cls)
         if assert_:
             out.add_dependant(
-                fabll.Traits.MakeEdge(is_information_predicate.MakeChild(), [out]),
+                fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
             )
         for operand in operands:
             out.add_dependant(
@@ -3188,7 +3168,7 @@ ExpressionNodes = (
     | Cardinality
     | IsBitSet
     | Is
-    | Correlated
+    | Anticorrelated
 )
 
 # Macro Expressions --------------------------------------------------------------------

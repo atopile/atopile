@@ -274,13 +274,14 @@ def _find_modules(
         )
     except RequestError as e:
         cause = e.args[0]
-        while not isinstance(cause, gaierror):
+        while not isinstance(cause, gaierror) and hasattr(cause, "__cause__"):
             cause = cause.__cause__
             if cause is None:
                 break
         else:
             raise UserInfraError(
-                f"Fetching component data failed: connection error: {cause.strerror}"
+                f"Fetching component data failed: connection error:"
+                f" {cause.strerror if hasattr(cause, 'strerror') else cause}"
             ) from e
 
         raise UserInfraError("Fetching component data failed: connection error") from e

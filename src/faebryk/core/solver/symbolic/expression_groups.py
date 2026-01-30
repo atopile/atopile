@@ -119,12 +119,4 @@ def associative_fold(mutator: Mutator):
                 else:
                     new_ops.append(op)
 
-            new_expr = mutator.create_check_and_insert_expression(expr_t, *new_ops)
-
-            if new_expr.out:
-                mutator.create_check_and_insert_expression(
-                    F.Expressions.Is,
-                    new_expr.out.as_operand.get(),
-                    expr.can_be_operand.get(),
-                    assert_=True,
-                )
+            mutator.mutate_expression(is_expr, operands=new_ops)
