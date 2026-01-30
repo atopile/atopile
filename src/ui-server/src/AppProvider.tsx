@@ -13,6 +13,7 @@
 import React, { ReactNode, useEffect } from 'react';
 import { Toaster } from 'sonner';
 import { useConnection } from './hooks/useConnection';
+import { usePackageModifiedHandler } from './hooks/usePackageModifiedHandler';
 import { sendAction } from './api/websocket';
 import { initUILogger } from './ui-logger';
 
@@ -26,6 +27,10 @@ interface AppProviderProps {
 export function AppProvider({ children }: AppProviderProps) {
   // Initialize WebSocket connection
   useConnection();
+
+  // Handle package_modified events
+  usePackageModifiedHandler();
+
   useEffect(() => {
     initUILogger();
   }, []);
@@ -51,8 +56,17 @@ export function AppProvider({ children }: AppProviderProps) {
       <Toaster
         position="bottom-left"
         closeButton
+        gap={8}
         toastOptions={{
           duration: 5000,
+          classNames: {
+            toast: 'ato-toast',
+            title: 'ato-toast-title',
+            description: 'ato-toast-description',
+            actionButton: 'ato-toast-action',
+            cancelButton: 'ato-toast-cancel',
+            closeButton: 'ato-toast-close',
+          },
         }}
       />
       {children}

@@ -701,6 +701,20 @@ function handleEventMessage(message: EventMessage): void {
         );
       }
       break;
+    case 'package_modified':
+      // Package has local modifications - dispatch event for UI to handle
+      window.dispatchEvent(
+        new CustomEvent('atopile:package_modified', {
+          detail: {
+            identifier: data.identifier,
+            modifiedFiles: data.modified_files,
+            packagePath: data.package_path,
+            projectRoot: data.project_root,
+            message: data.message,
+          },
+        })
+      );
+      break;
     default:
       break;
   }
