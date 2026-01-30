@@ -846,7 +846,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 clear_module_cache()
                 log.info(f"Refreshing dependencies for project: {project_root}")
 
-                await asyncio.to_thread(_build_dependencies, project_path)
+                # Skip registry fetch for fast uninstall - only update local state
+                await asyncio.to_thread(
+                    _build_dependencies, project_path, skip_registry=True
+                )
                 log.info("Dependencies refreshed after removal")
 
                 await server_state.emit_event(
@@ -863,9 +866,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                         packages_domain._active_package_ops[op_id]["status"] = "success"
                     loop = event_bus._event_loop
                     if loop and loop.is_running():
-                        # Refresh global packages state
+                        # Refresh installed packages state (local only, no registry)
                         asyncio.run_coroutine_threadsafe(
-                            packages_domain.refresh_packages_state(), loop
+                            packages_domain.refresh_installed_packages_state(), loop
                         )
                         # Refresh project-specific dependencies
                         asyncio.run_coroutine_threadsafe(
