@@ -77,7 +77,7 @@ def _get_associative_expr_types() -> list[type[F.Expressions.ExpressionNodes]]:
     return [
         F.Expressions.Add,
         F.Expressions.Multiply,
-        F.Expressions.Or,
+        F.Expressions.Or,  # TODO: just squash these instead
     ]
 
 
@@ -86,36 +86,33 @@ def associative_fold(mutator: Mutator):
     """
     Add(Add(A, B), Z) -> Add(A, B, Z)
 
-    The inner expression must be the sole member of its class.
+    The inner expression must be the sole such expression in its class.
     """
     for expr_t in _get_associative_expr_types():
         for expr in mutator.get_typed_expressions(expr_t):
             is_expr = expr.is_expression.get()
 
-            non_lit_ops = is_expr.get_operand_operatables()
-            if len(non_lit_ops) != 1:
-                continue
+            expansions = {
+                non_lit: list(nested_expr.get_operands())
+                for non_lit in is_expr.get_operand_operatables()
+                if len(
+                    class_exprs := AliasClass.of(
+                        non_lit.as_operand.get()
+                    ).get_with_trait(F.Expressions.is_expression)
+                )
+                == 1
+                and (nested_expr := next(iter(class_exprs))).expr_isinstance(expr_t)
+            }
 
-            non_lit = next(iter(non_lit_ops))
-            non_lit_op = non_lit.as_operand.get()
-
-            # class must contain a single expr
-            class_exprs = AliasClass.of(non_lit_op).get_with_trait(
-                F.Expressions.is_expression
-            )
-            if len(class_exprs) != 1:
-                continue
-
-            # and that expr must be of type expr_t
-            nested_expr = next(iter(class_exprs))
-            if not nested_expr.expr_isinstance(expr_t):
+            if not expansions:
                 continue
 
             # preserves operand order
-            new_ops = []
+            new_ops: list[F.Parameters.can_be_operand] = []
             for op in is_expr.get_operands():
-                if op.is_same(non_lit_op):
-                    new_ops.extend(nested_expr.get_operands())
+                po = op.as_parameter_operatable.try_get()
+                if po is not None and po in expansions:
+                    new_ops.extend(expansions[po])
                 else:
                     new_ops.append(op)
 
