@@ -3004,6 +3004,8 @@
         "enum": [
           "projects_changed",
           "packages_changed",
+          "packages_downloads_updated",
+          "parts_changed",
           "stdlib_changed",
           "bom_changed",
           "variables_changed",

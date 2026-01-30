@@ -83,6 +83,12 @@ function MarketplacePackageRow({
       </div>
       <div className="packages-row-meta">
         <span className="packages-row-publisher">{pkg.publisher}</span>
+        {/* TODO: Re-enable download counts once /v1/packages/all includes downloads
+        <span className="packages-row-downloads">
+          <Download size={10} />
+          {formatDownloads(pkg.downloads)}
+        </span>
+        */}
       </div>
     </div>
   )
@@ -110,17 +116,32 @@ export function PackagesPanel({
     )
   }, [installedDependencies, searchQuery])
 
-  // Filter marketplace packages by search query
+  // Filter and sort marketplace packages by search query and downloads
   const filteredMarketplace = useMemo(() => {
-    if (!searchQuery.trim()) return packages
-    const query = searchQuery.toLowerCase()
-    return packages.filter((pkg) =>
-      pkg.name.toLowerCase().includes(query) ||
-      pkg.identifier.toLowerCase().includes(query) ||
-      (pkg.description || '').toLowerCase().includes(query) ||
-      (pkg.summary || '').toLowerCase().includes(query)
-    )
-  }, [packages, searchQuery])
+    let filtered = packages
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      filtered = packages.filter((pkg) =>
+        pkg.name.toLowerCase().includes(query) ||
+        pkg.identifier.toLowerCase().includes(query) ||
+        (pkg.description || '').toLowerCase().includes(query) ||
+        (pkg.summary || '').toLowerCase().includes(query)
+      )
+    }
+    // Sort by: installed first (in selected project), then by downloads (highest first)
+    return [...filtered].sort((a, b) => {
+      const aInstalled = selectedProjectRoot
+        ? isInstalledInProject(a.installedIn || [], selectedProjectRoot)
+        : false
+      const bInstalled = selectedProjectRoot
+        ? isInstalledInProject(b.installedIn || [], selectedProjectRoot)
+        : false
+      // Installed packages first
+      if (aInstalled !== bInstalled) return aInstalled ? -1 : 1
+      // Then by downloads (highest first, null/undefined treated as 0)
+      return (b.downloads ?? 0) - (a.downloads ?? 0)
+    })
+  }, [packages, searchQuery, selectedProjectRoot])
 
   const handleOpenInstalledPackage = (dep: ProjectDependency) => {
     onOpenPackageDetail({
