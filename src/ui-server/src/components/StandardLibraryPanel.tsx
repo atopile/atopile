@@ -1,9 +1,7 @@
-import { useState } from 'react'
-import {
-  ChevronDown, ChevronRight, Box, Zap, Cpu,
-  Cable, Hash, Search
-} from 'lucide-react'
-import { CopyableCodeBlock, PanelSearchBox } from './shared'
+import { useState, useMemo } from 'react'
+import { Box, Zap, Cpu, Cable, Hash, Search } from 'lucide-react'
+import { CopyableCodeBlock, PanelSearchBox, TreeRowHeader } from './shared'
+import { useSearch } from '../utils/useSearch'
 
 // Standard library item types
 type StdLibType = 'interface' | 'module' | 'component' | 'trait' | 'parameter'
@@ -69,7 +67,7 @@ function StdLibCard({
   const config = typeConfig[item.type]
   const Icon = config.icon
 
-  const renderChild = (child: StdLibChild, path: string) => {
+  const renderChild = (child: StdLibChild, path: string, depth: number = 1) => {
     const hasChildren = (child.children?.length ?? 0) > 0
     const isExpanded = expandedPaths.has(path)
     const childType = getChildItemType(child)
@@ -77,28 +75,20 @@ function StdLibCard({
     const ChildIcon = childConfig.icon
 
     return (
-      <div key={path} className="stdlib-child-node">
-        <div
-          className={`stdlib-child-row${hasChildren ? ' expandable' : ''}`}
+      <div key={path} className="tree-row-node">
+        <TreeRowHeader
+          isExpandable={hasChildren}
+          isExpanded={isExpanded}
           onClick={() => (hasChildren ? onToggleChild(path) : undefined)}
-        >
-          {hasChildren ? (
-            <button className="expand-btn" onClick={() => onToggleChild(path)}>
-              {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            </button>
-          ) : (
-            <span className="expand-spacer" />
-          )}
-          <span className="stdlib-child-icon" style={{ color: childConfig.color }}>
-            <ChildIcon size={12} />
-          </span>
-          <span className="stdlib-child-name">{child.name}</span>
-          <span className="stdlib-child-type">{child.type}</span>
-        </div>
+          icon={<ChildIcon size={12} style={{ color: childConfig.color }} />}
+          label={child.name}
+          rightValue={child.type}
+          depth={depth}
+        />
         {hasChildren && isExpanded && (
-          <div className="stdlib-child-children">
+          <div className="tree-row-children">
             {child.children!.map((subChild) =>
-              renderChild(subChild, `${path}.${subChild.name}`)
+              renderChild(subChild, `${path}.${subChild.name}`, depth + 1)
             )}
           </div>
         )}
@@ -111,19 +101,15 @@ function StdLibCard({
 
   return (
     <div className={`stdlib-card${isSelected ? ' selected' : ''}`}>
-      <div className="stdlib-card-header" onClick={onSelect}>
-        {isExpandable ? (
-          <span className="stdlib-expand-icon">
-            {isSelected ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          </span>
-        ) : (
-          <span className="stdlib-expand-spacer" />
-        )}
-        <span className="stdlib-type-icon" style={{ color: config.color }}>
-          <Icon size={12} />
-        </span>
-        <span className="stdlib-card-name">{item.name}</span>
-      </div>
+      <TreeRowHeader
+        className="stdlib-card-header"
+        isExpandable={isExpandable}
+        isExpanded={isSelected}
+        onClick={onSelect}
+        icon={<Icon size={12} style={{ color: config.color }} />}
+        label={item.name}
+        depth={1}
+      />
 
       {/* Only show details when card is selected (expanded) */}
       {isSelected && (
@@ -132,7 +118,7 @@ function StdLibCard({
 
           {hasChildren && (
             <div className="stdlib-card-children">
-              {item.children!.map((child) => renderChild(child, child.name))}
+              {item.children!.map((child) => renderChild(child, child.name, 2))}
             </div>
           )}
 
@@ -158,18 +144,18 @@ export function StandardLibraryPanel({
   onRefresh: _onRefresh,
   isExpanded = false,
 }: StandardLibraryPanelProps) {
-  const [searchQuery, setSearchQuery] = useState('')
+  const search = useSearch()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [expandedChildren, setExpandedChildren] = useState<Map<string, Set<string>>>(new Map())
   // Start with all groups collapsed by default
   const [collapsedGroups, setCollapsedGroups] = useState<Set<StdLibType>>(
     new Set(['interface', 'module', 'trait', 'component'])
   )
-  
+
   const stdlibItems = items || []
   // Check if we're in search mode (has search query)
-  const isSearching = searchQuery.trim().length > 0
-  
+  const isSearching = search.hasQuery
+
   // Toggle group collapse
   const toggleGroup = (type: StdLibType) => {
     setCollapsedGroups(prev => {
@@ -182,58 +168,54 @@ export function StandardLibraryPanel({
       return newSet
     })
   }
-  
+
   // Toggle child expansion
   const handleToggleChild = (itemId: string, path: string) => {
     setExpandedChildren(prev => {
       const newMap = new Map(prev)
       const itemPaths = newMap.get(itemId) || new Set()
       const newPaths = new Set(itemPaths)
-      
+
       if (newPaths.has(path)) {
         newPaths.delete(path)
       } else {
         newPaths.add(path)
       }
-      
+
       newMap.set(itemId, newPaths)
       return newMap
     })
   }
-  
-  // Filter items
-  const filteredItems = stdlibItems.filter(item => {
-    // Filter by search
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      const searchInChildren = (children?: StdLibChild[]): boolean => {
-        if (!children) return false
-        return children.some(c => 
-          c.name.toLowerCase().includes(query) ||
-          c.type.toLowerCase().includes(query) ||
-          searchInChildren(c.children)
-        )
-      }
-      
-      return (
-        item.name.toLowerCase().includes(query) ||
-        item.description.toLowerCase().includes(query) ||
-        searchInChildren(item.children)
+
+  // Filter items using search matcher
+  const filteredItems = useMemo(() => {
+    if (!search.hasQuery) return stdlibItems
+
+    const searchInChildren = (children?: StdLibChild[]): boolean => {
+      if (!children) return false
+      return children.some(c =>
+        search.matches(c.name) ||
+        search.matches(c.type) ||
+        searchInChildren(c.children)
       )
     }
-    
-    return true
-  })
-  
+
+    return stdlibItems.filter(item =>
+      search.matches(item.name) ||
+      search.matches(item.description) ||
+      searchInChildren(item.children)
+    )
+  }, [stdlibItems, search.hasQuery, search.matches])
+
   // Group by type for display
   const groupedItems = filteredItems.reduce((acc, item) => {
     if (!acc[item.type]) acc[item.type] = []
     acc[item.type].push(item)
     return acc
   }, {} as Record<StdLibType, StdLibItem[]>)
-  
+
   const typeOrder: StdLibType[] = ['interface', 'module', 'trait', 'component']
-  
+
   // Show loading state
   if (isLoading) {
     return (
@@ -242,6 +224,7 @@ export function StandardLibraryPanel({
           value=""
           onChange={() => {}}
           placeholder="Search standard library..."
+          enableRegex
         />
         <div className="stdlib-list">
           <div className="stdlib-loading">
@@ -256,12 +239,15 @@ export function StandardLibraryPanel({
   return (
     <div className="stdlib-panel">
       <PanelSearchBox
-        value={searchQuery}
-        onChange={setSearchQuery}
+        value={search.query}
+        onChange={search.setQuery}
         placeholder="Search standard library..."
         autoFocus={isExpanded}
+        enableRegex
+        isRegex={search.isRegex}
+        onRegexToggle={search.setIsRegex}
       />
-      
+
       {/* Items list */}
       <div className="stdlib-list">
         {isSearching ? (
@@ -270,7 +256,7 @@ export function StandardLibraryPanel({
             {filteredItems.length === 0 ? (
               <div className="stdlib-empty">
                 <Search size={24} />
-                <span>No results for "{searchQuery}"</span>
+                <span>No results for "{search.query}"</span>
               </div>
             ) : (
               <>
@@ -295,27 +281,23 @@ export function StandardLibraryPanel({
           typeOrder.map(type => {
             const items = groupedItems[type]
             if (!items || items.length === 0) return null
-            
+
             const config = typeConfig[type]
             const Icon = config.icon
             const isCollapsed = collapsedGroups.has(type)
-            
+
             return (
               <div key={type} className={`stdlib-group ${isCollapsed ? 'collapsed' : ''}`}>
-                <button
+                <TreeRowHeader
                   className="stdlib-group-header"
+                  isExpandable={true}
+                  isExpanded={!isCollapsed}
                   onClick={() => toggleGroup(type)}
-                  style={{ '--group-color': config.color } as React.CSSProperties}
-                >
-                  <span className="group-chevron">
-                    {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-                  </span>
-                  <span className="group-icon" style={{ color: config.color }}>
-                    <Icon size={12} />
-                  </span>
-                  <span className="group-label">{config.label}s</span>
-                  <span className="group-count">{items.length}</span>
-                </button>
+                  icon={<Icon size={12} style={{ color: config.color }} />}
+                  label={`${config.label}s`}
+                  count={items.length}
+                  depth={0}
+                />
                 {!isCollapsed && (
                   <div className="stdlib-group-items">
                     {items.map(item => (
@@ -334,11 +316,11 @@ export function StandardLibraryPanel({
             )
           })
         )}
-        
+
         {filteredItems.length === 0 && (
           <div className="empty-state">
             <span>No items found</span>
-            {searchQuery && (
+            {search.hasQuery && (
               <span className="empty-hint">Try "I2C", "Resistor", or "power"</span>
             )}
           </div>

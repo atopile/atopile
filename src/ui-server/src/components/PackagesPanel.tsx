@@ -13,6 +13,7 @@ import type { PackageInfo, ProjectDependency } from '../types/build'
 import { isInstalledInProject } from '../utils/packageUtils'
 import type { SelectedPackage } from './sidebar-modules'
 import { PanelSearchBox } from './shared'
+import { useSearch } from '../utils/useSearch'
 import './PackagesPanel.css'
 
 interface PackagesPanelProps {
@@ -97,30 +98,28 @@ export function PackagesPanel({
   isExpanded = false,
 }: PackagesPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('browse')
-  const [searchQuery, setSearchQuery] = useState('')
+  const search = useSearch()
 
   // Filter installed packages by search query (for project tab)
   const filteredInstalled = useMemo(() => {
-    if (!searchQuery.trim()) return installedDependencies
-    const query = searchQuery.toLowerCase()
+    if (!search.hasQuery) return installedDependencies
     return installedDependencies.filter((dep) =>
-      dep.name.toLowerCase().includes(query) ||
-      dep.identifier.toLowerCase().includes(query) ||
-      (dep.summary || '').toLowerCase().includes(query)
+      search.matches(dep.name) ||
+      search.matches(dep.identifier) ||
+      (dep.summary ? search.matches(dep.summary) : false)
     )
-  }, [installedDependencies, searchQuery])
+  }, [installedDependencies, search.hasQuery, search.matches])
 
   // Filter marketplace packages by search query
   const filteredMarketplace = useMemo(() => {
-    if (!searchQuery.trim()) return packages
-    const query = searchQuery.toLowerCase()
+    if (!search.hasQuery) return packages
     return packages.filter((pkg) =>
-      pkg.name.toLowerCase().includes(query) ||
-      pkg.identifier.toLowerCase().includes(query) ||
-      (pkg.description || '').toLowerCase().includes(query) ||
-      (pkg.summary || '').toLowerCase().includes(query)
+      search.matches(pkg.name) ||
+      search.matches(pkg.identifier) ||
+      (pkg.description ? search.matches(pkg.description) : false) ||
+      (pkg.summary ? search.matches(pkg.summary) : false)
     )
-  }, [packages, searchQuery])
+  }, [packages, search.hasQuery, search.matches])
 
   const handleOpenInstalledPackage = (dep: ProjectDependency) => {
     onOpenPackageDetail({
@@ -149,8 +148,6 @@ export function PackagesPanel({
     })
   }
 
-  const hasSearchQuery = searchQuery.trim().length > 0
-
   return (
     <div className="packages-panel">
       <div className="packages-tabs">
@@ -176,10 +173,13 @@ export function PackagesPanel({
       {activeTab === 'browse' && (
         <div className="packages-tab-content">
           <PanelSearchBox
-            value={searchQuery}
-            onChange={setSearchQuery}
+            value={search.query}
+            onChange={search.setQuery}
             placeholder="Search packages..."
             autoFocus={isExpanded && activeTab === 'browse'}
+            enableRegex
+            isRegex={search.isRegex}
+            onRegexToggle={search.setIsRegex}
           />
 
           {installError && (
@@ -187,13 +187,13 @@ export function PackagesPanel({
           )}
 
           <div className="packages-results-container">
-            {!hasSearchQuery && packages.length === 0 && (
+            {!search.hasQuery && packages.length === 0 && (
               <div className="packages-empty-state">
                 <PackageSearch size={32} />
                 <span>Search for packages to install</span>
               </div>
             )}
-            {hasSearchQuery && filteredMarketplace.length === 0 && (
+            {search.hasQuery && filteredMarketplace.length === 0 && (
               <div className="packages-empty-state">
                 <PackageSearch size={24} />
                 <span>No packages found</span>

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { smartTruncatePair } from './sidebar-modules/sidebarUtils'
 import { PanelSearchBox, EmptyState, TreeRowHeader } from './shared'
+import { useSearch } from '../utils/useSearch'
 
 // Variable types
 type VariableType = 'voltage' | 'current' | 'resistance' | 'capacitance' | 'ratio' | 'frequency' | 'power' | 'percentage' | 'dimensionless'
@@ -146,13 +147,16 @@ function matchesSourceFilter(source: string | undefined, sourceFilter: SourceFil
   return true
 }
 
-// Helper function to check if a variable matches search query (pre-lowercased)
-function matchesSearch(v: Variable, searchLower: string): boolean {
-  if (!searchLower) return true
+// Type for search matcher function
+type SearchMatcher = (text: string) => boolean
+
+// Helper function to check if a variable matches search using matcher
+function matchesSearchWithMatcher(v: Variable, matcher: SearchMatcher, hasQuery: boolean): boolean {
+  if (!hasQuery) return true
   return (
-    v.name.toLowerCase().includes(searchLower) ||
-    (v.spec?.toLowerCase().includes(searchLower) ?? false) ||
-    (v.actual?.toLowerCase().includes(searchLower) ?? false)
+    matcher(v.name) ||
+    (v.spec ? matcher(v.spec) : false) ||
+    (v.actual ? matcher(v.actual) : false)
   )
 }
 
@@ -160,20 +164,21 @@ function matchesSearch(v: Variable, searchLower: string): boolean {
 // Memoized at component level to avoid recalculating on every render
 function nodeOrDescendantsMatch(
   node: VariableNode,
-  searchLower: string,
+  matcher: SearchMatcher,
+  hasQuery: boolean,
   sourceFilter: SourceFilter
 ): boolean {
   // Check if node name matches
-  if (searchLower && node.name.toLowerCase().includes(searchLower)) return true
+  if (hasQuery && matcher(node.name)) return true
 
   // Check if any variables match
   const hasMatchingVar = node.variables?.some(v =>
-    matchesSourceFilter(v.source, sourceFilter) && matchesSearch(v, searchLower)
+    matchesSourceFilter(v.source, sourceFilter) && matchesSearchWithMatcher(v, matcher, hasQuery)
   )
   if (hasMatchingVar) return true
 
   // Check children recursively
-  if (node.children?.some(child => nodeOrDescendantsMatch(child, searchLower, sourceFilter))) {
+  if (node.children?.some(child => nodeOrDescendantsMatch(child, matcher, hasQuery, sourceFilter))) {
     return true
   }
 
@@ -183,15 +188,16 @@ function nodeOrDescendantsMatch(
 // Collect paths that should be expanded to reveal search matches
 function collectExpandedPathsForSearch(
   nodes: VariableNode[],
-  searchLower: string,
+  matcher: SearchMatcher,
+  hasQuery: boolean,
   sourceFilter: SourceFilter
 ): Set<string> {
   const expanded = new Set<string>()
 
   const nodeMatches = (node: VariableNode): boolean => {
-    if (searchLower && node.name.toLowerCase().includes(searchLower)) return true
+    if (hasQuery && matcher(node.name)) return true
     const hasMatchingVar = node.variables?.some(v =>
-      matchesSourceFilter(v.source, sourceFilter) && matchesSearch(v, searchLower)
+      matchesSourceFilter(v.source, sourceFilter) && matchesSearchWithMatcher(v, matcher, hasQuery)
     )
     return !!hasMatchingVar
   }
@@ -221,7 +227,8 @@ function collectExpandedPathsForSearch(
 const VariableNodeComponent = memo(function VariableNodeComponent({
   node,
   depth,
-  searchQuery,
+  searchMatcher,
+  hasSearchQuery,
   sourceFilter,
   expandedNodes,
   onToggleExpand,
@@ -229,7 +236,8 @@ const VariableNodeComponent = memo(function VariableNodeComponent({
 }: {
   node: VariableNode
   depth: number
-  searchQuery: string
+  searchMatcher: SearchMatcher
+  hasSearchQuery: boolean
   sourceFilter: SourceFilter
   expandedNodes: Set<string>
   onToggleExpand: (path: string) => void
@@ -237,24 +245,23 @@ const VariableNodeComponent = memo(function VariableNodeComponent({
 }) {
   const isExpanded = expandedNodes.has(node.path)
   const hasChildren = (node.children && node.children.length > 0) || (node.variables && node.variables.length > 0)
-  const searchLower = searchQuery.toLowerCase()
 
   // Memoize filtered variables - filter operation that runs on every node
   const filteredVariables = useMemo(() => {
     if (!node.variables) return []
     return node.variables.filter(v =>
-      matchesSourceFilter(v.source, sourceFilter) && matchesSearch(v, searchLower)
+      matchesSourceFilter(v.source, sourceFilter) && matchesSearchWithMatcher(v, searchMatcher, hasSearchQuery)
     )
-  }, [node.variables, sourceFilter, searchLower])
+  }, [node.variables, sourceFilter, searchMatcher, hasSearchQuery])
 
   // Memoize the filter match check - recursive check
   const matchesFilters = useMemo(() => {
     // No filtering needed if no search and showing all sources
-    if (!searchQuery && sourceFilter === 'all') return true
+    if (!hasSearchQuery && sourceFilter === 'all') return true
 
     // Check this node and its descendants
-    return nodeOrDescendantsMatch(node, searchLower, sourceFilter)
-  }, [node, searchQuery, sourceFilter, searchLower])
+    return nodeOrDescendantsMatch(node, searchMatcher, hasSearchQuery, sourceFilter)
+  }, [node, searchMatcher, hasSearchQuery, sourceFilter])
 
   if (!matchesFilters) return null
 
@@ -305,7 +312,8 @@ const VariableNodeComponent = memo(function VariableNodeComponent({
               key={`${child.path}-${idx}`}
               node={child}
               depth={depth + 1}
-              searchQuery={searchQuery}
+              searchMatcher={searchMatcher}
+              hasSearchQuery={hasSearchQuery}
               sourceFilter={sourceFilter}
               expandedNodes={expandedNodes}
               onToggleExpand={onToggleExpand}
@@ -340,12 +348,12 @@ export function VariablesPanel({
   hasActiveProject = false,
   isExpanded = false,
 }: VariablesPanelProps) {
-  const [searchQuery, setSearchQuery] = useState('')
+  const search = useSearch()
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
   // Always show all sources (filter removed per user request)
   const sourceFilter: SourceFilter = 'all'
   const [lastDataVersion, setLastDataVersion] = useState<string | null>(null)
-  const lastSearchRef = useRef('')
+  const lastSearchRef = useRef(false)
   const expandedBeforeSearchRef = useRef<Set<string> | null>(null)
 
   // Extract variables from data
@@ -360,26 +368,24 @@ export function VariablesPanel({
     }
   }, [variablesData?.version, lastDataVersion])
 
-  const searchLower = searchQuery.trim().toLowerCase()
-
   const searchExpandedPaths = useMemo(() => {
-    if (!searchLower) return null
-    return collectExpandedPathsForSearch(variables, searchLower, sourceFilter)
-  }, [variables, searchLower, sourceFilter])
+    if (!search.hasQuery) return null
+    return collectExpandedPathsForSearch(variables, search.matches, search.hasQuery, sourceFilter)
+  }, [variables, search.matches, search.hasQuery, sourceFilter])
 
   useEffect(() => {
-    const prevSearch = lastSearchRef.current
-    if (!prevSearch && searchLower) {
+    const prevHadSearch = lastSearchRef.current
+    if (!prevHadSearch && search.hasQuery) {
       expandedBeforeSearchRef.current = expandedNodes
       setExpandedNodes(searchExpandedPaths || new Set())
-    } else if (searchLower) {
+    } else if (search.hasQuery) {
       setExpandedNodes(searchExpandedPaths || new Set())
-    } else if (prevSearch && !searchLower && expandedBeforeSearchRef.current) {
+    } else if (prevHadSearch && !search.hasQuery && expandedBeforeSearchRef.current) {
       setExpandedNodes(expandedBeforeSearchRef.current)
       expandedBeforeSearchRef.current = null
     }
-    lastSearchRef.current = searchLower
-  }, [searchLower, searchExpandedPaths, expandedNodes])
+    lastSearchRef.current = search.hasQuery
+  }, [search.hasQuery, searchExpandedPaths, expandedNodes])
 
   // Memoized callbacks to prevent child re-renders
   const handleToggleExpand = useCallback((path: string) => {
@@ -411,10 +417,13 @@ export function VariablesPanel({
 
   const toolbar = (
     <PanelSearchBox
-      value={searchQuery}
-      onChange={setSearchQuery}
+      value={search.query}
+      onChange={search.setQuery}
       placeholder="Search variables..."
       autoFocus={isExpanded}
+      enableRegex
+      isRegex={search.isRegex}
+      onRegexToggle={search.setIsRegex}
     />
   )
 
@@ -477,7 +486,8 @@ export function VariablesPanel({
             key={`${node.path}-${idx}`}
             node={node}
             depth={0}
-            searchQuery={searchQuery}
+            searchMatcher={search.matches}
+            hasSearchQuery={search.hasQuery}
             sourceFilter={sourceFilter}
             expandedNodes={expandedNodes}
             onToggleExpand={handleToggleExpand}

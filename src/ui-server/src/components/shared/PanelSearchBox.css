@@ -67,3 +67,51 @@
   background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.1));
   color: var(--vscode-foreground, var(--text-primary));
 }
+
+/* Regex toggle button */
+.panel-search-regex {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--vscode-input-placeholderForeground, var(--text-muted));
+  border-radius: 3px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.panel-search-regex:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.1));
+  color: var(--vscode-foreground, var(--text-primary));
+}
+
+.panel-search-regex.active {
+  background: var(--ato-orange, #ff8c00);
+  color: var(--bg-primary, #1e1e2e);
+}
+
+.panel-search-regex.active:hover {
+  background: var(--ato-orange-light, #ffa033);
+}
+
+/* Error state */
+.panel-search-box.has-error {
+  border-color: var(--ctp-red, #f38ba8);
+}
+
+.panel-search-box.has-error:focus-within {
+  border-color: var(--ctp-red, #f38ba8);
+}
+
+.panel-search-error {
+  font-size: var(--font-size-xxs);
+  color: var(--ctp-red, #f38ba8);
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: 4px;
+}

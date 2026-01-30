@@ -1,7 +1,9 @@
 /* ==========================================
    _variables-panel.css
-   Variables Panel, Variables Toolbar, Variables Tree,
-   Variable Nodes, Variables Table, Variables States
+   Variables Panel (Parameters tab) specific styles
+
+   NOTE: Row header styling is in shared/TreeRowHeader.css
+   This file only contains Variables panel content-specific styles.
    ========================================== */
 
 /* Extends .sidebar-panel from _base.css */
@@ -86,7 +88,7 @@
   padding: 2px 0;
 }
 
-/* Minimal indentation tree structure */
+/* Tree node container */
 .variable-tree-node {
   margin-bottom: 0;
 }
@@ -101,9 +103,7 @@
   margin-right: 2px;
 }
 
-/* Variable node header - extends TreeRowHeader */
-/* Base styles are in shared/TreeRowHeader.css */
-
+/* Node type icon colors */
 .node-type-icon {
   flex-shrink: 0;
   width: var(--icon-size-sm);
@@ -122,34 +122,6 @@
   color: var(--ctp-green);
 }
 
-.variable-node-header .node-name {
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  color: var(--vscode-foreground, var(--text-primary));
-}
-
-.variable-node-header .node-type-name {
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  color: var(--vscode-descriptionForeground, var(--text-muted));
-  margin-left: 6px;
-  opacity: 0.7;
-}
-
-.variable-node-header .node-type-name::before {
-  content: ": ";
-}
-
-.variable-node-header .var-count {
-  margin-left: auto;
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  background: var(--bg-tertiary);
-  padding: 0 6px;
-  border-radius: var(--radius-sm);
-}
-
 /* Variable node content - match stdlib indentation */
 .variable-node-content {
   margin-left: 16px;
@@ -166,17 +138,7 @@
   margin-bottom: var(--spacing-xs);
 }
 
-/* Variable name styling */
-.variable-name {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--vscode-foreground, var(--text-secondary));
-  font-family: var(--font-sans);
-  flex-shrink: 0;
-  min-width: 80px;
-}
-
+/* Variable icon colors */
 .var-icon {
   flex-shrink: 0;
   opacity: 0.7;
@@ -190,7 +152,10 @@
 .var-icon.frequency { color: var(--ctp-pink); }
 .var-icon.power { color: var(--ctp-red); }
 
-/* Variables Table Layout */
+/* ==========================================
+   Variables Table Layout
+   ========================================== */
+
 .variables-table {
   display: flex;
   flex-direction: column;
@@ -356,7 +321,10 @@
   color: var(--success);
 }
 
-/* Variables status bar */
+/* ==========================================
+   Variables Status Bar
+   ========================================== */
+
 .variables-status {
   display: flex;
   align-items: center;
@@ -392,7 +360,10 @@
   to { opacity: 1; }
 }
 
-/* Variables loading, error, and empty states - unified pattern */
+/* ==========================================
+   Variables Loading, Error, Empty States
+   ========================================== */
+
 .variables-loading,
 .variables-error,
 .variables-empty {
