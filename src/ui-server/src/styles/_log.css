@@ -27,8 +27,8 @@
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  font-size: var(--font-size-xxs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   border-radius: 8px;
 }
 
@@ -59,7 +59,7 @@
 }
 
 .empty-state .hint {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   margin-top: var(--spacing-xs);
   color: var(--text-muted);
   opacity: 0.7;
@@ -151,7 +151,7 @@
 }
 
 .log-message {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--text-primary);
   word-break: break-word;
 }
@@ -164,13 +164,13 @@
 }
 
 .log-source {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-code);
   font-family: var(--font-mono);
   color: var(--text-muted);
 }
 
 .log-timestamp {
-  font-size: var(--font-size-xxs);
+  font-size: var(--font-size-label);
   font-family: var(--font-mono);
   color: var(--text-muted);
   white-space: nowrap;
@@ -191,7 +191,7 @@
 
 .details-content, .raw-content {
   padding: var(--spacing-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-code);
   font-family: var(--font-mono);
   color: var(--text-secondary);
   white-space: pre-wrap;
@@ -211,8 +211,8 @@
   justify-content: space-between;
   padding: var(--spacing-xs) var(--spacing-sm);
   background: var(--bg-hover);
-  font-size: var(--font-size-xxs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -238,7 +238,7 @@
 .raw-content {
   background: var(--ctp-crust);
   color: var(--text-muted);
-  font-size: var(--font-size-xxs);
+  font-size: var(--font-size-label);
 }
 
 /* ============================================
@@ -282,8 +282,8 @@
 }
 
 .popout-header h2 {
-  font-size: var(--font-size-lg);
-  font-weight: 600;
+  font-size: var(--font-size-heading-lg);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
 }
 
@@ -297,7 +297,7 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--text-secondary);
   cursor: pointer;
 }
@@ -358,7 +358,7 @@
   border: none;
   background: transparent;
   color: var(--text-primary);
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-heading);
   outline: none;
 }
 
@@ -376,8 +376,8 @@
   border: 1px solid var(--border-color);
   background: var(--bg-tertiary);
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -442,8 +442,8 @@
   gap: var(--spacing-xs);
   padding: 2px 8px;
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
 }
 
@@ -468,13 +468,13 @@
 }
 
 .popout-log-time {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-code);
   font-family: var(--font-mono);
   color: var(--text-muted);
 }
 
 .popout-log-target, .popout-log-stage {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   padding: 2px 6px;
   background: var(--bg-tertiary);
   color: var(--text-muted);
@@ -482,13 +482,13 @@
 }
 
 .popout-log-message {
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-heading);
   color: var(--text-primary);
   margin-bottom: var(--spacing-sm);
 }
 
 .popout-log-source {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-code);
   font-family: var(--font-mono);
   color: var(--accent);
   margin-bottom: var(--spacing-sm);
@@ -498,7 +498,7 @@
   padding: var(--spacing-md);
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-code);
   font-family: var(--font-mono);
   color: var(--text-secondary);
   white-space: pre-wrap;
@@ -511,7 +511,7 @@
 .popout-log-raw {
   background: var(--ctp-crust);
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-code);
 }
 
 /* ============================================
@@ -567,8 +567,8 @@
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
   border-bottom: 2px solid transparent;
   transition: all 0.15s ease;

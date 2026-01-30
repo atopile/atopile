@@ -65,8 +65,8 @@
   min-width: 16px;
   height: 16px;
   padding: 0 var(--spacing-xs);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   border-radius: 8px;
 }
 

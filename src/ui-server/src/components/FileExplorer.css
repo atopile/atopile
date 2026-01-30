@@ -51,19 +51,19 @@
 }
 
 .file-explorer-card-title {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   color: var(--text-secondary);
   flex: 1;
 }
 
 .file-count {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .file-explorer-card-content {
@@ -113,7 +113,7 @@
 }
 
 .file-tree-name {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;

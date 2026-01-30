@@ -112,7 +112,7 @@
   background: transparent;
   border: none;
   outline: none;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--text-primary);
   min-width: 0;
 }
@@ -178,17 +178,17 @@
 }
 
 .structure-empty .empty-title {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   color: var(--text-secondary);
   margin-top: var(--spacing-xs);
 }
 
 .structure-empty .empty-description {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-muted);
   max-width: 220px;
-  line-height: 1.4;
+  line-height: var(--line-height-normal);
 }
 
 /* Spin animation for loader */

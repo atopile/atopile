@@ -49,7 +49,7 @@
 
 .build-target-item .target-name {
   font-size: var(--font-size-base);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -57,7 +57,7 @@
 }
 
 .build-target-item .target-entry {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -69,7 +69,7 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--text-muted);
 }
 
@@ -97,8 +97,8 @@
 }
 
 .indicator {
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   padding: 0 var(--spacing-xs);
   min-width: 16px;
   height: 16px;
@@ -173,7 +173,7 @@
   border-radius: var(--radius-sm);
   cursor: pointer;
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   text-align: left;
   width: 100%;
   transition: all var(--transition-fast);
@@ -217,8 +217,8 @@
 }
 
 .stat {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   padding: 0 var(--spacing-xs);
   border-radius: var(--radius-sm);
 }
@@ -263,6 +263,6 @@
   padding: var(--spacing-xs) var(--spacing-sm);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   cursor: default;
 }

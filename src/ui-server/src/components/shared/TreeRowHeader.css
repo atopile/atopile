@@ -15,7 +15,7 @@
   cursor: pointer;
   transition: background 0.1s ease;
   font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   text-transform: none;
 }
 
@@ -53,7 +53,7 @@
 
 /* Primary label */
 .tree-row-label {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--vscode-foreground, var(--text-primary));
   white-space: nowrap;
   overflow: hidden;
@@ -77,7 +77,7 @@
 /* Count badge */
 .tree-row-count {
   margin-left: auto;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   padding: 0 6px;

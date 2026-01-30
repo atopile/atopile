@@ -17,7 +17,7 @@
   padding: var(--spacing-xs) var(--spacing-sm);
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-subtle);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
 }
 
@@ -55,11 +55,11 @@
   margin: 0;
   padding: var(--spacing-sm);
   font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-code);
   color: var(--text-primary);
   white-space: pre-wrap;
   word-break: break-word;
-  line-height: 1.4;
+  line-height: var(--line-height-normal);
 }
 
 /* Syntax highlighting for ato code */

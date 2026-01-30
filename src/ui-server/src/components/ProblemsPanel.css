@@ -44,7 +44,7 @@
 }
 
 .problems-empty-text {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   opacity: 0.7;
 }
 
@@ -56,14 +56,14 @@
   padding: var(--spacing-xs) var(--spacing-sm);
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-subtle);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
 }
 
 .problems-count {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .problems-count.error {
@@ -101,7 +101,7 @@
   gap: var(--spacing-xs);
   padding: var(--spacing-xs) var(--spacing-sm);
   background: var(--bg-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--text-secondary);
   cursor: pointer;
   user-select: none;
@@ -126,14 +126,14 @@
 }
 
 .problems-file-name {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
 }
 
 .problems-file-path {
   flex: 1;
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -147,10 +147,10 @@
 }
 
 .problems-file-count {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .problems-file-count.error {
@@ -182,8 +182,8 @@
   padding-left: calc(var(--spacing-md) + 12px + var(--spacing-sm));
   cursor: pointer;
   transition: background var(--transition-fast);
-  font-size: var(--font-size-sm);
-  line-height: 1.4;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-normal);
 }
 
 .problem-item:hover {
@@ -222,14 +222,14 @@
 .problem-location {
   flex-shrink: 0;
   font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   opacity: 0.7;
 }
 
 .problem-source {
   flex-shrink: 0;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   padding: 1px 5px;
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);

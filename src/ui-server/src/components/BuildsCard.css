@@ -51,26 +51,26 @@
 }
 
 .builds-card-title {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   color: var(--text-secondary);
   flex: 1;
 }
 
 .builds-count {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .builds-status-badge {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .builds-status-badge.building {
@@ -123,7 +123,7 @@
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   cursor: pointer;
   transition: all var(--transition-fast);
 }

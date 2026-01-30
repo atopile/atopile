@@ -25,7 +25,7 @@
 }
 
 .parts-detail-section-title {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -37,7 +37,7 @@
   flex-direction: column;
   gap: 8px;
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   min-width: 0;
 }
 
@@ -66,7 +66,7 @@
   align-items: center;
   gap: 6px;
   color: var(--accent-primary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   text-decoration: none;
   background: none;
   border: none;
@@ -85,7 +85,7 @@
 }
 
 .parts-footprint-note {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-muted);
   margin: 0;
 }
@@ -128,8 +128,8 @@
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
   transition: all var(--transition-fast);
   justify-content: center;
@@ -187,13 +187,13 @@
 
 .parts-visual-empty {
   color: var(--text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   text-align: center;
 }
 
 .parts-detail-muted {
   color: var(--text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
 }
 
 .parts-attribute-grid {
@@ -205,7 +205,7 @@
   display: flex;
   justify-content: space-between;
   gap: var(--spacing-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
 }
 
 .parts-attribute-row span {
@@ -227,7 +227,7 @@
   align-items: center;
   gap: 6px;
   color: var(--ctp-green);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
 }
 
 .parts-install-error {
@@ -235,7 +235,7 @@
   align-items: center;
   gap: 6px;
   color: var(--ctp-red);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
 }
 
 /* Part type badges */
@@ -243,8 +243,8 @@
   display: inline-block;
   padding: 2px 8px;
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
 }
 
 .parts-type-badge.basic {

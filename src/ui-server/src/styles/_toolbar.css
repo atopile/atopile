@@ -118,7 +118,7 @@
   background: transparent;
   /* Match VS Code native font */
   font-family: var(--font-sans);
-  font-size: var(--vscode-font-size, 13px);
+  font-size: var(--font-size-body);
   color: var(--vscode-input-foreground, var(--text-primary));
   outline: none;
 }
@@ -168,8 +168,8 @@
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all var(--transition-fast);

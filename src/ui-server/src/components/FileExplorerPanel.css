@@ -98,7 +98,7 @@
   outline: none;
   color: var(--vscode-input-foreground, var(--text-primary));
   font-family: var(--font-sans);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   min-width: 0;
 }
 
@@ -139,7 +139,7 @@
   cursor: pointer;
   color: var(--vscode-input-placeholderForeground, var(--text-muted));
   font-size: 10px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-family: var(--vscode-editor-font-family, monospace);
   min-width: 18px;
   height: 18px;

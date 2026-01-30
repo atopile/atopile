@@ -51,19 +51,19 @@
 }
 
 .project-explorer-card-title {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   color: var(--text-secondary);
   flex: 1;
 }
 
 .project-explorer-count {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .project-explorer-card-content {
@@ -106,14 +106,14 @@
 }
 
 .project-explorer-target-name {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
   flex: 1;
 }
 
 .project-explorer-target-entry {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-muted);
 }
 
@@ -126,7 +126,7 @@
 .project-explorer-loading,
 .project-explorer-error,
 .project-explorer-empty {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-muted);
   display: flex;
   align-items: center;

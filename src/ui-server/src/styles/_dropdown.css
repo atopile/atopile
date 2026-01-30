@@ -12,8 +12,8 @@
   gap: 3px;
   width: 62px;
   padding: 3px 8px;
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   /* Use VS Code native dropdown styling */
   background: var(--vscode-dropdown-background, var(--bg-tertiary));
   color: var(--vscode-dropdown-foreground, var(--text-secondary));
@@ -54,7 +54,7 @@
   min-width: 100px;
   max-width: 180px;
   padding: 4px 10px;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
 }
 
 .install-btn.install-btn-wide span {
@@ -156,7 +156,7 @@
   background: transparent;
   border: none;
   outline: none;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--text-primary);
 }
 
@@ -238,7 +238,7 @@
 
 .dropdown-empty {
   padding: var(--spacing-sm);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--text-muted);
   text-align: center;
   font-style: italic;
@@ -246,7 +246,7 @@
 
 .dropdown-header {
   padding: 4px var(--spacing-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-section-header);
   color: var(--text-muted);
   border-bottom: 1px solid var(--border-subtle);
   text-transform: uppercase;
@@ -288,7 +288,7 @@
 }
 
 .dropdown-item .status-badge {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   padding: 1px 5px;
   border-radius: var(--radius-sm);
   margin-left: auto;
@@ -321,7 +321,7 @@
 
 .active-badge,
 .version-badge {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   padding: 1px 5px;
   background: var(--accent);
 }
@@ -359,12 +359,12 @@
   justify-content: center;
   padding: var(--spacing-lg);
   color: var(--text-muted);
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-body);
   gap: var(--spacing-xs);
 }
 
 .empty-hint {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body-small);
   color: var(--text-muted);
   opacity: 0.7;
 }
