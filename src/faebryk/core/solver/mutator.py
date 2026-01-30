@@ -2073,7 +2073,15 @@ class Mutator:
             return False
 
         fabll.Traits.add_to(owner, fabll.Node.bind_instance(trait_type_node))
-        self.transformations.marked.add(po)
+
+        # mark dirty because of new trait (unless its the irrelevant trait)
+        if (
+            not is_irrelevant.bind_typegraph(po.tg)
+            .get_or_create_type()
+            .node()
+            .is_same(other=trait_type_node.node())
+        ):
+            self.transformations.marked.add(po)
         return True
 
     def remove(
