@@ -776,7 +776,8 @@ button.detail-section-header-left:hover .detail-collapse-toggle {
 }
 
 .package-visual-content > .detail-visual-frame,
-.package-visual-content > .detail-visual-empty {
+.package-visual-content > .detail-visual-empty,
+.package-visual-content > .detail-visual-loading {
   flex: 1;
   width: 100%;
   min-width: 0;
@@ -926,11 +927,17 @@ button.detail-section-header-left:hover .detail-collapse-toggle {
 .detail-visual-loading,
 .detail-visual-empty {
   display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
+  gap: var(--spacing-sm);
   min-height: 100%;
   text-align: center;
   padding: 0;
+}
+
+.detail-visual-loading .spin {
+  animation: spin 1s linear infinite;
 }
 
 .detail-empty {
