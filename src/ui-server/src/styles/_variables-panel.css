@@ -104,7 +104,7 @@
 .variable-node-header {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   height: var(--row-height-tree-item);
   min-height: var(--row-height-tree-item);
   padding: 2px 4px;
@@ -125,8 +125,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: var(--icon-size-md);
-  height: var(--icon-size-md);
+  width: 16px;
+  height: 16px;
   padding: 0;
   background: none;
   border: none;
@@ -136,7 +136,7 @@
 }
 
 .variable-node-header .tree-expand-spacer {
-  width: var(--icon-size-md);
+  width: 16px;
   flex-shrink: 0;
 }
 
