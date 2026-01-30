@@ -463,6 +463,7 @@ interface ModuleDefinition {
 interface EntryStatus {
   file_exists: boolean
   module_exists: boolean
+  target_exists: boolean
 }
 
 // New Target Form component with autocomplete
@@ -505,12 +506,8 @@ function NewTargetForm({
       return
     }
 
-    // Check if entry matches an existing module
+    // Check if entry matches an existing module (still need to check target_exists from API)
     const matchingModule = modules?.find(m => m.entry === entry)
-    if (matchingModule) {
-      setEntryStatus({ file_exists: true, module_exists: true })
-      return
-    }
 
     // Debounce the check
     const timer = setTimeout(async () => {
@@ -521,15 +518,16 @@ function NewTargetForm({
           project_root: projectRoot,
           entry,
         })
-        const result = response.result as { success?: boolean; file_exists?: boolean; module_exists?: boolean } | undefined
+        const result = response.result as { success?: boolean; file_exists?: boolean; module_exists?: boolean; target_exists?: boolean } | undefined
         if (result?.success) {
           setEntryStatus({
-            file_exists: Boolean(result.file_exists),
-            module_exists: Boolean(result.module_exists),
+            file_exists: matchingModule ? true : Boolean(result.file_exists),
+            module_exists: matchingModule ? true : Boolean(result.module_exists),
+            target_exists: Boolean(result.target_exists),
           })
         }
       } catch (err) {
-        setEntryStatus({ file_exists: false, module_exists: false })
+        setEntryStatus({ file_exists: false, module_exists: false, target_exists: false })
       } finally {
         setIsCheckingEntry(false)
       }
@@ -604,7 +602,7 @@ function NewTargetForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim() || !entry.trim() || !isValidEntryFormat(entry)) return
+    if (!name.trim() || !entry.trim() || !isValidEntryFormat(entry) || entryStatus?.target_exists) return
     onSubmit({
       name: name.trim(),
       entry: entry.trim(),
@@ -622,6 +620,7 @@ function NewTargetForm({
     if (entryFormatError) return entryFormatError
     if (isCheckingEntry) return 'Checking...'
     if (!entryStatus) return 'Format: file.ato:ModuleName'
+    if (entryStatus.target_exists) return '✗ Entry already used as build target'
     if (entryStatus.module_exists) return '✓ Module exists'
     if (entryStatus.file_exists) return '⚠ Module not found in file'
     return '⚠ Entry does not exist'
@@ -630,6 +629,7 @@ function NewTargetForm({
   const getEntryStatusClass = () => {
     if (entryFormatError) return 'status-error'
     if (!entryStatus || isCheckingEntry) return ''
+    if (entryStatus.target_exists) return 'status-error'
     if (entryStatus.module_exists) return 'status-exists'
     return 'status-create'
   }
@@ -725,7 +725,7 @@ function NewTargetForm({
         <button
           type="submit"
           className="form-btn primary"
-          disabled={isCreating || !name.trim() || !entry.trim() || !isValidEntryFormat(entry)}
+          disabled={isCreating || !name.trim() || !entry.trim() || !isValidEntryFormat(entry) || entryStatus?.target_exists}
         >
           {isCreating ? 'Creating...' : 'Create'}
         </button>
