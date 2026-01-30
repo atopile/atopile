@@ -1077,18 +1077,111 @@ class MutationMap:
         tg: fbrk.TypeGraph,
         relevant: list[F.Parameters.can_be_operand],
         iteration: int = 0,
-        initial_state: "MutationMap | None" = None,
     ) -> "MutationMap":
-        if invalid_ops := [
-            op
-            for op in relevant
-            if (
-                (po := op.as_parameter_operatable.force_get()).as_parameter.try_get()
-                is None
-                and po.try_get_sibling_trait(F.Expressions.is_predicate) is None
+        relevant_root_predicates = MutatorUtils.get_relevant_predicates(*relevant)
+        if S_LOG:
+            logger.debug(
+                "Relevant root predicates: "
+                + indented_container(
+                    [
+                        p.as_expression.get().compact_repr(
+                            no_lit_suffix=True, use_full_name=True
+                        )
+                        for p in relevant_root_predicates
+                    ],
+                    use_repr=False,
+                )
             )
-        ]:
-            raise ValueError(f"Invalid relevant operable(s): {invalid_ops}")
+
+        g_out, tg_out = cls._bootstrap_copy(g, tg)
+        logger.info("initial_state is None")
+        for pred in relevant_root_predicates:
+            pred.copy_into(g_out)
+
+        out_pos = F.Parameters.is_parameter_operatable.bind_typegraph(
+            tg_out
+        ).get_instances(g=g_out)
+
+        forward_mapping = {
+            F.Parameters.is_parameter_operatable.bind_instance(bound): po
+            for po in out_pos
+            # only if po exists in source graph
+            if fbrk.EdgeTrait.get_owner_node_of(
+                bound_node=(bound := g.bind(node=po.instance.node()))
+            )
+        }
+
+        for p_old, p_new in forward_mapping.items():
+            if (p_new_p := p_new.as_parameter.try_get()) is not None:
+                p_old_p = p_old.as_parameter.force_get()
+                if not MutatorUtils.try_copy_trait(
+                    g=g_out,
+                    from_param=p_old_p,
+                    to_param=p_new_p,
+                    trait_t=F.has_name_override,
+                ):
+                    # Preserve the location-based name before it's lost
+                    p_old_obj = fabll.Traits(p_old_p).get_obj_raw()
+                    p_new_p.set_name(p_old_obj.get_full_name())
+
+        for pred in relevant_root_predicates:
+            mapped = forward_mapping[
+                pred.as_expression.get().as_parameter_operatable.get()
+            ]
+            fabll.Traits.create_and_add_instance_to(
+                fabll.Traits(mapped).get_obj_raw(), is_relevant
+            )
+
+        if S_LOG:
+            expr_count = len(
+                fabll.Traits.get_implementors(
+                    F.Expressions.is_expression.bind_typegraph(tg_out)
+                )
+            )
+            param_count = len(
+                fabll.Traits.get_implementors(
+                    F.Parameters.is_parameter.bind_typegraph(tg_out)
+                )
+            )
+            lit_count = len(
+                fabll.Traits.get_implementors(
+                    F.Literals.is_literal.bind_typegraph(tg_out)
+                )
+            )
+            logger.debug(
+                f"|lits|={lit_count}"
+                f", |exprs|={expr_count}"
+                f", |params|={param_count} {g_out}"
+            )
+
+        return MutationMap(
+            MutationStage(
+                tg_in=tg,
+                tg_out=tg_out,
+                algorithm="bootstrap_relevant_no_resume",
+                iteration=iteration,
+                transformations=Transformations(mutated=forward_mapping),
+                G_in=g,
+                G_out=g_out,
+            )
+        )
+
+    @classmethod
+    def _with_relevance_set_resume(
+        cls,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+        relevant: list[F.Parameters.can_be_operand],
+        initial_state: "MutationMap",
+        iteration: int = 0,
+    ) -> "MutationMap":
+        # "resume_with_new_preds(g_in)" algo
+        # unmark relevance in g_out
+        #  algo to filter out traits
+        # map relevant params through
+        # oeprands automatically mapped to new graph
+        # mark in target as relevant (if mapped through)
+        # else create with mapped operands (and mark relevant)
 
         relevant_root_predicates = MutatorUtils.get_relevant_predicates(*relevant)
         if S_LOG:
@@ -1114,6 +1207,8 @@ class MutationMap:
             else set()
         )
         new_pred_uuids = current_pred_uuids - prev_pred_uuids
+        logger.info(f"new_pred_uuids: {new_pred_uuids}")
+        logger.info(f"new_pred_uuids: {len(new_pred_uuids)}")
         removed_pred_uuids = prev_pred_uuids - current_pred_uuids
 
         if initial_state is not None and not new_pred_uuids and not removed_pred_uuids:
@@ -1122,15 +1217,22 @@ class MutationMap:
 
         if initial_state is None:
             g_out, tg_out = cls._bootstrap_copy(g, tg)
+            logger.info("initial_state is None")
             for pred in relevant_root_predicates:
                 pred.copy_into(g_out)
         elif not removed_pred_uuids:
+            logger.info("resuming; no removed_pred_uuids")
             g_out = initial_state.G_out
             tg_out = initial_state.tg_out
+
             for pred in relevant_root_predicates:
-                if pred.instance.node().get_uuid() in new_pred_uuids:
-                    pred.copy_into(g_out)
+                # if pred.instance.node().get_uuid() in new_pred_uuids:
+                pred.copy_into(g_out)
+                for op in pred.as_expression.get().get_operand_operatables():
+                    op.copy_into(g_out)
+
         else:
+            logger.info("resuming; have removals")
             prev_tg_out = initial_state.tg_out
             g_out = graph.GraphView.create()
             tg_out = prev_tg_out.copy_into(target_graph=g_out, minimal=True)
@@ -1144,10 +1246,14 @@ class MutationMap:
             # only relevant solved ops from initial_state
             for op in initial_state.output_operables:
                 if op.instance.node().get_uuid() in relevant_op_uuids:
+                    logger.info(f"copying {op.compact_repr()} into {g_out}")
                     op.copy_into(g_out)
 
             # plus current predicates
             for pred in relevant_root_predicates:
+                logger.info(
+                    f"copying {pred.as_expression.get().compact_repr()} into {g_out}"
+                )
                 pred.copy_into(g_out)
 
         out_pos = F.Parameters.is_parameter_operatable.bind_typegraph(
@@ -1251,11 +1357,29 @@ class MutationMap:
             flatten_expressions,
         )
 
-        mut_map = (
-            MutationMap._with_relevance_set(g, tg, relevant, iteration, initial_state)
-            if relevant
-            else MutationMap._identity(tg, g, iteration)
-        )
+        if relevant:
+            if invalid_ops := [
+                op
+                for op in relevant
+                if (
+                    (
+                        po := op.as_parameter_operatable.force_get()
+                    ).as_parameter.try_get()
+                    is None
+                    and po.try_get_sibling_trait(F.Expressions.is_predicate) is None
+                )
+            ]:
+                raise ValueError(f"Invalid relevant operable(s): {invalid_ops}")
+
+        if relevant:
+            if initial_state:
+                mut_map = MutationMap._with_relevance_set_resume(
+                    g, tg, relevant, initial_state, iteration
+                )
+            else:
+                mut_map = MutationMap._with_relevance_set(g, tg, relevant, iteration)
+        else:
+            mut_map = MutationMap._identity(tg, g, iteration)
 
         if S_LOG:
             mut_map.last_stage.print_graph_contents()
