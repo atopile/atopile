@@ -52,8 +52,9 @@ const _channel: BroadcastChannel | null = (() => {
 
 // Initial state for the store
 const initialState: AppState = {
-  // Connection
-  isConnected: false,
+  // Connection - start as true so we don't flash error screen during startup
+  // WebSocket will set to false after 5s timeout if backend isn't ready
+  isConnected: true,
 
   // Projects
   projects: [],

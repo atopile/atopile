@@ -727,14 +727,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     );
   }
 
-  /**
-   * Open a file in VS Code (for layout files).
-   */
-  private _openWithVSCode(filePath: string): void {
-    traceInfo(`[SidebarProvider] Opening with VS Code: ${filePath}`);
-    vscode.commands.executeCommand('vscode.open', vscode.Uri.file(filePath));
-  }
-
   private _findFirstFileByExt(dirPath: string, ext: string): string | null {
     try {
       const entries = fs.readdirSync(dirPath, { withFileTypes: true });
@@ -1026,27 +1018,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Open a file with the system default application (for KiCad, 3D files).
-   * Uses VS Code's openExternal API which is safe and cross-platform.
-   */
-  private _openWithSystem(filePath: string): void {
-    traceInfo(`[SidebarProvider] Opening with system: ${filePath}`);
-    const uri = vscode.Uri.file(filePath);
-    vscode.env.openExternal(uri).then(
-      (success) => {
-        if (!success) {
-          traceError(`[SidebarProvider] Failed to open: ${filePath}`);
-          vscode.window.showErrorMessage(`Failed to open file with system application`);
-        }
-      },
-      (err) => {
-        traceError(`[SidebarProvider] Failed to open: ${err}`);
-        vscode.window.showErrorMessage(`Failed to open: ${err.message}`);
-      }
-    );
-  }
-
-  /**
    * Handle request to browse for a local atopile path.
    * Shows a native folder picker dialog and sends the selected path back to the webview.
    */
@@ -1147,29 +1118,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       backendServer.sendToWebview({
         type: 'atopileInstallError',
         error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  /**
-   * Restart the atopile backend server without reloading the entire VS Code window.
-   * This applies new atopile settings by restarting just the backend process.
-   */
-  private async _handleRestartExtension(): Promise<void> {
-    traceInfo('[SidebarProvider] Restarting atopile backend...');
-
-    // Restart the backend server - this will pick up new settings
-    const success = await backendServer.restartServer();
-
-    if (success) {
-      traceInfo('[SidebarProvider] Backend restarted successfully');
-      // The webview will reconnect automatically via WebSocket
-    } else {
-      traceError('[SidebarProvider] Failed to restart backend');
-      // Notify the webview of the error
-      backendServer.sendToWebview({
-        type: 'atopileInstallError',
-        error: 'Failed to restart atopile backend. Try reloading the window.',
       });
     }
   }
@@ -1343,37 +1291,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // Inject workspace root for the React app
     window.__ATOPILE_WORKSPACE_ROOT__ = ${JSON.stringify(workspaceRoot || '')};
   </script>
-  <style>
-    /* Debug: loading indicator */
-    #debug-loading {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      padding: 8px;
-      background: #1a1a2e;
-      color: #fff;
-      font-family: monospace;
-      font-size: 11px;
-      z-index: 9999;
-    }
-  </style>
 </head>
 <body>
-  <div id="debug-loading">Loading atopile... API: ${apiUrl}</div>
   <div id="root"></div>
   <script nonce="${nonce}" type="module" src="${jsUri}"></script>
-  <script nonce="${nonce}">
-    // Remove debug loading indicator once React renders
-    window.addEventListener('load', () => {
-      setTimeout(() => {
-        const debug = document.getElementById('debug-loading');
-        if (debug && document.getElementById('root').children.length > 0) {
-          debug.remove();
-        }
-      }, 2000);
-    });
-  </script>
 </body>
 </html>`;
   }
