@@ -722,45 +722,47 @@ def test_literal_folding_add_multiplicative_1():
     solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
-    rep_add = not_none(
+    rep_add_po = not_none(
         repr_map.map_forward(expr.as_parameter_operatable.force_get()).maps_to
     )
-    rep_A = repr_map.map_forward(A.as_parameter_operatable.force_get()).maps_to
-    rep_B = repr_map.map_forward(B.as_parameter_operatable.force_get()).maps_to
-    assert rep_A is not None
-    assert rep_B is not None
-
-    operands = (
-        fabll.Traits(rep_add)
-        .get_obj(F.Expressions.Add)
-        .is_expression.get()
-        .get_operands()
+    rep_A = not_none(
+        repr_map.map_forward(A.as_parameter_operatable.force_get()).maps_to
     )
-    assert len(operands) == 2, f"{rep_add.compact_repr()}"
-    mul1, mul2 = operands
+    rep_B = not_none(
+        repr_map.map_forward(B.as_parameter_operatable.force_get()).maps_to
+    )
 
-    mulexp1 = fabll.Traits(mul1).get_obj(F.Expressions.Multiply)
-    mulexp2 = fabll.Traits(mul2).get_obj(F.Expressions.Multiply)
+    # Find the Add expression through the alias class of the result
+    add_expr = _find_class_expression_force(
+        rep_add_po.as_operand.get(), F.Expressions.Add
+    )
+    operands = add_expr.get_operands()
+    assert len(operands) == 2, f"{rep_add_po.compact_repr()}"
 
-    # Really fucked up way to test: rep_app = 8A + 2AB
+    # Each operand should contain a Multiply in its alias class
+    mul_exprs = [
+        _find_class_expression_force(op, F.Expressions.Multiply) for op in operands
+    ]
+
+    # Verify: 8A + 2AB
     expecteds: list[tuple[set[F.Parameters.is_parameter_operatable], float]] = [
         ({rep_A}, 8),
         ({rep_A, rep_B}, 2),
     ]
     for expected_ops, expected_lit in expecteds:
         found = False
-        for mul in (mulexp1, mulexp2):
+        for mul in mul_exprs:
+            lits = mul.get_operand_literals()
+            if not lits:
+                continue
             if (
-                next(
-                    iter(mul.is_expression.get().get_operand_literals().values())
-                ).op_setic_equals_singleton(expected_lit)
-                and set(mul.is_expression.get().get_operand_operatables())
-                == expected_ops
+                next(iter(lits.values())).op_setic_equals_singleton(expected_lit)
+                and set(mul.get_operand_operatables()) == expected_ops
             ):
                 found = True
                 break
 
-        assert found
+        assert found, f"Expected Multiply with ops={expected_ops}, lit={expected_lit}"
 
 
 def test_literal_folding_add_multiplicative_2():
@@ -786,7 +788,7 @@ def test_literal_folding_add_multiplicative_2():
 
     solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
-    rep_add = not_none(
+    rep_add_po = not_none(
         repr_map.map_forward(expr.as_parameter_operatable.force_get()).maps_to
     )
     a_res = not_none(
@@ -796,25 +798,41 @@ def test_literal_folding_add_multiplicative_2():
         repr_map.map_forward(B.as_parameter_operatable.force_get()).maps_to
     )
 
-    rep_add_obj = fabll.Traits(rep_add).get_obj(F.Expressions.Add)
+    # Find the Add expression through the alias class
+    add_expr = _find_class_expression_force(
+        rep_add_po.as_operand.get(), F.Expressions.Add
+    )
 
-    a_ops = [
-        op
-        for op in a_res.get_operations(F.Expressions.Multiply)
-        if any(
-            lit
-            for lit in op.is_expression.get().get_operand_literals().values()
-            if lit.op_setic_equals_singleton(8)
-        )
-    ]
-    assert len(a_ops) == 1
-    mul = next(iter(a_ops))
-    add_ops = rep_add_obj.is_expression.get().get_operand_operatables()
-    add_ops_lits = rep_add_obj.is_expression.get().get_operand_literals()
-    assert len(add_ops_lits) == 1 and next(
-        iter(add_ops_lits.values())
+    add_ops = add_expr.get_operand_operatables()
+    add_lits = add_expr.get_operand_literals()
+
+    # Expect one literal operand: 10
+    assert len(add_lits) == 1 and next(
+        iter(add_lits.values())
     ).op_setic_equals_singleton(10)
-    assert add_ops == {b_res, mul.is_parameter_operatable.get()}
+
+    # Expect two non-literal operands: B and Mul(A, 8)
+    assert len(add_ops) == 2
+
+    # One operand should be (or alias to) b_res
+    assert any(op.is_same(b_res, allow_different_graph=True) for op in add_ops), (
+        f"Expected b_res in Add operands, got {add_ops}"
+    )
+
+    # The other should have a Multiply(A, 8) in its alias class
+    other_po = next(
+        op for op in add_ops if not op.is_same(b_res, allow_different_graph=True)
+    )
+    mul_expr = _find_class_expression_force(
+        other_po.as_operand.get(), F.Expressions.Multiply
+    )
+    mul_lits = mul_expr.get_operand_literals()
+    assert len(mul_lits) == 1 and next(
+        iter(mul_lits.values())
+    ).op_setic_equals_singleton(8), f"Expected Mul literal 8, got {mul_lits}"
+    assert mul_expr.get_operand_operatables() == {a_res}, (
+        f"Expected Mul operand {{a_res}}, got {mul_expr.get_operand_operatables()}"
+    )
 
 
 def test_transitive_subset():
