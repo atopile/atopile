@@ -903,12 +903,13 @@ function BuildQueueItem({
   // Calculate progress from stages
   const progress = useMemo(() => {
     if (!build.stages || build.stages.length === 0) return 0
-    const totalStages = 14 // Default expected stages
     const completedStages = build.stages.filter(
       (s) => s.status === 'success' || s.status === 'warning'
     ).length
+    // Use actual totalStages from backend, or fall back to completed + 1 to avoid 100%
+    const totalStages = build.totalStages || Math.max(completedStages + 1, 10)
     return Math.round((completedStages / totalStages) * 100)
-  }, [build.stages])
+  }, [build.stages, build.totalStages])
 
   const targetName = build.target || build.entry || 'default'
   const isComplete = build.status === 'success' || build.status === 'failed' || build.status === 'cancelled' || build.status === 'warning'

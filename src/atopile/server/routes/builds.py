@@ -62,9 +62,9 @@ async def cancel_build(build_id: str):
 @router.get("/api/builds/active", response_model=BuildsResponse)
 async def get_active_builds():
     """Get all active (running or queued) builds."""
-    log.info("[DEBUG] /api/builds/active route called, dispatching to thread pool")
+    log.debug("/api/builds/active route called, dispatching to thread pool")
     result = await asyncio.to_thread(builds_domain.handle_get_active_builds)
-    log.info("[DEBUG] /api/builds/active got result from thread pool")
+    log.debug("/api/builds/active got result from thread pool")
     return result
 
 

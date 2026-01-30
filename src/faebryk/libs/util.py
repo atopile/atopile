@@ -735,44 +735,6 @@ class TwistArgs:
         return f"{type(self).__name__}({self.op})"
 
 
-class CallOnce[F: Callable]:
-    def __init__(self, f: F) -> None:
-        self.f = f
-        self.called = False
-
-    # TODO types
-    def __call__(self, *args, **kwargs) -> Any:
-        if self.called:
-            return
-        self.called = True
-        return self.f(*args, **kwargs)
-
-
-def at_exit(func: Callable, on_exception: bool = True):
-    import atexit
-    import sys
-
-    f = CallOnce(func)
-
-    atexit.register(f)
-    hook = sys.excepthook
-    if on_exception:
-        sys.excepthook = lambda *args: (f(), hook(*args))
-
-    # get main thread
-    import threading
-
-    mainthread = threading.main_thread()
-
-    def wait_main():
-        mainthread.join()
-        f()
-
-    threading.Thread(target=wait_main).start()
-
-    return f
-
-
 def lazy_construct(cls):
     """
     Careful: break deepcopy

@@ -94,6 +94,8 @@ class BackendServerManager implements vscode.Disposable {
     private _stderrFlushTimer: NodeJS.Timeout | undefined;
     private _isConnected: boolean = false;
     private _serverReady: boolean = false;
+    private _hasServerError: boolean = false;
+    private _lastErrorPromptAt: number = 0;
     private _startupPromise: Promise<boolean> | null = null;
     private _restartPromise: Promise<boolean> | null = null;
     private _disposables: vscode.Disposable[] = [];
@@ -161,7 +163,54 @@ class BackendServerManager implements vscode.Disposable {
     }
 
     private _appendOutputLine(level: 'info' | 'error', line: string): void {
+        this._maybeClearServerError(line);
+        this._maybeFlagServerError(line, level);
         this._log(level, line);
+    }
+
+    private _maybeClearServerError(line: string): void {
+        if (!this._hasServerError || this._serverState !== 'running') return;
+        const normalized = line.toLowerCase();
+        const isBuildComplete = normalized.includes('buildqueue: build') &&
+            normalized.includes('completed with status');
+        const isSuccessful = normalized.includes('success') || normalized.includes('warning');
+        if (isBuildComplete && isSuccessful) {
+            this._hasServerError = false;
+            this._updateStatusBar();
+        }
+    }
+
+    private _maybeFlagServerError(line: string, level: 'info' | 'error'): void {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+
+        const isTracebackStart = trimmed.startsWith('Traceback (most recent call last)');
+        const isExceptionGroup = trimmed.startsWith('ExceptionGroup:');
+        const isValidationError = trimmed.includes('ValidationError');
+        const isUnhandled = trimmed.toLowerCase().includes('unhandled exception');
+        const isErrorOutput = level === 'error';
+
+        if (isTracebackStart || isExceptionGroup || isValidationError || isUnhandled || isErrorOutput) {
+            if (!this._hasServerError) {
+                this._hasServerError = true;
+                this._updateStatusBar();
+            }
+            this._promptForServerError();
+        }
+    }
+
+    private _promptForServerError(): void {
+        const now = Date.now();
+        if (now - this._lastErrorPromptAt < 30000) return;
+        this._lastErrorPromptAt = now;
+        void vscode.window.showWarningMessage(
+            'atopile backend reported an error. Check the "atopile Server" output logs.',
+            'Show Logs'
+        ).then((selection) => {
+            if (selection === 'Show Logs') {
+                this.showLogs();
+            }
+        });
     }
 
     private _log(level: 'info' | 'warn' | 'error' | 'debug' | 'trace', message: string): void {
@@ -263,15 +312,23 @@ class BackendServerManager implements vscode.Disposable {
         if (this._serverState === 'starting') {
             this._statusBarItem.text = '$(sync~spin) ato: Starting...';
             this._statusBarItem.backgroundColor = undefined;
+            this._statusBarItem.tooltip = 'Starting atopile backend...';
         } else if (this._serverState === 'error') {
             this._statusBarItem.text = '$(error) ato: Error';
             this._statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+            this._statusBarItem.tooltip = 'Backend server error. Click for details.';
+        } else if (this._hasServerError) {
+            this._statusBarItem.text = '$(error) ato: Check logs';
+            this._statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+            this._statusBarItem.tooltip = 'Backend reported an error. Click to show logs.';
         } else if (this._isConnected) {
             this._statusBarItem.text = `$(check) ato: ${this.port}`;
             this._statusBarItem.backgroundColor = undefined;
+            this._statusBarItem.tooltip = 'Backend connected. Click to manage.';
         } else {
             this._statusBarItem.text = '$(warning) ato: Disconnected';
             this._statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+            this._statusBarItem.tooltip = 'Backend disconnected. Click to manage.';
         }
     }
 
@@ -309,25 +366,23 @@ class BackendServerManager implements vscode.Disposable {
             action: 'show_logs',
         });
 
-        // Add troubleshooting section when disconnected
-        if (!this._isConnected) {
-            items.push({ label: '', kind: vscode.QuickPickItemKind.Separator, action: 'none' });
-            items.push({
-                label: '$(terminal) Clear Logs',
-                description: 'Run "ato dev clear-logs" in terminal',
-                action: 'clear_logs',
-            });
-            items.push({
-                label: '$(refresh) Restart Extension Host',
-                description: 'Restart VS Code extension host',
-                action: 'restart_extension_host',
-            });
-            items.push({
-                label: '$(comment-discussion) Join Discord',
-                description: 'Get help from the community',
-                action: 'open_discord',
-            });
-        }
+        // Always show troubleshooting section
+        items.push({ label: '', kind: vscode.QuickPickItemKind.Separator, action: 'none' });
+        items.push({
+            label: '$(terminal) Clear Logs',
+            description: 'Run "ato dev clear-logs" in terminal',
+            action: 'clear_logs',
+        });
+        items.push({
+            label: '$(refresh) Restart Extension Host',
+            description: 'Restart VS Code extension host',
+            action: 'restart_extension_host',
+        });
+        items.push({
+            label: '$(comment-discussion) Join Discord',
+            description: 'Get help from the community',
+            action: 'open_discord',
+        });
 
         const selected = await vscode.window.showQuickPick(items, {
             placeHolder: 'Backend Server Configuration',
@@ -433,6 +488,8 @@ class BackendServerManager implements vscode.Disposable {
     private async _doStartServer(preferredPort?: number): Promise<boolean> {
         this._serverState = 'starting';
         this._lastError = undefined;
+        this._hasServerError = false;
+        this._lastErrorPromptAt = 0;
         this._stdoutBuffer = '';
         this._stderrBuffer = '';
         this._serverReady = false;

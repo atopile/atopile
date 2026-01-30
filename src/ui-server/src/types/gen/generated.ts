@@ -109,7 +109,7 @@ export interface Build {
     status?:         BuildStatus;
     target?:         null | string;
     timestamp?:      null | string;
-    totalStages?:    number;
+    totalStages?:    number | null;
     warnings?:       number;
     [property: string]: any;
 }

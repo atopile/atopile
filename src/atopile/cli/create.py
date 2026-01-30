@@ -11,17 +11,17 @@ from typing import TYPE_CHECKING, Annotated, Any, Callable, Iterator, cast, over
 
 import caseconverter
 import questionary
-import rich
 import typer
 from cookiecutter.exceptions import FailedHookException, OutputDirExistsException
 from cookiecutter.main import cookiecutter
 from more_itertools import first
-from rich.table import Table
 
 from atopile import errors, version
 from atopile.address import AddrStr
 from atopile.logging import get_logger
-from atopile.logging_utils import rich_print_robust
+from rich.table import Table
+
+from atopile.logging_utils import console, rich_print_robust
 from atopile.telemetry import capture
 from faebryk.libs.github import (
     GITHUB_USERNAME_REGEX,
@@ -812,7 +812,7 @@ def part(
                 str(component.stock),
             )
 
-        rich.print(component_table)
+        console.print(component_table)
 
         if len(components) == 1 and accept_single:
             component = first(components)

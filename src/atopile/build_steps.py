@@ -1,6 +1,7 @@
 import contextlib
 import itertools
 import json
+import os
 import tempfile
 import time
 from collections.abc import Callable, Generator
@@ -23,9 +24,11 @@ from atopile.errors import (
     UserException,
     UserExportError,
     UserPickError,
+    accumulate,
+    iter_leaf_exceptions,
 )
-from atopile.exceptions import accumulate, iter_leaf_exceptions
 from atopile.logging import AtoLogger, get_logger
+from atopile.logging_utils import get_status_style, print_bar
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom
 from faebryk.exporters.bom.json_bom import write_json_bom
@@ -253,14 +256,22 @@ class MusterTarget:
             if ticker and ticker.is_alive():
                 ticker.terminate()
             elapsed = round(time.time() - start, 2)
+            stage_status = StageStatus.SUCCESS if succeeded else StageStatus.FAILED
+            stage_name = self.description or self.name
             ctx.completed_stages.append(
                 BuildStage(
-                    name=self.description or self.name,
+                    name=stage_name,
                     stage_id=self.name,
                     elapsed_seconds=elapsed,
-                    status=StageStatus.SUCCESS if succeeded else StageStatus.FAILED,
+                    status=stage_status,
                 )
             )
+            # In verbose mode, print stage completion bar immediately
+            # (so it appears in correct order relative to logs)
+            if os.environ.get("ATO_VERBOSE") == "1":
+                icon, color = get_status_style(stage_status)
+                print_bar(f"{icon} {stage_name} [{elapsed:.1f}s]", style=color)
+
             if ctx.build_id:
                 existing = BuildHistory.get(ctx.build_id)
                 started_at = (
