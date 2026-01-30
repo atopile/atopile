@@ -371,7 +371,7 @@ class SubsumptionCheck:
         if not ors:
             return SubsumptionCheck.Result()
 
-        could_be_subsumed = reduce(lambda x, y: x & y, ors)
+        could_be_subsumed = OrderedSet.intersection(*ors)
 
         subsumed: list[F.Expressions.is_expression] = []
         if builder.assert_:
@@ -382,7 +382,7 @@ class SubsumptionCheck:
         if subsumed:
             return SubsumptionCheck.Result(subsumed=subsumed)
 
-        could_subsume = reduce(lambda x, y: x | y, ors) - could_be_subsumed
+        could_subsume = OrderedSet.union(*ors) - could_be_subsumed
         # returning first subsuming expression
         # careful: Or(A, B, C, D) is subsumed by Or(A, B) or Or(C, D)
         # TODO: think whether it's ok to return any of the ambiguous cases
