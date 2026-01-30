@@ -169,7 +169,7 @@ async def install_part(payload: InstallPartRequest):
             payload.lcsc_id,
             payload.project_root,
         )
-        # Emit parts_changed event so UI refreshes
+        # Emit parts_changed event with part data for incremental UI update
         server_state = get_server_state()
         await server_state.emit_event(
             "parts_changed",
@@ -177,6 +177,16 @@ async def install_part(payload: InstallPartRequest):
                 "project_root": payload.project_root,
                 "lcsc_id": payload.lcsc_id,
                 "installed": True,
+                # Include part data so frontend can update incrementally
+                "part": {
+                    "identifier": result.get("identifier"),
+                    "path": result.get("path"),
+                    "lcsc": payload.lcsc_id,
+                    "manufacturer": result.get("manufacturer", ""),
+                    "mpn": result.get("mpn", ""),
+                    "datasheet_url": result.get("datasheet_url"),
+                    "description": result.get("description", ""),
+                },
             },
         )
         return InstallPartResponse(

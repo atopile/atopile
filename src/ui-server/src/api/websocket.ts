@@ -667,13 +667,14 @@ function handleEventMessage(message: EventMessage): void {
       void refreshProblems();
       break;
     case 'parts_changed':
-      // Dispatch custom event for PartsSearchPanel to refresh installed parts
+      // Dispatch custom event for PartsSearchPanel incremental updates
       window.dispatchEvent(
         new CustomEvent('atopile:parts_changed', {
           detail: {
             projectRoot: data.project_root,
             lcscId: data.lcsc_id,
             installed: data.installed,
+            part: data.part,  // Include part data for incremental update
           },
         })
       );

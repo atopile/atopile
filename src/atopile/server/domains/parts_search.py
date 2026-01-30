@@ -197,9 +197,14 @@ def handle_install_part(lcsc_id: str, project_root: str) -> dict:
     except Exception as exc:
         raise errors.UserException(str(exc)) from exc
 
+    # Return full part data for incremental UI updates
     return {
         "identifier": apart.identifier,
         "path": str(apart.path),
+        "manufacturer": apart.mfn[0] if apart.mfn else "",
+        "mpn": apart.mfn[1] if apart.mfn else "",
+        "datasheet_url": apart.datasheet,
+        "description": apart.docstring,
     }
 
 

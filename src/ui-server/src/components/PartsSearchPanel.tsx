@@ -143,19 +143,66 @@ export function PartsSearchPanel({
     }
   }, [selectedProjectRoot])
 
-  // Listen for parts_changed events to refresh installed parts list
+  // Listen for parts_changed events for incremental updates (avoid full refresh)
   useEffect(() => {
-    const handlePartsChanged = (event: CustomEvent<{ projectRoot?: string; lcscId?: string; installed?: boolean }>) => {
-      // Only refresh if the event is for our project
-      if (selectedProjectRoot && event.detail.projectRoot === selectedProjectRoot) {
-        // Refetch installed parts
+    interface PartsChangedDetail {
+      projectRoot?: string
+      lcscId?: string
+      installed?: boolean
+      part?: InstalledPartItem
+    }
+
+    const handlePartsChanged = (event: CustomEvent<PartsChangedDetail>) => {
+      const { projectRoot, lcscId, installed, part } = event.detail
+
+      // Only handle if the event is for our project
+      if (!selectedProjectRoot || projectRoot !== selectedProjectRoot) return
+
+      // If we don't have lcscId, fall back to full refresh
+      if (!lcscId) {
         api.parts.installed(selectedProjectRoot)
-          .then((response) => {
-            setInstalledParts(response.parts || [])
+          .then((response) => setInstalledParts(response.parts || []))
+          .catch((error) => console.warn('Failed to refresh installed parts:', error))
+        return
+      }
+
+      if (installed && part) {
+        // Part was installed - add it to the list
+        setInstalledParts((prev) => {
+          // Check if already exists (avoid duplicates)
+          const exists = prev.some((p) => p.lcsc?.toUpperCase() === lcscId.toUpperCase())
+          if (exists) return prev
+          return [...prev, part]
+        })
+
+        // Mark for enrichment and fetch stock/price
+        setEnrichingLcscs((prev) => new Set([...prev, lcscId.toUpperCase()]))
+        api.parts.lcsc([lcscId], { projectRoot: selectedProjectRoot })
+          .then((enrichResponse) => {
+            const enriched = enrichResponse.parts?.[lcscId.toUpperCase()]
+            if (enriched) {
+              setInstalledParts((prev) =>
+                prev.map((p) =>
+                  p.lcsc?.toUpperCase() === lcscId.toUpperCase()
+                    ? { ...p, stock: enriched.stock, unit_cost: enriched.unit_cost }
+                    : p
+                )
+              )
+            }
           })
-          .catch((error) => {
-            console.warn('Failed to refresh installed parts:', error)
+          .catch((err) => console.warn('Failed to enrich new part:', err))
+          .finally(() => {
+            setEnrichingLcscs((prev) => {
+              const next = new Set(prev)
+              next.delete(lcscId.toUpperCase())
+              return next
+            })
           })
+      } else {
+        // Part was uninstalled - remove it from the list
+        setInstalledParts((prev) =>
+          prev.filter((p) => p.lcsc?.toUpperCase() !== lcscId.toUpperCase())
+        )
       }
     }
 
@@ -175,6 +222,7 @@ export function PartsSearchPanel({
     }
 
     const requestId = ++searchRequestId.current
+    // 450ms debounce to reduce API calls while typing
     const timer = setTimeout(() => {
       setSearchLoading(true)
       setSearchError(null)
@@ -195,7 +243,7 @@ export function PartsSearchPanel({
           if (requestId !== searchRequestId.current) return
           setSearchLoading(false)
         })
-    }, 250)
+    }, 450)
 
     return () => clearTimeout(timer)
   }, [searchQuery])
@@ -376,6 +424,12 @@ export function PartsSearchPanel({
                         datasheet_url: part.datasheet_url,
                         image_url: part.image_url || undefined,
                         installed: isInstalled,
+                        // Pass data we already have for immediate display
+                        stock: part.stock,
+                        unit_cost: part.unit_cost,
+                        is_basic: part.is_basic,
+                        is_preferred: part.is_preferred,
+                        attributes: part.attributes,
                       })}
                     >
                       <span className="parts-cell parts-cell-primary">
@@ -459,6 +513,9 @@ export function PartsSearchPanel({
                           datasheet_url: part.datasheet_url || undefined,
                           image_url: part.image_url || undefined,
                           installed: true,
+                          // Pass enriched data if available
+                          stock: part.stock,
+                          unit_cost: part.unit_cost,
                         })
                       }}
                     >
