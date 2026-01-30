@@ -74,6 +74,25 @@ function TraceDetails({
   );
 }
 
+// Collapsible wrapper for StackInspector
+function CollapsibleStackTrace({
+  traceback,
+}: {
+  traceback: Parameters<typeof StackInspector>[0]['traceback'];
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="lv-trace lv-trace-python">
+      <button className="lv-trace-summary" onClick={() => setIsOpen(!isOpen)}>
+        <span className={`lv-trace-arrow ${isOpen ? 'open' : ''}`}>▸</span>
+        python traceback
+      </button>
+      {isOpen && <StackInspector traceback={traceback} />}
+    </div>
+  );
+}
+
 // Recursive tree node component for nested folding
 function TreeNodeRow({
   node,
@@ -166,7 +185,7 @@ function TreeNodeRow({
               />
             )}
             {structuredTb && structuredTb.frames.length > 0 ? (
-              <StackInspector traceback={structuredTb} />
+              <CollapsibleStackTrace traceback={structuredTb} />
             ) : entry.python_traceback ? (
               <TraceDetails
                 label="python traceback"
@@ -314,7 +333,7 @@ function StandaloneLogRow({
               />
             )}
             {structuredTb && structuredTb.frames.length > 0 ? (
-              <StackInspector traceback={structuredTb} />
+              <CollapsibleStackTrace traceback={structuredTb} />
             ) : entry.python_traceback ? (
               <TraceDetails
                 label="python traceback"
