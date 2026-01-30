@@ -8,9 +8,9 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CheckCircle, Download, Loader2, Package, PackageSearch, Search } from 'lucide-react'
+import { CheckCircle, Package, PackageSearch, Search } from 'lucide-react'
 import type { PackageInfo, ProjectDependency } from '../types/build'
-import { formatDownloads, isInstalledInProject } from '../utils/packageUtils'
+import { isInstalledInProject } from '../utils/packageUtils'
 import type { SelectedPackage } from './sidebar-modules'
 import './PackagesPanel.css'
 
@@ -81,16 +81,12 @@ function MarketplacePackageRow({
       </div>
       <div className="packages-row-meta">
         <span className="packages-row-publisher">{pkg.publisher}</span>
+        {/* TODO: Re-enable download counts once /v1/packages/all includes downloads
         <span className="packages-row-downloads">
-          {pkg.downloads == null ? (
-            <Loader2 size={10} className="packages-downloads-spinner" />
-          ) : (
-            <>
-              <Download size={10} />
-              {formatDownloads(pkg.downloads)}
-            </>
-          )}
+          <Download size={10} />
+          {formatDownloads(pkg.downloads)}
         </span>
+        */}
       </div>
     </div>
   )

@@ -98,16 +98,15 @@ async def get_packages_summary(
     scan_path = packages_domain.resolve_scan_path(ctx, path)
     result = await asyncio.to_thread(packages_domain.handle_packages_summary, scan_path)
 
-    # Find packages without download counts and enrich in background
-    # TODO: Remove when /v1/packages/all includes downloads
-    packages_needing_downloads = [
-        pkg.identifier for pkg in result.packages if pkg.downloads is None
-    ]
-    if packages_needing_downloads:
-        # Run enrichment as a background coroutine
-        asyncio.create_task(
-            packages_domain.enrich_packages_with_downloads(packages_needing_downloads)
-        )
+    # TODO: Re-enable when /v1/packages/all includes downloads field.
+    # Currently disabled as fetching individual package details is too heavy.
+    # packages_needing_downloads = [
+    #     pkg.identifier for pkg in result.packages if pkg.downloads is None
+    # ]
+    # if packages_needing_downloads:
+    #     asyncio.create_task(
+    #         packages_domain.enrich_packages_with_downloads(packages_needing_downloads)
+    #     )
 
     return result
 
