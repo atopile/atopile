@@ -12,12 +12,12 @@
   justify-content: center;
   padding: var(--spacing-lg);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-md);
   gap: var(--spacing-xs);
 }
 
 .empty-hint {
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   color: var(--text-muted);
   opacity: 0.7;
 }
@@ -53,7 +53,7 @@
   align-items: center;
   justify-content: center;
   padding: 4px 8px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   background: var(--bg-tertiary);
   color: var(--text-muted);
   border: none;
@@ -69,12 +69,12 @@
 
 .stdlib-filters .filter-btn.active {
   background: var(--accent);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 .stdlib-filters .filter-btn:not(:first-child).active {
   background: var(--filter-color);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 .stdlib-list {
@@ -93,7 +93,7 @@
   align-items: center;
   gap: 4px;
   width: 100%;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -149,7 +149,7 @@
 }
 
 .search-results-count {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   padding: var(--spacing-xs) var(--spacing-sm);
   margin-bottom: var(--spacing-xs);
@@ -163,7 +163,7 @@
   gap: var(--spacing-sm);
   padding: var(--spacing-xl);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-md);
 }
 
 .stdlib-empty svg {
@@ -204,14 +204,14 @@
 }
 
 .stdlib-card-name {
-  font-size: 12px;
+  font-size: var(--font-size-md);
   font-weight: 600;
   color: var(--text-primary);
   font-family: var(--font-mono);
 }
 
 .stdlib-type-badge {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   padding: 2px 6px;
   border-radius: 10px;
   font-weight: 500;
@@ -221,7 +221,7 @@
 /* Expanded content */
 .stdlib-card-description {
   margin-top: var(--spacing-sm);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   line-height: 1.5;
 }
@@ -229,7 +229,7 @@
 .stdlib-card-params,
 .stdlib-card-exports {
   margin-top: var(--spacing-sm);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
 }
 
 .params-label,
@@ -272,7 +272,7 @@
   justify-content: space-between;
   padding: var(--spacing-xs) var(--spacing-sm);
   background: rgba(0,0,0,0.2);
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -298,7 +298,7 @@
 .usage-code {
   padding: var(--spacing-sm);
   margin: 0;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-family: var(--font-mono);
   color: var(--ctp-green);
   white-space: pre-wrap;
@@ -318,7 +318,7 @@
   align-items: center;
   gap: 4px;
   padding: 6px 10px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   border: none;
@@ -329,12 +329,12 @@
 
 .stdlib-action-btn:hover {
   background: var(--accent);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 .stdlib-action-btn.primary {
-  background: var(--ctp-green);
-  color: var(--ctp-crust);
+  background: var(--success);
+  color: var(--text-on-status);
 }
 
 .stdlib-action-btn.primary:hover {
@@ -405,13 +405,13 @@
 }
 
 .stdlib-child-name {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-family: var(--font-mono);
   color: var(--text-primary);
 }
 
 .stdlib-child-type {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-family: var(--font-mono);
   opacity: 0.7;
   margin-left: auto;
@@ -438,7 +438,7 @@
 }
 
 .enum-count {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   opacity: 0.8;
   margin-left: 4px;
 }
@@ -472,7 +472,7 @@
   background: transparent;
   border: none;
   outline: none;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   font-family: var(--font-sans);
 }
@@ -486,7 +486,7 @@
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-lg);
   line-height: 1;
   padding: 0 2px;
 }
@@ -502,7 +502,7 @@
 
 .enum-value-item {
   padding: 5px 10px;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-family: var(--font-mono);
   color: var(--text-secondary);
   cursor: pointer;
@@ -521,13 +521,13 @@
 .enum-empty {
   padding: 12px;
   text-align: center;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--text-muted);
 }
 
 .enum-dropdown-footer {
   padding: 4px 8px;
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   background: var(--bg-secondary);
   border-top: 1px solid var(--border-subtle);

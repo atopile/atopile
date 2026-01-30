@@ -10,8 +10,9 @@ import logging
 import sqlite3
 from pathlib import Path
 
-from atopile.dataclasses import Problem
+from atopile.dataclasses import EventType, Problem
 from atopile.logging import BuildLogger
+from atopile.model.sqlite import BuildHistory
 from atopile.server.events import event_bus
 
 log = logging.getLogger(__name__)
@@ -64,11 +65,9 @@ def _load_problems_from_db(
         params = ("user", limit)
 
     query = f"""
-        SELECT logs.id, logs.timestamp, logs.stage, logs.level,
-               logs.message, logs.ato_traceback, logs.python_traceback,
-               builds.target, builds.project_path
+        SELECT logs.id, logs.build_id, logs.timestamp, logs.stage, logs.level,
+               logs.message, logs.ato_traceback, logs.python_traceback
         FROM logs
-        JOIN builds ON logs.build_id = builds.build_id
         WHERE logs.level IN ('WARNING', 'ERROR', 'ALERT')
         {audience_filter}
         ORDER BY logs.id DESC
@@ -78,11 +77,20 @@ def _load_problems_from_db(
     rows = conn.execute(query, params).fetchall()
     conn.close()
 
+    # Look up build metadata from build history
+    build_ids = {row["build_id"] for row in rows if row["build_id"]}
+    build_info = {}
+    for bid in build_ids:
+        info = BuildHistory.get(bid)
+        if info:
+            build_info[bid] = info
+
     problems: list[Problem] = []
     for row in rows:
-        project_path = row["project_path"] or ""
+        info = build_info.get(row["build_id"])
+        project_path = info.project_root if info else ""
         project_name = Path(project_path).name if project_path else None
-        target = row["target"] or ""
+        target = info.target if info else ""
         build_name = f"{project_name}:{target}" if project_name and target else target
 
         file_path, line_num, column = _parse_traceback_location(row["ato_traceback"])
@@ -124,7 +132,7 @@ def sync_problems_to_state(developer_mode: bool | None = None) -> None:
             If None, uses the current developer_mode setting from server_state.
     """
     payload = {"developer_mode": developer_mode} if developer_mode is not None else {}
-    event_bus.emit_sync("problems_changed", payload)
+    event_bus.emit_sync(EventType.PROBLEMS_CHANGED, payload)
 
 
 __all__ = [

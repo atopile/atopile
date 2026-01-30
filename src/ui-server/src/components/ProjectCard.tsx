@@ -25,15 +25,15 @@ import { UsageCard } from './UsageCard'
 import { validateName } from '../utils/nameValidation'
 import { compareVersionsDesc, isInstalledInProject } from '../utils/packageUtils'
 import { generateImportStatement, generateUsageExample } from '../utils/codeHighlight'
-import { api } from '../api/client'
+import { sendActionWithResponse } from '../api/websocket'
+import type { BuildTarget as ProjectBuildTarget, PackageDetails } from '../types/build'
 import type {
   Selection,
-  BuildTarget,
+  BuildTarget as UiBuildTarget,
   Project,
   ModuleDefinition,
   AvailableProject
 } from './projectsTypes'
-import type { PackageDetails } from '../types/build'
 import './ProjectCard.css'
 
 // Version selector dropdown
@@ -275,7 +275,7 @@ interface ProjectCardProps {
   // Edit mode props (for local projects)
   onUpdateProject?: (projectId: string, updates: Partial<Project>) => void
   onAddBuild?: (projectId: string) => void
-  onUpdateBuild?: (projectId: string, buildId: string, updates: Partial<BuildTarget>) => void
+  onUpdateBuild?: (projectId: string, buildId: string, updates: Partial<UiBuildTarget>) => void
   onDeleteBuild?: (projectId: string, buildId: string) => void
   onProjectExpand?: (projectRoot: string) => void
   onDependencyVersionChange?: (projectId: string, identifier: string, newVersion: string) => void
@@ -293,6 +293,7 @@ interface ProjectCardProps {
   projectFiles?: FileTreeNode[]
   projectDependencies?: ProjectDependency[]
   projectFilesByRoot?: Record<string, FileTreeNode[]>
+  projectBuildsByRoot?: Record<string, ProjectBuildTarget[]>  // Builds for installed dependencies (from local ato.yaml)
   updatingDependencyIds?: string[]  // IDs of dependencies being updated (format: projectRoot:dependencyId)
 
   // Package mode props (can override preset or use directly)
@@ -328,6 +329,7 @@ export const ProjectCard = memo(function ProjectCard({
   projectFiles = [],
   projectDependencies = [],
   projectFilesByRoot = {},
+  projectBuildsByRoot = {},
   updatingDependencyIds = [],
   readOnly: readOnlyProp,
   availableProjects = [],
@@ -359,21 +361,9 @@ export const ProjectCard = memo(function ProjectCard({
   // Live timer for building state
   const buildingBuilds = project.builds.filter(b => b.status === 'building')
   const maxElapsedFromBuilds = buildingBuilds.length > 0
-    ? Math.max(...buildingBuilds.map(b => b.elapsedSeconds || 0))
+    ? Math.max(...buildingBuilds.map(b => b.elapsedSeconds ?? 0))
     : 0
-  const [displayElapsed, setDisplayElapsed] = useState(maxElapsedFromBuilds)
-
-  useEffect(() => {
-    if (!isBuilding) {
-      setDisplayElapsed(0)
-      return
-    }
-    setDisplayElapsed(maxElapsedFromBuilds)
-    const interval = setInterval(() => {
-      setDisplayElapsed(prev => prev + 1)
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [isBuilding, maxElapsedFromBuilds])
+  const displayElapsed = isBuilding ? maxElapsedFromBuilds : 0
 
   const formatBuildTime = (seconds: number): string => {
     const hrs = Math.floor(seconds / 3600)
@@ -401,15 +391,19 @@ export const ProjectCard = memo(function ProjectCard({
   const [detailsError, setDetailsError] = useState<string | null>(null)
 
   // Fetch package details when expanded (package mode only)
+  // Skip for dependencyExpanded - all data is available locally
   useEffect(() => {
+    // For dependencies, we have all data locally - no need to fetch from registry
+    if (preset === 'dependencyExpanded') return
     if (!readOnly || !expanded || packageDetails || detailsLoading) return
 
     setDetailsLoading(true)
     setDetailsError(null)
 
-    api.packages
-      .details(project.id)
-      .then((details) => {
+    sendActionWithResponse('getPackageDetails', { packageId: project.id }, { timeoutMs: 15000 })
+      .then(response => {
+        const result = response.result ?? {}
+        const details = (result as { details?: PackageDetails }).details
         if (details) {
           setPackageDetails(details)
           const sortedDetailVersions = (details.versions || [])
@@ -432,7 +426,7 @@ export const ProjectCard = memo(function ProjectCard({
       .finally(() => {
         setDetailsLoading(false)
       })
-  }, [readOnly, expanded, packageDetails, detailsLoading, project.id, selectedVersion])
+  }, [readOnly, expanded, packageDetails, detailsLoading, project.id, selectedVersion, preset])
 
   const defaultDescription = "A new atopile project!"
   const displayDescription = description || project.description || defaultDescription
@@ -491,15 +485,33 @@ export const ProjectCard = memo(function ProjectCard({
     ? `${packageDetails.installedIn[0]}/.ato/modules/${project.id}`
     : project.root
 
-  // For packages, use builds from packageDetails (converted to BuildTarget format)
-  const builds: BuildTarget[] = readOnly && packageDetails?.builds
-    ? packageDetails.builds.map((b, idx) => ({
-        id: b.name || `build-${idx}`,
-        name: b.name || 'default',
-        entry: b.entry || '',
-        root: packagePath,
-        status: 'idle' as const,
-      }))
+  // For dependencies/packages, prefer local builds (from fetchBuilds) over remote packageDetails
+  // This allows the Explorer to show immediately without waiting for remote fetch
+  const localBuilds = projectBuildsByRoot[project.root]
+  const builds: UiBuildTarget[] = readOnly
+    ? (localBuilds && localBuilds.length > 0)
+      // Use local builds (from ato.yaml via fetchBuilds)
+      ? localBuilds.map((b, idx) => ({
+          id: b.name || `build-${idx}`,
+          name: b.name || 'default',
+          entry: b.entry || '',
+          root: packagePath,
+          status: 'idle' as const,
+        }))
+      // Fall back to remote packageDetails if local not available yet
+      : packageDetails?.builds
+        ? packageDetails.builds.map((build, idx) => {
+            const name = typeof build === 'string' ? build : build.name
+            const entry = typeof build === 'string' ? '' : build.entry
+            return {
+              id: name || `build-${idx}`,
+              name: name || 'default',
+              entry: entry || '',
+            root: packagePath,
+            status: 'idle' as const,
+          }
+        })
+        : []
     : project.builds
 
   const isPackage = readOnly || project.type === 'package'
@@ -749,36 +761,34 @@ export const ProjectCard = memo(function ProjectCard({
       {/* Expanded content */}
       {expanded && (
         <div className="project-card-content">
-          {/* Loading state (package mode) */}
-          {readOnly && detailsLoading && (
-            <div className="package-loading">
-              <Loader2 size={16} className="spin" />
-              <span>Loading package details...</span>
-            </div>
-          )}
-
-          {/* Error state (package mode) */}
-          {readOnly && detailsError && (
-            <div className="package-error">
-              <span>Failed to load details: {detailsError}</span>
-            </div>
-          )}
-
-          {/* Package metadata */}
-          {showMetadata && packageDetails && !detailsLoading && (
+          {/* Package metadata - for dependencies use local data, for packages fetch from registry */}
+          {showMetadata && (
             <MetadataBar
-              downloads={packageDetails.downloads}
-              versionCount={packageDetails.versionCount}
-              license={packageDetails.license}
+              // For dependencies (preset=dependencyExpanded), use local data from project
+              // For packages (packageExplorer), use remote packageDetails
+              downloads={preset === 'dependencyExpanded' ? undefined : packageDetails?.downloads}
+              versionCount={preset === 'dependencyExpanded' ? undefined : packageDetails?.versionCount}
+              license={preset === 'dependencyExpanded' ? project.license : packageDetails?.license}
+              homepage={preset === 'dependencyExpanded' ? project.homepage : packageDetails?.homepage}
+              isLoading={preset !== 'dependencyExpanded' && detailsLoading}
             />
           )}
 
-          {/* Import and Usage examples */}
-          {showUsageExamples && packageDetails && !detailsLoading && (
+          {/* Error state for metadata (non-blocking, just informational) */}
+          {/* Skip for dependencies since we don't fetch remotely */}
+          {readOnly && preset !== 'dependencyExpanded' && detailsError && !detailsLoading && (
+            <div className="package-error">
+              <span>Failed to load package details: {detailsError}</span>
+            </div>
+          )}
+
+          {/* Import and Usage examples - available immediately using project data */}
+          {/* If usageContent (from usage.ato) is available, show that instead of generated example */}
+          {showUsageExamples && (
             <UsageCard
               importCode={generateImportStatement(project.id, project.name)}
-              usageCode={generateUsageExample(project.name)}
-              onOpenUsage={() => onOpenSource?.(project.id, `${project.name}.ato`)}
+              usageCode={project.usageContent || generateUsageExample(project.name)}
+              onOpenUsage={() => onOpenSource?.(project.id, project.usageContent ? 'usage.ato' : `${project.name}.ato`)}
             />
           )}
 
@@ -789,6 +799,7 @@ export const ProjectCard = memo(function ProjectCard({
               builds={builds}
               projectRoot={packagePath}
               defaultExpanded={false}
+              isLoading={readOnly && !localBuilds?.length && detailsLoading}
             />
           )}
 
@@ -825,12 +836,12 @@ export const ProjectCard = memo(function ProjectCard({
           <DependencyCard
             dependencies={dependencies}
             projectId={project.id}
-            projectRoot={readOnly ? packagePath : project.root}
             onVersionChange={onDependencyVersionChange}
             onRemove={onRemoveDependency}
             readOnly={readOnly}
             onProjectExpand={onProjectExpand}
             projectFilesByRoot={projectFilesByRoot}
+            projectBuildsByRoot={projectBuildsByRoot}
             updatingDependencyIds={updatingDependencyIds}
             onFileClick={onFileClick}
           />

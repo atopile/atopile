@@ -13,209 +13,307 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Callable
 
-from atopile.dataclasses import ActiveBuild, BuildStatus, StageStatus
-from atopile.model import build_history
-from atopile.model.model_state import model_state
-from atopile.server.events import event_bus
+from atopile.dataclasses import Build, BuildStatus, StageStatus
+from atopile.model.sqlite import BUILD_HISTORY_DB, BuildHistory
+
+# ---------------------------------------------------------------------------
+# Typed messages from build worker threads
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class BuildStartedMsg:
+    build_id: str
+
+
+@dataclass(frozen=True)
+class BuildStageMsg:
+    build_id: str
+    stages: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class BuildCompletedMsg:
+    build_id: str
+    return_code: int
+    error: str | None
+    stages: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class BuildCancelledMsg:
+    build_id: str
+
+
+@dataclass(frozen=True)
+class BuildOutputMsg:
+    build_id: str
+    text: str
+    is_stderr: bool = False
+
+
+BuildResultMsg = BuildStartedMsg | BuildStageMsg | BuildCompletedMsg | BuildCancelledMsg | BuildOutputMsg
 
 log = logging.getLogger(__name__)
-
-# Convenience aliases for cleaner code
-_active_builds = model_state.active_builds
-_build_lock = model_state.build_lock
-
-
-def _acquire_build_lock(timeout: float = 5.0, context: str = "unknown") -> bool:
-    """Acquire build lock with timeout. Delegates to model_state."""
-    return model_state.acquire_build_lock(timeout=timeout, context=context)
-
-
-def _release_build_lock(context: str = "unknown") -> None:
-    """Release build lock. Delegates to model_state."""
-    model_state.release_build_lock(context=context)
-
 
 # Build queue configuration
 MAX_CONCURRENT_BUILDS = 4
 
 
-def _is_duplicate_build(
-    project_root: str, target: str, entry: str | None
-) -> str | None:
-    """
-    Check if a build with the same config is already running or queued.
+def _build_subprocess_command(build: Build) -> list[str]:
+    """Build the subprocess command for a given build."""
+    ato_binary = os.environ.get("ATO_BINARY") or os.environ.get("ATO_BINARY_PATH")
+    resolved_ato = ato_binary or shutil.which("ato")
+    if resolved_ato:
+        cmd = [resolved_ato, "build"]
+    else:
+        cmd = [sys.executable, "-m", "atopile", "build"]
 
-    Returns the existing build_id if duplicate, None otherwise.
-    """
-    with _build_lock:
-        for build in _active_builds:
-            if build.status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
-                continue
-            if build.project_root != project_root:
-                continue
-            if build.target != target:
-                continue
-            if build.entry != entry:
-                continue
-            return build.build_id
-    return None
+    if build.standalone and build.entry:
+        cmd.append(build.entry)
+        cmd.append("--standalone")
+    elif build.target:
+        cmd.extend(["--build", build.target])
+
+    if build.frozen:
+        cmd.append("--frozen")
+
+    if build.verbose:
+        cmd.append("--verbose")
+
+    return cmd
+
+
+def _build_subprocess_env(build: Build) -> dict[str, str]:
+    """Build environment variables for the build subprocess."""
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    env["ATO_BUILD_WORKER"] = "1"
+
+    # Force Rich to output ANSI colors even when piped (for verbose mode)
+    if build.verbose:
+        env["FORCE_COLOR"] = "1"
+        # Set log source for prefix in log output
+        env["ATO_LOG_SOURCE"] = build.display_name or build.name or "build"
+
+    if build.build_id:
+        env["ATO_BUILD_ID"] = build.build_id
+    if build.timestamp:
+        env["ATO_BUILD_TIMESTAMP"] = build.timestamp
+
+    env["ATO_BUILD_HISTORY_DB"] = str(BUILD_HISTORY_DB)
+
+    if build.include_targets:
+        env["ATO_TARGET"] = ",".join(build.include_targets)
+    if build.exclude_targets:
+        env["ATO_EXCLUDE_TARGET"] = ",".join(build.exclude_targets)
+    if build.frozen is not None:
+        env["ATO_FROZEN"] = "1" if build.frozen else "0"
+    if build.keep_picked_parts is not None:
+        env["ATO_KEEP_PICKED_PARTS"] = "1" if build.keep_picked_parts else "0"
+    if build.keep_net_names is not None:
+        env["ATO_KEEP_NET_NAMES"] = "1" if build.keep_net_names else "0"
+    if build.keep_designators is not None:
+        env["ATO_KEEP_DESIGNATORS"] = "1" if build.keep_designators else "0"
+    if build.verbose:
+        env["ATO_VERBOSE"] = "1"
+        # Force Rich to emit ANSI formatting even when stdout is piped.
+        env["ATO_FORCE_TERMINAL"] = "1"
+        # Propagate parent width so rich bars scale correctly in subprocess.
+        try:
+            from atopile.logging_utils import get_terminal_width
+
+            width = str(get_terminal_width())
+            env["COLUMNS"] = width
+            env["TERMINAL_WIDTH"] = width
+        except Exception:
+            pass
+    if os.environ.get("ATO_SAFE"):
+        env["ATO_SAFE"] = "1"
+
+    return env
 
 
 def _run_build_subprocess(
-    build_id: str,
-    project_root: str,
-    target: str,
-    frozen: bool,
-    entry: str | None,
-    standalone: bool,
-    build_timestamp: str | None,
-    result_q: queue.Queue,
+    build: Build,
+    result_q: queue.Queue[BuildResultMsg],
     cancel_flags: dict[str, bool],
 ) -> None:
     """
     Run a single build in a subprocess and report progress.
 
-    This function runs in a worker thread. It spawns an `ato build` subprocess
-    and monitors it for completion while polling the database for stage updates.
+    This function runs in a worker thread. It spawns an ``ato build``
+    subprocess and monitors it for completion while polling the database
+    for stage updates.
     """
-    # Send "started" message
-    result_q.put(
-        {
-            "type": "started",
-            "build_id": build_id,
-            "project_root": project_root,
-            "target": target,
-        }
-    )
+    if not build.build_id:
+        raise RuntimeError("BuildQueue requires builds to have build_id set")
+
+    result_q.put(BuildStartedMsg(build_id=build.build_id))
 
     process = None
-    final_stages: list[dict] = []
+    final_stages: list[dict[str, Any]] = []
     error_msg: str | None = None
     return_code: int = -1
 
     try:
-        # Build the command (prefer explicit binary, then PATH, then module)
-        ato_binary = os.environ.get("ATO_BINARY") or os.environ.get("ATO_BINARY_PATH")
-        resolved_ato = ato_binary or shutil.which("ato")
-        if resolved_ato:
-            cmd = [resolved_ato, "build", "--verbose"]
-        else:
-            cmd = [sys.executable, "-m", "atopile", "build", "--verbose"]
+        cmd = _build_subprocess_command(build)
+        env = _build_subprocess_env(build)
 
-        # Determine target for monitoring
-        monitor_target: str
+        preexec_fn = None
+        if env.get("ATO_SAFE"):
 
-        if standalone and entry:
-            cmd.append(entry)
-            cmd.append("--standalone")
-            # For standalone builds, the target name is "default"
-            monitor_target = "default"
-        else:
-            cmd.extend(["--build", target])
-            monitor_target = target or "default"
+            def enable_core_dumps():
+                import resource
 
-        if frozen:
-            cmd.append("--frozen")
+                try:
+                    resource.setrlimit(
+                        resource.RLIMIT_CORE,
+                        (resource.RLIM_INFINITY, resource.RLIM_INFINITY),
+                    )
+                except (ValueError, OSError):
+                    pass
 
-        # Run the build subprocess
-        env = os.environ.copy()
-        env["PYTHONUNBUFFERED"] = "1"
-        env["ATO_BUILD_ID"] = build_id  # Pass build_id to subprocess
-        if build_timestamp:
-            env["ATO_BUILD_TIMESTAMP"] = build_timestamp
-
-        # Pass the build history DB path to the subprocess
-        db_path = build_history.get_build_history_db()
-        if db_path:
-            env["ATO_BUILD_HISTORY_DB"] = str(db_path)
+            preexec_fn = enable_core_dumps
 
         log.info(
-            f"Build {build_id}: starting subprocess - cmd={' '.join(cmd)}, "
-            f"cwd={project_root}, monitor_target={monitor_target}"
+            "Build %s: starting subprocess - cmd=%s, cwd=%s",
+            build.build_id,
+            " ".join(cmd),
+            build.project_root,
         )
 
-        process = subprocess.Popen(
-            cmd,
-            cwd=project_root,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env,
-        )
+        # For verbose mode, pipe stdout/stderr to stream output to parent
+        # For non-verbose mode, capture stderr for error reporting but discard stdout
+        stderr_output: list[str] = []
+        stderr_thread: threading.Thread | None = None
 
-        # Poll for completion while monitoring the database for stage updates
-        last_stages: list[dict] = []
-        poll_interval = 0.5
-        stderr_output = ""
+        if build.verbose:
+            process = subprocess.Popen(
+                cmd,
+                cwd=build.project_root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                preexec_fn=preexec_fn,
+                text=True,
+                bufsize=1,  # Line buffered
+            )
 
+            # Start threads to read stdout/stderr and forward to result_q
+            def stream_output(pipe, is_stderr: bool) -> None:
+                try:
+                    for line in pipe:
+                        result_q.put(BuildOutputMsg(
+                            build_id=build.build_id,
+                            text=line,
+                            is_stderr=is_stderr,
+                        ))
+                except Exception:
+                    pass
+                finally:
+                    pipe.close()
+
+            stdout_thread = threading.Thread(
+                target=stream_output, args=(process.stdout, False), daemon=True
+            )
+            stderr_thread = threading.Thread(
+                target=stream_output, args=(process.stderr, True), daemon=True
+            )
+            stdout_thread.start()
+            stderr_thread.start()
+        else:
+            # Capture stderr for error reporting even in non-verbose mode
+            process = subprocess.Popen(
+                cmd,
+                cwd=build.project_root,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                env=env,
+                preexec_fn=preexec_fn,
+                text=True,
+            )
+            # Collect stderr in background thread
+            def collect_stderr(pipe) -> None:
+                try:
+                    for line in pipe:
+                        stderr_output.append(line)
+                except Exception:
+                    pass
+                finally:
+                    pipe.close()
+
+            stderr_thread = threading.Thread(
+                target=collect_stderr, args=(process.stderr,), daemon=True
+            )
+            stderr_thread.start()
+
+        # Poll for completion while monitoring the DB for stage updates
+        last_stages: list[dict[str, Any]] = []
+        poll_interval = 0.1 if build.verbose else 0.25
+        last_emit = 0.0
         while process.poll() is None:
-            # Check for cancellation
-            if cancel_flags.get(build_id, False):
+            if cancel_flags.get(build.build_id, False):
                 process.terminate()
                 try:
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     process.kill()
-                result_q.put(
-                    {
-                        "type": "cancelled",
-                        "build_id": build_id,
-                    }
-                )
-                return  # Exit the function after cancellation
+                result_q.put(BuildCancelledMsg(build_id=build.build_id))
+                return
 
-            # Query the database for stage updates
-            build_info = build_history.get_build_info_by_id(build_id)
+            build_info = BuildHistory.get(build.build_id)
             current_stages = build_info.stages if build_info else []
 
-            # Check if stages changed
-            if current_stages != last_stages:
+            now = time.time()
+            if current_stages != last_stages or (now - last_emit) >= poll_interval:
                 log.debug(
-                    f"Build {build_id}: stage update - {len(current_stages)} stages"
+                    "Build %s: stage update - %d stages",
+                    build.build_id,
+                    len(current_stages),
                 )
                 result_q.put(
-                    {
-                        "type": "stage",
-                        "build_id": build_id,
-                        "stages": current_stages,
-                    }
+                    BuildStageMsg(
+                        build_id=build.build_id,
+                        stages=current_stages,
+                    )
                 )
                 last_stages = current_stages
+                last_emit = now
 
             time.sleep(poll_interval)
 
-        # Process completed
         return_code = process.returncode
-        stderr_output = process.stderr.read() if process.stderr else ""
 
-        # Get final stages from database
-        build_info = build_history.get_build_info_by_id(build_id)
+        # Wait for stderr collection to complete (non-verbose mode)
+        if stderr_thread is not None:
+            stderr_thread.join(timeout=2.0)
+
+        build_info = BuildHistory.get(build.build_id)
         if build_info:
             final_stages = build_info.stages
 
         if return_code != 0:
-            error_msg = (
-                stderr_output[:500]
-                if stderr_output
-                else f"Build failed with code {return_code}"
-            )
+            # Include captured stderr in error message
+            if stderr_output:
+                error_msg = "".join(stderr_output)
+            else:
+                error_msg = f"Build failed with code {return_code}"
 
     except Exception as exc:
         error_msg = str(exc)
         return_code = -1
 
-    # Send completion message
     result_q.put(
-        {
-            "type": "completed",
-            "build_id": build_id,
-            "return_code": return_code,
-            "error": error_msg,
-            "stages": final_stages,
-        }
+        BuildCompletedMsg(
+            build_id=build.build_id,
+            return_code=return_code,
+            error=error_msg,
+            stages=final_stages,
+        )
     )
 
 
@@ -224,11 +322,14 @@ class BuildQueue:
     Manages build execution with concurrency limiting using threading.
 
     Queues build requests and processes them in worker threads with subprocesses,
-    respecting a maximum concurrent build limit. This approach is simpler than
-    multiprocessing and matches the CLI's ParallelBuildManager pattern.
+    respecting a maximum concurrent build limit.
     """
 
     def __init__(self, max_concurrent: int = MAX_CONCURRENT_BUILDS):
+        # Builds owned by the queue
+        self._builds: dict[str, Build] = {}
+        self._builds_lock = threading.RLock()
+
         # Pending builds - use list for reordering capability
         self._pending: list[str] = []
         self._pending_lock = threading.Lock()
@@ -244,7 +345,7 @@ class BuildQueue:
         self._executor: ThreadPoolExecutor | None = None
 
         # Result queue for worker threads to report back
-        self._result_q: queue.Queue[dict[str, Any]] = queue.Queue()
+        self._result_q: queue.Queue[BuildResultMsg] = queue.Queue()
 
         # Cancel flags (thread-safe dict for signaling cancellation)
         self._cancel_flags: dict[str, bool] = {}
@@ -252,6 +353,11 @@ class BuildQueue:
 
         # Orchestrator thread
         self._orchestrator_thread: threading.Thread | None = None
+
+        # Callbacks
+        self.on_change: Callable[[str, str], None] | None = None
+        self.on_completed: Callable[[Build], None] | None = None
+        self.on_output: Callable[[str, str, bool], None] | None = None  # build_id, text, is_stderr
 
     def start(self) -> None:
         """Start the thread pool and orchestrator thread."""
@@ -270,33 +376,163 @@ class BuildQueue:
             target=self._orchestrate, daemon=True
         )
         self._orchestrator_thread.start()
-        log.info(f"BuildQueue: Started (max_concurrent={self._max_concurrent})")
+        log.info("BuildQueue: Started (max_concurrent=%d)", self._max_concurrent)
 
-    def enqueue(self, build_id: str) -> bool:
+    def enqueue(self, build: Build) -> bool:
         """
         Add a build to the queue.
 
         Returns True if enqueued, False if already in queue/active.
         """
+        if not build.build_id:
+            log.error("BuildQueue: enqueue called without build_id")
+            return False
+
+        with self._builds_lock:
+            existing = self._builds.get(build.build_id)
+            if existing and existing.status in (
+                BuildStatus.QUEUED,
+                BuildStatus.BUILDING,
+            ):
+                log.debug(
+                    "BuildQueue: %s already tracked, not enqueueing", build.build_id
+                )
+                return False
+            if build.started_at is None:
+                build.started_at = time.time()
+            build.status = BuildStatus.QUEUED
+            self._builds[build.build_id] = build
+
         with self._active_lock:
-            if build_id in self._active:
-                log.debug(f"BuildQueue: {build_id} already active, not enqueueing")
+            if build.build_id in self._active:
+                log.debug(
+                    "BuildQueue: %s already active, not enqueueing", build.build_id
+                )
                 return False
 
         with self._pending_lock:
-            if build_id in self._pending:
-                log.debug(f"BuildQueue: {build_id} already pending, not enqueueing")
+            if build.build_id in self._pending:
+                log.debug(
+                    "BuildQueue: %s already pending, not enqueueing", build.build_id
+                )
                 return False
-            self._pending.append(build_id)
+            self._pending.append(build.build_id)
             log.debug(
-                f"BuildQueue: Enqueued {build_id} "
-                f"(pending={len(self._pending)}, active={len(self._active)})"
+                "BuildQueue: Enqueued %s (pending=%d, active=%d)",
+                build.build_id,
+                len(self._pending),
+                len(self._active),
             )
+
+        # Write initial record to database immediately so find_build() works
+        BuildHistory.set(
+            Build(
+                build_id=build.build_id,
+                name=build.name,
+                display_name=build.display_name,
+                project_name=build.project_name,
+                project_root=build.project_root or "",
+                target=build.target or "default",
+                entry=build.entry,
+                status=BuildStatus.QUEUED,
+                started_at=build.started_at,
+                stages=[],
+            )
+        )
+
+        self._emit_change(build.build_id, "queued")
 
         # Ensure workers are running
         if not self._running:
             self.start()
         return True
+
+    def find_build(self, build_id: str) -> Build | None:
+        """Find a build by ID. Reads from database (single source of truth)."""
+        # Check if build is tracked by queue
+        with self._builds_lock:
+            if build_id not in self._builds:
+                return None
+        # Read live data from database
+        return BuildHistory.get(build_id)
+
+    def get_all_builds(self) -> list[Build]:
+        """Return all builds tracked by the queue."""
+        with self._builds_lock:
+            return list(self._builds.values())
+
+    def is_duplicate(self, project_root: str, target: str, entry: str | None) -> str | None:
+        """
+        Check if a build with the same config is already running or queued.
+
+        Returns the existing build_id if duplicate, None otherwise.
+        """
+        with self._builds_lock:
+            for build in self._builds.values():
+                if build.status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
+                    continue
+                if build.project_root != project_root:
+                    continue
+                if build.target != target:
+                    continue
+                if build.entry != entry:
+                    continue
+                return build.build_id
+        return None
+
+    def wait_for_builds(
+        self,
+        build_ids: list[str],
+        on_update: Callable[[], None] | None = None,
+        poll_interval: float = 0.5,
+    ) -> dict[str, int]:
+        """
+        Block until all builds complete.
+
+        Returns dict of build_id -> return_code.
+        """
+        if not build_ids:
+            return {}
+
+        pending = set(build_ids)
+        results: dict[str, int] = {}
+
+        while pending:
+            to_remove: list[str] = []
+            for build_id in pending:
+                build = self.find_build(build_id)
+                if not build:
+                    results[build_id] = 1
+                    to_remove.append(build_id)
+                    continue
+
+                if build.status in (
+                    BuildStatus.SUCCESS,
+                    BuildStatus.WARNING,
+                    BuildStatus.FAILED,
+                    BuildStatus.CANCELLED,
+                ):
+                    if build.return_code is not None:
+                        results[build_id] = build.return_code
+                    elif build.status in (BuildStatus.SUCCESS, BuildStatus.WARNING):
+                        results[build_id] = 0
+                    else:
+                        results[build_id] = 1
+                    to_remove.append(build_id)
+
+            for build_id in to_remove:
+                pending.discard(build_id)
+
+            if pending and on_update:
+                on_update()
+
+            if pending:
+                time.sleep(poll_interval)
+
+        if on_update:
+            on_update()
+
+        return results
 
     def reorder(self, build_ids: list[str]) -> dict:
         """
@@ -315,15 +551,13 @@ class BuildQueue:
             active_set = set(self._active)
 
         with self._pending_lock:
-            # Separate active from pending in the requested order
             already_active = [bid for bid in build_ids if bid in active_set]
             reordered = [bid for bid in build_ids if bid in self._pending]
 
-            # Add any pending builds not in the request (keep at end)
             remaining = [bid for bid in self._pending if bid not in build_ids]
             self._pending = reordered + remaining
 
-            log.info(f"BuildQueue: Reordered queue to {self._pending}")
+            log.info("BuildQueue: Reordered queue to %s", self._pending)
             return {
                 "reordered": reordered,
                 "already_active": already_active,
@@ -337,20 +571,9 @@ class BuildQueue:
         The unified queue is: [active builds...] + [pending builds...]
         If the target position is among active builds (0 to n_active-1),
         the build is moved to the front of the pending queue (first to run next).
-
-        Args:
-            build_id: The build to move (must be pending, not active)
-            position: Target position in the unified queue (0-indexed)
-
-        Returns dict with:
-            - success: whether the move succeeded
-            - message: description of what happened
-            - new_position: the actual position in the unified queue
-            - new_pending_order: the resulting pending queue order
         """
         with self._active_lock:
-            active_list = list(self._active)
-            n_active = len(active_list)
+            n_active = len(self._active)
 
             if build_id in self._active:
                 return {
@@ -369,23 +592,21 @@ class BuildQueue:
                     "new_pending_order": list(self._pending),
                 }
 
-            # Remove from current position
             self._pending.remove(build_id)
 
-            # Calculate target position in pending queue
-            # If target is in the "active" zone, put at front of pending
             if position < n_active:
                 pending_position = 0
             else:
                 pending_position = min(position - n_active, len(self._pending))
 
-            # Insert at new position
             self._pending.insert(pending_position, build_id)
 
             actual_position = n_active + pending_position
             log.info(
-                f"BuildQueue: Moved {build_id} to position {actual_position} "
-                f"(pending index {pending_position})"
+                "BuildQueue: Moved %s to position %d (pending index %d)",
+                build_id,
+                actual_position,
+                pending_position,
             )
 
             return {
@@ -407,7 +628,7 @@ class BuildQueue:
         with self._pending_lock:
             if build_id in self._pending:
                 self._pending.remove(build_id)
-                log.info(f"BuildQueue: Removed {build_id} from pending queue")
+                log.info("BuildQueue: Removed %s from pending queue", build_id)
                 return {"success": True, "message": "Removed from pending queue"}
 
         with self._active_lock:
@@ -446,17 +667,19 @@ class BuildQueue:
     def _orchestrate(self) -> None:
         """
         Orchestrator loop - dispatch builds and apply results.
-
-        Runs in a background thread, handling state updates and WebSocket broadcasts.
         """
         while self._running:
-            # Apply any pending results from worker threads
             self._apply_results()
-
-            # Dispatch next build if we have capacity
             self._dispatch_next()
-
             time.sleep(0.05)
+
+    def _emit_change(self, build_id: str, event_type: str) -> None:
+        self._cleanup_completed_builds()
+        if self.on_change:
+            try:
+                self.on_change(build_id, event_type)
+            except Exception:
+                log.exception("BuildQueue: on_change callback failed")
 
     def _apply_results(self) -> None:
         """Apply results from worker threads."""
@@ -466,105 +689,109 @@ class BuildQueue:
             except queue.Empty:
                 break
 
-            build_id = msg.get("build_id")
-            msg_type = msg.get("type")
-
-            if msg_type == "started":
-                building_started_at = time.time()
-                with _build_lock:
-                    build = model_state.find_build(build_id)
+            if isinstance(msg, BuildStartedMsg):
+                with self._builds_lock:
+                    build = self._builds.get(msg.build_id)
                     if build:
                         build.status = BuildStatus.BUILDING
-                        build.building_started_at = building_started_at
+                self._emit_change(msg.build_id, "started")
 
-                # Emit build change event for /ws/state clients
-                _sync_builds_to_state()
+            elif isinstance(msg, BuildStageMsg):
+                # Note: stages are tracked in DB, this just triggers change notification
+                self._emit_change(msg.build_id, "stages")
 
-            elif msg_type == "stage":
-                stages = msg.get("stages", [])
-                with _build_lock:
-                    build = model_state.find_build(build_id)
-                    if build:
-                        build.stages = stages
+            elif isinstance(msg, BuildCompletedMsg):
+                self._handle_completed(msg)
 
-                # Emit build change event for /ws/state clients
-                _sync_builds_to_state()
-
-            elif msg_type == "completed":
-                return_code = msg.get("return_code", -1)
-                error = msg.get("error")
-                stages = msg.get("stages", [])
-                status = BuildStatus.SUCCESS if return_code == 0 else BuildStatus.FAILED
-                duration = 0.0
-
-                with _build_lock:
-                    build = model_state.find_build(build_id)
-                    if build:
-                        started_at = build.building_started_at or build.started_at
-                        if started_at:
-                            duration = time.time() - started_at
-                        build.status = status
-                        build.return_code = return_code
-                        build.error = error
-                        build.stages = stages
-                        build.duration = duration
-
-                        # Count warnings/errors from stages
-                        build.warnings = sum(
-                            1
-                            for s in stages
-                            if s.get("status") == StageStatus.WARNING.value
-                        )
-                        build.errors = sum(
-                            1
-                            for s in stages
-                            if s.get("status") == StageStatus.ERROR.value
-                        )
-
-                with self._active_lock:
-                    self._active.discard(build_id)
-
-                with self._cancel_lock:
-                    self._cancel_flags.pop(build_id, None)
-
-                # Emit build change event for /ws/state clients
-                _sync_builds_to_state()
-
-                # Clear module introspection cache (build may have run ato sync)
-                from atopile.server.module_introspection import clear_module_cache
-
-                clear_module_cache()
-
-                # Save to history
-                with _build_lock:
-                    build = model_state.find_build(build_id)
-                    if build:
-                        build_history.save_build_to_history(build_id, build)
-
-                # Refresh project lastBuild data so frontend shows updated timestamps
-                with _build_lock:
-                    build = model_state.find_build(build_id)
-                if build:
-                    _refresh_project_last_build(build)
-                    # Refresh BOM data for selected project/target after build completes
-                    _refresh_bom_for_selected(build)
-
-                log.info(f"BuildQueue: Build {build_id} completed with status {status}")
-
-            elif msg_type == "cancelled":
-                with _build_lock:
-                    build = model_state.find_build(build_id)
+            elif isinstance(msg, BuildCancelledMsg):
+                with self._builds_lock:
+                    build = self._builds.get(msg.build_id)
                     if build:
                         build.status = BuildStatus.CANCELLED
+                        build.error = "Build cancelled by user"
 
                 with self._active_lock:
-                    self._active.discard(build_id)
-
+                    self._active.discard(msg.build_id)
                 with self._cancel_lock:
-                    self._cancel_flags.pop(build_id, None)
+                    self._cancel_flags.pop(msg.build_id, None)
 
-                # Emit build change event for /ws/state clients
-                _sync_builds_to_state()
+                self._emit_change(msg.build_id, "cancelled")
+
+            elif isinstance(msg, BuildOutputMsg):
+                if self.on_output:
+                    try:
+                        self.on_output(msg.build_id, msg.text, msg.is_stderr)
+                    except Exception:
+                        log.exception("BuildQueue: on_output callback failed")
+
+    def _handle_completed(self, msg: BuildCompletedMsg) -> None:
+        """Handle a build-completed message."""
+        warnings = sum(
+            1 for s in msg.stages if s.get("status") == StageStatus.WARNING.value
+        )
+        errors = sum(
+            1 for s in msg.stages if s.get("status") == StageStatus.ERROR.value
+        )
+        status = BuildStatus.from_return_code(msg.return_code, warnings)
+
+        started_at: float | None = None
+        elapsed_seconds: float | None = None
+
+        build: Build | None
+        with self._builds_lock:
+            build = self._builds.get(msg.build_id)
+            if build:
+                build.status = status
+                build.return_code = msg.return_code
+                build.error = msg.error
+                build.stages = msg.stages
+                build.warnings = warnings
+                build.errors = errors
+
+        existing = BuildHistory.get(msg.build_id)
+        if existing:
+            started_at = existing.started_at
+            elapsed_seconds = existing.elapsed_seconds
+
+        with self._active_lock:
+            self._active.discard(msg.build_id)
+        with self._cancel_lock:
+            self._cancel_flags.pop(msg.build_id, None)
+
+        if build:
+            BuildHistory.set(
+                Build(
+                    build_id=msg.build_id,
+                    project_root=build.project_root or "",
+                    target=build.target or "default",
+                    entry=build.entry,
+                    status=status,
+                    return_code=msg.return_code,
+                    error=msg.error,
+                    started_at=started_at,
+                    elapsed_seconds=elapsed_seconds,
+                    stages=msg.stages,
+                    warnings=warnings,
+                    errors=errors,
+                )
+            )
+
+        self._emit_change(msg.build_id, "completed")
+
+        if build and self.on_completed:
+            try:
+                self.on_completed(build)
+            except Exception:
+                log.exception("BuildQueue: on_completed callback failed")
+
+        if msg.error and status == BuildStatus.FAILED:
+            log.error(
+                "BuildQueue: Build %s failed:\n%s", msg.build_id, msg.error
+            )
+        else:
+            log.info(
+                "BuildQueue: Build %s completed with status %s", msg.build_id, status
+            )
 
     def _dispatch_next(self) -> None:
         """Dispatch next pending build if capacity available."""
@@ -575,29 +802,19 @@ class BuildQueue:
             if len(self._active) >= self._max_concurrent:
                 return
 
-        # Get next build from pending list
         with self._pending_lock:
             if not self._pending:
                 return
-
             build_id = self._pending.pop(0)
 
-        # Check if build was cancelled while pending
-        with _build_lock:
-            build = model_state.find_build(build_id)
+        with self._builds_lock:
+            build = self._builds.get(build_id)
             if not build:
-                log.debug(f"BuildQueue: {build_id} no longer exists, skipping")
+                log.debug("BuildQueue: %s no longer exists, skipping", build_id)
                 return
             if build.status == BuildStatus.CANCELLED:
-                log.debug(f"BuildQueue: {build_id} was cancelled, skipping")
+                log.debug("BuildQueue: %s was cancelled, skipping", build_id)
                 return
-            # Capture build fields for subprocess (not thread-safe to share)
-            project_root = build.project_root
-            target = build.target
-            frozen = build.frozen
-            entry = build.entry
-            standalone = build.standalone
-            timestamp = build.timestamp
 
         with self._active_lock:
             self._active.add(build_id)
@@ -606,20 +823,15 @@ class BuildQueue:
             self._cancel_flags[build_id] = False
 
         log.info(
-            f"BuildQueue: Dispatching {build_id} "
-            f"(active={len(self._active)}/{self._max_concurrent})"
+            "BuildQueue: Dispatching %s (active=%d/%d)",
+            build_id,
+            len(self._active),
+            self._max_concurrent,
         )
 
-        # Submit task to thread pool
         self._executor.submit(
             _run_build_subprocess,
-            build_id,
-            project_root,
-            target,
-            frozen,
-            entry,
-            standalone,
-            timestamp,
+            build,
             self._result_q,
             self._cancel_flags,
         )
@@ -633,16 +845,20 @@ class BuildQueue:
             - message: description of what happened
             - was_pending: True if removed from pending, False if was active
         """
-        # First try to remove from pending queue
         result = self.remove_pending(build_id)
         if result["success"]:
+            with self._builds_lock:
+                build = self._builds.get(build_id)
+                if build:
+                    build.status = BuildStatus.CANCELLED
+                    build.error = "Build cancelled by user"
+            self._emit_change(build_id, "cancelled")
             return {
                 "success": True,
                 "message": "Removed from pending queue",
                 "was_pending": True,
             }
 
-        # If active, signal cancellation
         with self._active_lock:
             if build_id in self._active:
                 with self._cancel_lock:
@@ -659,21 +875,33 @@ class BuildQueue:
             "was_pending": False,
         }
 
+    def cancel_build(self, build_id: str) -> bool:
+        """Cancel a running build."""
+        with self._builds_lock:
+            build = self._builds.get(build_id)
+            if not build:
+                return False
+            if build.status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
+                return False
+            build.status = BuildStatus.CANCELLED
+            build.error = "Build cancelled by user"
+
+        _ = self.cancel(build_id)
+        log.info("Build %s cancelled", build_id)
+        return True
+
     def stop(self) -> None:
         """Stop thread pool and orchestrator thread."""
         self._running = False
 
-        # Signal all active builds to cancel
         with self._cancel_lock:
             for build_id in list(self._cancel_flags.keys()):
                 self._cancel_flags[build_id] = True
 
-        # Wait for orchestrator
         if self._orchestrator_thread and self._orchestrator_thread.is_alive():
             self._orchestrator_thread.join(timeout=2.0)
         self._orchestrator_thread = None
 
-        # Shutdown thread pool
         if self._executor:
             self._executor.shutdown(wait=False)
             self._executor = None
@@ -687,6 +915,8 @@ class BuildQueue:
             self._active.clear()
         with self._cancel_lock:
             self._cancel_flags.clear()
+        with self._builds_lock:
+            self._builds.clear()
 
     def get_status(self) -> dict:
         """Return current queue status for debugging."""
@@ -718,15 +948,57 @@ class BuildQueue:
         new_max = max(1, value)
         old_max = self._max_concurrent
         self._max_concurrent = new_max
-        log.info(f"BuildQueue: max_concurrent changed from {old_max} to {new_max}")
+        log.info("BuildQueue: max_concurrent changed from %d to %d", old_max, new_max)
 
-        # Recreate executor with new max workers if running
         if self._running and self._executor:
-            # Don't shutdown existing executor - let running tasks complete
-            # Create new executor for future tasks
             self._executor = ThreadPoolExecutor(
                 max_workers=new_max, thread_name_prefix="build-worker"
             )
+
+    def _cleanup_completed_builds(self) -> None:
+        """
+        Remove completed/stale builds from tracked builds.
+
+        - Completed builds are kept for 30 seconds, then removed
+        - Builds stuck in "building" status for >1 hour are considered stale
+        """
+        now = time.time()
+        cleanup_delay = 30.0
+        stale_threshold = 3600.0
+
+        to_remove: list[str] = []
+        with self._builds_lock:
+            for build in self._builds.values():
+                status = build.status
+                started_at = build.started_at
+
+                if status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
+                    elapsed_seconds = build.elapsed_seconds or 0.0
+                    completed_at = (started_at or 0.0) + elapsed_seconds
+                    if started_at and elapsed_seconds and (now - completed_at) > cleanup_delay:
+                        to_remove.append(build.build_id)
+                else:
+                    if started_at and (now - started_at) > stale_threshold:
+                        log.warning(
+                            "Build %s stuck in '%s' for >%ss, marking as failed",
+                            build.build_id,
+                            status.value,
+                            stale_threshold,
+                        )
+                        build.status = BuildStatus.FAILED
+                        build.error = "Build timed out or server restarted"
+                        to_remove.append(build.build_id)
+
+            for build_id in to_remove:
+                self._builds.pop(build_id, None)
+                with self._pending_lock:
+                    if build_id in self._pending:
+                        self._pending.remove(build_id)
+                with self._active_lock:
+                    self._active.discard(build_id)
+                with self._cancel_lock:
+                    self._cancel_flags.pop(build_id, None)
+                log.debug("Cleaned up build %s", build_id)
 
 
 # Get the default max concurrent (CPU count)
@@ -742,200 +1014,9 @@ _build_settings = {
 }
 
 
-def _get_state_builds():
-    """
-    Convert _active_builds to StateBuild objects.
-
-    Helper function used by both sync and async state sync functions.
-    """
-    from atopile.dataclasses import (
-        Build as StateBuild,
-    )
-    from atopile.dataclasses import (
-        BuildStage as StateStage,
-    )
-    from atopile.dataclasses import (
-        StageStatus,
-    )
-
-    with _build_lock:
-        state_builds = []
-        for build in _active_builds:
-            # Convert stages if present
-            stages = None
-            if build.stages:
-                stages = [
-                    StateStage(
-                        name=s.get("name", ""),
-                        stage_id=s.get("stage_id", s.get("name", "")),
-                        display_name=s.get("display_name"),
-                        elapsed_seconds=s.get("elapsed_seconds", 0.0),
-                        status=StageStatus(s.get("status", "pending")),
-                        infos=s.get("infos", 0),
-                        warnings=s.get("warnings", 0),
-                        errors=s.get("errors", 0),
-                        alerts=s.get("alerts", 0),
-                    )
-                    for s in build.stages
-                ]
-
-            # Determine display name and build name
-            # name is used by frontend to match builds to targets
-            entry = build.entry
-            target = build.target or "default"
-            if entry:
-                display_name = entry.split(":")[-1] if ":" in entry else entry
-                build_name = display_name
-            else:
-                display_name = target
-                build_name = target
-
-            state_builds.append(
-                StateBuild(
-                    name=build_name,
-                    display_name=display_name,
-                    build_id=build.build_id,
-                    project_name=Path(build.project_root or "").name,
-                    status=build.status,
-                    elapsed_seconds=build.duration,
-                    warnings=build.warnings,
-                    errors=build.errors,
-                    return_code=build.return_code,
-                    error=build.error,
-                    project_root=build.project_root,
-                    target=target,
-                    entry=entry,
-                    started_at=build.started_at,
-                    stages=stages,
-                )
-            )
-        return state_builds
-
-
-def _cleanup_completed_builds():
-    """
-    Remove completed/stale builds from _active_builds.
-
-    - Completed builds are kept for 30 seconds, then removed
-    - Builds stuck in "building" status for >1 hour are considered stale
-    """
-    now = time.time()
-    cleanup_delay = 30.0  # Keep completed builds for 30 seconds
-    stale_threshold = 3600.0  # 1 hour - builds shouldn't take this long
-
-    with _build_lock:
-        to_remove = []
-        for build in _active_builds:
-            status = build.status
-            started_at = build.started_at
-
-            if status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
-                # Build is completed (success, failed, cancelled)
-                duration = build.duration
-                completed_at = started_at + duration if started_at else 0
-
-                if completed_at and (now - completed_at) > cleanup_delay:
-                    to_remove.append(build.build_id)
-            else:
-                # Build is queued or building - check for stale builds
-                # (likely from server restart while build was in progress)
-                if started_at and (now - started_at) > stale_threshold:
-                    log.warning(
-                        f"Build {build.build_id} stuck in '{status.value}' for >{stale_threshold}s, "  # noqa: E501
-                        "marking as failed"
-                    )
-                    build.status = BuildStatus.FAILED
-                    build.error = "Build timed out or server restarted"
-                    to_remove.append(build.build_id)
-
-        for build_id in to_remove:
-            model_state.remove_build(build_id)
-            log.debug(f"Cleaned up build {build_id}")
-
-
-def _sync_builds_to_state():
-    """
-    Emit build change events for WebSocket clients.
-
-    Called when build status changes (from background thread).
-    Uses event_bus.emit_sync for thread-safe event emission.
-    """
-    # Clean up old completed builds first
-    _cleanup_completed_builds()
-
-    # Emit event via event_bus
-    event_bus.emit_sync("builds_changed")
-
-
-def _refresh_bom_for_selected(build: ActiveBuild) -> None:
-    """Emit BOM changed event after a build completes."""
-    if not build.project_root:
-        return
-
-    payload: dict[str, str] = {"project_root": build.project_root}
-    if build.target:
-        payload["target"] = build.target
-
-    event_bus.emit_sync("bom_changed", payload)
-
-
-def _refresh_project_last_build(build: ActiveBuild) -> None:
-    """
-    Refresh project target lastBuild data after a build completes.
-
-    This reloads the build_summary.json for each target in the project and
-    notifies clients so they can refresh project data.
-    """
-    if not build.project_root:
-        return
-
-    event_bus.emit_sync("projects_changed", {"project_root": build.project_root})
-
-
-async def _sync_builds_to_state_async():
-    """
-    Async version of _sync_builds_to_state.
-
-    Called from async contexts (like WebSocket handlers) where we want
-    to await the event emit rather than scheduling it.
-    """
-    await event_bus.emit("builds_changed")
-
-
-def cancel_build(build_id: str) -> bool:
-    """
-    Cancel a running build.
-
-    Returns True if the build was cancelled, False if not found or already completed.
-    """
-    with _build_lock:
-        build = model_state.find_build(build_id)
-        if not build:
-            return False
-
-        if build.status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
-            return False
-
-        # Mark as cancelled in the build record
-        build.status = BuildStatus.CANCELLED
-        build.error = "Build cancelled by user"
-
-    # Signal the BuildQueue to cancel the build
-    _ = _build_queue.cancel(build_id)
-
-    log.info(f"Build {build_id} cancelled")
-    return True
-
-
 __all__ = [
-    "_active_builds",
-    "_build_lock",
     "_build_queue",
     "_build_settings",
     "_DEFAULT_MAX_CONCURRENT",
-    "_is_duplicate_build",
-    "_sync_builds_to_state",
-    "_sync_builds_to_state_async",
     "BuildQueue",
-    "cancel_build",
 ]

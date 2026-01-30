@@ -17,7 +17,6 @@ export interface BuildStage {
   name: string;
   displayName?: string;  // User-friendly name
   status: 'pending' | 'running' | 'success' | 'warning' | 'error' | 'skipped';
-  duration?: number;  // in seconds (from summary)
   elapsedSeconds?: number;  // in seconds (from live status)
   message?: string;
 }
@@ -41,15 +40,14 @@ export interface BuildTarget {
   status: 'idle' | 'queued' | 'building' | 'success' | 'error' | 'warning' | 'cancelled';
   errors?: number;
   warnings?: number;
-  duration?: number;
   stages?: BuildStage[];
   // Active build tracking
   buildId?: string;  // Active build ID for cancellation
   elapsedSeconds?: number;  // Time elapsed since build started
   currentStage?: string;  // Name of the currently running stage
   queuePosition?: number;  // Position in build queue (1-indexed)
-  // TODO: Replace this estimate once builds are defined in the graph
-  totalStages?: number;  // Expected total stages for progress (default: 14)
+  // Total number of stages - set by subprocess at build start
+  totalStages?: number | null;
   // Persisted last build status
   lastBuild?: LastBuildStatus;
 }
@@ -77,6 +75,8 @@ export interface Project {
   // Project-level last build status (aggregate of all targets)
   lastBuildStatus?: 'success' | 'warning' | 'failed' | 'error';
   lastBuildTimestamp?: string;
+  // Usage example content (from usage.ato file if available)
+  usageContent?: string;
 }
 
 // Module definition from API

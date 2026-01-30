@@ -3,24 +3,46 @@ FastAPI server for the build dashboard API.
 
 Provides API endpoints for build data. The React frontend is served
 directly by VS Code webview for better IDE integration.
+
+Usage:
+    python -m atopile.server --port PORT [--workspace PATH]
+
+Exception Contract:
+    - Build exceptions run in subprocesses and mark builds as FAILED
+    - Server exceptions crash the entire server process (not just HTTP 500)
+    - This ensures visibility of unexpected errors
+
+Exit Codes:
+    0 - Clean shutdown (Ctrl+C or SIGTERM)
+    1 - Startup error (port in use, config error)
+    2 - Server crash (unhandled exception during operation)
 """
 
 import asyncio
+import atexit
 import logging
 import os
+import signal
 import socket
+import subprocess
+import sys
 import threading
 import time
+import traceback
 from pathlib import Path
 from typing import Optional
 
+import requests
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
-from atopile.dataclasses import AppContext
-from atopile.model import build_history
+from atopile.dataclasses import AppContext, EventType
+from atopile.model.build_queue import _build_queue
 from atopile.model.model_state import model_state
+from atopile.model.sqlite import BuildHistory
 from atopile.server.connections import server_state
 from atopile.server.core import projects as core_projects
 from atopile.server.domains import packages as packages_domain
@@ -37,51 +59,42 @@ PACKAGES_REFRESH_MIN_INTERVAL_S = float(
 _debounce_tasks: dict[str, asyncio.Task] = {}
 _last_packages_registry_refresh: float = 0.0
 
-init_build_history_db = build_history.init_build_history_db
-
 
 async def _load_projects_background(ctx: AppContext) -> None:
     """Background task to load projects without blocking startup."""
-    if not ctx.workspace_path:
+    if not ctx.workspace_paths:
         await server_state.emit_event("projects_changed")
         return
-    try:
-        log.info(f"[background] Loading projects from {ctx.workspace_path}")
-        await asyncio.to_thread(
-            core_projects.discover_projects_in_path, ctx.workspace_path
-        )
-        await server_state.emit_event("projects_changed")
-        log.info("[background] Project discovery complete")
-    except Exception as exc:
-        log.error(f"[background] Failed to load projects: {exc}")
-        await server_state.emit_event("projects_changed", {"error": str(exc)})
+    # No try/except - let exceptions crash the server for visibility
+    log.info(f"Loading projects from {ctx.workspace_paths}")
+    await asyncio.to_thread(
+        core_projects.discover_projects_in_paths, ctx.workspace_paths
+    )
+    await server_state.emit_event("projects_changed")
+    log.info("Project discovery complete")
 
 
 async def _refresh_projects_state() -> None:
-    workspace_path = model_state.workspace_path
-    if not workspace_path:
+    workspace_paths = model_state.workspace_paths
+    if not workspace_paths:
         await server_state.emit_event("projects_changed")
         return
 
-    try:
-        await asyncio.to_thread(
-            core_projects.discover_projects_in_path, workspace_path
-        )
-        await server_state.emit_event("projects_changed")
-    except Exception as exc:
-        log.error(f"[background] Failed to refresh projects: {exc}")
-        await server_state.emit_event("projects_changed", {"error": str(exc)})
+    # No try/except - let exceptions crash the server for visibility
+    await asyncio.to_thread(
+        core_projects.discover_projects_in_paths, workspace_paths
+    )
+    await server_state.emit_event("projects_changed")
 
 
 async def _load_packages_background(ctx: AppContext) -> None:
     """Background task to load packages without blocking startup."""
-    try:
-        log.info("[background] Loading packages from registry")
-        await packages_domain.refresh_packages_state(scan_path=ctx.workspace_path)
-        log.info("[background] Packages refresh complete")
-    except Exception as exc:
-        log.error(f"[background] Failed to load packages: {exc}")
-        await server_state.emit_event("packages_changed", {"error": str(exc)})
+    # No try/except - let exceptions crash the server for visibility
+    log.info("Loading packages from registry")
+    # Use first workspace path for package scanning
+    scan_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
+    await packages_domain.refresh_packages_state(scan_path=scan_path)
+    log.info("Packages refresh complete")
 
 
 async def _refresh_stdlib_state() -> None:
@@ -288,49 +301,158 @@ async def _refresh_packages_for_deps_change() -> None:
         await packages_domain.refresh_installed_packages_state()
 
 
-async def _load_atopile_install_options() -> None:
+async def _load_atopile_install_options(ctx: AppContext) -> None:
     """Background task to load atopile versions, branches, and detect installations."""
-    from atopile.server.domains import atopile_install
+    from atopile import version as ato_version
 
     try:
         log.info("[background] Loading atopile installation options")
 
-        # Fetch available versions from PyPI
-        versions = await atopile_install.fetch_available_versions()
-        await server_state.emit_event(
-            "atopile_config_changed", {"available_versions": versions}
-        )
-        log.info(f"[background] Loaded {len(versions)} PyPI versions")
-
-        # Fetch available branches from GitHub
-        branches = await atopile_install.fetch_available_branches()
-        await server_state.emit_event(
-            "atopile_config_changed", {"available_branches": branches}
-        )
-        log.info(f"[background] Loaded {len(branches)} GitHub branches")
-
-        # Detect local installations
-        installations = await asyncio.to_thread(
-            atopile_install.detect_local_installations
-        )
-        await server_state.emit_event(
-            "atopile_config_changed", {"detected_installations": installations}
-        )
-        log.info(f"[background] Detected {len(installations)} local installations")
+        # Emit the ACTUAL atopile status - this is the source of truth
+        # for what version/source the extension is using to build projects
+        try:
+            version_obj = ato_version.get_installed_atopile_version()
+            actual_version = str(version_obj)
+            actual_source = ctx.ato_source or "unknown"
+            # Include UI source type so the dropdown shows the correct initial state
+            ui_source = ctx.ato_ui_source or "release"
+            await server_state.emit_event(
+                "atopile_config_changed",
+                {
+                    "actual_version": actual_version,
+                    "actual_source": actual_source,
+                    "actual_binary_path": ctx.ato_binary_path,  # Actual binary path
+                    "source": ui_source,  # Sets the active toggle state
+                    "local_path": ctx.ato_local_path,  # Path for display in UI
+                },
+            )
+            log.info(
+                f"[background] Actual atopile: {actual_version} from {actual_source} "
+                f"(binary: {ctx.ato_binary_path}, UI: {ui_source})"
+            )
+        except Exception as e:
+            log.warning(f"[background] Could not detect actual version: {e}")
 
     except Exception as exc:
         log.error(f"[background] Failed to load atopile install options: {exc}")
 
 
+def cleanup_server(exc: BaseException | None = None) -> None:
+    """
+    Cleanup server resources before exit.
+
+    Call this before any exit to ensure:
+    1. Build subprocesses are stopped
+    2. Logs are flushed to database
+    3. Telemetry is captured and flushed
+
+    All steps are best-effort - failures don't prevent other cleanup.
+    """
+    # 1. Stop build subprocesses
+    try:
+        _build_queue.stop()
+    except Exception:
+        pass
+
+    # 2. Flush logs to database
+    try:
+        from atopile.logging import BuildLogger
+        BuildLogger.close_all()
+    except Exception:
+        pass
+
+    # 3. Capture exception for telemetry (if provided)
+    try:
+        from atopile import telemetry
+        if exc:
+            telemetry.capture_exception(exc)
+        telemetry._flush_telemetry_on_exit()
+    except Exception:
+        pass
+
+    # 4. Flush logging handlers
+    try:
+        logging.shutdown()
+    except Exception:
+        pass
+
+
+def _fatal_error(msg: str, exc: BaseException | None = None) -> None:
+    """
+    Log fatal error, cleanup, and terminate the server process.
+
+    Uses os._exit() to ensure the process dies even if FastAPI/uvicorn
+    would otherwise swallow the exception.
+    """
+    log.critical("FATAL SERVER ERROR: %s", msg)
+    if exc:
+        log.critical("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
+
+    cleanup_server(exc)
+
+    # Exit code 2 distinguishes server crash from build failure (exit 1)
+    os._exit(2)
+
+
+class CrashOnErrorMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware that crashes the server on unhandled exceptions.
+
+    Instead of returning HTTP 500, this terminates the process so that
+    server bugs are visible and don't silently degrade service.
+    """
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        try:
+            return await call_next(request)
+        except Exception as exc:
+            # Let HTTPException through - those are intentional error responses
+            from fastapi import HTTPException
+
+            if isinstance(exc, HTTPException):
+                raise
+            _fatal_error(f"Unhandled exception in route {request.url.path}", exc)
+            raise  # Unreachable, but keeps type checker happy
+
+
+def _asyncio_exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
+    """
+    Handle uncaught exceptions in asyncio tasks by crashing the server.
+
+    This ensures background task failures are visible instead of being
+    silently logged and ignored.
+    """
+    exc = context.get("exception")
+    msg = context.get("message", "Unknown asyncio error")
+
+    # Log the full context for debugging
+    log.critical("Uncaught exception in asyncio task: %s", msg)
+    if exc:
+        _fatal_error(f"Asyncio task crashed: {msg}", exc)
+    else:
+        _fatal_error(f"Asyncio task error: {msg}")
+
+
 def create_app(
     summary_file: Optional[Path] = None,
-    logs_base: Optional[Path] = None,
-    workspace_path: Optional[Path] = None,
+    workspace_paths: Optional[list[Path]] = None,
+    ato_source: Optional[str] = None,
+    ato_ui_source: Optional[str] = None,
+    ato_local_path: Optional[str] = None,
+    ato_binary_path: Optional[str] = None,
 ) -> FastAPI:
     """
     Create the FastAPI application with API routes for the dashboard.
+
+    Exception Handling:
+        - Unhandled exceptions in routes → server crashes (not HTTP 500)
+        - Unhandled exceptions in background tasks → server crashes
+        - HTTPException → proper HTTP error response (intentional)
     """
     app = FastAPI(title="atopile Build Server")
+
+    # Add crash-on-error middleware FIRST (innermost)
+    app.add_middleware(CrashOnErrorMiddleware)
 
     # CORS configuration - allow all origins for local tooling/webviews.
     app.add_middleware(
@@ -345,21 +467,23 @@ def create_app(
 
     ctx = AppContext(
         summary_file=summary_file,
-        logs_base=logs_base,
-        workspace_path=workspace_path,
+        workspace_paths=workspace_paths or [],
+        ato_source=ato_source,
+        ato_ui_source=ato_ui_source,
+        ato_local_path=ato_local_path,
+        ato_binary_path=ato_binary_path,
     )
     app.state.ctx = ctx
 
-    # Initialize build history database in central log directory
-    from faebryk.libs.paths import get_log_dir
-
-    build_history_db_path = get_log_dir() / "build_history.db"
-    build_history_db_path.parent.mkdir(parents=True, exist_ok=True)
-    init_build_history_db(build_history_db_path)
+    # Initialize build history database
+    BuildHistory.init_db()
 
     @app.on_event("startup")
     async def on_startup():
         loop = asyncio.get_running_loop()
+
+        # Install exception handler that crashes server on unhandled task exceptions
+        loop.set_exception_handler(_asyncio_exception_handler)
 
         # Configure a larger thread pool for asyncio.to_thread() to prevent exhaustion
         # Default is min(32, os.cpu_count() + 4), we increase it
@@ -367,14 +491,31 @@ def create_app(
 
         executor = ThreadPoolExecutor(max_workers=64, thread_name_prefix="ato_server_")
         loop.set_default_executor(executor)
-        log.info("Configured thread pool with 64 workers")
+        log.info("Configured thread pool with 64 workers (crash-on-error enabled)")
 
-        # Configure model_state with workspace path
-        model_state.set_workspace_path(ctx.workspace_path)
+        # Configure model_state with workspace paths
+        model_state.set_workspace_paths(ctx.workspace_paths)
 
         # Configure event_bus with event loop and emitter
         event_bus.set_event_loop(loop)
         event_bus.register_emitter(server_state.emit_event)
+
+        from atopile.server.module_introspection import clear_module_cache
+
+        def _handle_build_change(_build_id: str, _event: str) -> None:
+            event_bus.emit_sync(EventType.BUILDS_CHANGED)
+
+        def _handle_build_completed(build) -> None:
+            clear_module_cache()
+            event_bus.emit_sync(
+                EventType.PROJECTS_CHANGED, {"project_root": build.project_root}
+            )
+            event_bus.emit_sync(
+                EventType.BOM_CHANGED, {"project_root": build.project_root}
+            )
+
+        _build_queue.on_change = _handle_build_change
+        _build_queue.on_completed = _handle_build_completed
 
         asyncio.create_task(_refresh_stdlib_state())
         asyncio.create_task(_watch_stdlib_background())
@@ -384,10 +525,10 @@ def create_app(
         asyncio.create_task(_watch_project_sources_background())
         asyncio.create_task(_watch_project_python_background())
         asyncio.create_task(_watch_project_dependencies_background())
-        asyncio.create_task(_load_atopile_install_options())
+        asyncio.create_task(_load_atopile_install_options(ctx))
 
-        if not ctx.workspace_path:
-            log.info("No workspace path configured, skipping initial state population")
+        if not ctx.workspace_paths:
+            log.info("No workspace paths configured, skipping initial state population")
             return
 
         # Fire background tasks - don't await, server starts immediately
@@ -417,6 +558,9 @@ def create_app(
         parts as parts_routes,
     )
     from atopile.server.routes import (
+        parts_search as parts_search_routes,
+    )
+    from atopile.server.routes import (
         problems as problems_routes,
     )
     from atopile.server.routes import (
@@ -434,6 +578,7 @@ def create_app(
     app.include_router(projects_routes.router)
     app.include_router(builds_routes.router)
     app.include_router(artifacts_routes.router)
+    app.include_router(parts_search_routes.router)
     app.include_router(parts_routes.router)
     app.include_router(problems_routes.router)
     app.include_router(packages_routes.router)
@@ -464,9 +609,6 @@ def kill_process_on_port(port: int, host: str = "127.0.0.1") -> bool:
 
     Returns True if the port is now available, False otherwise.
     """
-    import subprocess
-    import time
-
     try:
         # Use lsof to find the PID using the port (works on macOS and Linux)
         result = subprocess.run(
@@ -502,14 +644,22 @@ class DashboardServer:
 
     def __init__(
         self,
-        logs_base: Path,
         port: Optional[int] = None,
-        workspace_path: Optional[Path] = None,
+        workspace_paths: Optional[list[Path]] = None,
+        ato_source: Optional[str] = None,
+        ato_ui_source: Optional[str] = None,
+        ato_local_path: Optional[str] = None,
+        ato_binary_path: Optional[str] = None,
     ):
-        self.logs_base = logs_base
         self.port = port or find_free_port()
-        self.workspace_path = workspace_path
-        self.app = create_app(logs_base=logs_base, workspace_path=self.workspace_path)
+        self.workspace_paths = workspace_paths or []
+        self.app = create_app(
+            workspace_paths=self.workspace_paths,
+            ato_source=ato_source,
+            ato_ui_source=ato_ui_source,
+            ato_local_path=ato_local_path,
+            ato_binary_path=ato_binary_path,
+        )
         self._server: Optional[uvicorn.Server] = None
         self._thread: Optional[threading.Thread] = None
 
@@ -542,7 +692,7 @@ class DashboardServer:
             time.sleep(0.1)
 
     def shutdown(self) -> None:
-        """Shutdown the server."""
+        """Shutdown the server (cleanup handled by cleanup_server via atexit)."""
         if self._server:
             self._server.should_exit = True
             if self._thread:
@@ -550,21 +700,134 @@ class DashboardServer:
 
 
 def start_dashboard_server(
-    logs_base: Path,
     port: Optional[int] = None,
-    workspace_path: Optional[Path] = None,
+    workspace_paths: Optional[list[Path]] = None,
 ) -> tuple[DashboardServer, str]:
     """
     Start the dashboard server.
 
     Args:
-        logs_base: Base directory for logs
         port: Port to use (defaults to a free port)
-        workspace_path: Workspace path to scan for projects
+        workspace_paths: Workspace paths to scan for projects
 
     Returns:
         Tuple of (DashboardServer, url)
     """
-    server = DashboardServer(logs_base, port, workspace_path)
+    server = DashboardServer(port=port, workspace_paths=workspace_paths)
     server.start()
     return server, server.url
+
+
+# =============================================================================
+# Server Entry Point
+# =============================================================================
+
+# Register cleanup for any exit path
+atexit.register(cleanup_server)
+
+
+def is_atopile_server_running(port: int) -> bool:
+    """Check if an atopile server is already running on the given port."""
+    try:
+        response = requests.get(f"http://127.0.0.1:{port}/health", timeout=2)
+        return response.status_code == 200 and response.json().get("status") == "ok"
+    except (requests.RequestException, ValueError):
+        return False
+
+
+def run_server(
+    port: int,
+    workspace_paths: Optional[list[Path]] = None,
+    force: bool = False,
+) -> None:
+    """
+    Run the dashboard server.
+
+    Args:
+        port: Port to run the server on
+        workspace_paths: Workspace paths to scan for projects (defaults to cwd)
+        force: Kill existing server on the port if True
+
+    Exit codes:
+        0 - Clean shutdown (Ctrl+C or SIGTERM)
+        1 - Startup error (port in use, config error)
+        2 - Server crash (unhandled exception during operation)
+    """
+    try:
+        _run_server_impl(port, workspace_paths, force)
+    except KeyboardInterrupt:
+        print("\nShutting down...")
+        cleanup_server()
+        sys.exit(0)
+    except Exception as exc:
+        print(f"FATAL SERVER ERROR: {exc}", file=sys.stderr)
+        traceback.print_exc()
+        cleanup_server(exc)  # Captures exception for telemetry
+        sys.exit(2)
+
+
+def _run_server_impl(
+    port: int,
+    workspace_paths: Optional[list[Path]],
+    force: bool,
+) -> None:
+    """Server implementation (called by run_server with exception handling)."""
+    # Generate types if in dev environment
+    repo_root = Path(__file__).resolve().parents[3]
+    gen_script = repo_root / "scripts" / "generate_types.py"
+    ui_server_dir = repo_root / "src" / "ui-server"
+    if gen_script.exists() and ui_server_dir.exists():
+        result = subprocess.run([sys.executable, str(gen_script)], cwd=str(repo_root))
+        if result.returncode != 0:
+            sys.exit(result.returncode)
+
+    # Default to cwd if no workspace paths provided
+    if not workspace_paths:
+        workspace_paths = [Path.cwd()]
+
+    # Check if port is already in use
+    if is_port_in_use(port):
+        if force:
+            print(f"Stopping existing server on port {port}...")
+            if kill_process_on_port(port):
+                print("Existing server stopped")
+            else:
+                print(f"Failed to stop process on port {port}")
+                sys.exit(1)
+        elif is_atopile_server_running(port):
+            print(f"atopile server already running on port {port}")
+            print(f"Dashboard available at http://localhost:{port}")
+            print("Use --force to restart, or --port to use a different port")
+            sys.exit(0)
+        else:
+            print(f"Port {port} is already in use by another application")
+            print("Options:")
+            print("  1. Use --force to kill the process: ato serve backend --force")
+            print("  2. Use a specific port: ato serve backend --port <PORT>")
+            sys.exit(1)
+
+    # Output port early for programmatic discovery (before logging starts)
+    # This line is parsed by the VS Code extension and other tools
+    print(f"ATOPILE_SERVER_PORT={port}", flush=True)
+
+    # Create and start server
+    server = DashboardServer(
+        port=port,
+        workspace_paths=workspace_paths,
+    )
+
+    print(f"Starting dashboard server on http://localhost:{port}")
+    print(f"Workspace paths: {', '.join(str(p) for p in workspace_paths)}")
+    print("Press Ctrl+C to stop")
+
+    server.start()
+
+    # Handle SIGTERM for clean shutdown (e.g., from process manager)
+    def sigterm_handler(_signum, _frame):
+        raise KeyboardInterrupt()  # Let the outer handler deal with it
+
+    signal.signal(signal.SIGTERM, sigterm_handler)
+
+    # Keep running until interrupted
+    while True:
+        time.sleep(1)

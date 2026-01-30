@@ -5,7 +5,7 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 import { LogLevel, Uri, WorkspaceFolder } from 'vscode';
 import { Trace } from 'vscode-jsonrpc/node';
-import { getWorkspaceFolders } from './vscodeapi';
+import { getWorkspaceFolders, getAtopileWorkspaceFolders } from './vscodeapi';
 
 function logLevelToTrace(logLevel: LogLevel): Trace {
     switch (logLevel) {
@@ -50,23 +50,19 @@ export async function getProjectRoot(): Promise<WorkspaceFolder> {
     } else if (workspaces.length === 1) {
         return workspaces[0];
     } else {
-        let rootWorkspace = workspaces[0];
-        let root = undefined;
-        for (const w of workspaces) {
-            if (await fs.pathExists(w.uri.fsPath)) {
-                root = w.uri.fsPath;
-                rootWorkspace = w;
-                break;
-            }
+        // Prefer workspace folders that contain atopile projects (ato.yaml)
+        const atopileWorkspaces = await getAtopileWorkspaceFolders();
+        if (atopileWorkspaces.length > 0) {
+            return atopileWorkspaces[0];
         }
 
+        // Fall back to first existing workspace
         for (const w of workspaces) {
-            if (root && root.length > w.uri.fsPath.length && (await fs.pathExists(w.uri.fsPath))) {
-                root = w.uri.fsPath;
-                rootWorkspace = w;
+            if (await fs.pathExists(w.uri.fsPath)) {
+                return w;
             }
         }
-        return rootWorkspace;
+        return workspaces[0];
     }
 }
 

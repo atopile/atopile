@@ -114,7 +114,7 @@
 }
 
 .si-arrow {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   width: 12px;
   flex-shrink: 0;
@@ -265,7 +265,7 @@
 }
 
 .cv-arrow {
-  font-size: 8px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   flex-shrink: 0;
 }

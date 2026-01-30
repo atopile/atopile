@@ -28,6 +28,17 @@
   background: var(--bg-hover);
 }
 
+.module-tree-row:focus {
+  outline: none;
+  background: var(--bg-hover);
+  box-shadow: inset 0 0 0 1px var(--ctp-blue);
+}
+
+.module-tree-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--ctp-blue);
+}
+
 .module-tree-row.root {
   padding: 4px;
   margin-bottom: 2px;
@@ -79,7 +90,7 @@
 
 .module-tree-type {
   margin-left: auto;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   opacity: 0.7;
   white-space: nowrap;
 }
@@ -104,7 +115,7 @@
 
 .module-tree-count {
   margin-left: auto;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   padding: 0 6px;
@@ -126,11 +137,11 @@
 
 .module-tree-group-label {
   font-weight: 600;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
 }
 
 .module-tree-group-count {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   margin-left: 4px;
 }
@@ -141,6 +152,13 @@
 
 .module-tree-children {
   /* Nested children container */
+}
+
+.module-tree-empty {
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-style: italic;
 }
 
 /* Connecting lines (optional visual) */

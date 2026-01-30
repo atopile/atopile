@@ -3,7 +3,6 @@
  * Displays build status, elapsed time, current stage, and cancel buttons.
  */
 
-import { useState, useEffect } from 'react';
 import { X, Clock, AlertCircle, CheckCircle2, XCircle, Pause, Circle } from 'lucide-react';
 import './BuildQueuePanel.css';
 
@@ -21,6 +20,7 @@ export interface QueuedBuild {
     status: string;
     elapsedSeconds?: number;
   }>;
+  totalStages?: number | null;
   error?: string;
 }
 
@@ -31,6 +31,12 @@ interface BuildQueuePanelProps {
 
 // Format seconds to human readable duration
 function formatDuration(seconds: number): string {
+  if (seconds < 1) {
+    return `${seconds.toFixed(2)}s`;
+  }
+  if (seconds < 10) {
+    return `${seconds.toFixed(1)}s`;
+  }
   if (seconds < 60) {
     return `${Math.floor(seconds)}s`;
   }
@@ -75,25 +81,9 @@ function getCurrentStage(build: QueuedBuild): { name: string; elapsed?: number }
 }
 
 function BuildQueueItem({ build, onCancel }: { build: QueuedBuild; onCancel: () => void }) {
-  const [elapsed, setElapsed] = useState(build.elapsedSeconds || 0);
+  const elapsed = build.elapsedSeconds ?? 0;
 
   // Update elapsed time for building status
-  useEffect(() => {
-    if (build.status !== 'building') {
-      setElapsed(build.elapsedSeconds || 0);
-      return;
-    }
-
-    // Calculate from started_at
-    const startTime = build.startedAt * 1000;
-    const updateElapsed = () => {
-      setElapsed((Date.now() - startTime) / 1000);
-    };
-
-    updateElapsed();
-    const interval = setInterval(updateElapsed, 1000);
-    return () => clearInterval(interval);
-  }, [build.status, build.startedAt, build.elapsedSeconds]);
 
   const projectName = getProjectName(build.projectRoot);
   // Show target name, or entry for standalone builds

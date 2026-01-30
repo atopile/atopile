@@ -2,10 +2,8 @@ import json
 import os
 import subprocess
 import tempfile
-import time
 import webbrowser
 from collections import Counter
-from dataclasses import dataclass
 from pathlib import Path
 
 import typer
@@ -27,12 +25,26 @@ def compile(
         help="Build target: all, zig, visualizer, or vscode.",
     ),
 ):
+    import sys
+
     target = target.lower()
     valid_targets = {"all", "zig", "visualizer", "vscode"}
     if target not in valid_targets:
         raise typer.BadParameter(
             f"target must be one of: {', '.join(sorted(valid_targets))}"
         )
+
+    if target in {"all", "vscode"}:
+        repo_root = Path(__file__).resolve().parents[3]
+        gen_script = repo_root / "scripts" / "generate_types.py"
+        ui_server_dir = repo_root / "src" / "ui-server"
+        if gen_script.exists() and ui_server_dir.exists():
+            print("generating typescript types from pydantic models")
+            result = subprocess.run(
+                [sys.executable, str(gen_script)], cwd=str(repo_root)
+            )
+            if result.returncode != 0:
+                raise typer.Exit(result.returncode)
 
     if target in {"all", "zig"}:
         print("compiling zig")
@@ -142,13 +154,23 @@ def _find_vscode_cli() -> tuple[str, str] | None:
 
 @dev_app.command()
 @capture("cli:dev_install_start", "cli:dev_install_end")
-def install():
+def install(
+    clear: bool = typer.Option(
+        False, "-c", "--clear-logs", help="Clear log databases before installing"
+    ),
+):
     """
     Install the locally built VS Code extension.
 
     Installs the latest .vsix built by 'ato dev compile vscode'.
     VS Code will prompt to reload the extension automatically.
     """
+    if clear:
+        from faebryk.libs.paths import remove_log_dir
+
+        if remove_log_dir():
+            typer.echo("Log databases cleared")
+
     repo_root = Path(__file__).resolve().parents[3]
     vscode_dir = repo_root / "src" / "vscode-atopile"
 
@@ -160,7 +182,8 @@ def install():
     if not cli_info:
         typer.secho(
             "Could not find VS Code or Cursor CLI.\n"
-            "Install 'code' command: Open VS Code, Cmd+Shift+P, 'Shell Command: Install code command in PATH'",
+            "Install 'code' command: Open VS Code, Cmd+Shift+P, 'Shell Command: "
+            "Install code command in PATH'",
             fg=typer.colors.RED,
         )
         raise typer.Exit(1)
@@ -285,10 +308,11 @@ def flags():
     """
     import re
 
-    from rich.console import Console
+    from atopile.config_flags import discover_configflags
     from rich.table import Table
 
     from atopile.config_flags import discover_configflags
+    from atopile.logging_utils import console
 
     def _linkify_urls(text: str) -> str:
         """Convert URLs to Rich hyperlinks with shorter display text."""
@@ -340,7 +364,7 @@ def flags():
             uses,
         )
 
-    Console().print(table)
+    console.print(table)
 
 
 def _fetch_and_open_test_report(commit_hash: str) -> None:
@@ -712,3 +736,16 @@ def profile(
 
     sys.argv = ["", *ctx.args]
     app()
+
+
+@dev_app.command()
+def clear_logs(
+    ctx: typer.Context,
+):
+    """Remove all log databases."""
+    from faebryk.libs.paths import remove_log_dir
+
+    if remove_log_dir():
+        typer.echo("🧹 Log databases removed 🧹")
+    else:
+        typer.echo("❌ Could not remove log databases")

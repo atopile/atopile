@@ -1,10 +1,21 @@
-import { useState, useEffect } from 'react'
 import {
-  X, Package, Download, ExternalLink,
-  CheckCircle, Tag, Calendar, FileCode, Play,
-  Loader2, AlertCircle, Globe
+  AlertCircle,
+  ArrowLeft,
+  ChevronDown, ChevronRight,
+  Cuboid,
+  Download, ExternalLink,
+  FileCode,
+  Layers,
+  Loader2,
+  Package
 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { API_URL } from '../api/config'
+import { postMessage } from '../api/vscodeApi'
 import type { PackageDetails } from '../types/build'
+import KiCanvasEmbed from './KiCanvasEmbed'
+import MarkdownRenderer from './MarkdownRenderer'
+import ModelViewer from './ModelViewer'
 
 interface PackageDetailProps {
   package: {
@@ -24,7 +35,8 @@ interface PackageDetailProps {
   error: string | null
   onClose: () => void
   onInstall: (version: string) => void
-  onBuild: (entry?: string) => void
+  onUninstall: () => void
+  onBuild?: (entry?: string) => void  // Optional, no longer used in UI
 }
 
 // Format download count for display (e.g., 12847 -> "12.8k")
@@ -71,6 +83,34 @@ function compareVersionsDesc(a: string, b: string): number {
   return b.localeCompare(a);
 }
 
+function formatDate(dateStr?: string | null): string {
+  if (!dateStr) return 'N/A'
+  try {
+    const date = new Date(dateStr)
+    if (Number.isNaN(date.getTime())) return dateStr
+    return date.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
+  } catch {
+    return dateStr
+  }
+}
+
+function formatBytes(bytes?: number | null): string {
+  if (!bytes) return 'N/A'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = bytes
+  let unitIndex = 0
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+  const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10
+  return `${rounded} ${units[unitIndex]}`
+}
+
 export function PackageDetailPanel({
   package: pkg,
   packageDetails,
@@ -80,8 +120,9 @@ export function PackageDetailPanel({
   error,
   onClose,
   onInstall,
-  onBuild
+  onUninstall,
 }: PackageDetailProps) {
+  const [infoCollapsed, setInfoCollapsed] = useState(true)
   // Use details from API if available, fallback to basic package info
   const details = packageDetails
 
@@ -115,36 +156,106 @@ export function PackageDetailPanel({
 
   // Get description from details or package
   const description = details?.description || details?.summary || pkg.description
-  const isInstalled = details?.installed ?? pkg.installed
-  const installedVersion = details?.installedVersion || pkg.version
+  const installedFromList = typeof pkg.installed === 'boolean' ? pkg.installed : undefined
+  const isInstalled = installedFromList ?? details?.installed ?? false
+  const installedVersion = isInstalled ? (pkg.version || details?.installedVersion) : undefined
+  const isUpdateAvailable = Boolean(
+    isInstalled &&
+    selectedVersion &&
+    installedVersion &&
+    selectedVersion !== installedVersion
+  )
+  const showUninstall = Boolean(isInstalled && !isUpdateAvailable)
+  const packageTitle = pkg.fullName || pkg.name
+  const releaseDate = sortedVersions.find(v => v.version === selectedVersion)?.releasedAt
+
+  const selectedVersionInfo = sortedVersions.find(v => v.version === selectedVersion)
+  const buildTargets = useMemo(() => {
+    const targets = new Set<string>()
+    details?.builds?.forEach(target => {
+      if (typeof target === 'string') {
+        targets.add(target)
+      } else {
+        targets.add(target.name)
+      }
+    })
+    details?.layouts?.forEach(layout => targets.add(layout.buildName))
+    details?.importStatements?.forEach(statement => targets.add(statement.buildName))
+    details?.artifacts?.forEach(artifact => {
+      if (artifact.buildName) targets.add(artifact.buildName)
+    })
+    return Array.from(targets)
+  }, [details?.builds, details?.layouts, details?.importStatements, details?.artifacts])
+
+  const [selectedBuildTarget, setSelectedBuildTarget] = useState<string>('')
+  const [activeVisualTab, setActiveVisualTab] = useState<'3d' | 'layout'>('3d')
+  const [buildDropdownOpen, setBuildDropdownOpen] = useState(false)
+  const buildDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!buildTargets.length) {
+      if (selectedBuildTarget) setSelectedBuildTarget('')
+      return
+    }
+    if (!selectedBuildTarget || !buildTargets.includes(selectedBuildTarget)) {
+      setSelectedBuildTarget(buildTargets[0])
+    }
+  }, [buildTargets, selectedBuildTarget])
+
+  const layoutForTarget = details?.layouts?.find(layout => layout.buildName === selectedBuildTarget)
+  const modelArtifact = useMemo(() => {
+    if (!selectedBuildTarget) return null
+    const expectedFilename = `${selectedBuildTarget}/${selectedBuildTarget}.pcba.glb`
+    const artifacts = details?.artifacts || []
+    return (
+      artifacts.find(artifact => artifact.filename === expectedFilename) ||
+      artifacts.find(artifact => artifact.buildName === selectedBuildTarget && artifact.filename.endsWith('.pcba.glb')) ||
+      null
+    )
+  }, [details?.artifacts, selectedBuildTarget])
+
+  const proxyAssetUrl = (url?: string | null) => {
+    if (!url) return ''
+    let filename = 'asset'
+    try {
+      const parsed = new URL(url)
+      const parts = parsed.pathname.split('/')
+      filename = parts[parts.length - 1] || filename
+    } catch {
+      // ignore
+    }
+    return `${API_URL}/api/packages/proxy/${encodeURIComponent(filename)}?url=${encodeURIComponent(url)}`
+  }
+
+  const authorLine = details?.authors?.length
+    ? details.authors.map(author => author.name).join(', ')
+    : 'N/A'
+
+  useEffect(() => {
+    if (!buildDropdownOpen) return
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!buildDropdownRef.current) return
+      if (!buildDropdownRef.current.contains(event.target as Node)) {
+        setBuildDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [buildDropdownOpen])
 
   return (
     <div className="package-detail-panel">
       {/* Header */}
       <div className="detail-panel-header">
-        <div className="detail-header-left">
-          <Package size={20} className="detail-package-icon" />
-          <div className="detail-header-info">
-            <h2 className="detail-package-name">{pkg.name}</h2>
-            <div className="detail-package-meta">
-              {(details?.version || pkg.version) && (
-                <span className="detail-version">
-                  <Tag size={12} />
-                  v{details?.version || pkg.version}
-                </span>
-              )}
-              {isInstalled && (
-                <span className="detail-installed">
-                  <CheckCircle size={12} />
-                  Installed{installedVersion ? ` (v${installedVersion})` : ''}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        <button className="detail-close-btn" onClick={onClose}>
-          <X size={18} />
+        <button className="detail-back-btn" onClick={onClose} title="Back">
+          <ArrowLeft size={18} />
         </button>
+        <div className="detail-header-info">
+          <h2 className="detail-package-name">{packageTitle}</h2>
+          <p className="detail-package-blurb">
+            {description || 'No description available.'}
+          </p>
+        </div>
       </div>
 
       {/* Loading State */}
@@ -165,16 +276,8 @@ export function PackageDetailPanel({
 
       {/* Content */}
       <div className="detail-panel-content">
-        {/* Description */}
-        {description && (
-          <section className="detail-section">
-            <p className="detail-description">{description}</p>
-          </section>
-        )}
-
-
-        {/* Actions */}
-        <section className="detail-section detail-actions">
+        {/* Install */}
+        <div>
           <div className="detail-install-row">
             {/* Version dropdown */}
             {sortedVersions.length > 0 ? (
@@ -200,30 +303,26 @@ export function PackageDetailPanel({
             )}
 
             <button
-              className={`detail-install-btn ${isInstalled ? 'update' : 'install'} ${isInstalling ? 'installing' : ''}`}
-              onClick={() => onInstall(selectedVersion || details?.version || pkg.version || '')}
+              className={`detail-install-btn ${isUpdateAvailable ? 'update' : showUninstall ? 'uninstall' : 'install'
+                } ${isInstalling ? 'installing' : ''}`}
+              onClick={() =>
+                showUninstall
+                  ? onUninstall()
+                  : onInstall(selectedVersion || details?.version || pkg.version || '')
+              }
               disabled={isLoading || isInstalling}
             >
               {isInstalling ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
-                  Installing...
+                  {showUninstall ? 'Uninstalling...' : 'Installing...'}
                 </>
               ) : (
                 <>
                   <Download size={14} />
-                  {isInstalled ? 'Update' : 'Install'}
+                  {isUpdateAvailable ? 'Update' : showUninstall ? 'Uninstall' : 'Install'}
                 </>
               )}
-            </button>
-            <button
-              className="detail-build-btn"
-              onClick={() => onBuild()}
-              title="Build this package (installs if needed)"
-              disabled={isLoading || isInstalling}
-            >
-              <Play size={14} />
-              Build
             </button>
           </div>
 
@@ -234,73 +333,205 @@ export function PackageDetailPanel({
               <span>{installError}</span>
             </div>
           )}
+        </div>
 
-          {/* Release date info */}
-          {sortedVersions.length > 0 && (
-            <div className="detail-version-info">
-              <Calendar size={12} />
-              Released: {formatReleaseDate(sortedVersions.find(v => v.version === selectedVersion)?.releasedAt)}
+        {/* Information */}
+        <section className={`detail-section detail-section-collapsible ${infoCollapsed ? 'collapsed' : ''}`}>
+          <div className="detail-section-header">
+            <button
+              type="button"
+              className="detail-section-header-left"
+              onClick={() => setInfoCollapsed((prev) => !prev)}
+              aria-expanded={!infoCollapsed}
+              aria-label={infoCollapsed ? 'Expand information' : 'Collapse information'}
+            >
+              <span className="detail-collapse-toggle">
+                {infoCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+              </span>
+              <h3 className="detail-section-title">
+                <Package size={14} />
+                Information
+              </h3>
+            </button>
+            {(details?.homepage || pkg.homepage) && (
+              <button
+                type="button"
+                onClick={() => postMessage({ type: 'openInSimpleBrowser', url: details?.homepage || pkg.homepage || '' })}
+                className="detail-open-icon"
+                title="Open in browser"
+              >
+                <ExternalLink size={12} />
+              </button>
+            )}
+          </div>
+          {!infoCollapsed && (
+            <dl className="detail-info-list">
+              {details?.publisher && (
+                <div className="detail-info-row">
+                  <dt>Publisher</dt>
+                  <dd className="detail-info-value">{details.publisher}</dd>
+                </div>
+              )}
+              <div className="detail-info-row">
+                <dt>Published</dt>
+                <dd className="detail-info-value">{formatDate(details?.createdAt)}</dd>
+              </div>
+              <div className="detail-info-row">
+                <dt>Last updated</dt>
+                <dd className="detail-info-value">{formatDate(details?.releasedAt)}</dd>
+              </div>
+              {sortedVersions.length > 0 && (
+                <div className="detail-info-row">
+                  <dt>Latest version</dt>
+                  <dd className="detail-info-value">
+                    <span className="detail-info-mono">v{latestAvailableVersion}</span>
+                  </dd>
+                </div>
+              )}
+              {sortedVersions.length > 0 && (
+                <div className="detail-info-row">
+                  <dt>Latest release</dt>
+                  <dd className="detail-info-value">{formatReleaseDate(releaseDate)}</dd>
+                </div>
+              )}
+              <div className="detail-info-row">
+                <dt>Authors</dt>
+                <dd className="detail-info-value">{authorLine}</dd>
+              </div>
+              <div className="detail-info-row">
+                <dt>License</dt>
+                <dd className="detail-info-value">
+                  {details?.license || 'N/A'}
+                </dd>
+              </div>
+              {details?.downloads !== undefined && (
+                <div className="detail-info-row">
+                  <dt>Downloads</dt>
+                  <dd className="detail-info-value">
+                    {formatDownloads(details.downloads)}
+                  </dd>
+                </div>
+              )}
+              {details?.versionCount !== undefined && (
+                <div className="detail-info-row">
+                  <dt>Versions</dt>
+                  <dd className="detail-info-value">{details.versionCount}</dd>
+                </div>
+              )}
+              <div className="detail-info-row">
+                <dt>ato version compatibility</dt>
+                <dd className="detail-info-value">
+                  <span className="detail-info-mono">{selectedVersionInfo?.requiresAtopile || 'N/A'}</span>
+                </dd>
+              </div>
+              <div className="detail-info-row">
+                <dt>File size</dt>
+                <dd className="detail-info-value">
+                  {formatBytes(selectedVersionInfo?.size)}
+                </dd>
+              </div>
+            </dl>
+          )}
+        </section>
+
+        {/* Visuals */}
+        <section className="package-visual-section">
+          <div className="package-visual-tabs">
+            <button
+              className={`package-visual-tab ${activeVisualTab === '3d' ? 'active' : ''}`}
+              onClick={() => setActiveVisualTab('3d')}
+            >
+              <Cuboid size={14} />
+              3D Model
+            </button>
+            <button
+              className={`package-visual-tab ${activeVisualTab === 'layout' ? 'active' : ''}`}
+              onClick={() => setActiveVisualTab('layout')}
+            >
+              <Layers size={14} />
+              Layout
+            </button>
+          </div>
+          <div className="package-visual-content">
+            {activeVisualTab === '3d' ? (
+              selectedBuildTarget ? (
+                modelArtifact ? (
+                  <ModelViewer
+                    key={modelArtifact.url}
+                    src={proxyAssetUrl(modelArtifact.url)}
+                    className="detail-visual-frame"
+                  />
+                ) : (
+                  <div className="detail-visual-empty">
+                    No 3D model found for "{selectedBuildTarget}".
+                  </div>
+                )
+              ) : (
+                <div className="detail-visual-empty">Select a build target to preview 3D.</div>
+              )
+            ) : selectedBuildTarget ? (
+              layoutForTarget ? (
+                <KiCanvasEmbed
+                  key={layoutForTarget.url}
+                  src={proxyAssetUrl(layoutForTarget.url)}
+                  controls="basic"
+                  controlslist="nodownload"
+                  hideReferences
+                  className="detail-visual-frame"
+                />
+              ) : (
+                <div className="detail-visual-empty">
+                  No layout found for "{selectedBuildTarget}".
+                </div>
+              )
+            ) : (
+              <div className="detail-visual-empty">Select a build target to preview layout.</div>
+            )}
+            {buildTargets.length > 1 && (
+              <div className="package-build-selector" ref={buildDropdownRef}>
+                <button
+                  className={`package-build-trigger ${buildDropdownOpen ? 'open' : ''}`}
+                  onClick={() => setBuildDropdownOpen(!buildDropdownOpen)}
+                >
+                  <span>{selectedBuildTarget || 'Select build'}</span>
+                  <ChevronDown size={12} className={buildDropdownOpen ? 'rotated' : ''} />
+                </button>
+                {buildDropdownOpen && (
+                  <div className="package-build-dropdown">
+                    {buildTargets.map(target => (
+                      <button
+                        key={target}
+                        className={`package-build-option ${target === selectedBuildTarget ? 'selected' : ''}`}
+                        onClick={() => {
+                          setSelectedBuildTarget(target)
+                          setBuildDropdownOpen(false)
+                        }}
+                      >
+                        {target}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Readme */}
+        <section className="detail-section">
+          <h3 className="detail-section-title">
+            <FileCode size={14} />
+            Readme
+          </h3>
+          {details?.readme ? (
+            <MarkdownRenderer content={details.readme} />
+          ) : (
+            <div className="detail-empty">
+              Readme not available.
             </div>
           )}
         </section>
 
-        {/* Exports - placeholder until backend provides symbol introspection */}
-        <section className="detail-section">
-          <h3 className="detail-section-title">
-            <FileCode size={14} />
-            Exported Symbols
-          </h3>
-          <p className="muted">Symbol introspection coming soon</p>
-        </section>
-
-        {/* Usage Example */}
-        <section className="detail-section">
-          <h3 className="detail-section-title">
-            <FileCode size={14} />
-            Usage Example
-          </h3>
-          <pre className="detail-code-block">
-{`from "${pkg.fullName}/${pkg.name}.ato" import RP2040
-
-module MyBoard:
-    mcu = new RP2040
-
-    # Connect interfaces
-    power ~ mcu.power
-    i2c ~ mcu.i2c`}
-          </pre>
-        </section>
-      </div>
-
-      {/* Footer Bar - Package metadata and actions */}
-      <div className="detail-panel-footer">
-        <div className="detail-footer-stats">
-          {details?.publisher && (
-            <span className="footer-stat">{details.publisher}</span>
-          )}
-          {details && (
-            <span className="footer-stat">
-              <Download size={12} />
-              {formatDownloads(details.downloads)}
-            </span>
-          )}
-          {details?.license && (
-            <span className="footer-stat">{details.license}</span>
-          )}
-        </div>
-        {pkg.homepage && (
-          <a
-            href={pkg.homepage}
-            className="footer-browser-btn"
-            target="_blank"
-            rel="noopener"
-            title="Open in browser"
-          >
-            <Globe size={14} />
-            <span>Open</span>
-            <ExternalLink size={10} />
-          </a>
-        )}
       </div>
     </div>
   )

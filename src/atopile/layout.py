@@ -2,7 +2,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-import atopile.exceptions
+import atopile.errors
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
@@ -138,17 +138,24 @@ def _index_module_layouts(tg: fbrk.TypeGraph) -> "dict[graph.BoundNode, set[Path
     # scan project and all dependencies
     # TODO: only active dependencies
     for filepath in config.project.paths.root.glob("**/ato.yaml"):
-        with atopile.exceptions.downgrade(Exception, logger=logger):
+        with atopile.errors.downgrade(Exception, logger=logger):
             project_config = ProjectConfig.from_path(filepath.parent)
 
             if project_config is None:
-                raise atopile.exceptions.UserResourceException(
+                raise atopile.errors.UserResourceException(
                     f"Failed to load module config: {filepath}"
                 )
 
             for build in project_config.builds.values():
-                with atopile.exceptions.downgrade(Exception, logger=logger):
-                    if type_node := modules_by_address.get(AddrStr(build.address)):
+                with atopile.errors.downgrade(Exception, logger=logger):
+                    # entry_file_path is resolved relative to the package's root.
+                    # We need to make it relative to the main project root to match
+                    # the keys in modules_by_address.
+                    entry_path = build.entry_file_path.relative_to(
+                        config.project.paths.root
+                    )
+                    match_addr = AddrStr.from_parts(entry_path, build.entry_section)
+                    if type_node := modules_by_address.get(match_addr):
                         entries[type_node].add(build.paths.layout)
 
     return entries

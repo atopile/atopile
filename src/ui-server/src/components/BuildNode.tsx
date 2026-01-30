@@ -14,24 +14,17 @@ import type { Selection, BuildTarget, BuildStage, ModuleDefinition } from './pro
 import { NameValidationDropdown } from './NameValidationDropdown';
 import { validateName } from '../utils/nameValidation';
 import { useStore } from '../store';
+import { sendAction } from '../api/websocket';
 import './BuildNode.css';
-
-// Timer component for running stages - isolated to prevent parent re-renders
-function StageTimer() {
-  const [seconds, setSeconds] = useState(0);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setSeconds(s => s + 1);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  return <>{seconds}s</>;
-}
 
 // Format time in mm:ss or hh:mm:ss
 export function formatBuildTime(seconds: number): string {
+  if (seconds >= 0 && seconds < 1) {
+    return `${seconds.toFixed(2)}s`;
+  }
+  if (seconds > 0 && seconds < 10) {
+    return `${seconds.toFixed(1)}s`;
+  }
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
@@ -173,39 +166,17 @@ export const BuildNode = memo(function BuildNode({
   const [duplicateWarning, setDuplicateWarning] = useState<{ entry: string; usedBy: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Timer state for live build time display
-  const [elapsedTime, setElapsedTime] = useState(build.elapsedSeconds || 0);
-  const isBuilding = build.status === 'building';
+  const elapsedTime = build.elapsedSeconds ?? 0;
+  const isBuilding = build.status === 'building' || build.status === 'queued';
 
   // Track previous stage for animation
   const [prevStage, setPrevStage] = useState<string | null>(null);
   const [stageAnimating, setStageAnimating] = useState(false);
 
-  // Update timer every second while building
-  useEffect(() => {
-    if (!isBuilding) {
-      setElapsedTime(build.elapsedSeconds || build.duration || 0);
-      return;
-    }
-
-    setElapsedTime(build.elapsedSeconds || 0);
-
-    const interval = setInterval(() => {
-      setElapsedTime(prev => prev + 1);
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isBuilding, build.elapsedSeconds, build.duration]);
 
   // Progress calculation using totalStages from backend
-  // TODO: Replace this estimate once builds are defined in the graph
-  const ESTIMATED_TOTAL_STAGES = 20;  // Fallback if backend doesn't provide totalStages
-
   const getProgress = () => {
     if (!build.stages || build.stages.length === 0) return 0;
-
-    // Use backend-provided totalStages or fall back to estimate
-    const totalStages = build.totalStages || ESTIMATED_TOTAL_STAGES;
 
     let completedCount = 0;
     let runningCount = 0;
@@ -222,6 +193,8 @@ export const BuildNode = memo(function BuildNode({
       }
     }
 
+    // Use actual totalStages from backend, or fall back to completed + 1 to avoid 100%
+    const totalStages = build.totalStages || Math.max(completedCount + 1, 10);
     const progress = ((completedCount + runningCount) / totalStages) * 100;
     return Math.min(progress, 100);
   };
@@ -451,8 +424,8 @@ export const BuildNode = memo(function BuildNode({
                       </span>
                     )}
 
-                    {build.duration ? (
-                      <span className="build-duration">{build.duration.toFixed(1)}s</span>
+                    {build.elapsedSeconds ? (
+                      <span className="build-duration">{build.elapsedSeconds.toFixed(1)}s</span>
                     ) : build.lastBuild ? (
                       <span className="last-build-info" title={`Last build: ${build.lastBuild.status}`}>
                         {getLastBuildStatusIcon(build.lastBuild.status, 10)}
@@ -643,10 +616,10 @@ export const BuildNode = memo(function BuildNode({
                 {entryPoint}
               </span>
             )}
-            {build.duration && (
+            {build.elapsedSeconds && (
               <span className="build-duration">
                 <Clock size={10} />
-                {build.duration.toFixed(1)}s
+                {build.elapsedSeconds.toFixed(1)}s
               </span>
             )}
           </div>
@@ -660,25 +633,26 @@ export const BuildNode = memo(function BuildNode({
                 const id = build.buildId || build.lastBuild?.buildId;
                 if (id) {
                   useStore.getState().setLogViewerBuildId(id);
+                  sendAction('setLogViewCurrentId', { buildId: id });
                 }
               }}
               title="Click to view logs for this build"
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
+                gap: 'var(--spacing-sm)',
                 padding: '4px 8px 4px 24px',
-                fontSize: '10px',
-                color: '#6c7086',
+                fontSize: 'var(--font-size-xs)',
+                color: 'var(--text-muted)',
                 cursor: 'pointer',
               }}
             >
               <span
                 style={{
-                  fontFamily: 'monospace',
-                  background: 'rgba(108, 112, 134, 0.2)',
+                  fontFamily: 'var(--font-mono)',
+                  background: 'var(--bg-tertiary)',
                   padding: '1px 6px',
-                  borderRadius: '4px',
+                  borderRadius: 'var(--radius-sm)',
                 }}
               >
                 {(build.buildId || build.lastBuild?.buildId)?.slice(0, 8)}
@@ -708,7 +682,7 @@ export const BuildNode = memo(function BuildNode({
                 <div className="build-stages-list">
                   {build.stages!.map((stage) => {
                     const isClickable = (stage.status === 'warning' || stage.status === 'error') && onStageFilter;
-                    const stageDuration = stage.duration ?? stage.elapsedSeconds;
+                    const stageDuration = stage.elapsedSeconds;
                     return (
                       <div
                         key={stage.name}
@@ -725,9 +699,7 @@ export const BuildNode = memo(function BuildNode({
                           <span className="stage-message">{stage.message}</span>
                         )}
                         <span className="stage-duration">
-                          {stage.status === 'running' ? (
-                            <StageTimer />
-                          ) : stageDuration != null ? (
+                          {stageDuration != null ? (
                             `${stageDuration.toFixed(1)}s`
                           ) : (
                             ''

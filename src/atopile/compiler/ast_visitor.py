@@ -44,7 +44,7 @@ from atopile.compiler.gentypegraph import (
     Symbol,
 )
 from atopile.compiler.overrides import ReferenceOverrideRegistry, TraitOverrideRegistry
-from atopile.exceptions import DeprecatedException, downgrade
+from atopile.errors import DeprecatedException, downgrade
 from atopile.logging import get_logger
 from faebryk.core.faebrykpy import EdgeTraversal
 from faebryk.library.Units import UnitsNotCommensurableError
@@ -1991,6 +1991,11 @@ class ASTVisitor:
 
         _logger = get_logger(__name__)
 
+        # Track the global best prefix match across all ancestors
+        # We only use prefix matches as a fallback if no exact match is found
+        # Initialize score to 0 so only actual matches (score > 0) are recorded
+        global_best_prefix_match: tuple["AST.SourceChunk | None", int] = (None, 0)
+
         for ancestor in reversed(common_ancestors):
             source_path = source_py.get_path_from_ancestor(ancestor)
             target_path = target_py.get_path_from_ancestor(ancestor)
@@ -2022,7 +2027,6 @@ class ASTVisitor:
                 continue
 
             _logger.debug("  Found %d make_links", len(make_links))
-            best_match: tuple["AST.SourceChunk | None", int] = (None, -1)
 
             for make_link_node, lhs_tuple, rhs_tuple in make_links:
                 edge_type_attr = make_link_node.node().get_attr(key="edge_type")
@@ -2064,17 +2068,16 @@ class ASTVisitor:
                     score = len(lhs_path) + len(rhs_path)
                     match_score = max(match_score, score)
 
-                if match_score > best_match[1]:
+                # Only record if there's an actual prefix match (score > 0)
+                if match_score > 0 and match_score > global_best_prefix_match[1]:
                     _logger.debug("    Prefix match score: %d", match_score)
-                    best_match = (
+                    global_best_prefix_match = (
                         ASTVisitor.get_source_chunk(make_link_node),
                         match_score,
                     )
 
-            if best_match[0] is not None:
-                return best_match[0]
-
-        return None
+        _logger.debug("No exact match found, returning best prefix match as fallback")
+        return global_best_prefix_match[0]
 
     @staticmethod
     def _extract_filepath_from_source_node(
@@ -2091,3 +2094,273 @@ class ASTVisitor:
         if filepath_str:
             return Path(filepath_str)
         return None
+
+
+class TestSourceChunkForConnection:
+    """
+    Tests for get_source_chunk_for_connection to ensure correct source location
+    tracking for ERC errors.
+    """
+
+    @staticmethod
+    def test_exact_match_at_outer_ancestor_preferred_over_prefix_at_inner():
+        """
+        Test that an exact match at an outer ancestor takes precedence over
+        a prefix match at an inner ancestor.
+
+        Setup:
+        - InnerModule has a connection: inner_pin ~ inner_power.lv
+        - OuterModule wraps InnerModule and has: outer_pin ~ outer_power.lv
+        - App has: outer.model.inner_pin ~ outer.outer_power.lv
+
+        The connection in App should be found as an exact match at the App level,
+        not confused with the prefix match at OuterModule level.
+        """
+        import textwrap
+
+        from atopile.compiler.build import Linker, StdlibRegistry, build_source
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        stdlib = StdlibRegistry(tg)
+
+        # Build ato source with nested modules
+        result = build_source(
+            g=g,
+            tg=tg,
+            source=textwrap.dedent(
+                """
+                import Electrical
+                import ElectricPower
+
+                module InnerModule:
+                    inner_power = new ElectricPower
+                    inner_pin = new Electrical
+                    # Connection at inner level (line 8)
+                    inner_pin ~ inner_power.hv
+
+                module OuterModule:
+                    model = new InnerModule
+                    outer_power = new ElectricPower
+                    outer_pin = new Electrical
+                    # Connection at outer level - similar pattern (line 15)
+                    outer_pin ~ outer_power.lv
+
+                module App:
+                    outer = new OuterModule
+                    # This connection should be found (line 20)
+                    outer.model.inner_pin ~ outer.outer_power.lv
+                """
+            ),
+        )
+
+        linker = Linker(None, stdlib, tg)
+        linker.link_imports(g, result.state)
+
+        # Instantiate the App
+        app_type = result.state.type_roots["App"]
+        app_instance = tg.instantiate_node(type_node=app_type, attributes={})
+
+        # Get the connected nodes
+        outer_node = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance, child_identifier="outer"
+        )
+        assert outer_node is not None
+
+        model_node = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=outer_node, child_identifier="model"
+        )
+        assert model_node is not None
+
+        inner_pin_node = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=model_node, child_identifier="inner_pin"
+        )
+        assert inner_pin_node is not None
+
+        outer_power_node = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=outer_node, child_identifier="outer_power"
+        )
+        assert outer_power_node is not None
+
+        lv_node = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=outer_power_node, child_identifier="lv"
+        )
+        assert lv_node is not None
+
+        # Get source chunk for the connection
+        source_chunk = ASTVisitor.get_source_chunk_for_connection(
+            inner_pin_node, lv_node, tg
+        )
+
+        # The source should point to line 21 (the App connection),
+        # not line 16 (the OuterModule connection which could be a prefix match)
+        # Note: line numbers are 1-indexed and include the leading newline from dedent
+        assert source_chunk is not None
+        loc = source_chunk.loc.get()
+        start_line = loc.get_start_line()
+        # Line 21 is: outer.model.inner_pin ~ outer.outer_power.lv
+        assert start_line == 21, (
+            f"Expected source at line 21 (App connection), got line {start_line}"
+        )
+
+    @staticmethod
+    def test_best_prefix_match_returned_when_no_exact_match():
+        """
+        Test that when there's no exact match, the best prefix match is returned.
+
+        Setup:
+        - InnerModule has interface connections that propagate
+        - OuterModule has a connection that creates a prefix match
+        - No exact match exists for the specific edge we're querying
+
+        The best (highest scoring) prefix match should be returned.
+        """
+        import textwrap
+
+        from atopile.compiler.build import Linker, StdlibRegistry, build_source
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        stdlib = StdlibRegistry(tg)
+
+        # Build ato source where connections propagate through interfaces
+        result = build_source(
+            g=g,
+            tg=tg,
+            source=textwrap.dedent(
+                """
+                import Electrical
+                import ElectricPower
+
+                module InnerModule:
+                    power = new ElectricPower
+                    pin_a = new Electrical
+                    pin_b = new Electrical
+                    # Connection at line 9
+                    pin_a ~ power.hv
+
+                module App:
+                    inner = new InnerModule
+                    external_power = new ElectricPower
+                    # Connect powers - this creates transitive connections (line 14)
+                    inner.power ~ external_power
+                """
+            ),
+        )
+
+        linker = Linker(None, stdlib, tg)
+        linker.link_imports(g, result.state)
+
+        # Instantiate the App
+        app_type = result.state.type_roots["App"]
+        app_instance = tg.instantiate_node(type_node=app_type, attributes={})
+
+        # Get nodes - the power interface connection creates transitive edges
+        inner_node = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance, child_identifier="inner"
+        )
+        assert inner_node is not None
+
+        inner_power_node = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=inner_node, child_identifier="power"
+        )
+        assert inner_power_node is not None
+
+        inner_power_hv = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=inner_power_node, child_identifier="hv"
+        )
+        assert inner_power_hv is not None
+
+        external_power_node = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance, child_identifier="external_power"
+        )
+        assert external_power_node is not None
+
+        external_power_hv = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=external_power_node, child_identifier="hv"
+        )
+        assert external_power_hv is not None
+
+        # Query for a connection that was created transitively
+        # (inner.power.hv ~ external_power.hv via the power ~ power connection)
+        source_chunk = ASTVisitor.get_source_chunk_for_connection(
+            inner_power_hv, external_power_hv, tg
+        )
+
+        # Should find the best prefix match - the power ~ power connection at line 14
+        # or the inner connection at line 9, depending on which scores higher
+        # The key point is that SOME source chunk is returned (not None)
+        # when prefix matching is needed
+        assert source_chunk is not None, (
+            "Expected a prefix match to be returned when no exact match exists"
+        )
+
+    @staticmethod
+    def test_no_match_returns_none():
+        """
+        Test that when querying for a non-existent connection, None is returned
+        even if there are other unrelated connections in the module.
+
+        This ensures we don't incorrectly return the source chunk of an
+        unrelated MakeLink just because it exists in the module.
+        """
+        import textwrap
+
+        from atopile.compiler.build import Linker, StdlibRegistry, build_source
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        stdlib = StdlibRegistry(tg)
+
+        # Build ato source with connections, but query for unconnected nodes
+        result = build_source(
+            g=g,
+            tg=tg,
+            source=textwrap.dedent(
+                """
+                import Electrical
+
+                module App:
+                    # These pins ARE connected
+                    connected_a = new Electrical
+                    connected_b = new Electrical
+                    connected_a ~ connected_b
+
+                    # These pins are NOT connected
+                    unconnected_a = new Electrical
+                    unconnected_b = new Electrical
+                """
+            ),
+        )
+
+        linker = Linker(None, stdlib, tg)
+        linker.link_imports(g, result.state)
+
+        # Instantiate the App
+        app_type = result.state.type_roots["App"]
+        app_instance = tg.instantiate_node(type_node=app_type, attributes={})
+
+        # Get the unconnected nodes
+        unconnected_a = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance, child_identifier="unconnected_a"
+        )
+        assert unconnected_a is not None
+
+        unconnected_b = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance, child_identifier="unconnected_b"
+        )
+        assert unconnected_b is not None
+
+        # Query for a connection between the unconnected nodes
+        # There IS a MakeLink in App (connected_a ~ connected_b), but it
+        # should NOT be returned since it doesn't match our query
+        source_chunk = ASTVisitor.get_source_chunk_for_connection(
+            unconnected_a, unconnected_b, tg
+        )
+
+        # Should return None - the connected_a ~ connected_b MakeLink
+        # should not be returned just because it exists in the same module
+        assert source_chunk is None, (
+            "Expected None when querying for unconnected nodes, even if "
+            "other connections exist in the module"
+        )

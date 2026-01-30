@@ -1,15 +1,18 @@
 /**
  * SidebarHeader component - Header with logo, version, and settings dropdown.
+ *
+ * Simplified version selector with:
+ * - Toggle for "Use local atopile"
+ * - Manual path input with validation
+ * - Health indicators (green=healthy, red=broken, blue=installing)
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Settings, ChevronDown, FolderOpen, Loader2, AlertCircle, Check, GitBranch, Package, Search, X } from 'lucide-react';
+import { Settings, FolderOpen, Loader2, AlertCircle, Check, X } from 'lucide-react';
 import { sendAction } from '../../api/websocket';
-import { handleEvent } from '../../api/eventHandler';
-import { useStore } from '../../store';
-import type { AtopileState } from '../../types/build';
+import { postMessage, onExtensionMessage, type ExtensionToWebviewMessage } from '../../api/vscodeApi';
 
-// Send action to backend via WebSocket
+// Send action to backend via WebSocket (or VS Code extension for special actions)
 const action = (name: string, data?: Record<string, unknown>) => {
   if (name === 'openUrl' && data && 'url' in data) {
     const url = (data as { url?: string }).url;
@@ -18,15 +21,35 @@ const action = (name: string, data?: Record<string, unknown>) => {
       return;
     }
   }
+  // browseAtopilePath needs to be handled by VS Code extension for native folder picker
+  if (name === 'browseAtopilePath') {
+    postMessage({ type: 'browseAtopilePath' });
+    return;
+  }
   sendAction(name, data);
 };
 
-interface SidebarHeaderProps {
-  atopile?: AtopileState;
-  developerMode?: boolean;
+interface AtopileState {
+  // Actual running atopile info
+  actualVersion?: string | null;
+  actualSource?: string | null;
+  actualBinaryPath?: string | null;
+  // User selection state
+  isInstalling?: boolean;
+  installProgress?: {
+    message?: string;
+    percent?: number;
+  } | null;
+  error?: string | null;
+  source?: 'release' | 'local';
+  localPath?: string | null;
 }
 
-export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
+interface SidebarHeaderProps {
+  atopile?: AtopileState;
+}
+
+export function SidebarHeader({ atopile }: SidebarHeaderProps) {
   const iconUrl =
     typeof window !== 'undefined'
       ? (window as Window & { __ATOPILE_ICON_URL__?: string }).__ATOPILE_ICON_URL__
@@ -34,7 +57,7 @@ export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
   const extensionVersion =
     typeof window !== 'undefined'
       ? (window as Window & { __ATOPILE_EXTENSION_VERSION__?: string })
-          .__ATOPILE_EXTENSION_VERSION__
+        .__ATOPILE_EXTENSION_VERSION__
       : undefined;
 
   // Settings dropdown state
@@ -47,10 +70,29 @@ export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
   const [maxConcurrentValue, setMaxConcurrentValue] = useState(detectedCores);
   const [defaultMaxConcurrent, setDefaultMaxConcurrent] = useState(detectedCores);
 
-  // Branch search state
-  const [branchSearchQuery, setBranchSearchQuery] = useState('');
-  const [showBranchDropdown, setShowBranchDropdown] = useState(false);
-  const branchDropdownRef = useRef<HTMLDivElement>(null);
+  // Local state for toggle (allows UI to work even when backend is down)
+  const [useLocalAtopile, setUseLocalAtopile] = useState(atopile?.source === 'local');
+
+  // Sync toggle state when backend state changes
+  useEffect(() => {
+    if (atopile?.source !== undefined) {
+      setUseLocalAtopile(atopile.source === 'local');
+    }
+  }, [atopile?.source]);
+
+  // Local state for path input (controlled input needs synchronous state updates)
+  const [localPathInput, setLocalPathInput] = useState(atopile?.localPath || '');
+  // Track if input is focused to prevent external sync from overwriting user typing
+  const [inputFocused, setInputFocused] = useState(false);
+
+  // Sync local input state when store value changes externally
+  // BUT only when the input is not focused (user not actively typing)
+  // AND only when backend provides a non-empty path (don't clear user input when backend is down)
+  useEffect(() => {
+    if (!inputFocused && atopile?.localPath && atopile.localPath !== localPathInput) {
+      setLocalPathInput(atopile.localPath);
+    }
+  }, [atopile?.localPath, inputFocused]);
 
   // Local path validation state
   const [localPathValidation, setLocalPathValidation] = useState<{
@@ -58,48 +100,91 @@ export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
     valid: boolean | null;
     version: string | null;
     error: string | null;
-  }>({ isValidating: false, valid: null, version: null, error: null });
+    resolvedPath: string | null;
+  }>({ isValidating: false, valid: null, version: null, error: null, resolvedPath: null });
   const validateDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Track pending install (local state for immediate feedback)
-  const [pendingInstall, setPendingInstall] = useState<{
-    type: 'version' | 'branch' | null;
-    value: string | null;
-  }>({ type: null, value: null });
-
-  const noReleaseVersions = (atopile?.availableVersions?.length ?? 0) === 0;
-
-  // Clear pending install when the actual version/branch matches what we requested
-  // Also timeout after 60 seconds to prevent infinite spinner
-  useEffect(() => {
-    if (pendingInstall.type === 'version' && atopile?.currentVersion === pendingInstall.value) {
-      setPendingInstall({ type: null, value: null });
-      return;
+  // Check if a path matches the currently running binary
+  const pathMatchesActualBinary = (path: string): boolean => {
+    if (!atopile?.actualBinaryPath) {
+      console.log('[SidebarHeader] pathMatchesActualBinary: no actualBinaryPath, returning false');
+      return false;
     }
-    if (pendingInstall.type === 'branch' && atopile?.branch === pendingInstall.value) {
-      setPendingInstall({ type: null, value: null });
-      return;
-    }
+    // Normalize paths for comparison (remove trailing slashes, handle venv paths)
+    const normalizedPath = path.replace(/\/+$/, '');
+    const normalizedActual = atopile.actualBinaryPath.replace(/\/+$/, '');
 
-    // Timeout after 60 seconds
-    if (pendingInstall.type !== null) {
-      const timeout = setTimeout(() => {
-        setPendingInstall({ type: null, value: null });
-      }, 60000);
-      return () => clearTimeout(timeout);
-    }
-  }, [atopile?.currentVersion, atopile?.branch, pendingInstall]);
+    console.log('[SidebarHeader] pathMatchesActualBinary comparison:', {
+      inputPath: path,
+      normalizedPath,
+      actualBinaryPath: atopile.actualBinaryPath,
+      normalizedActual,
+    });
 
-  // Force user to pick branch/local when no compatible release exists
-  useEffect(() => {
-    if (noReleaseVersions && atopile?.source === 'release') {
-      setPendingInstall({ type: null, value: null });
-      action('setAtopileSource', { source: 'branch' });
+    // Direct match
+    if (normalizedPath === normalizedActual) {
+      console.log('[SidebarHeader] pathMatchesActualBinary: DIRECT MATCH');
+      return true;
     }
-  }, [noReleaseVersions, atopile?.source]);
+    // Check if the selected path is a parent directory containing the actual binary
+    // e.g., selecting "/path/to/atopile" should match "/path/to/atopile/.venv/bin/ato"
+    if (normalizedActual.startsWith(normalizedPath + '/')) {
+      console.log('[SidebarHeader] pathMatchesActualBinary: PARENT DIR MATCH');
+      return true;
+    }
+    // Check if selecting a venv's bin/ato
+    if (normalizedPath.endsWith('/bin/ato') && normalizedActual === normalizedPath) {
+      console.log('[SidebarHeader] pathMatchesActualBinary: VENV BIN MATCH');
+      return true;
+    }
+    console.log('[SidebarHeader] pathMatchesActualBinary: NO MATCH');
+    return false;
+  };
 
-  // Helper to check if currently installing (from backend or pending local)
-  const isInstalling = atopile?.isInstalling || pendingInstall.type !== null;
+  // Pending restart state - when settings differ from what's actually running
+  //
+  // Key insight: restart is only needed when user's DESIRED state differs from RUNNING state.
+  //
+  // actualSource tells us HOW the backend resolved its binary on startup:
+  // - 'settings' = user explicitly configured atopile.ato → this is "explicitly local"
+  // - 'workspace-venv' = fallback to workspace venv (automatic, not user-configured)
+  // - 'uv' or other = extension-managed default
+  //
+  // Only 'settings' counts as "user explicitly configured local" because:
+  // - workspace-venv is just the default fallback for workspaces that have a venv
+  // - If user never configured anything, they shouldn't see restart warnings
+  const isRunningExplicitlyConfigured = atopile?.actualSource === 'settings';
+
+  const pendingRestartNeeded = (() => {
+    if (useLocalAtopile) {
+      // Toggle is ON - user wants to use their specified localPath
+      // Show restart if we have a path (either from backend or local input) but it doesn't match what's running
+      const pathToUse = atopile?.localPath || localPathInput;
+      if (!pathToUse) return false;
+      // If backend is down (no actualBinaryPath), show restart if user has entered a path
+      if (!atopile?.actualBinaryPath) return !!localPathInput;
+      return !pathMatchesActualBinary(pathToUse);
+    } else {
+      // Toggle is OFF - user wants to use default (extension-managed uv)
+      // Only show restart if we're running an EXPLICITLY configured binary
+      // (i.e., user previously set atopile.ato and restarted with it)
+      //
+      // If actualSource is 'workspace-venv' or 'uv', that's just the default
+      // fallback for this environment, so no restart needed.
+      return isRunningExplicitlyConfigured;
+    }
+  })();
+
+  // Debug logging for restart detection
+  console.log('[SidebarHeader] Restart detection state:', {
+    useLocalAtopile,
+    localPath: atopile?.localPath,
+    actualBinaryPath: atopile?.actualBinaryPath,
+    actualSource: atopile?.actualSource,
+    isRunningExplicitlyConfigured,
+    source: atopile?.source,
+    pendingRestartNeeded,
+  });
 
   // Close settings dropdown when clicking outside
   useEffect(() => {
@@ -122,24 +207,10 @@ export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
     }
   }, [showSettings]);
 
-  // Close branch dropdown when clicking outside
-  useEffect(() => {
-    if (!showBranchDropdown) return;
-
-    const handleClickOutside = (e: MouseEvent) => {
-      if (branchDropdownRef.current && !branchDropdownRef.current.contains(e.target as Node)) {
-        setShowBranchDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showBranchDropdown]);
-
   // Validate local path when it changes
   useEffect(() => {
-    if (atopile?.source !== 'local' || !atopile?.localPath) {
-      setLocalPathValidation({ isValidating: false, valid: null, version: null, error: null });
+    if (!useLocalAtopile || !atopile?.localPath) {
+      setLocalPathValidation({ isValidating: false, valid: null, version: null, error: null, resolvedPath: null });
       return;
     }
 
@@ -159,7 +230,21 @@ export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
         clearTimeout(validateDebounceRef.current);
       }
     };
-  }, [atopile?.source, atopile?.localPath]);
+  }, [useLocalAtopile, atopile?.localPath]);
+
+  // Listen for browse path result from VS Code extension
+  useEffect(() => {
+    const unsubscribe = onExtensionMessage((message: ExtensionToWebviewMessage) => {
+      if (message.type === 'browseAtopilePathResult' && message.path) {
+        // Set the path - this triggers validation via the useEffect above
+        // The validation result handler will save the RESOLVED path to settings
+        action('setAtopileLocalPath', { path: message.path });
+        // Don't save to settings here - let validation resolve the full binary path first
+      }
+    });
+
+    return unsubscribe;
+  }, []);
 
   // Handle action_result events for settings
   useEffect(() => {
@@ -178,6 +263,7 @@ export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
           valid?: boolean;
           version?: string | null;
           error?: string | null;
+          resolved_path?: string | null;
         };
       };
 
@@ -191,17 +277,99 @@ export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
 
       // Handle validateAtopilePath result
       if (message?.action === 'validateAtopilePath' && result) {
+        console.log('[SidebarHeader] validateAtopilePath raw message:', JSON.stringify(message, null, 2));
+        console.log('[SidebarHeader] validateAtopilePath result object:', result);
+        console.log('[SidebarHeader] resolved_path value:', result.resolved_path);
+
         setLocalPathValidation({
           isValidating: false,
           valid: result.valid ?? false,
           version: result.version ?? null,
           error: result.error ?? null,
+          resolvedPath: result.resolved_path ?? null,
         });
+
+        // If validation succeeded, save settings with the RESOLVED path (not user input)
+        if (result.valid) {
+          const pathToSave = result.resolved_path || atopile?.localPath;
+          console.log('[SidebarHeader] Validation succeeded, saving resolved path:', {
+            userInput: atopile?.localPath,
+            resolvedPath: result.resolved_path,
+            pathToSave,
+          });
+
+          // Save the RESOLVED path to VS Code settings (not the user's input)
+          // Don't update the store's localPath - keep showing what the user typed
+          postMessage({
+            type: 'atopileSettings',
+            atopile: {
+              source: 'local',
+              localPath: pathToSave,
+            },
+          });
+          // Restart status is computed from state, no need to track manually
+        }
       }
     };
     window.addEventListener('atopile:action_result', handleActionResult);
     return () => window.removeEventListener('atopile:action_result', handleActionResult);
-  }, []);
+  }, [atopile?.localPath]);
+
+  // Handle toggle change
+  const handleToggleChange = (checked: boolean) => {
+    // Update local state immediately (works even when backend is down)
+    setUseLocalAtopile(checked);
+
+    if (checked) {
+      // Switch to local mode
+      action('setAtopileSource', { source: 'local' });
+      // Also save to VS Code settings with current path
+      postMessage({
+        type: 'atopileSettings',
+        atopile: {
+          source: 'local',
+          localPath: localPathInput || null,
+        },
+      });
+    } else {
+      // Switch back to default (extension-managed uv) - just clear atopile.ato
+      postMessage({
+        type: 'atopileSettings',
+        atopile: {
+          source: 'release',
+          localPath: null,  // Clear the ato setting
+        },
+      });
+      // Update backend state
+      action('setAtopileSource', { source: 'release' });
+    }
+  };
+
+  // Determine health status
+  const getHealthStatus = (): 'installing' | 'healthy' | 'unhealthy' | 'unknown' | 'restart-needed' => {
+    // Check if restart is needed first (settings differ from actual binary)
+    if (pendingRestartNeeded) {
+      console.log('[SidebarHeader] getHealthStatus: restart-needed');
+      return 'restart-needed';
+    }
+    if (atopile?.isInstalling) {
+      console.log('[SidebarHeader] getHealthStatus: installing');
+      return 'installing';
+    }
+    if (atopile?.error) {
+      console.log('[SidebarHeader] getHealthStatus: unhealthy -', atopile.error);
+      return 'unhealthy';
+    }
+    if (atopile?.actualVersion) {
+      console.log('[SidebarHeader] getHealthStatus: healthy - v' + atopile.actualVersion);
+      return 'healthy';
+    }
+    console.log('[SidebarHeader] getHealthStatus: unknown');
+    return 'unknown';
+  };
+
+  const healthStatus = getHealthStatus();
+  console.log('[SidebarHeader] Final healthStatus:', healthStatus);
 
   return (
     <div className="panel-header">
@@ -221,231 +389,106 @@ export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
           </button>
           {showSettings && (
             <div className="settings-dropdown">
-              {/* Error Display */}
-              {atopile?.error && (
-                <div className="settings-error">
-                  <AlertCircle size={12} />
-                  <span>{atopile.error}</span>
-                </div>
-              )}
-              {noReleaseVersions && (
-                <div className="settings-error">
-                  <AlertCircle size={12} />
-                  <span>No compatible release found. Select a branch or local install.</span>
-                </div>
-              )}
-
-              {/* Source Type Selector */}
+              {/* Health Status Indicator - Always visible at top */}
               <div className="settings-group">
-                <label className="settings-label">
-                  <span className="settings-label-title">Source</span>
-                </label>
-                <div className="settings-source-buttons">
-                  <button
-                    className={`source-btn${atopile?.source === 'release' ? ' active' : ''}${noReleaseVersions ? ' disabled' : ''}`}
-                    onClick={() => {
-                      if (noReleaseVersions) {
-                        return;
-                      }
-                      setPendingInstall({ type: null, value: null });
-                      action('setAtopileSource', { source: 'release' });
-                    }}
-                    title="Use a released version from PyPI"
-                    disabled={noReleaseVersions}
-                  >
-                    <Package size={12} />
-                    Release
-                  </button>
-                  <button
-                    className={`source-btn${atopile?.source === 'branch' ? ' active' : ''}`}
-                    onClick={() => {
-                      setPendingInstall({ type: null, value: null });
-                      action('setAtopileSource', { source: 'branch' });
-                    }}
-                    title="Use a git branch from GitHub"
-                  >
-                    <GitBranch size={12} />
-                    Branch
-                  </button>
-                  <button
-                    className={`source-btn${atopile?.source === 'local' ? ' active' : ''}`}
-                    onClick={() => {
-                      setPendingInstall({ type: null, value: null });
-                      action('setAtopileSource', { source: 'local' });
-                    }}
-                    title="Use a local installation"
-                  >
-                    <FolderOpen size={12} />
-                    Local
-                  </button>
+                <div className={`atopile-health-status health-${healthStatus}`}>
+                  {healthStatus === 'installing' && (
+                    <>
+                      <Loader2 size={14} className="spinner" />
+                      <span className="health-message">
+                        {atopile?.installProgress?.message || 'Installing atopile...'}
+                      </span>
+                    </>
+                  )}
+                  {healthStatus === 'restart-needed' && (
+                    <>
+                      <AlertCircle size={14} />
+                      <span className="health-message">
+                        Restart extension host to use specified atopile
+                      </span>
+                      <button
+                        className="health-action-btn"
+                        onClick={() => postMessage({ type: 'restartExtension' })}
+                      >
+                        Restart
+                      </button>
+                    </>
+                  )}
+                  {healthStatus === 'healthy' && (
+                    <>
+                      <Check size={14} />
+                      <span className="health-message">
+                        {useLocalAtopile
+                          ? `Using local atopile v${atopile?.actualVersion || '?'}`
+                          : `Using atopile v${atopile?.actualVersion || '?'}`}
+                      </span>
+                    </>
+                  )}
+                  {healthStatus === 'unhealthy' && (
+                    <>
+                      <AlertCircle size={14} />
+                      <span className="health-message">
+                        {atopile?.error || 'atopile is not working'}
+                      </span>
+                    </>
+                  )}
+                  {healthStatus === 'unknown' && (
+                    <>
+                      <Loader2 size={14} className="spinner" />
+                      <span className="health-message">Checking atopile status...</span>
+                    </>
+                  )}
                 </div>
               </div>
 
-              {/* Version Selector (when using release) */}
-              {atopile?.source === 'release' && !noReleaseVersions && (
-                <div className="settings-group">
-                  <label className="settings-label">
-                    <span className="settings-label-title">Version</span>
+              {/* Use Local Toggle */}
+              <div className="settings-group">
+                <div className="settings-row settings-toggle-row">
+                  <span className="settings-label-title">Use local atopile</span>
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={useLocalAtopile}
+                      onChange={(e) => handleToggleChange(e.target.checked)}
+                    />
+                    <span className="toggle-slider"></span>
                   </label>
-                  <div className="settings-select-wrapper">
-                    <select
-                      className="settings-select"
-                      value={atopile?.currentVersion || ''}
-                      onChange={(e) => {
-                        const newVersion = e.target.value;
-                        if (newVersion !== atopile?.currentVersion) {
-                          setPendingInstall({ type: 'version', value: newVersion });
-                        }
-                        action('setAtopileVersion', { version: newVersion });
-                      }}
-                    >
-                      {(atopile?.availableVersions || []).slice(0, 20).map((v) => (
-                        <option key={v} value={v}>
-                          {v}{v === atopile?.availableVersions?.[0] ? ' (latest)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={12} className="select-chevron" />
-                  </div>
-                  {/* Installation status */}
-                  {isInstalling && (
-                    <div className="install-status">
-                      <Loader2 size={12} className="spinner" />
-                      <span>
-                        {atopile?.installProgress?.message ||
-                         (pendingInstall.type === 'version' ? `Installing v${pendingInstall.value}...` : 'Installing...')}
-                      </span>
-                      <button
-                        className="install-cancel-btn"
-                        onClick={() => {
-                          setPendingInstall({ type: null, value: null });
-                          action('setAtopileInstalling', { installing: false });
-                        }}
-                        title="Cancel installation"
-                      >
-                        <X size={10} />
-                      </button>
-                    </div>
-                  )}
                 </div>
-              )}
+                <span className="settings-hint">
+                  {useLocalAtopile
+                    ? 'Using a local installation from filesystem'
+                    : 'Using the standard atopile from PyPI'}
+                </span>
+              </div>
 
-              {/* Branch Selector (when using branch) */}
-              {atopile?.source === 'branch' && (
-                <div className="settings-group">
-                  <label className="settings-label">
-                    <span className="settings-label-title">Branch</span>
-                  </label>
-                  <div className="branch-search-container" ref={branchDropdownRef}>
-                    <div className="branch-search-input-wrapper">
-                      <Search size={12} className="branch-search-icon" />
-                      <input
-                        type="text"
-                        className="branch-search-input"
-                        placeholder="Search branches..."
-                        value={branchSearchQuery}
-                        onChange={(e) => {
-                          setBranchSearchQuery(e.target.value);
-                          setShowBranchDropdown(true);
-                        }}
-                        onFocus={() => setShowBranchDropdown(true)}
-                      />
-                      {atopile?.branch && !branchSearchQuery && (
-                        <span className="branch-current-value">{atopile.branch}</span>
-                      )}
-                    </div>
-                    {showBranchDropdown && (
-                      <div className="branch-dropdown">
-                        {(atopile?.availableBranches || ['main', 'develop'])
-                          .filter(b => !branchSearchQuery || b.toLowerCase().includes(branchSearchQuery.toLowerCase()))
-                          .slice(0, 15)
-                          .map((b) => (
-                            <button
-                              key={b}
-                              className={`branch-option${b === atopile?.branch ? ' active' : ''}`}
-                              onClick={() => {
-                                if (b !== atopile?.branch) {
-                                  setPendingInstall({ type: 'branch', value: b });
-                                }
-                                action('setAtopieBranch', { branch: b });
-                                setBranchSearchQuery('');
-                                setShowBranchDropdown(false);
-                              }}
-                            >
-                              <GitBranch size={12} />
-                              <span>{b}</span>
-                              {b === 'main' && <span className="branch-tag">default</span>}
-                            </button>
-                          ))}
-                        {branchSearchQuery &&
-                          !(atopile?.availableBranches || []).some(b =>
-                            b.toLowerCase().includes(branchSearchQuery.toLowerCase())
-                          ) && (
-                          <div className="branch-no-results">No branches match "{branchSearchQuery}"</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <span className="settings-hint">
-                    Installs from git+https://github.com/atopile/atopile.git@{atopile?.branch || 'main'}
-                  </span>
-                  {/* Installation status */}
-                  {isInstalling && (
-                    <div className="install-status">
-                      <Loader2 size={12} className="spinner" />
-                      <span>
-                        {atopile?.installProgress?.message ||
-                         (pendingInstall.type === 'branch' ? `Installing ${pendingInstall.value}...` : 'Installing...')}
-                      </span>
-                      <button
-                        className="install-cancel-btn"
-                        onClick={() => {
-                          setPendingInstall({ type: null, value: null });
-                          action('setAtopileInstalling', { installing: false });
-                        }}
-                        title="Cancel installation"
-                      >
-                        <X size={10} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Local Path Input (when using local) */}
-              {atopile?.source === 'local' && (
+              {/* Local Path Section - Only visible when toggle is on */}
+              {useLocalAtopile && (
                 <div className="settings-group local-path-section">
                   <label className="settings-label">
-                    <span className="settings-label-title">Local Path</span>
+                    <span className="settings-label-title">Path to atopile:</span>
                   </label>
-
-                  {/* Detected installations */}
-                  {(atopile?.detectedInstallations?.length ?? 0) > 0 && (
-                    <div className="detected-installations">
-                      <span className="detected-label">Detected:</span>
-                      {atopile?.detectedInstallations?.map((inst, i) => (
-                        <button
-                          key={i}
-                          className={`detected-item${atopile?.localPath === inst.path ? ' active' : ''}`}
-                          onClick={() => action('setAtopileLocalPath', { path: inst.path })}
-                          title={inst.path}
-                        >
-                          <span className="detected-source">{inst.source}</span>
-                          {inst.version && <span className="detected-version">v{inst.version}</span>}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Manual path input */}
                   <div className="settings-path-input">
                     <input
                       type="text"
                       className={`settings-input${localPathValidation.valid === true ? ' valid' : ''}${localPathValidation.valid === false ? ' invalid' : ''}`}
-                      placeholder="/path/to/atopile or ato"
-                      value={atopile?.localPath || ''}
+                      placeholder={atopile?.actualBinaryPath || "/path/to/atopile or ato binary"}
+                      value={localPathInput}
+                      title={atopile?.actualBinaryPath || "/path/to/atopile or ato binary"}
+                      onFocus={() => setInputFocused(true)}
+                      onBlur={() => setInputFocused(false)}
                       onChange={(e) => {
+                        // Update local state immediately for responsive input
+                        setLocalPathInput(e.target.value);
+                        // Sync to backend store (async, for validation trigger)
                         action('setAtopileLocalPath', { path: e.target.value });
+                        // Also save directly to VS Code settings (works even when backend is down)
+                        postMessage({
+                          type: 'atopileSettings',
+                          atopile: {
+                            source: 'local',
+                            localPath: e.target.value || null,
+                          },
+                        });
                       }}
                     />
                     <button
@@ -468,7 +511,16 @@ export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
                       ) : localPathValidation.valid === true ? (
                         <>
                           <Check size={12} />
-                          <span>Found atopile{localPathValidation.version ? ` v${localPathValidation.version}` : ''}</span>
+                          <div className="validation-success">
+                            <span>Found atopile{localPathValidation.version ? ` v${localPathValidation.version}` : ''}</span>
+                            {localPathValidation.resolvedPath && (
+                              <span className="resolved-path">
+                                {localPathValidation.resolvedPath !== atopile?.localPath
+                                  ? `Using ${localPathValidation.resolvedPath.replace(/^\/Users\/[^/]+/, '~')}`
+                                  : `at ${localPathValidation.resolvedPath.replace(/^\/Users\/[^/]+/, '~')}`}
+                              </span>
+                            )}
+                          </div>
                         </>
                       ) : localPathValidation.valid === false ? (
                         <>
@@ -478,19 +530,6 @@ export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
                       ) : null}
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* Current Status */}
-              {!atopile?.isInstalling && atopile?.currentVersion && (
-                <div className="settings-status">
-                  <Check size={12} className="status-ok" />
-                  <span>
-                    {atopile.source === 'local'
-                      ? `Using local: ${atopile.localPath?.split('/').pop() || 'atopile'}`
-                      : `v${atopile.currentVersion} installed`
-                    }
-                  </span>
                 </div>
               )}
 
@@ -542,33 +581,6 @@ export function SidebarHeader({ atopile, developerMode }: SidebarHeaderProps) {
                   </div>
                 </div>
               </div>
-
-              <div className="settings-divider" />
-
-              {/* Developer Settings */}
-              <div className="settings-section-header">Developer</div>
-              <div className="settings-group">
-                <div className="settings-row">
-                  <span className="settings-label-title">Show all problems</span>
-                  <div className="settings-inline-control">
-                    <label className="settings-toggle">
-                      <input
-                        type="checkbox"
-                        checked={developerMode || false}
-                        onChange={(e) => {
-                          useStore.getState().setDeveloperMode(e.target.checked);
-                          void handleEvent('problems_changed', {});
-                        }}
-                      />
-                      <span className="settings-toggle-slider" />
-                    </label>
-                  </div>
-                </div>
-                <div className="settings-hint">
-                  Show internal developer messages in Problems panel
-                </div>
-              </div>
-
             </div>
           )}
         </div>

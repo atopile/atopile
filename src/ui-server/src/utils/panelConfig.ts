@@ -21,11 +21,11 @@ export const PANEL_CONFIGS: Record<string, PanelConfig> = {
     priority: 'high',
     collapseWhenEmpty: false,
   },
-  buildQueue: {
-    id: 'buildQueue',
-    minHeight: 60,
-    preferredHeight: 120,
-    maxHeight: 240,
+  structure: {
+    id: 'structure',
+    minHeight: 80,
+    preferredHeight: 200,
+    maxHeight: 400,
     priority: 'normal',
     collapseWhenEmpty: true,
   },
@@ -37,27 +37,27 @@ export const PANEL_CONFIGS: Record<string, PanelConfig> = {
     priority: 'normal',
     collapseWhenEmpty: false,
   },
-  problems: {
-    id: 'problems',
-    minHeight: 80,
-    preferredHeight: 180,
-    maxHeight: 350,
-    priority: 'high',
-    collapseWhenEmpty: true,
+  parts: {
+    id: 'parts',
+    minHeight: 120,
+    preferredHeight: 240,
+    maxHeight: 500,
+    priority: 'normal',
+    collapseWhenEmpty: false,
   },
   stdlib: {
     id: 'stdlib',
     minHeight: 80,
-    preferredHeight: 180,
-    maxHeight: 300,
+    preferredHeight: 200,
+    maxHeight: 400,
     priority: 'low',
     collapseWhenEmpty: false,
   },
   variables: {
     id: 'variables',
     minHeight: 80,
-    preferredHeight: 150,
-    maxHeight: 300,
+    preferredHeight: 200,
+    maxHeight: 400,
     priority: 'normal',
     collapseWhenEmpty: true,
   },
@@ -74,9 +74,9 @@ export const PANEL_CONFIGS: Record<string, PanelConfig> = {
 // All panel IDs in display order
 export const PANEL_IDS = [
   'projects',
-  'buildQueue',
+  'structure',
   'packages',
-  'problems',
+  'parts',
   'stdlib',
   'variables',
   'bom',
@@ -85,4 +85,4 @@ export const PANEL_IDS = [
 export type PanelId = typeof PANEL_IDS[number];
 
 // Title bar height when collapsed (px)
-export const COLLAPSED_HEIGHT = 32;
+export const COLLAPSED_HEIGHT = 36;

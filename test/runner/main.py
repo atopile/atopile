@@ -491,7 +491,6 @@ def main(
     # Use provided test_run_id if available, otherwise generate one
     if test_run_id is None:
         import hashlib
-
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         test_run_id = hashlib.sha256(f"pytest:{timestamp}".encode()).hexdigest()[:16]
     env["ATO_TEST_RUN_ID"] = test_run_id

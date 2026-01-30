@@ -65,13 +65,13 @@
 
 .section-label {
   flex: 1;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-secondary);
 }
 
 .section-count {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   padding: 2px 6px;
@@ -114,7 +114,7 @@
 }
 
 .package-icon {
-  color: var(--ctp-peach);
+  color: var(--accent-secondary);
   flex-shrink: 0;
 }
 
@@ -127,7 +127,7 @@
 }
 
 .package-name {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -135,7 +135,7 @@
 }
 
 .package-version {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   font-family: var(--font-mono);
   background: var(--bg-tertiary);
@@ -149,7 +149,7 @@
 }
 
 .package-description {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   padding: var(--spacing-xs) 0;
   font-style: italic;
@@ -219,13 +219,13 @@
 }
 
 .symbol-name {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-family: var(--font-mono);
   color: var(--text-primary);
 }
 
 .export-badge {
-  font-size: 8px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   text-transform: uppercase;
   color: var(--ctp-green);
@@ -257,7 +257,7 @@
 
 .symbol-goto:hover {
   background: var(--accent);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 .symbol-children {
@@ -340,13 +340,13 @@
 
 .vendor-name {
   flex: 1;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-secondary);
 }
 
 .vendor-count {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   padding: 2px 6px;
@@ -387,18 +387,18 @@
 }
 
 .package-detail-icon {
-  color: var(--ctp-peach);
+  color: var(--accent-secondary);
 }
 
 .package-detail-name {
-  font-size: 12px;
+  font-size: var(--font-size-md);
   font-weight: 600;
   color: var(--text-primary);
   font-family: var(--font-mono);
 }
 
 .installed-badge {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   font-weight: 600;
   color: var(--ctp-green);
   background: rgba(166, 227, 161, 0.15);
@@ -416,7 +416,7 @@
 }
 
 .package-detail-description {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   line-height: 1.5;
   margin-bottom: var(--spacing-md);
@@ -436,7 +436,7 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-family: var(--font-mono);
   cursor: pointer;
   outline: none;
@@ -459,8 +459,8 @@
   background: var(--accent);
   border: none;
   border-radius: var(--radius-sm);
-  color: var(--ctp-crust);
-  font-size: 11px;
+  color: var(--text-on-accent);
+  font-size: var(--font-size-sm);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -488,7 +488,7 @@
 }
 
 .symbols-header {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -509,14 +509,14 @@
 
 .type-colon {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
 }
 
 .type-link {
   border: none;
   background: transparent;
   color: var(--ctp-teal);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-family: var(--font-mono);
   padding: 0;
   cursor: pointer;
@@ -557,7 +557,7 @@
 /* Build action buttons on symbols should be orange */
 .symbol-action-btn.build {
   background: var(--ctp-peach);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
   box-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
 
@@ -568,7 +568,7 @@
 
 .symbol-action-btn:hover {
   background: var(--accent);
-  color: var(--ctp-crust);
+  color: var(--text-on-accent);
 }
 
 /* Override symbol-goto in new structure */
@@ -610,6 +610,7 @@
    ============================================ */
 
 .unified-layout {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -638,6 +639,18 @@
   min-height: 0;
 }
 
+/* Projects section takes 1/3 of space */
+.panel-sections > .collapsible-section {
+  flex: 1 1 auto;
+  max-height: 33.3%;
+}
+
+/* Tabbed panels section takes 2/3 of space */
+.panel-sections > .tabbed-panels {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 /* Detail Panel Container (slides in from right) */
 .detail-panel-container {
   flex: 1;
@@ -645,6 +658,9 @@
   max-width: 600px;
   border-left: 1px solid var(--border-color);
   background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 /* Isolated view: when package detail is open, hide sections and expand detail */

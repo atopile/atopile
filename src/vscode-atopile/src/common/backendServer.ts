@@ -59,11 +59,11 @@ async function getAvailablePort(): Promise<number> {
 }
 
 /**
- * Get the workspace root path (first workspace folder).
+ * Get all workspace root paths (synchronous version for spawn calls).
  */
-function getWorkspaceRoot(): string | undefined {
+function getWorkspaceRoots(): string[] {
     const folders = vscode.workspace.workspaceFolders;
-    return folders && folders.length > 0 ? folders[0].uri.fsPath : undefined;
+    return folders ? folders.map(f => f.uri.fsPath) : [];
 }
 
 /**
@@ -94,7 +94,10 @@ class BackendServerManager implements vscode.Disposable {
     private _stderrFlushTimer: NodeJS.Timeout | undefined;
     private _isConnected: boolean = false;
     private _serverReady: boolean = false;
+    private _hasServerError: boolean = false;
+    private _lastErrorPromptAt: number = 0;
     private _startupPromise: Promise<boolean> | null = null;
+    private _restartPromise: Promise<boolean> | null = null;
     private _disposables: vscode.Disposable[] = [];
     private _statusBarItem: vscode.StatusBarItem | undefined;
     private _lastError: string | undefined;
@@ -160,7 +163,54 @@ class BackendServerManager implements vscode.Disposable {
     }
 
     private _appendOutputLine(level: 'info' | 'error', line: string): void {
+        this._maybeClearServerError(line);
+        this._maybeFlagServerError(line, level);
         this._log(level, line);
+    }
+
+    private _maybeClearServerError(line: string): void {
+        if (!this._hasServerError || this._serverState !== 'running') return;
+        const normalized = line.toLowerCase();
+        const isBuildComplete = normalized.includes('buildqueue: build') &&
+            normalized.includes('completed with status');
+        const isSuccessful = normalized.includes('success') || normalized.includes('warning');
+        if (isBuildComplete && isSuccessful) {
+            this._hasServerError = false;
+            this._updateStatusBar();
+        }
+    }
+
+    private _maybeFlagServerError(line: string, level: 'info' | 'error'): void {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+
+        const isTracebackStart = trimmed.startsWith('Traceback (most recent call last)');
+        const isExceptionGroup = trimmed.startsWith('ExceptionGroup:');
+        const isValidationError = trimmed.includes('ValidationError');
+        const isUnhandled = trimmed.toLowerCase().includes('unhandled exception');
+        const isErrorOutput = level === 'error';
+
+        if (isTracebackStart || isExceptionGroup || isValidationError || isUnhandled || isErrorOutput) {
+            if (!this._hasServerError) {
+                this._hasServerError = true;
+                this._updateStatusBar();
+            }
+            this._promptForServerError();
+        }
+    }
+
+    private _promptForServerError(): void {
+        const now = Date.now();
+        if (now - this._lastErrorPromptAt < 30000) return;
+        this._lastErrorPromptAt = now;
+        void vscode.window.showWarningMessage(
+            'atopile backend reported an error. Check the "atopile Server" output logs.',
+            'Show Logs'
+        ).then((selection) => {
+            if (selection === 'Show Logs') {
+                this.showLogs();
+            }
+        });
     }
 
     private _log(level: 'info' | 'warn' | 'error' | 'debug' | 'trace', message: string): void {
@@ -262,15 +312,23 @@ class BackendServerManager implements vscode.Disposable {
         if (this._serverState === 'starting') {
             this._statusBarItem.text = '$(sync~spin) ato: Starting...';
             this._statusBarItem.backgroundColor = undefined;
+            this._statusBarItem.tooltip = 'Starting atopile backend...';
         } else if (this._serverState === 'error') {
             this._statusBarItem.text = '$(error) ato: Error';
             this._statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+            this._statusBarItem.tooltip = 'Backend server error. Click for details.';
+        } else if (this._hasServerError) {
+            this._statusBarItem.text = '$(error) ato: Check logs';
+            this._statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+            this._statusBarItem.tooltip = 'Backend reported an error. Click to show logs.';
         } else if (this._isConnected) {
             this._statusBarItem.text = `$(check) ato: ${this.port}`;
             this._statusBarItem.backgroundColor = undefined;
+            this._statusBarItem.tooltip = 'Backend connected. Click to manage.';
         } else {
             this._statusBarItem.text = '$(warning) ato: Disconnected';
             this._statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+            this._statusBarItem.tooltip = 'Backend disconnected. Click to manage.';
         }
     }
 
@@ -302,24 +360,28 @@ class BackendServerManager implements vscode.Disposable {
             { label: '', kind: vscode.QuickPickItemKind.Separator, action: 'none' },
         ];
 
-        if (this._isConnected || this._serverState === 'running') {
-            items.push({
-                label: '$(debug-restart) Restart Backend Server',
-                description: 'Stop and restart the backend server',
-                action: 'restart',
-            });
-        } else {
-            items.push({
-                label: '$(play) Start Backend Server',
-                description: 'Start the backend server',
-                action: 'start',
-            });
-        }
-
         items.push({
             label: '$(output) Show Server Logs',
             description: 'Show the backend server output',
             action: 'show_logs',
+        });
+
+        // Always show troubleshooting section
+        items.push({ label: '', kind: vscode.QuickPickItemKind.Separator, action: 'none' });
+        items.push({
+            label: '$(terminal) Clear Logs',
+            description: 'Run "ato dev clear-logs" in terminal',
+            action: 'clear_logs',
+        });
+        items.push({
+            label: '$(refresh) Restart Extension Host',
+            description: 'Restart VS Code extension host',
+            action: 'restart_extension_host',
+        });
+        items.push({
+            label: '$(comment-discussion) Join Discord',
+            description: 'Get help from the community',
+            action: 'open_discord',
         });
 
         const selected = await vscode.window.showQuickPick(items, {
@@ -330,14 +392,19 @@ class BackendServerManager implements vscode.Disposable {
         if (!selected || selected.action === 'none') return;
 
         switch (selected.action) {
-            case 'restart':
-                await this.restartServer();
-                break;
-            case 'start':
-                await this.startServer();
-                break;
             case 'show_logs':
                 this.showLogs();
+                break;
+            case 'clear_logs':
+                const terminal = vscode.window.createTerminal('atopile');
+                terminal.show();
+                terminal.sendText('ato dev clear-logs');
+                break;
+            case 'restart_extension_host':
+                void vscode.commands.executeCommand('workbench.action.restartExtensionHost');
+                break;
+            case 'open_discord':
+                void vscode.env.openExternal(vscode.Uri.parse('https://discord.gg/CRe5xaDBr3'));
                 break;
         }
     }
@@ -393,8 +460,9 @@ class BackendServerManager implements vscode.Disposable {
     /**
      * Start the backend server automatically.
      * Returns true if server started successfully, false otherwise.
+     * @param preferredPort Optional port to use (for restart to keep same port)
      */
-    async startServer(): Promise<boolean> {
+    async startServer(preferredPort?: number): Promise<boolean> {
         // If already starting, wait for that to complete
         if (this._startupPromise) {
             return this._startupPromise;
@@ -409,7 +477,7 @@ class BackendServerManager implements vscode.Disposable {
             await this.stopServer();
         }
 
-        this._startupPromise = this._doStartServer();
+        this._startupPromise = this._doStartServer(preferredPort);
         try {
             return await this._startupPromise;
         } finally {
@@ -417,41 +485,86 @@ class BackendServerManager implements vscode.Disposable {
         }
     }
 
-    private async _doStartServer(): Promise<boolean> {
+    private async _doStartServer(preferredPort?: number): Promise<boolean> {
         this._serverState = 'starting';
         this._lastError = undefined;
+        this._hasServerError = false;
+        this._lastErrorPromptAt = 0;
         this._stdoutBuffer = '';
         this._stderrBuffer = '';
         this._serverReady = false;
         this._updateStatusBar();
 
+        // Send initial progress update
+        this._onWebviewMessage.fire({
+            type: 'atopileInstalling',
+            message: 'Looking for atopile...',
+        });
+        traceInfo('[BackendServer] Starting server initialization...');
+
         try {
-            const workspaceRoot = getWorkspaceRoot();
+            // Get a port to use - prefer the provided port, or get an available one
+            const port = preferredPort || await getAvailablePort();
+            this._setPort(port);
+            traceInfo(`[BackendServer] Using port: ${port}`);
+
+            const workspaceRoots = getWorkspaceRoots();
+            traceInfo(`[BackendServer] Workspace roots: ${workspaceRoots.join(', ') || '(none)'}`);
+
+            // Send progress update: resolving ato binary
+            this._onWebviewMessage.fire({
+                type: 'atopileInstalling',
+                message: 'Resolving atopile binary...',
+            });
+
             const resolved = await resolveAtoBinForWorkspace();
             if (!resolved) {
-                this._lastError = 'ato binary not found';
-                traceError(`BackendServer: Cannot start server - ${this._lastError}`);
+                this._lastError = 'ato binary not found. Check that atopile is installed in .venv/bin/ato or configure atopile.ato in settings.';
+                traceError(`[BackendServer] Cannot start server - ${this._lastError}`);
                 this._serverState = 'error';
                 this._updateStatusBar();
+                this._onWebviewMessage.fire({
+                    type: 'atopileInstallError',
+                    error: this._lastError,
+                });
                 return false;
             }
-            const { atoBin } = resolved;
+            const { settings, atoBin } = resolved;
+            traceInfo(`[BackendServer] Found ato binary: ${atoBin.command.join(' ')} (source: ${atoBin.source})`);
 
             if (this._process) {
                 await this.stopServer();
             }
 
-            const port = await getAvailablePort();
-            this._setPort(port);
+            // Send progress update: starting server
+            this._onWebviewMessage.fire({
+                type: 'atopileInstalling',
+                message: `Starting backend server (${atoBin.source})...`,
+            });
 
-            // Build command args: ato serve backend --port <port> [--workspace <path>]
+            // Determine UI source type from settings
+            // 'local' ONLY if atopile.ato is explicitly set in settings
+            // The toggle should be OFF by default even if using workspace-venv as fallback
+            let uiSourceType = 'release';
+            if (settings.ato) {
+                uiSourceType = 'local';
+            }
+
+            // Get the actual binary path (first element of the command)
+            const atoBinaryPath = atoBin.command[0];
+
+            // Build command args: ato serve backend --port <port> [--workspace <path>...]
             const args = [
                 ...atoBin.command.slice(1),
                 'serve', 'backend',
                 '--port', String(this.port),
+                '--ato-source', atoBin.source,
+                '--ato-ui-source', uiSourceType,
+                '--ato-binary-path', atoBinaryPath,
             ];
-            if (workspaceRoot) {
-                args.push('--workspace', workspaceRoot);
+            // Pass all workspace roots to the backend
+            for (const root of workspaceRoots) {
+                args.push('--workspace', root);
             }
 
             const command = atoBin.command[0];
@@ -460,7 +573,7 @@ class BackendServerManager implements vscode.Disposable {
 
             // Spawn the server process with unbuffered Python output
             const child = cp.spawn(command, args, {
-                cwd: workspaceRoot,
+                cwd: workspaceRoots.length > 0 ? workspaceRoots[0] : undefined,
                 env: {
                     ...process.env,
                     ATO_NON_INTERACTIVE: 'y',
@@ -518,6 +631,12 @@ class BackendServerManager implements vscode.Disposable {
                 this._updateStatusBar();
             });
 
+            // Send progress update: waiting for server
+            this._onWebviewMessage.fire({
+                type: 'atopileInstalling',
+                message: 'Waiting for server to initialize...',
+            });
+
             const ready = await this._waitForServerReady(child);
 
             if (ready) {
@@ -526,6 +645,12 @@ class BackendServerManager implements vscode.Disposable {
                 this._log('info', `server: Started successfully on port ${this.port}`);
                 this._serverState = 'running';
                 this._updateStatusBar();
+
+                // Send progress update: server ready (will be cleared by WebSocket connection)
+                this._onWebviewMessage.fire({
+                    type: 'atopileInstalling',
+                    message: 'Connecting to server...',
+                });
                 // Note: WebSocket connection is now managed by ui-server,
                 // which connects when the webview loads
             } else {
@@ -536,6 +661,13 @@ class BackendServerManager implements vscode.Disposable {
                 this._log('error', `server: Failed to start: ${this._lastError}`);
                 this._serverState = 'error';
                 this._updateStatusBar();
+
+                // Send error notification
+                this._onWebviewMessage.fire({
+                    type: 'atopileInstallError',
+                    error: this._lastError,
+                });
+
                 await this.stopServer();
             }
 
@@ -547,6 +679,13 @@ class BackendServerManager implements vscode.Disposable {
             this._log('error', `server: Failed to start: ${errorMsg}`);
             this._serverState = 'error';
             this._updateStatusBar();
+
+            // Send error notification
+            this._onWebviewMessage.fire({
+                type: 'atopileInstallError',
+                error: errorMsg,
+            });
+
             return false;
         }
     }
@@ -567,10 +706,29 @@ class BackendServerManager implements vscode.Disposable {
 
     /**
      * Restart the backend server (e.g., when version changes).
+     * Reuses the same port so the webview's WebSocket can reconnect.
      */
     async restartServer(): Promise<boolean> {
+        // If already restarting, wait for that to complete
+        if (this._restartPromise) {
+            traceInfo('BackendServer: Restart already in progress, waiting...');
+            return this._restartPromise;
+        }
+
+        this._restartPromise = this._doRestartServer();
+        try {
+            return await this._restartPromise;
+        } finally {
+            this._restartPromise = null;
+        }
+    }
+
+    private async _doRestartServer(): Promise<boolean> {
         traceInfo('BackendServer: Restarting server...');
         this._log('info', 'server: Restarting...');
+
+        // Save the current port to reuse it
+        const previousPort = this._port;
 
         // Stop existing server
         await this.stopServer();
@@ -578,8 +736,8 @@ class BackendServerManager implements vscode.Disposable {
         // Small delay to let the port be released
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        // Start new server
-        return this.startServer();
+        // Start new server with the same port
+        return this.startServer(previousPort);
     }
 
     /**

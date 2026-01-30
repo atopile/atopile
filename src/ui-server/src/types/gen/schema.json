@@ -134,6 +134,18 @@
         },
         "title": "Targets",
         "type": "array"
+      },
+      "displayPath": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Displaypath"
       }
     },
     "required": [
@@ -264,66 +276,6 @@
   },
   "Build": {
     "$defs": {
-      "BuildStage": {
-        "description": "A stage within a build.",
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "stageId": {
-            "default": "",
-            "title": "Stageid",
-            "type": "string"
-          },
-          "displayName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Displayname"
-          },
-          "elapsedSeconds": {
-            "default": 0.0,
-            "title": "Elapsedseconds",
-            "type": "number"
-          },
-          "status": {
-            "$ref": "#/$defs/StageStatus",
-            "default": "pending"
-          },
-          "infos": {
-            "default": 0,
-            "title": "Infos",
-            "type": "integer"
-          },
-          "warnings": {
-            "default": 0,
-            "title": "Warnings",
-            "type": "integer"
-          },
-          "errors": {
-            "default": 0,
-            "title": "Errors",
-            "type": "integer"
-          },
-          "alerts": {
-            "default": 0,
-            "title": "Alerts",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "title": "BuildStage",
-        "type": "object"
-      },
       "BuildStatus": {
         "description": "Build status states - overall status of a build.",
         "enum": [
@@ -335,20 +287,6 @@
           "cancelled"
         ],
         "title": "BuildStatus",
-        "type": "string"
-      },
-      "StageStatus": {
-        "description": "Stage status states - status of individual build stages.",
-        "enum": [
-          "pending",
-          "running",
-          "success",
-          "warning",
-          "failed",
-          "error",
-          "skipped"
-        ],
-        "title": "StageStatus",
         "type": "string"
       }
     },
@@ -385,18 +323,6 @@
         ],
         "default": null,
         "title": "Buildid"
-      },
-      "buildKey": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Buildkey"
       },
       "status": {
         "$ref": "#/$defs/BuildStatus",
@@ -489,49 +415,54 @@
         "default": null,
         "title": "Startedat"
       },
-      "completedAt": {
+      "timestamp": {
         "anyOf": [
           {
-            "type": "number"
+            "type": "string"
           },
           {
             "type": "null"
           }
         ],
         "default": null,
-        "title": "Completedat"
+        "title": "Timestamp"
       },
-      "duration": {
+      "standalone": {
+        "default": false,
+        "title": "Standalone",
+        "type": "boolean"
+      },
+      "frozen": {
         "anyOf": [
           {
-            "type": "number"
+            "type": "boolean"
           },
           {
             "type": "null"
           }
         ],
-        "default": null,
-        "title": "Duration"
+        "default": false,
+        "title": "Frozen"
       },
       "stages": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Stages",
+        "type": "array"
+      },
+      "totalStages": {
         "anyOf": [
           {
-            "items": {
-              "$ref": "#/$defs/BuildStage"
-            },
-            "type": "array"
+            "type": "integer"
           },
           {
             "type": "null"
           }
         ],
         "default": null,
-        "title": "Stages"
-      },
-      "totalStages": {
-        "default": 20,
-        "title": "Totalstages",
-        "type": "integer"
+        "title": "Totalstages"
       },
       "logDir": {
         "anyOf": [
@@ -690,7 +621,7 @@
           }
         ],
         "default": null,
-        "title": "Latest Version"
+        "title": "Latestversion"
       },
       "description": {
         "anyOf": [
@@ -761,12 +692,12 @@
         "items": {
           "type": "string"
         },
-        "title": "Installed In",
+        "title": "Installedin",
         "type": "array"
       },
       "hasUpdate": {
         "default": false,
-        "title": "Has Update",
+        "title": "Hasupdate",
         "type": "boolean"
       },
       "downloads": {
@@ -791,7 +722,7 @@
           }
         ],
         "default": null,
-        "title": "Version Count"
+        "title": "Versioncount"
       },
       "keywords": {
         "anyOf": [
@@ -819,6 +750,70 @@
   },
   "PackageDetails": {
     "$defs": {
+      "PackageArtifact": {
+        "properties": {
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "hashes": {
+            "$ref": "#/$defs/PackageFileHashes"
+          },
+          "buildName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Buildname"
+          }
+        },
+        "required": [
+          "filename",
+          "url",
+          "size",
+          "hashes"
+        ],
+        "title": "PackageArtifact",
+        "type": "object"
+      },
+      "PackageAuthor": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Email"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "PackageAuthor",
+        "type": "object"
+      },
       "PackageDependency": {
         "description": "A package dependency.",
         "properties": {
@@ -845,6 +840,55 @@
         "title": "PackageDependency",
         "type": "object"
       },
+      "PackageFileHashes": {
+        "properties": {
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sha256"
+        ],
+        "title": "PackageFileHashes",
+        "type": "object"
+      },
+      "PackageImportStatement": {
+        "properties": {
+          "buildName": {
+            "title": "Buildname",
+            "type": "string"
+          },
+          "importStatement": {
+            "title": "Importstatement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "buildName",
+          "importStatement"
+        ],
+        "title": "PackageImportStatement",
+        "type": "object"
+      },
+      "PackageLayout": {
+        "properties": {
+          "buildName": {
+            "title": "Buildname",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "buildName",
+          "url"
+        ],
+        "title": "PackageLayout",
+        "type": "object"
+      },
       "PackageVersion": {
         "description": "Information about a package version/release.",
         "properties": {
@@ -862,7 +906,7 @@
               }
             ],
             "default": null,
-            "title": "Released At"
+            "title": "Releasedat"
           },
           "requiresAtopile": {
             "anyOf": [
@@ -874,7 +918,7 @@
               }
             ],
             "default": null,
-            "title": "Requires Atopile"
+            "title": "Requiresatopile"
           },
           "size": {
             "anyOf": [
@@ -913,6 +957,37 @@
       "version": {
         "title": "Version",
         "type": "string"
+      },
+      "createdAt": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Createdat"
+      },
+      "releasedAt": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Releasedat"
+      },
+      "authors": {
+        "items": {
+          "$ref": "#/$defs/PackageAuthor"
+        },
+        "title": "Authors",
+        "type": "array"
       },
       "summary": {
         "anyOf": [
@@ -996,7 +1071,7 @@
           }
         ],
         "default": null,
-        "title": "Downloads This Week"
+        "title": "Downloadsthisweek"
       },
       "downloadsThisMonth": {
         "anyOf": [
@@ -1008,7 +1083,7 @@
           }
         ],
         "default": null,
-        "title": "Downloads This Month"
+        "title": "Downloadsthismonth"
       },
       "versions": {
         "items": {
@@ -1019,8 +1094,56 @@
       },
       "versionCount": {
         "default": 0,
-        "title": "Version Count",
+        "title": "Versioncount",
         "type": "integer"
+      },
+      "readme": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Readme"
+      },
+      "builds": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Builds"
+      },
+      "artifacts": {
+        "items": {
+          "$ref": "#/$defs/PackageArtifact"
+        },
+        "title": "Artifacts",
+        "type": "array"
+      },
+      "layouts": {
+        "items": {
+          "$ref": "#/$defs/PackageLayout"
+        },
+        "title": "Layouts",
+        "type": "array"
+      },
+      "importStatements": {
+        "items": {
+          "$ref": "#/$defs/PackageImportStatement"
+        },
+        "title": "Importstatements",
+        "type": "array"
       },
       "installed": {
         "default": false,
@@ -1037,13 +1160,13 @@
           }
         ],
         "default": null,
-        "title": "Installed Version"
+        "title": "Installedversion"
       },
       "installedIn": {
         "items": {
           "type": "string"
         },
-        "title": "Installed In",
+        "title": "Installedin",
         "type": "array"
       },
       "dependencies": {
@@ -1080,7 +1203,7 @@
           }
         ],
         "default": null,
-        "title": "Released At"
+        "title": "Releasedat"
       },
       "requiresAtopile": {
         "anyOf": [
@@ -1092,7 +1215,7 @@
           }
         ],
         "default": null,
-        "title": "Requires Atopile"
+        "title": "Requiresatopile"
       },
       "size": {
         "anyOf": [
@@ -2575,66 +2698,6 @@
     },
     "$ref": "#/$defs/ModuleChild"
   },
-  "FileTreeNode": {
-    "$defs": {
-      "FileTreeNode": {
-        "description": "A node in the file tree (either a file or folder).",
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "path": {
-            "title": "Path",
-            "type": "string"
-          },
-          "type": {
-            "enum": [
-              "file",
-              "folder"
-            ],
-            "title": "Type",
-            "type": "string"
-          },
-          "extension": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Extension"
-          },
-          "children": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/$defs/FileTreeNode"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Children"
-          }
-        },
-        "required": [
-          "name",
-          "path",
-          "type"
-        ],
-        "title": "FileTreeNode",
-        "type": "object"
-      }
-    },
-    "$ref": "#/$defs/FileTreeNode"
-  },
   "DependencyInfo": {
     "description": "A project dependency with version info.",
     "properties": {
@@ -2932,6 +2995,62 @@
       "message"
     ],
     "title": "InstallProgress",
+    "type": "object"
+  },
+  "EventMessage": {
+    "$defs": {
+      "EventType": {
+        "description": "Event types emitted to WebSocket clients.",
+        "enum": [
+          "projects_changed",
+          "packages_changed",
+          "stdlib_changed",
+          "bom_changed",
+          "variables_changed",
+          "builds_changed",
+          "problems_changed",
+          "project_files_changed",
+          "project_modules_changed",
+          "project_dependencies_changed",
+          "atopile_config_changed",
+          "log_view_current_id_changed",
+          "open_layout",
+          "open_kicad",
+          "open_3d"
+        ],
+        "title": "EventType",
+        "type": "string"
+      }
+    },
+    "description": "WebSocket event message payload.",
+    "properties": {
+      "type": {
+        "const": "event",
+        "default": "event",
+        "title": "Type",
+        "type": "string"
+      },
+      "event": {
+        "$ref": "#/$defs/EventType"
+      },
+      "data": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Data"
+      }
+    },
+    "required": [
+      "event"
+    ],
+    "title": "EventMessage",
     "type": "object"
   }
 }

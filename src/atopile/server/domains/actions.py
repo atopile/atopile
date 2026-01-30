@@ -7,7 +7,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import subprocess
 import sys
 import threading
 import time
@@ -15,22 +14,19 @@ from pathlib import Path
 
 from atopile.buildutil import generate_build_id, generate_build_timestamp
 from atopile.config import ProjectConfig
-from atopile.dataclasses import ActiveBuild, AppContext, BuildStatus, Log
+from atopile.dataclasses import AppContext, Build, BuildStatus, Log
 from atopile.logging import BuildLogger
+from atopile.model import builds as builds_domain
 from atopile.model.build_queue import (
-    _active_builds,
-    _build_lock,
     _build_queue,
-    _is_duplicate_build,
-    _sync_builds_to_state_async,
-    cancel_build,
 )
 from atopile.model.model_state import model_state
 from atopile.server import path_utils
+from atopile.server.client_state import client_state
 from atopile.server.connections import server_state
+from atopile.server.core import packages as core_packages
 from atopile.server.core import projects as core_projects
 from atopile.server.domains import artifacts as artifacts_domain
-from atopile.server.domains import builds as builds_domain
 from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import parts as parts_domain
 from atopile.server.domains import projects as projects_domain
@@ -42,8 +38,7 @@ log = logging.getLogger(__name__)
 def _handle_build_sync(payload: dict) -> dict:
     """
     Sync helper for build action - handles all blocking I/O and lock operations.
-    Returns a result dict. If successful and needs_state_sync is True, caller should
-    call _sync_builds_to_state_async().
+    Returns a result dict.
     """
     log.info(f"_handle_build_sync called with payload: {payload}")
     project_root = payload.get("projectRoot") or payload.get("project_root", "")
@@ -153,36 +148,35 @@ def _handle_build_sync(payload: dict) -> dict:
                 if all_targets:
                     build_ids = []
                     for target_name in all_targets:
-                        existing_id = _is_duplicate_build(
+                        existing_id = _build_queue.is_duplicate(
                             project_root, target_name, entry
                         )
                         if existing_id:
                             build_ids.append(existing_id)
                             continue
 
-                        with _build_lock:
-                            timestamp = generate_build_timestamp()
-                            build_id = generate_build_id(
-                                project_root, target_name, timestamp
+                        timestamp = generate_build_timestamp()
+                        build_id = generate_build_id(
+                            project_root, target_name, timestamp
+                        )
+
+                        _build_queue.enqueue(
+                            Build(
+                                build_id=build_id,
+                                project_root=project_root,
+                                target=target_name,
+                                timestamp=timestamp,
+                                entry=entry,
+                                standalone=standalone,
+                                frozen=frozen,
+                                status=BuildStatus.QUEUED,
+                                started_at=time.time(),
                             )
-                            model_state.add_build(
-                                ActiveBuild(
-                                    build_id=build_id,
-                                    project_root=project_root,
-                                    target=target_name,
-                                    timestamp=timestamp,
-                                    entry=entry,
-                                    standalone=standalone,
-                                    frozen=frozen,
-                                    status=BuildStatus.QUEUED,
-                                    started_at=time.time(),
-                                )
-                            )
+                        )
 
                         log.info(
                             f"Enqueueing build {build_id} for target {target_name}"
                         )
-                        _build_queue.enqueue(build_id)
                         build_ids.append(build_id)
 
                     log.info(f"All {len(build_ids)} builds enqueued successfully")
@@ -191,7 +185,6 @@ def _handle_build_sync(payload: dict) -> dict:
                         "message": f"Queued {len(build_ids)} builds for all targets",
                         "build_ids": build_ids,
                         "targets": all_targets,
-                        "needs_state_sync": True,
                     }
                 targets = ["default"]
             except Exception as exc:
@@ -206,31 +199,29 @@ def _handle_build_sync(payload: dict) -> dict:
     timestamp = generate_build_timestamp()
 
     for target_name in targets:
-        existing_build_id = _is_duplicate_build(project_root, target_name, entry)
+        existing_build_id = _build_queue.is_duplicate(project_root, target_name, entry)
         if existing_build_id:
             build_ids.append(existing_build_id)
             continue
 
         log.info(f"Creating build for target={target_name}, entry={entry}")
-        with _build_lock:
-            build_id = generate_build_id(project_root, target_name, timestamp)
-            log.info(f"Allocated build_id={build_id}")
-            model_state.add_build(
-                ActiveBuild(
-                    build_id=build_id,
-                    project_root=project_root,
-                    target=target_name,
-                    timestamp=timestamp,
-                    entry=entry,
-                    standalone=standalone,
-                    frozen=frozen,
-                    status=BuildStatus.QUEUED,
-                    started_at=time.time(),
-                )
+        build_id = generate_build_id(project_root, target_name, timestamp)
+        log.info(f"Allocated build_id={build_id}")
+        _build_queue.enqueue(
+            Build(
+                build_id=build_id,
+                project_root=project_root,
+                target=target_name,
+                timestamp=timestamp,
+                entry=entry,
+                standalone=standalone,
+                frozen=frozen,
+                status=BuildStatus.QUEUED,
+                started_at=time.time(),
             )
+        )
 
         log.info(f"Enqueueing build {build_id}")
-        _build_queue.enqueue(build_id)
         build_ids.append(build_id)
 
     log.info(f"All {len(build_ids)} builds enqueued successfully")
@@ -240,15 +231,37 @@ def _handle_build_sync(payload: dict) -> dict:
             "success": True,
             "message": f"Build queued for {build_label}",
             "build_id": build_ids[0],
-            "needs_state_sync": True,
         }
     else:
         return {
             "success": True,
             "message": f"Queued {len(build_ids)} builds for {build_label}",
             "build_ids": build_ids,
-            "needs_state_sync": True,
         }
+
+
+def _resolve_build_target(
+    project_root: str, build_id: str, payload: dict
+) -> tuple[str | None, str | None]:
+    target_name = payload.get("targetName") or payload.get("target")
+    resolved_project_root = project_root
+
+    if build_id:
+        build_info = builds_domain.handle_get_build_info(build_id)
+        if isinstance(build_info, dict):
+            target_name = (
+                target_name
+                or build_info.get("target")
+                or build_info.get("name")
+                or build_info.get("build_name")
+            )
+            resolved_project_root = (
+                resolved_project_root
+                or build_info.get("project_root")
+                or build_info.get("projectRoot")
+            )
+
+    return target_name, resolved_project_root
 
 
 async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dict:
@@ -257,9 +270,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
     try:
         if action == "refreshProjects":
-            if ctx.workspace_path:
+            if ctx.workspace_paths:
                 await asyncio.to_thread(
-                    core_projects.discover_projects_in_path, ctx.workspace_path
+                    core_projects.discover_projects_in_paths, ctx.workspace_paths
                 )
                 await server_state.emit_event("projects_changed")
             return {"success": True}
@@ -269,8 +282,8 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             name = payload.get("name")
 
             if not parent_directory:
-                if ctx.workspace_path:
-                    parent_directory = str(ctx.workspace_path)
+                if ctx.workspace_paths:
+                    parent_directory = str(ctx.workspace_paths[0])
                 else:
                     return {"success": False, "error": "Missing parentDirectory"}
 
@@ -290,7 +303,8 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             }
 
         if action == "refreshPackages":
-            await packages_domain.refresh_packages_state(scan_path=ctx.workspace_path)
+            scan_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
+            await packages_domain.refresh_packages_state(scan_path=scan_path)
             return {"success": True}
 
         if action == "searchPackages":
@@ -331,14 +345,6 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 result = await asyncio.to_thread(_handle_build_sync, payload)
                 log.info(f"_handle_build_sync returned: {result}")
 
-                # Sync state if build was queued (async operation)
-                if result.get("needs_state_sync"):
-                    log.info("Syncing builds to state...")
-                    await _sync_builds_to_state_async()
-                    log.info("State sync complete")
-
-                # Remove internal flag before returning
-                result.pop("needs_state_sync", None)
                 return result
             except Exception as build_exc:
                 log.exception(f"Build action failed with exception: {build_exc}")
@@ -349,10 +355,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             if not build_id:
                 return {"success": False, "error": "Missing buildId"}
 
-            if build_id not in _active_builds:
+            if not _build_queue.find_build(build_id):
                 return {"success": False, "error": f"Build not found: {build_id}"}
 
-            success = cancel_build(build_id)
+            success = _build_queue.cancel_build(build_id)
             if success:
                 return {"success": True, "message": f"Build {build_id} cancelled"}
             return {
@@ -379,12 +385,79 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 return {"success": True, **response.model_dump(by_alias=True)}
             return {"success": False, "error": "No modules found"}
 
+        if action == "checkEntry":
+            project_root = payload.get("project_root") or payload.get("projectRoot", "")
+            entry = payload.get("entry") or payload.get("entryPoint") or ""
+            if not project_root or not entry:
+                return {
+                    "success": False,
+                    "error": "Missing project_root or entry",
+                }
+
+            project_path = Path(project_root)
+            if not await asyncio.to_thread(project_path.exists):
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            file_part = entry.split(":", 1)[0]
+            file_exists = False
+            if file_part:
+                file_path = (project_path / file_part).resolve()
+                file_exists = await asyncio.to_thread(file_path.exists)
+
+            module_exists = False
+            try:
+                response = await asyncio.to_thread(
+                    projects_domain.handle_get_modules, project_root
+                )
+                modules = response.modules if response else []
+                module_exists = any(m.entry == entry for m in modules)
+            except Exception:
+                module_exists = False
+
+            # Check if this entry is already defined as a build target in ato.yaml
+            target_exists = False
+            try:
+                ato_file = project_path / "ato.yaml"
+                if await asyncio.to_thread(ato_file.exists):
+                    import yaml
+
+                    def read_ato_yaml():
+                        with open(ato_file, "r") as f:
+                            return yaml.safe_load(f) or {}
+
+                    data = await asyncio.to_thread(read_ato_yaml)
+                    builds = data.get("builds", {})
+                    # Check if any existing build target uses this entry
+                    target_exists = any(
+                        build.get("entry") == entry
+                        for build in builds.values()
+                        if isinstance(build, dict)
+                    )
+            except Exception:
+                target_exists = False
+
+            return {
+                "success": True,
+                "file_exists": file_exists,
+                "module_exists": module_exists,
+                "target_exists": target_exists,
+            }
+
         if action == "getPackageDetails":
             package_id = payload.get("packageId", "")
+            version = payload.get("version")
             if package_id:
                 # Run blocking registry fetch in thread pool
+                scan_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
                 details = await asyncio.to_thread(
-                    packages_domain.get_package_details_from_registry, package_id
+                    packages_domain.handle_get_package_details,
+                    package_id,
+                    scan_path,
+                    ctx,
+                    version,
                 )
                 if details:
                     return {
@@ -498,7 +571,6 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             # Build package spec with optional version
             pkg_spec = f"{package_id}@{version}" if version else package_id
-            cmd = ["ato", "add", pkg_spec]
 
             # Create a logger for this action - logs to central SQLite DB
             action_logger = BuildLogger.get(
@@ -514,14 +586,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             def run_install():
                 try:
-                    result = subprocess.run(
-                        cmd,
-                        cwd=project_root,
-                        capture_output=True,
-                        text=True,
-                        timeout=120,
-                    )
-                    if result.returncode == 0:
+                    try:
+                        core_packages.install_package_to_project(
+                            project_path, package_id, version
+                        )
                         action_logger.info(
                             f"Successfully installed {pkg_spec}",
                             audience=Log.Audience.USER,
@@ -548,24 +616,20 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                                 finalize_install(),
                                 loop,
                             )
-                    else:
-                        error_msg = (
-                            result.stderr.strip()
-                            if result.stderr
-                            else result.stdout.strip()
-                        )
-                        error_msg = error_msg[:500] if error_msg else "Unknown error"
+                    except Exception as exc:
+                        error_msg = str(exc)[:500] or "Unknown error"
                         action_logger.error(
                             f"Failed to install {pkg_spec}: {error_msg}",
                             audience=Log.Audience.USER,
                         )
                         loop = event_bus._event_loop
                         if loop and loop.is_running():
+                            error_detail = f"Failed to install {pkg_spec}: {error_msg}"
                             asyncio.run_coroutine_threadsafe(
                                 server_state.emit_event(
                                     "packages_changed",
                                     {
-                                        "error": f"Failed to install {pkg_spec}: {error_msg}",
+                                        "error": error_detail,
                                         "package_id": package_id,
                                     },
                                 ),
@@ -578,11 +642,12 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     )
                     loop = event_bus._event_loop
                     if loop and loop.is_running():
+                        error_detail = f"Failed to install {pkg_spec}: {exc}"
                         asyncio.run_coroutine_threadsafe(
                             server_state.emit_event(
                                 "packages_changed",
                                 {
-                                    "error": f"Failed to install {pkg_spec}: {exc}",
+                                    "error": error_detail,
                                     "package_id": package_id,
                                 },
                             ),
@@ -610,15 +675,121 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": "Missing identifier, projectRoot, or version",
                 }
 
-            return await handle_data_action(
-                "installPackage",
-                {
-                    "packageId": package_id,
-                    "projectRoot": project_root,
-                    "version": version,
-                },
-                ctx,
+            project_path = Path(project_root)
+            if not await asyncio.to_thread(project_path.exists):
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            ato_yaml_path = project_path / "ato.yaml"
+            if not await asyncio.to_thread(ato_yaml_path.exists):
+                return {
+                    "success": False,
+                    "error": f"No ato.yaml in: {project_root}",
+                }
+
+            # Ensure dependency is direct (present in ato.yaml)
+            try:
+                data, _ = core_projects._load_ato_yaml(project_path)
+                deps = data.get("dependencies", [])
+                is_direct = False
+                if isinstance(deps, list):
+                    for dep in deps:
+                        if isinstance(dep, str):
+                            dep_id = dep.rsplit("@", 1)[0] if "@" in dep else dep
+                            if dep_id == package_id:
+                                is_direct = True
+                                break
+                        elif isinstance(dep, dict):
+                            dep_id = dep.get("identifier") or dep.get("name")
+                            if dep_id == package_id:
+                                is_direct = True
+                                break
+                elif isinstance(deps, dict):
+                    is_direct = package_id in deps
+            except Exception:
+                is_direct = False
+
+            if not is_direct:
+                return {
+                    "success": False,
+                    "error": (
+                        "Cannot change version for a transitive dependency. "
+                        "Update the direct parent dependency instead."
+                    ),
+                }
+
+            # Run remove + install sequentially in background
+            action_logger = BuildLogger.get(
+                project_path=project_root,
+                target="package-version",
+                stage="install",
             )
+            action_logger.info(
+                f"Changing {package_id} to {version}...",
+                audience=Log.Audience.USER,
+            )
+
+            def run_change():
+                try:
+                    core_packages.remove_package_from_project(project_path, package_id)
+                    core_packages.install_package_to_project(
+                        project_path, package_id, version
+                    )
+                    action_logger.info(
+                        f"Successfully installed {package_id}@{version}",
+                        audience=Log.Audience.USER,
+                    )
+                    loop = event_bus._event_loop
+
+                    async def finalize_change() -> None:
+                        from atopile.server.module_introspection import (
+                            clear_module_cache,
+                        )
+
+                        clear_module_cache()
+                        await packages_domain.refresh_packages_state(
+                            scan_path=project_path
+                        )
+                        await server_state.emit_event(
+                            "project_dependencies_changed",
+                            {"project_root": project_root},
+                        )
+
+                    if loop and loop.is_running():
+                        asyncio.run_coroutine_threadsafe(finalize_change(), loop)
+                except Exception as exc:
+                    error_msg = str(exc)[:500] or "Unknown error"
+                    action_logger.error(
+                        f"Failed to change {package_id} to {version}: {error_msg}",
+                        audience=Log.Audience.USER,
+                    )
+                    loop = event_bus._event_loop
+                    if loop and loop.is_running():
+                        error_detail = (
+                            f"Failed to change {package_id} to {version}: {error_msg}"
+                        )
+                        asyncio.run_coroutine_threadsafe(
+                            server_state.emit_event(
+                                "packages_changed",
+                                {
+                                    "error": error_detail,
+                                    "package_id": package_id,
+                                },
+                            ),
+                            loop,
+                        )
+                finally:
+                    action_logger.flush()
+
+            threading.Thread(target=run_change, daemon=True).start()
+
+            return {
+                "success": True,
+                "message": f"Changing {package_id} to {version}...",
+                "build_id": action_logger.build_id,
+            }
 
         if action == "removePackage":
             log.info("removePackage action handler started")
@@ -657,8 +828,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 }
             log.info(f"removePackage: op_id={op_id} created")
 
-            cmd = ["ato", "remove", package_id]
-            log.info(f"removePackage: cmd={cmd}")
+            log.info(f"removePackage: package_id={package_id}")
 
             log.info("removePackage: defining run_remove function")
 
@@ -681,69 +851,36 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             def run_remove():
                 try:
-                    log.info(f"Running: {' '.join(cmd)} in {project_root}")
-                    result = subprocess.run(
-                        cmd,
-                        cwd=project_root,
-                        capture_output=True,
-                        text=True,
-                        timeout=120,
-                    )
-                    log.info(
-                        f"ato remove completed with return code: {result.returncode}"
-                    )
-                    if result.stderr:
-                        log.debug(f"ato remove stderr: {result.stderr[:500]}")
+                    log.info(f"Removing {package_id} from {project_root}")
+                    core_packages.remove_package_from_project(project_path, package_id)
+                    log.info("ato remove completed successfully")
                     with packages_domain._package_op_lock:
-                        if result.returncode == 0:
-                            log.info(f"Package {package_id} removed successfully")
-                            packages_domain._active_package_ops[op_id]["status"] = (
-                                "success"
-                            )
-                            loop = event_bus._event_loop
-                            if loop and loop.is_running():
-                                # Refresh global packages state
-                                asyncio.run_coroutine_threadsafe(
-                                    packages_domain.refresh_packages_state(), loop
-                                )
-                                # Refresh project-specific dependencies
-                                asyncio.run_coroutine_threadsafe(
-                                    refresh_deps_after_remove(), loop
-                                )
-                            else:
-                                log.warning("Event loop not available to refresh state")
-                        else:
-                            log.error(f"ato remove failed: {result.stderr[:500]}")
-                            packages_domain._active_package_ops[op_id]["status"] = (
-                                "failed"
-                            )
-                            packages_domain._active_package_ops[op_id]["error"] = (
-                                result.stderr[:500]
-                            )
-                            loop = event_bus._event_loop
-                            if loop and loop.is_running():
-                                asyncio.run_coroutine_threadsafe(
-                                    server_state.emit_event(
-                                        "packages_changed",
-                                        {
-                                            "error": result.stderr[:500],
-                                            "package_id": package_id,
-                                        },
-                                    ),
-                                    loop,
-                                )
+                        packages_domain._active_package_ops[op_id]["status"] = "success"
+                    loop = event_bus._event_loop
+                    if loop and loop.is_running():
+                        # Refresh global packages state
+                        asyncio.run_coroutine_threadsafe(
+                            packages_domain.refresh_packages_state(), loop
+                        )
+                        # Refresh project-specific dependencies
+                        asyncio.run_coroutine_threadsafe(
+                            refresh_deps_after_remove(), loop
+                        )
+                    else:
+                        log.warning("Event loop not available to refresh state")
                 except Exception as exc:
-                    log.exception(f"Exception in run_remove: {exc}")
+                    error_msg = str(exc)[:500] or "Unknown error"
+                    log.exception(f"Exception in run_remove: {error_msg}")
                     with packages_domain._package_op_lock:
                         packages_domain._active_package_ops[op_id]["status"] = "failed"
-                        packages_domain._active_package_ops[op_id]["error"] = str(exc)
+                        packages_domain._active_package_ops[op_id]["error"] = error_msg
                     loop = event_bus._event_loop
                     if loop and loop.is_running():
                         asyncio.run_coroutine_threadsafe(
                             server_state.emit_event(
                                 "packages_changed",
                                 {
-                                    "error": str(exc),
+                                    "error": error_msg,
                                     "package_id": package_id,
                                 },
                             ),
@@ -777,7 +914,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             file_tree = await asyncio.to_thread(
                 core_projects.build_file_tree, project_path, project_path
             )
-            return {"success": True, "files": file_tree}
+            return {
+                "success": True,
+                "files": [node.model_dump(by_alias=True) for node in file_tree],
+            }
 
         if action == "fetchDependencies":
             project_root = payload.get("projectRoot", "")
@@ -796,6 +936,41 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             dependencies = await asyncio.to_thread(_build_dependencies, project_path)
             return {"success": True, "dependencies": dependencies}
+
+        if action == "fetchBuilds":
+            project_root = payload.get("projectRoot", "")
+            if not project_root:
+                return {"success": True, "info": "No project specified"}
+
+            project_path = Path(project_root)
+            if not await asyncio.to_thread(project_path.exists):
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            data, _ = core_projects._load_ato_yaml(project_path)
+            builds = []
+            for name, config in (data.get("builds") or {}).items():
+                if isinstance(config, dict):
+                    entry = config.get("entry", "")
+                else:
+                    entry = str(config)
+                last_build = core_projects._load_last_build_for_target(
+                    project_path, name
+                )
+                builds.append(
+                    {
+                        "name": name,
+                        "entry": entry,
+                        "root": project_root,
+                        "lastBuild": last_build.model_dump(by_alias=True)
+                        if last_build
+                        else None,
+                    }
+                )
+
+            return {"success": True, "builds": builds}
 
         if action == "getModuleChildren":
             project_root = payload.get("projectRoot", "")
@@ -817,6 +992,50 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             return {
                 "success": True,
                 "children": [child.model_dump(by_alias=True) for child in result],
+            }
+
+        if action == "getModuleChildrenForFile":
+            project_root = payload.get("projectRoot", "")
+            file_path = payload.get("filePath", "")
+            max_depth = int(payload.get("maxDepth", 2))
+            if not project_root or not file_path:
+                return {"success": False, "error": "Missing projectRoot or filePath"}
+
+            project_path = Path(project_root)
+            if not await asyncio.to_thread(project_path.exists):
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            from atopile.server.module_introspection import (
+                introspect_module_definition,
+            )
+
+            max_depth = max(0, min(5, max_depth))
+            file_rel = None
+            try:
+                file_rel = str(Path(file_path).resolve().relative_to(project_path))
+            except Exception:
+                file_rel = None
+
+            response = await asyncio.to_thread(
+                projects_domain.handle_get_modules, project_root
+            )
+            modules = response.modules if response else []
+            if file_rel:
+                modules = [m for m in modules if m.file == file_rel]
+            else:
+                modules = [m for m in modules if m.file and file_path.endswith(m.file)]
+
+            enriched = [
+                introspect_module_definition(project_path, module, max_depth)
+                for module in modules
+            ]
+
+            return {
+                "success": True,
+                "modules": [module.model_dump(by_alias=True) for module in enriched],
             }
 
         if action == "getBuildsByProject":
@@ -929,10 +1148,14 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             # Generate test_run_id upfront so we can return it immediately
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            test_run_id = hashlib.sha256(f"pytest:{timestamp}".encode()).hexdigest()[:16]
+            hash_input = f"pytest:{timestamp}"
+            test_run_id = hashlib.sha256(hash_input.encode()).hexdigest()[:16]
 
             # Get workspace path for running tests
-            workspace_path = str(model_state.workspace_path) if model_state.workspace_path else os.getcwd()
+            if model_state.workspace_path:
+                workspace_path = str(model_state.workspace_path)
+            else:
+                workspace_path = os.getcwd()
 
             def run_tests_background():
                 try:
@@ -985,7 +1208,25 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
         if action == "uiLog":
             level = payload.get("level", "info")
             message = payload.get("message", "")
+            lowered = message.lower()
+            if any(
+                token in lowered
+                for token in (
+                    "kicanvas:parser",
+                    "kicanvas:project",
+                    ".kicad_pcb",
+                    ".kicad_sch",
+                    ".kicad_pro",
+                    "model-viewer",
+                    ".glb",
+                    "gltf",
+                    "three.js",
+                )
+            ):
+                return {"success": True}
             log_method = getattr(log, level, log.info)
+            if len(message) > 1000:
+                message = f"{message[:1000]}… (truncated)"
             log_method(f"[ui] {message}")
             return {"success": True}
 
@@ -1000,7 +1241,8 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             if not file_path:
                 return {"success": False, "error": "Missing file path"}
 
-            resolved = path_utils.resolve_workspace_file(file_path, ctx.workspace_path)
+            workspace_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
+            resolved = path_utils.resolve_workspace_file(file_path, workspace_path)
             if not resolved:
                 return {
                     "success": False,
@@ -1028,24 +1270,28 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Entry file not found: {entry_path}",
                 }
 
-            await server_state.emit_event(
-                "open_file", {"path": str(entry_path)}
-            )
+            await server_state.emit_event("open_file", {"path": str(entry_path)})
             return {"success": True}
 
         if action == "openLayout":
             project_root = payload.get("projectId", "")
             build_id = payload.get("buildId", "")
 
-            if not project_root or not build_id:
-                return {"success": False, "error": "Missing projectId or buildId"}
+            target_name, resolved_project_root = _resolve_build_target(
+                project_root, build_id, payload
+            )
+            if not resolved_project_root or not target_name:
+                return {
+                    "success": False,
+                    "error": "Missing projectId or buildId/target",
+                }
 
-            project_path = Path(project_root)
-            target = path_utils.resolve_layout_path(project_path, build_id)
+            project_path = Path(resolved_project_root)
+            target = path_utils.resolve_layout_path(project_path, target_name)
             if not target or not target.exists():
                 return {
                     "success": False,
-                    "error": f"Layout not found for build: {build_id}",
+                    "error": f"Layout not found for target: {target_name}",
                 }
 
             await server_state.emit_event("open_layout", {"path": str(target)})
@@ -1055,15 +1301,21 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             project_root = payload.get("projectId", "")
             build_id = payload.get("buildId", "")
 
-            if not project_root or not build_id:
-                return {"success": False, "error": "Missing projectId or buildId"}
+            target_name, resolved_project_root = _resolve_build_target(
+                project_root, build_id, payload
+            )
+            if not resolved_project_root or not target_name:
+                return {
+                    "success": False,
+                    "error": "Missing projectId or buildId/target",
+                }
 
-            project_path = Path(project_root)
-            target = path_utils.resolve_layout_path(project_path, build_id)
+            project_path = Path(resolved_project_root)
+            target = path_utils.resolve_layout_path(project_path, target_name)
             if not target or not target.exists():
                 return {
                     "success": False,
-                    "error": f"Layout not found for build: {build_id}",
+                    "error": f"Layout not found for target: {target_name}",
                 }
 
             await server_state.emit_event("open_kicad", {"path": str(target)})
@@ -1073,41 +1325,43 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             project_root = payload.get("projectId", "")
             build_id = payload.get("buildId", "")
 
-            if not project_root or not build_id:
-                return {"success": False, "error": "Missing projectId or buildId"}
+            target_name, resolved_project_root = _resolve_build_target(
+                project_root, build_id, payload
+            )
+            if not resolved_project_root or not target_name:
+                return {
+                    "success": False,
+                    "error": "Missing projectId or buildId/target",
+                }
 
-            project_path = Path(project_root)
-            target = path_utils.resolve_3d_path(project_path, build_id)
+            project_path = Path(resolved_project_root)
+            target = path_utils.resolve_3d_path(project_path, target_name)
             if not target or not target.exists():
                 return {
                     "success": False,
-                    "error": f"3D view not found for build: {build_id}",
+                    "error": f"3D view not found for target: {target_name}",
                 }
 
             await server_state.emit_event("open_3d", {"path": str(target)})
             return {"success": True}
 
-        # Frontend-only actions (selection/filter state now local to UI)
-        elif action == "selectProject":
-            return {"success": False, "error": "selectProject is frontend-only"}
+        elif action == "setLogViewCurrentId":
+            build_id = payload.get("buildId")
+            stage = payload.get("stage")
+            client_state.log_view_current_id = build_id
+            client_state.log_view_current_stage = stage
+            await server_state.emit_event(
+                "log_view_current_id_changed",
+                {"buildId": build_id, "stage": stage},
+            )
+            return {"success": True}
 
-        elif action == "setSelectedTargets":
-            return {"success": False, "error": "setSelectedTargets is frontend-only"}
-
-        elif action == "toggleTarget":
-            return {"success": False, "error": "toggleTarget is frontend-only"}
-
-        elif action == "toggleTargetExpanded":
-            return {"success": False, "error": "toggleTargetExpanded is frontend-only"}
-
-        elif action == "selectBuild":
-            return {"success": False, "error": "selectBuild is frontend-only"}
-
-        elif action == "toggleProblemLevelFilter":
-            return {"success": False, "error": "toggleProblemLevelFilter is frontend-only"}
-
-        elif action == "setDeveloperMode":
-            return {"success": False, "error": "setDeveloperMode is frontend-only"}
+        elif action == "getLogViewCurrentId":
+            return {
+                "success": True,
+                "buildId": client_state.log_view_current_id,
+                "stage": client_state.log_view_current_stage,
+            }
 
         elif action == "setAtopileSource":
             await server_state.emit_event(
@@ -1116,24 +1370,13 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             )
             return {"success": True}
 
-        elif action == "setAtopileVersion":
-            await server_state.emit_event(
-                "atopile_config_changed",
-                {"current_version": payload.get("version", "")},
-            )
-            return {"success": True}
-
-        elif action == "setAtopieBranch":
-            await server_state.emit_event(
-                "atopile_config_changed",
-                {"branch": payload.get("branch")},
-            )
-            return {"success": True}
-
         elif action == "setAtopileLocalPath":
             await server_state.emit_event(
                 "atopile_config_changed",
-                {"local_path": payload.get("path")},
+                {
+                    "local_path": payload.get("path"),
+                    "source": "local",  # Also set source to 'local' so the UI knows
+                },
             )
             return {"success": True}
 
@@ -1152,49 +1395,49 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 "error": "browseAtopilePath is not supported in the UI server",
             }
 
-        elif action == "refreshAtopileVersions":
-            from atopile.server.domains import atopile_install
-
-            versions = await atopile_install.fetch_available_versions()
-            await server_state.emit_event(
-                "atopile_config_changed", {"available_versions": versions}
-            )
-            return {"success": True, "versions": versions}
-
-        elif action == "refreshAtopileBranches":
-            from atopile.server.domains import atopile_install
-
-            branches = await atopile_install.fetch_available_branches()
-            await server_state.emit_event(
-                "atopile_config_changed", {"available_branches": branches}
-            )
-            return {"success": True, "branches": branches}
-
         elif action == "validateAtopilePath":
             from atopile.server.domains import atopile_install
 
             path = payload.get("path", "")
             result = await atopile_install.validate_local_path(path)
+            log.info(f"[validateAtopilePath] path={path}, result={result}")
             return {"success": True, **result}
 
-        elif action == "refreshDetectedInstallations":
-            from atopile.server.domains import atopile_install
+        elif action == "getAtopileConfig":
+            # Return the current atopile config including actual version
+            # This is called when WebSocket connects to get the current state
+            from atopile import version as ato_version
 
-            installations = await asyncio.to_thread(
-                atopile_install.detect_local_installations
-            )
+            try:
+                version_obj = ato_version.get_installed_atopile_version()
+                actual_version = str(version_obj)
+            except Exception:
+                actual_version = None
+
+            actual_source = ctx.ato_source or "unknown"
+            ui_source = ctx.ato_ui_source or "release"
+
+            # Emit the config so it gets to the frontend
             await server_state.emit_event(
                 "atopile_config_changed",
-                {"detected_installations": installations},
+                {
+                    "actual_version": actual_version,
+                    "actual_source": actual_source,
+                    "source": ui_source,
+                },
             )
-            return {"success": True, "installations": installations}
+            return {
+                "success": True,
+                "actual_version": actual_version,
+                "actual_source": actual_source,
+                "source": ui_source,
+            }
 
         elif action == "setWorkspaceFolders":
             folders = payload.get("folders", [])
-            # Use first folder as workspace path (VS Code multi-root not supported)
-            workspace_path = Path(folders[0]) if folders else None
-            ctx.workspace_path = workspace_path
-            model_state.set_workspace_path(workspace_path)
+            workspace_paths = [Path(f) for f in folders] if folders else []
+            ctx.workspace_paths = workspace_paths
+            model_state.set_workspace_paths(workspace_paths)
             await handle_data_action("refreshProjects", {}, ctx)
             await handle_data_action("refreshPackages", {}, ctx)
             return {"success": True}

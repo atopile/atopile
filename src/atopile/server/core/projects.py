@@ -12,11 +12,10 @@ from typing import Optional
 import yaml
 
 from atopile.dataclasses import (
+    Build,
     BuildStatus,
     BuildTarget,
     BuildTargetStatus,
-    FileTreeNode,
-    HistoricalBuild,
     ModuleDefinition,
     Project,
 )
@@ -30,7 +29,7 @@ def _load_last_build_for_target(
 ) -> Optional[BuildTargetStatus]:
     """Load the last build status for a target from build history database."""
     try:
-        build: Optional[HistoricalBuild] = build_history.get_latest_build_for_target(
+        build: Optional[Build] = build_history.get_latest_build_for_target(
             str(project_root), target_name
         )
 
@@ -54,7 +53,7 @@ def _load_last_build_for_target(
         return BuildTargetStatus(
             status=status,
             timestamp=timestamp,
-            elapsed_seconds=build.duration,
+            elapsed_seconds=build.elapsed_seconds,
             warnings=build.warnings,
             errors=build.errors,
             stages=build.stages,
@@ -223,10 +222,24 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                         )
 
                 if targets:
+                    # Build display path: workspace_folder/relative_path
+                    # e.g., "packages/adi-adau145x" or "packages_alt/packages/st-lps22"
+                    try:
+                        rel_path = project_root.relative_to(root_path)
+                        if rel_path == Path("."):
+                            # Project is at workspace root
+                            display_path = root_path.name
+                        else:
+                            display_path = f"{root_path.name}/{rel_path}"
+                    except ValueError:
+                        # Fallback if relative_to fails
+                        display_path = project_root.name
+
                     projects.append(
                         Project(
                             root=root_str,
                             name=project_root.name,
+                            display_path=display_path,
                             targets=targets,
                         )
                     )
@@ -235,79 +248,9 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                 log.warning(f"Failed to parse {ato_file}: {e}")
                 continue
 
-    projects.sort(key=lambda p: p.name.lower())
+    # Sort by path (root) to group projects in the same directory together
+    projects.sort(key=lambda p: p.root.lower())
     return projects
-
-
-def build_file_tree(directory: Path, base_path: Path) -> list[FileTreeNode]:
-    """
-    Build a file tree of .ato and .py files for UI display.
-    """
-    nodes: list[FileTreeNode] = []
-
-    excluded_dirs = {
-        "build",
-        ".ato",
-        "__pycache__",
-        ".git",
-        ".venv",
-        "venv",
-        "node_modules",
-        ".pytest_cache",
-        ".mypy_cache",
-        "dist",
-        "egg-info",
-    }
-
-    try:
-        items = sorted(
-            directory.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())
-        )
-    except PermissionError:
-        return nodes
-
-    for item in items:
-        if item.name.startswith(".") and item.name not in {".ato"}:
-            continue
-        if item.name in excluded_dirs:
-            continue
-        if item.name.endswith(".egg-info"):
-            continue
-
-        rel_path = str(item.relative_to(base_path))
-
-        if item.is_dir():
-            children = build_file_tree(item, base_path)
-            if children:
-                nodes.append(
-                    FileTreeNode(
-                        name=item.name,
-                        path=rel_path,
-                        type="folder",
-                        children=children,
-                    )
-                )
-        elif item.is_file():
-            if item.suffix == ".ato":
-                nodes.append(
-                    FileTreeNode(
-                        name=item.name,
-                        path=rel_path,
-                        type="file",
-                        extension="ato",
-                    )
-                )
-            elif item.suffix == ".py":
-                nodes.append(
-                    FileTreeNode(
-                        name=item.name,
-                        path=rel_path,
-                        type="file",
-                        extension="py",
-                    )
-                )
-
-    return nodes
 
 
 def create_project(

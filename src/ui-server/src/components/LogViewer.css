@@ -409,7 +409,7 @@
 /* Column Headers - CSS Grid for static positioning */
 .lv-column-headers {
   display: grid;
-  grid-template-columns: 58px 55px 110px 1fr;
+  grid-template-columns: 58px 55px 165px 1fr;
   gap: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-sm);
   background: var(--bg-tertiary);
@@ -420,15 +420,15 @@
 
 /* Compact modes for column headers */
 .lv-column-headers.lv-time-compact {
-  grid-template-columns: 48px 55px 110px 1fr;
+  grid-template-columns: 48px 55px 165px 1fr;
 }
 
 .lv-column-headers.lv-level-compact {
-  grid-template-columns: 58px 24px 110px 1fr;
+  grid-template-columns: 58px 24px 165px 1fr;
 }
 
 .lv-column-headers.lv-time-compact.lv-level-compact {
-  grid-template-columns: 48px 24px 110px 1fr;
+  grid-template-columns: 48px 24px 165px 1fr;
 }
 
 .lv-col-header {
@@ -482,6 +482,70 @@
 
 .lv-col-search-message {
   width: 100%;
+}
+
+/* Search wrapper for regex toggle */
+.lv-search-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.lv-search-wrapper-message {
+  width: 100%;
+}
+
+.lv-search-wrapper .lv-col-search {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+}
+
+.lv-search-error .lv-col-search {
+  border-color: var(--ctp-red);
+  background: rgba(243, 139, 168, 0.1);
+}
+
+.lv-search-toggle {
+  padding: 2px 4px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-left: none;
+  border-radius: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.lv-search-toggle-last {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.lv-search-toggle:hover {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+.lv-search-toggle.active {
+  background: var(--accent);
+  color: var(--bg-primary);
+  border-color: var(--accent);
+}
+
+.lv-search-toggle.active:hover {
+  opacity: 0.9;
+}
+
+.lv-search-error .lv-search-toggle {
+  border-color: var(--ctp-red);
 }
 
 /* Display container wraps expand toolbar + content */
@@ -579,22 +643,22 @@
 
 .lv-entry-row {
   display: grid;
-  grid-template-columns: 58px 55px 110px 1fr;
+  grid-template-columns: 58px 55px 165px 1fr;
   gap: var(--spacing-sm);
   align-items: flex-start;
 }
 
 /* Compact modes for entry rows - must match header */
 .lv-entry-row.lv-time-compact {
-  grid-template-columns: 48px 55px 110px 1fr;
+  grid-template-columns: 48px 55px 165px 1fr;
 }
 
 .lv-entry-row.lv-level-compact {
-  grid-template-columns: 58px 24px 110px 1fr;
+  grid-template-columns: 58px 24px 165px 1fr;
 }
 
 .lv-entry-row.lv-time-compact.lv-level-compact {
-  grid-template-columns: 48px 24px 110px 1fr;
+  grid-template-columns: 48px 24px 165px 1fr;
 }
 
 .lv-ts {
@@ -826,7 +890,7 @@
 /* Tree row - uses same grid as regular entries */
 .lv-tree-row {
   display: grid;
-  grid-template-columns: 58px 55px 110px 1fr;
+  grid-template-columns: 58px 55px 165px 1fr;
   gap: var(--spacing-sm);
   padding: 2px var(--spacing-sm);
   font-size: var(--font-size-sm);
@@ -836,15 +900,15 @@
 
 /* Compact modes for tree rows - must match header */
 .lv-tree-row.lv-time-compact {
-  grid-template-columns: 48px 55px 110px 1fr;
+  grid-template-columns: 48px 55px 165px 1fr;
 }
 
 .lv-tree-row.lv-level-compact {
-  grid-template-columns: 58px 24px 110px 1fr;
+  grid-template-columns: 58px 24px 165px 1fr;
 }
 
 .lv-tree-row.lv-time-compact.lv-level-compact {
-  grid-template-columns: 48px 24px 110px 1fr;
+  grid-template-columns: 48px 24px 165px 1fr;
 }
 
 .lv-tree-row:hover {
@@ -895,7 +959,7 @@
 
 .lv-tree-toggle-icon {
   display: inline-block;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   transition: transform 0.15s ease;
 }
 
@@ -909,7 +973,7 @@
 
 /* Child count badge when collapsed */
 .lv-tree-child-count {
-  font-size: 9px;
+  font-size: var(--font-size-xxs);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   border-radius: 3px;

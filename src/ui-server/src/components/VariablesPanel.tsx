@@ -1,12 +1,9 @@
-import { useState, useEffect, useCallback, useMemo, memo } from 'react'
+import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react'
 import {
   ChevronDown, ChevronRight, Search, Box, Zap,
   Hash, Percent, CircuitBoard, RefreshCw,
-  Check, AlertTriangle, Loader2
+  AlertTriangle, Loader2, Check
 } from 'lucide-react'
-import type { Project } from '../types/build'
-import { api } from '../api/client'
-import { ProjectDropdown, type ProjectOption } from './ProjectDropdown'
 import { smartTruncatePair } from './sidebar-modules/sidebarUtils'
 
 // Variable types
@@ -182,6 +179,43 @@ function nodeOrDescendantsMatch(
   return false
 }
 
+// Collect paths that should be expanded to reveal search matches
+function collectExpandedPathsForSearch(
+  nodes: VariableNode[],
+  searchLower: string,
+  sourceFilter: SourceFilter
+): Set<string> {
+  const expanded = new Set<string>()
+
+  const nodeMatches = (node: VariableNode): boolean => {
+    if (searchLower && node.name.toLowerCase().includes(searchLower)) return true
+    const hasMatchingVar = node.variables?.some(v =>
+      matchesSourceFilter(v.source, sourceFilter) && matchesSearch(v, searchLower)
+    )
+    return !!hasMatchingVar
+  }
+
+  const walk = (node: VariableNode): boolean => {
+    let childMatch = false
+    if (node.children && node.children.length > 0) {
+      for (const child of node.children) {
+        if (walk(child)) childMatch = true
+      }
+    }
+
+    const directMatch = nodeMatches(node)
+    const shouldExpand = (directMatch || childMatch) && (node.children?.length || 0) > 0
+    if (shouldExpand) expanded.add(node.path)
+    return directMatch || childMatch
+  }
+
+  for (const node of nodes) {
+    walk(node)
+  }
+
+  return expanded
+}
+
 // Tree node component - memoized to prevent unnecessary re-renders
 const VariableNodeComponent = memo(function VariableNodeComponent({
   node,
@@ -304,90 +338,25 @@ interface VariablesPanelProps {
   variablesData?: VariablesData | null
   isLoading?: boolean
   error?: string | null
-  projects?: Project[]
-  selectedProjectRoot?: string | null
-  selectedTargetNames?: string[]
-  onSelectProject?: (projectRoot: string | null) => void
-  onSelectTarget?: (projectRoot: string, targetName: string) => void
+  // Active context for empty state messages
+  selectedTargetName?: string | null
+  hasActiveProject?: boolean
 }
 
 export function VariablesPanel({
   variablesData,
   isLoading = false,
   error = null,
-  projects,
-  selectedProjectRoot,
-  selectedTargetNames,
-  onSelectProject,
-  onSelectTarget
+  selectedTargetName = null,
+  hasActiveProject = false,
 }: VariablesPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
-  const [copiedValue, setCopiedValue] = useState<string | null>(null)
-  const [variablesTargetsByProject, setVariablesTargetsByProject] = useState<Record<string, string[]>>({})
   // Always show all sources (filter removed per user request)
   const sourceFilter: SourceFilter = 'all'
   const [lastDataVersion, setLastDataVersion] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!projects || projects.length === 0) {
-      setVariablesTargetsByProject({})
-      return
-    }
-
-    let cancelled = false
-    Promise.all(
-      projects.map(async (project) => {
-        try {
-          const result = await api.variables.targets(project.root)
-          const targets = Array.isArray(result.targets) ? result.targets : []
-          return [project.root, targets] as const
-        } catch {
-          return [project.root, [] as string[]] as const
-        }
-      })
-    ).then((entries) => {
-      if (cancelled) return
-      const next: Record<string, string[]> = {}
-      for (const [root, targets] of entries) {
-        next[root] = [...targets]
-      }
-      setVariablesTargetsByProject(next)
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [projects])
-
-  const sortedProjects = useMemo(() => {
-    if (!projects) return []
-    return [...projects].sort((a, b) => {
-      const aHasVariables = (variablesTargetsByProject[a.root]?.length ?? 0) > 0
-      const bHasVariables = (variablesTargetsByProject[b.root]?.length ?? 0) > 0
-      if (aHasVariables !== bHasVariables) return aHasVariables ? -1 : 1
-      return a.name.localeCompare(b.name)
-    })
-  }, [projects, variablesTargetsByProject])
-
-  // Transform projects for ProjectDropdown
-  const projectOptions: ProjectOption[] = useMemo(() => {
-    return sortedProjects.map((project) => {
-      const hasVariables = (variablesTargetsByProject[project.root]?.length ?? 0) > 0
-      return {
-        id: project.root,
-        name: project.name,
-        root: project.root,
-        targets: project.targets?.map((target) => ({ name: target.name })) ?? [],
-        badge: hasVariables ? undefined : 'no variables',
-        badgeMuted: true,
-      }
-    })
-  }, [sortedProjects, variablesTargetsByProject])
-
-  const showProjectSelector = Boolean(
-    projects && (sortedProjects.length > 0 || selectedProjectRoot)
-  )
+  const lastSearchRef = useRef('')
+  const expandedBeforeSearchRef = useRef<Set<string> | null>(null)
 
   // Extract variables from data
   const variables = variablesData?.nodes || []
@@ -400,6 +369,27 @@ export function VariablesPanel({
       setLastDataVersion(version)
     }
   }, [variablesData?.version, lastDataVersion])
+
+  const searchLower = searchQuery.trim().toLowerCase()
+
+  const searchExpandedPaths = useMemo(() => {
+    if (!searchLower) return null
+    return collectExpandedPathsForSearch(variables, searchLower, sourceFilter)
+  }, [variables, searchLower, sourceFilter])
+
+  useEffect(() => {
+    const prevSearch = lastSearchRef.current
+    if (!prevSearch && searchLower) {
+      expandedBeforeSearchRef.current = expandedNodes
+      setExpandedNodes(searchExpandedPaths || new Set())
+    } else if (searchLower) {
+      setExpandedNodes(searchExpandedPaths || new Set())
+    } else if (prevSearch && !searchLower && expandedBeforeSearchRef.current) {
+      setExpandedNodes(expandedBeforeSearchRef.current)
+      expandedBeforeSearchRef.current = null
+    }
+    lastSearchRef.current = searchLower
+  }, [searchLower, searchExpandedPaths, expandedNodes])
 
   // Memoized callbacks to prevent child re-renders
   const handleToggleExpand = useCallback((path: string) => {
@@ -416,37 +406,7 @@ export function VariablesPanel({
 
   const handleCopyValue = useCallback((value: string) => {
     navigator.clipboard.writeText(value)
-    setCopiedValue(value)
-    setTimeout(() => setCopiedValue(null), 2000)
   }, [])
-
-  // Memoized total variable count - recursive but only recalculates when data changes
-  const totalVariables = useMemo(() => {
-    const countVariables = (nodes: VariableNode[]): number => {
-      let count = 0
-      for (const node of nodes) {
-        if (node.variables) {
-          for (const v of node.variables) {
-            if (matchesSourceFilter(v.source, sourceFilter)) {
-              count++
-            }
-          }
-        }
-        if (node.children) {
-          count += countVariables(node.children)
-        }
-      }
-      return count
-    }
-    return countVariables(variables)
-  }, [variables, sourceFilter])
-
-  // Extract short build ID for display (e.g., "build-42-1674520800" -> "#42")
-  const buildIdShort = (() => {
-    if (!variablesData?.build_id) return null
-    const match = variablesData.build_id.match(/^build-(\d+)-/)
-    return match ? `#${match[1]}` : variablesData.build_id.substring(0, 12)
-  })()
 
   return (
     <div className="variables-panel">
@@ -462,17 +422,6 @@ export function VariablesPanel({
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          {showProjectSelector && (
-          <ProjectDropdown
-            projects={projectOptions}
-            selectedProjectRoot={selectedProjectRoot}
-            selectedTargetName={selectedTargetNames?.[0] || null}
-            onSelectProject={onSelectProject || (() => {})}
-            onSelectTarget={onSelectTarget}
-            showAllOption={false}
-            placeholder="Select project"
-          />
-          )}
         </div>
       </div>
 
@@ -485,17 +434,41 @@ export function VariablesPanel({
           </div>
         )}
 
-        {error && !isLoading && (
-          <div className="variables-error">
-            <AlertTriangle size={16} />
-            <span>{error}</span>
-          </div>
-        )}
+        {error && !isLoading && (() => {
+          // Treat "not found" errors as empty state, not error state
+          const isNotFound = error.includes('404') || error.includes('not found') || error.includes('not_found') || error.toLowerCase().includes('run build');
+          if (isNotFound) {
+            return (
+              <div className="variables-empty">
+                <span className="empty-title">No variables found</span>
+                <span className="empty-description">
+                  {selectedTargetName
+                    ? `Run a build for "${selectedTargetName}" to generate variable data`
+                    : hasActiveProject
+                      ? 'Select a build and run it to generate variable data'
+                      : 'Select a project and build, then run it'}
+                </span>
+              </div>
+            );
+          }
+          return (
+            <div className="variables-error">
+              <AlertTriangle size={16} />
+              <span>{error}</span>
+            </div>
+          );
+        })()}
 
         {!isLoading && !error && variables.length === 0 && (
           <div className="variables-empty">
-            <span>No variables found.</span>
-            <span className="hint">Run "ato build" to generate variable data.</span>
+            <span className="empty-title">No variables found</span>
+            <span className="empty-description">
+              {selectedTargetName
+                ? `Run a build for "${selectedTargetName}" to generate variable data`
+                : hasActiveProject
+                  ? 'Select a build and run it to generate variable data'
+                  : 'Select a project and build, then run it'}
+            </span>
           </div>
         )}
 
@@ -511,22 +484,6 @@ export function VariablesPanel({
             onCopyValue={handleCopyValue}
           />
         ))}
-      </div>
-
-      {/* Status bar */}
-      <div className="variables-status">
-        <span>{totalVariables} variables</span>
-        {buildIdShort && (
-          <span className="build-id-badge" title={`Build: ${variablesData?.build_id}`}>
-            build {buildIdShort}
-          </span>
-        )}
-        {copiedValue && (
-          <span className="copied-toast">
-            <Check size={10} />
-            Copied: {copiedValue}
-          </span>
-        )}
       </div>
     </div>
   )

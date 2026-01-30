@@ -64,25 +64,33 @@ def backend(
         "-w",
         help="Workspace path to scan for projects (can be specified multiple times)",
     ),
-    logs_dir: Optional[Path] = typer.Option(
-        None, help="Directory for build logs (default: ./build/logs)"
-    ),
     force: bool = typer.Option(
         False,
         "--force",
         "-f",
         help="Kill existing server on the port and start fresh",
     ),
+    ato_source: Optional[str] = typer.Option(
+        None,
+        "--ato-source",
+        help="Source of the atopile binary (e.g., 'settings', 'local-uv')",
+    ),
+    ato_ui_source: Optional[str] = typer.Option(
+        None,
+        "--ato-ui-source",
+        help="UI source type (e.g., 'release', 'branch', 'local')",
+    ),
+    ato_binary_path: Optional[str] = typer.Option(
+        None,
+        "--ato-binary-path",
+        help="Actual resolved path to the ato binary being used",
+    ),
 ) -> None:
     """Start the backend server in the current terminal."""
-    cmd = [sys.executable, "-m", "atopile.server", "--port", str(port)]
-    for path in workspace or []:
-        cmd.extend(["--workspace", str(path)])
-    if logs_dir:
-        cmd.extend(["--logs-dir", str(logs_dir)])
-    if force:
-        cmd.append("--force")
-    raise typer.Exit(subprocess.run(cmd).returncode)
+    from atopile.server.server import run_server
+
+    workspace_paths = list(workspace) if workspace else None
+    run_server(port=port, workspace_paths=workspace_paths, force=force)
 
 
 @serve_app.command()

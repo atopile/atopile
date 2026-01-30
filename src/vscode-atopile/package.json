@@ -75,10 +75,9 @@
                     "type": "string"
                 },
                 "atopile.from": {
-                    "description": "When set to a uv source string, extension will use that. ATTENTION: Ignored if ato path is set. Example: 'atopile@0.9.0' or 'git+https://github.com/atopile/atopile.git@main'",
+                    "description": "When set to a uv source string, extension will use that. ATTENTION: Ignored if ato path is set. Example: 'atopile==0.14.0' or 'git+https://github.com/atopile/atopile.git@main'",
                     "scope": "resource",
-                    "type": "string",
-                    "default": "atopile"
+                    "type": "string"
                 },
                 "atopile.telemetry": {
                     "description": "Send telemetry data",
@@ -91,6 +90,12 @@
                     "scope": "resource",
                     "type": "boolean",
                     "default": true
+                },
+                "atopile.llm.autoSetup": {
+                    "description": "Automatically create LLM rules and MCP config files (disabled by default)",
+                    "scope": "resource",
+                    "type": "boolean",
+                    "default": false
                 }
             }
         },

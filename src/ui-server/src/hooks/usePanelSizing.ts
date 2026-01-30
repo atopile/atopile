@@ -12,11 +12,11 @@
  */
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { PANEL_IDS, type PanelId } from '../utils/panelConfig';
+import { PANEL_CONFIGS, PANEL_IDS, type PanelId } from '../utils/panelConfig';
 
 // Constants
-const TITLE_BAR_HEIGHT = 32; // Height of each panel's title bar
-const MIN_BODY_HEIGHT = 60; // Minimum height for panel body (content area)
+const TITLE_BAR_HEIGHT = 36; // Height of each panel's title bar
+const MIN_BODY_HEIGHT = 60; // Fallback minimum for panel body (content area)
 
 interface PanelState {
   collapsed: boolean;
@@ -25,7 +25,6 @@ interface PanelState {
 
 interface UsePanelSizingOptions {
   containerRef: React.RefObject<HTMLElement>;
-  hasActiveBuilds?: boolean;
   hasProjectSelected?: boolean;
 }
 
@@ -40,6 +39,7 @@ interface UsePanelSizingReturn {
   togglePanel: (panelId: PanelId) => void;
   expandPanel: (panelId: PanelId) => void;
   collapsePanel: (panelId: PanelId) => void;
+  collapseAllExceptProjects: () => void;
   handleResizeStart: (panelId: PanelId, e: React.MouseEvent) => void;
   isCollapsed: (panelId: PanelId) => boolean;
 }
@@ -47,24 +47,38 @@ interface UsePanelSizingReturn {
 function getInitialState(): Record<PanelId, PanelState> {
   const state: Partial<Record<PanelId, PanelState>> = {};
   for (const id of PANEL_IDS) {
-    state[id] = { collapsed: true };
+    state[id] = { collapsed: id !== 'projects' };
   }
   return state as Record<PanelId, PanelState>;
+}
+
+function clampBodyHeight(panelId: PanelId, bodyHeight: number): number {
+  const maxHeight = PANEL_CONFIGS[panelId]?.maxHeight;
+  if (!maxHeight) {
+    return bodyHeight;
+  }
+  return Math.min(bodyHeight, maxHeight);
+}
+
+function getMinBodyHeight(panelId: PanelId): number {
+  return PANEL_CONFIGS[panelId]?.minHeight ?? MIN_BODY_HEIGHT;
+}
+
+function getPreferredBodyHeight(panelId: PanelId): number {
+  return PANEL_CONFIGS[panelId]?.preferredHeight ?? getMinBodyHeight(panelId);
 }
 
 export function usePanelSizing(options: UsePanelSizingOptions): UsePanelSizingReturn {
   const {
     containerRef,
-    hasActiveBuilds = false,
     hasProjectSelected = false,
   } = options;
 
   const [panelStates, setPanelStates] = useState<Record<PanelId, PanelState>>(getInitialState);
-  const [priorityPanel, setPriorityPanel] = useState<PanelId | null>(null);
+  const [priorityPanel, setPriorityPanel] = useState<PanelId | null>('projects');
   const [containerHeight, setContainerHeight] = useState(0);
 
   // Track previous values for auto-expand
-  const prevHasActiveBuilds = useRef(hasActiveBuilds);
   const prevHasProjectSelected = useRef(hasProjectSelected);
 
   // Resize drag refs
@@ -89,18 +103,6 @@ export function usePanelSizing(options: UsePanelSizingOptions): UsePanelSizingRe
 
     return () => observer.disconnect();
   }, [containerRef]);
-
-  // Auto-expand: Build Queue when builds start
-  useEffect(() => {
-    if (hasActiveBuilds && !prevHasActiveBuilds.current) {
-      setPanelStates(prev => ({
-        ...prev,
-        buildQueue: { ...prev.buildQueue, collapsed: false },
-      }));
-      setPriorityPanel('buildQueue');
-    }
-    prevHasActiveBuilds.current = hasActiveBuilds;
-  }, [hasActiveBuilds]);
 
   // Auto-expand: Projects when a project is selected
   useEffect(() => {
@@ -138,7 +140,7 @@ export function usePanelSizing(options: UsePanelSizingOptions): UsePanelSizingRe
 
     // Panels with user-set heights
     const userSizedPanels = expandedPanels.filter(id => panelStates[id].userHeight !== undefined);
-    const autoSizedPanels = expandedPanels.filter(id => panelStates[id].userHeight === undefined);
+    let autoSizedPanels = expandedPanels.filter(id => panelStates[id].userHeight === undefined);
 
     // Calculate space used by user-sized panels (userHeight includes title bar, so subtract it)
     let userSizedSpace = 0;
@@ -149,8 +151,24 @@ export function usePanelSizing(options: UsePanelSizingOptions): UsePanelSizingRe
       userSizedSpace += bodyHeight;
     }
 
+    // Reserve preferred height for projects when another panel is prioritized
+    let reservedSpace = 0;
+    if (
+      autoSizedPanels.includes('projects') &&
+      priorityPanel &&
+      priorityPanel !== 'projects' &&
+      expandedPanels.length > 1
+    ) {
+      const preferred = clampBodyHeight('projects', getPreferredBodyHeight('projects'));
+      const availableAfterUser = Math.max(0, availableForBodies - userSizedSpace);
+      const reservedBody = Math.min(preferred, availableAfterUser);
+      heights.projects = reservedBody + TITLE_BAR_HEIGHT;
+      reservedSpace = reservedBody;
+      autoSizedPanels = autoSizedPanels.filter(id => id !== 'projects');
+    }
+
     // Remaining space for auto-sized panels
-    const remainingSpace = Math.max(0, availableForBodies - userSizedSpace);
+    const remainingSpace = Math.max(0, availableForBodies - userSizedSpace - reservedSpace);
 
     if (autoSizedPanels.length === 0) {
       // All expanded panels are user-sized
@@ -164,28 +182,37 @@ export function usePanelSizing(options: UsePanelSizingOptions): UsePanelSizingRe
     if (autoSizedPanels.length === 1) {
       // Only one auto-sized panel - it gets all remaining space
       const id = autoSizedPanels[0];
-      const bodyHeight = Math.max(MIN_BODY_HEIGHT, remainingSpace);
+      const allowBeyondMax =
+        (expandedPanels.length === 1 && id === 'projects') ||
+        (expandedPanels.length === 2 && id !== 'projects' && expandedPanels.includes('projects'));
+      const bodyHeight = allowBeyondMax
+        ? Math.max(getMinBodyHeight(id), remainingSpace)
+        : clampBodyHeight(id, Math.max(getMinBodyHeight(id), remainingSpace));
       heights[id] = bodyHeight + TITLE_BAR_HEIGHT;
     } else if (priorityInAuto) {
       // Multiple auto-sized panels with a priority panel
       // Non-priority panels get minimum, priority gets the rest
-      const nonPriorityCount = autoSizedPanels.length - 1;
-      const nonPrioritySpace = nonPriorityCount * MIN_BODY_HEIGHT;
-      const prioritySpace = Math.max(MIN_BODY_HEIGHT, remainingSpace - nonPrioritySpace);
+      const nonPriorityPanels = autoSizedPanels.filter(id => id !== priorityPanel);
+      const nonPrioritySpace = nonPriorityPanels.reduce((sum, id) => sum + getMinBodyHeight(id), 0);
+      const priorityMin = priorityPanel ? getMinBodyHeight(priorityPanel) : MIN_BODY_HEIGHT;
+      const prioritySpace = Math.max(priorityMin, remainingSpace - nonPrioritySpace);
 
       for (const id of autoSizedPanels) {
         if (id === priorityPanel) {
-          heights[id] = prioritySpace + TITLE_BAR_HEIGHT;
+          const bodyHeight = clampBodyHeight(id, prioritySpace);
+          heights[id] = bodyHeight + TITLE_BAR_HEIGHT;
         } else {
-          heights[id] = MIN_BODY_HEIGHT + TITLE_BAR_HEIGHT;
+          const bodyHeight = clampBodyHeight(id, getMinBodyHeight(id));
+          heights[id] = bodyHeight + TITLE_BAR_HEIGHT;
         }
       }
     } else {
       // Multiple auto-sized panels, no priority among them
       // Distribute space equally
-      const spacePerPanel = Math.max(MIN_BODY_HEIGHT, remainingSpace / autoSizedPanels.length);
+      const spacePerPanel = remainingSpace / autoSizedPanels.length;
       for (const id of autoSizedPanels) {
-        heights[id] = spacePerPanel + TITLE_BAR_HEIGHT;
+        const bodyHeight = clampBodyHeight(id, Math.max(getMinBodyHeight(id), spacePerPanel));
+        heights[id] = bodyHeight + TITLE_BAR_HEIGHT;
       }
     }
 
@@ -196,17 +223,34 @@ export function usePanelSizing(options: UsePanelSizingOptions): UsePanelSizingRe
   const togglePanel = useCallback((panelId: PanelId) => {
     setPanelStates(prev => {
       const willExpand = prev[panelId].collapsed;
-      const newState = {
-        ...prev,
-        [panelId]: {
-          ...prev[panelId],
-          collapsed: !prev[panelId].collapsed,
-          // Clear userHeight when collapsing (fresh start on re-expand)
-          userHeight: willExpand ? prev[panelId].userHeight : undefined,
-        },
+      const newState = { ...prev };
+
+      if (willExpand && panelId !== 'projects') {
+        for (const id of PANEL_IDS) {
+          if (id !== 'projects' && id !== panelId) {
+            newState[id] = { ...newState[id], collapsed: true, userHeight: undefined };
+          }
+        }
+      }
+
+      newState[panelId] = {
+        ...newState[panelId],
+        collapsed: !newState[panelId].collapsed,
+        // Clear userHeight when collapsing (fresh start on re-expand)
+        userHeight: willExpand ? newState[panelId].userHeight : undefined,
       };
-      if (willExpand) {
+
+      if (panelId === 'projects') {
+        if (willExpand) {
+          setPriorityPanel('projects');
+        } else {
+          const nextPriority = PANEL_IDS.find(id => !newState[id].collapsed) ?? null;
+          setPriorityPanel(nextPriority);
+        }
+      } else if (willExpand) {
         setPriorityPanel(panelId);
+      } else if (!newState.projects?.collapsed) {
+        setPriorityPanel('projects');
       }
       return newState;
     });
@@ -214,19 +258,64 @@ export function usePanelSizing(options: UsePanelSizingOptions): UsePanelSizingRe
 
   // Expand panel
   const expandPanel = useCallback((panelId: PanelId) => {
-    setPanelStates(prev => ({
-      ...prev,
-      [panelId]: { ...prev[panelId], collapsed: false },
-    }));
-    setPriorityPanel(panelId);
+    setPanelStates(prev => {
+      const nextState = { ...prev };
+
+      if (panelId !== 'projects') {
+        for (const id of PANEL_IDS) {
+          if (id !== 'projects' && id !== panelId) {
+            nextState[id] = { ...nextState[id], collapsed: true, userHeight: undefined };
+          }
+        }
+      }
+
+      nextState[panelId] = { ...nextState[panelId], collapsed: false };
+
+      if (panelId === 'projects') {
+        setPriorityPanel('projects');
+      } else {
+        setPriorityPanel(panelId);
+      }
+      return nextState;
+    });
   }, []);
 
   // Collapse panel
   const collapsePanel = useCallback((panelId: PanelId) => {
-    setPanelStates(prev => ({
-      ...prev,
-      [panelId]: { ...prev[panelId], collapsed: true, userHeight: undefined },
-    }));
+    setPanelStates(prev => {
+      const nextState = {
+        ...prev,
+        [panelId]: { ...prev[panelId], collapsed: true, userHeight: undefined },
+      };
+      if (panelId === 'projects') {
+        const nextPriority = PANEL_IDS.find(id => !nextState[id].collapsed) ?? null;
+        setPriorityPanel(nextPriority);
+      } else if (priorityPanel === panelId) {
+        if (!nextState.projects?.collapsed) {
+          setPriorityPanel('projects');
+        } else {
+          const nextPriority = PANEL_IDS.find(id => !nextState[id].collapsed) ?? null;
+          setPriorityPanel(nextPriority);
+        }
+      }
+      return nextState;
+    });
+  }, [priorityPanel]);
+
+  // Collapse all panels except projects (used when starting a build)
+  const collapseAllExceptProjects = useCallback(() => {
+    setPanelStates(prev => {
+      const nextState = { ...prev };
+      for (const id of PANEL_IDS) {
+        if (id !== 'projects') {
+          nextState[id] = { ...nextState[id], collapsed: true, userHeight: undefined };
+        }
+      }
+      // Ensure projects is expanded
+      nextState.projects = { ...nextState.projects, collapsed: false };
+      return nextState;
+    });
+    setPriorityPanel('projects');
   }, []);
 
   // Resize handlers
@@ -296,6 +385,7 @@ export function usePanelSizing(options: UsePanelSizingOptions): UsePanelSizingRe
     togglePanel,
     expandPanel,
     collapsePanel,
+    collapseAllExceptProjects,
     handleResizeStart,
     isCollapsed,
   };

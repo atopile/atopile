@@ -10,9 +10,10 @@ import psutil
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.exceptions import UserResourceException, downgrade
+from atopile.errors import UserResourceException, downgrade
 from faebryk.libs.kicad.fileformats import (
     C_kicad_project_file,
+    kicad,
 )
 from faebryk.libs.kicad.paths import find_pcbnew
 from faebryk.libs.util import (
@@ -141,3 +142,138 @@ def test_load_net_names():
     assert net_from_load.number == nets[1].number
 
     assert nfl.has_trait(F.has_net_name)
+
+
+def ensure_board_appearance(kicad_pcb: kicad.pcb.KicadPcb) -> None:
+    """
+    Ensure proper board appearance: matte black soldermask and ENIG copper finish.
+
+    We have opinions about aesthetics.
+    """
+    PREFERRED_SOLDERMASK_COLOR = "Black"
+    PREFERRED_COPPER_FINISH = "ENIG"
+
+    setup = kicad_pcb.setup
+    changed = False
+
+    # Create stackup if missing
+    if setup.stackup is None:
+        setup.stackup = kicad.pcb.Stackup(
+            layers=[
+                kicad.pcb.StackupLayer(
+                    name="F.SilkS",
+                    type="Top Silk Screen",
+                    color=None,
+                    thickness=None,
+                    material=None,
+                    epsilon_r=None,
+                    loss_tangent=None,
+                ),
+                kicad.pcb.StackupLayer(
+                    name="F.Paste",
+                    type="Top Solder Paste",
+                    color=None,
+                    thickness=None,
+                    material=None,
+                    epsilon_r=None,
+                    loss_tangent=None,
+                ),
+                kicad.pcb.StackupLayer(
+                    name="F.Mask",
+                    type="Top Solder Mask",
+                    color=PREFERRED_SOLDERMASK_COLOR,
+                    thickness=0.01,
+                    material="Solder mask",
+                    epsilon_r=3.3,
+                    loss_tangent=None,
+                ),
+                kicad.pcb.StackupLayer(
+                    name="F.Cu",
+                    type="copper",
+                    color=None,
+                    thickness=0.035,
+                    material=None,
+                    epsilon_r=None,
+                    loss_tangent=None,
+                ),
+                kicad.pcb.StackupLayer(
+                    name="dielectric 1",
+                    type="core",
+                    color=None,
+                    thickness=1.51,
+                    material="FR4",
+                    epsilon_r=4.5,
+                    loss_tangent=0.02,
+                ),
+                kicad.pcb.StackupLayer(
+                    name="B.Cu",
+                    type="copper",
+                    color=None,
+                    thickness=0.035,
+                    material=None,
+                    epsilon_r=None,
+                    loss_tangent=None,
+                ),
+                kicad.pcb.StackupLayer(
+                    name="B.Mask",
+                    type="Bottom Solder Mask",
+                    color=PREFERRED_SOLDERMASK_COLOR,
+                    thickness=0.01,
+                    material="Solder mask",
+                    epsilon_r=3.3,
+                    loss_tangent=None,
+                ),
+                kicad.pcb.StackupLayer(
+                    name="B.Paste",
+                    type="Bottom Solder Paste",
+                    color=None,
+                    thickness=None,
+                    material=None,
+                    epsilon_r=None,
+                    loss_tangent=None,
+                ),
+                kicad.pcb.StackupLayer(
+                    name="B.SilkS",
+                    type="Bottom Silk Screen",
+                    color=None,
+                    thickness=None,
+                    material=None,
+                    epsilon_r=None,
+                    loss_tangent=None,
+                ),
+            ],
+            copper_finish=PREFERRED_COPPER_FINISH,
+            dielectric_constraints=None,
+            edge_connector=None,
+            castellated_pads=None,
+            edge_plating=None,
+        )
+        return  # Already set up correctly
+
+    stackup = setup.stackup
+
+    # Check copper finish
+    if stackup.copper_finish != PREFERRED_COPPER_FINISH:
+        logger.warning(
+            "Copper finish '%s' detected. Upgrading to %s. Gold is timeless.",
+            stackup.copper_finish or "None",
+            PREFERRED_COPPER_FINISH,
+        )
+        stackup.copper_finish = PREFERRED_COPPER_FINISH
+        changed = True
+
+    # Check soldermask colors
+    for layer in stackup.layers:
+        if layer.type in ("Top Solder Mask", "Bottom Solder Mask"):
+            if layer.color != PREFERRED_SOLDERMASK_COLOR:
+                logger.warning(
+                    "Soldermask color '%s' on %s. Correcting to %s.",
+                    layer.color or "unset",
+                    layer.name,
+                    PREFERRED_SOLDERMASK_COLOR,
+                )
+                layer.color = PREFERRED_SOLDERMASK_COLOR
+                changed = True
+
+    if changed:
+        logger.info("Board aesthetics upgraded.")

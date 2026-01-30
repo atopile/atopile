@@ -15,7 +15,7 @@ from atopile.compiler import DslException
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
-from atopile.exceptions import DeprecatedException, downgrade
+from atopile.errors import DeprecatedException, downgrade
 from atopile.logging import get_logger
 
 logger = get_logger(__name__)

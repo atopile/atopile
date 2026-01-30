@@ -32,13 +32,33 @@ export function useConnection() {
             requestId: message.requestId,
           });
           break;
-        case 'setAtopileInstalling':
-          // Forward atopile installing status to backend
-          sendAction('setAtopileInstalling', {
-            installing: message.installing,
-            error: message.error,
+        case 'atopileInstalling':
+          // Extension is switching to a new atopile version
+          useStore.getState().setAtopileConfig({
+            isInstalling: true,
+            installProgress: {
+              message: message.message || 'Switching atopile version...',
+            },
+            error: null,
           });
           break;
+        case 'atopileInstallError':
+          // Extension failed to switch atopile version
+          useStore.getState().setAtopileConfig({
+            isInstalling: false,
+            installProgress: null,
+            error: message.error || 'Failed to switch atopile version',
+          });
+          break;
+        case 'activeFile': {
+          const filePath = message.filePath ?? null;
+          const store = useStore.getState();
+          store.setActiveEditorFile(filePath);
+          if (filePath && filePath.toLowerCase().endsWith('.ato')) {
+            store.setLastAtoFile(filePath);
+          }
+          break;
+        }
       }
     });
 

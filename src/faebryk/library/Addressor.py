@@ -8,7 +8,7 @@ import pytest
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.exceptions import UserDesignCheckException
+from atopile.errors import UserDesignCheckException
 from faebryk.core import graph
 from faebryk.libs.util import once
 

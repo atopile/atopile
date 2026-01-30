@@ -16,9 +16,10 @@
  * A project discovered from ato.yaml.
  */
 export interface Project {
-    name:    string;
-    root:    string;
-    targets: TargetElement[];
+    displayPath?: null | string;
+    name:         string;
+    root:         string;
+    targets:      TargetElement[];
     [property: string]: any;
 }
 
@@ -89,14 +90,12 @@ export interface BuildTargetBuildTargetStatus {
  */
 export interface Build {
     buildId?:        null | string;
-    buildKey?:       null | string;
-    completedAt?:    number | null;
     displayName:     string;
-    duration?:       number | null;
     elapsedSeconds?: number;
     entry?:          null | string;
     error?:          null | string;
     errors?:         number;
+    frozen?:         boolean | null;
     logDir?:         null | string;
     logFile?:        null | string;
     name:            string;
@@ -104,11 +103,13 @@ export interface Build {
     projectRoot?:    null | string;
     queuePosition?:  number | null;
     returnCode?:     number | null;
-    stages?:         StageElement[] | null;
+    stages?:         { [key: string]: any }[];
+    standalone?:     boolean;
     startedAt?:      number | null;
     status?:         BuildStatus;
     target?:         null | string;
-    totalStages?:    number;
+    timestamp?:      null | string;
+    totalStages?:    number | null;
     warnings?:       number;
     [property: string]: any;
 }
@@ -116,7 +117,7 @@ export interface Build {
 /**
  * A stage within a build.
  */
-export interface StageElement {
+export interface BuildStage {
     alerts?:         number;
     displayName?:    null | string;
     elapsedSeconds?: number;
@@ -140,22 +141,6 @@ export enum StageStatus {
     Skipped = "skipped",
     Success = "success",
     Warning = "warning",
-}
-
-/**
- * A stage within a build.
- */
-export interface BuildStage {
-    alerts?:         number;
-    displayName?:    null | string;
-    elapsedSeconds?: number;
-    errors?:         number;
-    infos?:          number;
-    name:            string;
-    stageId?:        string;
-    status?:         StageStatus;
-    warnings?:       number;
-    [property: string]: any;
 }
 
 /**
@@ -185,6 +170,10 @@ export interface PackageInfo {
  * Detailed information about a package from the registry.
  */
 export interface PackageDetails {
+    artifacts?:          PackageArtifact[];
+    authors?:            PackageAuthor[];
+    builds?:             string[] | null;
+    createdAt?:          null | string;
     dependencies?:       PackageDependency[];
     description?:        null | string;
     downloads?:          number | null;
@@ -192,17 +181,41 @@ export interface PackageDetails {
     downloadsThisWeek?:  number | null;
     homepage?:           null | string;
     identifier:          string;
+    importStatements?:   PackageImportStatement[];
     installed?:          boolean;
     installedIn?:        string[];
     installedVersion?:   null | string;
+    layouts?:            PackageLayout[];
     license?:            null | string;
     name:                string;
     publisher:           string;
+    readme?:             null | string;
+    releasedAt?:         null | string;
     repository?:         null | string;
     summary?:            null | string;
     version:             string;
     versionCount?:       number;
     versions?:           VersionElement[];
+    [property: string]: any;
+}
+
+export interface PackageArtifact {
+    buildName?: null | string;
+    filename:   string;
+    hashes:     PackageFileHashes;
+    size:       number;
+    url:        string;
+    [property: string]: any;
+}
+
+export interface PackageFileHashes {
+    sha256: string;
+    [property: string]: any;
+}
+
+export interface PackageAuthor {
+    email?: null | string;
+    name:   string;
     [property: string]: any;
 }
 
@@ -212,6 +225,18 @@ export interface PackageDetails {
 export interface PackageDependency {
     identifier: string;
     version?:   null | string;
+    [property: string]: any;
+}
+
+export interface PackageImportStatement {
+    buildName:       string;
+    importStatement: string;
+    [property: string]: any;
+}
+
+export interface PackageLayout {
+    buildName: string;
+    url:       string;
     [property: string]: any;
 }
 
@@ -561,23 +586,6 @@ export interface ModuleChild {
 }
 
 /**
- * A node in the file tree (either a file or folder).
- */
-export interface FileTreeNode {
-    children?:  FileTreeNode[] | null;
-    extension?: null | string;
-    name:       string;
-    path:       string;
-    type:       FileTreeNodeType;
-    [property: string]: any;
-}
-
-export enum FileTreeNodeType {
-    File = "file",
-    Folder = "folder",
-}
-
-/**
  * A project dependency with version info.
  */
 export interface DependencyInfo {
@@ -658,4 +666,39 @@ export interface InstallProgress {
     message:  string;
     percent?: number | null;
     [property: string]: any;
+}
+
+/**
+ * WebSocket event message payload.
+ */
+export interface EventMessage {
+    data?: { [key: string]: any } | null;
+    event: EventType;
+    type?: EventMessageType;
+    [property: string]: any;
+}
+
+/**
+ * Event types emitted to WebSocket clients.
+ */
+export enum EventType {
+    AtopileConfigChanged = "atopile_config_changed",
+    BOMChanged = "bom_changed",
+    BuildsChanged = "builds_changed",
+    LogViewCurrentIDChanged = "log_view_current_id_changed",
+    Open3D = "open_3d",
+    OpenKicad = "open_kicad",
+    OpenLayout = "open_layout",
+    PackagesChanged = "packages_changed",
+    ProblemsChanged = "problems_changed",
+    ProjectDependenciesChanged = "project_dependencies_changed",
+    ProjectFilesChanged = "project_files_changed",
+    ProjectModulesChanged = "project_modules_changed",
+    ProjectsChanged = "projects_changed",
+    StdlibChanged = "stdlib_changed",
+    VariablesChanged = "variables_changed",
+}
+
+export enum EventMessageType {
+    Event = "event",
 }

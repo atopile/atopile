@@ -22,18 +22,25 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-xs);
-  border-bottom: 1px solid var(--border-subtle);
+  padding: 1px 0;
   flex-shrink: 0;
 }
 .stdlib-toolbar .search-box {
   flex: 1;
+  background: var(--bg-tertiary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+}
+.stdlib-toolbar .search-box:focus-within {
+  border-color: var(--accent);
+  background: var(--bg-secondary);
 }
 
 .stdlib-list {
   flex: 1;
   overflow-y: auto;
-  padding: var(--spacing-sm) 0;
+  padding: 2px 0;
 }
 
 /* Loading State */
@@ -89,7 +96,7 @@
 
 /* Groups */
 .stdlib-group {
-  margin-bottom: var(--spacing-sm);
+  margin-bottom: 4px;
 }
 
 .stdlib-group.collapsed .stdlib-group-items {
@@ -101,19 +108,22 @@
   align-items: center;
   gap: var(--spacing-xs);
   width: 100%;
-  padding: var(--spacing-xs) var(--spacing-sm);
+  padding: 2px 4px;
   border-radius: var(--radius-sm);
   background: transparent;
+  border: none;
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
   font-weight: 500;
+  letter-spacing: 0.15px;
   text-align: left;
+  line-height: 1.1;
   cursor: pointer;
   transition: background var(--transition-fast);
 }
 
 .stdlib-group-header:hover {
-  background: var(--hover);
+  background: var(--bg-hover);
 }
 
 .stdlib-group-header .group-chevron {
@@ -137,35 +147,46 @@
 .stdlib-group-items {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
-  padding-left: var(--spacing-sm);
-  margin-top: var(--spacing-xs);
+  gap: 0;
+  padding-left: 0;
+  margin-top: 0;
 }
 
 /* Standard Library Card */
 .stdlib-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-sm);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0 1px;
   cursor: pointer;
   transition: all var(--transition-fast);
 }
 
 .stdlib-card:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--border-color);
+  background: var(--bg-hover);
 }
 
 .stdlib-card.selected {
-  border-color: var(--ato-orange);
-  background: var(--ato-orange-subtle);
+  background: transparent;
 }
 
 .stdlib-card-header {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: 3px;
+  line-height: 1.1;
+}
+
+.stdlib-expand-icon {
+  display: inline-flex;
+  width: 12px;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.stdlib-expand-spacer {
+  display: inline-flex;
+  width: 12px;
 }
 
 .stdlib-type-icon {
@@ -180,12 +201,6 @@
   color: var(--text-primary);
 }
 
-.stdlib-type-badge {
-  font-size: var(--font-size-xs);
-  padding: 1px 6px;
-  border-radius: var(--radius-sm);
-  font-weight: 500;
-}
 
 .stdlib-card-description {
   font-size: var(--font-size-xs);
@@ -198,9 +213,9 @@
 /* Child Tree View */
 .stdlib-card-children {
   margin-top: var(--spacing-sm);
-  padding-left: var(--spacing-sm);
+  padding-left: var(--spacing-xs);
   border-left: 1px solid var(--border-subtle);
-  margin-left: calc(7px + var(--spacing-sm)); /* Align with icon center */
+  margin-left: calc(7px + var(--spacing-xs)); /* Align with icon center */
 }
 
 .stdlib-child-node {
@@ -211,7 +226,7 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  padding: 2px 4px;
+  padding: 0 2px;
   border-radius: var(--radius-sm);
   transition: background var(--transition-fast);
 }
@@ -221,7 +236,7 @@
 }
 
 .stdlib-child-row:hover {
-  background: var(--hover);
+  background: var(--bg-hover);
 }
 
 .stdlib-child-row .expand-btn {

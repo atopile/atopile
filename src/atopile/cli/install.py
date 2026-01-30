@@ -203,13 +203,15 @@ def list_():
     from faebryk.libs.project.dependencies import ProjectDependencies, ProjectDependency
     from faebryk.libs.util import md_list
 
+    from rich.markdown import Markdown
+
+    from atopile.logging_utils import console
+
     deps = ProjectDependencies()
     # TODO bug, if A -> B, B deps
     # will not see that B is under root, because of the way DAG checks roots
-    import rich.markdown
-
-    rich.print(
-        rich.markdown.Markdown(
+    console.print(
+        Markdown(
             md_list(
                 deps.dag.to_tree(extra_roots=deps.direct_deps),
                 recursive=True,

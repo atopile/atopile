@@ -90,6 +90,12 @@ class _Schemas:
 
     @dataclass_json
     @dataclass(frozen=True)
+    class ImportStatementInfo:
+        build_name: str
+        import_statement: str
+
+    @dataclass_json
+    @dataclass(frozen=True)
     class PackageReleaseInfo:
         created_at: datetime = field(
             metadata=dataclasses_json_config(decoder=datetime.fromisoformat)
@@ -120,6 +126,7 @@ class _Schemas:
         layouts: "_Schemas.LayoutsInfo | None"
         yanked_at: str | None
         yanked_reason: str | None
+        import_statements: list["_Schemas.ImportStatementInfo"] | None
 
     @dataclass_json
     @dataclass(frozen=True)

@@ -99,7 +99,7 @@ describe('useProjects hook', () => {
     expect(result.current.selectedProject?.name).toBe('test');
   });
 
-  it('selectProject sends action', () => {
+  it('selectProject updates store', () => {
     const { result } = renderHook(() => useProjects());
 
     act(() => {
