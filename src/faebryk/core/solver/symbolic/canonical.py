@@ -503,12 +503,6 @@ def flatten_expressions(mutator: Mutator):
 
     alias_classes = [frozenset(class_) for class_ in classes.get()]
 
-    def _is_non_constraining(expr: F.Expressions.is_expression) -> bool:
-        return bool(
-            expr.try_get_sibling_trait(F.Expressions.is_information_predicate)
-            or expr.obj_type_has_trait(F.Expressions.has_independent_operands)
-        )
-
     # build representative for each class
     for class_ in alias_classes:
         class_params = {p for elem in class_ if (p := elem.as_parameter.try_get())}
@@ -530,7 +524,10 @@ def flatten_expressions(mutator: Mutator):
         if (
             not class_params
             and class_exprs
-            and all(_is_non_constraining(e) for e in class_exprs)
+            and all(
+                e.try_get_sibling_trait(F.Expressions.has_independent_operands)
+                for e in class_exprs
+            )
         ):
             continue
 
@@ -647,14 +644,6 @@ def flatten_expressions(mutator: Mutator):
                     )
             continue
 
-        # Info-predicate expressions (e.g. Correlated) don't need aliases -
-        # they are non-constraining and don't participate in alias semantics
-        if any(
-            e.try_get_sibling_trait(F.Expressions.is_information_predicate)
-            for e in class_exprs
-        ):
-            continue
-
         # Skip classes where we didn't create a representative
         if class_ not in class_reprs:
             continue
@@ -670,14 +659,6 @@ def flatten_expressions(mutator: Mutator):
             mutator.get_mutated(e.as_parameter_operatable.get()).as_operand.get()
             for e in class_exprs
         ]
-
-        # Congruence matching may have merged with an info-predicate expression
-        if any(
-            op.try_get_sibling_trait(F.Expressions.is_information_predicate)
-            for op in mutated_exprs
-            if op.try_get_sibling_trait(F.Expressions.is_expression)
-        ):
-            continue
 
         # build big alias with all exprs and the representative
         alias = mutator._create_and_insert_expression(

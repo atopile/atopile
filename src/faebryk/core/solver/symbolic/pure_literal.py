@@ -63,7 +63,7 @@ _CanonicalExpressions: dict[type[fabll.NodeT], _Multi | None] = {
     F.Expressions.Is: _Multi(F.Literals.is_literal.op_setic_equals),
     F.Expressions.IsSubset: _Multi(F.Literals.is_literal.op_setic_is_subset_of),
     F.Expressions.IsBitSet: _Multi(F.Literals.Numbers.op_is_bit_set),
-    F.Expressions.Correlated: None,
+    F.Expressions.Anticorrelated: None,
 }
 
 # Pure literal folding -----------------------------------------------------------------

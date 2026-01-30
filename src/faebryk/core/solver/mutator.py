@@ -1467,7 +1467,6 @@ _EXPRESSION_BUILDER_TRAIT_ALLOWLIST: list[type[fabll.NodeT]] = [
     F.has_name_override,
     is_relevant,
     is_irrelevant,
-    F.Expressions.is_information_predicate,
 ]
 
 
@@ -1488,8 +1487,7 @@ class ExpressionBuilder[
         return cls(
             factory=MutatorUtils.hack_get_expr_type(e),  # pyright: ignore[reportArgumentType]
             operands=e.get_operands(),
-            assert_=bool(e.try_get_sibling_trait(F.Expressions.is_predicate))
-            or bool(e.try_get_sibling_trait(F.Expressions.is_information_predicate)),
+            assert_=bool(e.try_get_sibling_trait(F.Expressions.is_predicate)),
             terminate=bool(e.try_get_sibling_trait(is_terminated)),
             traits=[
                 t
@@ -1573,7 +1571,6 @@ class ExpressionBuilder[
         )
         same_assert = self.assert_ == (
             bool(other.try_get_sibling_trait(F.Expressions.is_predicate))
-            or bool(other.try_get_sibling_trait(F.Expressions.is_information_predicate))
         )
         return same_type and same_operands and same_terminate and same_assert
 
@@ -1761,12 +1758,6 @@ class Mutator:
         )
         new_expr_e = new_expr.is_expression.get()
 
-        for trait in traits:
-            if trait is not None:
-                fabll.Traits.add_instance_to(
-                    node=new_expr, trait_instance=trait.copy_into(self.G_out)
-                )
-
         if assert_:
             ce = new_expr.get_trait(F.Expressions.is_assertable)
             self.assert_(ce, terminate=False, track=False)
@@ -1776,6 +1767,12 @@ class Mutator:
 
         if irrelevant:
             self.mark_irrelevant(new_expr.is_parameter_operatable.get())
+
+        for trait in traits:
+            if trait is not None:
+                fabll.Traits.add_instance_to(
+                    node=new_expr, trait_instance=trait.copy_into(self.G_out)
+                )
 
         from faebryk.core.solver.symbolic.invariants import I_LOG
 
@@ -1869,9 +1866,7 @@ class Mutator:
         if expr_po in self.transformations.mutated:
             return self.get_mutated(expr_po).as_operand.get()
 
-        assert_ = bool(expr.try_get_sibling_trait(F.Expressions.is_predicate)) or bool(
-            expr.try_get_sibling_trait(F.Expressions.is_information_predicate)
-        )
+        assert_ = bool(expr.try_get_sibling_trait(F.Expressions.is_predicate))
         # aliases should be copied manually
         # TODO currently trying disabling, because want to congruence match
         # if expression_factory is F.Expressions.Is and assert_:
@@ -1893,14 +1888,9 @@ class Mutator:
             expr_obj.isinstance(builder.factory) and operands == expr.get_operands()
         )
 
-        is_pred = bool(expr.try_get_sibling_trait(F.Expressions.is_predicate))
-        is_info = bool(
-            expr.try_get_sibling_trait(F.Expressions.is_information_predicate)
-        )
         if (
-            # predicates and info-predicate expressions don't have aliases
-            is_pred
-            or is_info
+            # predicates don't have aliases
+            assert_
             # expr with no alias yet: insert_expression will create one later
             or not expr.as_operand.get().get_operations(
                 F.Expressions.Is, predicates_only=True

@@ -389,29 +389,29 @@ def lower_estimation_of_expressions_with_subsets(mutator: Mutator):
 @algorithm("Correlated contradiction", terminal=False)
 def correlated_contradiction(mutator: Mutator):
     """
-    Detect Correlated(A,B) + Not(Correlated(A,B)) both info-predicates.
+    Detect Anticorrelated(A,B) + Not(Anticorrelated(A,B)) both predicates.
 
-    If a Correlated expression is asserted and also wrapped in a Not that is itself
+    If an Anticorrelated expression is asserted and also wrapped in a Not that is itself
     asserted, the two assertions contradict each other.
     """
 
-    Correlated = F.Expressions.Correlated
+    Anticorrelated = F.Expressions.Anticorrelated
     Not = F.Expressions.Not
-    is_info = F.Expressions.is_information_predicate
+    is_predicate = F.Expressions.is_predicate
 
     for corr in mutator.get_typed_expressions(
-        Correlated, include_terminated=False, include_irrelevant=False
+        Anticorrelated, include_terminated=False, include_irrelevant=False
     ):
         corr_e = corr.get_trait(F.Expressions.is_expression)
-        if not corr_e.try_get_sibling_trait(is_info):
+        if not corr_e.try_get_sibling_trait(is_predicate):
             continue
         corr_op = corr.get_trait(F.Parameters.can_be_operand)
         for not_expr in corr_op.get_operations(
             types=Not, recursive=False, predicates_only=False
         ):
-            if not_expr.has_trait(is_info):
+            if not_expr.has_trait(is_predicate):
                 raise Contradiction(
-                    "Correlated and Not(Correlated) both asserted",
+                    "Anticorrelated and Not(Anticorrelated) both asserted",
                     involved=[
                         corr_op.as_parameter_operatable.force_get(),
                         not_expr.get_trait(F.Parameters.is_parameter_operatable),

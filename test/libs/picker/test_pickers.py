@@ -448,7 +448,7 @@ def test_pick_capacitor_temperature_coefficient():
 
 def test_get_anticorrelated_pairs():
     """
-    Not(Correlated(...)) should create pairwise anticorrelated pairs.
+    Not(Anticorrelated(...)) should create pairwise not-anticorrelated pairs.
     """
     from faebryk.core.solver.utils import MutatorUtils
 
@@ -460,7 +460,7 @@ def test_get_anticorrelated_pairs():
     p2 = E.parameter_op(units=E.U.Ohm)
     p3 = E.parameter_op(units=E.U.Ohm)
 
-    E.not_(E.correlated(p1, p2, p3), assert_=True)
+    E.anticorrelated(p1, p2, p3, assert_=True)
     pairs = MutatorUtils.get_anticorrelated_pairs(tg)
 
     # 3 params -> 3 pairwise combinations
@@ -478,7 +478,7 @@ def test_get_anticorrelated_pairs():
 @pytest.mark.usefixtures("setup_project_config")
 def test_infer_uncorrelated_params():
     """
-    _infer_uncorrelated_params should create Not(Correlated) for all picking params.
+    _infer_uncorrelated_params should create Anticorrelated for all picking params.
     """
     from faebryk.core.solver.utils import MutatorUtils
     from faebryk.libs.picker.picker import _infer_uncorrelated_params, get_pick_tree
@@ -532,12 +532,10 @@ def test_find_groups_two_independent_modules():
         assert_=True,
     )
 
-    # Mark as uncorrelated
-    E.not_(
-        E.correlated(
-            app.r1.get().resistance.get().can_be_operand.get(),
-            app.r2.get().resistance.get().can_be_operand.get(),
-        ),
+    # Mark as anticorrelated
+    E.anticorrelated(
+        app.r1.get().resistance.get().can_be_operand.get(),
+        app.r2.get().resistance.get().can_be_operand.get(),
         assert_=True,
     )
 
@@ -657,7 +655,7 @@ def test_find_groups_mixed_connected_and_independent():
     )
 
     # Mark all as uncorrelated
-    E.not_(E.correlated(r1_r, r2_r, r3_r), assert_=True)
+    E.anticorrelated(r1_r, r2_r, r3_r, assert_=True)
 
     tree = get_pick_tree(app)
     groups = find_independent_groups(tree.keys())
@@ -682,7 +680,7 @@ def test_find_groups_mixed_connected_and_independent():
 
 def test_non_constraining_expr_detection():
     """
-    is_non_constraining should detect Not(Correlated(...)) predicates.
+    is_non_constraining should detect Not(Anticorrelated(...)) predicates.
     """
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -691,7 +689,7 @@ def test_non_constraining_expr_detection():
     p1 = E.parameter_op(units=E.U.Ohm)
     p2 = E.parameter_op(units=E.U.Ohm)
 
-    corr = E.correlated(p1, p2)
+    corr = E.anticorrelated(p1, p2)
     not_corr = E.not_(corr)
 
     not_expr = not_corr.as_parameter_operatable.force_get().as_expression.force_get()
@@ -788,7 +786,7 @@ def test_find_groups_array_modules_independent():
         app.driver3.get().capacitor.get().capacitance.get().can_be_operand.get(),
         app.standalone_resistor.get().resistance.get().can_be_operand.get(),
     ]
-    E.not_(E.correlated(*all_params), assert_=True)
+    E.anticorrelated(*all_params, assert_=True)
 
     tree = get_pick_tree(app)
     groups = find_independent_groups(tree.keys())
@@ -843,13 +841,12 @@ def test_find_groups_nested_modules_with_shared_constraint():
     )
 
     # Mark unrelated params as uncorrelated
-    E.not_(
-        E.correlated(
-            r_top_r,
-            r_bottom_r,
-            app.decoupling_cap.get().capacitance.get().can_be_operand.get(),
-            app.filter_inductor.get().inductance.get().can_be_operand.get(),
-        )
+    E.anticorrelated(
+        r_top_r,
+        r_bottom_r,
+        app.decoupling_cap.get().capacitance.get().can_be_operand.get(),
+        app.filter_inductor.get().inductance.get().can_be_operand.get(),
+        assert_=True,
     )
 
     tree = get_pick_tree(app)

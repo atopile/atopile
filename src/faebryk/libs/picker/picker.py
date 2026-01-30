@@ -326,10 +326,9 @@ def _infer_uncorrelated_params(tree: Tree["F.Pickable.is_pickable"]):
 
     g = next(iter(uncorrelated_params)).g
     tg = next(iter(uncorrelated_params)).tg
-    corr = F.Expressions.Correlated.c(
-        *[p.as_operand.get() for p in uncorrelated_params], g=g, tg=tg
+    F.Expressions.Anticorrelated.c(
+        *[p.as_operand.get() for p in uncorrelated_params], g=g, tg=tg, assert_=True
     )
-    F.Expressions.Not.c(corr, g=g, tg=tg, assert_=True)
 
 
 def _collect_relevant_params(

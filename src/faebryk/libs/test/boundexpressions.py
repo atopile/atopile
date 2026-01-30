@@ -386,12 +386,12 @@ class BoundExpressions:
     ) -> F.Parameters.can_be_operand:
         return F.Expressions.Is.c(*operands, g=self.g, tg=self.tg, assert_=assert_)
 
-    def correlated(
+    def anticorrelated(
         self,
         *operands: F.Parameters.can_be_operand,
         assert_: bool = False,
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Correlated.c(
+        return F.Expressions.Anticorrelated.c(
             *operands, g=self.g, tg=self.tg, assert_=assert_
         )
 

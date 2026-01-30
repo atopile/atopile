@@ -2255,14 +2255,14 @@ def test_solve_voltage_divider_complex():
 
 def test_correlated_direct_contradiction():
     """
-    Correlated(A, B) and Not(Correlated(A, B)) should contradict.
+    Anticorrelated(A, B) and Not(Anticorrelated(A, B)) should contradict.
     """
     E = BoundExpressions()
     p1 = E.parameter_op(units=E.U.Ohm)
     p2 = E.parameter_op(units=E.U.Ohm)
 
-    E.correlated(p1, p2, assert_=True)
-    E.not_(E.correlated(p1, p2), assert_=True)
+    E.anticorrelated(p1, p2, assert_=True)
+    E.not_(E.anticorrelated(p1, p2), assert_=True)
 
     solver = Solver()
     with pytest.raises(Contradiction):
@@ -2271,15 +2271,15 @@ def test_correlated_direct_contradiction():
 
 def test_correlated_direct_contradiction_multi():
     """
-    Correlated(A, B, C) and Not(Correlated(A, B, C)) should contradict.
+    Anticorrelated(A, B, C) and Not(Anticorrelated(A, B, C)) should contradict.
     """
     E = BoundExpressions()
     p1 = E.parameter_op(units=E.U.Ohm)
     p2 = E.parameter_op(units=E.U.Ohm)
     p3 = E.parameter_op(units=E.U.Ohm)
 
-    E.correlated(p1, p2, p3, assert_=True)
-    E.not_(E.correlated(p1, p2, p3), assert_=True)
+    E.anticorrelated(p1, p2, p3, assert_=True)
+    E.not_(E.anticorrelated(p1, p2, p3), assert_=True)
 
     solver = Solver()
     with pytest.raises(Contradiction):
@@ -2288,7 +2288,7 @@ def test_correlated_direct_contradiction_multi():
 
 def test_correlated_no_contradiction_different_sets():
     """
-    Correlated(A, B) and Not(Correlated(A, C)) should NOT contradict.
+    Anticorrelated(A, B) and Not(Anticorrelated(A, C)) should NOT contradict.
     These are independent assertions about different parameter pairs.
     """
     E = BoundExpressions()
@@ -2296,8 +2296,8 @@ def test_correlated_no_contradiction_different_sets():
     p2 = E.parameter_op(units=E.U.Ohm)
     p3 = E.parameter_op(units=E.U.Ohm)
 
-    E.correlated(p1, p2, assert_=True)
-    E.not_(E.correlated(p1, p3), assert_=True)
+    E.anticorrelated(p1, p2, assert_=True)
+    E.not_(E.anticorrelated(p1, p3), assert_=True)
 
     solver = Solver()
     solver.simplify(E.tg, E.g)
@@ -2306,10 +2306,10 @@ def test_correlated_no_contradiction_different_sets():
 # Lower estimation tests ---------------------------------------------------------------
 def test_lower_estimation_with_uncorrelated_params():
     """
-    When parameters are marked as uncorrelated via Not(Correlated(...)),
+    When parameters are marked as uncorrelated via Anticorrelated(...),
     lower estimation should propagate subset literals through expressions.
 
-    A ⊇ {4..6}, B ⊇ {2..3}, Not(Correlated(A, B))
+    A ⊇ {4..6}, B ⊇ {2..3}, Anticorrelated(A, B)
     C = A + B
     => C ⊇ {6..9} (propagated from subset literals)
     """
@@ -2318,7 +2318,7 @@ def test_lower_estimation_with_uncorrelated_params():
     B = E.parameter_op()
 
     # Mark A and B as uncorrelated
-    E.not_(E.correlated(A, B), assert_=True)
+    E.anticorrelated(A, B, assert_=True)
 
     # A ⊇ {4..6} means {4..6} is a subset of A (A contains at least {4..6})
     E.is_superset(A, E.lit_op_range((4, 6)), assert_=True)
@@ -2352,10 +2352,10 @@ def test_lower_estimation_with_uncorrelated_params():
 
 def test_lower_estimation_skipped_when_correlated():
     """
-    When parameters are NOT marked as uncorrelated (default is correlated),
+    When parameters are NOT marked as uncorrelated (default is anticorrelated),
     lower estimation should NOT propagate subset literals.
 
-    A ⊇ {4..6}, B ⊇ {2..3} (no uncorrelation marker)
+    A ⊇ {4..6}, B ⊇ {2..3} (no anticorrelation marker)
     C = A + B
     => C should NOT have tightened bounds from lower estimation
     """
@@ -2363,7 +2363,7 @@ def test_lower_estimation_skipped_when_correlated():
     A = E.parameter_op()
     B = E.parameter_op()
 
-    # No uncorrelation marker - default is correlated
+    # No anticorrelation marker - default is maybe-correlated
 
     # A ⊇ {4..6}
     E.is_superset(A, E.lit_op_range((4, 6)), assert_=True)
@@ -2376,7 +2376,7 @@ def test_lower_estimation_skipped_when_correlated():
     solver = Solver()
     result = solver.simplify(E.tg, E.g)
 
-    # Without uncorrelation, lower estimation should not apply
+    # Without anticorrelation, lower estimation should not apply
     # C should still be unbounded (or only bounded by domain)
     extracted = result.data.mutation_map.try_extract_superset(
         C.as_parameter_operatable.force_get()
@@ -2392,7 +2392,7 @@ def test_lower_estimation_skipped_when_correlated():
         # Check that bounds are NOT exactly {6..9}
         is_tightly_bounded = abs(min_val - 6) < 0.01 and abs(max_val - 9) < 0.01
         assert not is_tightly_bounded, (
-            f"Lower estimation should not apply without uncorrelation marker, "
+            f"Lower estimation should not apply without anticorrelation marker, "
             f"but got bounds [{min_val}, {max_val}]"
         )
 
@@ -2401,7 +2401,7 @@ def test_lower_estimation_multiply_uncorrelated():
     """
     Test lower estimation with multiplication of uncorrelated parameters.
 
-    A ⊇ {2..3}, B ⊇ {4..5}, Not(Correlated(A, B))
+    A ⊇ {2..3}, B ⊇ {4..5}, Anticorrelated(A, B)
     C = A * B
     => C ⊇ {8..15}
     """
@@ -2410,7 +2410,7 @@ def test_lower_estimation_multiply_uncorrelated():
     B = E.parameter_op()
 
     # Mark A and B as uncorrelated
-    E.not_(E.correlated(A, B), assert_=True)
+    E.anticorrelated(A, B, assert_=True)
 
     # A ⊇ {2..3}
     E.is_superset(A, E.lit_op_range((2, 3)), assert_=True)
@@ -2439,10 +2439,10 @@ def test_lower_estimation_multiply_uncorrelated():
 
 def test_lower_estimation_partial_uncorrelation():
     """
-    Test that lower estimation requires ALL parameters to be pairwise uncorrelated.
+    Test that lower estimation requires ALL parameters to be pairwise anticorrelated.
 
     A ⊇ {1..2}, B ⊇ {3..4}, C ⊇ {5..6}
-    Not(Correlated(A, B)) but NOT Not(Correlated(A, C)) or Not(Correlated(B, C))
+    Anticorrelated(A, B) but NOT Anticorrelated(A, C) or Anticorrelated(B, C)
     D = A + B + C
     => Lower estimation should NOT apply (not all pairs uncorrelated)
     """
@@ -2451,8 +2451,8 @@ def test_lower_estimation_partial_uncorrelation():
     B = E.parameter_op()
     C = E.parameter_op()
 
-    # Only mark A and B as uncorrelated, not the full set
-    E.not_(E.correlated(A, B), assert_=True)
+    # Only mark A and B as anticorrelated, not the full set
+    E.anticorrelated(A, B, assert_=True)
 
     E.is_superset(A, E.lit_op_range((1, 2)), assert_=True)
     E.is_superset(B, E.lit_op_range((3, 4)), assert_=True)
@@ -2474,9 +2474,9 @@ def test_lower_estimation_partial_uncorrelation():
         max_val = extracted_nums.get_max_value()
 
         # If full lower estimation applied, we'd get {9..12}
-        # Without full uncorrelation, bounds should be wider
+        # Without full anticorrelation, bounds should be wider
         is_fully_tightened = abs(min_val - 9) < 0.01 and abs(max_val - 12) < 0.01
-        # Note: partial uncorrelation might still allow some propagation
+        # Note: partial anticorrelation might still allow some propagation
         # for the A+B subexpression, but not the full D expression
 
 
@@ -2689,10 +2689,10 @@ def test_inter_algorithm_relevance_filtering():
 
 def test_get_relevant_predicates_skips_non_constraining():
     """
-    Test that get_relevant_predicates skips Correlated expressions when
+    Test that get_relevant_predicates skips Anticorrelated expressions when
     computing the transitive closure of relevant predicates.
 
-    Correlated expressions indicate statistical correlation, not constraint
+    Anticorrelated expressions indicate statistical correlation, not constraint
     dependency, so they should not create edges in the relevance graph.
     """
     from faebryk.core.solver.utils import MutatorUtils
@@ -2702,7 +2702,7 @@ def test_get_relevant_predicates_skips_non_constraining():
     A_op, B_op, C_op = A.as_operand.get(), B.as_operand.get(), C.as_operand.get()
 
     # A and B are correlated (non-constraining)
-    E.correlated(A_op, B_op, assert_=True)
+    E.anticorrelated(A_op, B_op, assert_=True)
 
     # A has a constraint
     E.is_subset(A_op, E.lit_op_range(((1, E.U.Ohm), (2, E.U.Ohm))), assert_=True)
@@ -2718,7 +2718,7 @@ def test_get_relevant_predicates_skips_non_constraining():
     # because it's non-constraining
     for pred in relevant_preds:
         expr = pred.as_expression.get()
-        assert not expr.expr_isinstance(F.Expressions.Correlated), (
+        assert not expr.expr_isinstance(F.Expressions.Anticorrelated), (
             "Correlated should not be in relevant predicates"
         )
 
@@ -2862,7 +2862,7 @@ def test_is_non_constraining_method():
     """
     Test the is_non_constraining method on is_expression trait.
 
-    Correlated(...) and Not(Correlated(...)) should return True.
+    Anticorrelated(...) and Not(Anticorrelated(...)) should return True.
     Regular predicates like Is, IsSubset should return False.
     """
     E = BoundExpressions()
@@ -2870,18 +2870,20 @@ def test_is_non_constraining_method():
     A = E.parameter_op()
     B = E.parameter_op()
 
-    # Create Correlated expression
-    corr = E.correlated(A, B)
+    # Create Anticorrelated expression
+    corr = E.anticorrelated(A, B)
     corr_expr = corr.as_parameter_operatable.force_get().as_expression.force_get()
-    assert corr_expr.is_non_constraining(), "Correlated(...) should be non-constraining"
+    assert corr_expr.is_non_constraining(), (
+        "Anticorrelated(...) should be non-constraining"
+    )
 
-    # Create Not(Correlated(...)) expression
+    # Create Not(Anticorrelated(...)) expression
     not_corr = E.not_(corr, assert_=False)
     not_corr_expr = (
         not_corr.as_parameter_operatable.force_get().as_expression.force_get()
     )
     assert not_corr_expr.is_non_constraining(), (
-        "Not(Correlated(...)) should be non-constraining"
+        "Not(Anticorrelated(...)) should be non-constraining"
     )
 
     # Create regular IsSubset predicate - should NOT be non-constraining

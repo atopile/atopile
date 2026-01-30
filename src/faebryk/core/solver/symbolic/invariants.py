@@ -107,16 +107,13 @@ class AliasClassStub(AliasClass):
         self, member: F.Parameters.can_be_operand, allow_non_repr: bool = False
     ):
         self.member = member
-        # literal or parameter or predicate or info-predicate or non-constraining
+        # literal or parameter or predicate
         # if we try to run Alias invariants, we dont have the alias yet
         member_e = self.member.try_get_sibling_trait(F.Expressions.is_expression)
         assert (
             allow_non_repr
             or not member_e
             or member_e.try_get_sibling_trait(F.Expressions.is_predicate)
-            # non-constraining expressions (e.g. Correlated) don't have aliases
-            or member_e.try_get_sibling_trait(F.Expressions.is_information_predicate)
-            or member_e.obj_type_has_trait(F.Expressions.has_independent_operands)
         )
 
     @override
@@ -1077,13 +1074,10 @@ def _operands_mutated_and_expressions_flat(
             (op_po := op.as_parameter_operatable.try_get())
             and (op_e := op_po.as_expression.try_get())
             and not op_e.try_get_sibling_trait(F.Expressions.is_predicate)
-            # info-predicate expressions don't participate in alias semantics
-            and not op_e.try_get_sibling_trait(F.Expressions.is_information_predicate)
-            # non-constraining expressions (e.g. Correlated) don't have aliases
-            and not op_e.obj_type_has_trait(F.Expressions.has_independent_operands)
             and not _Query._get_operations(
                 op, types=F.Expressions.Is, predicates_only=True
             )
+            and not op.get_operations(F.Expressions.Is, predicates_only=True)
         ) and not mutator.has_been_mutated(op_po):
             # Create an alias representative now
             alias_param = op_e.create_representative(alias=True)
@@ -1247,21 +1241,6 @@ def insert_expression(
     #        )
     #    return InsertExpressionResult(None, False)
 
-    # Drop aliases that reference info-predicate or non-constraining expressions - these
-    # expressions don't participate in alias semantics.
-    # Must be checked beofre _operands_mutated_and_expressions_flat because that
-    # function replaces expression operands with parameter representatives.
-    if builder.factory is F.Expressions.Is and builder.assert_:
-        for op in builder.operands:
-            if (op_e := op.try_get_sibling_trait(F.Expressions.is_expression)) is None:
-                continue
-
-            # These should never have aliases
-            if op_e.try_get_sibling_trait(
-                F.Expressions.is_information_predicate
-            ) or op_e.obj_type_has_trait(F.Expressions.has_independent_operands):
-                return InsertExpressionResult(None, False)
-
     builder = _operands_mutated_and_expressions_flat(mutator, builder)
 
     # * Op(P!, ...) -> Op(True, ...)
@@ -1295,23 +1274,48 @@ def insert_expression(
             mutator.assert_(congruent_assertable)
         if builder.terminate:
             mutator.terminate(congruent_expr)
-        # merge alias (skip for info-predicate congruent which has no alias)
-        if alias and not congruent.has_trait(F.Expressions.is_information_predicate):
-            if I_LOG:
-                logger.debug(
-                    f"Merge alias: {alias.compact_repr()}"
-                    f" with congruent {congruent_op.pretty()}"
-                )
-            # Shortcut: this is a shortcut for creating a new alias
-            # TODO: careful required shortcut
-            _merge_alias(
-                mutator,
-                alias,
+        # merge alias
+        if alias:
+            congruent_alias_p = (
                 AliasClass.of(congruent_op)
                 .representative()
                 .as_parameter_operatable.force_get()
-                .as_parameter.force_get(),
+                .as_parameter.try_get()
             )
+
+            if congruent_alias_p:
+                if I_LOG:
+                    logger.debug(
+                        f"Merge alias: {alias.compact_repr()}"
+                        f" with congruent {congruent_op.pretty()}"
+                    )
+                # Shortcut: this is a shortcut for creating a new alias
+                # TODO: careful required shortcut
+                _merge_alias(
+                    mutator,
+                    alias,
+                    congruent_alias_p,
+                )
+            else:
+                # Congruent is a predicate (no alias to merge) - instead constrain alias
+                # to True via subset.
+                alias_out = (
+                    mutator.get_copy(alias.as_operand.get())
+                    .as_parameter_operatable.force_get()
+                    .as_parameter.force_get()
+                )
+                mutator.create_check_and_insert_expression_from_builder(
+                    ExpressionBuilder(
+                        F.Expressions.IsSubset,
+                        [
+                            alias_out.as_operand.get(),
+                            mutator.make_singleton(True).can_be_operand.get(),
+                        ],
+                        assert_=True,
+                        terminate=True,
+                        traits=[],
+                    )
+                )
         # unflag dirty
         if expr_already_exists_in_old_graph:
             if congruent_po in mutator.transformations.created:
