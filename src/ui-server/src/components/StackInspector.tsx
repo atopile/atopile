@@ -208,7 +208,7 @@ export function StackInspector({ traceback }: StackInspectorProps) {
       <div className="si-container">
         <div className="si-header">
           <span className="si-exc-type">{traceback.exc_type}</span>
-          <span className="si-exc-message">{traceback.exc_message}</span>
+          <span className="si-exc-message" dangerouslySetInnerHTML={{ __html: ansiConverter.toHtml(traceback.exc_message) }} />
         </div>
         <div className="si-empty">No stack frames available</div>
       </div>
@@ -220,7 +220,7 @@ export function StackInspector({ traceback }: StackInspectorProps) {
       <div className="si-header">
         <div className="si-header-left">
           <span className="si-exc-type">{traceback.exc_type}</span>
-          <span className="si-exc-message">{traceback.exc_message}</span>
+          <span className="si-exc-message" dangerouslySetInnerHTML={{ __html: ansiConverter.toHtml(traceback.exc_message) }} />
         </div>
         <div className="si-header-actions">
           <button className="si-action-btn" onClick={expandAll} title="Expand all frames">
