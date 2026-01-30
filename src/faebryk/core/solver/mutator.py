@@ -2655,13 +2655,17 @@ class Mutator:
 
         obj_with_units = fabll.Traits.get_implementor_siblings(
             F.Units.has_unit.bind_typegraph(self.tg_out),
-            F.Parameters.is_parameter_operatable,
+            F.Parameters.can_be_operand,
             self.G_out,
         )
-        assert not obj_with_units, (
-            f"{self.__repr__(exclude_transformations=True)} "
-            f"has units: {indented_container([o.compact_repr() for o in obj_with_units], use_repr=False)}"
-        )
+        if obj_with_units:
+            formated = indented_container(
+                [op.pretty() for op in obj_with_units],
+                use_repr=False,
+            )
+            assert False, (
+                f"{self.__repr__(exclude_transformations=True)} has units: {formated}"
+            )
 
         # TODO check created pos in G_out that are not in mutations.created
 
