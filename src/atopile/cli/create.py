@@ -15,12 +15,11 @@ import typer
 from cookiecutter.exceptions import FailedHookException, OutputDirExistsException
 from cookiecutter.main import cookiecutter
 from more_itertools import first
+from rich.table import Table
 
 from atopile import errors, version
 from atopile.address import AddrStr
 from atopile.logging import get_logger
-from rich.table import Table
-
 from atopile.logging_utils import console, rich_print_robust
 from atopile.telemetry import capture
 from faebryk.libs.github import (
@@ -489,7 +488,9 @@ def project(path: Annotated[Path | None, typer.Option()] = None):
 
     template = _ProjectTemplate(
         extra_context={
-            "__ato_version": version.get_installed_atopile_version(),
+            "__ato_version": version.clean_version(
+                version.get_installed_atopile_version()
+            ),
             "__python_path": sys.executable,
         }
     )
@@ -563,7 +564,9 @@ def package(
             "project_slug": package_slug,
             "entry_name": entry_name,
             "package_owner": package_owner,
-            "__ato_version": version.get_installed_atopile_version(),
+            "__ato_version": version.clean_version(
+                version.get_installed_atopile_version()
+            ),
             "__python_path": sys.executable,
         }
     )
