@@ -473,7 +473,8 @@ class SubsumptionCheck:
                 t for t in builder.traits if t is not None and t.has_trait(is_monotone)
             ],
         )
-        logger.debug(f"New alias: {builder.compact_repr()}")
+        if I_LOG:
+            logger.debug(f"New alias: {builder.compact_repr()}")
         return SubsumptionCheck.Result(
             builder,
             subsumed=[alias.is_expression.get() for alias in existing_aliases],
