@@ -108,6 +108,8 @@ fn addSexpExtension(
     sexp_lib: *std.Build.Step.Compile,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
+    python_lib_opt: ?[]const u8,
+    python_lib_dir_opt: ?[]const u8,
 ) *std.Build.Step {
     const sexp_ext = b.addSharedLibrary(.{
         .name = "pyzig_sexp",
@@ -130,6 +132,17 @@ fn addSexpExtension(
         // Match main extension behavior: let the Python loader resolve symbols.
         sexp_ext.linker_allow_shlib_undefined = true;
     }
+    if (builtin.os.tag == .windows) {
+        // On Windows, Python extension modules must link against the import library
+        if (python_lib_opt) |python_lib| {
+            if (python_lib_dir_opt) |lib_dir| {
+                sexp_ext.addLibraryPath(.{ .cwd_relative = lib_dir });
+            }
+            sexp_ext.linkSystemLibrary(python_lib);
+        } else {
+            @panic("python-lib must be provided on Windows builds");
+        }
+    }
     const ext = if (builtin.os.tag == .windows) ".pyd" else ".so";
     const install_sexp_ext = b.addInstallArtifact(sexp_ext, .{
         .dest_dir = .{ .override = .{ .custom = "lib" } },
@@ -147,12 +160,11 @@ fn build_python_module(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     sexp_lib: *std.Build.Step.Compile,
+    python_include_opt: ?[]const u8,
+    python_lib: ?[]const u8,
+    python_lib_dir: ?[]const u8,
 ) *std.Build.Step {
-    const python_include = b.option([]const u8, "python-include", "Python include directory path");
-    const python_lib = b.option([]const u8, "python-lib", "Python library name (Windows only; e.g., python313)");
-    const python_lib_dir = b.option([]const u8, "python-lib-dir", "Directory containing the Python import library (Windows only)");
-
-    if (python_include) |include_path| {
+    if (python_include_opt) |include_path| {
         return addPythonExtension(b, modules, target, optimize, include_path, python_lib, python_lib_dir, sexp_lib);
     }
     // No-op step to keep a consistent return type.
@@ -197,9 +209,14 @@ pub fn build(b: *std.Build) void {
     modules_main.put("graph", graph_mod) catch @panic("OOM registering graph module");
     modules_main.put("faebryk", faebryk_mod) catch @panic("OOM registering faebryk module");
 
+    // Get Python options (needed for building extensions)
+    const python_include = b.option([]const u8, "python-include", "Python include directory path");
+    const python_lib = b.option([]const u8, "python-lib", "Python library name (Windows only; e.g., python313)");
+    const python_lib_dir = b.option([]const u8, "python-lib-dir", "Directory containing the Python import library (Windows only)");
+
     // Build standalone sexp extension, main extension, and pyi (all modules).
-    const sexp_ext_step = addSexpExtension(b, sexp_lib.root_module, sexp_lib, target, optimize);
-    const py_ext_step = build_python_module(b, modules_main, target, optimize, sexp_lib);
+    const sexp_ext_step = addSexpExtension(b, sexp_lib.root_module, sexp_lib, target, optimize, python_lib, python_lib_dir);
+    const py_ext_step = build_python_module(b, modules_main, target, optimize, sexp_lib, python_include, python_lib, python_lib_dir);
     const pyi_step = build_pyi(b, modules_all, target, optimize);
 
     // Ensure python-ext depends on sexp ext and pyi generation so one command builds all.
