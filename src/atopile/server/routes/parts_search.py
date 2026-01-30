@@ -110,12 +110,21 @@ async def get_part_details(lcsc_id: str):
 
 @router.get("/api/parts/{lcsc_id}/footprint.kicad_pcb")
 @router.get("/api/parts/{lcsc_id}/footprint")
-async def get_part_footprint(lcsc_id: str):
-    """Return the footprint wrapped in a kicad_pcb file for kicanvas viewing."""
+async def get_part_footprint(
+    lcsc_id: str,
+    project_root: Optional[str] = Query(
+        None, description="Project root for local lookup"
+    ),
+):
+    """Return the footprint wrapped in a kicad_pcb file for kicanvas viewing.
+
+    If project_root is provided, uses locally installed part files for faster loading.
+    """
     try:
         data = await asyncio.to_thread(
             parts_domain.handle_get_part_footprint,
             lcsc_id,
+            project_root,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -129,12 +138,21 @@ async def get_part_footprint(lcsc_id: str):
 
 
 @router.get("/api/parts/{lcsc_id}/model")
-async def get_part_model(lcsc_id: str):
-    """Return the STEP 3D model for a part."""
+async def get_part_model(
+    lcsc_id: str,
+    project_root: Optional[str] = Query(
+        None, description="Project root for local lookup"
+    ),
+):
+    """Return the STEP 3D model for a part.
+
+    If project_root is provided, uses locally installed part files for faster loading.
+    """
     try:
         result = await asyncio.to_thread(
             parts_domain.handle_get_part_model,
             lcsc_id,
+            project_root,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

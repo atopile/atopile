@@ -33,6 +33,49 @@ _LOG = logging.getLogger(__name__)
 
 _LCSC_RE = re.compile(r"^C?\d+$", re.IGNORECASE)
 
+
+def _find_installed_part_by_lcsc(
+    lcsc_id: str, project_root: str | None
+) -> AtoPart | None:
+    """Find locally installed part by LCSC ID.
+
+    Returns the AtoPart if found, None otherwise.
+    """
+    if not project_root:
+        return None
+
+    try:
+        config.apply_options(None, working_dir=Path(project_root))
+        parts_path = config.project.paths.parts
+        if not parts_path.exists():
+            return None
+
+        target = lcsc_id.strip().upper()
+        if not target.startswith("C"):
+            target = f"C{target}"
+
+        for part_dir in parts_path.iterdir():
+            if not part_dir.is_dir():
+                continue
+            ato_file = part_dir / f"{part_dir.name}.ato"
+            if not ato_file.exists():
+                continue
+            try:
+                part = AtoPart.load(part_dir)
+            except Exception:
+                continue
+
+            if part.pick_part and part.pick_part.supplier.supplier_id.lower() == "lcsc":
+                supplier_partno = part.pick_part.supplier_partno
+                if supplier_partno and supplier_partno.strip().upper() == target:
+                    return part
+
+    except Exception as e:
+        _LOG.debug("Error searching for installed part %s: %s", lcsc_id, e)
+
+    return None
+
+
 # LRU caches for expensive EasyEDA conversions (footprints and 3D models)
 # These are in-memory only - cleared on server restart
 _footprint_cache: OrderedDict[str, bytes] = OrderedDict()
@@ -354,23 +397,68 @@ def _convert_footprint(lcsc_id: str) -> bytes | None:
     return kicad.dumps(template_pcb).encode("utf-8")
 
 
-def handle_get_part_footprint(lcsc_id: str) -> bytes | None:
+def _convert_local_footprint(part: AtoPart) -> bytes | None:
+    """Convert locally installed footprint to kicad_pcb format for viewing."""
+    from faebryk.libs.kicad.fileformats import kicad
+    from faebryk.libs.test.fileformats import PCBFILE
+
+    try:
+        # Load template PCB and wrap the footprint in it (kicanvas needs kicad_pcb)
+        template_pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE)
+        pcb = template_pcb.kicad_pcb
+
+        # Convert library footprint to PCB footprint
+        pcb_fp = _lib_fp_to_pcb_fp(part.fp.footprint)
+        pcb.footprints.clear()
+        pcb.footprints.append(pcb_fp)
+
+        # Clear elements we don't need for viewing
+        pcb.nets.clear()
+        pcb.zones.clear()
+        pcb.segments.clear()
+        pcb.vias.clear()
+        pcb.gr_texts.clear()
+        pcb.gr_text_boxes.clear()
+
+        return kicad.dumps(template_pcb).encode("utf-8")
+    except Exception as e:
+        _LOG.warning("Failed to convert local footprint: %s", e)
+        return None
+
+
+def handle_get_part_footprint(
+    lcsc_id: str, project_root: str | None = None
+) -> bytes | None:
     """Fetch footprint data wrapped in a kicad_pcb file for viewing in kicanvas.
 
+    If project_root is provided, checks for locally installed part first.
     Uses LRU cache to avoid repeated expensive EasyEDA conversions.
     """
     lcsc_key = lcsc_id.strip().upper()
     if not lcsc_key.startswith("C"):
         lcsc_key = f"C{lcsc_key}"
 
-    # Check cache first
+    # Check cache first (includes both local and remote conversions)
     with _footprint_cache_lock:
         if lcsc_key in _footprint_cache:
             _LOG.debug("Footprint cache hit: %s", lcsc_key)
             _footprint_cache.move_to_end(lcsc_key)  # LRU: move to end
             return _footprint_cache[lcsc_key]
 
-    _LOG.debug("Footprint cache miss: %s, converting...", lcsc_key)
+    # Check for locally installed part (fast path - no network call)
+    installed_part = _find_installed_part_by_lcsc(lcsc_id, project_root)
+    if installed_part:
+        _LOG.debug("Using local footprint for %s", lcsc_key)
+        result = _convert_local_footprint(installed_part)
+        if result:
+            with _footprint_cache_lock:
+                _footprint_cache[lcsc_key] = result
+                while len(_footprint_cache) > _FOOTPRINT_CACHE_MAX:
+                    _footprint_cache.popitem(last=False)
+            return result
+        # Fall through to remote fetch if local conversion fails
+
+    _LOG.debug("Footprint cache miss: %s, fetching from EasyEDA...", lcsc_key)
 
     try:
         result = _convert_footprint(lcsc_id)
@@ -386,11 +474,7 @@ def handle_get_part_footprint(lcsc_id: str) -> bytes | None:
 
         return result
     except Exception as e:
-        import logging
-
-        logging.getLogger(__name__).warning(
-            f"Failed to get footprint for {lcsc_id}: {e}"
-        )
+        _LOG.warning("Failed to get footprint for %s: %s", lcsc_id, e)
         return None
 
 
@@ -427,23 +511,55 @@ def _fetch_3d_model(lcsc_id: str) -> tuple[bytes, str] | None:
     return model_data, easyeda_footprint.model_3d.name
 
 
-def handle_get_part_model(lcsc_id: str) -> tuple[bytes, str] | None:
+def _load_local_model(part: AtoPart) -> tuple[bytes, str] | None:
+    """Load 3D model from locally installed part."""
+    if not part.model:
+        return None
+
+    try:
+        model_path = part.model_path
+        if model_path.exists():
+            return model_path.read_bytes(), model_path.name
+    except Exception as e:
+        _LOG.debug("Failed to load local model: %s", e)
+
+    return None
+
+
+def handle_get_part_model(
+    lcsc_id: str, project_root: str | None = None
+) -> tuple[bytes, str] | None:
     """Fetch the STEP 3D model data for a part.
 
+    If project_root is provided, checks for locally installed part first.
     Uses LRU cache to avoid repeated expensive EasyEDA fetches.
     """
     lcsc_key = lcsc_id.strip().upper()
     if not lcsc_key.startswith("C"):
         lcsc_key = f"C{lcsc_key}"
 
-    # Check cache first
+    # Check cache first (includes both local and remote)
     with _model_cache_lock:
         if lcsc_key in _model_cache:
             _LOG.debug("3D model cache hit: %s", lcsc_key)
             _model_cache.move_to_end(lcsc_key)  # LRU: move to end
             return _model_cache[lcsc_key]
 
-    _LOG.debug("3D model cache miss: %s, fetching...", lcsc_key)
+    # Check for locally installed part (fast path - no network call)
+    installed_part = _find_installed_part_by_lcsc(lcsc_id, project_root)
+    if installed_part:
+        _LOG.debug("Checking for local 3D model for %s", lcsc_key)
+        result = _load_local_model(installed_part)
+        if result:
+            _LOG.debug("Using local 3D model for %s", lcsc_key)
+            with _model_cache_lock:
+                _model_cache[lcsc_key] = result
+                while len(_model_cache) > _MODEL_CACHE_MAX:
+                    _model_cache.popitem(last=False)
+            return result
+        # Fall through to remote fetch if no local model
+
+    _LOG.debug("3D model cache miss: %s, fetching from EasyEDA...", lcsc_key)
 
     try:
         result = _fetch_3d_model(lcsc_id)

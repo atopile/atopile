@@ -355,7 +355,7 @@ export function PartsDetailPanel({
                 )
               ) : activeVisualTab === 'footprint' ? (
                 <KiCanvasEmbed
-                  src={`${API_URL}/api/parts/${encodeURIComponent(part.lcsc)}/footprint.kicad_pcb`}
+                  src={`${API_URL}/api/parts/${encodeURIComponent(part.lcsc)}/footprint.kicad_pcb${projectRoot ? `?project_root=${encodeURIComponent(projectRoot)}` : ''}`}
                   controls="basic"
                   controlslist="nodownload"
                   theme="kicad"
@@ -364,7 +364,7 @@ export function PartsDetailPanel({
                 />
               ) : (
                 <StepViewer
-                  src={`${API_URL}/api/parts/${encodeURIComponent(part.lcsc)}/model`}
+                  src={`${API_URL}/api/parts/${encodeURIComponent(part.lcsc)}/model${projectRoot ? `?project_root=${encodeURIComponent(projectRoot)}` : ''}`}
                 />
               )}
             </div>
