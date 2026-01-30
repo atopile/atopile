@@ -314,7 +314,7 @@ export function StandardLibraryPanel({
                     <Icon size={12} />
                   </span>
                   <span className="group-label">{config.label}s</span>
-                  <span className="group-count">({items.length})</span>
+                  <span className="group-count">{items.length}</span>
                 </button>
                 {!isCollapsed && (
                   <div className="stdlib-group-items">

@@ -142,9 +142,12 @@
 }
 
 .stdlib-group-header .group-count {
-  color: var(--vscode-descriptionForeground, var(--text-muted));
-  font-weight: inherit;
-  margin-left: 4px;
+  margin-left: auto;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
 }
 
 .stdlib-group.collapsed .stdlib-group-header {

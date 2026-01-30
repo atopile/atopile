@@ -142,12 +142,12 @@
 }
 
 .variable-node-header .var-count {
+  margin-left: auto;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-  background: var(--bg-secondary);
-  padding: 0px 4px;
-  border-radius: 6px;
-  margin-left: auto;
+  background: var(--bg-tertiary);
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
 }
 
 /* Variable node content - match stdlib indentation */

@@ -76,12 +76,12 @@
 
 /* Count badge */
 .tree-row-count {
+  margin-left: auto;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-  background: var(--bg-secondary);
-  padding: 0 4px;
-  border-radius: 6px;
-  margin-left: auto;
+  background: var(--bg-tertiary);
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
 
