@@ -62,8 +62,8 @@
   border: 1px solid var(--ato-orange);
   background: var(--bg-secondary);
   color: var(--text-primary);
-  font-size: var(--font-size-md);
-  font-weight: 600;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-semibold);
   border-radius: var(--radius-sm);
   outline: none;
 }
@@ -91,7 +91,7 @@
   border-left: 2px dashed var(--border-subtle);
   background: transparent;
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -114,8 +114,8 @@
   border: 1px solid var(--ato-orange);
   background: var(--bg-secondary);
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   border-radius: 2px;
   outline: none;
 }
@@ -152,8 +152,8 @@
   align-items: center;
   gap: 6px;
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   background: var(--bg-secondary);
   border: 1px solid var(--ctp-red);
   border-radius: var(--radius-sm);
@@ -180,7 +180,7 @@
   border: 1px solid var(--ato-orange);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -192,13 +192,13 @@
 
 .name-validation-dropdown .suggestion-label {
   color: var(--text-muted);
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
 }
 
 .name-validation-dropdown .suggestion-value {
   color: var(--ato-orange);
   font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   background: transparent;
   padding: 0;
 }
@@ -244,7 +244,7 @@
   border: 1px solid var(--ato-orange);
   background: var(--bg-secondary);
   color: var(--text-primary);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   font-family: var(--font-mono);
   border-radius: var(--radius-sm);
   outline: none;
@@ -270,7 +270,7 @@
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   font-family: var(--font-mono);
   color: var(--text-secondary);
   cursor: pointer;
@@ -320,7 +320,7 @@
   border: none;
   background: transparent;
   color: var(--text-primary);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   font-family: var(--font-mono);
   outline: none;
   min-width: 0;
@@ -350,7 +350,7 @@
 
 /* Entry option parts */
 .entry-option-name {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
 }
 
@@ -391,7 +391,7 @@
   align-items: center;
   justify-content: center;
   padding: 12px 8px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   font-style: italic;
 }
@@ -409,7 +409,7 @@
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -437,7 +437,7 @@
   justify-content: center;
   padding: var(--spacing-xl);
   color: var(--text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
 }
 
 /* Project Group */
@@ -450,8 +450,8 @@
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-muted);
@@ -459,7 +459,7 @@
 
 .group-count {
   margin-left: auto;
-  font-size: var(--font-size-xxs);
+  font-size: var(--font-size-label);
   background: var(--bg-tertiary);
   padding: 1px 5px;
   border-radius: 6px;
@@ -523,8 +523,8 @@
 }
 
 .project-card-name {
-  font-size: var(--font-size-md);
-  font-weight: 600;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   flex-shrink: 0;
   /* Don't use flex: 1 - name should only be as wide as its content */
@@ -547,8 +547,8 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  font-size: var(--font-size-xxs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   flex-shrink: 0;
 }
 
@@ -597,7 +597,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   opacity: 0.7;
 }
@@ -634,14 +634,14 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--ato-orange);
   animation: pulse-opacity 1.5s ease-in-out infinite;
 }
 
 .build-time-indicator .build-time {
   font-family: var(--font-mono);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   white-space: nowrap;
   min-width: 36px;
   text-align: right;
@@ -701,7 +701,7 @@
 }
 
 .inline-build-count {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   font-family: var(--font-mono);
   margin-left: auto;
@@ -710,9 +710,9 @@
 
 /* Row 2: Description */
 .project-card-description {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-muted);
-  line-height: 1.4;
+  line-height: var(--line-height-normal);
   margin-bottom: var(--spacing-xs);
   padding-left: 36px; /* Align with name (expand + icon + gap) */
 }
@@ -736,7 +736,7 @@
 
 .project-card-description .description-input {
   width: 100%;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-primary);
   background: var(--bg-tertiary);
   border: 1px solid var(--accent);
@@ -758,7 +758,7 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
 }
 
@@ -830,7 +830,7 @@
   color: var(--text-secondary);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   transition: all 0.15s ease;
 }
 
@@ -871,8 +871,8 @@
 
 .project-name {
   flex: 1;
-  font-size: var(--font-size-base);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -880,7 +880,7 @@
 }
 
 .project-version {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
@@ -895,10 +895,10 @@
 .project-meta .warn-count,
 .build-meta .error-count,
 .build-meta .warn-count {
-  font-size: var(--font-size-xxs);
+  font-size: var(--font-size-label);
   padding: 1px 4px;
   border-radius: 4px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .project-meta .error-count,
@@ -1029,16 +1029,16 @@
 
 .build-card-name {
   flex-shrink: 0;
-  font-size: var(--font-size-md);
-  font-weight: 500;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
 }
 
 /* Inline stage display next to build name during building */
 .build-inline-stage {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
   margin-left: var(--spacing-xs);
   overflow: hidden;
   position: relative;
@@ -1063,9 +1063,9 @@
 /* Inline elapsed time during building */
 .build-elapsed-time-inline {
   font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-code);
   color: var(--text-muted);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 /* Build target play button - slides in from right on hover */
@@ -1145,7 +1145,7 @@
   align-items: center;
   gap: 3px;
   font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--info);
 }
 
@@ -1165,14 +1165,14 @@
 
 .build-current-stage {
   color: var(--text-secondary);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   text-transform: capitalize;
 }
 
 .build-elapsed-time {
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .build-progress-bar {
@@ -1222,10 +1222,10 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   padding: 1px 4px;
   border-radius: 8px;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .error-indicator {
@@ -1257,10 +1257,10 @@
 
 .build-card .error-badge,
 .build-card .warn-badge {
-  font-size: var(--font-size-xxs);
+  font-size: var(--font-size-label);
   padding: 1px 5px;
   border-radius: 8px;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .build-card .error-badge {
@@ -1274,7 +1274,7 @@
 }
 
 .build-card .build-duration {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
@@ -1288,7 +1288,7 @@
   padding: var(--spacing-xs);
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
@@ -1335,7 +1335,7 @@
 .build-card-actions .build-action-btn.primary {
   background: var(--ato-orange);
   color: white;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .build-card-actions .build-action-btn.primary:hover {
@@ -1355,7 +1355,7 @@
   padding: var(--spacing-xs);
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--text-secondary);
 }
 
@@ -1389,7 +1389,7 @@
   background: none;
   border: none;
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition: all 0.15s ease;
@@ -1404,7 +1404,7 @@
   margin-left: auto;
   font-family: var(--font-mono);
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
 }
 
 .build-stages-list {
@@ -1422,7 +1422,7 @@
   height: var(--row-height-tree-item);
   min-height: var(--row-height-tree-item);
   padding: 0 5px;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   border-radius: var(--radius-sm);
 }
 
@@ -1481,7 +1481,7 @@
 }
 
 .stage-message {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   font-style: italic;
 }
@@ -1496,7 +1496,7 @@
 
 .stage-duration {
   font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   margin-left: auto;
   min-width: 40px;
@@ -1505,7 +1505,7 @@
 
 .stage-row.running .stage-duration {
   color: var(--info);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .stage-row.pending .stage-duration {
@@ -1560,8 +1560,8 @@
 }
 
 .status-icon.queued .queue-position {
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   padding: 0 3px;
@@ -1579,8 +1579,8 @@
 }
 
 .build-name {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
 }
 
@@ -1630,7 +1630,7 @@
 
 .symbol-name {
   flex: 1;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   font-family: var(--font-mono);
   color: var(--text-primary);
 }

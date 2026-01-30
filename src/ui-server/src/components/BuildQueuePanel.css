@@ -15,7 +15,7 @@
   justify-content: center;
   padding: var(--spacing-md);
   color: var(--text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
 }
 
 /* Individual queue item */
@@ -27,7 +27,7 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   transition: border-color 0.15s ease;
 }
 
@@ -97,7 +97,7 @@
 
 .queue-item-name {
   color: var(--text-primary);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -105,12 +105,12 @@
 
 .queue-item-target {
   color: var(--text-muted);
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
 }
 
 .queue-item-stage {
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -129,7 +129,7 @@
   align-items: center;
   gap: 3px;
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   font-variant-numeric: tabular-nums;
 }
 
@@ -208,7 +208,7 @@
 /* Error message */
 .queue-item-error {
   color: var(--ctp-red);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

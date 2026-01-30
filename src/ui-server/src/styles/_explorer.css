@@ -70,15 +70,15 @@
   flex: 1;
   /* Match VS Code native tree item text */
   font-family: var(--font-sans);
-  font-size: var(--vscode-font-size, 13px);
+  font-size: var(--font-size-heading);
   font-weight: inherit;
-  color: var(--vscode-foreground, var(--text-primary));
+  color: var(--text-primary);
 }
 
 .section-count {
   font-family: var(--font-sans);
-  font-size: var(--vscode-font-size, 13px);
-  color: var(--vscode-descriptionForeground, var(--text-muted));
+  font-size: var(--font-size-heading);
+  color: var(--text-muted);
   background: transparent;
   padding: 0;
   margin-left: 4px;
@@ -138,15 +138,15 @@
 .package-name {
   /* Match VS Code native tree item text */
   font-family: var(--font-sans);
-  font-size: var(--vscode-font-size, 13px);
-  color: var(--vscode-foreground, var(--text-primary));
+  font-size: var(--font-size-body);
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .package-version {
-  font-size: var(--font-size-xxs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   font-family: var(--font-mono);
   background: var(--bg-tertiary);
@@ -160,7 +160,7 @@
 }
 
 .package-description {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-muted);
   padding: var(--spacing-xs) 0;
   font-style: italic;
@@ -235,13 +235,13 @@
 .symbol-name {
   /* Match VS Code native tree item text */
   font-family: var(--font-sans);
-  font-size: var(--vscode-font-size, 13px);
-  color: var(--vscode-foreground, var(--text-primary));
+  font-size: var(--font-size-body);
+  color: var(--text-primary);
 }
 
 .export-badge {
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   color: var(--ctp-green);
   background: rgba(166, 227, 161, 0.15);
@@ -360,15 +360,15 @@
   flex: 1;
   /* Match VS Code native tree item text */
   font-family: var(--font-sans);
-  font-size: var(--vscode-font-size, 13px);
+  font-size: var(--font-size-body);
   font-weight: inherit;
-  color: var(--vscode-foreground, var(--text-primary));
+  color: var(--text-primary);
 }
 
 .vendor-count {
   font-family: var(--font-sans);
-  font-size: var(--vscode-font-size, 13px);
-  color: var(--vscode-descriptionForeground, var(--text-muted));
+  font-size: var(--font-size-body);
+  color: var(--text-muted);
   background: transparent;
   padding: 0;
   margin-left: 4px;
@@ -412,15 +412,15 @@
 }
 
 .package-detail-name {
-  font-size: var(--font-size-md);
-  font-weight: 600;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   font-family: var(--font-mono);
 }
 
 .installed-badge {
-  font-size: var(--font-size-xxs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   color: var(--ctp-green);
   background: rgba(166, 227, 161, 0.15);
   padding: 2px 6px;
@@ -437,9 +437,9 @@
 }
 
 .package-detail-description {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--text-secondary);
-  line-height: 1.5;
+  line-height: var(--line-height-relaxed);
   margin-bottom: var(--spacing-md);
 }
 
@@ -457,7 +457,7 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-code);
   font-family: var(--font-mono);
   cursor: pointer;
   outline: none;
@@ -481,8 +481,8 @@
   border: none;
   border-radius: var(--radius-sm);
   color: var(--text-on-accent);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -509,8 +509,8 @@
 }
 
 .symbols-header {
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: var(--font-size-section-header);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -530,14 +530,14 @@
 
 .type-colon {
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
 }
 
 .type-link {
   border: none;
   background: transparent;
   color: var(--ctp-teal);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-code);
   font-family: var(--font-mono);
   padding: 0;
   cursor: pointer;

@@ -52,7 +52,7 @@
   padding: var(--spacing-xl) var(--spacing-md);
   gap: var(--spacing-md);
   color: var(--text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
 }
 
 .stdlib-loading .loading-spinner {
@@ -73,7 +73,7 @@
   padding: var(--spacing-xl) var(--spacing-md);
   gap: var(--spacing-sm);
   color: var(--text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
 }
 
 .stdlib-empty svg {
@@ -88,7 +88,7 @@
 }
 
 .search-results-count {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   padding: var(--spacing-xs) var(--spacing-sm);
   margin-bottom: var(--spacing-xs);
@@ -113,8 +113,8 @@
   background: transparent;
   border: none;
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   letter-spacing: 0.15px;
   text-align: left;
   line-height: 1.1;
@@ -139,7 +139,7 @@
 }
 
 .stdlib-group-header .group-count {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   font-weight: normal;
 }
@@ -196,17 +196,17 @@
 
 .stdlib-card-name {
   flex: 1;
-  font-weight: 500;
-  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-body);
   color: var(--text-primary);
 }
 
 
 /* Description - left-aligned with name, close spacing */
 .stdlib-card-description {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
-  line-height: 1.4;
+  line-height: var(--line-height-normal);
   margin-top: 2px;
   margin-bottom: var(--spacing-sm);
   padding-left: calc(12px + 16px + 4px); /* Align with name: expand-icon + type-icon + gap */
@@ -222,7 +222,7 @@
 }
 
 .stdlib-child-node {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
 }
 
 .stdlib-child-row {
@@ -259,11 +259,11 @@
 
 .stdlib-child-name {
   color: var(--text-primary);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .stdlib-child-type {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   opacity: 0.7;
   margin-left: auto;
 }
@@ -285,7 +285,7 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -305,7 +305,7 @@
 .stdlib-card-usage .usage-code {
   padding: var(--spacing-sm);
   font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-primary);
   white-space: pre-wrap;
   overflow-x: auto;
@@ -326,7 +326,7 @@
   align-items: center;
   gap: var(--spacing-xs);
   padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-secondary);
   background: var(--bg-secondary);
   border-radius: var(--radius-sm);
@@ -374,7 +374,7 @@
   border: none;
   background: transparent;
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   outline: none;
 }
 
@@ -391,11 +391,11 @@
   padding: var(--spacing-xl) var(--spacing-md);
   gap: var(--spacing-sm);
   color: var(--text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   text-align: center;
 }
 
 .empty-state .empty-hint {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   opacity: 0.7;
 }

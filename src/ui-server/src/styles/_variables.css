@@ -35,9 +35,49 @@
   --radius-md: 5px;
   --radius-lg: 6px;
 
-  /* Font - use VS Code's native fonts */
+  /* ============================================
+     Typography System
+     Single source of truth for all font settings
+     ============================================ */
+
+  /* Font Families - VS Code native with fallbacks */
   --font-mono: var(--vscode-editor-font-family, 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace);
   --font-sans: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+
+  /* Base Font Size - from VS Code for accessibility */
+  --font-size-root: var(--vscode-font-size, 13px);
+
+  /* Font Size Scale (1.125 ratio - Major Second)
+     All sizes derived from root for consistent scaling */
+  --font-size-xxs: calc(var(--font-size-root) * 0.769);  /* ~10px */
+  --font-size-xs:  calc(var(--font-size-root) * 0.846);  /* ~11px */
+  --font-size-sm:  calc(var(--font-size-root) * 0.923);  /* ~12px */
+  --font-size-md:  var(--font-size-root);                /* 13px  */
+  --font-size-lg:  calc(var(--font-size-root) * 1.154);  /* ~15px */
+  --font-size-xl:  calc(var(--font-size-root) * 1.308);  /* ~17px */
+  --font-size-xxl: calc(var(--font-size-root) * 1.462);  /* ~19px */
+
+  /* Legacy alias - deprecated, use --font-size-md */
+  --font-size-base: var(--font-size-md);
+
+  /* Semantic Font Sizes - use these in components */
+  --font-size-body:           var(--font-size-sm);   /* Default body text */
+  --font-size-body-small:     var(--font-size-xs);   /* Secondary/description text */
+  --font-size-label:          var(--font-size-xs);   /* Form labels, badges */
+  --font-size-heading:        var(--font-size-md);   /* Section headers */
+  --font-size-heading-lg:     var(--font-size-lg);   /* Panel titles */
+  --font-size-code:           var(--font-size-sm);   /* Code blocks, paths */
+  --font-size-section-header: var(--font-size-xs);   /* VS Code style section headers */
+
+  /* Line Heights */
+  --line-height-tight:   1.2;   /* Headings, compact UI */
+  --line-height-normal:  1.4;   /* Body text default */
+  --line-height-relaxed: 1.6;   /* Readable paragraphs */
+
+  /* Font Weights */
+  --font-weight-normal:   400;  /* Body text */
+  --font-weight-medium:   500;  /* Emphasis, labels */
+  --font-weight-semibold: 600;  /* Headings, important */
 
   /* Transitions */
   --transition-fast: 0.1s ease;
@@ -45,18 +85,6 @@
 
   /* Theme transition for smooth switching */
   --theme-transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
-
-  /* Font Sizes - aligned with VS Code native UI */
-  --font-size-base: var(--vscode-font-size, 14px);
-  /* VS Code section header font size (matches activity bar labels) */
-  --font-size-section-header: var(--vscode-font-size, 12px);
-  --font-size-xxs: 10px;
-  --font-size-xs: 11px;
-  --font-size-sm: 12px;
-  --font-size-md: var(--font-size-base);
-  --font-size-lg: calc(var(--font-size-base) * 1.08);
-  --font-size-xl: calc(var(--font-size-base) * 1.23);
-  --font-size-xxl: calc(var(--font-size-base) * 1.38);
 
   /* VS Code standard row heights */
   --row-height-section-header: 26px;  /* Sidebar section headers */

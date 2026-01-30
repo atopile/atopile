@@ -48,8 +48,8 @@
 }
 
 .action-label {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -111,8 +111,8 @@
   align-items: center;
   gap: var(--spacing-xs);
   padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   border: 1px solid var(--border-subtle);
   background: var(--bg-tertiary);
   color: var(--text-secondary);

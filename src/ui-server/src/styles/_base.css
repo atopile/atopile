@@ -18,13 +18,13 @@ html, body {
 }
 
 body {
-  /* Use VS Code's native UI font throughout */
+  /* Typography - use unified tokens from _variables.css */
   font-family: var(--font-sans);
-  font-size: var(--vscode-font-size, 14px);
-  font-weight: var(--vscode-font-weight, 400);
-  line-height: 1.4;
-  color: var(--vscode-foreground, var(--text-primary));
-  background: var(--vscode-sideBar-background, var(--bg-primary));
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+  color: var(--text-primary);
+  background: var(--bg-primary);
   -webkit-font-smoothing: antialiased;
   letter-spacing: 0;
   transition: var(--theme-transition);
@@ -126,8 +126,8 @@ body {
   gap: var(--spacing-sm);
   /* Match VS Code native view title styling */
   font-family: var(--font-sans);
-  font-weight: 500;
-  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-body);
   color: var(--text-primary);
   letter-spacing: 0;
 }

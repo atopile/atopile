@@ -30,7 +30,7 @@
   margin-left: auto;
   padding: 4px 8px;
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   border: none;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -68,7 +68,7 @@
 }
 
 .status-text {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 /* Card Component */
@@ -110,16 +110,16 @@
 }
 
 .card-title {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-muted);
 }
 
 .card-badge {
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   padding: 0 var(--spacing-sm);
   min-width: 16px;
   height: 16px;
@@ -180,21 +180,21 @@
 
 .empty-title {
   font-size: var(--font-size-base);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--text-secondary);
   margin-bottom: var(--spacing-xs);
 }
 
 .empty-desc {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--text-muted);
 }
 
 .select-project-btn {
   margin-top: var(--spacing-md);
   padding: var(--spacing-sm) var(--spacing-md);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
@@ -262,8 +262,8 @@
 
 .project-name {
   flex: 1;
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -358,13 +358,13 @@
 }
 
 .disconnected-title {
-  font-size: var(--font-size-md);
-  font-weight: 600;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
 }
 
 .disconnected-message {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--text-muted);
   display: flex;
   flex-direction: column;
@@ -377,7 +377,7 @@
 
 .disconnected-message code {
   font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-code);
   background: var(--bg-tertiary);
   padding: 1px 4px;
   border-radius: var(--radius-sm);
@@ -392,8 +392,8 @@
   border: none;
   padding: var(--spacing-xs) var(--spacing-md);
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
   margin-bottom: var(--spacing-sm);
 }
@@ -422,7 +422,7 @@
 }
 
 .disconnected-troubleshooting-header {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--text-secondary);
   margin-bottom: var(--spacing-xs);
 }
@@ -470,8 +470,8 @@
   background: transparent;
   color: var(--text-muted);
   font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
   border-radius: 0;
   white-space: nowrap;
@@ -499,8 +499,8 @@
   background: var(--vscode-badge-background, var(--bg-tertiary));
   border-radius: 8px;
   font-family: var(--font-sans);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   color: var(--vscode-badge-foreground, var(--text-muted));
 }
 
@@ -518,8 +518,8 @@
   padding: 0 4px;
   background: var(--warning-bg);
   border-radius: 8px;
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   color: var(--warning);
 }
 

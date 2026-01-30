@@ -56,9 +56,9 @@
 }
 
 .delete-confirm-text {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--error);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .delete-confirm-buttons {
@@ -69,8 +69,8 @@
 .delete-confirm-btn {
   padding: 2px 8px;
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
@@ -115,9 +115,9 @@
 }
 
 .duplicate-warning-text {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   flex: 1;
 }
 
@@ -130,8 +130,8 @@
 .duplicate-warning-btn {
   padding: 2px 8px;
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
@@ -161,7 +161,7 @@
 .build-card-symbols.loading,
 .build-card-symbols.error {
   padding: var(--spacing-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
@@ -189,7 +189,7 @@
 
 /* Build ID label in expanded view */
 .build-id-label {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   font-family: var(--font-mono);
   background: var(--bg-tertiary);

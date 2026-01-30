@@ -36,21 +36,21 @@
 }
 
 .settings-label-title {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
 }
 
 .settings-label-desc {
-  font-size: var(--font-size-xxs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
-  line-height: 1.3;
+  line-height: var(--line-height-tight);
 }
 
 .settings-input {
   width: 100%;
   padding: 6px 8px;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-code);
   font-family: var(--font-mono);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
@@ -93,7 +93,7 @@
 /* Clickable value button (shows current value, click to edit) */
 .settings-value-btn {
   padding: 4px 10px;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-code);
   font-family: var(--font-mono);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
@@ -117,7 +117,7 @@
 
 .settings-reset-btn {
   padding: 4px 8px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   background: transparent;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
@@ -133,8 +133,8 @@
 
 /* Settings Section Title */
 .settings-section-title {
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -149,7 +149,7 @@
 .settings-select {
   width: 100%;
   padding: 6px 28px 6px 8px;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
@@ -196,8 +196,8 @@
   justify-content: center;
   gap: 4px;
   padding: 6px 8px;
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
@@ -230,7 +230,7 @@
 /* Settings hint text */
 .settings-hint {
   display: block;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-muted);
   margin-top: 4px;
   word-break: break-all;
@@ -259,7 +259,7 @@
 .branch-search-input {
   width: 100%;
   padding: 6px 8px 6px 26px;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
@@ -284,7 +284,7 @@
 .branch-current-value {
   position: absolute;
   left: 26px;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--text-primary);
   pointer-events: none;
 }
@@ -310,7 +310,7 @@
   gap: 6px;
   width: 100%;
   padding: 6px 8px;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   background: transparent;
   border: none;
   color: var(--text-secondary);
@@ -343,7 +343,7 @@
 .branch-tag {
   margin-left: auto;
   padding: 1px 4px;
-  font-size: var(--font-size-xxs);
+  font-size: var(--font-size-label);
   background: var(--bg-tertiary);
   border-radius: 2px;
   color: var(--text-muted);
@@ -351,7 +351,7 @@
 
 .branch-no-results {
   padding: 8px;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--text-muted);
   text-align: center;
 }
@@ -407,7 +407,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--text-secondary);
   margin-bottom: 6px;
 }
@@ -446,7 +446,7 @@
   border: 1px solid var(--ctp-red);
   border-radius: var(--radius-sm);
   margin-bottom: var(--spacing-sm);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--ctp-red);
 }
 
@@ -460,7 +460,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-muted);
   padding: var(--spacing-sm);
   border-radius: var(--radius-sm);
@@ -543,9 +543,9 @@
 }
 
 .detected-label {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .detected-list {
@@ -560,7 +560,7 @@
   justify-content: space-between;
   gap: 8px;
   padding: 6px 10px;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
@@ -582,19 +582,19 @@
 }
 
 .detected-project {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   font-family: var(--font-mono);
 }
 
 .detected-source {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
 
 .detected-version {
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   font-family: var(--font-mono);
 }
 
@@ -643,8 +643,8 @@
 }
 
 .settings-section-header {
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: var(--font-size-section-header);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -746,7 +746,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   padding: 4px 0;
   color: var(--text-muted);
 }
@@ -781,7 +781,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--ato-orange);
   padding: 6px 0 2px;
 }
@@ -891,7 +891,7 @@
   gap: 8px;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   transition: all 0.2s ease;
 }
 
@@ -901,7 +901,7 @@
 
 .health-message {
   flex: 1;
-  line-height: 1.3;
+  line-height: var(--line-height-tight);
 }
 
 /* Health status: healthy (green) */
@@ -962,8 +962,8 @@
 /* Health action button (e.g., Restart button) */
 .health-action-btn {
   padding: 4px 10px;
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   background: var(--ctp-yellow);
   border: none;
   border-radius: var(--radius-sm);

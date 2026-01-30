@@ -12,7 +12,7 @@
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-code);
   overflow: hidden;
 }
 
@@ -54,7 +54,7 @@
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-code);
 }
 
 .te-input:focus {
@@ -70,7 +70,7 @@
   flex: 1;
   min-width: 80px;
   padding: var(--spacing-xs);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
 }
 
 .te-search {
@@ -89,7 +89,7 @@
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-code);
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
@@ -126,7 +126,7 @@
   padding: 0;
   color: var(--ctp-blue);
   cursor: pointer;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   text-decoration: underline;
   margin-left: var(--spacing-xs);
 }
@@ -150,7 +150,7 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
 }
 
@@ -189,13 +189,13 @@
 
 /* Selection info */
 .te-selection-info {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
 }
 
 .te-selection-count {
   color: var(--ato-orange);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 /* Error display */
@@ -207,7 +207,7 @@
   background: rgba(243, 139, 168, 0.1);
   border-bottom: 1px solid var(--ctp-red);
   color: var(--ctp-red);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
 }
 
 .te-error-icon {
@@ -219,8 +219,8 @@
   border-radius: 50%;
   background: var(--ctp-red);
   color: var(--bg-primary);
-  font-weight: bold;
-  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-label);
 }
 
 /* Collection errors */
@@ -234,8 +234,8 @@
 
 .te-collection-errors-header {
   padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   color: var(--ctp-yellow);
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -246,7 +246,7 @@
 
 .te-collection-error summary {
   padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--ctp-peach);
   cursor: pointer;
 }
@@ -258,7 +258,7 @@
 .te-collection-error pre {
   padding: var(--spacing-sm);
   margin: 0;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-code);
   color: var(--text-muted);
   white-space: pre-wrap;
   word-break: break-all;
@@ -369,7 +369,7 @@
 .te-tree-count {
   flex-shrink: 0;
   padding: 0 var(--spacing-xs);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);

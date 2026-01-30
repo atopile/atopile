@@ -87,8 +87,8 @@
 .lv-status-tooltip-row {
   display: flex;
   gap: var(--spacing-sm);
-  font-size: var(--font-size-xs);
-  line-height: 1.4;
+  font-size: var(--font-size-label);
+  line-height: var(--line-height-normal);
 }
 
 .lv-status-tooltip-row + .lv-status-tooltip-row {
@@ -146,8 +146,8 @@
 
 /* Log count indicator */
 .lv-status-count {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
@@ -158,8 +158,8 @@
   background: rgba(166, 227, 161, 0.2);
   border-radius: 2px;
   color: var(--ctp-green);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.3px;
 }
 
@@ -171,7 +171,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-code);
   font-family: var(--font-mono);
   height: 24px;
   transition: border-color var(--transition-fast);
@@ -226,8 +226,8 @@
   background: var(--bg-tertiary);
   border: none;
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   font-family: var(--font-mono);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -299,8 +299,8 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   font-family: var(--font-mono);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -348,7 +348,7 @@
 
 .lv-btn-small {
   padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
 }
 
 .lv-btn-active {
@@ -375,7 +375,7 @@
   gap: var(--spacing-xs);
   padding: var(--spacing-xs) 0;
   margin-top: var(--spacing-xs);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   border-top: 1px solid var(--border-subtle);
 }
 
@@ -389,7 +389,7 @@
   padding: 1px 6px;
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -403,7 +403,7 @@
   background: rgba(243, 139, 168, 0.15);
   border-radius: var(--radius-sm);
   color: var(--ctp-red);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-code);
 }
 
 /* Column Headers - CSS Grid for static positioning */
@@ -444,8 +444,8 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   font-family: var(--font-mono);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -463,7 +463,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   font-family: var(--font-mono);
   flex: 1;
   min-width: 0;
@@ -515,9 +515,9 @@
   border-left: none;
   border-radius: 0;
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   cursor: pointer;
   transition: all var(--transition-fast);
   height: 100%;
@@ -569,8 +569,8 @@
   flex-direction: column;
   gap: 2px;
   padding: 2px var(--spacing-sm);
-  font-size: var(--font-size-sm);
-  line-height: 1.4;
+  font-size: var(--font-size-code);
+  line-height: var(--line-height-normal);
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -612,7 +612,7 @@
 
 .lv-ts {
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   font-variant-numeric: tabular-nums;
   padding-top: 1px;
   cursor: pointer;
@@ -629,8 +629,8 @@
 .lv-level-badge {
   padding: 0 5px;
   border-radius: 2px;
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   text-align: center;
   cursor: pointer;
@@ -677,8 +677,8 @@
 .lv-source-badge {
   padding: 1px 5px;
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   background: transparent;
   border: 1px solid currentColor;
   color: var(--text-muted);
@@ -698,8 +698,8 @@
 .lv-stage-badge {
   padding: 1px 5px;
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   background: rgba(166, 173, 200, 0.15);
   color: var(--text-muted);
   flex-shrink: 0;
@@ -711,8 +711,8 @@
   position: relative;
   padding: 1px 5px;
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   background: rgba(137, 180, 250, 0.15);
   color: var(--info);
   flex-shrink: 0;
@@ -740,8 +740,8 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  font-weight: 400;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-normal);
   color: var(--text-primary);
   white-space: nowrap;
   z-index: 100;
@@ -770,7 +770,7 @@
   flex: 1 1 auto;
   margin: 0;
   font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-code);
 }
 
 .lv-highlight {
@@ -817,8 +817,8 @@
 
 .lv-separator-line-label {
   flex-shrink: 0;
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-muted);
@@ -842,8 +842,8 @@
   grid-template-columns: 58px 55px 165px 1fr;
   gap: var(--spacing-sm);
   padding: 2px var(--spacing-sm);
-  font-size: var(--font-size-sm);
-  line-height: 1.4;
+  font-size: var(--font-size-code);
+  line-height: var(--line-height-normal);
   align-items: flex-start;
 }
 
@@ -896,7 +896,7 @@
   padding: 0 4px 0 0;
   cursor: pointer;
   color: var(--text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-code);
   font-family: var(--font-mono);
   transition: color var(--transition-fast);
   flex-shrink: 0;
@@ -908,7 +908,7 @@
 
 .lv-tree-toggle-icon {
   display: inline-block;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   transition: transform 0.15s ease;
 }
 
@@ -970,8 +970,8 @@
   border: none;
   padding: 0;
   cursor: pointer;
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-code);
+  font-weight: var(--font-weight-medium);
   font-family: var(--font-mono);
   text-transform: lowercase;
   letter-spacing: 0.3px;
@@ -1000,7 +1000,7 @@
   padding: var(--spacing-sm);
   border-radius: var(--radius-sm);
   white-space: pre-wrap;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-code);
   animation: trace-expand 0.15s ease-out;
 }
 
@@ -1031,8 +1031,8 @@
   align-items: flex-start;
   gap: var(--spacing-sm);
   padding: 3px var(--spacing-sm);
-  font-size: var(--font-size-sm);
-  line-height: 1.4;
+  font-size: var(--font-size-code);
+  line-height: var(--line-height-normal);
   border-bottom: 1px solid var(--border-subtle);
 }
 

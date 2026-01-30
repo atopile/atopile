@@ -18,7 +18,7 @@
   border-radius: 4px;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   transition: all 0.15s ease;
 }
 
@@ -43,8 +43,8 @@
   background: var(--ctp-peach);
   border-radius: 8px;
   color: var(--bg-primary);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
 }
 
 .efs-chevron {
@@ -79,8 +79,8 @@
 }
 
 .efs-title {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
 }
 
@@ -90,7 +90,7 @@
   border: 1px solid var(--border-default);
   border-radius: 4px;
   color: var(--text-secondary);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -108,7 +108,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: 4px;
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   font-family: inherit;
 }
 
@@ -127,7 +127,7 @@
   gap: 8px;
   padding: 16px;
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
 }
 
 .efs-spinner {
@@ -146,14 +146,14 @@
 .efs-error {
   padding: 12px;
   color: var(--ctp-red);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
 }
 
 .efs-empty {
   padding: 24px 12px;
   text-align: center;
   color: var(--text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
 }
 
 .efs-flags-list {
@@ -190,17 +190,17 @@
 
 .efs-flag-name {
   font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-code);
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
   word-break: break-all;
 }
 
 .efs-flag-desc {
   margin-top: 2px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-secondary);
-  line-height: 1.4;
+  line-height: var(--line-height-normal);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -219,12 +219,12 @@
   padding: 1px 6px;
   background: var(--bg-tertiary);
   border-radius: 3px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--ctp-mauve);
 }
 
 .efs-flag-default {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-muted);
 }
 
@@ -249,7 +249,7 @@
 }
 
 .efs-bool-label {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-secondary);
 }
 
@@ -269,8 +269,8 @@
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
   color: var(--text-primary);
-  font-size: var(--font-size-lg);
-  font-weight: 500;
+  font-size: var(--font-size-heading-lg);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
   transition: all 0.1s ease;
 }
@@ -302,7 +302,7 @@
   border-radius: 0;
   color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-code);
   text-align: center;
   -moz-appearance: textfield;
 }
@@ -321,7 +321,7 @@
   border-radius: 4px;
   color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-code);
 }
 
 .efs-number-input:focus,

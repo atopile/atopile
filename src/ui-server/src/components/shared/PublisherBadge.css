@@ -3,7 +3,7 @@
  */
 
 .publisher-badge {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
@@ -14,7 +14,7 @@
 .publisher-badge.official {
   background: rgba(166, 227, 161, 0.15);
   color: var(--ctp-green);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .publisher-badge .publisher-prefix {

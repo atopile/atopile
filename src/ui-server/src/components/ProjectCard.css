@@ -54,8 +54,8 @@
 }
 
 .project-card-name {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -84,8 +84,8 @@
 
 .project-name-input {
   width: 100%;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
   padding: 2px 6px;
   border: 1px solid var(--ctp-blue);
   border-radius: var(--radius-sm);
@@ -100,8 +100,8 @@
 
 /* Publisher badge (package mode) */
 .package-publisher-tag {
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   color: var(--text-muted);
   opacity: 0.7;
   flex-shrink: 0;
@@ -145,7 +145,7 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
 }
 
@@ -212,10 +212,10 @@
 
 /* Description */
 .project-card-description {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-secondary);
   margin-top: var(--spacing-xs);
-  line-height: 1.4;
+  line-height: var(--line-height-normal);
 }
 
 .project-card-description.clamped {
@@ -227,7 +227,7 @@
 
 .description-input {
   width: 100%;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   padding: 4px 6px;
   border: 1px solid var(--ctp-blue);
   border-radius: var(--radius-sm);
@@ -328,7 +328,7 @@
   height: 28px;
   padding: 0 8px;
   width: 100%;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
@@ -368,7 +368,7 @@
   gap: var(--spacing-xs);
   width: 100%;
   padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-secondary);
   background: transparent;
   border: none;
@@ -407,8 +407,8 @@
   gap: 6px;
   height: 28px;
   padding: 0 16px;
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
@@ -460,8 +460,8 @@
 /* Dropdown styles */
 .dropdown-header {
   padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   color: var(--text-muted);
   border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-secondary);
@@ -480,7 +480,7 @@
   flex: 1;
   border: none;
   background: transparent;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-primary);
   outline: none;
 }
@@ -500,7 +500,7 @@
   gap: var(--spacing-xs);
   width: 100%;
   padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-secondary);
   background: transparent;
   border: none;
@@ -530,7 +530,7 @@
 
 .dropdown-empty {
   padding: var(--spacing-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-muted);
   text-align: center;
 }
@@ -560,7 +560,7 @@
   gap: var(--spacing-sm);
   padding: var(--spacing-md);
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
 }
 
 .package-loading .spin {
@@ -575,7 +575,7 @@
 /* Error state */
 .package-error {
   padding: var(--spacing-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--ctp-red);
   background: rgba(243, 139, 168, 0.1);
   border-radius: var(--radius-sm);
@@ -589,7 +589,7 @@
   gap: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-sm);
   margin-bottom: var(--spacing-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);
@@ -627,7 +627,7 @@
   padding: var(--spacing-xs) var(--spacing-sm);
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-subtle);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
 }
 
@@ -665,11 +665,11 @@
   margin: 0;
   padding: var(--spacing-sm);
   font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-code);
   color: var(--text-primary);
   white-space: pre-wrap;
   word-break: break-word;
-  line-height: 1.4;
+  line-height: var(--line-height-normal);
 }
 
 /* Syntax highlighting */

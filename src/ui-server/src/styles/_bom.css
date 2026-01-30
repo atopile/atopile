@@ -28,11 +28,11 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
 }
 
 .bom-summary-item .summary-value {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   font-family: var(--font-mono);
 }
@@ -60,12 +60,12 @@
 
 .bom-summary-item.muted .summary-value {
   color: var(--text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
 }
 
 .bom-summary-item.muted .summary-label {
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
 }
 
 /* Toolbar */
@@ -86,7 +86,7 @@
   align-items: center;
   gap: 3px;
   padding: 3px 8px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   background: none;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
@@ -108,8 +108,8 @@
 
 /* BOM type badge */
 .bom-type-badge {
-  font-size: var(--font-size-xxs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   padding: 2px 5px;
   border-radius: 3px;
   background: var(--bg-tertiary);
@@ -167,7 +167,7 @@
 }
 
 .bom-mpn {
-  font-size: var(--font-size-xxs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   font-family: var(--font-mono);
   max-width: 90px;
@@ -244,8 +244,8 @@
 .component-icon.other { color: var(--text-muted); }
 
 .bom-value {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
   flex: 1;
   overflow: hidden;
@@ -254,15 +254,15 @@
 }
 
 .bom-quantity {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--ctp-blue);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   font-family: var(--font-mono);
   flex-shrink: 0;
 }
 
 .bom-cost {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--ctp-green);
   font-family: var(--font-mono);
   flex-shrink: 0;
@@ -285,7 +285,7 @@
   width: 100%;
   border-collapse: collapse;
   margin-bottom: var(--spacing-sm);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
 }
 
 .bom-detail-table td {
@@ -299,7 +299,7 @@
 
 .detail-cell-label {
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   width: 80px;
   white-space: nowrap;
 }
@@ -380,8 +380,8 @@
   display: inline-block;
   padding: 2px 6px;
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-xxs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
 }
 
 .source-badge.source-picked {
@@ -405,7 +405,7 @@
   grid-template-columns: repeat(3, 1fr);
   gap: 4px 8px;
   margin-bottom: var(--spacing-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
 }
 
 .bom-detail-item {
@@ -496,7 +496,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   margin-bottom: var(--spacing-xs);
 }
@@ -547,14 +547,14 @@
 }
 
 .usage-module-name {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   color: var(--text-primary);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   flex: 1;
 }
 
 .usage-count-badge {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--ctp-blue);
   font-family: var(--font-mono);
   background: color-mix(in srgb, var(--ctp-blue) 10%, transparent);
@@ -586,15 +586,15 @@
 }
 
 .usage-designator {
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: var(--font-size-code);
+  font-weight: var(--font-weight-semibold);
   font-family: var(--font-mono);
   color: var(--ctp-peach);
   min-width: 28px;
 }
 
 .usage-leaf {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   flex: 1;
@@ -617,7 +617,7 @@
 }
 
 .usage-module-path {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   flex: 1;
@@ -641,7 +641,7 @@
 
 /* Legacy usage styles */
 .usage-parent-path {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   flex: 1;
@@ -654,34 +654,34 @@
 }
 
 .instance-path {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   flex: 1;
 }
 
 .usage-path {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   flex: 1;
 }
 
 .bom-cost-item .cost-value {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
   font-family: var(--font-mono);
 }
 
 .bom-cost-item .cost-value.out-of-stock {
   color: var(--error);
-  font-size: var(--font-size-xxs);
+  font-size: var(--font-size-label);
 }
 
 /* Parameters */
 .bom-params-label {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   margin-bottom: 4px;
   text-transform: uppercase;
@@ -700,7 +700,7 @@
   padding: 3px 6px;
   background: var(--bg-secondary);
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
 }
 
 .bom-param .param-name {
@@ -748,7 +748,7 @@
 /* Highlight when constraint differs from resolved */
 .bom-param.has-constraint .param-resolved {
   color: var(--ctp-green);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 /* Source path */
@@ -761,7 +761,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
 }
 
@@ -807,8 +807,8 @@
 .source-badge {
   padding: 1px 5px;
   border-radius: 3px;
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   text-transform: uppercase;
   white-space: nowrap;
   flex-shrink: 0;
@@ -845,7 +845,7 @@
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition: all var(--transition-fast);
@@ -874,7 +874,7 @@
   align-items: center;
   gap: 6px;
   padding: 3px 6px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -891,7 +891,7 @@
 
 .usage-designator {
   font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--ato-orange);
   min-width: 28px;
 }
@@ -948,17 +948,17 @@
 }
 
 .bom-empty-state .empty-title {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   color: var(--text-secondary);
   margin-top: var(--spacing-xs);
 }
 
 .bom-empty-state .empty-description {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-muted);
   max-width: 220px;
-  line-height: 1.4;
+  line-height: var(--line-height-normal);
 }
 
 .bom-empty-state .refresh-btn {
@@ -971,7 +971,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -1006,7 +1006,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   line-height: 1;
 }
@@ -1048,7 +1048,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -1072,7 +1072,7 @@
   background: var(--success);
   color: var(--text-on-status);
   border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   animation: fadeIn 0.2s ease;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }

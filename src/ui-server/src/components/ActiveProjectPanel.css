@@ -10,8 +10,8 @@
 /* Section Labels - sub-headers within panels, smaller than main panel headers */
 .section-label {
   font-family: var(--vscode-font-family, var(--font-sans));
-  font-size: var(--font-size-xxs);
-  font-weight: 400;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-normal);
   text-transform: none;
   color: var(--vscode-descriptionForeground, var(--text-muted));
   letter-spacing: 0;
@@ -87,7 +87,7 @@
   border: none;
   color: var(--text-primary);
   font-family: var(--font-sans);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   outline: none;
 }
 
@@ -146,7 +146,7 @@
   padding: var(--spacing-sm);
   text-align: center;
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
 }
 
 /* Combobox option - single-line layout: icon | name | path | check */
@@ -185,8 +185,8 @@
 
 .combobox-option-name {
   font-family: var(--font-sans);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-body-small);
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -196,7 +196,7 @@
 .combobox-option-path {
   flex: 1;
   font-family: var(--font-sans);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-muted);
   opacity: 0.7;
   white-space: nowrap;
@@ -227,7 +227,7 @@
   border: 1px dashed var(--border-default);
   background: transparent;
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -268,8 +268,8 @@
   border-radius: 7px;
   background: var(--ctp-yellow);
   color: var(--ctp-base);
-  font-size: var(--font-size-xxs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
 }
 
 /* Target Selector - combobox style */
@@ -295,7 +295,7 @@
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body);
   cursor: pointer;
   transition: all 0.15s ease;
   text-align: left;
@@ -330,13 +330,13 @@
   border: none;
   color: var(--text-primary);
   font-family: var(--font-sans);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   outline: none;
 }
 
 .target-trigger-entry {
   flex: 1;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-muted);
   font-family: var(--font-sans);
   text-align: right;
@@ -395,8 +395,8 @@
 
 .target-option-name {
   font-family: var(--font-sans);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-body-small);
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -405,7 +405,7 @@
 
 .target-option-entry {
   font-family: var(--font-sans);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -442,7 +442,7 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--spacing-xs);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-muted);
 }
 
@@ -457,9 +457,9 @@
 
 .project-description .description-text {
   flex: 1;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-label);
   color: var(--text-secondary);
-  line-height: 1.4;
+  line-height: var(--line-height-normal);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -509,8 +509,8 @@
 .project-description .description-input {
   width: 100%;
   padding: 4px 6px;
-  font-size: var(--font-size-xs);
-  line-height: 1.4;
+  font-size: var(--font-size-label);
+  line-height: var(--line-height-normal);
   color: var(--text-primary);
   background: var(--bg-tertiary);
   border: 1px solid var(--ctp-blue);
@@ -548,8 +548,8 @@
   justify-content: center;
   gap: 4px;
   padding: 6px 8px;
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-body-small);
+  font-weight: var(--font-weight-medium);
   border-radius: var(--radius-sm);
   border: 1px solid var(--ato-orange);
   background: transparent;
@@ -598,8 +598,8 @@
   justify-content: center;
   gap: 4px;
   padding: 6px 4px;
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-body-small);
+  font-weight: var(--font-weight-medium);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
   background: transparent;
@@ -676,7 +676,7 @@
   color: var(--vscode-descriptionForeground, var(--text-muted));
   font-family: var(--vscode-font-family, var(--font-sans));
   font-size: 11px;
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
   text-transform: none;
   letter-spacing: 0;
   cursor: pointer;
@@ -710,8 +710,8 @@
   border-radius: 7px;
   background: var(--ctp-yellow);
   color: var(--ctp-base);
-  font-size: var(--font-size-xxs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
 }
 
 .build-queue-list {
@@ -727,7 +727,7 @@
 .build-queue-empty {
   padding: var(--spacing-xs);
   text-align: center;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   color: var(--text-muted);
 }
 
@@ -787,8 +787,8 @@
 }
 
 .build-queue-target {
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-body-small);
+  font-weight: var(--font-weight-medium);
   font-family: var(--font-mono);
   color: var(--text-primary);
   white-space: nowrap;
@@ -887,7 +887,7 @@
 }
 
 .build-stages-title {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--text-secondary);
 }
 
@@ -1042,8 +1042,8 @@
 }
 
 .form-title {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
 }
 
@@ -1074,8 +1074,8 @@
   background: rgba(243, 139, 168, 0.1);
   border: 1px solid var(--ctp-red);
   color: var(--ctp-red);
-  font-size: var(--font-size-xs);
-  line-height: 1.4;
+  font-size: var(--font-size-body-small);
+  line-height: var(--line-height-normal);
 }
 
 .form-error svg {
@@ -1092,8 +1092,8 @@
 }
 
 .form-field label {
-  font-size: var(--font-size-xxs);
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1147,7 +1147,7 @@
   border: 1px solid var(--border-subtle);
   background: var(--bg-tertiary);
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-code);
   font-family: var(--font-mono);
   outline: none;
   transition: border-color 0.15s ease;
@@ -1217,7 +1217,7 @@
   border: none;
   background: transparent;
   color: var(--text-primary);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-body-small);
   text-align: left;
   cursor: pointer;
 }
@@ -1228,7 +1228,7 @@
 }
 
 .entry-suggestion .suggestion-name {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
 }
 
@@ -1250,8 +1250,8 @@
 
 .form-btn {
   padding: 5px 10px;
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-body-small);
+  font-weight: var(--font-weight-medium);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.15s ease;
