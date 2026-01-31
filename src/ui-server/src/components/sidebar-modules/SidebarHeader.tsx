@@ -93,6 +93,11 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
     // Request current atopile settings from the extension
     postMessage({ type: 'getAtopileSettings' });
 
+    // After 3 seconds, assume initialization is done (even if no response)
+    const timeout = setTimeout(() => {
+      setSettingsReceived(true);
+    }, 3000);
+
     // Listen for the response
     const unsubscribe = onExtensionMessage((message: ExtensionToWebviewMessage) => {
       if (message.type === 'atopileSettingsResponse') {
@@ -112,7 +117,10 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
       }
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   // Sync toggle state when backend state changes (but only after initial settings or if no settings received)
@@ -278,7 +286,12 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
       return 'installing';
     }
     // Check if disconnected from backend
+    // If we've received settings but still not connected, it's likely a failure
     if (!isConnected) {
+      if (settingsReceived) {
+        console.log('[SidebarHeader] getHealthStatus: unhealthy - backend not connected');
+        return 'unhealthy';
+      }
       console.log('[SidebarHeader] getHealthStatus: disconnected');
       return 'disconnected';
     }
@@ -369,7 +382,7 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
                     <>
                       <X size={14} />
                       <span className="health-message">
-                        {atopile?.error || 'atopile is not working'}
+                        {atopile?.error || 'Unable to connect to backend.'}
                       </span>
                     </>
                   )}
