@@ -9,13 +9,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from atopile.dataclasses import (
+    AppContext,
     Build,
     BuildRequest,
     BuildResponse,
     BuildsResponse,
     BuildTargetResponse,
 )
-from atopile.dataclasses import AppContext
 from atopile.model import builds as builds_domain
 from atopile.server.domains.deps import get_ctx
 

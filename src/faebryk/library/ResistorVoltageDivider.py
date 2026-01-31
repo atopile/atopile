@@ -330,7 +330,7 @@ class TestVdivSolver:
         total_r_set = r_top.op_add_intervals(r_bottom, g=g, tg=tg)
         computed_ratio = r_bottom.op_div_intervals(total_r_set, g=g, tg=tg)
 
-        # Expected ratio from voltage constraints: v_out / v_in = {3.0..3.2} / {9.9..10.1}
+        # Expected ratio from voltage constraints: v_out / v_in = {3.0..3.2}/{9.9..10.1}
         v_out_set = F.Literals.Numbers.create_instance(g=g, tg=tg).setup_from_min_max(
             3.0, 3.2
         )

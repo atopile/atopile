@@ -16,7 +16,7 @@ class GraphRenderer:
 
         Example: 'ElectricPower[0x126a]' -> 'ElectricPower'
         """
-        return re.sub(r'\[0x[0-9a-fA-F]+\]$', '', type_name)
+        return re.sub(r"\[0x[0-9a-fA-F]+\]$", "", type_name)
 
     @staticmethod
     def _node_key(bound_node: graph.BoundNode) -> int:
@@ -407,7 +407,8 @@ class GraphRenderer:
                 """Get children for a node and filter by type."""
                 children = get_children(bound_node)
                 return [
-                    c for c in children
+                    c
+                    for c in children
                     if GraphRenderer._strip_hex_suffix(c[2]) in type_filter_set
                 ]
 

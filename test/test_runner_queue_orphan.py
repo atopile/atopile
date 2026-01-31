@@ -46,4 +46,3 @@ def test_finish_event_sets_start_time_if_missing():
     assert state.start_time is not None
     assert state.finish_time is not None
     assert state.start_time == state.finish_time
-

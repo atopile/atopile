@@ -6,7 +6,6 @@ from typing import Self
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
-
 BRIDGE_PATH_SUFFIXES = frozenset({"can_bridge", "out_", "in_", ""})
 
 

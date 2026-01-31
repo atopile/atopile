@@ -543,7 +543,9 @@ if __name__ == "__main__":
         print(f"Exporting {name}...", end=" ")
         try:
             data = export_module_to_json(cls, output_path)
-            print(f"OK ({data['metadata']['totalNodes']} nodes, {data['metadata']['totalEdges']} edges)")
+            total_nodes = data["metadata"]["totalNodes"]
+            total_edges = data["metadata"]["totalEdges"]
+            print(f"OK ({total_nodes} nodes, {total_edges} edges)")
         except Exception as e:
             print(f"ERROR: {e}")
             if "--verbose" in sys.argv:

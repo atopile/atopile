@@ -16,7 +16,7 @@ Directory Structure:
 Note: All data classes and Pydantic models are defined in atopile.dataclasses
 """
 
-from .server import create_app, DashboardServer, start_dashboard_server
+from .server import DashboardServer, create_app, start_dashboard_server
 
 __all__ = [
     "create_app",

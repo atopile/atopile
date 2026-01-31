@@ -1118,7 +1118,24 @@ def test_shallow_bridge_full():
 class Specialized(fabll.Node): ...
 
 
-# class DoubleSpecialized(Specialized): ...
+class DoubleSpecialized(Specialized): ...
+
+
+class ButtonCell(F.Battery): ...
+
+
+# Stub classes for link types (not yet implemented)
+class LinkDirectConditional:
+    def __init__(self, filter_func, needs_only_first_in_path=False):
+        pass
+
+
+class LinkDirectConditionalFilterResult:
+    FILTER_PASS = "FILTER_PASS"
+
+
+class LinkDirectDerived:
+    pass
 
 
 @pytest.mark.skip(reason="xfail")  # No specialized links yet

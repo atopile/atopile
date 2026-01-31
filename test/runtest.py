@@ -354,8 +354,9 @@ def run_tests(
 
     Args:
         matches: List of (filepath, test_function) tuples
-        arg_filter: Optional argument string filter (e.g., "arg1-arg2" from "test_foo[arg1-arg2]")
-                   If provided, only parametrized variants matching this filter will run.
+        arg_filter: Optional argument filter (e.g., "arg1-arg2" from
+            "test_foo[arg1-arg2]"). If provided, only parametrized variants
+            matching this filter will run.
     """
     import tempfile
 
@@ -399,13 +400,17 @@ def run_tests(
                         # Merge with explicit_ids (explicit takes precedence)
                         for i, id_val in enumerate(ids_kwarg):
                             if i < len(explicit_ids) and explicit_ids[i] is None:
-                                explicit_ids[i] = str(id_val) if id_val is not None else None
+                                explicit_ids[i] = (
+                                    str(id_val) if id_val is not None else None
+                                )
 
                     arg_def = _PytestArgDef(
                         names=[name.strip() for name in mark.args[0].split(",")],
                         values=values,
                         id_fn=id_fn,
-                        explicit_ids=explicit_ids if any(x is not None for x in explicit_ids) else None,
+                        explicit_ids=explicit_ids
+                        if any(x is not None for x in explicit_ids)
+                        else None,
                     )
                 if mark.name == "usefixtures":
                     if "setup_project_config" in mark.args:
@@ -476,8 +481,8 @@ def run_tests(
                 if len(param_ids) > 5:
                     available_ids += f", ... ({len(param_ids)} total)"
                 raise TestCaseNotFound(
-                    f"No parametrized variant matching regex '[{arg_filter}]' found for "
-                    f"{test_func.__name__}. Available: {available_ids}"
+                    f"No parametrized variant matching '[{arg_filter}]' "
+                    f"found for {test_func.__name__}. Available: {available_ids}"
                 )
 
         try:
@@ -557,7 +562,9 @@ def run(
 
     matches = discover_tests(test_files, test_pattern)
     if not matches:
-        raise TestCaseNotFound(f"Test function '{test_pattern}' not found in {filepaths}")
+        raise TestCaseNotFound(
+            f"Test function '{test_pattern}' not found in {filepaths}"
+        )
     run_tests(matches, arg_filter=arg_filter)
 
 

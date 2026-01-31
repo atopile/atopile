@@ -239,9 +239,7 @@ async def websocket_logs(websocket: WebSocket):
                         f"Client subscribed to build logs: {stream_query.build_id}"
                     )
                     # Send initial batch immediately
-                    last_id = await _push_build_stream(
-                        websocket, stream_query, last_id
-                    )
+                    last_id = await _push_build_stream(websocket, stream_query, last_id)
                 else:
                     # One-shot query (existing behavior)
                     streaming = False
