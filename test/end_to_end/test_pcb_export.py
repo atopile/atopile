@@ -68,11 +68,11 @@ def test_empty_design(tmpdir: Path):
         signal a
     """
 
-    stdout, _, p = dump_and_run(app, [], working_dir=tmpdir)
+    stdout, stderr, p = dump_and_run(app, [], working_dir=tmpdir)
 
     assert p.returncode == 0
     assert pcb_file.exists()
-    assert "Creating new layout" in stdout
+    assert "Creating new layout" in stderr
 
     assert summarize_pcb_file(pcb_file) == PcbSummary(
         num_layers=29, nets=[], footprints=[]
@@ -83,11 +83,11 @@ def test_pcb_file_created(tmpdir: Path):
     pcb_file = tmpdir / Path("layout/app/app.kicad_pcb")
     assert not pcb_file.exists()
 
-    stdout, _, p = dump_and_run(SIMPLE_APP, [], working_dir=tmpdir)
+    stdout, stderr, p = dump_and_run(SIMPLE_APP, [], working_dir=tmpdir)
 
     assert p.returncode == 0
     assert pcb_file.exists()
-    assert "Creating new layout" in stdout
+    assert "Creating new layout" in stderr
 
     assert SIMPLE_APP_PCB_SUMMARY == summarize_pcb_file(pcb_file)
 
@@ -96,19 +96,19 @@ def test_pcb_file_addition(tmpdir: Path):
     pcb_file = tmpdir / Path("layout/app/app.kicad_pcb")
     assert not pcb_file.exists()
 
-    stdout, _, p = dump_and_run(SIMPLE_APP, [], working_dir=tmpdir)
+    stdout, stderr, p = dump_and_run(SIMPLE_APP, [], working_dir=tmpdir)
     assert p.returncode == 0
     assert pcb_file.exists()
-    assert "Creating new layout" in stdout
+    assert "Creating new layout" in stderr
     assert SIMPLE_APP_PCB_SUMMARY == summarize_pcb_file(pcb_file)
 
-    stdout, _, p = dump_and_run(
+    stdout, stderr, p = dump_and_run(
         f"{SIMPLE_APP}\n    b = new Resistor",
         [],
         working_dir=tmpdir,
     )
     assert p.returncode == 0
-    assert "Creating new layout" not in stdout
+    assert "Creating new layout" not in stderr
     # When two resistors exist, net names get prefixed to disambiguate conflicts
     # Format: <owner>.-<base_name>
     expected = PcbSummary(
@@ -130,13 +130,13 @@ def test_pcb_file_removal(tmpdir: Path):
     pcb_file = tmpdir / Path("layout/app/app.kicad_pcb")
     assert not pcb_file.exists()
 
-    stdout, _, p = dump_and_run(
+    stdout, stderr, p = dump_and_run(
         f"{SIMPLE_APP}\n    b = new Resistor",
         [],
         working_dir=tmpdir,
     )
     assert p.returncode == 0
-    assert "Creating new layout" in stdout
+    assert "Creating new layout" in stderr
     # When two resistors exist, net names get prefixed to disambiguate conflicts
     expected_with_two = PcbSummary(
         num_layers=SIMPLE_APP_PCB_SUMMARY.num_layers,
@@ -152,7 +152,7 @@ def test_pcb_file_removal(tmpdir: Path):
     )
     assert expected_with_two == summarize_pcb_file(pcb_file)
 
-    stdout, _, p = dump_and_run(SIMPLE_APP, [], working_dir=tmpdir)
+    stdout, stderr, p = dump_and_run(SIMPLE_APP, [], working_dir=tmpdir)
     assert p.returncode == 0
-    assert "Creating new layout" not in stdout
+    assert "Creating new layout" not in stderr
     assert SIMPLE_APP_PCB_SUMMARY == summarize_pcb_file(pcb_file)

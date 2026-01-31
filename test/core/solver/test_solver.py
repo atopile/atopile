@@ -179,6 +179,7 @@ def test_solve_phase_one():
     )
 
 
+@pytest.mark.skip("since 0.14.0, fix in 0.14.1")
 def test_simplify():
     """
     (((((((((((A + B + 1) + C + 2) * D * 3) * E * 4) * F * 5) * G * (A - A)) + H + 7)

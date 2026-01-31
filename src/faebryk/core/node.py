@@ -1531,8 +1531,13 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         """
         from faebryk.library.has_name_override import has_name_override
 
-        if (has_name := self.try_get_trait(has_name_override)) is not None:
-            return has_name.get_name(with_detail=with_detail)
+        # Try to get name override, but gracefully handle missing TypeGraph
+        # (can happen during solver mutation when nodes are in copied graphs)
+        try:
+            if (has_name := self.try_get_trait(has_name_override)) is not None:
+                return has_name.get_name(with_detail=with_detail)
+        except FabLLException:
+            pass  # No TypeGraph available, fall through to default naming
 
         parts: list[str] = []
         if (parent := self.get_parent()) is not None:
