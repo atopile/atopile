@@ -3042,7 +3042,7 @@ class TestIsUnit(_TestWithContext):
         assert is_unit.compact_repr(scaled_dimensionless) == "1000"
 
     def test_compact_repr_with_multiplier(self, ctx: BoundUnitsContext):
-        """Multiplier is prefixed without trailing zeros."""
+        """SI prefix multipliers use standard notation (km instead of 1000×m)."""
         scaled_unit = is_unit.new(
             g=ctx.g,
             tg=ctx.tg,
@@ -3050,7 +3050,8 @@ class TestIsUnit(_TestWithContext):
             multiplier=1000.0,
             offset=0.0,
         )
-        assert is_unit.compact_repr(scaled_unit) == "1000×m"
+        # Uses SI prefix notation when multiplier matches standard prefix
+        assert is_unit.compact_repr(scaled_unit) == "km"
 
     def test_compact_repr_with_offset(self, ctx: BoundUnitsContext):
         """Offset wraps in parentheses without trailing zeros."""

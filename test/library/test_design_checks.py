@@ -3,8 +3,8 @@ import pytest
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.app.checks import check_design
 from atopile.errors import UserDesignCheckException
+from faebryk.libs.app.checks import check_design
 from faebryk.libs.smd import SMDSize
 
 
@@ -53,7 +53,7 @@ def test_i2c_requires_pulls():
 
     # required resistance can be customized
     app2.a.i2c.get_trait(F.requires_pulls).required_resistance = fabll.Range(
-        0.1 * P.kohm, 0.5 * P.kohm
+        0.1 * 1e3 * F.Units.Ohm, 0.5 * 1e3 * F.Units.Ohm
     )
 
     # connection crosses pad boundary, so the check now fails

@@ -36,7 +36,8 @@ def get_builds_by_project_target(
 
 
 def get_latest_build_for_target(
-    project_root: str, target: str,
+    project_root: str,
+    target: str,
 ):
     """Get the most recent build for a specific project/target."""
     try:

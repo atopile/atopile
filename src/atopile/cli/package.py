@@ -441,9 +441,7 @@ class _PackageValidators:
                                 f"{target}: {build_warnings} warning(s)"
                             )
                     else:
-                        warning_details.append(
-                            f"{target}: {build_warnings} warning(s)"
-                        )
+                        warning_details.append(f"{target}: {build_warnings} warning(s)")
 
             raise UserBadParameterError(
                 f"Build completed with {total_warnings} warning(s). "

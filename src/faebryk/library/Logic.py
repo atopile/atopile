@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import faebryk.core.node as fabll  # noqa: F401
-import faebryk.library._F as F
 
 
 class Logic(fabll.Node):

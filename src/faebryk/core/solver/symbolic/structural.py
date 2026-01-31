@@ -273,7 +273,8 @@ def lower_estimation_of_expressions_with_subsets(mutator: Mutator):
     - f not setic
     - X,Y not singleton (singletons handled by literal alias conversion)
 
-    Note: After canonicalization, IsSuperset(param, literal) becomes IsSubset(literal, param).
+    Note: After canonicalization, IsSuperset(param, literal) becomes
+    IsSubset(literal, param).
     So we look for IsSubset where:
     - subset operand (first) is a literal (the picked/lower bound value)
     - superset operand (second) is a parameter (which is bounded below)

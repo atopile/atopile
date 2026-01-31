@@ -11,14 +11,17 @@ import faebryk.library._F as F
 
 # from faebryk.core.reference import reference
 from faebryk.libs.kicad.fileformats import kicad
-
-# from faebryk.libs.units import to_si_str
 from faebryk.libs.util import find, groupby, md_list, not_none
 
 if TYPE_CHECKING:
     from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
 logger = logging.getLogger(__name__)
+
+
+def to_si_str(value: float, unit: str = "") -> str:
+    """Stub for SI unit formatting (TODO: implement in faebryk.libs.units)."""
+    return f"{value}{unit}"
 
 
 class PCB(fabll.Node):

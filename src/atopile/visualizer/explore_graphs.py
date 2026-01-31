@@ -10,14 +10,12 @@ structures to understand node/edge counts, types, and composition depths.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Callable
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
+from atopile.logging import get_logger
 from faebryk.core.graph_render import GraphRenderer
 from faebryk.library import _F as F
-
-from atopile.logging import get_logger
 
 logging.basicConfig(level=logging.WARNING)
 logger = get_logger(__name__)
@@ -116,7 +114,9 @@ def count_edges_by_type(
     def collect_op(ctx: list, edge: graph.BoundEdge) -> None:
         ctx.append(edge)
 
-    fbrk.EdgeOperand.visit_operand_edges(bound_node=bound_node, ctx=op_edges, f=collect_op)
+    fbrk.EdgeOperand.visit_operand_edges(
+        bound_node=bound_node, ctx=op_edges, f=collect_op
+    )
     counts["operand"] += len(op_edges)
 
     return counts
@@ -316,11 +316,11 @@ def explore_module(module_cls: type, name: str, render: bool = True) -> GraphMet
 
     metrics = analyze_graph(instance.instance)
 
-    print(f"\nNode Statistics:")
+    print("\nNode Statistics:")
     print(f"  Total nodes:        {metrics.total_nodes}")
     print(f"  Max depth:          {metrics.max_depth}")
 
-    print(f"\nEdge Statistics:")
+    print("\nEdge Statistics:")
     print(f"  Total edges:        {metrics.total_edges}")
     print(f"  Composition edges:  {metrics.composition_edges}")
     print(f"  Trait edges:        {metrics.trait_edges}")
@@ -328,18 +328,18 @@ def explore_module(module_cls: type, name: str, render: bool = True) -> GraphMet
     print(f"  Connection edges:   {metrics.connection_edges}")
     print(f"  Operand edges:      {metrics.operand_edges}")
 
-    print(f"\nNode Types (top 10):")
+    print("\nNode Types (top 10):")
     sorted_types = sorted(metrics.node_types.items(), key=lambda x: -x[1])[:10]
     for type_name, count in sorted_types:
         print(f"  {type_name}: {count}")
 
-    print(f"\nTrait Types (top 10):")
+    print("\nTrait Types (top 10):")
     sorted_traits = sorted(metrics.trait_types.items(), key=lambda x: -x[1])[:10]
     for trait_name, count in sorted_traits:
         print(f"  {trait_name}: {count}")
 
     if render:
-        print(f"\nGraph Render (composition + traits + connections):")
+        print("\nGraph Render (composition + traits + connections):")
         print("-" * 60)
         rendered = GraphRenderer.render(
             instance.instance,

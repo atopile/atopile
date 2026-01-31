@@ -23,8 +23,8 @@ The solver maintains these invariants on the expression graph:
 
 2. **No Expression Operands**:
    Expression operands in the graph must be alias representatives (parameters),
-   not the expressions themselves. Algorithms must use AliasClass.of(expr).representative()
-   when passing expressions as operands.
+   not the expressions themselves. Algorithms must use
+   AliasClass.of(expr).representative() when passing expressions as operands.
 
 3. **No Congruence**:
    Structurally identical expressions are merged. Creating an existing expression
@@ -451,7 +451,7 @@ def flatten_expressions(mutator: Mutator):
     """
     # TODO: consider shortcut for pure literal expressions
 
-    # Don't use standard mutation interfaces here because they will trigger invariant checks
+    # Don't use standard mutation interfaces - they trigger invariant checks
 
     # Strategy
     # - strip unit expressions
@@ -466,7 +466,7 @@ def flatten_expressions(mutator: Mutator):
     #  - else new
 
     # How we deal with alias classes
-    # - every expr has an alias class with exactly 1 parameter and at least 1 expr (itself)
+    # - every expr has alias class with 1 param and at least 1 expr (itself)
     #  - except predicates, those have no aliases
     # - expressions only have literals or parameters as operands, except "Is"
     # - if we create new expressions we need to make sure it has the representative
@@ -477,7 +477,7 @@ def flatten_expressions(mutator: Mutator):
     #  - if subsumed/subsuming, no alias for predicates
     #  - if copy/adjusted, copy alias over
 
-    # We never auto-copy an Is!, its never nested, so not triggered outside of copy_unmutated
+    # We never auto-copy Is! - never nested, so not triggered outside copy_unmutated
     # - all is! have to be manually copied
     # Attention: Changed this. Is! just go through the same invariant mechanism now
 
@@ -538,9 +538,13 @@ def flatten_expressions(mutator: Mutator):
                 exprs_repr = indented_container(
                     [e.compact_repr() for e in class_exprs], use_repr=False
                 )
+                old_repr = p_old.compact_repr(no_lit_suffix=True)
+                new_repr = p.compact_repr()
+                class_repr = indented_container(
+                    [c.compact_repr() for c in class_], use_repr=False
+                )
                 logger.debug(
-                    f"Using and mutating {p_old.compact_repr(no_lit_suffix=True)} -> {p.compact_repr()} "
-                    f"for {indented_container([c.compact_repr() for c in class_], use_repr=False)}"
+                    f"Using and mutating {old_repr} -> {new_repr} for {class_repr}"
                 )
         else:
             p = (

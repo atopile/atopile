@@ -86,7 +86,7 @@ def test_edge_type_consistency():
 
 
 def test_visit_connected_edges_callback_receives_python_objects():
-    """visit_connected_edges should surface bound edge references to Python callbacks."""
+    """visit_connected_edges should surface bound edge refs to Python callbacks."""
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     Electrical = F.Electrical.bind_typegraph(tg=tg)
@@ -308,7 +308,7 @@ def test_get_connected_path_objects_cleanup():
     assert path_to_n3_v2.get_length() == 2
 
     # Both path objects should have the same properties
-    # (even though they're different Python objects wrapping different Zig BFSPath instances)
+    # (even though they wrap different Zig BFSPath instances)
     assert path_to_n3_v1.get_length() == path_to_n3_v2.get_length()
     assert (
         path_to_n3_v1.get_start_node()

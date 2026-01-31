@@ -30,58 +30,50 @@ class RS232(fabll.Node):
     net_names = [
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="TX",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="TX", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[tx]
+            owner=[tx],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="RX",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="RX", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[rx]
+            owner=[rx],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="DTR",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="DTR", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[dtr]
+            owner=[dtr],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="DCD",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="DCD", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[dcd]
+            owner=[dcd],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="DSR",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="DSR", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[dsr]
+            owner=[dsr],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="RI",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="RI", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[ri]
+            owner=[ri],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="RTS",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="RTS", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[rts]
+            owner=[rts],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="CTS",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="CTS", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[cts]
+            owner=[cts],
         ),
     ]

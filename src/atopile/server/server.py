@@ -81,9 +81,7 @@ async def _refresh_projects_state() -> None:
         return
 
     # No try/except - let exceptions crash the server for visibility
-    await asyncio.to_thread(
-        core_projects.discover_projects_in_paths, workspace_paths
-    )
+    await asyncio.to_thread(core_projects.discover_projects_in_paths, workspace_paths)
     await server_state.emit_event("projects_changed")
 
 
@@ -360,6 +358,7 @@ def cleanup_server(exc: BaseException | None = None) -> None:
     # 2. Flush logs to database
     try:
         from atopile.logging import BuildLogger
+
         BuildLogger.close_all()
     except Exception:
         pass
@@ -367,6 +366,7 @@ def cleanup_server(exc: BaseException | None = None) -> None:
     # 3. Capture exception for telemetry (if provided)
     try:
         from atopile import telemetry
+
         if exc:
             telemetry.capture_exception(exc)
         telemetry._flush_telemetry_on_exit()
@@ -389,7 +389,9 @@ def _fatal_error(msg: str, exc: BaseException | None = None) -> None:
     """
     log.critical("FATAL SERVER ERROR: %s", msg)
     if exc:
-        log.critical("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
+        log.critical(
+            "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        )
 
     cleanup_server(exc)
 

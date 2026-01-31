@@ -6,7 +6,6 @@ import math
 
 import pytest
 
-import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 

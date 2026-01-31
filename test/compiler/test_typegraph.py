@@ -2347,7 +2347,7 @@ class TestAssignments:
         # Due to test order dependency, values may be stored in kV or V
         # Check the actual value in base units (value * multiplier)
         literal = r.max_voltage.get().force_extract_superset()
-        multiplier = not_none(literal.get_is_unit())._extract_multiplier()
+        not_none(literal.get_is_unit())._extract_multiplier()
 
         values = r.max_voltage.get().get_values()
         assert values == [99000.0, 101000.0], (

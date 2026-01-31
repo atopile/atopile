@@ -27,7 +27,9 @@ def open_with_system(path: Path) -> None:
         subprocess.run(["xdg-open", str(path)], check=False)
 
 
-def open_in_editor(path: Path, line: Optional[int] = None, column: Optional[int] = None) -> None:
+def open_in_editor(
+    path: Path, line: Optional[int] = None, column: Optional[int] = None
+) -> None:
     """
     Open a file in an editor if possible; fall back to system open.
     """

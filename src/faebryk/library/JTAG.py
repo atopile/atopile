@@ -31,66 +31,57 @@ class JTAG(fabll.Node):
     net_names = [
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="DBGRQ",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="DBGRQ", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[dbgrq]
+            owner=[dbgrq],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="TDO",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="TDO", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[tdo]
+            owner=[tdo],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="TDI",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="TDI", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[tdi]
+            owner=[tdi],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="TMS",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="TMS", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[tms]
+            owner=[tms],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="TCK",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="TCK", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[tck]
+            owner=[tck],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="RTCK",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="RTCK", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[rtck]
+            owner=[rtck],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="N_TRST",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="N_TRST", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[n_trst]
+            owner=[n_trst],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="N_RESET",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="N_RESET", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[n_reset]
+            owner=[n_reset],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="VTREF",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="VTREF", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[vtref]
+            owner=[vtref],
         ),
     ]
 

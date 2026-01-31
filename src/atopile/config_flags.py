@@ -16,7 +16,7 @@ class ConfigFlagDef:
     """A discovered ConfigFlag definition."""
 
     env_name: str  # The raw env var name (without FBRK_ prefix)
-    kind: str  # ConfigFlag, ConfigFlagInt, ConfigFlagFloat, ConfigFlagString, ConfigFlagEnum
+    kind: str  # ConfigFlag, ConfigFlagInt, ConfigFlagFloat, ConfigFlagString, etc.
     python_name: str | None  # The Python variable name
     file: Path  # Source file path
     line: int  # Line number in source
