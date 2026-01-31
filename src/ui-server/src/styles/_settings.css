@@ -970,6 +970,17 @@
   color: var(--ctp-peach);
 }
 
+/* Health status: disconnected (red warning - backend not reachable) */
+.atopile-health-status.health-disconnected {
+  background: rgba(243, 139, 168, 0.15);
+  border: 1px solid var(--ctp-red);
+  color: var(--ctp-red);
+}
+
+.atopile-health-status.health-disconnected svg {
+  color: var(--ctp-red);
+}
+
 /* Health action button (e.g., Restart button) */
 .health-action-btn {
   padding: 4px 10px;

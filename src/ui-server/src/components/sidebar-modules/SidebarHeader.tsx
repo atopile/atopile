@@ -48,9 +48,10 @@ interface AtopileState {
 
 interface SidebarHeaderProps {
   atopile?: AtopileState;
+  isConnected?: boolean;
 }
 
-export function SidebarHeader({ atopile }: SidebarHeaderProps) {
+export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProps) {
   const iconUrl =
     typeof window !== 'undefined'
       ? (window as Window & { __ATOPILE_ICON_URL__?: string }).__ATOPILE_ICON_URL__
@@ -359,7 +360,12 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
   };
 
   // Determine health status
-  const getHealthStatus = (): 'installing' | 'healthy' | 'unhealthy' | 'unknown' | 'restart-needed' | 'needs-config' => {
+  const getHealthStatus = (): 'installing' | 'healthy' | 'unhealthy' | 'unknown' | 'restart-needed' | 'needs-config' | 'disconnected' => {
+    // Check if disconnected from backend first - user should be able to restart
+    if (!isConnected) {
+      console.log('[SidebarHeader] getHealthStatus: disconnected');
+      return 'disconnected';
+    }
     // Check if restart is needed first (settings differ from actual binary)
     if (pendingRestartNeeded) {
       console.log('[SidebarHeader] getHealthStatus: restart-needed');
@@ -464,6 +470,20 @@ export function SidebarHeader({ atopile }: SidebarHeaderProps) {
                     <>
                       <Loader2 size={14} className="spinner" />
                       <span className="health-message">Checking atopile status...</span>
+                    </>
+                  )}
+                  {healthStatus === 'disconnected' && (
+                    <>
+                      <AlertCircle size={14} />
+                      <span className="health-message">
+                        Disconnected from backend
+                      </span>
+                      <button
+                        className="health-action-btn"
+                        onClick={() => postMessage({ type: 'restartExtension' })}
+                      >
+                        Restart
+                      </button>
                     </>
                   )}
                 </div>
