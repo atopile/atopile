@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 
 import rich
 from rich.console import Console, ConsoleRenderable
-from rich.highlighter import RegexHighlighter, ReprHighlighter
+from rich.highlighter import RegexHighlighter
 from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.panel import Panel
@@ -40,6 +40,7 @@ from rich.progress import (
 from rich.table import Column, Table
 from rich.text import Text
 from rich.theme import Theme
+from rich.tree import Tree
 
 from atopile.dataclasses import BuildStatus
 from faebryk.libs.util import ConfigFlag, ConfigFlagInt
@@ -47,7 +48,7 @@ from faebryk.libs.util import ConfigFlag, ConfigFlagInt
 if TYPE_CHECKING:
     from rich.console import RenderableType
 
-    from atopile.dataclasses import StageStatus
+    from atopile.dataclasses import Build, StageStatus
 
 # =============================================================================
 # Shared Style Constants
@@ -79,6 +80,7 @@ def level_char_styled(level: str) -> str:
     char = LEVEL_CHAR.get(level, level[0] if level else "?")
     style = LEVEL_STYLES.get(level, "white")
     return f"[{style}]{char}[/{style}]"
+
 
 # Canonical status icons and colors for build/stage status
 STATUS_ICONS: dict[str, str] = {
@@ -121,6 +123,7 @@ def get_status_style(status: str | BuildStatus) -> tuple[str, str]:
 # =============================================================================
 # Rich Console Configuration
 # =============================================================================
+
 
 def _get_terminal_width() -> int:
     """Get terminal width, with a wide fallback for non-interactive streams."""
@@ -198,6 +201,7 @@ def safe_markdown(message: str, console: Console | None = None) -> ConsoleRender
         return Markdown(message)
     return Text(message)
 
+
 # =============================================================================
 # Progress Bar Components
 # =============================================================================
@@ -235,11 +239,16 @@ class SpacerColumn(RenderableColumn):
         )
 
 
+_SUCCESS_COLOR = STATUS_COLORS["success"]
+_FAILED_COLOR = STATUS_COLORS["failed"]
+_WARNING_COLOR = STATUS_COLORS["warning"]
+
+
 class CompletableSpinnerColumn(SpinnerColumn):
     class Status(StrEnum):
-        SUCCESS = f"[{STATUS_COLORS['success']}]{STATUS_ICONS['success']}[/{STATUS_COLORS['success']}]"
-        FAILURE = f"[{STATUS_COLORS['failed']}]{STATUS_ICONS['failed']}[/{STATUS_COLORS['failed']}]"
-        WARNING = f"[{STATUS_COLORS['warning']}]{STATUS_ICONS['warning']}[/{STATUS_COLORS['warning']}]"
+        SUCCESS = f"[{_SUCCESS_COLOR}]{STATUS_ICONS['success']}[/{_SUCCESS_COLOR}]"
+        FAILURE = f"[{_FAILED_COLOR}]{STATUS_ICONS['failed']}[/{_FAILED_COLOR}]"
+        WARNING = f"[{_WARNING_COLOR}]{STATUS_ICONS['warning']}[/{_WARNING_COLOR}]"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -369,9 +378,7 @@ class RelativeTimeFormatter(logging.Formatter):
         if "\x1b" not in message:
             # If any line is longer than NET_LINE_WIDTH, wrap into chunks.
             if NET_LINE_WIDTH > 0 and len(message) > NET_LINE_WIDTH:
-                message = "\n".join(
-                    format_line(line) for line in message.splitlines()
-                )
+                message = "\n".join(format_line(line) for line in message.splitlines())
 
         record.nmessage = message
 
@@ -632,7 +639,11 @@ class BuildPrinter:
         if self.verbose:
             # Print header bar for verbose mode
             id_suffix = f" [{build_id}]" if build_id else ""
-            print_bar(f"BUILD START: {display_name}{id_suffix}", style="bold cyan", console_=self._console)
+            print_bar(
+                f"BUILD START: {display_name}{id_suffix}",
+                style="bold cyan",
+                console_=self._console,
+            )
         else:
             # Add task to progress display
             if self._progress:
@@ -658,7 +669,14 @@ class BuildPrinter:
             state.total_stages = total_stages
 
         # Terminal statuses indicate a stage is done
-        terminal_statuses = {"success", "warning", "failed", "error", "cancelled", "skipped"}
+        terminal_statuses = {
+            "success",
+            "warning",
+            "failed",
+            "error",
+            "cancelled",
+            "skipped",
+        }
 
         if self.verbose:
             # In verbose mode, the subprocess prints stage bars directly
@@ -753,7 +771,10 @@ class BuildPrinter:
 
         if status in (BuildStatus.SUCCESS, BuildStatus.WARNING):
             if warnings > 0:
-                text = f"{icon} BUILD COMPLETE: {display_name} {time_str} ({warnings} warnings)"
+                text = (
+                    f"{icon} BUILD COMPLETE: {display_name} "
+                    f"{time_str} ({warnings} warnings)"
+                )
             else:
                 text = f"{icon} BUILD COMPLETE: {display_name} {time_str}"
         else:
@@ -782,7 +803,6 @@ class BuildPrinter:
 
         Fetches warnings/errors/tracebacks from the database.
         """
-        from atopile.dataclasses import Build
 
         if not builds:
             return
@@ -796,7 +816,6 @@ class BuildPrinter:
         """Print a single build's summary in a box with logs from database."""
         from rich.console import Group
 
-        from atopile.dataclasses import Build
         from atopile.model.sqlite import Logs
 
         icon, color = get_status_style(build.status)
@@ -810,9 +829,7 @@ class BuildPrinter:
             errors_list, _ = Logs.fetch_chunk(
                 build_id, levels=["ERROR", "CRITICAL"], count=50
             )
-            warnings_list, _ = Logs.fetch_chunk(
-                build_id, levels=["WARNING"], count=50
-            )
+            warnings_list, _ = Logs.fetch_chunk(build_id, levels=["WARNING"], count=50)
 
         # Build content as a list of renderables
         renderables: list = []
@@ -828,7 +845,14 @@ class BuildPrinter:
 
         # Add stages with their times
         renderables.append(Text("Stages:", style="bold"))
-        terminal_statuses = {"success", "warning", "failed", "error", "cancelled", "skipped"}
+        terminal_statuses = {
+            "success",
+            "warning",
+            "failed",
+            "error",
+            "cancelled",
+            "skipped",
+        }
         total_stage_time = 0.0
         for stage in build.stages:
             status_str = stage.get("status", "").lower()
@@ -867,17 +891,28 @@ class BuildPrinter:
                     renderables.append(Text(f"  • {msg}", style="red"))
 
             if len(errors_list) > 5:
-                renderables.append(Text(f"  ... and {len(errors_list) - 5} more errors", style="dim red"))
+                renderables.append(
+                    Text(
+                        f"  ... and {len(errors_list) - 5} more errors", style="dim red"
+                    )
+                )
 
         # Add warnings section
         if warnings_list:
             renderables.append(Text())
-            renderables.append(Text(f"Warnings ({len(warnings_list)}):", style="bold yellow"))
+            renderables.append(
+                Text(f"Warnings ({len(warnings_list)}):", style="bold yellow")
+            )
             for warn in warnings_list[:5]:  # Limit to first 5
                 msg = warn.get("message", "")
                 renderables.append(Text(f"  • {msg}", style="yellow"))
             if len(warnings_list) > 5:
-                renderables.append(Text(f"  ... and {len(warnings_list) - 5} more warnings", style="dim yellow"))
+                renderables.append(
+                    Text(
+                        f"  ... and {len(warnings_list) - 5} more warnings",
+                        style="dim yellow",
+                    )
+                )
 
         # Add error message from build if present (fallback)
         if build.error and not errors_list:

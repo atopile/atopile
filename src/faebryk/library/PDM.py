@@ -32,23 +32,20 @@ class PDM(fabll.Node):
     net_names = [
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="DATA",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="DATA", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[data]
+            owner=[data],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="CLOCK",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="CLOCK", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[clock]
+            owner=[clock],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="SELECT",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="SELECT", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[select]
+            owner=[select],
         ),
     ]

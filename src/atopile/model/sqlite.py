@@ -14,6 +14,7 @@ BUILD_LOGS_DB = get_log_dir() / Path("build_logs.db")
 
 logger = get_logger(__name__)
 
+
 # build_history.db -> build_history schema helper
 class BuildHistory:
     @staticmethod
@@ -84,7 +85,9 @@ class BuildHistory:
                     "SELECT * FROM build_history WHERE build_id = ?",
                     (build.build_id,),
                 ).fetchone()
-                existing = BuildHistory._from_row(existing_row) if existing_row else None
+                existing = (
+                    BuildHistory._from_row(existing_row) if existing_row else None
+                )
 
                 # Helper to pick new value or fall back to existing
                 def pick(new_val, existing_val):
@@ -103,28 +106,58 @@ class BuildHistory:
                     (
                         build.build_id,
                         pick(build.name, existing.name if existing else None),
-                        pick(build.display_name, existing.display_name if existing else None),
-                        pick(build.project_name, existing.project_name if existing else None),
-                        pick(build.project_root, existing.project_root if existing else None),
+                        pick(
+                            build.display_name,
+                            existing.display_name if existing else None,
+                        ),
+                        pick(
+                            build.project_name,
+                            existing.project_name if existing else None,
+                        ),
+                        pick(
+                            build.project_root,
+                            existing.project_root if existing else None,
+                        ),
                         pick(build.target, existing.target if existing else None),
                         pick(build.entry, existing.entry if existing else None),
                         build.status.value,  # status is always set
-                        pick(build.return_code, existing.return_code if existing else None),
+                        pick(
+                            build.return_code,
+                            existing.return_code if existing else None,
+                        ),
                         pick(build.error, existing.error if existing else None),
-                        pick(build.started_at, existing.started_at if existing else None),
-                        build.elapsed_seconds if build.elapsed_seconds else (existing.elapsed_seconds if existing else 0.0),
-                        json.dumps(build.stages) if build.stages else (json.dumps(existing.stages) if existing else "[]"),
-                        pick(build.total_stages, existing.total_stages if existing else None),
-                        build.warnings if build.warnings else (existing.warnings if existing else 0),
-                        build.errors if build.errors else (existing.errors if existing else 0),
+                        pick(
+                            build.started_at, existing.started_at if existing else None
+                        ),
+                        build.elapsed_seconds
+                        if build.elapsed_seconds
+                        else (existing.elapsed_seconds if existing else 0.0),
+                        json.dumps(build.stages)
+                        if build.stages
+                        else (json.dumps(existing.stages) if existing else "[]"),
+                        pick(
+                            build.total_stages,
+                            existing.total_stages if existing else None,
+                        ),
+                        build.warnings
+                        if build.warnings
+                        else (existing.warnings if existing else 0),
+                        build.errors
+                        if build.errors
+                        else (existing.errors if existing else 0),
                         pick(build.timestamp, existing.timestamp if existing else None),
-                        int(bool(build.standalone)) if build.standalone else (int(bool(existing.standalone)) if existing else 0),
-                        int(bool(build.frozen)) if build.frozen else (int(bool(existing.frozen)) if existing else 0),
+                        int(bool(build.standalone))
+                        if build.standalone
+                        else (int(bool(existing.standalone)) if existing else 0),
+                        int(bool(build.frozen))
+                        if build.frozen
+                        else (int(bool(existing.frozen)) if existing else 0),
                     ),
                 )
         except Exception:
             logger.exception(
-                f"Failed to save build {build.build_id} to history. Try running 'ato dev clear_logs'."
+                f"Failed to save build {build.build_id} to history. "
+                "Try running 'ato dev clear_logs'."
             )
             os._exit(1)
 
@@ -143,7 +176,8 @@ class BuildHistory:
             return BuildHistory._from_row(row)
         except Exception:
             logger.exception(
-                f"Failed to get build {build_id} from history. Try running 'ato dev clear_logs'."
+                f"Failed to get build {build_id} from history. "
+                "Try running 'ato dev clear_logs'."
             )
             os._exit(1)
 
@@ -280,8 +314,7 @@ class Logs:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM logs"
-                " WHERE " + " AND ".join(where) +
-                f" ORDER BY id {order_dir} LIMIT ?",
+                " WHERE " + " AND ".join(where) + f" ORDER BY id {order_dir} LIMIT ?",
                 params,
             ).fetchall()
 
@@ -421,8 +454,7 @@ class TestLogs:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM test_logs"
-                " WHERE " + " AND ".join(where) +
-                f" ORDER BY id {order_dir} LIMIT ?",
+                " WHERE " + " AND ".join(where) + f" ORDER BY id {order_dir} LIMIT ?",
                 params,
             ).fetchall()
 
@@ -442,26 +474,32 @@ class Tests:
 
     def test_build_history(self) -> None:
         BuildHistory.init_db()
-        BuildHistory.set(Build(
-            name="target",
-            display_name="project_root:target",
-            build_id="123",
-            project_root="project_root",
-            target="target",
-            entry="entry",
-            status=BuildStatus.SUCCESS,
-        ))
+        BuildHistory.set(
+            Build(
+                name="target",
+                display_name="project_root:target",
+                build_id="123",
+                project_root="project_root",
+                target="target",
+                entry="entry",
+                status=BuildStatus.SUCCESS,
+            )
+        )
 
     def test_logs(self) -> None:
         Logs.init_db()
-        Logs.append_chunk([LogRow(
-            build_id="123",
-            timestamp="2025-01-01T00:00:00",
-            stage="compile",
-            level="INFO",
-            message="hello",
-            logger_name="test",
-        )])
+        Logs.append_chunk(
+            [
+                LogRow(
+                    build_id="123",
+                    timestamp="2025-01-01T00:00:00",
+                    stage="compile",
+                    level="INFO",
+                    message="hello",
+                    logger_name="test",
+                )
+            ]
+        )
         rows, last_id = Logs.fetch_chunk("123")
         assert len(rows) == 1
         assert rows[0]["message"] == "hello"
@@ -470,14 +508,18 @@ class Tests:
     def test_test_logs(self) -> None:
         TestLogs.init_db()
         TestLogs.register_run("run-1")
-        TestLogs.append_chunk([TestLogRow(
-            test_run_id="run-1",
-            timestamp="2025-01-01T00:00:00",
-            test_name="test_foo",
-            level="INFO",
-            message="passed",
-            logger_name="test",
-        )])
+        TestLogs.append_chunk(
+            [
+                TestLogRow(
+                    test_run_id="run-1",
+                    timestamp="2025-01-01T00:00:00",
+                    test_name="test_foo",
+                    level="INFO",
+                    message="passed",
+                    logger_name="test",
+                )
+            ]
+        )
         rows, last_id = TestLogs.fetch_chunk("run-1")
         assert len(rows) == 1
         assert rows[0]["message"] == "passed"

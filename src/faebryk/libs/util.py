@@ -3276,7 +3276,7 @@ def _run_lldb_macos(test_bin: Path | None, created_after: float | None) -> None:
 
             try:
                 # Look for .ips crash reports (newer format) or .crash files
-                # Filter by likely process names (python, ato, faebryk, or the test binary)
+                # Filter by likely process names (python, ato, faebryk, etc.)
                 likely_names = ["Python", "python", "ato", "faebryk"]
                 if test_bin:
                     likely_names.append(test_bin.stem)
@@ -3326,7 +3326,8 @@ def _run_lldb_macos(test_bin: Path | None, created_after: float | None) -> None:
         else:
             print(
                 "Core dumps may be disabled. Try: sudo sysctl kern.coredump=1\n"
-                "Note: macOS often writes crash reports to ~/Library/Logs/DiagnosticReports/ instead."
+                "Note: macOS often writes crash reports to "
+                "~/Library/Logs/DiagnosticReports/ instead."
             )
         return
 

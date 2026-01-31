@@ -154,10 +154,13 @@ def _find_path_to_variable(
     - Variable appears multiple times (non-linear)
     - Expression type is not invertible
     """
+
     def _uuid(op: F.Parameters.can_be_operand) -> int:
         return fabll.Traits(op).get_obj_raw().instance.node().get_uuid()
 
-    def _try_get_expr(op: F.Parameters.can_be_operand) -> F.Expressions.is_expression | None:
+    def _try_get_expr(
+        op: F.Parameters.can_be_operand,
+    ) -> F.Expressions.is_expression | None:
         if direct := op.try_get_sibling_trait(F.Expressions.is_expression):
             return direct
 
@@ -180,9 +183,7 @@ def _find_path_to_variable(
 
         return None
 
-    def _rec(
-        op: F.Parameters.can_be_operand, visited: set[int]
-    ) -> VariablePath | None:
+    def _rec(op: F.Parameters.can_be_operand, visited: set[int]) -> VariablePath | None:
         op_uuid = _uuid(op)
         if op_uuid in visited:
             return None
@@ -344,7 +345,9 @@ def _apply_inverse_operations_alias_to_variable(
     for i, segment in enumerate(path.segments):
         is_last = i == len(path.segments) - 1
         if not is_last:
-            current = not_none(_apply_single_inverse(mutator, current, segment, from_ops))
+            current = not_none(
+                _apply_single_inverse(mutator, current, segment, from_ops)
+            )
             continue
 
         if segment.expr_type is Add:
@@ -562,7 +565,9 @@ def rewrite_equation_for_variable(
     # between *expression* operands, and ignore representative parameters that
     # may also be present in the class.
     if len(expr_ops) >= 2:
-        var_expr_ops = [op for op in expr_ops if _contains_variable(op.as_operand.get(), variable)]
+        var_expr_ops = [
+            op for op in expr_ops if _contains_variable(op.as_operand.get(), variable)
+        ]
         if len(var_expr_ops) != 1:
             return RewriteResult.CANNOT_ISOLATE
         var_side = var_expr_ops[0].as_operand.get()
@@ -583,9 +588,8 @@ def rewrite_equation_for_variable(
 
         # If the requested variable is the representative parameter itself, it
         # is already isolated.
-        if (
-            (var_op := variable.as_operand.get())
-            and var_op.is_same(rep_side, allow_different_graph=True)
+        if (var_op := variable.as_operand.get()) and var_op.is_same(
+            rep_side, allow_different_graph=True
         ):
             return RewriteResult.ALREADY_ISOLATED
 
@@ -807,7 +811,9 @@ def _build_expected_nested(
 ) -> F.Parameters.can_be_operand:
     """X + (Y * A) is (B + C), isolate B -> B is (X + (Y * A)) + (C * -1)"""
     expr_ops = list(
-        canon_is.is_expression.get().get_operands_with_trait(F.Expressions.is_expression)
+        canon_is.is_expression.get().get_operands_with_trait(
+            F.Expressions.is_expression
+        )
     )
     assert len(expr_ops) >= 2
     var_exprs = [
@@ -1417,7 +1423,7 @@ class TestRewriteEquation:
                 if lit := op.try_get_sibling_trait(F.Literals.is_literal):
                     return ("lit", lit.pretty_str())
 
-                # Prefer expressions directly, else expand representative params to their aliased expr.
+                # Prefer expressions directly, else expand representative params
                 if expr_t := op.try_get_sibling_trait(F.Expressions.is_expression):
                     expr_obj = fabll.Traits(expr_t).get_obj_raw()
                     type_name = expr_obj.get_type_name()

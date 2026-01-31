@@ -118,7 +118,9 @@ def run_build_targets(ctx: BuildStepContext) -> None:
         selector_func=lambda name: name in targets
         or any(
             alias in targets
-            for alias in build_steps.muster.targets.get(name, build_steps.MusterTarget(name="", aliases=[], func=lambda _: None)).aliases
+            for alias in build_steps.muster.targets.get(
+                name, build_steps.MusterTarget(name="", aliases=[], func=lambda _: None)
+            ).aliases
         )
     )
     all_target_names = set(subgraph.topologically_sorted())

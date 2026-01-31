@@ -264,7 +264,6 @@ def flags():
     """
     import re
 
-    from atopile.config_flags import discover_configflags
     from rich.table import Table
 
     from atopile.config_flags import discover_configflags

@@ -98,4 +98,3 @@ class App(fabll.Node):
             edge=interface.build(shallow=False),
         ),
     ]
-

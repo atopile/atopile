@@ -279,9 +279,7 @@ class Times:
             Formatted string like "123.456ms"
         """
         value = self.get(name, strategy)
-        val_str, unit_str = self._format_value(
-            value, unit=self._units.get(name, unit)
-        )
+        val_str, unit_str = self._format_value(value, unit=self._units.get(name, unit))
         return f"{val_str}{unit_str}"
 
     def separator(self) -> None:
@@ -299,13 +297,12 @@ class Times:
         """
         if isinstance(filter_, str):
             pattern = filter_
-            filter_ = lambda k: pattern in k
+
+            def filter_(k):
+                return pattern in k
 
         samples = [
-            val
-            for key, values in self.times.items()
-            if filter_(key)
-            for val in values
+            val for key, values in self.times.items() if filter_(key) for val in values
         ]
 
         if samples:

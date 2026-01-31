@@ -183,7 +183,6 @@ def _serialize_part(product: dict[str, Any]) -> dict:
 
 
 def _fetch_jlc_response(payload: dict[str, Any]) -> dict[str, Any]:
-    url = f"{_JLC_BASE_URL}{_JLC_SEARCH_PATH}"
     last_error: Exception | None = None
     timeout_s = float(os.getenv("ATOPILE_JLC_TIMEOUT_S", str(_REQUEST_TIMEOUT_S)))
     rps = float(os.getenv("ATOPILE_JLC_RPS", str(_DEFAULT_RPS)))

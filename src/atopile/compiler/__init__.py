@@ -3,14 +3,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Generator
 
-import atopile.compiler.ast_types as AST
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
 from rich.syntax import Syntax
 from rich.text import Text
 
-from atopile.logging_utils import safe_markdown
+import atopile.compiler.ast_types as AST
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
+from atopile.logging_utils import safe_markdown
 
 
 class CompilerException(Exception):

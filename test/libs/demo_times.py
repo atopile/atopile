@@ -229,8 +229,10 @@ def demo_color_gradient():
     t.add("slow_2", duration=0.2)
 
     console = Console()
-    console.print("\nValues are colored: [green]green[/green]=fast, "
-                  "[yellow]yellow[/yellow]=medium, [red]red[/red]=slow")
+    console.print(
+        "\nValues are colored: [green]green[/green]=fast, "
+        "[yellow]yellow[/yellow]=medium, [red]red[/red]=slow"
+    )
     console.print(t.to_table())
 
 

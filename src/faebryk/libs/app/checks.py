@@ -24,7 +24,8 @@ def check_design(
 
     Args:
         app: The root application node
-        stage: Which check stage to run (POST_INSTANTIATION_SETUP, POST_INSTANTIATION_DESIGN_CHECK, etc.)
+        stage: Which check stage to run (POST_INSTANTIATION_SETUP,
+            POST_INSTANTIATION_DESIGN_CHECK, etc.)
         exclude: list of names of checks to exclude e.g:
             - `I2C.requires_unique_addresses`
     """
@@ -43,7 +44,11 @@ def check_design(
                         ) from e
                 except F.implements_design_check.UnfulfilledCheckException as e:
                     raise UserDesignCheckException.from_nodes(str(e), e.nodes) from e
-                logger.debug(f"Ran {stage.name} check on {check.get_parent_force()[0].get_type_name()} in {(time.perf_counter() - start_time):.3f} seconds")
+                elapsed = time.perf_counter() - start_time
+                type_name = check.get_parent_force()[0].get_type_name()
+                logger.debug(
+                    f"Ran {stage.name} check on {type_name} in {elapsed:.3f} seconds"
+                )
 
 
 class Test:
@@ -104,14 +109,30 @@ class Test:
         assert a2.check_log == ["post_instantiation_setup"]
 
         # POST_INSTANTIATION_DESIGN_CHECK runs second (pure verification)
-        check_design(a1, F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK)
-        assert a1.check_log == ["post_instantiation_setup", "post_instantiation_design_check"]
-        assert a2.check_log == ["post_instantiation_setup", "post_instantiation_design_check"]
+        check_design(
+            a1, F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK
+        )
+        assert a1.check_log == [
+            "post_instantiation_setup",
+            "post_instantiation_design_check",
+        ]
+        assert a2.check_log == [
+            "post_instantiation_setup",
+            "post_instantiation_design_check",
+        ]
 
         with pytest.raises(UserDesignCheckException):
             check_design(a1, F.implements_design_check.CheckStage.POST_SOLVE)
-        assert a1.check_log == ["post_instantiation_setup", "post_instantiation_design_check", "post_solve"]
-        assert a2.check_log == ["post_instantiation_setup", "post_instantiation_design_check", "post_solve"]
+        assert a1.check_log == [
+            "post_instantiation_setup",
+            "post_instantiation_design_check",
+            "post_solve",
+        ]
+        assert a2.check_log == [
+            "post_instantiation_setup",
+            "post_instantiation_design_check",
+            "post_solve",
+        ]
 
         check_design(a1, F.implements_design_check.CheckStage.POST_PCB)
         assert a1.check_log == [
