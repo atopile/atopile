@@ -10,8 +10,6 @@ Usage:
 Note: These tests require the quickstart example project to exist.
 """
 
-import subprocess
-import sys
 import time
 from pathlib import Path
 
@@ -33,25 +31,14 @@ def quickstart_project() -> Path:
 @pytest.fixture
 def dashboard_server(tmp_path: Path, quickstart_project: Path):
     """Start a real dashboard server for integration testing."""
-    summary_file = tmp_path / "summary.json"
-    summary_file.write_text('{"builds": [], "totals": {}}')
+    from atopile.server.server import DashboardServer
 
-    # Start the server as a subprocess
-    server_cmd = [
-        sys.executable,
-        "-m",
-        "atopile.dashboard",
-        "--port",
-        str(SERVER_PORT),
-        "--workspace",
-        str(quickstart_project.parent),
-    ]
-
-    proc = subprocess.Popen(
-        server_cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+    # Create server using the DashboardServer class directly
+    server = DashboardServer(
+        port=SERVER_PORT,
+        workspace_paths=[quickstart_project.parent],
     )
+    server.start()
 
     # Wait for server to be ready
     base_url = f"http://localhost:{SERVER_PORT}"
@@ -68,21 +55,13 @@ def dashboard_server(tmp_path: Path, quickstart_project: Path):
         time.sleep(0.1)
 
     if not started:
-        stdout, stderr = proc.communicate(timeout=2)
-        proc.kill()
-        pytest.fail(
-            f"Server did not start within {max_wait}s. "
-            f"stdout: {stdout.decode()[:500]}, stderr: {stderr.decode()[:500]}"
-        )
+        server.shutdown()
+        pytest.fail(f"Server did not start within {max_wait}s.")
 
     yield base_url
 
     # Cleanup
-    proc.terminate()
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        proc.kill()
+    server.shutdown()
 
 
 class TestRealBuilds:
@@ -113,7 +92,8 @@ class TestRealBuilds:
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
-        build_id = data["build_id"]
+        assert len(data["buildTargets"]) > 0
+        build_id = data["buildTargets"][0]["buildId"]
         print(f"Started build: {build_id}")
 
         # Poll for status
@@ -144,7 +124,7 @@ class TestRealBuilds:
         assert last_status["status"] == "success", (
             f"Build failed: {last_status.get('error')}"
         )
-        assert last_status["return_code"] == 0
+        assert last_status.get("returnCode") == 0
         print(f"Build completed successfully in {elapsed:.1f}s")
 
     def test_build_appears_in_summary_while_building(
@@ -165,7 +145,8 @@ class TestRealBuilds:
             },
             timeout=10,
         )
-        build_id = response.json()["build_id"]
+        data = response.json()
+        build_id = data["buildTargets"][0]["buildId"]
 
         # Immediately check summary
         summary_response = requests.get(
@@ -178,8 +159,8 @@ class TestRealBuilds:
         # Build should be in the summary (either in progress or completed)
         builds = summary_data.get("builds", [])
         found = any(
-            b.get("name") == build_id
-            or "quickstart" in b.get("display_name", "").lower()
+            b.get("buildId") == build_id
+            or "quickstart" in b.get("displayName", "").lower()
             for b in builds
         )
 
@@ -193,8 +174,8 @@ class TestRealBuilds:
             summary_data = summary_response.json()
             builds = summary_data.get("builds", [])
             found = any(
-                b.get("name") == build_id
-                or "quickstart" in b.get("display_name", "").lower()
+                b.get("buildId") == build_id
+                or "quickstart" in b.get("displayName", "").lower()
                 for b in builds
             )
 

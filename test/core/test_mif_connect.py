@@ -1118,10 +1118,12 @@ def test_shallow_bridge_full():
 class Specialized(fabll.Node): ...
 
 
-class DoubleSpecialized(Specialized): ...
+# DoubleSpecialized removed - FabLL doesn't allow subclassing more than one level deep
+# class DoubleSpecialized(Specialized): ...
 
 
-class ButtonCell(F.Battery): ...
+# ButtonCell removed - FabLL doesn't allow subclassing library types
+# class ButtonCell(F.Battery): ...
 
 
 # Stub classes for link types (not yet implemented)
@@ -1196,45 +1198,49 @@ def test_specialize_link():
     assert mifs_special[0].is_connected_to(mifs_special[2])
 
 
-@pytest.mark.skip(reason="xfail")  # No specialized links yet
-def test_specialize_double_with_gap():
-    # double specialization with gap
-    mifs = times(2, fabll.ModuleInterface)
-    mifs_special = times(1, Specialized)
-    mifs_double_special = times(2, DoubleSpecialized)
+# TODO: Re-enable when specialized links are implemented with a valid class hierarchy.
+# These tests require DoubleSpecialized/ButtonCell which violate FabLL's
+# single-level subclassing constraint.
 
-    mifs[0].connect(mifs[1])
-    mifs[0].specialize(mifs_special[0])
-    mifs_special[0].specialize(mifs_double_special[0])
-    mifs[1].specialize(mifs_double_special[1])
-
-    assert mifs_double_special[0].is_connected_to(mifs_double_special[1])
-
-
-@pytest.mark.skip(reason="xfail")  # No specialized links yet
-def test_specialize_double_with_gap_2():
-    mifs = times(2, fabll.ModuleInterface)
-    mifs_special = times(1, Specialized)
-    mifs_double_special = times(2, DoubleSpecialized)
-
-    mifs_double_special[0].connect(mifs_double_special[1])
-    mifs[0].specialize(mifs_special[0])
-    mifs_special[0].specialize(mifs_double_special[0])
-    mifs[1].specialize(mifs_double_special[1])
-
-    assert mifs[0].is_connected_to(mifs[1])
+# @pytest.mark.skip(reason="xfail")  # No specialized links yet
+# def test_specialize_double_with_gap():
+#     # double specialization with gap
+#     mifs = times(2, fabll.ModuleInterface)
+#     mifs_special = times(1, Specialized)
+#     mifs_double_special = times(2, DoubleSpecialized)
+#
+#     mifs[0].connect(mifs[1])
+#     mifs[0].specialize(mifs_special[0])
+#     mifs_special[0].specialize(mifs_double_special[0])
+#     mifs[1].specialize(mifs_double_special[1])
+#
+#     assert mifs_double_special[0].is_connected_to(mifs_double_special[1])
 
 
-@pytest.mark.skip(reason="xfail")  # No specialized links yet
-def test_specialize_module():
-    battery = F.Battery()
-    power = F.ElectricPower()
+# @pytest.mark.skip(reason="xfail")  # No specialized links yet
+# def test_specialize_double_with_gap_2():
+#     mifs = times(2, fabll.ModuleInterface)
+#     mifs_special = times(1, Specialized)
+#     mifs_double_special = times(2, DoubleSpecialized)
+#
+#     mifs_double_special[0].connect(mifs_double_special[1])
+#     mifs[0].specialize(mifs_special[0])
+#     mifs_special[0].specialize(mifs_double_special[0])
+#     mifs[1].specialize(mifs_double_special[1])
+#
+#     assert mifs[0].is_connected_to(mifs[1])
 
-    battery.power.connect(power)
-    buttoncell = battery.specialize(ButtonCell())
 
-    assert buttoncell.power.is_connected_to(battery.power)
-    assert power.is_connected_to(buttoncell.power)
+# @pytest.mark.skip(reason="xfail")  # No specialized links yet
+# def test_specialize_module():
+#     battery = F.Battery()
+#     power = F.ElectricPower()
+#
+#     battery.power.connect(power)
+#     buttoncell = battery.specialize(ButtonCell())
+#
+#     assert buttoncell.power.is_connected_to(battery.power)
+#     assert power.is_connected_to(buttoncell.power)
 
 
 @pytest.mark.skip(reason="xfail")  # No conditional links yet
