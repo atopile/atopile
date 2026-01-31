@@ -91,6 +91,43 @@ export function getExtension(): Extension<unknown> {
     return extension;
 }
 
+/**
+ * Get the extension version (e.g., "0.14.0").
+ * Sanitizes dev/pre-release tags to get a clean semver for PyPI.
+ * Returns "unknown" if the version cannot be determined.
+ */
+export function getExtensionVersion(): string {
+    try {
+        const extension = extensions.getExtension('atopile.atopile');
+        const rawVersion = extension?.packageJSON?.version;
+        traceInfo(`[vscodeapi] Raw extension version: ${rawVersion}`);
+
+        if (!rawVersion) {
+            traceInfo(`[vscodeapi] No version found, returning 'unknown'`);
+            return 'unknown';
+        }
+
+        // Sanitize version: extract semver (X.Y.Z) from versions like "0.14.0.dev", "0.14.0-dev", "0.14.0-beta.1"
+        // Match major.minor.patch pattern at the start
+        const semverMatch = rawVersion.match(/^(\d+\.\d+\.\d+)/);
+        if (semverMatch) {
+            const sanitized = semverMatch[1];
+            if (sanitized !== rawVersion) {
+                traceInfo(`[vscodeapi] Sanitized version: ${rawVersion} -> ${sanitized}`);
+            } else {
+                traceInfo(`[vscodeapi] Version is clean: ${sanitized}`);
+            }
+            return sanitized;
+        }
+
+        traceInfo(`[vscodeapi] Version doesn't match semver pattern, using raw: ${rawVersion}`);
+        return rawVersion;
+    } catch (e) {
+        traceInfo(`[vscodeapi] Error getting extension version: ${e}`);
+        return 'unknown';
+    }
+}
+
 enum IDE_TYPE {
     CURSOR = 'Cursor',
     WINDSURF = 'Windsurf',

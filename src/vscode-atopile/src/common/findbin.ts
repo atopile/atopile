@@ -1,6 +1,6 @@
 import { ConfigurationChangeEvent, Event, EventEmitter, ExtensionContext, window } from 'vscode';
 import { initializePython } from './python';
-import { onDidChangeConfiguration } from './vscodeapi';
+import { getExtensionVersion, onDidChangeConfiguration } from './vscodeapi';
 import * as fs from 'fs';
 import { getWorkspaceSettings, ISettings } from './settings';
 import { traceError, traceInfo, traceVerbose } from './log/logging';
@@ -25,11 +25,20 @@ interface AtoBinLocator {
 export const onDidChangeAtoBinInfoEvent = new EventEmitter<AtoBinInfo>();
 export const onDidChangeAtoBinInfo: Event<AtoBinInfo> = onDidChangeAtoBinInfoEvent.event;
 
-// Default atopile installation: use the feature branch from git
-// TODO: Switch to 'atopile' before release
-const UV_ATO_DEFAULT_FROM = 'git+https://github.com/atopile/atopile.git@stage/0.14.x';
-
 export var g_uv_path_local: string | null = null;
+
+/**
+ * Get the default atopile package specifier based on the extension version.
+ * Returns a pip-installable specifier like "atopile==0.14.0".
+ */
+function getDefaultAtoFrom(): string {
+    const version = getExtensionVersion();
+    if (version === 'unknown') {
+        traceError(`[findbin] Could not determine extension version, using 'atopile' without version pin`);
+        return 'atopile';
+    }
+    return `atopile==${version}`;
+}
 
 // Track the build terminal for reuse
 let g_buildTerminal: vscode.Terminal | undefined;
@@ -58,110 +67,189 @@ export function getExtensionManagedUvPath(context: ExtensionContext): string | n
     return path.join(context.globalStorageUri.fsPath, 'uv-bin', uvExecutableName);
 }
 
-async function _getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
-    traceInfo(`[findbin] Looking for ato binary...`);
-
-    // 1. Check explicit path from settings (atopile.ato)
-    if (settings?.ato && settings.ato !== '') {
-        traceInfo(`[findbin] Checking settings.ato: ${settings.ato}`);
-        if (fs.existsSync(settings.ato)) {
-            traceInfo(`[findbin] Found ato from settings: ${settings.ato}`);
-            return {
-                command: [settings.ato],
-                source: 'settings',
-            };
-        }
-        traceError(`[findbin] Invalid atopile.ato path in settings: ${settings.ato} not found.`);
+/**
+ * Get the default atopile binary (extension-managed uv with matching release version).
+ * This is the fallback when user-configured options fail.
+ */
+async function _getDefaultAtoBin(): Promise<AtoBinLocator | null> {
+    if (!g_uv_path_local) {
+        traceError(`[findbin] Default: No local uv path configured`);
+        return null;
     }
-
-    // 2. If user explicitly set atopile.from, use uv with that version
-    if (settings?.from && settings.from !== '' && g_uv_path_local) {
-        traceInfo(`[findbin] User explicitly set atopile.from: ${settings.from}`);
-        const uvBinLocal = await which(g_uv_path_local, { nothrow: true });
-        if (uvBinLocal) {
-            traceInfo(`[findbin] Using local uv to run ato: ${uvBinLocal}`);
-            traceInfo(`[findbin] Using from: ${settings.from}`);
-            return {
-                command: [uvBinLocal, 'tool', 'run', '-p', '3.14', '--from', settings.from, 'ato'],
-                source: 'local-uv',
-            };
-        }
+    const uvBinLocal = await which(g_uv_path_local, { nothrow: true });
+    if (uvBinLocal) {
+        const defaultFrom = getDefaultAtoFrom();
+        traceInfo(`[findbin] Default: Will install "${defaultFrom}"`);
+        return {
+            command: [uvBinLocal, 'tool', 'run', '-p', '3.14', '--from', defaultFrom, 'ato'],
+            source: 'default',
+        };
     }
-
-    // 3. Default: Use extension-managed uv with atopile from git branch
-    if (g_uv_path_local) {
-        traceInfo(`[findbin] Checking extension-managed uv: ${g_uv_path_local}`);
-        const uvBinLocal = await which(g_uv_path_local, { nothrow: true });
-        if (uvBinLocal) {
-            traceInfo(`[findbin] Using local uv to run ato: ${uvBinLocal}`);
-            traceInfo(`[findbin] Using from: ${UV_ATO_DEFAULT_FROM} (default)`);
-            return {
-                command: [uvBinLocal, 'tool', 'run', '-p', '3.14', '--from', UV_ATO_DEFAULT_FROM, 'ato'],
-                source: 'local-uv',
-            };
-        }
-    }
-
-    traceError(`[findbin] No ato binary found.`);
+    traceError(`[findbin] Default: uv binary not found at ${g_uv_path_local}`);
     return null;
 }
 
-export async function getAtoBin(settings?: ISettings, timeout_ms?: number): Promise<AtoBinLocator | null> {
-    // TODO: consider raising exceptions instead of return null pattern
-    if (!settings) {
-        settings = await getWorkspaceSettings(await getProjectRoot());
+/**
+ * Get the atopile binary from explicit settings path (atopile.ato).
+ * Returns null if not configured or path doesn't exist.
+ */
+async function _getExplicitAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
+    if (settings?.ato && settings.ato !== '') {
+        traceInfo(`[findbin] Explicit: Configured path is "${settings.ato}"`);
+        if (fs.existsSync(settings.ato)) {
+            traceInfo(`[findbin] Explicit: Path exists`);
+            return {
+                command: [settings.ato],
+                source: 'explicit-path',
+            };
+        }
+        traceError(`[findbin] Explicit: Path does not exist: ${settings.ato}`);
     }
-    const atoBin = await _getAtoBin(settings);
-    if (!atoBin) {
+    return null;
+}
+
+/**
+ * Get the atopile binary using uv with user-configured from path (atopile.from).
+ * Returns null if not configured.
+ */
+async function _getFromSettingAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
+    if (!settings?.from || settings.from === '') {
         return null;
     }
+    if (!g_uv_path_local) {
+        traceError(`[findbin] From-setting: No local uv path configured`);
+        return null;
+    }
+    traceInfo(`[findbin] From-setting: Configured source is "${settings.from}"`);
+    const uvBinLocal = await which(g_uv_path_local, { nothrow: true });
+    if (uvBinLocal) {
+        traceInfo(`[findbin] From-setting: Using uv at ${uvBinLocal}`);
+        return {
+            command: [uvBinLocal, 'tool', 'run', '-p', '3.14', '--from', settings.from, 'ato'],
+            source: 'from-setting',
+        };
+    }
+    traceError(`[findbin] From-setting: uv binary not found at ${g_uv_path_local}`);
+    return null;
+}
 
-    // Check if ato is working by running the self-check command
+/**
+ * Run self-check on an atopile binary to verify it works.
+ * Returns true if the binary passes self-check, false otherwise.
+ */
+async function _runSelfCheck(atoBin: AtoBinLocator, timeout_ms: number): Promise<boolean> {
     try {
         const execFileAsync = promisify(execFile);
 
         const bin = atoBin.command[0];
         const args = [...atoBin.command.slice(1), 'self-check'];
+        const fullCommand = `${bin} ${args.join(' ')}`;
 
-        const _timeout_ms = timeout_ms ?? 15_000;
         const now = Date.now();
+        traceInfo(`[findbin] Self-check: Executing "${fullCommand}"`);
+        traceInfo(`[findbin] Self-check: Timeout set to ${timeout_ms / 1000}s`);
 
-        traceInfo(`[findbin] Running self-check: ${bin} ${args.join(' ')}`);
-
-        // run with timeout (uv pulling might take long)
-        const result = await execFileAsync(bin, args, { timeout: _timeout_ms })
+        const result = await execFileAsync(bin, args, { timeout: timeout_ms })
             .then(({ stdout, stderr }) => {
                 const elapsed = Date.now() - now;
-                traceInfo(`[findbin] Self-check passed in ${elapsed}ms: ${stdout.trim()}`);
+                traceInfo(`[findbin] Self-check: PASSED in ${elapsed}ms`);
+                if (stdout.trim()) {
+                    traceInfo(`[findbin] Self-check: Output: ${stdout.trim()}`);
+                }
                 return { err: null, stderr: stderr, stdout: stdout };
             })
             .catch((err: any) => {
-                const command = `${bin} ${args.join(' ')}`;
                 const elapsed_ms = Date.now() - now;
-                const timed_out = elapsed_ms > _timeout_ms;
-                let details = '';
+                const timed_out = elapsed_ms > timeout_ms;
                 if (timed_out) {
-                    details = `Error: Timed out after ${elapsed_ms / 1000}s`;
-                } else if (err.stderr !== '' || err.stdout !== '' || err.exitCode !== undefined) {
-                    details = `code: ${err.exitCode}\nstderr: ${err.stderr}\nstdout: ${err.stdout}`;
+                    traceError(`[findbin] Self-check: FAILED - Timed out after ${elapsed_ms / 1000}s`);
+                } else {
+                    traceError(`[findbin] Self-check: FAILED after ${elapsed_ms}ms`);
+                    if (err.exitCode !== undefined) {
+                        traceError(`[findbin] Self-check: Exit code: ${err.exitCode}`);
+                    }
+                    if (err.stderr) {
+                        traceError(`[findbin] Self-check: stderr: ${err.stderr}`);
+                    }
+                    if (err.stdout) {
+                        traceInfo(`[findbin] Self-check: stdout: ${err.stdout}`);
+                    }
                 }
-                traceError(
-                    `[findbin] Error executing ato self-check for ato from ${atoBin.source}\ncommand: ${command}\n${details}`,
-                );
                 return { err: err, stderr: err.stderr, stdout: err.stdout };
             });
 
-        if (result.err) {
-            traceError(`[findbin] Self-check failed, ato binary is not working`);
-            return null;
-        }
+        return !result.err;
     } catch (error) {
-        traceError(`[findbin] Error running ato: ${error}`);
-        return null;
+        traceError(`[findbin] Self-check: Unexpected error: ${error}`);
+        return false;
+    }
+}
+
+export async function getAtoBin(settings?: ISettings, timeout_ms?: number): Promise<AtoBinLocator | null> {
+    if (!settings) {
+        settings = await getWorkspaceSettings(await getProjectRoot());
     }
 
-    traceInfo(`[findbin] Successfully validated ato binary: ${atoBin.source}`);
-    return atoBin;
+    const _timeout_ms = timeout_ms ?? 15_000;
+
+    traceInfo(`[findbin] ========== Starting ato binary search ==========`);
+
+    // 1. Try explicit ato path from settings (atopile.ato)
+    traceInfo(`[findbin] [1/3] Checking for explicit ato path (atopile.ato setting)...`);
+    const explicitBin = await _getExplicitAtoBin(settings);
+    if (explicitBin) {
+        traceInfo(`[findbin] [1/3] Found explicit path: ${explicitBin.command.join(' ')}`);
+        traceInfo(`[findbin] [1/3] Running self-check...`);
+        const explicitWorks = await _runSelfCheck(explicitBin, _timeout_ms);
+        if (explicitWorks) {
+            traceInfo(`[findbin] [1/3] SUCCESS: Using explicit ato binary from settings`);
+            traceInfo(`[findbin] ========== Search complete ==========`);
+            return explicitBin;
+        }
+        traceError(`[findbin] [1/3] FAILED: Explicit ato binary failed self-check`);
+    } else {
+        traceInfo(`[findbin] [1/3] SKIPPED: No explicit path configured (atopile.ato not set)`);
+    }
+
+    // 2. Try uv with user-configured from path (atopile.from)
+    traceInfo(`[findbin] [2/3] Checking for user-configured from path (atopile.from setting)...`);
+    const fromSettingBin = await _getFromSettingAtoBin(settings);
+    if (fromSettingBin) {
+        traceInfo(`[findbin] [2/3] Found from setting, will install: ${settings?.from}`);
+        traceInfo(`[findbin] [2/3] Command: ${fromSettingBin.command.join(' ')}`);
+        traceInfo(`[findbin] [2/3] Running self-check (this may download/install atopile)...`);
+        const fromWorks = await _runSelfCheck(fromSettingBin, _timeout_ms);
+        if (fromWorks) {
+            traceInfo(`[findbin] [2/3] SUCCESS: Using ato from atopile.from setting: ${settings?.from}`);
+            traceInfo(`[findbin] ========== Search complete ==========`);
+            return fromSettingBin;
+        }
+        traceError(`[findbin] [2/3] FAILED: ato binary from atopile.from failed self-check`);
+    } else {
+        traceInfo(`[findbin] [2/3] SKIPPED: No from path configured (atopile.from not set)`);
+    }
+
+    // 3. Fall back to default (uv with release matching extension version)
+    const defaultFrom = getDefaultAtoFrom();
+    traceInfo(`[findbin] [3/3] Falling back to default installation...`);
+    traceInfo(`[findbin] [3/3] Default source: ${defaultFrom}`);
+    const defaultBin = await _getDefaultAtoBin();
+    if (defaultBin) {
+        traceInfo(`[findbin] [3/3] Command: ${defaultBin.command.join(' ')}`);
+        traceInfo(`[findbin] [3/3] Running self-check (this may download/install atopile)...`);
+        const defaultWorks = await _runSelfCheck(defaultBin, _timeout_ms);
+        if (defaultWorks) {
+            traceInfo(`[findbin] [3/3] SUCCESS: Using default ato installation: ${defaultFrom}`);
+            traceInfo(`[findbin] ========== Search complete ==========`);
+            return defaultBin;
+        }
+        traceError(`[findbin] [3/3] FAILED: Default ato binary failed self-check`);
+    } else {
+        traceError(`[findbin] [3/3] FAILED: Could not create default ato binary (uv not available?)`);
+    }
+
+    traceError(`[findbin] ========== Search FAILED: No working ato binary found ==========`);
+    return null;
 }
 
 export async function resolveAtoBinForWorkspace(): Promise<{
