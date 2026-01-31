@@ -4698,6 +4698,7 @@ class Numbers(fabll.Node):
         # Check for display unit first - if present, use it for formatting
         # Values are stored in base units, so we need to convert for display
         display_unit_conversion = 1.0  # multiplier to convert base → display
+        has_explicit_display_unit = False
         try:
             base_unit = self.get_is_unit()
             if display_trait := self.try_get_trait(has_display_unit):
@@ -4707,6 +4708,7 @@ class Numbers(fabll.Node):
                     base_unit, display_unit
                 )
                 base_unit_symbol = is_unit.compact_repr(display_unit)
+                has_explicit_display_unit = True
             else:
                 base_unit_symbol = is_unit.compact_repr(base_unit)
         except Exception:
@@ -4754,11 +4756,13 @@ class Numbers(fabll.Node):
             return str_num
 
         # Determine scale factor based on representative value
-        # When display unit is set, use it directly without SI prefix auto-scaling
+        # When display unit is explicitly set, use it directly without SI prefix
+        # auto-scaling
         scale = 1
         prefix = ""
-        if display_unit_conversion != 1.0:
-            # Display unit is set - use it directly, no additional auto-scaling
+        if has_explicit_display_unit:
+            # Display unit is explicitly set - use it directly, no additional
+            # auto-scaling
             # The scale incorporates the display unit conversion
             scale = 1.0 / display_unit_conversion
         elif base_unit_symbol and base_unit_symbol not in ("", "dimensionless"):

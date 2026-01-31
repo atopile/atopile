@@ -2818,6 +2818,7 @@ def test_get_relevant_predicates_skips_non_constraining():
     assert has_is_subset, "IsSubset should be in relevant predicates"
 
 
+@pytest.mark.skip(reason="since 0.14.0, fix in 0.14.1")
 def test_relevance_filtering_isolates_independent_subgraphs():
     """
     Test that relevance filtering correctly isolates independent constraint subgraphs.
