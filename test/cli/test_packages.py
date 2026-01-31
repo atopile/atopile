@@ -11,8 +11,12 @@ from faebryk.libs.util import run_live
 
 
 def _strip_ansi(text: str) -> str:
-    """Remove ANSI escape codes from text."""
-    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+    """Remove ANSI escape codes and Rich markup tags from text."""
+    # Strip ANSI escape codes
+    text = re.sub(r"\x1b\[[0-9;]*m", "", text)
+    # Strip Rich markup tags like [green], [/green], [/], [bold red], etc.
+    text = re.sub(r"\[/?[a-zA-Z_ ]*\]", "", text)
+    return text
 
 
 # Get the examples directory relative to this test file
@@ -38,7 +42,7 @@ def test_install_package(package: str, tmp_path: Path):
     )
 
     # Check combined output (FBRK_LOG_FMT affects which stream logs go to)
-    # Strip ANSI codes since Rich renders markup like [green]+[/] to escape sequences
+    # Strip ANSI codes and Rich markup since output may not be rendered
     combined = _strip_ansi(stdout + stderr)
     assert f"+ {package}@" in combined
-    assert "Done!" in stdout.splitlines()[-1]
+    assert "Done!" in combined
