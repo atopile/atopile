@@ -85,6 +85,8 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
   const [useLocalAtopile, setUseLocalAtopile] = useState(atopile?.source === 'local');
   // Track if we've received settings from the extension (to avoid overwriting with backend state)
   const [settingsReceived, setSettingsReceived] = useState(false);
+  // Track when user is actively changing the toggle (to ignore echo responses)
+  const userChangingToggleRef = useRef(false);
 
   // Request settings from the extension on mount
   useEffect(() => {
@@ -96,19 +98,17 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
       if (message.type === 'atopileSettingsResponse') {
         const { atoPath } = message.settings;
         console.log('[SidebarHeader] Received atopile settings from extension:', message.settings);
-        // If atopile.ato is set, toggle should be ON
-        const shouldUseLocal = !!atoPath;
-        setUseLocalAtopile(shouldUseLocal);
-        // Only update the input if user is not actively typing
-        if (!inputFocusedRef.current) {
-          if (atoPath) {
-            setLocalPathInput(atoPath);
-          } else {
-            // Clear the input if no path is set
-            setLocalPathInput('');
-          }
+        // Update toggle to match settings, unless user just changed it
+        // (ignore echo responses from our own toggle changes)
+        if (!userChangingToggleRef.current) {
+          const shouldUseLocal = !!atoPath;
+          setUseLocalAtopile(shouldUseLocal);
         }
         setSettingsReceived(true);
+        // Update the input if user is not actively typing
+        if (!inputFocusedRef.current) {
+          setLocalPathInput(atoPath || '');
+        }
       }
     });
 
@@ -231,6 +231,12 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
 
   // Handle toggle change
   const handleToggleChange = (checked: boolean) => {
+    // Mark that user is changing toggle (ignore echo responses for 1 second)
+    userChangingToggleRef.current = true;
+    setTimeout(() => {
+      userChangingToggleRef.current = false;
+    }, 1000);
+
     // Update local state immediately (works even when backend is down)
     setUseLocalAtopile(checked);
 
