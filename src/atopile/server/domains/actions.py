@@ -212,7 +212,8 @@ def _handle_build_sync(payload: dict) -> dict:
                         )
 
                         log.info(
-                            f"Enqueueing build {build_id} for target {target_name} with include_targets={include_targets}"
+                            f"Enqueueing build {build_id} for target {target_name} "
+                            f"with include_targets={include_targets}"
                         )
                         build_ids.append(build_id)
 
@@ -242,7 +243,8 @@ def _handle_build_sync(payload: dict) -> dict:
             continue
 
         log.info(
-            f"Creating build for target={target_name}, entry={entry}, include_targets={include_targets}"
+            f"Creating build for target={target_name}, entry={entry}, "
+            f"include_targets={include_targets}"
         )
         build_id = generate_build_id(project_root, target_name, timestamp)
         log.info(f"Allocated build_id={build_id}")

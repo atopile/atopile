@@ -335,7 +335,8 @@ def categorize_bom_parts(
 
     Args:
         bom_path: Path to the BOM JSON file
-        lcsc_data: Optional dict mapping LCSC IDs to part data with is_basic/is_preferred fields
+        lcsc_data: Optional dict mapping LCSC IDs to part data
+            with is_basic/is_preferred fields
 
     Returns:
         Tuple of (PartsCategorization, total_component_cost, total_parts_count)
@@ -780,7 +781,9 @@ def cost_estimate_to_dict(estimate: CostEstimateResult) -> dict:
                 estimate.assembly_breakdown.solder_joints_cost, 2
             ),
             "loading_fees": round(estimate.assembly_breakdown.loading_fees, 2),
-            "loading_fee_parts_count": estimate.assembly_breakdown.loading_fee_parts_count,
+            "loading_fee_parts_count": (
+                estimate.assembly_breakdown.loading_fee_parts_count
+            ),
             "total": round(estimate.assembly_breakdown.total, 2),
         },
         "board_summary": board_summary_to_dict(estimate.board_summary)

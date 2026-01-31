@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import mimetypes
 import zipfile
-from io import BytesIO
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
@@ -72,7 +71,8 @@ def _is_path_allowed(file_path: Path) -> bool:
     # Check if within workspace paths
     workspace_paths = model_state.workspace_paths
     log.info(
-        f"[files] Checking path {resolved} against {len(workspace_paths)} workspace paths: {workspace_paths}"
+        f"[files] Checking path {resolved} against "
+        f"{len(workspace_paths)} workspace paths: {workspace_paths}"
     )
     for workspace in workspace_paths:
         try:
@@ -87,7 +87,7 @@ def _is_path_allowed(file_path: Path) -> bool:
                     log.info(f"[files] Path allowed via workspace_paths: {resolved}")
                     return True
                 else:
-                    log.info(f"[files] Path rejected: 'build' not in parts")
+                    log.info("[files] Path rejected: 'build' not in parts")
         except (OSError, ValueError) as e:
             log.warning(f"[files] Error checking workspace {workspace}: {e}")
             continue
@@ -111,7 +111,8 @@ def _is_path_allowed(file_path: Path) -> bool:
             pass
 
     log.warning(
-        f"[files] Path not allowed: {resolved}. Workspace paths: {workspace_paths}, workspace: {workspace}"
+        f"[files] Path not allowed: {resolved}. "
+        f"Workspace paths: {workspace_paths}, workspace: {workspace}"
     )
     return False
 
@@ -225,7 +226,9 @@ async def get_zip_file_contents(
                 content=content,
                 media_type=content_type,
                 headers={
-                    "Content-Disposition": f"inline; filename={Path(entry_normalized).name}",
+                    "Content-Disposition": (
+                        f"inline; filename={Path(entry_normalized).name}"
+                    ),
                 },
             )
     except zipfile.BadZipFile:
