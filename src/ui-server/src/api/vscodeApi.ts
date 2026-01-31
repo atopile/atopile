@@ -141,6 +141,8 @@ export interface ShowInfoMessage {
 export interface ShowErrorMessage {
   type: 'showError';
   message: string;
+}
+
 export interface GetAtopileSettingsMessage {
   type: 'getAtopileSettings';
 }
@@ -163,7 +165,7 @@ export type ExtensionMessage =
   | OpenSourceControlMessage
   | ShowProblemsMessage
   | ShowInfoMessage
-  | ShowErrorMessage;
+  | ShowErrorMessage
   | GetAtopileSettingsMessage;
 
 /**
