@@ -2,9 +2,14 @@
  * SidebarHeader component - Header with logo, version, and settings dropdown.
  *
  * Simplified version selector with:
- * - Toggle for "Use local atopile"
- * - Manual path input with validation
+ * - Toggle for "Use local atopile" that syncs bidirectionally with atopile.ato setting
+ * - Manual path input
  * - Health indicators (green=healthy, red=broken, blue=installing)
+ *
+ * Toggle behavior:
+ * - If atopile.ato has any path → toggle is ON
+ * - If atopile.ato is cleared → toggle is OFF
+ * - Turning toggle OFF clears atopile.ato
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -93,6 +98,9 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
         setUseLocalAtopile(shouldUseLocal);
         if (atoPath) {
           setLocalPathInput(atoPath);
+        } else {
+          // Clear the input if no path is set
+          setLocalPathInput('');
         }
         setSettingsReceived(true);
       }
@@ -124,109 +132,16 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
     }
   }, [atopile?.localPath, inputFocused]);
 
-  // Local path validation state
-  const [localPathValidation, setLocalPathValidation] = useState<{
-    isValidating: boolean;
-    valid: boolean | null;
-    version: string | null;
-    error: string | null;
-    resolvedPath: string | null;
-  }>({ isValidating: false, valid: null, version: null, error: null, resolvedPath: null });
-  const validateDebounceRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Check if a path matches the currently running binary
-  const pathMatchesActualBinary = (path: string): boolean => {
-    if (!atopile?.actualBinaryPath) {
-      console.log('[SidebarHeader] pathMatchesActualBinary: no actualBinaryPath, returning false');
-      return false;
-    }
-    // Normalize paths for comparison (remove trailing slashes, handle venv paths)
-    const normalizedPath = path.replace(/\/+$/, '');
-    const normalizedActual = atopile.actualBinaryPath.replace(/\/+$/, '');
-
-    console.log('[SidebarHeader] pathMatchesActualBinary comparison:', {
-      inputPath: path,
-      normalizedPath,
-      actualBinaryPath: atopile.actualBinaryPath,
-      normalizedActual,
-    });
-
-    // Direct match
-    if (normalizedPath === normalizedActual) {
-      console.log('[SidebarHeader] pathMatchesActualBinary: DIRECT MATCH');
-      return true;
-    }
-    // Check if the selected path is a parent directory containing the actual binary
-    // e.g., selecting "/path/to/atopile" should match "/path/to/atopile/.venv/bin/ato"
-    if (normalizedActual.startsWith(normalizedPath + '/')) {
-      console.log('[SidebarHeader] pathMatchesActualBinary: PARENT DIR MATCH');
-      return true;
-    }
-    // Check if selecting a venv's bin/ato
-    if (normalizedPath.endsWith('/bin/ato') && normalizedActual === normalizedPath) {
-      console.log('[SidebarHeader] pathMatchesActualBinary: VENV BIN MATCH');
-      return true;
-    }
-    console.log('[SidebarHeader] pathMatchesActualBinary: NO MATCH');
-    return false;
-  };
-
-  // Pending restart state - when settings differ from what's actually running
-  //
-  // Key insight: restart is only needed when user's DESIRED state differs from RUNNING state.
-  //
-  // actualSource tells us HOW the backend resolved its binary on startup:
-  // - 'explicit-path' = user explicitly configured atopile.ato
-  // - 'from-setting' = user explicitly configured atopile.from
-  // - 'default' = extension-managed default (installs matching release via uv)
-  //
-  // Only 'explicit-path' counts as "user explicitly configured local path" because:
-  // - from-setting and default are uv-managed
-  // - If user never configured atopile.ato, they shouldn't see restart warnings for path changes
-  const isRunningExplicitPath = atopile?.actualSource === 'explicit-path';
-
-  const pendingRestartNeeded = (() => {
-    if (useLocalAtopile) {
-      // Toggle is ON - user wants to use an explicitly configured local path
-      const pathToUse = atopile?.localPath || localPathInput;
-
-      if (atopile?.actualSource !== 'explicit-path') {
-        // Currently running from default or from-setting, not from explicit local path
-        // Need restart only if user has entered a valid path to switch to
-        return !!pathToUse;
-      }
-
-      // Already running from explicit-path
-      // Check if the configured path differs from what's running
-      if (!pathToUse) return false;
-      if (!atopile?.actualBinaryPath) return !!localPathInput;
-      return !pathMatchesActualBinary(pathToUse);
-    } else {
-      // Toggle is OFF - user wants to use default (extension-managed)
-      // Only show restart if we're running from an EXPLICIT PATH
-      // (i.e., user previously set atopile.ato and restarted with it)
-      //
-      // If actualSource is 'default' or 'from-setting', no restart needed.
-      return isRunningExplicitPath;
-    }
-  })();
-
-  // Check if toggle is ON but we're not running from explicit-path and no path entered yet
+  // Check if toggle is ON but no path entered yet
   // This is a "needs configuration" state - user turned on local but hasn't set it up
-  const needsLocalConfig = useLocalAtopile
-    && atopile?.actualSource !== 'explicit-path'
-    && !atopile?.localPath
-    && !localPathInput;
+  const needsLocalConfig = useLocalAtopile && !localPathInput;
 
-  // Debug logging for restart detection
-  console.log('[SidebarHeader] Restart detection state:', {
+  // Debug logging
+  console.log('[SidebarHeader] State:', {
     useLocalAtopile,
-    localPath: atopile?.localPath,
-    actualBinaryPath: atopile?.actualBinaryPath,
+    localPathInput,
     actualSource: atopile?.actualSource,
-    isRunningExplicitPath,
-    source: atopile?.source,
-    pendingRestartNeeded,
+    actualBinaryPath: atopile?.actualBinaryPath,
   });
 
   // Close settings dropdown when clicking outside
@@ -250,39 +165,20 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
     }
   }, [showSettings]);
 
-  // Validate local path when it changes
-  useEffect(() => {
-    if (!useLocalAtopile || !atopile?.localPath) {
-      setLocalPathValidation({ isValidating: false, valid: null, version: null, error: null, resolvedPath: null });
-      return;
-    }
-
-    // Debounce validation
-    if (validateDebounceRef.current) {
-      clearTimeout(validateDebounceRef.current);
-    }
-
-    setLocalPathValidation(prev => ({ ...prev, isValidating: true }));
-
-    validateDebounceRef.current = setTimeout(() => {
-      action('validateAtopilePath', { path: atopile.localPath });
-    }, 500);
-
-    return () => {
-      if (validateDebounceRef.current) {
-        clearTimeout(validateDebounceRef.current);
-      }
-    };
-  }, [useLocalAtopile, atopile?.localPath]);
-
   // Listen for browse path result from VS Code extension
   useEffect(() => {
     const unsubscribe = onExtensionMessage((message: ExtensionToWebviewMessage) => {
       if (message.type === 'browseAtopilePathResult' && message.path) {
-        // Set the path - this triggers validation via the useEffect above
-        // The validation result handler will save the RESOLVED path to settings
-        action('setAtopileLocalPath', { path: message.path });
-        // Don't save to settings here - let validation resolve the full binary path first
+        // Update local state
+        setLocalPathInput(message.path);
+        // Save to VS Code settings
+        postMessage({
+          type: 'atopileSettings',
+          atopile: {
+            source: 'local',
+            localPath: message.path,
+          },
+        });
       }
     });
 
@@ -302,11 +198,6 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
             custom_value?: number;
             default_value: number;
           };
-          // For validateAtopilePath
-          valid?: boolean;
-          version?: string | null;
-          error?: string | null;
-          resolved_path?: string | null;
         };
       };
 
@@ -317,46 +208,10 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
         setMaxConcurrentValue(result.setting.custom_value || result.setting.default_value);
         setDefaultMaxConcurrent(result.setting.default_value);
       }
-
-      // Handle validateAtopilePath result
-      if (message?.action === 'validateAtopilePath' && result) {
-        console.log('[SidebarHeader] validateAtopilePath raw message:', JSON.stringify(message, null, 2));
-        console.log('[SidebarHeader] validateAtopilePath result object:', result);
-        console.log('[SidebarHeader] resolved_path value:', result.resolved_path);
-
-        setLocalPathValidation({
-          isValidating: false,
-          valid: result.valid ?? false,
-          version: result.version ?? null,
-          error: result.error ?? null,
-          resolvedPath: result.resolved_path ?? null,
-        });
-
-        // If validation succeeded, save settings with the RESOLVED path (not user input)
-        if (result.valid) {
-          const pathToSave = result.resolved_path || atopile?.localPath;
-          console.log('[SidebarHeader] Validation succeeded, saving resolved path:', {
-            userInput: atopile?.localPath,
-            resolvedPath: result.resolved_path,
-            pathToSave,
-          });
-
-          // Save the RESOLVED path to VS Code settings (not the user's input)
-          // Don't update the store's localPath - keep showing what the user typed
-          postMessage({
-            type: 'atopileSettings',
-            atopile: {
-              source: 'local',
-              localPath: pathToSave,
-            },
-          });
-          // Restart status is computed from state, no need to track manually
-        }
-      }
     };
     window.addEventListener('atopile:action_result', handleActionResult);
     return () => window.removeEventListener('atopile:action_result', handleActionResult);
-  }, [atopile?.localPath]);
+  }, []);
 
   // Handle toggle change
   const handleToggleChange = (checked: boolean) => {
@@ -389,29 +244,26 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
   };
 
   // Determine health status
-  const getHealthStatus = (): 'installing' | 'healthy' | 'unhealthy' | 'unknown' | 'restart-needed' | 'needs-config' | 'disconnected' => {
-    // Check if disconnected from backend first - user should be able to restart
+  const getHealthStatus = (): 'installing' | 'healthy' | 'unhealthy' | 'unknown' | 'needs-config' | 'disconnected' => {
+    // Check for errors first - even when disconnected, show the error
+    if (atopile?.error) {
+      console.log('[SidebarHeader] getHealthStatus: unhealthy -', atopile.error);
+      return 'unhealthy';
+    }
+    // Check if installing - even when disconnected, show the installing status
+    if (atopile?.isInstalling) {
+      console.log('[SidebarHeader] getHealthStatus: installing');
+      return 'installing';
+    }
+    // Check if disconnected from backend
     if (!isConnected) {
       console.log('[SidebarHeader] getHealthStatus: disconnected');
       return 'disconnected';
-    }
-    // Check if restart is needed first (settings differ from actual binary)
-    if (pendingRestartNeeded) {
-      console.log('[SidebarHeader] getHealthStatus: restart-needed');
-      return 'restart-needed';
     }
     // Check if toggle is ON but needs configuration (no path entered yet)
     if (needsLocalConfig) {
       console.log('[SidebarHeader] getHealthStatus: needs-config');
       return 'needs-config';
-    }
-    if (atopile?.isInstalling) {
-      console.log('[SidebarHeader] getHealthStatus: installing');
-      return 'installing';
-    }
-    if (atopile?.error) {
-      console.log('[SidebarHeader] getHealthStatus: unhealthy -', atopile.error);
-      return 'unhealthy';
     }
     if (atopile?.actualVersion) {
       console.log('[SidebarHeader] getHealthStatus: healthy - v' + atopile.actualVersion);
@@ -451,20 +303,6 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
                       <span className="health-message">
                         {atopile?.installProgress?.message || 'Installing atopile...'}
                       </span>
-                    </>
-                  )}
-                  {healthStatus === 'restart-needed' && (
-                    <>
-                      <AlertCircle size={14} />
-                      <span className="health-message">
-                        Restart to use selected atopile
-                      </span>
-                      <button
-                        className="health-action-btn"
-                        onClick={() => postMessage({ type: 'restartExtension' })}
-                      >
-                        Restart
-                      </button>
                     </>
                   )}
                   {healthStatus === 'needs-config' && (
@@ -507,7 +345,7 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
                   )}
                   {healthStatus === 'unhealthy' && (
                     <>
-                      <AlertCircle size={14} />
+                      <X size={14} />
                       <span className="health-message">
                         {atopile?.error || 'atopile is not working'}
                       </span>
@@ -521,16 +359,10 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
                   )}
                   {healthStatus === 'disconnected' && (
                     <>
-                      <AlertCircle size={14} />
+                      <Loader2 size={14} className="spinner" />
                       <span className="health-message">
-                        Disconnected from backend
+                        Connecting to backend...
                       </span>
-                      <button
-                        className="health-action-btn"
-                        onClick={() => postMessage({ type: 'restartExtension' })}
-                      >
-                        Restart
-                      </button>
                     </>
                   )}
                 </div>
@@ -571,18 +403,16 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
                   <div className="settings-path-input">
                     <input
                       type="text"
-                      className={`settings-input${localPathValidation.valid === true ? ' valid' : ''}${localPathValidation.valid === false ? ' invalid' : ''}`}
-                      placeholder={atopile?.actualBinaryPath || "/path/to/atopile or ato binary"}
+                      className="settings-input"
+                      placeholder="/atopile/.venv/bin/ato"
                       value={localPathInput}
-                      title={atopile?.actualBinaryPath || "/path/to/atopile or ato binary"}
+                      title={localPathInput || "/atopile/.venv/bin/ato"}
                       onFocus={() => setInputFocused(true)}
                       onBlur={() => setInputFocused(false)}
                       onChange={(e) => {
                         // Update local state immediately for responsive input
                         setLocalPathInput(e.target.value);
-                        // Sync to backend store (async, for validation trigger)
-                        action('setAtopileLocalPath', { path: e.target.value });
-                        // Also save directly to VS Code settings (works even when backend is down)
+                        // Save directly to VS Code settings
                         postMessage({
                           type: 'atopileSettings',
                           atopile: {
@@ -600,37 +430,6 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
                       <FolderOpen size={12} />
                     </button>
                   </div>
-
-                  {/* Validation status */}
-                  {atopile?.localPath && (
-                    <div className={`path-validation-status${localPathValidation.valid === true ? ' valid' : ''}${localPathValidation.valid === false ? ' invalid' : ''}`}>
-                      {localPathValidation.isValidating ? (
-                        <>
-                          <Loader2 size={12} className="spinner" />
-                          <span>Validating...</span>
-                        </>
-                      ) : localPathValidation.valid === true ? (
-                        <>
-                          <Check size={12} />
-                          <div className="validation-success">
-                            <span>Found atopile{localPathValidation.version ? ` v${localPathValidation.version}` : ''}</span>
-                            {localPathValidation.resolvedPath && (
-                              <span className="resolved-path">
-                                {localPathValidation.resolvedPath !== atopile?.localPath
-                                  ? `Using ${localPathValidation.resolvedPath.replace(/^\/Users\/[^/]+/, '~')}`
-                                  : `at ${localPathValidation.resolvedPath.replace(/^\/Users\/[^/]+/, '~')}`}
-                              </span>
-                            )}
-                          </div>
-                        </>
-                      ) : localPathValidation.valid === false ? (
-                        <>
-                          <X size={12} />
-                          <span>{localPathValidation.error || 'Invalid path'}</span>
-                        </>
-                      ) : null}
-                    </div>
-                  )}
                 </div>
               )}
 

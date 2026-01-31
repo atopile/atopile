@@ -27,6 +27,20 @@ export const onDidChangeAtoBinInfo: Event<AtoBinInfo> = onDidChangeAtoBinInfoEve
 
 export var g_uv_path_local: string | null = null;
 
+// Global failure tracking to prevent repeated failed attempts
+const MAX_FAILED_ATTEMPTS = 3;
+let g_failedAttempts = 0;
+let g_lastFailureMessage: string | null = null;
+
+/**
+ * Reset the failure counter (e.g., when settings change or user requests retry).
+ */
+export function resetAtoBinFailures(): void {
+    traceInfo(`[findbin] Resetting failure counter (was ${g_failedAttempts})`);
+    g_failedAttempts = 0;
+    g_lastFailureMessage = null;
+}
+
 /**
  * Get the default atopile package specifier based on the extension version.
  * Returns a pip-installable specifier like "atopile==0.14.0".
@@ -90,20 +104,44 @@ async function _getDefaultAtoBin(): Promise<AtoBinLocator | null> {
 }
 
 /**
+ * Normalize a path to be absolute.
+ * Handles common mistakes like forgetting the leading / on macOS/Linux.
+ */
+function normalizePath(inputPath: string): string {
+    // Already absolute on Unix
+    if (inputPath.startsWith('/')) {
+        return inputPath;
+    }
+    // Already absolute on Windows (e.g., C:\...)
+    if (/^[a-zA-Z]:/.test(inputPath)) {
+        return inputPath;
+    }
+    // Common mistake: path looks like it should be absolute but missing leading /
+    // e.g., "Users/..." should be "/Users/..."
+    if (inputPath.startsWith('Users/') || inputPath.startsWith('home/') || inputPath.startsWith('opt/')) {
+        traceInfo(`[findbin] Path "${inputPath}" appears to be missing leading /, adding it`);
+        return '/' + inputPath;
+    }
+    // Return as-is for other cases (truly relative paths, ~, etc.)
+    return inputPath;
+}
+
+/**
  * Get the atopile binary from explicit settings path (atopile.ato).
  * Returns null if not configured or path doesn't exist.
  */
 async function _getExplicitAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
     if (settings?.ato && settings.ato !== '') {
-        traceInfo(`[findbin] Explicit: Configured path is "${settings.ato}"`);
-        if (fs.existsSync(settings.ato)) {
+        const normalizedPath = normalizePath(settings.ato);
+        traceInfo(`[findbin] Explicit: Configured path is "${settings.ato}"${normalizedPath !== settings.ato ? ` (normalized to "${normalizedPath}")` : ''}`);
+        if (fs.existsSync(normalizedPath)) {
             traceInfo(`[findbin] Explicit: Path exists`);
             return {
-                command: [settings.ato],
+                command: [normalizedPath],
                 source: 'explicit-path',
             };
         }
-        traceError(`[findbin] Explicit: Path does not exist: ${settings.ato}`);
+        traceError(`[findbin] Explicit: Path does not exist: ${normalizedPath}`);
     }
     return null;
 }
@@ -185,70 +223,131 @@ async function _runSelfCheck(atoBin: AtoBinLocator, timeout_ms: number): Promise
     }
 }
 
+/**
+ * Get the atopile binary to use.
+ *
+ * STRICT BEHAVIOR - No silent fallbacks:
+ * - If user configured atopile.ato and it fails → ERROR (no fallback)
+ * - If user configured atopile.from and it fails → ERROR (no fallback)
+ * - Only use default if nothing is explicitly configured
+ * - If default fails → ERROR
+ *
+ * This ensures users know immediately when their configuration is broken,
+ * rather than silently using a different version.
+ */
 export async function getAtoBin(settings?: ISettings, timeout_ms?: number): Promise<AtoBinLocator | null> {
+    // Check if we've already failed too many times
+    if (g_failedAttempts >= MAX_FAILED_ATTEMPTS) {
+        traceError(`[findbin] Skipping search - already failed ${g_failedAttempts} times. Last error: ${g_lastFailureMessage}`);
+        return null;
+    }
+
     if (!settings) {
         settings = await getWorkspaceSettings(await getProjectRoot());
     }
 
-    const _timeout_ms = timeout_ms ?? 15_000;
+    // Longer timeout for initial install (uv may need to download)
+    const _timeout_ms = timeout_ms ?? 120_000;
 
-    traceInfo(`[findbin] ========== Starting ato binary search ==========`);
+    traceInfo(`[findbin] ========== Starting ato binary search (attempt ${g_failedAttempts + 1}/${MAX_FAILED_ATTEMPTS}) ==========`);
+    traceInfo(`[findbin] Timeout: ${_timeout_ms / 1000}s`);
 
-    // 1. Try explicit ato path from settings (atopile.ato)
-    traceInfo(`[findbin] [1/3] Checking for explicit ato path (atopile.ato setting)...`);
-    const explicitBin = await _getExplicitAtoBin(settings);
-    if (explicitBin) {
-        traceInfo(`[findbin] [1/3] Found explicit path: ${explicitBin.command.join(' ')}`);
-        traceInfo(`[findbin] [1/3] Running self-check...`);
+    // Check what the user has configured
+    const hasExplicitPath = !!(settings?.ato && settings.ato !== '');
+    const hasFromSetting = !!(settings?.from && settings.from !== '');
+
+    traceInfo(`[findbin] User configuration: ato=${hasExplicitPath ? settings.ato : '(not set)'}, from=${hasFromSetting ? settings.from : '(not set)'}`);
+
+    // 1. If user configured explicit path (atopile.ato), use ONLY that - no fallback
+    if (hasExplicitPath) {
+        traceInfo(`[findbin] Using explicit path mode (atopile.ato is set)`);
+        const explicitBin = await _getExplicitAtoBin(settings);
+        if (!explicitBin) {
+            g_lastFailureMessage = `atopile.ato path "${settings.ato}" does not exist`;
+            g_failedAttempts++;
+            traceError(`[findbin] FATAL: atopile.ato is set to "${settings.ato}" but path does not exist`);
+            traceError(`[findbin] Please check your atopile.ato setting or clear it to use the default`);
+            window.showErrorMessage(`ato binary not found at configured path. Check atopile.ato in settings.`);
+            return null;
+        }
+
+        traceInfo(`[findbin] Found explicit path: ${explicitBin.command.join(' ')}`);
+        traceInfo(`[findbin] Running self-check...`);
         const explicitWorks = await _runSelfCheck(explicitBin, _timeout_ms);
         if (explicitWorks) {
-            traceInfo(`[findbin] [1/3] SUCCESS: Using explicit ato binary from settings`);
+            traceInfo(`[findbin] SUCCESS: Using explicit ato binary from settings`);
             traceInfo(`[findbin] ========== Search complete ==========`);
             return explicitBin;
         }
-        traceError(`[findbin] [1/3] FAILED: Explicit ato binary failed self-check`);
-    } else {
-        traceInfo(`[findbin] [1/3] SKIPPED: No explicit path configured (atopile.ato not set)`);
+
+        g_lastFailureMessage = `atopile.ato binary "${settings.ato}" failed self-check`;
+        g_failedAttempts++;
+        traceError(`[findbin] FATAL: atopile.ato path "${settings.ato}" failed self-check`);
+        traceError(`[findbin] The configured binary is not working. Please check your atopile.ato setting.`);
+        window.showErrorMessage(`ato binary at configured path is not working. Check atopile.ato in settings.`);
+        return null;
     }
 
-    // 2. Try uv with user-configured from path (atopile.from)
-    traceInfo(`[findbin] [2/3] Checking for user-configured from path (atopile.from setting)...`);
-    const fromSettingBin = await _getFromSettingAtoBin(settings);
-    if (fromSettingBin) {
-        traceInfo(`[findbin] [2/3] Found from setting, will install: ${settings?.from}`);
-        traceInfo(`[findbin] [2/3] Command: ${fromSettingBin.command.join(' ')}`);
-        traceInfo(`[findbin] [2/3] Running self-check (this may download/install atopile)...`);
+    // 2. If user configured from setting (atopile.from), use ONLY that - no fallback
+    if (hasFromSetting) {
+        traceInfo(`[findbin] Using from-setting mode (atopile.from is set to "${settings.from}")`);
+        const fromSettingBin = await _getFromSettingAtoBin(settings);
+        if (!fromSettingBin) {
+            g_lastFailureMessage = `atopile.from set but uv is not available`;
+            g_failedAttempts++;
+            traceError(`[findbin] FATAL: atopile.from is set but uv is not available`);
+            traceError(`[findbin] Please ensure uv is installed or clear atopile.from to use the default`);
+            window.showErrorMessage(`Unable to connect to backend.`);
+            return null;
+        }
+
+        traceInfo(`[findbin] Will install: ${settings.from}`);
+        traceInfo(`[findbin] Command: ${fromSettingBin.command.join(' ')}`);
+        traceInfo(`[findbin] Running self-check (this may download/install atopile)...`);
         const fromWorks = await _runSelfCheck(fromSettingBin, _timeout_ms);
         if (fromWorks) {
-            traceInfo(`[findbin] [2/3] SUCCESS: Using ato from atopile.from setting: ${settings?.from}`);
+            traceInfo(`[findbin] SUCCESS: Using ato from atopile.from setting: ${settings.from}`);
             traceInfo(`[findbin] ========== Search complete ==========`);
             return fromSettingBin;
         }
-        traceError(`[findbin] [2/3] FAILED: ato binary from atopile.from failed self-check`);
-    } else {
-        traceInfo(`[findbin] [2/3] SKIPPED: No from path configured (atopile.from not set)`);
+
+        g_lastFailureMessage = `atopile.from "${settings.from}" failed to install or run`;
+        g_failedAttempts++;
+        traceError(`[findbin] FATAL: atopile.from "${settings.from}" failed to install or run`);
+        traceError(`[findbin] Please check your atopile.from setting or clear it to use the default`);
+        window.showErrorMessage(`Unable to connect to backend.`);
+        return null;
     }
 
-    // 3. Fall back to default (uv with release matching extension version)
+    // 3. No user configuration - use default (extension-managed)
     const defaultFrom = getDefaultAtoFrom();
-    traceInfo(`[findbin] [3/3] Falling back to default installation...`);
-    traceInfo(`[findbin] [3/3] Default source: ${defaultFrom}`);
+    traceInfo(`[findbin] Using default mode (no user configuration)`);
+    traceInfo(`[findbin] Default source: ${defaultFrom}`);
+
     const defaultBin = await _getDefaultAtoBin();
-    if (defaultBin) {
-        traceInfo(`[findbin] [3/3] Command: ${defaultBin.command.join(' ')}`);
-        traceInfo(`[findbin] [3/3] Running self-check (this may download/install atopile)...`);
-        const defaultWorks = await _runSelfCheck(defaultBin, _timeout_ms);
-        if (defaultWorks) {
-            traceInfo(`[findbin] [3/3] SUCCESS: Using default ato installation: ${defaultFrom}`);
-            traceInfo(`[findbin] ========== Search complete ==========`);
-            return defaultBin;
-        }
-        traceError(`[findbin] [3/3] FAILED: Default ato binary failed self-check`);
-    } else {
-        traceError(`[findbin] [3/3] FAILED: Could not create default ato binary (uv not available?)`);
+    if (!defaultBin) {
+        g_lastFailureMessage = `uv is not available for default installation`;
+        g_failedAttempts++;
+        traceError(`[findbin] FATAL: Cannot create default ato binary - uv is not available`);
+        traceError(`[findbin] The extension requires uv to be installed. Please restart the extension.`);
+        window.showErrorMessage(`Unable to connect to backend.`);
+        return null;
     }
 
-    traceError(`[findbin] ========== Search FAILED: No working ato binary found ==========`);
+    traceInfo(`[findbin] Command: ${defaultBin.command.join(' ')}`);
+    traceInfo(`[findbin] Running self-check (this may download/install atopile)...`);
+    const defaultWorks = await _runSelfCheck(defaultBin, _timeout_ms);
+    if (defaultWorks) {
+        traceInfo(`[findbin] SUCCESS: Using default ato installation: ${defaultFrom}`);
+        traceInfo(`[findbin] ========== Search complete ==========`);
+        return defaultBin;
+    }
+
+    g_lastFailureMessage = `Default atopile installation (${defaultFrom}) failed`;
+    g_failedAttempts++;
+    traceError(`[findbin] FATAL: Default atopile installation failed`);
+    traceError(`[findbin] Failed to install/run ${defaultFrom}`);
+    window.showErrorMessage(`Unable to connect to backend.`);
     return null;
 }
 
@@ -356,6 +455,8 @@ export async function initAtoBin(context: ExtensionContext): Promise<void> {
     context.subscriptions.push(
         onDidChangeConfiguration(async (e: ConfigurationChangeEvent) => {
             if (e.affectsConfiguration(`atopile.ato`) || e.affectsConfiguration('atopile.from')) {
+                // Reset failure counter when settings change so we can retry
+                resetAtoBinFailures();
                 onDidChangeAtoBinInfoEvent.fire({ init: false });
             }
         }),

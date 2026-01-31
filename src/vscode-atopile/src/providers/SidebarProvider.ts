@@ -66,10 +66,6 @@ interface ReloadWindowMessage {
   type: 'reloadWindow';
 }
 
-interface RestartExtensionMessage {
-  type: 'restartExtension';
-}
-
 interface ShowLogsMessage {
   type: 'showLogs';
 }
@@ -149,7 +145,6 @@ type WebviewMessage =
   | BrowseAtopilePathMessage
   | BrowseProjectPathMessage
   | ReloadWindowMessage
-  | RestartExtensionMessage
   | ShowLogsMessage
   | ShowBuildLogsMessage
   | ShowBackendMenuMessage
@@ -238,6 +233,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._disposables.push(
       vscode.window.onDidChangeActiveTextEditor((editor) => {
         this._postActiveFile(editor);
+      })
+    );
+    // Send updated atopile settings to webview when configuration changes
+    this._disposables.push(
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('atopile.ato') || e.affectsConfiguration('atopile.from')) {
+          traceInfo('[SidebarProvider] Atopile settings changed, notifying webview');
+          this._sendAtopileSettings();
+        }
       })
     );
   }
@@ -395,6 +399,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._postWorkspaceRoot();
     // Send current active file to webview
     this._postActiveFile(vscode.window.activeTextEditor);
+    // Send current atopile settings to webview so slider reflects the correct state
+    this._sendAtopileSettings();
 
     // Listen for messages from webview
     this._disposables.push(
@@ -525,10 +531,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'reloadWindow':
         // Reload the VS Code window to apply new atopile settings
         vscode.commands.executeCommand('workbench.action.reloadWindow');
-        break;
-      case 'restartExtension':
-        // Restart the extension host to apply new atopile settings
-        vscode.commands.executeCommand('workbench.action.restartExtensionHost');
         break;
       case 'getAtopileSettings':
         // Send current atopile settings to the webview
@@ -1139,19 +1141,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const target = hasWorkspace ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
 
     try {
-      // Manage both atopile.ato and atopile.from settings
+      // Only manage atopile.ato setting - atopile.from is only set manually in settings
       if (atopile.source === 'local' && atopile.localPath) {
-        // Local mode: set ato path, clear from setting
+        // Local mode: set ato path
         traceInfo(`[SidebarProvider] Setting atopile.ato = ${atopile.localPath}`);
         await config.update('ato', atopile.localPath, target);
-        traceInfo(`[SidebarProvider] Clearing atopile.from (local mode)`);
-        await config.update('from', undefined, target);
       } else {
-        // Release mode: clear both settings so the default (git branch) is used
-        traceInfo(`[SidebarProvider] Clearing atopile.ato (using default from git branch)`);
+        // Release mode: clear ato setting so the default is used
+        traceInfo(`[SidebarProvider] Clearing atopile.ato (using default)`);
         await config.update('ato', undefined, target);
-        traceInfo(`[SidebarProvider] Clearing atopile.from (using default from git branch)`);
-        await config.update('from', undefined, target);
       }
       traceInfo(`[SidebarProvider] Atopile settings saved. User must restart to apply.`);
     } catch (error) {

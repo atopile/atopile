@@ -92,10 +92,6 @@ export interface ReloadWindowMessage {
   type: 'reloadWindow';
 }
 
-export interface RestartExtensionMessage {
-  type: 'restartExtension';
-}
-
 export interface ShowLogsMessage {
   type: 'showLogs';
 }
@@ -137,7 +133,6 @@ export type ExtensionMessage =
   | BrowseAtopilePathMessage
   | BrowseProjectPathMessage
   | ReloadWindowMessage
-  | RestartExtensionMessage
   | ShowLogsMessage
   | ShowBuildLogsMessage
   | ShowBackendMenuMessage
@@ -281,7 +276,8 @@ export function initExtensionMessageListener(): void {
       message.type === 'browseAtopilePathResult' ||
       message.type === 'serverReady' ||
       message.type === 'filesListed' ||
-      message.type === 'directoryLoaded'
+      message.type === 'directoryLoaded' ||
+      message.type === 'atopileSettingsResponse'
     ) {
       for (const handler of extensionMessageHandlers) {
         handler(message as ExtensionToWebviewMessage);
