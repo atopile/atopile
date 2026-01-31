@@ -1574,31 +1574,29 @@ def _get_local_type_docstring(type_name: str, state: DocumentState) -> str | Non
         return None
 
     try:
-        g = state.graph_view
         tg = state.type_graph
 
-        # Look for has_doc_string trait instances and match by parent type name
-        doc_string_type = F.has_doc_string.bind_typegraph(tg)
-        for inst in doc_string_type.get_instances(g):
-            try:
-                doc_trait = inst.cast(F.has_doc_string)
+        # Get the type root for this type name
+        type_root = state.build_result.state.type_roots.get(type_name)
+        if type_root is None:
+            return None
 
-                # Get the parent node (the type that has this trait)
-                parent = inst.get_parent()
-                if parent and isinstance(parent, tuple) and len(parent) >= 1:
-                    parent_node = parent[0]
-                    # Get the full name which contains the type name
-                    # Format: "0x2./test.ato::MyModule"
-                    full_name = parent_node.get_full_name()
+        # Get the has_doc_string trait type in this typegraph
+        from faebryk.core.node import TypeNodeBoundTG
 
-                    # Extract type name from full name
-                    if "::" in full_name:
-                        extracted_type_name = full_name.split("::")[-1]
-                        if extracted_type_name == type_name:
-                            # Dedent to remove leading whitespace from multiline strings
-                            return textwrap.dedent(doc_trait.doc_string).strip()
-            except Exception:
-                continue
+        trait_type = TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, t=F.has_doc_string)
+
+        # Look up the trait directly on the type_root
+        impl = fbrk.Trait.try_get_trait(
+            target=type_root,
+            trait_type=trait_type,
+        )
+
+        if impl is not None:
+            # Wrap it in has_doc_string and extract the doc_string
+            doc_trait = F.has_doc_string(impl)
+            # Dedent to remove leading whitespace from multiline strings
+            return textwrap.dedent(doc_trait.doc_string).strip()
 
     except Exception as e:
         logger.debug(f"Error getting local type docstring: {e}")
