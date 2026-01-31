@@ -14,9 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from faebryk.libs.util import has_uncommitted_changes
-
 from atopile.server.domains import cost_estimation
+from faebryk.libs.util import has_uncommitted_changes
 
 log = logging.getLogger(__name__)
 
@@ -361,7 +360,7 @@ def export_files(
     Returns:
         Dict with success status, list of exported files, and any errors
     """
-    project_path = Path(project_root)
+    Path(project_root)
     dest_path = Path(directory)
 
     if not dest_path.exists():
