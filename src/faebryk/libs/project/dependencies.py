@@ -440,7 +440,7 @@ class ProjectDependencies:
 
         acc_errors: list[BrokenDependencyError] = []
         while deps_to_process:
-            to_add = []
+            to_add: list[tuple[ProjectDependency, ProjectDependency]] = []
             for parent, dep in deps_to_process:
                 try:
                     # Record parent for chain reporting (first parent wins)
