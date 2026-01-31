@@ -27,20 +27,25 @@ endif()
 set(ZIG_WORKDIR   "${CMAKE_CURRENT_SOURCE_DIR}")
 set(ZIG_OUT_LIB   "${ZIG_WORKDIR}/zig-out/lib/${PYZIG_NAME}")
 set(ZIG_OUT_LIB_SEXP "${ZIG_WORKDIR}/zig-out/lib/${PYZIG_SEXP_NAME}")
-set(ZIG_BUILD_STAMP "${ZIG_WORKDIR}/zig-out/pyzig.build.stamp")
+
+# Detect Python interpreter architecture for stamp file suffix.
+# This ensures different architecture builds in the same source checkout (e.g.,
+# cibuildwheel building x86_64 and arm64) don't skip each other's builds.
+execute_process(
+  COMMAND "${Python3_EXECUTABLE}" -c "import platform; print(platform.machine())"
+  OUTPUT_VARIABLE _PY_ARCH
+  OUTPUT_STRIP_TRAILING_WHITESPACE)
+string(TOLOWER "${_PY_ARCH}" _PY_ARCH_LOWER)
+
+set(ZIG_BUILD_STAMP "${ZIG_WORKDIR}/zig-out/pyzig.${_PY_ARCH_LOWER}.build.stamp")
 
 # macOS cross-arch setup -------------------------------------------------------
 set(ZIG_ENV_PREFIX "")
 set(ZIG_TARGET_ARG "")
 if (APPLE)
-  # Match the Zig extension architecture to the Python interpreter we build
-  # against. This avoids mismatches on Apple Silicon (e.g. arm64 host but
+  # Use the detected Python arch to set the Zig target. This ensures we build
+  # for the same architecture as the Python interpreter (e.g. arm64 host but
   # x86_64 Python under Rosetta).
-  execute_process(
-    COMMAND "${Python3_EXECUTABLE}" -c "import platform; print(platform.machine())"
-    OUTPUT_VARIABLE _PY_ARCH
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-  string(TOLOWER "${_PY_ARCH}" _PY_ARCH_LOWER)
   set(_TARGET_ARCH "${_PY_ARCH_LOWER}")
 
   if (_PY_ARCH_LOWER MATCHES "arm64" OR _PY_ARCH_LOWER MATCHES "aarch64")
