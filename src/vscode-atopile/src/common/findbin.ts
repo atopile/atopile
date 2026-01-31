@@ -297,7 +297,7 @@ export async function getAtoBin(settings?: ISettings, timeout_ms?: number): Prom
             g_failedAttempts++;
             traceError(`[findbin] FATAL: atopile.from is set but uv is not available`);
             traceError(`[findbin] Please ensure uv is installed or clear atopile.from to use the default`);
-            window.showErrorMessage(`Unable to connect to backend.`);
+            window.showErrorMessage(`Unable to connect to atopile backend.`);
             return null;
         }
 
@@ -315,7 +315,7 @@ export async function getAtoBin(settings?: ISettings, timeout_ms?: number): Prom
         g_failedAttempts++;
         traceError(`[findbin] FATAL: atopile.from "${settings.from}" failed to install or run`);
         traceError(`[findbin] Please check your atopile.from setting or clear it to use the default`);
-        window.showErrorMessage(`Unable to connect to backend.`);
+        window.showErrorMessage(`Unable to connect to atopile backend.`);
         return null;
     }
 
@@ -330,7 +330,7 @@ export async function getAtoBin(settings?: ISettings, timeout_ms?: number): Prom
         g_failedAttempts++;
         traceError(`[findbin] FATAL: Cannot create default ato binary - uv is not available`);
         traceError(`[findbin] The extension requires uv to be installed. Please restart the extension.`);
-        window.showErrorMessage(`Unable to connect to backend.`);
+        window.showErrorMessage(`Unable to connect to atopile backend.`);
         return null;
     }
 
@@ -347,7 +347,7 @@ export async function getAtoBin(settings?: ISettings, timeout_ms?: number): Prom
     g_failedAttempts++;
     traceError(`[findbin] FATAL: Default atopile installation failed`);
     traceError(`[findbin] Failed to install/run ${defaultFrom}`);
-    window.showErrorMessage(`Unable to connect to backend.`);
+    window.showErrorMessage(`Unable to connect to atopile backend.`);
     return null;
 }
 

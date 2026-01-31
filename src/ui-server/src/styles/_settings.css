@@ -1025,3 +1025,38 @@
   opacity: 0.8;
   word-break: break-all;
 }
+
+/* Settings icon error indicator */
+.icon-btn {
+  position: relative;
+}
+
+.settings-error-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  background: var(--ctp-red);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg-primary);
+}
+
+/* Health status logs button */
+.health-logs-btn {
+  padding: 4px 8px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.health-logs-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}

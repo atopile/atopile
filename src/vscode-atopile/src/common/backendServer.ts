@@ -525,7 +525,7 @@ class BackendServerManager implements vscode.Disposable {
 
             const resolved = await resolveAtoBinForWorkspace();
             if (!resolved) {
-                this._lastError = 'Unable to connect to backend.';
+                this._lastError = 'Unable to connect to atopile backend.';
                 traceError(`[BackendServer] Cannot start server - ato binary not found`);
                 this._serverState = 'error';
                 this._updateStatusBar();

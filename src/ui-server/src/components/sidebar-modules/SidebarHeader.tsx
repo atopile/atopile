@@ -321,11 +321,14 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
       <div className="header-actions">
         <div className="settings-dropdown-container" ref={settingsRef}>
           <button
-            className={`icon-btn${showSettings ? ' active' : ''}`}
+            className={`icon-btn${showSettings ? ' active' : ''}${healthStatus === 'unhealthy' ? ' has-error' : ''}`}
             onClick={() => setShowSettings(!showSettings)}
             title="Settings"
           >
             <Settings size={14} />
+            {healthStatus === 'unhealthy' && (
+              <span className="settings-error-dot" />
+            )}
           </button>
           {showSettings && (
             <div className="settings-dropdown">
@@ -382,7 +385,7 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
                     <>
                       <X size={14} />
                       <span className="health-message">
-                        {atopile?.error || 'Unable to connect to backend.'}
+                        {atopile?.error || 'Unable to connect to atopile backend.'}
                       </span>
                     </>
                   )}
