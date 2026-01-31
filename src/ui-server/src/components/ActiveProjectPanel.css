@@ -882,6 +882,26 @@
   max-width: 120px;
 }
 
+.build-failed-hint {
+  font-size: var(--font-size-xxs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  margin-left: var(--spacing-sm);
+  padding-left: var(--spacing-sm);
+  border-left: 1px solid var(--border-subtle);
+}
+
+.build-failed-hint .show-logs-link {
+  color: var(--ctp-red);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.build-failed-hint .show-logs-link:hover {
+  color: var(--text-primary);
+}
+
 .build-queue-status {
   font-size: var(--font-size-xxs);
   color: var(--text-muted);

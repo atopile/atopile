@@ -13,6 +13,35 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
+def _detect_name_starting_with_number(
+    offending_symbol: Token,
+    token_stream: CommonTokenStream,
+) -> str | None:
+    """
+    Detect when a user tries to use an identifier starting with a number.
+
+    ANTLR tokenizes "68f47" as INTEGER("68") + NAME("f47"), producing a confusing
+    "extraneous input" error. This function detects that pattern and returns
+    the attempted identifier name, or None if not detected.
+    """
+    next_token_index = offending_symbol.tokenIndex + 1
+    tokens = token_stream.tokens
+
+    if next_token_index < len(tokens):
+        next_token = tokens[next_token_index]
+        # Check if next token is NAME immediately following the number (no whitespace)
+        if (
+            next_token.type == AtoLexer.NAME
+            and next_token.line == offending_symbol.line
+            and next_token.column
+            == offending_symbol.column + len(offending_symbol.text)
+        ):
+            return offending_symbol.text + next_token.text
+
+    # Just a number where a name was expected
+    return offending_symbol.text
+
+
 class ErrorListenerConverter(ErrorListener):
     """Converts an error into an AtoSyntaxError."""
 
@@ -36,6 +65,16 @@ class ErrorListenerConverter(ErrorListener):
         # This fill is required to get context past the offending symbol
         # to accurately report the error
         input_stream.fill()
+
+        # Detect identifier starting with a number (e.g., "68f47 = new Electrical")
+        if (
+            offendingSymbol is not None
+            and offendingSymbol.type in (AtoLexer.NUMBER, AtoLexer.INTEGER)
+            and "expecting" in msg
+            and "NAME" in msg
+        ):
+            name = _detect_name_starting_with_number(offendingSymbol, input_stream)
+            msg = f"Invalid name `{name}`: names cannot start with a number."
 
         self.errors.append(
             UserSyntaxError.from_tokens(
