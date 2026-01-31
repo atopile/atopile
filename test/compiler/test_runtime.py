@@ -1115,6 +1115,21 @@ def test_pin_ref():
         "App",
     )
     assert "App" in result.state.type_roots
+    abc = _get_child(app_instance, "abc")
+    b_bound = _get_child(abc, "b")
+    a_bound = _get_child(app_instance, "a")
+    a = F.Electrical.bind_instance(a_bound)
+    b = F.Electrical.bind_instance(b_bound)
+    assert _check_connected(a, b)
+    assert a.get_name() == "a"
+    assert b.get_name() == "b"
+
+    _1_bound = _get_child(abc, "1")
+    _1 = F.Electrical.bind_instance(_1_bound)
+    assert _1.get_name() == "1"
+    _1_lead_trait = _1.try_get_trait(F.Lead.is_lead)
+    assert _1_lead_trait is not None
+    assert _1_lead_trait.get_lead_name() == "1"
 
 
 def test_missing_pin_ref_raises():
