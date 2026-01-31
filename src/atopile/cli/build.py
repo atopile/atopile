@@ -446,6 +446,17 @@ def build(
             raise typer.Exit(1)
 
         _run_single_build()
+
+        # Reload KiCad PCB after worker build completes
+        for build_name in config.selected_builds:
+            build_cfg = config.project.builds[build_name]
+            try:
+                reload_pcb(
+                    build_cfg.paths.layout, backup_path=build_cfg.paths.output_base
+                )
+            except Exception as e:
+                logger.warning(f"{e}\nReload pcb manually in KiCAD")
+
         return
 
     # Multi-project mode: discover and build all projects
