@@ -27,30 +27,42 @@ endif()
 set(ZIG_WORKDIR   "${CMAKE_CURRENT_SOURCE_DIR}")
 set(ZIG_OUT_LIB   "${ZIG_WORKDIR}/zig-out/lib/${PYZIG_NAME}")
 set(ZIG_OUT_LIB_SEXP "${ZIG_WORKDIR}/zig-out/lib/${PYZIG_SEXP_NAME}")
-set(ZIG_BUILD_STAMP "${ZIG_WORKDIR}/zig-out/pyzig.build.stamp")
 
 # macOS cross-arch setup -------------------------------------------------------
+# Determine target architecture for cross-compilation. Priority:
+# 1. CMAKE_OSX_ARCHITECTURES if set (from cibuildwheel/scikit-build for cross-compile)
+# 2. Fall back to Python interpreter's architecture (for local dev builds)
 set(ZIG_ENV_PREFIX "")
 set(ZIG_TARGET_ARG "")
+set(_TARGET_ARCH_FOR_STAMP "native")  # Default for non-Apple platforms
+
 if (APPLE)
-  # Prefer the active build architecture; fall back to the host CPU when
-  # CMAKE_OSX_ARCHITECTURES is unspecified (the default on local dev
-  # machines).
-  set(_CM_ARCH "")
   if (CMAKE_OSX_ARCHITECTURES)
-    list(GET CMAKE_OSX_ARCHITECTURES 0 _CM_ARCH)
+    # Cross-compilation: use the target architecture from CMAKE_OSX_ARCHITECTURES
+    list(GET CMAKE_OSX_ARCHITECTURES 0 _TARGET_ARCH)
+    string(TOLOWER "${_TARGET_ARCH}" _TARGET_ARCH)
+    message(STATUS "Cross-compiling: CMAKE_OSX_ARCHITECTURES=${CMAKE_OSX_ARCHITECTURES}")
   else()
-    set(_CM_ARCH "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+    # Local dev build: detect from Python interpreter
+    execute_process(
+      COMMAND "${Python3_EXECUTABLE}" -c "import platform; print(platform.machine())"
+      OUTPUT_VARIABLE _TARGET_ARCH
+      OUTPUT_STRIP_TRAILING_WHITESPACE)
+    string(TOLOWER "${_TARGET_ARCH}" _TARGET_ARCH)
+    message(STATUS "Local build: detected Python arch=${_TARGET_ARCH}")
   endif()
 
-  string(TOLOWER "${_CM_ARCH}" _CM_ARCH_LOWER)
-  if (_CM_ARCH_LOWER MATCHES "arm64" OR _CM_ARCH_LOWER MATCHES "aarch64")
+  set(_TARGET_ARCH_FOR_STAMP "${_TARGET_ARCH}")
+
+  if (_TARGET_ARCH MATCHES "arm64" OR _TARGET_ARCH MATCHES "aarch64")
     set(_ZIG_ARCH "aarch64")
     set(_MAC_DEPLOY "11.0")      # first macOS with arm64
   else()
     set(_ZIG_ARCH "x86_64")
     set(_MAC_DEPLOY "10.13")
   endif()
+
+  message(STATUS "Building for macOS ${_ZIG_ARCH} (target arch: ${_TARGET_ARCH})")
 
   execute_process(
     COMMAND xcrun --sdk macosx --show-sdk-path
@@ -64,6 +76,10 @@ if (APPLE)
 
   set(ZIG_TARGET_ARG -Dtarget=${_ZIG_ARCH}-macos.${_MAC_DEPLOY})
 endif()
+
+# Stamp file includes target architecture to ensure different arch builds in the same
+# source checkout (e.g., cibuildwheel building x86_64 and arm64) don't skip each other.
+set(ZIG_BUILD_STAMP "${ZIG_WORKDIR}/zig-out/pyzig.${_TARGET_ARCH_FOR_STAMP}.build.stamp")
 
 # custom rule to build the Zig extension --------------------------------------
 add_custom_command(

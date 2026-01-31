@@ -377,6 +377,7 @@ export function Sidebar() {
       {/* Header with settings */}
       <SidebarHeader
         atopile={atopile}
+        isConnected={isConnected}
       />
 
       <div className="panel-sections" ref={containerRef}>

@@ -70,7 +70,7 @@
         "configuration": {
             "properties": {
                 "atopile.ato": {
-                    "description": "When set to a path to atopile binary, extension will use that.",
+                    "description": "When set to a full path to atopile binary, extension will use that.",
                     "scope": "resource",
                     "type": "string"
                 },
