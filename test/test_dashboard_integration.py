@@ -17,7 +17,6 @@ import pytest
 import requests
 
 QUICKSTART_PROJECT = Path(__file__).parent.parent / "examples" / "quickstart"
-SERVER_PORT = 8502  # Use different port to avoid conflicts
 
 
 @pytest.fixture
@@ -34,14 +33,14 @@ def dashboard_server(tmp_path: Path, quickstart_project: Path):
     from atopile.server.server import DashboardServer
 
     # Create server using the DashboardServer class directly
+    # Don't specify port - let it find a free port automatically
     server = DashboardServer(
-        port=SERVER_PORT,
         workspace_paths=[quickstart_project.parent],
     )
     server.start()
 
     # Wait for server to be ready
-    base_url = f"http://localhost:{SERVER_PORT}"
+    base_url = server.url
     max_wait = 10
     started = False
     for _ in range(max_wait * 10):
@@ -56,7 +55,7 @@ def dashboard_server(tmp_path: Path, quickstart_project: Path):
 
     if not started:
         server.shutdown()
-        pytest.fail(f"Server did not start within {max_wait}s.")
+        pytest.fail(f"Server did not start within {max_wait}s on {base_url}")
 
     yield base_url
 
