@@ -6,6 +6,11 @@ repos:
         entry: tools/library/gen_F.py
         language: python
         files: src/faebryk/library/.*.py
+      - id: generate-typescript-types
+        name: Generate typescript types
+        entry: scripts/generate_types.py
+        language: system
+        files: (src/atopile/dataclasses\.py|scripts/generate_types\.py)
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.
     rev: v0.12.0
