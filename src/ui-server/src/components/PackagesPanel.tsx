@@ -129,7 +129,7 @@ function SyncButtons({
           className="packages-sync-btn packages-sync-btn-primary"
           onClick={() => onSync(projectRoot, { force: forceSync })}
           disabled={isSyncing}
-          title="Sync packages: Ensure installed versions match the manifest. Fixes version mismatches and installs missing packages."
+          title="Ensure installed versions match the manifests."
         >
           <RefreshCw size={14} className={isSyncing ? 'spinning' : ''} />
           <span>Sync</span>
@@ -138,12 +138,12 @@ function SyncButtons({
           className="packages-sync-btn"
           onClick={() => onSync(projectRoot, { upgrade: true, force: forceSync })}
           disabled={isSyncing || !hasUpdatesAvailable}
-          title="Upgrade: Update all packages to their latest compatible versions."
+          title="Update all packages to their latest compatible versions."
         >
           <ArrowUpCircle size={14} />
         </button>
       </div>
-      <label className="packages-sync-force" title="Force: Discard local modifications and reinstall packages fresh.">
+      <label className="packages-sync-force" title="Discard local modifications and reinstall packages fresh.">
         <input
           type="checkbox"
           checked={forceSync}
