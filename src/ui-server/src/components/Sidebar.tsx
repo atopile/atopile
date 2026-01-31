@@ -118,7 +118,7 @@ export function Sidebar() {
 
   // Determine whether to show labels based on available width
   // Below threshold: icons only. Above: icons + labels
-  const showTabLabels = tabBarWidth >= 340;
+  const showTabLabels = tabBarWidth >= 450;
 
   // Keep selected package in sync with refreshed package list (e.g., after install/uninstall)
   useEffect(() => {
@@ -415,68 +415,69 @@ export function Sidebar() {
           />
         </div>
 
-        {/* Tabbed Panels Section */}
-        <div className="tabbed-panels">
-          <div className="tab-bar" ref={tabBarRef}>
-            <button
-              className={`tab-button ${activeTab === 'files' ? 'active' : ''}`}
-              onClick={() => setActiveTab('files')}
-              title="Files"
-            >
-              <Files size={14} />
-              {showTabLabels && <span className="tab-label">Files</span>}
-            </button>
-            <button
-              className={`tab-button ${activeTab === 'packages' ? 'active' : ''}`}
-              onClick={() => setActiveTab('packages')}
-              title="Packages"
-            >
-              <Package size={14} />
-              {showTabLabels && <span className="tab-label">Packages</span>}
-              {isLoadingPackages && <span className="tab-loading" />}
-            </button>
-            <button
-              className={`tab-button ${activeTab === 'parts' ? 'active' : ''}`}
-              onClick={() => setActiveTab('parts')}
-              title="Parts"
-            >
-              <Cpu size={14} />
-              {showTabLabels && <span className="tab-label">Parts</span>}
-            </button>
-            <button
-              className={`tab-button ${activeTab === 'stdlib' ? 'active' : ''}`}
-              onClick={() => setActiveTab('stdlib')}
-              title="Standard Library"
-            >
-              <Library size={14} />
-              {showTabLabels && <span className="tab-label">Lib</span>}
-            </button>
-            <button
-              className={`tab-button ${activeTab === 'structure' ? 'active' : ''}`}
-              onClick={() => setActiveTab('structure')}
-              title="Structure"
-            >
-              <GitBranch size={14} />
-              {showTabLabels && <span className="tab-label">Struct</span>}
-            </button>
-            <button
-              className={`tab-button ${activeTab === 'parameters' ? 'active' : ''}`}
-              onClick={() => setActiveTab('parameters')}
-              title="Parameters"
-            >
-              <SlidersHorizontal size={14} />
-              {showTabLabels && <span className="tab-label">Params</span>}
-            </button>
-            <button
-              className={`tab-button ${activeTab === 'bom' ? 'active' : ''}`}
-              onClick={() => setActiveTab('bom')}
-              title="Bill of Materials"
-            >
-              <ClipboardList size={14} />
-              {showTabLabels && <span className="tab-label">BOM</span>}
-            </button>
-          </div>
+        {/* Tab Bar - outside tabbed-panels so tooltips aren't clipped */}
+        <div className="tab-bar" ref={tabBarRef}>
+          <button
+            className={`tab-button ${activeTab === 'files' ? 'active' : ''}`}
+            onClick={() => setActiveTab('files')}
+            data-tooltip="Files"
+          >
+            <Files size={14} />
+            {showTabLabels && <span className="tab-label">Files</span>}
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'packages' ? 'active' : ''}`}
+            onClick={() => setActiveTab('packages')}
+            data-tooltip="Packages"
+          >
+            <Package size={14} />
+            {showTabLabels && <span className="tab-label">Packages</span>}
+            {isLoadingPackages && <span className="tab-loading" />}
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'parts' ? 'active' : ''}`}
+            onClick={() => setActiveTab('parts')}
+            data-tooltip="Parts"
+          >
+            <Cpu size={14} />
+            {showTabLabels && <span className="tab-label">Parts</span>}
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'stdlib' ? 'active' : ''}`}
+            onClick={() => setActiveTab('stdlib')}
+            data-tooltip="Standard Library"
+          >
+            <Library size={14} />
+            {showTabLabels && <span className="tab-label">Lib</span>}
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'structure' ? 'active' : ''}`}
+            onClick={() => setActiveTab('structure')}
+            data-tooltip="Structure"
+          >
+            <GitBranch size={14} />
+            {showTabLabels && <span className="tab-label">Struct</span>}
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'parameters' ? 'active' : ''}`}
+            onClick={() => setActiveTab('parameters')}
+            data-tooltip="Parameters"
+          >
+            <SlidersHorizontal size={14} />
+            {showTabLabels && <span className="tab-label">Params</span>}
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'bom' ? 'active' : ''}`}
+            onClick={() => setActiveTab('bom')}
+            data-tooltip="Bill of Materials"
+          >
+            <ClipboardList size={14} />
+            {showTabLabels && <span className="tab-label">BOM</span>}
+          </button>
+        </div>
 
+        {/* Tabbed Panels Content */}
+        <div className="tabbed-panels">
           <div className="tab-content">
             {activeTab === 'files' && (
               <FileExplorerPanel

@@ -547,7 +547,9 @@
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
   width: 100%;
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
+  z-index: 10;
 }
 
 .tab-button {
@@ -592,6 +594,37 @@
   background: transparent;
   color: var(--text-primary);
   border-bottom-color: var(--text-primary);
+}
+
+/* Tab button tooltips - appear quickly on hover */
+.tab-button {
+  position: relative;
+}
+
+.tab-button::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  white-space: nowrap;
+  z-index: 1000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.1s ease-out;
+  transition-delay: 0s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.tab-button:hover::after {
+  opacity: 1;
+  transition-delay: 0.15s;
 }
 
 .tab-badge {

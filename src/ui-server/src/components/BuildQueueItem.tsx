@@ -4,7 +4,7 @@
  */
 
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { ChevronDown, X, CheckCircle2, XCircle, AlertCircle, AlertTriangle, ScrollText } from 'lucide-react'
+import { ChevronDown, X, CheckCircle2, XCircle, AlertCircle, AlertTriangle } from 'lucide-react'
 import type { QueuedBuild } from '../types/build'
 import { useStore } from '../store'
 import { sendAction } from '../api/websocket'
@@ -207,7 +207,17 @@ export function BuildQueueItem({
 
   return (
     <div className={`build-queue-item ${build.status} ${isExpanded ? 'expanded' : ''} ${justCompleted ? 'just-completed' : ''}`}>
-      <div className="build-queue-header" onClick={() => canExpand && setIsExpanded(!isExpanded)}>
+      <div
+        className="build-queue-header"
+        onClick={() => {
+          if (canExpand) setIsExpanded(!isExpanded)
+          if (build.buildId) {
+            useStore.getState().setLogViewerBuildId(build.buildId)
+            sendAction('setLogViewCurrentId', { buildId: build.buildId, stage: null })
+            postMessage({ type: 'showBuildLogs' })
+          }
+        }}
+      >
         {canExpand && (
           <ChevronDown
             size={10}
@@ -228,6 +238,11 @@ export function BuildQueueItem({
               {currentStage.name}
             </span>
           )}
+          {build.status === 'failed' && (
+            <span className="build-failed-hint">
+              Build failed... <span className="show-logs-link">show logs</span>
+            </span>
+          )}
         </div>
         {statusLabel && (
           <div className="build-queue-meta">
@@ -244,20 +259,6 @@ export function BuildQueueItem({
               style={{ width: `${progress}%` }}
             />
           </div>
-        )}
-        {build.buildId && (
-          <button
-            className="build-queue-logs-btn"
-            onClick={(e) => {
-              e.stopPropagation()
-              useStore.getState().setLogViewerBuildId(build.buildId)
-              sendAction('setLogViewCurrentId', { buildId: build.buildId, stage: null })
-              postMessage({ type: 'showBuildLogs' })
-            }}
-            title="View all logs for this build"
-          >
-            <ScrollText size={10} />
-          </button>
         )}
         {(build.status === 'queued' || build.status === 'building') && onCancel && build.buildId && (
           <button
