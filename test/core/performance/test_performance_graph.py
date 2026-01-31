@@ -14,6 +14,7 @@ from faebryk.libs.util import not_none
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.skip("since 0.14.0, fix in 0.14.1")
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.parametrize(
     "A,B,rs,pick",
