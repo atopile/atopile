@@ -761,7 +761,7 @@
 }
 
 .build-queue-item.building .build-queue-header {
-  background: rgba(249, 226, 175, 0.08);
+  background: var(--ato-orange-subtle);
 }
 
 .build-queue-item.queued {
@@ -841,7 +841,7 @@
 
 .build-queue-progress-bar {
   height: 100%;
-  background: var(--ctp-yellow);
+  background: var(--ato-orange);
   border-radius: 2px;
   transition: width 0.2s ease;
 }
@@ -968,9 +968,10 @@
   color: var(--ctp-yellow);
 }
 
-.build-stage .stage-icon.running {
-  color: var(--ctp-blue);
-  animation: pulse 1s ease-in-out infinite;
+.build-stage .stage-icon.running,
+.build-stage .status-icon.running,
+.build-stage .status-icon.building {
+  color: var(--ato-orange);
 }
 
 .build-stage .stage-icon.skipped,
@@ -1019,7 +1020,7 @@
 
 .build-stage.running .stage-name,
 .build-stage.building .stage-name {
-  color: var(--ctp-blue);
+  color: var(--ato-orange);
 }
 
 /* New Project/Target Forms */

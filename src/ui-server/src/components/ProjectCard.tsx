@@ -14,7 +14,8 @@ import {
   AlertCircle, AlertTriangle, Square, Download, Check,
   Search, ArrowUpCircle, Loader2, ExternalLink
 } from 'lucide-react'
-import { getLastBuildStatusIcon, formatRelativeTime } from './BuildNode'
+import { formatRelativeTime } from './BuildNode'
+import { StatusIcon } from './StatusIcon'
 import { BuildsCard } from './BuildsCard'
 import { ProjectExplorerCard } from './ProjectExplorerCard'
 import { FileExplorer, type FileTreeNode } from './FileExplorer'
@@ -625,7 +626,7 @@ export const ProjectCard = memo(function ProjectCard({
                   )}
                   {project.lastBuildTimestamp && (
                     <span className="last-build-info" title={`Last build: ${project.lastBuildStatus || 'unknown'}`}>
-                      {project.lastBuildStatus && getLastBuildStatusIcon(project.lastBuildStatus, 10)}
+                      {project.lastBuildStatus && <StatusIcon status={project.lastBuildStatus as any} size={10} dimmed />}
                       <span className="last-build-time">{formatRelativeTime(project.lastBuildTimestamp)}</span>
                     </span>
                   )}

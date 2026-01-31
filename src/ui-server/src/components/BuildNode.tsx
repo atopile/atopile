@@ -6,16 +6,17 @@
 
 import { useState, useRef, useEffect, memo, useMemo } from 'react';
 import {
-  ChevronDown, ChevronRight, Play, Clock, Check, X,
-  AlertTriangle, AlertCircle, Circle, SkipForward,
+  ChevronDown, ChevronRight, Play, Clock, X,
+  AlertTriangle, AlertCircle, Circle,
   FileCode, Search, Grid3X3, Layout, Cuboid, Box, Square, Trash2
 } from 'lucide-react';
-import type { Selection, BuildTarget, BuildStage, ModuleDefinition } from './projectsTypes';
+import type { Selection, BuildTarget, ModuleDefinition } from './projectsTypes';
 import { NameValidationDropdown } from './NameValidationDropdown';
 import { validateName } from '../utils/nameValidation';
 import { useStore } from '../store';
 import { sendAction } from '../api/websocket';
 import { postMessage } from '../api/vscodeApi';
+import { StatusIcon } from './StatusIcon';
 import './BuildNode.css';
 
 // Format time in mm:ss or hh:mm:ss
@@ -61,62 +62,6 @@ export function formatRelativeTime(timestamp: string): string {
   return date.toLocaleDateString();
 }
 
-// Get status icon for build target
-export function getStatusIcon(status: BuildTarget['status'], size: number = 12, queuePosition?: number) {
-  switch (status) {
-    case 'building':
-      return <Circle size={size} className="status-icon building" />;
-    case 'queued':
-      return (
-        <span className="status-icon queued" title={queuePosition ? `Queue position: ${queuePosition}` : 'Queued'}>
-          <Clock size={size} />
-          {queuePosition && <span className="queue-position">{queuePosition}</span>}
-        </span>
-      );
-    case 'success':
-      return <Check size={size} className="status-icon success" />;
-    case 'error':
-      return <X size={size} className="status-icon error" />;
-    case 'warning':
-      return <AlertTriangle size={size} className="status-icon warning" />;
-    default:
-      return <div className="status-dot idle" />;
-  }
-}
-
-// Get stage status icon
-export function getStageIcon(status: BuildStage['status'], size: number = 12) {
-  switch (status) {
-    case 'running':
-      return <Circle size={size} className="stage-icon running" />;
-    case 'success':
-      return <Check size={size} className="stage-icon success" />;
-    case 'warning':
-      return <AlertTriangle size={size} className="stage-icon warning" />;
-    case 'error':
-      return <X size={size} className="stage-icon error" />;
-    case 'skipped':
-      return <SkipForward size={size} className="stage-icon skipped" />;
-    case 'pending':
-    default:
-      return <Circle size={size} className="stage-icon pending" />;
-  }
-}
-
-// Get status icon for last build (dimmed version)
-export function getLastBuildStatusIcon(status: string, size: number = 12) {
-  switch (status) {
-    case 'success':
-      return <Check size={size} className="status-icon success dimmed" />;
-    case 'warning':
-      return <AlertTriangle size={size} className="status-icon warning dimmed" />;
-    case 'error':
-    case 'failed':
-      return <AlertCircle size={size} className="status-icon error dimmed" />;
-    default:
-      return <Circle size={size} className="status-icon idle dimmed" />;
-  }
-}
 
 interface BuildNodeProps {
   build: BuildTarget;
@@ -334,7 +279,7 @@ export const BuildNode = memo(function BuildNode({
             </div>
           ) : (
             <div className="build-status-icon">
-              {getStatusIcon(build.status, 12, build.queuePosition)}
+              <StatusIcon status={build.status} size={14} queuePosition={build.queuePosition} />
             </div>
           )}
 
@@ -429,7 +374,7 @@ export const BuildNode = memo(function BuildNode({
                       <span className="build-duration">{build.elapsedSeconds.toFixed(1)}s</span>
                     ) : build.lastBuild ? (
                       <span className="last-build-info" title={`Last build: ${build.lastBuild.status}`}>
-                        {getLastBuildStatusIcon(build.lastBuild.status, 10)}
+                        <StatusIcon status={build.lastBuild.status as any} size={10} dimmed />
                         <span className="last-build-time">{formatRelativeTime(build.lastBuild.timestamp)}</span>
                       </span>
                     ) : null}
@@ -696,7 +641,7 @@ export const BuildNode = memo(function BuildNode({
                         } : undefined}
                         title={isClickable ? `Filter problems to ${stage.displayName || stage.name} stage` : undefined}
                       >
-                        {getStageIcon(stage.status)}
+                        <StatusIcon status={stage.status} size={12} />
                         <span className="stage-name">{stage.displayName || stage.name}</span>
                         {stage.message && (
                           <span className="stage-message">{stage.message}</span>
