@@ -648,7 +648,7 @@ class ModulesResponse(BaseModel):
     total: int
 
 
-class DependencyInfo(BaseModel):
+class DependencyInfo(CamelModel):
     """A project dependency with version info."""
 
     identifier: str  # e.g., "atopile/resistors"
