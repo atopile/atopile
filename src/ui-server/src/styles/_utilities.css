@@ -159,7 +159,8 @@
   right: 0;
   min-width: 220px;
   max-height: 320px;
-  background: var(--bg-secondary);
+  /* Solid background - never transparent regardless of theme */
+  background-color: var(--vscode-sideBar-background, var(--bg-secondary, #1e1e2e));
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   box-shadow: 0 8px 24px rgba(0,0,0,0.4);
@@ -167,6 +168,8 @@
   display: flex;
   flex-direction: column;
   z-index: 9999;
+  /* Prevent any transparency from parent elements */
+  isolation: isolate;
 }
 
 /* Ensure build selector dropdowns can escape overflow:hidden containers */

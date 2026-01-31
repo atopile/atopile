@@ -59,7 +59,8 @@
   /* position: fixed is applied via inline styles */
   width: 380px;
   max-height: 500px;
-  background: var(--bg-primary);
+  /* Solid background - never transparent regardless of theme */
+  background-color: var(--vscode-sideBar-background, var(--bg-primary, #1e1e2e));
   border: 1px solid var(--border-default);
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
@@ -67,6 +68,8 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  /* Prevent any transparency from parent elements */
+  isolation: isolate;
 }
 
 .efs-header {

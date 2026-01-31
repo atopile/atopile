@@ -15,13 +15,16 @@
   right: 0;
   margin-top: 4px;
   min-width: 340px;
-  background: var(--bg-secondary);
+  /* Solid background - never transparent regardless of theme */
+  background-color: var(--vscode-sideBar-background, var(--bg-secondary, #1e1e2e));
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   /* Ensure settings dropdown is above disconnected overlay */
   z-index: calc(var(--z-modal) + 200);
   padding: var(--spacing-sm);
+  /* Prevent any transparency from parent elements */
+  isolation: isolate;
 }
 
 .settings-group {
@@ -295,13 +298,16 @@
   left: 0;
   right: 0;
   margin-top: 4px;
-  background: var(--bg-secondary);
+  /* Solid background - never transparent regardless of theme */
+  background-color: var(--vscode-sideBar-background, var(--bg-secondary, #1e1e2e));
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   max-height: 200px;
   overflow-y: auto;
   z-index: 100;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  /* Prevent any transparency from parent elements */
+  isolation: isolate;
 }
 
 .branch-option {

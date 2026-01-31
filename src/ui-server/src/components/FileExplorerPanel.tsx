@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ChevronDown,
   Folder,
+  FolderOpen,
   File,
   FileCode,
   FileText,
@@ -114,6 +115,7 @@ interface FileExplorerPanelProps {
 const FileIcon = memo(function FileIcon({
   name,
   isDirectory,
+  isExpanded = false,
   size = 16,
 }: {
   name: string;
@@ -121,9 +123,13 @@ const FileIcon = memo(function FileIcon({
   isExpanded?: boolean;
   size?: number;
 }) {
-  // No icon for directories (cleaner look like Cursor)
+  // Folder icons
   if (isDirectory) {
-    return null;
+    return isExpanded ? (
+      <FolderOpen size={size} className="icon folder-open" />
+    ) : (
+      <Folder size={size} className="icon folder" />
+    );
   }
 
   // Get file extension
@@ -406,12 +412,10 @@ const TreeNode = memo(function TreeNode({
           )}
         </span>
 
-        {/* File Icon (no icon for folders) */}
-        {!isDirectory && (
-          <span className="icon-container">
-            <FileIcon name={node.name} isDirectory={isDirectory} />
-          </span>
-        )}
+        {/* File/Folder Icon */}
+        <span className="icon-container">
+          <FileIcon name={node.name} isDirectory={isDirectory} isExpanded={isExpanded} />
+        </span>
 
         {/* Name or Rename Input */}
         {isRenaming ? (
