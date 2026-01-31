@@ -88,6 +88,14 @@ class Addressor(fabll.Node):
         if lit is None or not lit.op_setic_is_singleton():
             lit = solver.simplify_and_extract_superset(offset_p)
 
+        # Fallback to direct extraction from graph if solver doesn't give singleton.
+        # This handles the case where offset is set directly via set_superset()
+        # but the Is constraint (offset = address - base) has unconstrained operands.
+        if lit is None or not lit.op_setic_is_singleton():
+            direct_lit = self.offset.get().try_extract_superset()
+            if direct_lit is not None and direct_lit.is_singleton():
+                lit = direct_lit.is_literal.get()
+
         if lit is None or not lit.op_setic_is_singleton():
             # raise Addressor.OffsetNotResolvedError(self)
             raise Warning(
@@ -307,8 +315,13 @@ def test_addressor_sets_address_lines(
         el = F.ElectricLogic.bind_instance(line.instance)
         el.reference.get()._is_interface.get().connect_to(app.power.get())
 
-    # Set the offset value
-    addressor.offset.get().set_superset(g, float(offset))
+    # Set base and address, let solver deduce offset from Is constraint
+    # (offset = address - base)
+    base_value = 0.0
+    expected_address = base_value + float(offset)
+
+    addressor.base.get().set_superset(g, base_value)
+    addressor.address.get().set_superset(g, expected_address)
 
     # Run solver and attach has_solver trait
     solver = Solver()

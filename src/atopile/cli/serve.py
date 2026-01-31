@@ -93,7 +93,8 @@ def backend(
     ato_from_spec: Optional[str] = typer.Option(
         None,
         "--ato-from-spec",
-        help="The pip/uv spec used to install atopile (e.g., 'atopile==0.14.0' or git URL)",
+        help="The pip/uv spec used to install atopile"
+        " (e.g., 'atopile==0.14.0' or git URL)",
     ),
 ) -> None:
     """Start the backend server in the current terminal."""

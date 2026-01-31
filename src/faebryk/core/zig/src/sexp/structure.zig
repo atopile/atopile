@@ -533,9 +533,14 @@ fn handleKeyValuesAndBooleans(comptime T: type, allocator: std.mem.Allocator, it
                         }
                     }
                 } else {
+                    // Handle parantheses_symbol boolean encoding: (power) means power=true
+                    if (!fields_set.isSet(field_idx) and kv_items.len == 1 and @typeInfo(field.type) == .bool and fm.boolean_encoding == .parantheses_symbol) {
+                        @field(result.*, field.name) = true;
+                        fields_set.set(field_idx);
+                    }
                     // Only process if field is not set AND we have at least key+value (len >= 2)
                     // Skip key-only entries (e.g., "(stroke)") that have no values to prevent segfault
-                    if (!fields_set.isSet(field_idx) and kv_items.len >= 2) {
+                    else if (!fields_set.isSet(field_idx) and kv_items.len >= 2) {
                         setCtx(T, items[i], field.name, null);
                         @field(result.*, field.name) = if (@typeInfo(field.type) == .@"struct" or (@typeInfo(field.type) == .optional and @typeInfo(@typeInfo(field.type).optional.child) == .@"struct"))
                             try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null }, fm)

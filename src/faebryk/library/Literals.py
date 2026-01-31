@@ -5150,7 +5150,7 @@ class TestNumbers:
         result = quantity_meter.op_mul_intervals(quantity_newton, g=g, tg=tg)
         assert result.get_numeric_set().get_min_value() == 3.0
         assert result.get_numeric_set().get_max_value() == 8.0
-        assert is_unit.compact_repr(result.get_is_unit()) == "s⁻²·m²·kg"
+        assert is_unit.compact_repr(result.get_is_unit()) == "J"
 
     def test_op_multiply_three_same_unit(self):
         from faebryk.library.Units import is_unit
