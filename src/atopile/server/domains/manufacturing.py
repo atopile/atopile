@@ -258,8 +258,10 @@ def estimate_cost(
             total_parts=estimate.components_breakdown.total_parts,
         ),
         assembly_breakdown=AssemblyBreakdown(
-            base_cost=estimate.assembly_breakdown.setup_fee + estimate.assembly_breakdown.stencil_fee,
-            per_part_cost=estimate.assembly_breakdown.loading_fees + estimate.assembly_breakdown.solder_joints_cost,
+            base_cost=estimate.assembly_breakdown.setup_fee
+            + estimate.assembly_breakdown.stencil_fee,
+            per_part_cost=estimate.assembly_breakdown.loading_fees
+            + estimate.assembly_breakdown.solder_joints_cost,
         ),
     )
 
@@ -303,7 +305,9 @@ def get_board_summary(
     board_summary.parts = parts_cat
 
     # Estimate solder joints
-    board_summary.estimated_solder_joints = cost_estimation.estimate_solder_joints(bom_path)
+    board_summary.estimated_solder_joints = cost_estimation.estimate_solder_joints(
+        bom_path
+    )
 
     return cost_estimation.board_summary_to_dict(board_summary)
 

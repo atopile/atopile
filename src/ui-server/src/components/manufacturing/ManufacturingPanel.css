@@ -281,10 +281,10 @@
 .mfg-visual-tabs {
   display: flex;
   gap: 0;
-  background: var(--bg-tertiary);
+  background: transparent;
   border-bottom: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   overflow: hidden;
+  margin-bottom: var(--spacing-sm);
 }
 
 .mfg-visual-tab {
@@ -365,11 +365,14 @@
 .mfg-visual-content {
   position: relative;
   width: 100%;
-  height: 400px;
+  height: 350px;
   padding: 0;
   display: flex;
   align-items: stretch;
   justify-content: stretch;
+  background: #2a2a2e;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
 }
 
 .mfg-visual-content > * {
@@ -446,14 +449,6 @@
 .mfg-review-section .mfg-visual-section {
   margin: 0;
   border: none;
-}
-
-.mfg-review-section .mfg-visual-tabs {
-  border-radius: var(--radius-sm);
-}
-
-.mfg-review-section .mfg-visual-content {
-  border-radius: 0;
 }
 
 /* Export Section */
@@ -806,29 +801,39 @@
 
 /* Review content wrapper */
 .mfg-review-content {
-  /* Container for tabs + content + action bar */
+  position: relative;
 }
 
-/* Review action bar - integrated at bottom of viewer */
-.mfg-review-action-bar {
+/* Floating review button (FAB) */
+.mfg-review-fab {
+  position: absolute;
+  bottom: var(--spacing-md);
+  right: var(--spacing-md);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  border: none;
+  cursor: pointer;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--bg-tertiary);
-  border-top: 1px solid var(--border-subtle);
-  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-  margin-top: var(--spacing-sm);
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.15s ease;
+  z-index: 10;
 }
 
-.mfg-reviewed-badge {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  color: var(--success);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
+.mfg-review-fab:hover {
+  background: var(--accent-hover);
+  transform: scale(1.05);
 }
+
+.mfg-review-fab:active {
+  transform: scale(0.95);
+}
+
+/* Removed - using floating FAB instead */
 
 /* Visual actions (Mark as Reviewed button) - deprecated, use .mfg-review-action-bar */
 .mfg-visual-actions {

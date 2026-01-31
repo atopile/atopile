@@ -192,8 +192,12 @@ class DetailedCostEstimateResponse(BaseModel):
     quantity: int
     assembly_type: str = Field(alias="assemblyType")
     pcb_breakdown: DetailedPCBBreakdownResponse = Field(alias="pcbBreakdown")
-    components_breakdown: ComponentsBreakdownResponse = Field(alias="componentsBreakdown")
-    assembly_breakdown: DetailedAssemblyBreakdownResponse = Field(alias="assemblyBreakdown")
+    components_breakdown: ComponentsBreakdownResponse = Field(
+        alias="componentsBreakdown"
+    )
+    assembly_breakdown: DetailedAssemblyBreakdownResponse = Field(
+        alias="assemblyBreakdown"
+    )
     board_summary: Optional[BoardSummaryResponse] = Field(None, alias="boardSummary")
 
     class Config:

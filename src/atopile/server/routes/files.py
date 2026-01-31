@@ -71,7 +71,9 @@ def _is_path_allowed(file_path: Path) -> bool:
 
     # Check if within workspace paths
     workspace_paths = model_state.workspace_paths
-    log.info(f"[files] Checking path {resolved} against {len(workspace_paths)} workspace paths: {workspace_paths}")
+    log.info(
+        f"[files] Checking path {resolved} against {len(workspace_paths)} workspace paths: {workspace_paths}"
+    )
     for workspace in workspace_paths:
         try:
             workspace_resolved = workspace.resolve()
@@ -99,14 +101,18 @@ def _is_path_allowed(file_path: Path) -> bool:
             if resolved.is_relative_to(workspace_resolved):
                 relative = resolved.relative_to(workspace_resolved)
                 parts = relative.parts
-                log.info(f"[files] Path is relative to current workspace, parts: {parts}")
+                log.info(
+                    f"[files] Path is relative to current workspace, parts: {parts}"
+                )
                 if "build" in parts:
                     log.info(f"[files] Path allowed via workspace_path: {resolved}")
                     return True
         except (OSError, ValueError):
             pass
 
-    log.warning(f"[files] Path not allowed: {resolved}. Workspace paths: {workspace_paths}, workspace: {workspace}")
+    log.warning(
+        f"[files] Path not allowed: {resolved}. Workspace paths: {workspace_paths}, workspace: {workspace}"
+    )
     return False
 
 
@@ -132,7 +138,9 @@ async def get_file(
 
     if not _is_path_allowed(file_path):
         log.warning(f"[files] Rejected path not in allowed directory: {path}")
-        raise HTTPException(status_code=403, detail="Access denied: file not in allowed directory")
+        raise HTTPException(
+            status_code=403, detail="Access denied: file not in allowed directory"
+        )
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {path}")
@@ -146,6 +154,7 @@ async def get_file(
     file_size = file_path.stat().st_size
 
     if file_size > 10 * 1024 * 1024:  # 10 MB
+
         def iter_file():
             with open(file_path, "rb") as f:
                 while chunk := f.read(8192):
@@ -191,7 +200,9 @@ async def get_zip_file_contents(
         raise HTTPException(status_code=400, detail="Path must be absolute")
 
     if not _is_path_allowed(file_path):
-        raise HTTPException(status_code=403, detail="Access denied: file not in allowed directory")
+        raise HTTPException(
+            status_code=403, detail="Access denied: file not in allowed directory"
+        )
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"Zip file not found: {path}")
@@ -242,7 +253,9 @@ async def list_zip_contents(
         raise HTTPException(status_code=400, detail="Path must be absolute")
 
     if not _is_path_allowed(file_path):
-        raise HTTPException(status_code=403, detail="Access denied: file not in allowed directory")
+        raise HTTPException(
+            status_code=403, detail="Access denied: file not in allowed directory"
+        )
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"Zip file not found: {path}")
@@ -252,10 +265,12 @@ async def list_zip_contents(
             entries = []
             for info in zf.infolist():
                 if not info.is_dir():
-                    entries.append({
-                        "name": info.filename,
-                        "size": info.file_size,
-                    })
+                    entries.append(
+                        {
+                            "name": info.filename,
+                            "size": info.file_size,
+                        }
+                    )
             return {"entries": entries}
     except zipfile.BadZipFile:
         raise HTTPException(status_code=400, detail="Invalid zip file")

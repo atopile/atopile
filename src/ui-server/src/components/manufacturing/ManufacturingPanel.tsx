@@ -939,6 +939,7 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
                       {outputs?.gerbers ? (
                         <GerberViewer
                           src={`${API_URL}/api/file?path=${encodeURIComponent(outputs.gerbers)}`}
+                          hideControls
                         />
                       ) : (
                         <div className="mfg-visual-empty">
@@ -1025,44 +1026,16 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
                   )}
                 </div>
 
-                {/* Review action bar - at bottom of content for all tabs */}
-                <div className="mfg-review-action-bar">
-                  {reviewedItems.has(activeVisualTab) ? (
-                    <>
-                      <div className="mfg-reviewed-badge">
-                        <CheckCircle2 size={14} />
-                        <span>Reviewed</span>
-                      </div>
-                      {!allItemsReviewed && (
-                        <button
-                          className="mfg-btn primary"
-                          onClick={() => {
-                            // Find next unreviewed tab
-                            const reviewOrder: VisualTab[] = ['gerbers', 'bom', '3d'];
-                            for (const tab of reviewOrder) {
-                              const item = reviewItems.find(r => r.id === tab);
-                              if (item?.available && !item.reviewed) {
-                                setActiveVisualTab(tab);
-                                return;
-                              }
-                            }
-                          }}
-                        >
-                          Continue
-                          <ChevronRight size={14} />
-                        </button>
-                      )}
-                    </>
-                  ) : (
-                    <button
-                      className="mfg-btn primary"
-                      onClick={handleMarkAsReviewed}
-                    >
-                      <CheckCircle2 size={14} />
-                      Mark {activeVisualTab === 'gerbers' ? 'Gerbers' : activeVisualTab === 'bom' ? 'BOM' : '3D'} as Reviewed
-                    </button>
-                  )}
-                </div>
+                {/* Floating review button */}
+                {!reviewedItems.has(activeVisualTab) && (
+                  <button
+                    className="mfg-review-fab"
+                    onClick={handleMarkAsReviewed}
+                    title={`Mark ${activeVisualTab === 'gerbers' ? 'Gerbers' : activeVisualTab === 'bom' ? 'BOM' : '3D'} as reviewed`}
+                  >
+                    <CheckCircle2 size={18} />
+                  </button>
+                )}
               </div>
             )}
           </div>

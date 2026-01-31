@@ -7,7 +7,7 @@
   display: flex;
   width: 100%;
   height: 100%;
-  background: var(--bg-primary);
+  background: #1e1e22;
   position: relative;
   overflow: hidden;
 }
@@ -32,7 +32,7 @@
   width: 100% !important;
   height: 100% !important;
   flex: 1;
-  background: var(--bg-secondary);
+  background: #1e1e22;
 }
 
 .gerber-transform-content {
@@ -48,64 +48,108 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--spacing-lg);
-  min-width: 200px;
-  min-height: 200px;
+  padding: var(--spacing-md);
+  min-width: 100px;
+  min-height: 100px;
 }
 
 .gerber-svg-container svg {
-  max-width: 100%;
-  max-height: 100%;
+  max-width: none;
+  max-height: none;
   width: auto;
   height: auto;
   filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3));
   border-radius: var(--radius-sm);
+  /* Ensure crisp rendering */
+  shape-rendering: geometricPrecision;
+}
+
+/* Override any default grey fills from tracespace */
+.gerber-svg-container svg rect:not([class]),
+.gerber-svg-container svg path:not([class]) {
+  /* Don't override unclassed elements - they might be intentional */
+}
+
+/* Ensure background of SVG is transparent, not grey */
+.gerber-svg-container svg > rect:first-child {
+  fill: transparent !important;
 }
 
 /* PCB Layer Colors - Override tracespace defaults for realistic look */
 .gerber-svg-container svg {
-  /* Base board color (FR4 substrate) */
-  --pcb-fr4: #c4a000;
-  --pcb-fr4-dark: #8b7500;
+  /* Base board color (FR4 substrate) - dark to match black soldermask */
+  --pcb-fr4: #1a1a1a;
+  --pcb-fr4-dark: #0d0d0d;
 
-  /* Copper */
-  --pcb-copper: #b87333;
-  --pcb-copper-bright: #daa520;
+  /* Copper - golden/brass color */
+  --pcb-copper: #c9a227;
+  --pcb-copper-bright: #e6be3a;
 
-  /* Soldermask - green by default */
-  --pcb-soldermask: rgba(0, 100, 0, 0.85);
-  --pcb-soldermask-dark: rgba(0, 80, 0, 0.9);
+  /* Soldermask - black matte */
+  --pcb-soldermask: rgba(20, 20, 22, 0.92);
+  --pcb-soldermask-dark: rgba(10, 10, 12, 0.95);
 
-  /* Silkscreen */
+  /* Silkscreen - white */
   --pcb-silkscreen: #ffffff;
 
-  /* Solder paste */
-  --pcb-paste: #c0c0c0;
+  /* Solder paste - silver */
+  --pcb-paste: #d4d4d4;
+
+  /* HASL/ENIG pads - golden */
+  --pcb-finish: #c9a227;
 }
 
 /* Style the tracespace-generated SVG elements */
-.gerber-svg-container .tracespace-fr4 {
-  fill: var(--pcb-fr4);
+/* FR4 substrate */
+.gerber-svg-container .tracespace-fr4,
+.gerber-svg-container [class*="_fr4"] {
+  fill: var(--pcb-fr4) !important;
 }
 
-.gerber-svg-container .tracespace-cu {
-  fill: var(--pcb-copper);
+/* Copper layers */
+.gerber-svg-container .tracespace-cu,
+.gerber-svg-container [class*="_cu"],
+.gerber-svg-container [class*="_copper"] {
+  fill: var(--pcb-copper) !important;
 }
 
-.gerber-svg-container .tracespace-cf {
-  fill: var(--pcb-copper-bright);
+/* Copper finish (exposed pads) */
+.gerber-svg-container .tracespace-cf,
+.gerber-svg-container [class*="_cf"] {
+  fill: var(--pcb-copper-bright) !important;
 }
 
-.gerber-svg-container .tracespace-sm {
-  fill: var(--pcb-soldermask);
+/* Soldermask - black */
+.gerber-svg-container .tracespace-sm,
+.gerber-svg-container [class*="_sm"],
+.gerber-svg-container [class*="_mask"] {
+  fill: var(--pcb-soldermask) !important;
 }
 
-.gerber-svg-container .tracespace-ss {
-  fill: var(--pcb-silkscreen);
+/* Silkscreen - white */
+.gerber-svg-container .tracespace-ss,
+.gerber-svg-container [class*="_ss"],
+.gerber-svg-container [class*="_silk"] {
+  fill: var(--pcb-silkscreen) !important;
 }
 
-.gerber-svg-container .tracespace-sp {
-  fill: var(--pcb-paste);
+/* Solder paste */
+.gerber-svg-container .tracespace-sp,
+.gerber-svg-container [class*="_sp"],
+.gerber-svg-container [class*="_paste"] {
+  fill: var(--pcb-paste) !important;
+}
+
+/* Board outline */
+.gerber-svg-container [class*="_out"],
+.gerber-svg-container [class*="_edge"] {
+  stroke: var(--pcb-fr4-dark) !important;
+}
+
+/* Drills */
+.gerber-svg-container [class*="_drl"],
+.gerber-svg-container [class*="_drill"] {
+  fill: #1a1a1a !important;
 }
 
 /* Controls Container */
@@ -268,6 +312,28 @@
   font-size: var(--font-size-xs);
   color: var(--text-primary);
   border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.gerber-layer-item:hover {
+  background: var(--bg-hover);
+}
+
+.gerber-layer-item.hidden-layer {
+  opacity: 0.5;
+}
+
+.gerber-layer-checkbox {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
 }
 
 .gerber-layer-indicator {
@@ -278,13 +344,13 @@
   border: 1px solid var(--border-subtle);
 }
 
-/* Layer type colors */
+/* Layer type colors - matching black soldermask theme */
 .gerber-layer-copper {
-  background: #b87333;
+  background: #c9a227;
 }
 
 .gerber-layer-soldermask {
-  background: #006400;
+  background: #1a1a1a;
 }
 
 .gerber-layer-silkscreen {
@@ -292,7 +358,7 @@
 }
 
 .gerber-layer-solderpaste {
-  background: #c0c0c0;
+  background: #d4d4d4;
 }
 
 .gerber-layer-drill {
@@ -300,7 +366,7 @@
 }
 
 .gerber-layer-outline {
-  background: #ffcc00;
+  background: #666666;
 }
 
 .gerber-layer-name {

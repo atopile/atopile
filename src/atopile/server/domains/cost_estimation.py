@@ -27,9 +27,11 @@ log = logging.getLogger(__name__)
 # JLCPCB Pricing Constants (as of 2025)
 # =============================================================================
 
+
 @dataclass(frozen=True)
 class JLCEconomicAssemblyPricing:
     """JLCPCB Economic Assembly pricing constants."""
+
     setup_fee: float = 8.00
     stencil_fee: float = 1.50
     cost_per_joint: float = 0.0016
@@ -41,6 +43,7 @@ class JLCEconomicAssemblyPricing:
 @dataclass(frozen=True)
 class JLCStandardAssemblyPricing:
     """JLCPCB Standard Assembly pricing constants."""
+
     setup_fee_single_side: float = 25.00
     setup_fee_double_side: float = 50.00
     stencil_fee_single_side: float = 7.86
@@ -53,6 +56,7 @@ class JLCStandardAssemblyPricing:
 @dataclass(frozen=True)
 class JLCPCBFabricationPricing:
     """JLCPCB PCB fabrication pricing estimates."""
+
     # Base prices for 5 PCBs (prototype quantities)
     base_price_2_layer: float = 2.00
     base_price_4_layer: float = 4.00
@@ -79,9 +83,11 @@ PCB_FABRICATION = JLCPCBFabricationPricing()
 # Data Classes
 # =============================================================================
 
+
 @dataclass
 class BoardDimensions:
     """Physical board dimensions."""
+
     width_mm: float
     height_mm: float
     area_mm2: float
@@ -106,6 +112,7 @@ class BoardDimensions:
 @dataclass
 class AssemblySides:
     """Component placement by side."""
+
     top_count: int = 0
     bottom_count: int = 0
 
@@ -122,6 +129,7 @@ class AssemblySides:
 @dataclass
 class PartsCategorization:
     """Categorization of BOM parts by JLCPCB type."""
+
     basic_count: int = 0
     preferred_count: int = 0
     extended_count: int = 0
@@ -129,7 +137,12 @@ class PartsCategorization:
 
     @property
     def total_unique_parts(self) -> int:
-        return self.basic_count + self.preferred_count + self.extended_count + self.unknown_count
+        return (
+            self.basic_count
+            + self.preferred_count
+            + self.extended_count
+            + self.unknown_count
+        )
 
     @property
     def parts_with_loading_fee(self) -> int:
@@ -140,6 +153,7 @@ class PartsCategorization:
 @dataclass
 class BoardSummary:
     """Complete board summary for cost estimation."""
+
     # Board physical properties
     dimensions: Optional[BoardDimensions] = None
     layer_count: int = 2
@@ -164,6 +178,7 @@ class BoardSummary:
 @dataclass
 class PCBCostBreakdown:
     """Detailed PCB fabrication cost breakdown."""
+
     base_cost: float = 0.0
     layer_cost: float = 0.0
     size_cost: float = 0.0
@@ -173,6 +188,7 @@ class PCBCostBreakdown:
 @dataclass
 class AssemblyCostBreakdown:
     """Detailed assembly cost breakdown."""
+
     setup_fee: float = 0.0
     stencil_fee: float = 0.0
     solder_joints_cost: float = 0.0
@@ -184,6 +200,7 @@ class AssemblyCostBreakdown:
 @dataclass
 class ComponentsCostBreakdown:
     """Detailed components cost breakdown."""
+
     basic_parts_cost: float = 0.0
     extended_parts_cost: float = 0.0
     unknown_parts_cost: float = 0.0
@@ -195,6 +212,7 @@ class ComponentsCostBreakdown:
 @dataclass
 class CostEstimateResult:
     """Complete cost estimation result."""
+
     # Summary costs
     pcb_cost: float = 0.0
     components_cost: float = 0.0
@@ -208,8 +226,12 @@ class CostEstimateResult:
 
     # Detailed breakdowns
     pcb_breakdown: PCBCostBreakdown = field(default_factory=PCBCostBreakdown)
-    components_breakdown: ComponentsCostBreakdown = field(default_factory=ComponentsCostBreakdown)
-    assembly_breakdown: AssemblyCostBreakdown = field(default_factory=AssemblyCostBreakdown)
+    components_breakdown: ComponentsCostBreakdown = field(
+        default_factory=ComponentsCostBreakdown
+    )
+    assembly_breakdown: AssemblyCostBreakdown = field(
+        default_factory=AssemblyCostBreakdown
+    )
 
     # Board summary used for estimation
     board_summary: Optional[BoardSummary] = None
@@ -218,6 +240,7 @@ class CostEstimateResult:
 # =============================================================================
 # Parsing Functions
 # =============================================================================
+
 
 def parse_pcb_summary(summary_path: Path) -> Optional[BoardSummary]:
     """
@@ -413,7 +436,9 @@ def _estimate_joints_for_package(package: str) -> int:
     package = package.upper()
 
     # Two-terminal passives (resistors, capacitors, inductors)
-    if any(p in package for p in ["0201", "0402", "0603", "0805", "1206", "1210", "2512"]):
+    if any(
+        p in package for p in ["0201", "0402", "0603", "0805", "1206", "1210", "2512"]
+    ):
         return 2
 
     # Three-terminal (transistors, small regulators)
@@ -443,6 +468,7 @@ def _estimate_joints_for_package(package: str) -> int:
     if any(p in package for p in ["QFP", "QFN", "LQFP", "TQFP", "VQFN", "DFN"]):
         # Look for numbers in the package name
         import re
+
         numbers = re.findall(r"\d+", package)
         if numbers:
             # Take the largest number as likely pin count
@@ -454,6 +480,7 @@ def _estimate_joints_for_package(package: str) -> int:
     # BGA packages
     if "BGA" in package:
         import re
+
         numbers = re.findall(r"\d+", package)
         if numbers:
             return max(int(n) for n in numbers)
@@ -462,6 +489,7 @@ def _estimate_joints_for_package(package: str) -> int:
     # Through-hole / connectors
     if any(p in package for p in ["DIP", "PDIP", "CONNECTOR", "HEADER"]):
         import re
+
         numbers = re.findall(r"\d+", package)
         if numbers:
             return max(int(n) for n in numbers)
@@ -478,6 +506,7 @@ def _estimate_joints_for_package(package: str) -> int:
 # =============================================================================
 # Cost Calculation Functions
 # =============================================================================
+
 
 def calculate_pcb_cost(
     board_summary: BoardSummary,
@@ -571,10 +600,10 @@ def calculate_assembly_cost(
         parts = board_summary.parts
         breakdown.loading_fee_parts_count = parts.total_unique_parts
         breakdown.loading_fees = (
-            parts.basic_count * pricing.basic_part_loading_fee +
-            parts.extended_count * pricing.extended_part_loading_fee +
-            parts.preferred_count * pricing.extended_part_loading_fee +
-            parts.unknown_count * pricing.extended_part_loading_fee
+            parts.basic_count * pricing.basic_part_loading_fee
+            + parts.extended_count * pricing.extended_part_loading_fee
+            + parts.preferred_count * pricing.extended_part_loading_fee
+            + parts.unknown_count * pricing.extended_part_loading_fee
         )
     else:
         # Economic assembly
@@ -586,8 +615,8 @@ def calculate_assembly_cost(
         parts = board_summary.parts
         breakdown.loading_fee_parts_count = parts.parts_with_loading_fee
         breakdown.loading_fees = (
-            parts.extended_count * pricing.extended_part_loading_fee +
-            parts.unknown_count * pricing.extended_part_loading_fee
+            parts.extended_count * pricing.extended_part_loading_fee
+            + parts.unknown_count * pricing.extended_part_loading_fee
             # Preferred parts may have reduced/no fee - treating as free for now
         )
 
@@ -597,10 +626,10 @@ def calculate_assembly_cost(
 
     # Total (setup and stencil are one-time, joints scale with quantity)
     breakdown.total = (
-        breakdown.setup_fee +
-        breakdown.stencil_fee +
-        breakdown.loading_fees +
-        breakdown.solder_joints_cost
+        breakdown.setup_fee
+        + breakdown.stencil_fee
+        + breakdown.loading_fees
+        + breakdown.solder_joints_cost
     )
 
     return breakdown
@@ -664,7 +693,9 @@ def estimate_manufacturing_cost(
     result.pcb_cost = result.pcb_breakdown.total
 
     # Calculate assembly cost
-    result.assembly_breakdown = calculate_assembly_cost(board_summary, quantity, assembly_type)
+    result.assembly_breakdown = calculate_assembly_cost(
+        board_summary, quantity, assembly_type
+    )
     result.assembly_cost = result.assembly_breakdown.total
 
     # Components cost (scales with quantity)
@@ -685,6 +716,7 @@ def estimate_manufacturing_cost(
 # Serialization
 # =============================================================================
 
+
 def board_summary_to_dict(summary: BoardSummary) -> dict:
     """Convert BoardSummary to a JSON-serializable dict."""
     return {
@@ -695,7 +727,9 @@ def board_summary_to_dict(summary: BoardSummary) -> dict:
             "area_cm2": summary.dimensions.area_cm2,
             "is_small_board": summary.dimensions.is_small_board,
             "is_large_board": summary.dimensions.is_large_board,
-        } if summary.dimensions else None,
+        }
+        if summary.dimensions
+        else None,
         "layer_count": summary.layer_count,
         "copper_layers": summary.copper_layers,
         "total_thickness_mm": summary.total_thickness_mm,
@@ -742,10 +776,14 @@ def cost_estimate_to_dict(estimate: CostEstimateResult) -> dict:
         "assembly_breakdown": {
             "setup_fee": round(estimate.assembly_breakdown.setup_fee, 2),
             "stencil_fee": round(estimate.assembly_breakdown.stencil_fee, 2),
-            "solder_joints_cost": round(estimate.assembly_breakdown.solder_joints_cost, 2),
+            "solder_joints_cost": round(
+                estimate.assembly_breakdown.solder_joints_cost, 2
+            ),
             "loading_fees": round(estimate.assembly_breakdown.loading_fees, 2),
             "loading_fee_parts_count": estimate.assembly_breakdown.loading_fee_parts_count,
             "total": round(estimate.assembly_breakdown.total, 2),
         },
-        "board_summary": board_summary_to_dict(estimate.board_summary) if estimate.board_summary else None,
+        "board_summary": board_summary_to_dict(estimate.board_summary)
+        if estimate.board_summary
+        else None,
     }

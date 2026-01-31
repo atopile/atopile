@@ -9,7 +9,7 @@
  * - Theme-aware styling
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   read,
   plot,
@@ -29,6 +29,7 @@ import {
   ZoomOut,
   RotateCcw,
   FlipVertical2,
+  Maximize2,
 } from 'lucide-react';
 import JSZip from 'jszip';
 import './GerberViewer.css';
@@ -37,11 +38,14 @@ interface GerberViewerProps {
   src: string;
   className?: string;
   style?: React.CSSProperties;
+  hideControls?: boolean;
+  hideZoomControls?: boolean;
+  hideLayersPanel?: boolean;
 }
 
 type ViewSide = 'top' | 'bottom';
 
-export default function GerberViewer({ src, className, style }: GerberViewerProps) {
+export default function GerberViewer({ src, className, style, hideControls = false, hideZoomControls = false, hideLayersPanel = false }: GerberViewerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [topSvg, setTopSvg] = useState<string | null>(null);
@@ -49,6 +53,8 @@ export default function GerberViewer({ src, className, style }: GerberViewerProp
   const [layers, setLayers] = useState<Layer[]>([]);
   const [viewSide, setViewSide] = useState<ViewSide>('top');
   const [layersPanelCollapsed, setLayersPanelCollapsed] = useState(true);
+  const [hiddenLayers, setHiddenLayers] = useState<Set<string>>(new Set());
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const loadGerbers = async () => {
@@ -159,6 +165,31 @@ export default function GerberViewer({ src, className, style }: GerberViewerProp
     setViewSide(prev => prev === 'top' ? 'bottom' : 'top');
   }, []);
 
+  const toggleLayerVisibility = useCallback((layerId: string) => {
+    setHiddenLayers(prev => {
+      const next = new Set(prev);
+      if (next.has(layerId)) {
+        next.delete(layerId);
+      } else {
+        next.add(layerId);
+      }
+      return next;
+    });
+  }, []);
+
+  // Generate CSS to hide layers
+  const layerVisibilityStyle = useMemo(() => {
+    if (hiddenLayers.size === 0) return '';
+
+    // Map layer IDs to CSS selectors for tracespace SVG classes
+    const selectors: string[] = [];
+    hiddenLayers.forEach(layerId => {
+      // tracespace uses class names like "id_type" format
+      selectors.push(`.gerber-svg-container [class*="${layerId}"] { opacity: 0 !important; }`);
+    });
+    return selectors.join('\n');
+  }, [hiddenLayers]);
+
   const currentSvg = viewSide === 'top' ? topSvg : bottomSvg;
 
   // Debug: log when SVG changes
@@ -196,17 +227,27 @@ export default function GerberViewer({ src, className, style }: GerberViewerProp
   }
 
   return (
-    <div className={`gerber-viewer ${className || ''}`} style={style}>
+    <div className={`gerber-viewer ${className || ''}`} style={style} ref={containerRef}>
+      {/* Dynamic styles for layer visibility */}
+      {layerVisibilityStyle && <style>{layerVisibilityStyle}</style>}
+
       <TransformWrapper
         initialScale={1}
-        minScale={0.1}
-        maxScale={20}
-        centerOnInit
-        wheel={{ smoothStep: 0.05 }}
+        minScale={0.05}
+        maxScale={50}
+        centerOnInit={false}
+        limitToBounds={false}
+        wheel={{ step: 0.15 }}
         panning={{ velocityDisabled: true }}
-        doubleClick={{ disabled: true }}
+        doubleClick={{ mode: 'reset' }}
+        onInit={(ref) => {
+          // Center the view after a short delay to ensure content is rendered
+          setTimeout(() => {
+            ref.centerView(0.8);
+          }, 100);
+        }}
       >
-        {({ zoomIn, zoomOut, resetTransform, instance }) => (
+        {({ zoomIn, zoomOut, resetTransform, centerView, instance }) => (
           <>
             <TransformComponent
               wrapperClass="gerber-transform-wrapper"
@@ -219,95 +260,122 @@ export default function GerberViewer({ src, className, style }: GerberViewerProp
             </TransformComponent>
 
             {/* Controls overlay */}
-            <div className="gerber-controls">
-              {/* View toggle */}
-              <div className="gerber-view-toggle">
-                <button
-                  className={`gerber-view-btn ${viewSide === 'top' ? 'active' : ''}`}
-                  onClick={() => setViewSide('top')}
-                >
-                  Top
-                </button>
-                <button
-                  className={`gerber-view-btn ${viewSide === 'bottom' ? 'active' : ''}`}
-                  onClick={() => setViewSide('bottom')}
-                >
-                  Bottom
-                </button>
-              </div>
+            {!hideControls && (
+              <div className="gerber-controls">
+                {/* View toggle */}
+                <div className="gerber-view-toggle">
+                  <button
+                    className={`gerber-view-btn ${viewSide === 'top' ? 'active' : ''}`}
+                    onClick={() => setViewSide('top')}
+                  >
+                    Top
+                  </button>
+                  <button
+                    className={`gerber-view-btn ${viewSide === 'bottom' ? 'active' : ''}`}
+                    onClick={() => setViewSide('bottom')}
+                  >
+                    Bottom
+                  </button>
+                </div>
 
-              {/* Zoom controls */}
-              <div className="gerber-zoom-controls">
-                <button
-                  className="gerber-zoom-btn"
-                  onClick={() => zoomIn()}
-                  title="Zoom in"
-                >
-                  <ZoomIn size={14} />
-                </button>
-                <button
-                  className="gerber-zoom-btn"
-                  onClick={() => zoomOut()}
-                  title="Zoom out"
-                >
-                  <ZoomOut size={14} />
-                </button>
-                <button
-                  className="gerber-zoom-btn"
-                  onClick={() => resetTransform()}
-                  title="Reset view"
-                >
-                  <RotateCcw size={14} />
-                </button>
-                <button
-                  className="gerber-zoom-btn"
-                  onClick={toggleViewSide}
-                  title="Flip board"
-                >
-                  <FlipVertical2 size={14} />
-                </button>
-                <span className="gerber-zoom-level">
-                  {Math.round((instance?.transformState?.scale || 1) * 100)}%
-                </span>
+                {/* Zoom controls */}
+                {!hideZoomControls && (
+                  <div className="gerber-zoom-controls">
+                    <button
+                      className="gerber-zoom-btn"
+                      onClick={() => zoomIn()}
+                      title="Zoom in"
+                    >
+                      <ZoomIn size={14} />
+                    </button>
+                    <button
+                      className="gerber-zoom-btn"
+                      onClick={() => zoomOut()}
+                      title="Zoom out"
+                    >
+                      <ZoomOut size={14} />
+                    </button>
+                    <button
+                      className="gerber-zoom-btn"
+                      onClick={() => centerView(0.8)}
+                      title="Fit to view"
+                    >
+                      <Maximize2 size={14} />
+                    </button>
+                    <button
+                      className="gerber-zoom-btn"
+                      onClick={() => resetTransform()}
+                      title="Reset view (100%)"
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                    <button
+                      className="gerber-zoom-btn"
+                      onClick={toggleViewSide}
+                      title="Flip board"
+                    >
+                      <FlipVertical2 size={14} />
+                    </button>
+                    <span className="gerber-zoom-level">
+                      {Math.round((instance?.transformState?.scale || 1) * 100)}%
+                    </span>
+                  </div>
+                )}
               </div>
-            </div>
+            )}
           </>
         )}
       </TransformWrapper>
 
       {/* Layers panel */}
-      <div className={`gerber-layer-controls ${layersPanelCollapsed ? 'collapsed' : ''}`}>
-        <button
-          className="gerber-layer-collapse-btn"
-          onClick={() => setLayersPanelCollapsed(!layersPanelCollapsed)}
-          title={layersPanelCollapsed ? 'Show layers' : 'Hide layers'}
-        >
-          {layersPanelCollapsed ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
-        </button>
-        {!layersPanelCollapsed && (
-          <>
-            <div className="gerber-layer-title">
-              <Layers size={14} />
-              Layers ({layers.length})
-            </div>
-            <div className="gerber-layer-list">
-              {layers.map((layer) => (
-                <div key={layer.id} className="gerber-layer-item">
-                  <span
-                    className={`gerber-layer-indicator gerber-layer-${layer.type}`}
-                  />
-                  <span className="gerber-layer-name" title={layer.filename}>
-                    {layer.type}
-                  </span>
-                  <span className="gerber-layer-side">
-                    {layer.side}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+      {!hideControls && !hideLayersPanel && (
+        <div className={`gerber-layer-controls ${layersPanelCollapsed ? 'collapsed' : ''}`}>
+          <button
+            className="gerber-layer-collapse-btn"
+            onClick={() => setLayersPanelCollapsed(!layersPanelCollapsed)}
+            title={layersPanelCollapsed ? 'Show layers' : 'Hide layers'}
+          >
+            {layersPanelCollapsed ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
+          </button>
+          {!layersPanelCollapsed && (
+            <>
+              <div className="gerber-layer-title">
+                <Layers size={14} />
+                Layers ({layers.length})
+              </div>
+              <div className="gerber-layer-list">
+                {layers.map((layer) => {
+                  const isVisible = !hiddenLayers.has(layer.id);
+                  return (
+                    <button
+                      key={layer.id}
+                      className={`gerber-layer-item ${isVisible ? '' : 'hidden-layer'}`}
+                      onClick={() => toggleLayerVisibility(layer.id)}
+                      title={`Click to ${isVisible ? 'hide' : 'show'} ${layer.type} layer`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isVisible}
+                        onChange={() => {}}
+                        className="gerber-layer-checkbox"
+                      />
+                      <span
+                        className={`gerber-layer-indicator gerber-layer-${layer.type}`}
+                      />
+                      <span className="gerber-layer-name" title={layer.filename}>
+                        {layer.type}
+                      </span>
+                      <span className="gerber-layer-side">
+                        {layer.side}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
