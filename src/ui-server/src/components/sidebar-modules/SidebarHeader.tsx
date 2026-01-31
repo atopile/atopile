@@ -72,6 +72,9 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
 
+  // Debounce ref for path input
+  const pathDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Max concurrent builds setting
   const detectedCores = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 4 : 4;
   const [maxConcurrentUseDefault, setMaxConcurrentUseDefault] = useState(true);
@@ -96,11 +99,14 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
         // If atopile.ato is set, toggle should be ON
         const shouldUseLocal = !!atoPath;
         setUseLocalAtopile(shouldUseLocal);
-        if (atoPath) {
-          setLocalPathInput(atoPath);
-        } else {
-          // Clear the input if no path is set
-          setLocalPathInput('');
+        // Only update the input if user is not actively typing
+        if (!inputFocusedRef.current) {
+          if (atoPath) {
+            setLocalPathInput(atoPath);
+          } else {
+            // Clear the input if no path is set
+            setLocalPathInput('');
+          }
         }
         setSettingsReceived(true);
       }
@@ -121,16 +127,17 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
   // Local state for path input (controlled input needs synchronous state updates)
   const [localPathInput, setLocalPathInput] = useState(atopile?.localPath || '');
   // Track if input is focused to prevent external sync from overwriting user typing
-  const [inputFocused, setInputFocused] = useState(false);
+  // Use a ref so it's always current in closures (avoids stale state in event handlers)
+  const inputFocusedRef = useRef(false);
 
   // Sync local input state when store value changes externally
   // BUT only when the input is not focused (user not actively typing)
   // AND only when backend provides a non-empty path (don't clear user input when backend is down)
   useEffect(() => {
-    if (!inputFocused && atopile?.localPath && atopile.localPath !== localPathInput) {
+    if (!inputFocusedRef.current && atopile?.localPath && atopile.localPath !== localPathInput) {
       setLocalPathInput(atopile.localPath);
     }
-  }, [atopile?.localPath, inputFocused]);
+  }, [atopile?.localPath]);
 
   // Check if toggle is ON but no path entered yet
   // This is a "needs configuration" state - user turned on local but hasn't set it up
@@ -164,6 +171,15 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
       action('getMaxConcurrentSetting');
     }
   }, [showSettings]);
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (pathDebounceRef.current) {
+        clearTimeout(pathDebounceRef.current);
+      }
+    };
+  }, []);
 
   // Listen for browse path result from VS Code extension
   useEffect(() => {
@@ -407,19 +423,25 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
                       placeholder="/atopile/.venv/bin/ato"
                       value={localPathInput}
                       title={localPathInput || "/atopile/.venv/bin/ato"}
-                      onFocus={() => setInputFocused(true)}
-                      onBlur={() => setInputFocused(false)}
+                      onFocus={() => { inputFocusedRef.current = true; }}
+                      onBlur={() => { inputFocusedRef.current = false; }}
                       onChange={(e) => {
+                        const newValue = e.target.value;
                         // Update local state immediately for responsive input
-                        setLocalPathInput(e.target.value);
-                        // Save directly to VS Code settings
-                        postMessage({
-                          type: 'atopileSettings',
-                          atopile: {
-                            source: 'local',
-                            localPath: e.target.value || null,
-                          },
-                        });
+                        setLocalPathInput(newValue);
+                        // Debounce the save to VS Code settings
+                        if (pathDebounceRef.current) {
+                          clearTimeout(pathDebounceRef.current);
+                        }
+                        pathDebounceRef.current = setTimeout(() => {
+                          postMessage({
+                            type: 'atopileSettings',
+                            atopile: {
+                              source: 'local',
+                              localPath: newValue || null,
+                            },
+                          });
+                        }, 500);
                       }}
                     />
                     <button
