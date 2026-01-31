@@ -4,8 +4,8 @@
  */
 
 import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import { CollapsibleSection } from './CollapsibleSection';
-import { ActiveProjectPanel } from './ActiveProjectPanel';
+import { Files, Package, Cpu, Library, GitBranch, SlidersHorizontal, ClipboardList } from 'lucide-react';
+import { ActiveProjectPanel, BuildQueueItem } from './ActiveProjectPanel';
 import { StandardLibraryPanel } from './StandardLibraryPanel';
 import { VariablesPanel } from './VariablesPanel';
 import { BOMPanel } from './BOMPanel';
@@ -50,7 +50,6 @@ export function Sidebar() {
   const projects = useStore((s) => s.projects);
   const selectedProjectRoot = useStore((s) => s.selectedProjectRoot) ?? null;
   const selectedTargetNames = useStore((s) => s.selectedTargetNames) ?? [];
-  const isLoadingProjects = useStore((s) => s.isLoadingProjects);
   const isLoadingPackages = useStore((s) => s.isLoadingPackages);
   const installingPackageIds = useStore((s) => s.installingPackageIds);
   const installError = useStore((s) => s.installError);
@@ -89,6 +88,13 @@ export function Sidebar() {
   const [selectedPart, setSelectedPart] = useState<SelectedPart | null>(null);
   const [activeTab, setActiveTab] = useState<'files' | 'structure' | 'packages' | 'parts' | 'stdlib' | 'parameters' | 'bom'>('files');
 
+  // Build queue panel state
+  const [buildQueueCollapsed, setBuildQueueCollapsed] = useState(false);
+  const [buildQueueHeight, setBuildQueueHeight] = useState(120);
+  const buildQueueResizing = useRef(false);
+  const buildQueueStartY = useRef(0);
+  const buildQueueStartHeight = useRef(0);
+
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
   const tabBarRef = useRef<HTMLDivElement>(null);
@@ -110,80 +116,9 @@ export function Sidebar() {
     return () => observer.disconnect();
   }, []);
 
-  // Determine which labels to shorten based on available width
-  // Shortening order (deterministic): Standard Library -> Parameters -> Structure -> Packages
-  // Files, Parts, BOM always stay the same
-  const getTabLabels = useCallback((width: number) => {
-    // Thresholds tuned to allow tabs to get close together before shortening
-    if (width < 340) {
-      // Most compact: all shortened
-      return {
-        files: 'Files',
-        packages: 'Pkgs',
-        parts: 'Parts',
-        stdlib: 'Lib',
-        structure: 'Struct',
-        parameters: 'Params',
-        bom: 'BOM',
-      };
-    } else if (width < 380) {
-      // Shorten: Standard Library, Parameters, Structure
-      return {
-        files: 'Files',
-        packages: 'Pkgs',
-        parts: 'Parts',
-        stdlib: 'Lib',
-        structure: 'Struct',
-        parameters: 'Params',
-        bom: 'BOM',
-      };
-    } else if (width < 420) {
-      // Shorten: Standard Library, Parameters, Structure
-      return {
-        files: 'Files',
-        packages: 'Packages',
-        parts: 'Parts',
-        stdlib: 'Lib',
-        structure: 'Struct',
-        parameters: 'Params',
-        bom: 'BOM',
-      };
-    } else if (width < 480) {
-      // Shorten: Standard Library, Parameters
-      return {
-        files: 'Files',
-        packages: 'Packages',
-        parts: 'Parts',
-        stdlib: 'Lib',
-        structure: 'Structure',
-        parameters: 'Params',
-        bom: 'BOM',
-      };
-    } else if (width < 560) {
-      // Shorten: Standard Library only
-      return {
-        files: 'Files',
-        packages: 'Packages',
-        parts: 'Parts',
-        stdlib: 'Lib',
-        structure: 'Structure',
-        parameters: 'Parameters',
-        bom: 'BOM',
-      };
-    }
-    // Full labels
-    return {
-      files: 'Files',
-      packages: 'Packages',
-      parts: 'Parts',
-      stdlib: 'Standard Library',
-      structure: 'Structure',
-      parameters: 'Parameters',
-      bom: 'BOM',
-    };
-  }, []);
-
-  const tabLabels = useMemo(() => getTabLabels(tabBarWidth), [getTabLabels, tabBarWidth]);
+  // Determine whether to show labels based on available width
+  // Below threshold: icons only. Above: icons + labels
+  const showTabLabels = tabBarWidth >= 340;
 
   // Keep selected package in sync with refreshed package list (e.g., after install/uninstall)
   useEffect(() => {
@@ -227,9 +162,38 @@ export function Sidebar() {
   // Use data transformation hook
   const {
     projects: sidebarProjects,
-    projectCount,
     queuedBuilds,
   } = useSidebarData({ state });
+
+  // Filter builds by selected project
+  const filteredBuilds = useMemo(() => {
+    if (!selectedProjectRoot) return queuedBuilds;
+    return queuedBuilds.filter((build) => build.projectRoot === selectedProjectRoot);
+  }, [queuedBuilds, selectedProjectRoot]);
+
+  // Build queue resize handlers
+  const handleBuildQueueResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    buildQueueResizing.current = true;
+    buildQueueStartY.current = e.clientY;
+    buildQueueStartHeight.current = buildQueueHeight;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!buildQueueResizing.current) return;
+      const deltaY = buildQueueStartY.current - moveEvent.clientY;
+      const newHeight = Math.max(60, Math.min(400, buildQueueStartHeight.current + deltaY));
+      setBuildQueueHeight(newHeight);
+    };
+
+    const handleMouseUp = () => {
+      buildQueueResizing.current = false;
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [buildQueueHeight]);
 
   // Unified panel sizing - all panels start collapsed, auto-expand on events
   const panels = usePanelSizing({
@@ -415,20 +379,12 @@ export function Sidebar() {
       {/* Header with settings */}
       <SidebarHeader
         atopile={atopile}
+        isConnected={isConnected}
       />
 
       <div className="panel-sections" ref={containerRef}>
-        {/* Projects Section */}
-        <CollapsibleSection
-          id="projects"
-          title="Projects"
-          badge={projectCount}
-          loading={isLoadingProjects}
-          collapsed={panels.isCollapsed('projects')}
-          onToggle={() => panels.togglePanel('projects')}
-          height={panels.calculatedHeights['projects']}
-          onResizeStart={(e) => panels.handleResizeStart('projects', e)}
-        >
+        {/* Projects Section - Fixed (not collapsible) */}
+        <div className="projects-section-fixed">
           <ActiveProjectPanel
             projects={projects || []}
             selectedProjectRoot={selectedProjectRoot}
@@ -456,10 +412,8 @@ export function Sidebar() {
               useStore.getState().setSelectedTargets([data.name]);
             }}
             onGenerateManufacturingData={handleGenerateManufacturingData}
-            queuedBuilds={queuedBuilds}
-            onCancelBuild={handlers.handleCancelQueuedBuild}
           />
-        </CollapsibleSection>
+        </div>
 
         {/* Tabbed Panels Section */}
         <div className="tabbed-panels">
@@ -469,14 +423,16 @@ export function Sidebar() {
               onClick={() => setActiveTab('files')}
               title="Files"
             >
-              {tabLabels.files}
+              <Files size={14} />
+              {showTabLabels && <span className="tab-label">Files</span>}
             </button>
             <button
               className={`tab-button ${activeTab === 'packages' ? 'active' : ''}`}
               onClick={() => setActiveTab('packages')}
               title="Packages"
             >
-              {tabLabels.packages}
+              <Package size={14} />
+              {showTabLabels && <span className="tab-label">Packages</span>}
               {isLoadingPackages && <span className="tab-loading" />}
             </button>
             <button
@@ -484,35 +440,40 @@ export function Sidebar() {
               onClick={() => setActiveTab('parts')}
               title="Parts"
             >
-              {tabLabels.parts}
+              <Cpu size={14} />
+              {showTabLabels && <span className="tab-label">Parts</span>}
             </button>
             <button
               className={`tab-button ${activeTab === 'stdlib' ? 'active' : ''}`}
               onClick={() => setActiveTab('stdlib')}
               title="Standard Library"
             >
-              {tabLabels.stdlib}
+              <Library size={14} />
+              {showTabLabels && <span className="tab-label">Lib</span>}
             </button>
             <button
               className={`tab-button ${activeTab === 'structure' ? 'active' : ''}`}
               onClick={() => setActiveTab('structure')}
               title="Structure"
             >
-              {tabLabels.structure}
+              <GitBranch size={14} />
+              {showTabLabels && <span className="tab-label">Struct</span>}
             </button>
             <button
               className={`tab-button ${activeTab === 'parameters' ? 'active' : ''}`}
               onClick={() => setActiveTab('parameters')}
               title="Parameters"
             >
-              {tabLabels.parameters}
+              <SlidersHorizontal size={14} />
+              {showTabLabels && <span className="tab-label">Params</span>}
             </button>
             <button
               className={`tab-button ${activeTab === 'bom' ? 'active' : ''}`}
               onClick={() => setActiveTab('bom')}
               title="Bill of Materials"
             >
-              {tabLabels.bom}
+              <ClipboardList size={14} />
+              {showTabLabels && <span className="tab-label">BOM</span>}
             </button>
           </div>
 
@@ -578,6 +539,57 @@ export function Sidebar() {
               />
             )}
           </div>
+        </div>
+
+        {/* Build Queue Panel - Collapsible and resizable at bottom */}
+        <div
+          className={`build-queue-panel-container ${buildQueueCollapsed ? 'collapsed' : ''}`}
+          style={buildQueueCollapsed ? undefined : { height: buildQueueHeight }}
+        >
+          {/* Resize handle - only when expanded */}
+          {!buildQueueCollapsed && (
+            <div
+              className="build-queue-resize-handle"
+              onMouseDown={handleBuildQueueResizeStart}
+            />
+          )}
+          <div
+            className="build-queue-panel-header"
+            onClick={() => setBuildQueueCollapsed(!buildQueueCollapsed)}
+          >
+            <svg
+              className={`build-queue-chevron ${buildQueueCollapsed ? '' : 'open'}`}
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+            <span className="build-queue-panel-title">Build Queue</span>
+            {filteredBuilds.length > 0 && (
+              <span className="build-queue-panel-badge">{filteredBuilds.length}</span>
+            )}
+          </div>
+          {!buildQueueCollapsed && (
+            <div className="build-queue-panel-content">
+              {filteredBuilds.length === 0 ? (
+                <div className="build-queue-empty">No recent builds</div>
+              ) : (
+                filteredBuilds.map((build) => (
+                  <BuildQueueItem
+                    key={build.buildId}
+                    build={build}
+                    onCancel={handlers.handleCancelQueuedBuild}
+                  />
+                ))
+              )}
+            </div>
+          )}
         </div>
       </div>
 

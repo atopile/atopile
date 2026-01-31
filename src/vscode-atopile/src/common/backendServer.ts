@@ -525,8 +525,8 @@ class BackendServerManager implements vscode.Disposable {
 
             const resolved = await resolveAtoBinForWorkspace();
             if (!resolved) {
-                this._lastError = 'ato binary not found. Check that atopile is installed in .venv/bin/ato or configure atopile.ato in settings.';
-                traceError(`[BackendServer] Cannot start server - ${this._lastError}`);
+                this._lastError = 'Unable to connect to atopile backend.';
+                traceError(`[BackendServer] Cannot start server - ato binary not found`);
                 this._serverState = 'error';
                 this._updateStatusBar();
                 this._onWebviewMessage.fire({
@@ -548,12 +548,31 @@ class BackendServerManager implements vscode.Disposable {
                 message: `Starting backend server (${atoBin.source})...`,
             });
 
-            // Determine UI source type from settings
-            // 'local' ONLY if atopile.ato is explicitly set in settings
-            // The toggle should be OFF by default even if using workspace-venv as fallback
-            let uiSourceType = 'release';
-            if (settings.ato) {
-                uiSourceType = 'local';
+            let localPathForUI: string | undefined;
+            let fromSpec: string | undefined;
+            let fromBranch: string | undefined;
+
+            if (atoBin.source === 'explicit-path') {
+                // Running from a local path (explicitly configured via atopile.ato)
+                localPathForUI = settings.ato || atoBin.command[0];
+            }
+
+            // For from-setting or default, extract the --from spec from the command
+            if (atoBin.source === 'from-setting' || atoBin.source === 'default') {
+                // Command format: [uv, tool, run, -p, 3.14, --from, <spec>, ato]
+                const fromIndex = atoBin.command.indexOf('--from');
+                if (fromIndex !== -1 && fromIndex + 1 < atoBin.command.length) {
+                    fromSpec = atoBin.command[fromIndex + 1];
+                    traceInfo(`[BackendServer] From spec: ${fromSpec}`);
+
+                    // Extract branch name from git URL if present
+                    // Format: git+https://github.com/org/repo.git@branch_name
+                    const gitUrlMatch = fromSpec.match(/@([^@]+)$/);
+                    if (gitUrlMatch) {
+                        fromBranch = gitUrlMatch[1];
+                        traceInfo(`[BackendServer] Extracted branch from git URL: ${fromBranch}`);
+                    }
+                }
             }
 
             // Get the actual binary path (first element of the command)
@@ -565,9 +584,20 @@ class BackendServerManager implements vscode.Disposable {
                 'serve', 'backend',
                 '--port', String(this.port),
                 '--ato-source', atoBin.source,
-                '--ato-ui-source', uiSourceType,
                 '--ato-binary-path', atoBinaryPath,
             ];
+            // Pass local path if we're in explicit-path mode (for UI display)
+            if (localPathForUI) {
+                args.push('--ato-local-path', localPathForUI);
+            }
+            // Pass the from spec if using from-setting mode (for UI display)
+            if (fromSpec && atoBin.source === 'from-setting') {
+                args.push('--ato-from-spec', fromSpec);
+            }
+            // Pass branch name if installed from git via uv
+            if (fromBranch) {
+                args.push('--ato-from-branch', fromBranch);
+            }
             // Pass all workspace roots to the backend
             for (const root of workspaceRoots) {
                 args.push('--workspace', root);

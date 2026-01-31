@@ -2062,7 +2062,11 @@ class TestAssignments:
         [
             ("a = 1", "a", [1.0, 1.0]),  # get_values() returns [min, max]
             ("b = 5V", "b", [5.0, 5.0]),
-            ("c = 100kohm +/- 10%", "c", [90.0, 110.0]),  # 100k +/- 10% in kohm
+            (
+                "c = 100kohm +/- 10%",
+                "c",
+                [90000.0, 110000.0],
+            ),  # 100k +/- 10% in base units (ohms)
             ("d = 3V to 5V", "d", [3.0, 5.0]),
         ],
     )
@@ -2347,7 +2351,7 @@ class TestAssignments:
         # Due to test order dependency, values may be stored in kV or V
         # Check the actual value in base units (value * multiplier)
         literal = r.max_voltage.get().force_extract_superset()
-        multiplier = not_none(literal.get_is_unit())._extract_multiplier()
+        not_none(literal.get_is_unit())._extract_multiplier()
 
         values = r.max_voltage.get().get_values()
         assert values == [99000.0, 101000.0], (
@@ -2402,8 +2406,8 @@ class TestAssignments:
         assert max_power_literal is not None, (
             "max_power should have an Is-constrained literal"
         )
-        # 3 mW to 5 mW = [3, 5] (in base units, that's 0.003 to 0.005)
-        assert max_power_literal.get_values() == [3.0, 5.0]
+        # 3 mW to 5 mW in base units (watts) = [0.003, 0.005]
+        assert max_power_literal.get_values() == [0.003, 0.005]
 
     def test_module_parameter_uses_issubset_constraint(self):
         """Module parameter assignments use IsSubset constraint (not Is).
@@ -3492,7 +3496,7 @@ class TestSoftHardMakeChild:
         param = F.Parameters.NumericParameter.bind_instance(not_none(param_bnode))
         literal = param.force_extract_superset()
         assert literal is not None
-        assert literal.get_values() == [10.0, 10.0]
+        assert literal.get_values() == [10000.0, 10000.0]  # 10kohm in base units (ohms)
 
     def test_explicit_then_implicit_same_block(self):
         """Explicit declaration followed by implicit constraint in same block.

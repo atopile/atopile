@@ -19,45 +19,39 @@ class USB_C(fabll.Node):
     net_names = [
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="CC1",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="CC1", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[cc1]
+            owner=[cc1],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="CC2",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="CC2", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[cc2]
+            owner=[cc2],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="SBU1",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="SBU1", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[sbu1]
+            owner=[sbu1],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="SBU2",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="SBU2", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[sbu2]
+            owner=[sbu2],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="RX",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="RX", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[rx]
+            owner=[rx],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="TX",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="TX", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[tx]
+            owner=[tx],
         ),
     ]
 

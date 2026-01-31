@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - main
+      - stage/*
   release:
     types:
       - published
@@ -135,6 +136,7 @@ jobs:
     - uses: pypa/cibuildwheel@v3.3
       env:
         CIBW_ARCHS_WINDOWS: AMD64
+        CIBW_SKIP: "cp314t-*"  # Skip free-threaded Python (uses python314t.lib, not yet supported)
 
     - name: Verify clean directory
       run: git diff --exit-code

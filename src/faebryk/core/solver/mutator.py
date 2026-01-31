@@ -1181,34 +1181,7 @@ class MutationMap:
         # mark in target as relevant (if mapped through)
         # else create with mapped operands (and mark relevant)
         # action relevance markers
-
-        relevant_root_predicates = MutatorUtils.get_relevant_predicates(*relevant)
-        if S_LOG:
-            logger.debug(
-                "Relevant root predicates: "
-                + indented_container(
-                    [
-                        p.as_expression.get().compact_repr(
-                            no_lit_suffix=True, use_full_name=True
-                        )
-                        for p in relevant_root_predicates
-                    ],
-                    use_repr=False,
-                )
-            )
-
-        return MutationMap(
-            MutationStage(
-                tg_in=tg,
-                tg_out=tg_out,
-                algorithm="bootstrap_relevant_preds",
-                iteration=iteration,
-                transformations=Transformations(mutated=forward_mapping),
-                G_in=g,
-                G_out=g_out,
-                _processed_predicate_uuids=current_pred_uuids,
-            )
-        )
+        raise NotImplementedError("_with_relevance_set_resume is not yet implemented")
 
     @staticmethod
     def bootstrap(

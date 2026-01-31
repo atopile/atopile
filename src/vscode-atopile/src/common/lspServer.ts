@@ -15,7 +15,7 @@ import { ISettings } from './settings';
 import { getLSClientTraceLevel } from './utilities';
 import { isVirtualWorkspace, onDidChangeConfiguration, registerCommand } from './vscodeapi';
 import { SERVER_ID } from './constants';
-import { initAtoBin, resolveAtoBinForWorkspace } from './findbin';
+import { initAtoBin, resolveAtoBinForWorkspace, onDidChangeAtoBinInfo } from './findbin';
 import * as fs from 'fs/promises';
 import * as cp from 'child_process';
 import { constants as fsc } from 'fs';
@@ -165,6 +165,13 @@ export async function initServer(context: ExtensionContext): Promise<void> {
     context.subscriptions.push(
         registerCommand(`${SERVER_ID}.restart`, async () => {
             onNeedsRestartEvent.fire();
+        }),
+        // Automatically restart servers when atopile.ato or atopile.from settings change
+        onDidChangeAtoBinInfo((info) => {
+            if (!info.init) {
+                traceInfo(`Server: ato/from settings changed, triggering restart`);
+                onNeedsRestartEvent.fire();
+            }
         }),
     );
 

@@ -25,16 +25,14 @@ class XtalIF(fabll.Node):
     net_names = [
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="XIN",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="XIN", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[xin]
+            owner=[xin],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="XOUT",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="XOUT", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[xout]
+            owner=[xout],
         ),
     ]

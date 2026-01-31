@@ -92,10 +92,6 @@ export interface ReloadWindowMessage {
   type: 'reloadWindow';
 }
 
-export interface RestartExtensionMessage {
-  type: 'restartExtension';
-}
-
 export interface ShowLogsMessage {
   type: 'showLogs';
 }
@@ -145,6 +141,8 @@ export interface ShowInfoMessage {
 export interface ShowErrorMessage {
   type: 'showError';
   message: string;
+export interface GetAtopileSettingsMessage {
+  type: 'getAtopileSettings';
 }
 
 export type ExtensionMessage =
@@ -155,7 +153,6 @@ export type ExtensionMessage =
   | BrowseAtopilePathMessage
   | BrowseProjectPathMessage
   | ReloadWindowMessage
-  | RestartExtensionMessage
   | ShowLogsMessage
   | ShowBuildLogsMessage
   | ShowBackendMenuMessage
@@ -167,6 +164,7 @@ export type ExtensionMessage =
   | ShowProblemsMessage
   | ShowInfoMessage
   | ShowErrorMessage;
+  | GetAtopileSettingsMessage;
 
 /**
  * Type-safe helper to post messages to the extension.
@@ -252,6 +250,14 @@ export interface DirectoryLoadedMessage {
   error?: string;
 }
 
+export interface AtopileSettingsResponseMessage {
+  type: 'atopileSettingsResponse';
+  settings: {
+    atoPath: string | null;  // atopile.ato setting
+    fromSpec: string | null;  // atopile.from setting
+  };
+}
+
 export type ExtensionToWebviewMessage =
   | TriggerBuildMessage
   | SetAtopileInstallingMessage
@@ -263,7 +269,8 @@ export type ExtensionToWebviewMessage =
   | AtopileInstallErrorMessage
   | ServerReadyMessage
   | FilesListedMessage
-  | DirectoryLoadedMessage;
+  | DirectoryLoadedMessage
+  | AtopileSettingsResponseMessage;
 
 // Callback type for extension message handlers
 type ExtensionMessageHandler = (message: ExtensionToWebviewMessage) => void;
@@ -301,7 +308,8 @@ export function initExtensionMessageListener(): void {
       message.type === 'browseExportDirectoryResult' ||
       message.type === 'serverReady' ||
       message.type === 'filesListed' ||
-      message.type === 'directoryLoaded'
+      message.type === 'directoryLoaded' ||
+      message.type === 'atopileSettingsResponse'
     ) {
       for (const handler of extensionMessageHandlers) {
         handler(message as ExtensionToWebviewMessage);

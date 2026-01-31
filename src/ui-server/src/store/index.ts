@@ -114,8 +114,10 @@ const initialState: AppState = {
   atopile: {
     // Actual running atopile info
     actualVersion: null as string | null,
-    actualSource: null as string | null,
+    actualSource: null as string | null,  // 'explicit-path', 'from-setting', or 'default'
     actualBinaryPath: null as string | null,
+    fromBranch: null as string | null,  // Git branch when installed via uv from git
+    fromSpec: null as string | null,  // The pip/uv spec (for from-setting mode)
     // User selection state
     source: 'release' as 'release' | 'local',
     localPath: null as string | null,
@@ -212,7 +214,7 @@ interface StoreActions {
   setLoadingPackages: (loading: boolean) => void;
   setPackagesError: (error: string | null) => void;
   setPackageDetails: (details: PackageDetails | null) => void;
-  setLoadingPackageDetails: (loading: boolean) => void;
+  clearPackageDetailsAndStartLoading: () => void;
   addInstallingPackage: (packageId: string) => void;
   removeInstallingPackage: (packageId: string) => void;
   clearInstallingPackages: () => void;
@@ -501,8 +503,12 @@ export const useStore = create<Store>()(
           isLoadingPackageDetails: false,
         }),
 
-      setLoadingPackageDetails: (loading) =>
-        set({ isLoadingPackageDetails: loading }),
+      clearPackageDetailsAndStartLoading: () =>
+        set({
+          selectedPackageDetails: null,
+          isLoadingPackageDetails: true,
+          packageDetailsError: null,
+        }),
 
       addInstallingPackage: (packageId) => {
         if (installErrorTimeout) {
@@ -624,6 +630,7 @@ export const useStore = create<Store>()(
             localPath: newAtopile.localPath,
             source: newAtopile.source,
             actualVersion: newAtopile.actualVersion,
+            fromBranch: newAtopile.fromBranch,
           });
           return { atopile: newAtopile };
         });

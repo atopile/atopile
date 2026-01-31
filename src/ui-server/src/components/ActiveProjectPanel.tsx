@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Package, CheckCircle2, XCircle, AlertCircle, AlertTriangle, Target, ScrollText } from 'lucide-react'
+import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
-import type { QueuedBuild } from '../types/build'
-import { useStore } from '../store'
-import { sendAction } from '../api/websocket'
 import { postMessage } from '../api/vscodeApi'
 import './ActiveProjectPanel.css'
+
+// Re-export BuildQueueItem for use in standalone BuildQueue panel
+export { BuildQueueItem } from './BuildQueueItem'
 
 interface NewProjectData {
   name: string
@@ -36,8 +36,6 @@ interface ActiveProjectPanelProps {
   onCreateProject?: (data?: NewProjectData) => Promise<void>
   onCreateTarget?: (projectRoot: string, data: NewTargetData) => Promise<void>
   onGenerateManufacturingData?: (projectRoot: string, targetName: string) => void
-  queuedBuilds?: QueuedBuild[]
-  onCancelBuild?: (buildId: string) => void
 }
 
 // Helper to format path for display - shows last 2 segments
@@ -46,51 +44,6 @@ function formatPath(path: string): string {
   const parts = path.split('/')
   // Show last 2 segments (e.g., "examples/equations")
   return parts.slice(-2).join('/')
-}
-
-function formatDuration(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return ''
-  if (seconds < 1) {
-    return `${seconds.toFixed(2)}s`
-  }
-  if (seconds < 10) {
-    return `${seconds.toFixed(1)}s`
-  }
-  const total = Math.floor(seconds)
-  if (total < 60) {
-    return `${total}s`
-  }
-  const mins = Math.floor(total / 60)
-  const secs = total % 60
-  if (mins < 60) {
-    return `${mins}m ${secs}s`
-  }
-  const hours = Math.floor(mins / 60)
-  const remainMins = mins % 60
-  return `${hours}h ${remainMins}m`
-}
-
-function formatRelativeSeconds(epochSeconds: number): string {
-  if (!Number.isFinite(epochSeconds) || epochSeconds <= 0) return ''
-  const diffMs = Date.now() - epochSeconds * 1000
-  const diffSecs = Math.floor(diffMs / 1000)
-  const diffMins = Math.floor(diffSecs / 60)
-  const diffHours = Math.floor(diffMins / 60)
-  const diffDays = Math.floor(diffHours / 24)
-
-  if (diffSecs < 60) return 'just now'
-  if (diffMins < 60) return `${diffMins}m ago`
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays === 1) return 'yesterday'
-  if (diffDays < 7) return `${diffDays}d ago`
-  return new Date(epochSeconds * 1000).toLocaleDateString()
-}
-
-function getBuildCounter(buildId?: string): string | null {
-  if (!buildId) return null
-  const match = buildId.match(/^build-(\d+)-/)
-  if (match) return `#${match[1]}`
-  return `#${buildId}`
 }
 
 // Simple fuzzy match for project search
@@ -112,7 +65,7 @@ function fuzzyMatch(text: string, query: string): boolean {
   return false
 }
 
-// ProjectSelector component - true combobox with inline search
+// ProjectSelector component - combobox with inline search
 function ProjectSelector({
   projects,
   activeProject,
@@ -905,243 +858,6 @@ function NewProjectForm({
   )
 }
 
-// Build status icon component
-function BuildStatusIcon({ status }: { status: QueuedBuild['status'] }) {
-  switch (status) {
-    case 'success':
-      return <CheckCircle2 size={14} className="status-icon success" />
-    case 'failed':
-      return <XCircle size={14} className="status-icon failed" />
-    case 'warning':
-      return <AlertTriangle size={14} className="status-icon warning" />
-    case 'cancelled':
-      return <AlertCircle size={14} className="status-icon cancelled" />
-    default:
-      return null
-  }
-}
-
-// Build Queue Item component
-// Stage status icon component
-function StageStatusIcon({ status }: { status: string }) {
-  switch (status) {
-    case 'success':
-      return <CheckCircle2 size={10} className="stage-icon success" />
-    case 'failed':
-    case 'error':
-      return <XCircle size={10} className="stage-icon failed" />
-    case 'warning':
-      return <AlertCircle size={10} className="stage-icon warning" />
-    case 'running':
-    case 'building':
-      return <span className="stage-icon running">●</span>
-    case 'skipped':
-      return <span className="stage-icon skipped">○</span>
-    default:
-      return <span className="stage-icon pending">○</span>
-  }
-}
-
-function getCurrentStage(build: QueuedBuild): { name: string } | null {
-  if (!build.stages || build.stages.length === 0) return null
-
-  const running = build.stages.find(
-    (stage) => stage.status === 'running' || stage.status === 'building'
-  )
-  if (running) {
-    return { name: running.displayName || running.name }
-  }
-
-  const completed = [...build.stages].reverse().find((stage) =>
-    stage.status === 'success' ||
-    stage.status === 'warning' ||
-    stage.status === 'failed' ||
-    stage.status === 'error'
-  )
-
-  if (completed) {
-    return { name: completed.displayName || completed.name }
-  }
-
-  return null
-}
-
-function BuildQueueItem({
-  build,
-  onCancel,
-}: {
-  build: QueuedBuild
-  onCancel?: (buildId: string) => void
-}) {
-  const [isExpanded, setIsExpanded] = useState(false)
-
-  // Calculate progress from stages
-  const progress = useMemo(() => {
-    if (!build.stages || build.stages.length === 0) return 0
-    const completedStages = build.stages.filter(
-      (s) => s.status === 'success' || s.status === 'warning'
-    ).length
-    // Use actual totalStages from backend, or fall back to completed + 1 to avoid 100%
-    const totalStages = build.totalStages || Math.max(completedStages + 1, 10)
-    return Math.round((completedStages / totalStages) * 100)
-  }, [build.stages, build.totalStages])
-
-  const targetName = build.target || build.entry || 'default'
-  const isComplete = build.status === 'success' || build.status === 'failed' || build.status === 'cancelled' || build.status === 'warning'
-  const hasStages = build.stages && build.stages.length > 0
-  const canExpand = true
-  const buildCounter = useMemo(() => getBuildCounter(build.buildId), [build.buildId])
-  const currentStage = useMemo(() => getCurrentStage(build), [build])
-
-  const elapsed = build.elapsedSeconds ?? 0
-
-  const totalDuration = build.elapsedSeconds ?? null
-
-  const runningStageElapsed = useMemo(() => {
-    if (!build.stages || build.stages.length === 0) return null
-    const running = build.stages.find((stage) => stage.status === 'running')
-    return running?.elapsedSeconds ?? null
-  }, [build.stages])
-
-  const completedAt = useMemo(() => {
-    if (!build.startedAt) return null
-    if (build.elapsedSeconds && build.elapsedSeconds > 0) {
-      return build.startedAt + build.elapsedSeconds
-    }
-    return null
-  }, [build.startedAt, build.elapsedSeconds])
-
-  const statusLabel = useMemo(() => {
-    switch (build.status) {
-      case 'queued':
-        return 'Queued'
-      case 'building':
-        return ''
-      case 'success':
-      case 'failed':
-      case 'warning':
-      case 'cancelled':
-        return completedAt ? formatRelativeSeconds(completedAt) : ''
-      default:
-        return build.status
-    }
-  }, [build.status, progress, completedAt])
-
-  const elapsedLabel = useMemo(() => {
-    if (build.status !== 'queued' && build.status !== 'building') return ''
-    if (elapsed > 0) return formatDuration(elapsed)
-    return '0s'
-  }, [build.status, elapsed])
-
-  return (
-    <div className={`build-queue-item ${build.status} ${isExpanded ? 'expanded' : ''}`}>
-      <div className="build-queue-header" onClick={() => canExpand && setIsExpanded(!isExpanded)}>
-        {canExpand && (
-          <ChevronDown
-            size={10}
-            className={`build-expand-icon ${isExpanded ? 'open' : ''}`}
-          />
-        )}
-        {isComplete && <BuildStatusIcon status={build.status} />}
-        <div className="build-queue-info">
-          <span className="build-queue-target">{targetName}</span>
-          {build.status === 'building' && currentStage && (
-            <span className="build-queue-stage" title={currentStage.name}>
-              {currentStage.name}
-            </span>
-          )}
-        </div>
-        {statusLabel && (
-          <div className="build-queue-meta">
-            <span className="build-queue-status">{statusLabel}</span>
-            {elapsedLabel && (
-              <span className="build-queue-time">{elapsedLabel}</span>
-            )}
-          </div>
-        )}
-        {build.status === 'building' && (
-          <div className="build-queue-progress">
-            <div
-              className="build-queue-progress-bar"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        )}
-        {build.buildId && (
-          <button
-            className="build-queue-logs-btn"
-            onClick={(e) => {
-              e.stopPropagation()
-              useStore.getState().setLogViewerBuildId(build.buildId)
-              sendAction('setLogViewCurrentId', { buildId: build.buildId, stage: null })
-              postMessage({ type: 'showBuildLogs' })
-            }}
-            title="View all logs for this build"
-          >
-            <ScrollText size={10} />
-          </button>
-        )}
-        {(build.status === 'queued' || build.status === 'building') && onCancel && build.buildId && (
-          <button
-            className="build-queue-cancel"
-            onClick={(e) => {
-              e.stopPropagation()
-              onCancel(build.buildId)
-            }}
-            title="Cancel build"
-          >
-            <X size={10} />
-          </button>
-        )}
-      </div>
-
-      {/* Expanded stages view */}
-      {isExpanded && (
-        <div className="build-stages">
-          <div className="build-stages-header">
-            <span className="build-stages-title">Steps ({build.stages?.length ?? 0})</span>
-            <div className="build-stages-meta">
-              {buildCounter && <span className="build-queue-counter">{buildCounter}</span>}
-              {totalDuration && <span className="build-stages-total">Total {formatDuration(totalDuration)}</span>}
-            </div>
-          </div>
-          {hasStages ? (
-            build.stages!.map((stage, index) => (
-              <div
-                key={index}
-                className={`build-stage ${stage.status}`}
-                onClick={() => {
-                  if (build.buildId) {
-                    useStore.getState().setLogViewerBuildId(build.buildId)
-                    sendAction('setLogViewCurrentId', { buildId: build.buildId, stage: stage.stageId || stage.name })
-                    postMessage({ type: 'showBuildLogs' })
-                  }
-                }}
-                title={`View logs for ${stage.displayName || stage.name}`}
-              >
-                <StageStatusIcon status={stage.status} />
-                <span className="stage-name">{stage.displayName || stage.name}</span>
-                {(() => {
-                  const stageElapsed = stage.status === 'running'
-                    ? runningStageElapsed ?? stage.elapsedSeconds
-                    : stage.elapsedSeconds
-                  if (stageElapsed === undefined || stageElapsed === null) return null
-                  if (stage.status === 'pending') return null
-                  return (
-                    <span className="stage-time">{formatDuration(stageElapsed)}</span>
-                  )
-                })()}
-              </div>
-            ))
-          ) : (
-            <div className="build-stages-empty">No steps recorded</div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
 export function ActiveProjectPanel({
   projects,
   selectedProjectRoot,
@@ -1156,8 +872,6 @@ export function ActiveProjectPanel({
   onCreateProject,
   onCreateTarget,
   onGenerateManufacturingData,
-  queuedBuilds = [],
-  onCancelBuild,
 }: ActiveProjectPanelProps) {
   const [showNewProjectForm, setShowNewProjectForm] = useState(false)
   const [showNewTargetForm, setShowNewTargetForm] = useState(false)
@@ -1227,12 +941,6 @@ export function ActiveProjectPanel({
     }
   }, [onCreateTarget, activeProject])
 
-  // Filter builds for active project
-  const projectBuilds = useMemo(() => {
-    if (!activeProject) return []
-    return queuedBuilds.filter((b) => b.projectRoot === activeProject.root)
-  }, [queuedBuilds, activeProject])
-
   useEffect(() => {
     if (!activeProject) return
     if (!selectedProjectRoot) {
@@ -1276,28 +984,34 @@ export function ActiveProjectPanel({
         />
       )}
 
-      {/* Project Selector Row */}
-      <div className="project-selector-row">
-        <ProjectSelector
-          projects={projects}
-          activeProject={activeProject}
-          onSelectProject={onSelectProject}
-          onCreateProject={onCreateProject ? () => setShowNewProjectForm(true) : undefined}
-        />
-        {onCreateProject && (
-          <button
-            className="new-project-btn"
-            onClick={() => setShowNewProjectForm(true)}
-            title="Create new project"
-          >
-            <Plus size={14} />
-          </button>
-        )}
+      {/* Project Section */}
+      <div className="project-section">
+        <div className="section-header">
+          <span className="section-label">Project</span>
+        </div>
+        <div className="project-selector-row">
+          <ProjectSelector
+            projects={projects}
+            activeProject={activeProject}
+            onSelectProject={onSelectProject}
+            onCreateProject={onCreateProject ? () => setShowNewProjectForm(true) : undefined}
+          />
+          {onCreateProject && (
+            <button
+              className="new-project-btn"
+              onClick={() => setShowNewProjectForm(true)}
+              title="Create new project"
+            >
+              <Plus size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
+      {/* Build Section */}
       <div className="builds-section">
-        <div className="builds-header">
-          <span className="section-label">Builds</span>
+        <div className="section-header">
+          <span className="section-label">Build</span>
         </div>
 
         <div className="build-targets">
@@ -1314,9 +1028,10 @@ export function ActiveProjectPanel({
           />
         </div>
 
-        <div className="build-controls">
+        {/* Action buttons - single row: Build | KiCad | 3D | Layout | Manufacture */}
+        <div className="build-actions-row">
           <button
-            className="control-btn primary"
+            className="action-btn primary"
             onClick={() => {
               if (!activeProject || !activeTargetName) return
               onBuildTarget(activeProject.root, activeTargetName)
@@ -1325,11 +1040,59 @@ export function ActiveProjectPanel({
             title={activeTargetName ? `Build ${activeTargetName}` : 'Select a build first'}
           >
             <Play size={12} />
-            <span>Build</span>
+            <span className="action-label">Build</span>
           </button>
+
+          <div className="action-divider" />
+
+          <button
+            className="action-btn"
+            onClick={() => {
+              if (!activeProject || !activeTargetName) return
+              onOpenKiCad(activeProject.root, activeTargetName)
+            }}
+            disabled={!activeProject || !activeTargetName}
+            title={getOutputTooltip('KiCad schematic editor')}
+          >
+            <Layers size={12} />
+            <span className="action-label">KiCad</span>
+          </button>
+
+          <div className="action-divider" />
+
+          <button
+            className="action-btn"
+            onClick={() => {
+              if (!activeProject || !activeTargetName) return
+              onOpen3D(activeProject.root, activeTargetName)
+            }}
+            disabled={!activeProject || !activeTargetName}
+            title={getOutputTooltip('3D board viewer')}
+          >
+            <Cuboid size={12} />
+            <span className="action-label">3D</span>
+          </button>
+
+          <div className="action-divider" />
+
+          <button
+            className="action-btn"
+            onClick={() => {
+              if (!activeProject || !activeTargetName) return
+              onOpenLayout(activeProject.root, activeTargetName)
+            }}
+            disabled={!activeProject || !activeTargetName}
+            title={getOutputTooltip('PCB layout editor')}
+          >
+            <Layout size={12} />
+            <span className="action-label">Layout</span>
+          </button>
+
+          <div className="action-divider" />
+
           {onGenerateManufacturingData && (
             <button
-              className="control-btn"
+              className="action-btn"
               onClick={() => {
                 if (!activeProject || !activeTargetName) return
                 onGenerateManufacturingData(activeProject.root, activeTargetName)
@@ -1341,66 +1104,10 @@ export function ActiveProjectPanel({
                   : 'Run a build first to generate manufacturing data'
               }
             >
-              <Package size={12} />
-              <span>MFG</span>
+              <Factory size={12} />
+              <span className="action-label">Manufacture</span>
             </button>
           )}
-        </div>
-
-        <div className="build-outputs">
-          <button
-            className="control-btn output-btn"
-            onClick={() => {
-              if (!activeProject || !activeTargetName) return
-              onOpenKiCad(activeProject.root, activeTargetName)
-            }}
-            disabled={!activeProject || !activeTargetName}
-            title={getOutputTooltip('KiCad schematic editor')}
-          >
-            <Layers size={12} />
-            <span>KiCad</span>
-          </button>
-          <button
-            className="control-btn output-btn"
-            onClick={() => {
-              if (!activeProject || !activeTargetName) return
-              onOpen3D(activeProject.root, activeTargetName)
-            }}
-            disabled={!activeProject || !activeTargetName}
-            title={getOutputTooltip('3D board viewer')}
-          >
-            <Cuboid size={12} />
-            <span>3D</span>
-          </button>
-          <button
-            className="control-btn output-btn"
-            onClick={() => {
-              if (!activeProject || !activeTargetName) return
-              onOpenLayout(activeProject.root, activeTargetName)
-            }}
-            disabled={!activeProject || !activeTargetName}
-            title={getOutputTooltip('PCB layout editor')}
-          >
-            <Layout size={12} />
-            <span>Layout</span>
-          </button>
-        </div>
-
-        {/* Build Queue - always visible */}
-        <div className="build-queue-section">
-          <div className="build-queue-list">
-            {projectBuilds.length === 0 ? (
-              <div className="build-queue-empty">No recent builds</div>
-            ) : (
-              projectBuilds.map((build) => (
-                <BuildQueueItem
-                  key={build.buildId}
-                  build={build}
-                  onCancel={onCancelBuild}
-                />
-              ))
-            )}
-          </div>
         </div>
       </div>
     </div>

@@ -77,9 +77,7 @@ class is_sum_bus_parameter(fabll.Node):
             bus_parameters, lambda p: get_bus_param_owner(p[1])[0]
         )
 
-        busses = fabll.is_interface.group_into_buses(
-            params_grouped_by_interface.keys()
-        )
+        busses = fabll.is_interface.group_into_buses(params_grouped_by_interface.keys())
 
         param_bus_representatives: set[tuple[fabll.Node, is_sum_bus_parameter]] = set()
 
@@ -106,4 +104,3 @@ class is_sum_bus_parameter(fabll.Node):
                 continue
             trait.resolve(param_bus)
             processed_busses_params.add(bus_id)
-

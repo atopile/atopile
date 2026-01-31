@@ -4688,17 +4688,29 @@ class Numbers(fabll.Node):
         self, show_tolerance: bool = True, force_center: bool = False
     ) -> str:
         """Format number with units and tolerance for display."""
-        from faebryk.library.Units import is_unit
+        from faebryk.library.Units import has_display_unit, is_unit
 
         numeric_set = self.get_numeric_set()
         if self.is_empty():
             return "<empty>"
         intervals = numeric_set.get_intervals()
 
-        # Get unit symbol and check if we should auto-scale
+        # Check for display unit first - if present, use it for formatting
+        # Values are stored in base units, so we need to convert for display
+        display_unit_conversion = 1.0  # multiplier to convert base → display
+        has_explicit_display_unit = False
         try:
-            unit = self.get_is_unit()
-            base_unit_symbol = is_unit.compact_repr(unit)
+            base_unit = self.get_is_unit()
+            if display_trait := self.try_get_trait(has_display_unit):
+                display_unit = display_trait.get_is_unit()
+                # Get conversion from base unit to display unit
+                display_unit_conversion, _ = is_unit.get_conversion_to(
+                    base_unit, display_unit
+                )
+                base_unit_symbol = is_unit.compact_repr(display_unit)
+                has_explicit_display_unit = True
+            else:
+                base_unit_symbol = is_unit.compact_repr(base_unit)
         except Exception:
             base_unit_symbol = ""
 
@@ -4744,9 +4756,17 @@ class Numbers(fabll.Node):
             return str_num
 
         # Determine scale factor based on representative value
+        # When display unit is explicitly set, use it directly without SI prefix
+        # auto-scaling
         scale = 1
         prefix = ""
-        if base_unit_symbol and base_unit_symbol not in ("", "dimensionless"):
+        if has_explicit_display_unit:
+            # Display unit is explicitly set - use it directly, no additional
+            # auto-scaling
+            # The scale incorporates the display unit conversion
+            scale = 1.0 / display_unit_conversion
+        elif base_unit_symbol and base_unit_symbol not in ("", "dimensionless"):
+            # No display unit - use SI prefix auto-scaling
             # Find a representative value for scaling
             rep_value = None
             if numeric_set.is_singleton():

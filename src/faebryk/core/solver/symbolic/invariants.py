@@ -473,7 +473,8 @@ class SubsumptionCheck:
                 t for t in builder.traits if t is not None and t.has_trait(is_monotone)
             ],
         )
-        logger.debug(f"New alias: {builder.compact_repr()}")
+        if I_LOG:
+            logger.debug(f"New alias: {builder.compact_repr()}")
         return SubsumptionCheck.Result(
             builder,
             subsumed=[alias.is_expression.get() for alias in existing_aliases],
@@ -755,9 +756,9 @@ def _no_predicate_operands(
     new_builder = builder.with_(operands=new_operands)
 
     if I_LOG and new_operands != builder.operands:
-        logger.debug(
-            f"Predicate operands: {builder.compact_repr()} -> {new_builder.compact_repr()}"
-        )
+        old_repr = builder.compact_repr()
+        new_repr = new_builder.compact_repr()
+        logger.debug(f"Predicate operands: {old_repr} -> {new_repr}")
 
     return new_builder
 
@@ -1017,7 +1018,7 @@ def _deduplicate_idempotent_operands(
         return builder
 
     # Deduplicate operands by identity (preserving order)
-    # no need to check eq class, because already all mapped to their representative in expr
+    # no need to check eq class, already all mapped to their representative
     unique_operands = OrderedSet(builder.operands)
     out = builder.with_(operands=list(unique_operands))
 
@@ -1092,7 +1093,7 @@ def _operands_mutated_and_expressions_flat(
         # if builder is alias expr operands might not have a repr yet,
         # so need to allow stub classes
         # TODO does this make sense?
-        # representative = AliasClass.of(copied, allow_non_repr=is_alias).representative()
+        # repr = AliasClass.of(copied, allow_non_repr=is_alias).representative()
         if is_alias:
             representative = copied
         else:
@@ -1460,8 +1461,8 @@ def insert_expression(
             )
     # transfer/create alias for new expr
     if alias:
-        # TODO find alias in old graph and copy it over if it exists
-        # for now try to do this by adding is during copy_unmutated and congruence match it
+        # TODO find alias in old graph and copy if exists
+        # for now add Is during copy_unmutated and congruence match it
         alias = (
             mutator.get_copy(alias.as_operand.get())
             .as_parameter_operatable.force_get()

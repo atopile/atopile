@@ -639,7 +639,7 @@ class MutatorUtils:
         inner_exprs = AliasClass.of(inner_expr_rep).get_with_trait(
             F.Expressions.is_expression
         )
-        # Find the inner expression with matching type (for involutory ops like Not(Not(...)))
+        # Find inner expression with matching type (for involutory ops)
         expr_type = fabll.Traits(expr).get_obj_raw().get_type_node()
         inner_expr_e = None
         for candidate in inner_exprs:

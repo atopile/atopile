@@ -1,6 +1,8 @@
 import json
 import os
 import sqlite3
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -14,12 +16,51 @@ BUILD_LOGS_DB = get_log_dir() / Path("build_logs.db")
 
 logger = get_logger(__name__)
 
+# Thread-local storage for database connections
+# Each thread gets its own connection to avoid race conditions
+_thread_local = threading.local()
+_init_lock = threading.Lock()
+
+
+def _ensure_db_dir(db_path: Path) -> None:
+    """Ensure database directory exists (called once per database)."""
+    with _init_lock:
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+
+@contextmanager
+def _get_connection(db_path: Path, timeout: float = 30.0):
+    """
+    Get a thread-local database connection, creating one if needed.
+    Each thread gets its own connection to avoid race conditions.
+    """
+    # Get or create thread-local connection dict
+    if not hasattr(_thread_local, "connections"):
+        _thread_local.connections = {}
+
+    connections = _thread_local.connections
+
+    if db_path not in connections:
+        _ensure_db_dir(db_path)
+        conn = sqlite3.connect(db_path, timeout=timeout)
+        # Enable WAL mode for better concurrent access
+        conn.execute("PRAGMA journal_mode=WAL")
+        connections[db_path] = conn
+
+    conn = connections[db_path]
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
 # build_history.db -> build_history schema helper
 class BuildHistory:
     @staticmethod
     def init_db() -> None:
-        BUILD_HISTORY_DB.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(BUILD_HISTORY_DB) as conn:
+        with _get_connection(BUILD_HISTORY_DB) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS build_history (
                     build_id         TEXT PRIMARY KEY,
@@ -77,14 +118,16 @@ class BuildHistory:
         This allows partial updates without losing previously set fields.
         """
         try:
-            with sqlite3.connect(BUILD_HISTORY_DB) as conn:
+            with _get_connection(BUILD_HISTORY_DB) as conn:
                 conn.row_factory = sqlite3.Row
                 # Get existing record to merge with
                 existing_row = conn.execute(
                     "SELECT * FROM build_history WHERE build_id = ?",
                     (build.build_id,),
                 ).fetchone()
-                existing = BuildHistory._from_row(existing_row) if existing_row else None
+                existing = (
+                    BuildHistory._from_row(existing_row) if existing_row else None
+                )
 
                 # Helper to pick new value or fall back to existing
                 def pick(new_val, existing_val):
@@ -103,28 +146,58 @@ class BuildHistory:
                     (
                         build.build_id,
                         pick(build.name, existing.name if existing else None),
-                        pick(build.display_name, existing.display_name if existing else None),
-                        pick(build.project_name, existing.project_name if existing else None),
-                        pick(build.project_root, existing.project_root if existing else None),
+                        pick(
+                            build.display_name,
+                            existing.display_name if existing else None,
+                        ),
+                        pick(
+                            build.project_name,
+                            existing.project_name if existing else None,
+                        ),
+                        pick(
+                            build.project_root,
+                            existing.project_root if existing else None,
+                        ),
                         pick(build.target, existing.target if existing else None),
                         pick(build.entry, existing.entry if existing else None),
                         build.status.value,  # status is always set
-                        pick(build.return_code, existing.return_code if existing else None),
+                        pick(
+                            build.return_code,
+                            existing.return_code if existing else None,
+                        ),
                         pick(build.error, existing.error if existing else None),
-                        pick(build.started_at, existing.started_at if existing else None),
-                        build.elapsed_seconds if build.elapsed_seconds else (existing.elapsed_seconds if existing else 0.0),
-                        json.dumps(build.stages) if build.stages else (json.dumps(existing.stages) if existing else "[]"),
-                        pick(build.total_stages, existing.total_stages if existing else None),
-                        build.warnings if build.warnings else (existing.warnings if existing else 0),
-                        build.errors if build.errors else (existing.errors if existing else 0),
+                        pick(
+                            build.started_at, existing.started_at if existing else None
+                        ),
+                        build.elapsed_seconds
+                        if build.elapsed_seconds
+                        else (existing.elapsed_seconds if existing else 0.0),
+                        json.dumps(build.stages)
+                        if build.stages
+                        else (json.dumps(existing.stages) if existing else "[]"),
+                        pick(
+                            build.total_stages,
+                            existing.total_stages if existing else None,
+                        ),
+                        build.warnings
+                        if build.warnings
+                        else (existing.warnings if existing else 0),
+                        build.errors
+                        if build.errors
+                        else (existing.errors if existing else 0),
                         pick(build.timestamp, existing.timestamp if existing else None),
-                        int(bool(build.standalone)) if build.standalone else (int(bool(existing.standalone)) if existing else 0),
-                        int(bool(build.frozen)) if build.frozen else (int(bool(existing.frozen)) if existing else 0),
+                        int(bool(build.standalone))
+                        if build.standalone
+                        else (int(bool(existing.standalone)) if existing else 0),
+                        int(bool(build.frozen))
+                        if build.frozen
+                        else (int(bool(existing.frozen)) if existing else 0),
                     ),
                 )
         except Exception:
             logger.exception(
-                f"Failed to save build {build.build_id} to history. Try running 'ato dev clear_logs'."
+                f"Failed to save build {build.build_id} to history. "
+                "Try running 'ato dev clear_logs'."
             )
             os._exit(1)
 
@@ -132,18 +205,19 @@ class BuildHistory:
     def get(build_id: str) -> Build | None:
         """Get a build by ID. Returns None if missing, exits on error."""
         try:
-            with sqlite3.connect(BUILD_HISTORY_DB) as conn:
+            with _get_connection(BUILD_HISTORY_DB) as conn:
                 conn.row_factory = sqlite3.Row
                 row = conn.execute(
                     "SELECT * FROM build_history WHERE build_id = ?",
                     (build_id,),
                 ).fetchone()
-            if row is None:
-                return None
-            return BuildHistory._from_row(row)
+                if row is None:
+                    return None
+                return BuildHistory._from_row(row)
         except Exception:
             logger.exception(
-                f"Failed to get build {build_id} from history. Try running 'ato dev clear_logs'."
+                f"Failed to get build {build_id} from history. "
+                "Try running 'ato dev clear_logs'."
             )
             os._exit(1)
 
@@ -151,13 +225,13 @@ class BuildHistory:
     def get_all(limit: int = 50) -> list[Build]:
         """Get recent builds. Exits on error."""
         try:
-            with sqlite3.connect(BUILD_HISTORY_DB) as conn:
+            with _get_connection(BUILD_HISTORY_DB) as conn:
                 conn.row_factory = sqlite3.Row
                 rows = conn.execute(
                     "SELECT * FROM build_history ORDER BY started_at DESC LIMIT ?",
                     (limit,),
                 ).fetchall()
-            return [BuildHistory._from_row(r) for r in rows]
+                return [BuildHistory._from_row(r) for r in rows]
         except Exception:
             logger.exception(
                 "Failed to load build history. Try running 'ato dev clear_logs'."
@@ -169,8 +243,7 @@ class BuildHistory:
 class Logs:
     @staticmethod
     def init_db() -> None:
-        BUILD_LOGS_DB.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(BUILD_LOGS_DB) as conn:
+        with _get_connection(BUILD_LOGS_DB) as conn:
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS logs (
                     id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -217,7 +290,7 @@ class Logs:
     def append_chunk(entries: list[LogRow]) -> None:
         if not entries:
             return
-        with sqlite3.connect(BUILD_LOGS_DB, timeout=30.0) as conn:
+        with _get_connection(BUILD_LOGS_DB) as conn:
             conn.executemany(
                 """
                 INSERT INTO logs
@@ -276,29 +349,26 @@ class Logs:
         params.append(min(count, 5000))
         order_dir = "DESC" if order.upper() == "DESC" else "ASC"
 
-        with sqlite3.connect(BUILD_LOGS_DB, timeout=30.0) as conn:
+        with _get_connection(BUILD_LOGS_DB) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM logs"
-                " WHERE " + " AND ".join(where) +
-                f" ORDER BY id {order_dir} LIMIT ?",
+                " WHERE " + " AND ".join(where) + f" ORDER BY id {order_dir} LIMIT ?",
                 params,
             ).fetchall()
-
-        last_id = after_id
-        results = []
-        for row in rows:
-            last_id = row["id"]
-            results.append(Logs._from_row(row))
-        return results, last_id
+            last_id = after_id
+            results = []
+            for row in rows:
+                last_id = row["id"]
+                results.append(Logs._from_row(row))
+            return results, last_id
 
 
 # test_logs.db -> test_logs table helper
 class TestLogs:
     @staticmethod
     def init_db() -> None:
-        TEST_LOGS_DB.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(TEST_LOGS_DB) as conn:
+        with _get_connection(TEST_LOGS_DB) as conn:
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS test_runs (
                     test_run_id TEXT PRIMARY KEY,
@@ -325,7 +395,7 @@ class TestLogs:
 
     @staticmethod
     def register_run(test_run_id: str) -> None:
-        with sqlite3.connect(TEST_LOGS_DB, timeout=30.0) as conn:
+        with _get_connection(TEST_LOGS_DB) as conn:
             conn.execute(
                 "INSERT OR IGNORE INTO test_runs (test_run_id) VALUES (?)",
                 (test_run_id,),
@@ -358,7 +428,7 @@ class TestLogs:
     def append_chunk(entries: list[TestLogRow]) -> None:
         if not entries:
             return
-        with sqlite3.connect(TEST_LOGS_DB, timeout=30.0) as conn:
+        with _get_connection(TEST_LOGS_DB) as conn:
             conn.executemany(
                 """
                 INSERT INTO test_logs
@@ -417,21 +487,19 @@ class TestLogs:
         params.append(min(count, 5000))
         order_dir = "DESC" if order.upper() == "DESC" else "ASC"
 
-        with sqlite3.connect(TEST_LOGS_DB, timeout=30.0) as conn:
+        with _get_connection(TEST_LOGS_DB) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM test_logs"
-                " WHERE " + " AND ".join(where) +
-                f" ORDER BY id {order_dir} LIMIT ?",
+                " WHERE " + " AND ".join(where) + f" ORDER BY id {order_dir} LIMIT ?",
                 params,
             ).fetchall()
-
-        last_id = after_id
-        results = []
-        for row in rows:
-            last_id = row["id"]
-            results.append(TestLogs._from_row(row))
-        return results, last_id
+            last_id = after_id
+            results = []
+            for row in rows:
+                last_id = row["id"]
+                results.append(TestLogs._from_row(row))
+            return results, last_id
 
 
 class Tests:
@@ -442,43 +510,59 @@ class Tests:
 
     def test_build_history(self) -> None:
         BuildHistory.init_db()
-        BuildHistory.set(Build(
-            name="target",
-            display_name="project_root:target",
-            build_id="123",
-            project_root="project_root",
-            target="target",
-            entry="entry",
-            status=BuildStatus.SUCCESS,
-        ))
+        BuildHistory.set(
+            Build(
+                name="target",
+                display_name="project_root:target",
+                build_id="123",
+                project_root="project_root",
+                target="target",
+                entry="entry",
+                status=BuildStatus.SUCCESS,
+            )
+        )
 
     def test_logs(self) -> None:
+        import uuid
+
+        build_id = f"test-{uuid.uuid4()}"
         Logs.init_db()
-        Logs.append_chunk([LogRow(
-            build_id="123",
-            timestamp="2025-01-01T00:00:00",
-            stage="compile",
-            level="INFO",
-            message="hello",
-            logger_name="test",
-        )])
-        rows, last_id = Logs.fetch_chunk("123")
+        Logs.append_chunk(
+            [
+                LogRow(
+                    build_id=build_id,
+                    timestamp="2025-01-01T00:00:00",
+                    stage="compile",
+                    level="INFO",
+                    message="hello",
+                    logger_name="test",
+                )
+            ]
+        )
+        rows, last_id = Logs.fetch_chunk(build_id)
         assert len(rows) == 1
         assert rows[0]["message"] == "hello"
         assert last_id > 0
 
     def test_test_logs(self) -> None:
+        import uuid
+
+        test_run_id = f"test-run-{uuid.uuid4()}"
         TestLogs.init_db()
-        TestLogs.register_run("run-1")
-        TestLogs.append_chunk([TestLogRow(
-            test_run_id="run-1",
-            timestamp="2025-01-01T00:00:00",
-            test_name="test_foo",
-            level="INFO",
-            message="passed",
-            logger_name="test",
-        )])
-        rows, last_id = TestLogs.fetch_chunk("run-1")
+        TestLogs.register_run(test_run_id)
+        TestLogs.append_chunk(
+            [
+                TestLogRow(
+                    test_run_id=test_run_id,
+                    timestamp="2025-01-01T00:00:00",
+                    test_name="test_foo",
+                    level="INFO",
+                    message="passed",
+                    logger_name="test",
+                )
+            ]
+        )
+        rows, last_id = TestLogs.fetch_chunk(test_run_id)
         assert len(rows) == 1
         assert rows[0]["message"] == "passed"
         assert last_id > 0

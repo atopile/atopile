@@ -20,16 +20,14 @@ class USB2_0_IF(fabll.Node):
     net_names = [
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="DATA",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="DATA", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[d]
+            owner=[d],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="VBUS",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="VBUS", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[buspower]
+            owner=[buspower],
         ),
     ]

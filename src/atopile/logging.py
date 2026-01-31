@@ -165,8 +165,9 @@ def _serialize_local_var(
             }
         return {"type": type_name, "value": value}
 
-    # Objects with __rich_repr__ should use pretty repr instead of container serialization
-    # This handles custom classes that may be iterable but have a preferred repr
+    # Objects with __rich_repr__ should use pretty repr instead of
+    # container serialization. This handles custom classes that may be
+    # iterable but have a preferred repr.
     if hasattr(value, "__rich_repr__"):
         repr_str = _get_pretty_repr(value, max_repr_len)
         return {"type": type_name, "repr": repr_str}
@@ -528,7 +529,13 @@ class BaseLogger:
         audience: Log.Audience = Log.Audience.DEVELOPER,
         objects: dict | None = None,
     ) -> None:
-        self.log(Log.Level.DEBUG, message, logger_name=logger_name, audience=audience, objects=objects)
+        self.log(
+            Log.Level.DEBUG,
+            message,
+            logger_name=logger_name,
+            audience=audience,
+            objects=objects,
+        )
 
     def info(
         self,
@@ -538,7 +545,13 @@ class BaseLogger:
         audience: Log.Audience = Log.Audience.DEVELOPER,
         objects: dict | None = None,
     ) -> None:
-        self.log(Log.Level.INFO, message, logger_name=logger_name, audience=audience, objects=objects)
+        self.log(
+            Log.Level.INFO,
+            message,
+            logger_name=logger_name,
+            audience=audience,
+            objects=objects,
+        )
 
     def warning(
         self,
@@ -548,7 +561,13 @@ class BaseLogger:
         audience: Log.Audience = Log.Audience.DEVELOPER,
         objects: dict | None = None,
     ) -> None:
-        self.log(Log.Level.WARNING, message, logger_name=logger_name, audience=audience, objects=objects)
+        self.log(
+            Log.Level.WARNING,
+            message,
+            logger_name=logger_name,
+            audience=audience,
+            objects=objects,
+        )
 
     def error(
         self,
@@ -558,7 +577,13 @@ class BaseLogger:
         audience: Log.Audience = Log.Audience.DEVELOPER,
         objects: dict | None = None,
     ) -> None:
-        self.log(Log.Level.ERROR, message, logger_name=logger_name, audience=audience, objects=objects)
+        self.log(
+            Log.Level.ERROR,
+            message,
+            logger_name=logger_name,
+            audience=audience,
+            objects=objects,
+        )
 
     def flush(self) -> None:
         if self._append_chunk is None:
@@ -612,14 +637,6 @@ class LoggerForTest(BaseLogger):
         """Flush pending logs without closing the writer."""
         if (h := _get_log_handler()) and h._test_logger:
             h._test_logger.flush()
-
-    @classmethod
-    def flush_all(cls) -> None:
-        """Flush pending logs without closing the writer."""
-        with SQLiteLogWriter._lock:
-            writer = SQLiteLogWriter._instances.get("test")
-            if writer:
-                writer.flush()
 
     @classmethod
     def setup_logging(cls, test_run_id: str, test: str = "") -> "LoggerForTest | None":
@@ -1094,7 +1111,6 @@ class LogHandler(RichHandler):
         return True
 
     def emit(self, record: logging.LogRecord) -> None:
-
         # Get scope level for tree visualization prefix
         scope_level = _log_scope_level.get()
         scope_prefix = "·" * scope_level if scope_level > 0 else ""
@@ -1141,7 +1157,11 @@ class LogHandler(RichHandler):
             from rich.text import Text
 
             plain = Text.from_ansi(message.replace("\r", "")).plain
-            target = error_console.file if (record.levelno >= logging.ERROR and record.exc_info) else self.console.file
+            target = (
+                error_console.file
+                if (record.levelno >= logging.ERROR and record.exc_info)
+                else self.console.file
+            )
             try:
                 target.write(plain + "\n")
                 target.flush()
@@ -1243,9 +1263,14 @@ def load_build_logs(
     from atopile.model.sqlite import Logs
 
     rows, _ = _fetch_logs(
-        Logs, build_id,
-        context_filter=stage, log_levels=log_levels, audience=audience,
-        after_id=0, count=count, order="DESC",
+        Logs,
+        build_id,
+        context_filter=stage,
+        log_levels=log_levels,
+        audience=audience,
+        after_id=0,
+        count=count,
+        order="DESC",
     )
     return [_strip_stream_id(r) for r in rows]
 
@@ -1261,9 +1286,15 @@ def load_test_logs(
     from atopile.model.sqlite import TestLogs
 
     rows, _ = _fetch_logs(
-        TestLogs, test_run_id,
-        context_filter=test_name, log_levels=log_levels, audience=audience,
-        after_id=0, count=count, order="DESC", is_test=True,
+        TestLogs,
+        test_run_id,
+        context_filter=test_name,
+        log_levels=log_levels,
+        audience=audience,
+        after_id=0,
+        count=count,
+        order="DESC",
+        is_test=True,
     )
     return [_strip_stream_id(r) for r in rows]
 
@@ -1280,9 +1311,14 @@ def load_build_logs_stream(
     from atopile.model.sqlite import Logs
 
     return _fetch_logs(
-        Logs, build_id,
-        context_filter=stage, log_levels=log_levels, audience=audience,
-        after_id=after_id, count=count, order="ASC",
+        Logs,
+        build_id,
+        context_filter=stage,
+        log_levels=log_levels,
+        audience=audience,
+        after_id=after_id,
+        count=count,
+        order="ASC",
     )
 
 
@@ -1298,9 +1334,15 @@ def load_test_logs_stream(
     from atopile.model.sqlite import TestLogs
 
     return _fetch_logs(
-        TestLogs, test_run_id,
-        context_filter=test_name, log_levels=log_levels, audience=audience,
-        after_id=after_id, count=count, order="ASC", is_test=True,
+        TestLogs,
+        test_run_id,
+        context_filter=test_name,
+        log_levels=log_levels,
+        audience=audience,
+        after_id=after_id,
+        count=count,
+        order="ASC",
+        is_test=True,
     )
 
 

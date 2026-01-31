@@ -650,7 +650,7 @@ class ModulesResponse(BaseModel):
     total: int
 
 
-class DependencyInfo(BaseModel):
+class DependencyInfo(CamelModel):
     """A project dependency with version info."""
 
     identifier: str  # e.g., "atopile/resistors"
@@ -1274,10 +1274,11 @@ class BuildReport:
 class AppContext:
     summary_file: Optional[Path] = None
     workspace_paths: list[Path] = field(default_factory=list)
-    ato_source: Optional[str] = None
-    ato_ui_source: Optional[str] = None
-    ato_local_path: Optional[str] = None
+    ato_source: Optional[str] = None  # 'explicit-path', 'from-setting', or 'default'
+    ato_local_path: Optional[str] = None  # User's configured path (for explicit-path mode)
     ato_binary_path: Optional[str] = None  # Actual resolved binary path
+    ato_from_branch: Optional[str] = None  # Git branch when installed via uv from git
+    ato_from_spec: Optional[str] = None  # The pip/uv spec (for from-setting mode)
 
     @property
     def workspace_path(self) -> Optional[Path]:

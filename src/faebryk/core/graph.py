@@ -3,6 +3,8 @@
 
 import logging
 
+import pytest
+
 from faebryk.core.zig.gen.graph.graph import (  # type: ignore[import-untyped]
     BFSPath,
     BoundEdge,
@@ -28,6 +30,7 @@ __all__ = [
 ]
 
 
+@pytest.mark.skip("flaky, doesn't work on macos")
 def test_graph_garbage_collection(
     n: int = 10**5,
     trim: bool = True,

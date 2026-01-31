@@ -68,9 +68,7 @@ class LED(fabll.Node):
     )
 
     can_bridge = fabll.Traits.MakeEdge(
-        F.can_bridge.MakeChild(
-            [diode, F.Diode.anode], [diode, F.Diode.cathode]
-        )
+        F.can_bridge.MakeChild([diode, F.Diode.anode], [diode, F.Diode.cathode])
     )
 
     # ----------------------------------------

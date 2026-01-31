@@ -30,8 +30,6 @@ from atopile.model.sqlite import BuildHistory
 log = logging.getLogger(__name__)
 
 
-
-
 def _fix_interrupted_build(build: Build) -> Build:
     """Fix builds left in BUILDING/QUEUED from a crashed server."""
     if build.status in (BuildStatus.BUILDING, BuildStatus.QUEUED):
@@ -339,7 +337,8 @@ def handle_get_build_info(build_id: str) -> dict | None:
     # First check active builds (in-memory)
     build = _build_queue.find_build(build_id)
     if build:
-        elapsed = _get_db_elapsed(build_id)
+        history = BuildHistory.get(build_id) if build_id else None
+        elapsed = history.elapsed_seconds if history else None
         updates: dict = {"elapsed_seconds": elapsed or 0.0}
         return build.model_copy(update=updates).model_dump(by_alias=True)
 

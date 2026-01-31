@@ -75,22 +75,41 @@ def backend(
         "--ato-source",
         help="Source of the atopile binary (e.g., 'settings', 'local-uv')",
     ),
-    ato_ui_source: Optional[str] = typer.Option(
-        None,
-        "--ato-ui-source",
-        help="UI source type (e.g., 'release', 'branch', 'local')",
-    ),
     ato_binary_path: Optional[str] = typer.Option(
         None,
         "--ato-binary-path",
         help="Actual resolved path to the ato binary being used",
+    ),
+    ato_local_path: Optional[str] = typer.Option(
+        None,
+        "--ato-local-path",
+        help="Local path to display in the UI (when in local mode)",
+    ),
+    ato_from_branch: Optional[str] = typer.Option(
+        None,
+        "--ato-from-branch",
+        help="Git branch name when installed from git via uv",
+    ),
+    ato_from_spec: Optional[str] = typer.Option(
+        None,
+        "--ato-from-spec",
+        help="The pip/uv spec used to install atopile (e.g., 'atopile==0.14.0' or git URL)",
     ),
 ) -> None:
     """Start the backend server in the current terminal."""
     from atopile.server.server import run_server
 
     workspace_paths = list(workspace) if workspace else None
-    run_server(port=port, workspace_paths=workspace_paths, force=force)
+    run_server(
+        port=port,
+        workspace_paths=workspace_paths,
+        force=force,
+        ato_source=ato_source,
+        ato_binary_path=ato_binary_path,
+        ato_local_path=ato_local_path,
+        ato_from_branch=ato_from_branch,
+        ato_from_spec=ato_from_spec,
+    )
 
 
 @serve_app.command()
