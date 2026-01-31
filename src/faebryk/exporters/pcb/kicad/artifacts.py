@@ -334,7 +334,9 @@ def export_pcb_summary(pcb_file: Path, summary_file: Path) -> None:
             "layers": stackup_layers,
             "layer_count": len(copper_layers),
             "copper_layers": copper_layers,
-            "total_thickness_mm": round(total_thickness, 3) if total_thickness else None,
+            "total_thickness_mm": round(total_thickness, 3)
+            if total_thickness
+            else None,
             "copper_finish": stackup.copper_finish,
             "edge_connector": stackup.edge_connector,
             "castellated_pads": stackup.castellated_pads,
@@ -343,7 +345,8 @@ def export_pcb_summary(pcb_file: Path, summary_file: Path) -> None:
     else:
         # Fallback: count copper layers from pcb layers definition
         copper_layer_count = sum(
-            1 for layer in (kicad_pcb.layers or [])
+            1
+            for layer in (kicad_pcb.layers or [])
             if layer.type in ("signal", "power", "mixed")
         )
         summary["stackup"] = {
@@ -398,12 +401,14 @@ def _extract_edge_cuts_points(kicad_pcb) -> list[tuple[float, float]]:
             cx, cy = circle.center.x, circle.center.y
             # Calculate radius from center to end point
             r = ((circle.end.x - cx) ** 2 + (circle.end.y - cy) ** 2) ** 0.5
-            points.extend([
-                (cx - r, cy),
-                (cx + r, cy),
-                (cx, cy - r),
-                (cx, cy + r),
-            ])
+            points.extend(
+                [
+                    (cx - r, cy),
+                    (cx + r, cy),
+                    (cx, cy - r),
+                    (cx, cy + r),
+                ]
+            )
 
     # Extract from footprint geometry on Edge.Cuts
     for fp in kicad_pcb.footprints or []:

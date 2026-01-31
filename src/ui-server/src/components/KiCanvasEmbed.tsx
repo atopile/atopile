@@ -124,11 +124,21 @@ export default function KiCanvasEmbed({
 
     const controller = new AbortController()
     fetch(src, { signal: controller.signal })
-      .then((response) => {
+      .then(async (response) => {
         if (!response.ok) {
+          // Try to get error message from response body
+          let detail = ''
+          try {
+            const body = await response.json()
+            detail = body.detail || ''
+          } catch {
+            // Ignore JSON parse errors
+          }
           const msg = response.status === 404
-            ? 'Footprint not available'
-            : `Failed to load footprint (${response.status})`
+            ? 'Layout file not found'
+            : response.status === 403
+              ? `Access denied${detail ? `: ${detail}` : ''}`
+              : `Failed to load layout (${response.status})${detail ? `: ${detail}` : ''}`
           setError(msg)
           onError?.(msg)
           setIsLoading(false)
@@ -137,8 +147,9 @@ export default function KiCanvasEmbed({
       })
       .catch((err) => {
         if (err.name === 'AbortError') return
-        setError('Failed to load footprint')
-        onError?.('Failed to load footprint')
+        console.error('[KiCanvasEmbed] Fetch error:', err)
+        setError('Failed to load layout - network error')
+        onError?.('Failed to load layout - network error')
         setIsLoading(false)
       })
 

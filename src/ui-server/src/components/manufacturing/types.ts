@@ -35,6 +35,82 @@ export interface CostEstimate {
   };
 }
 
+// =============================================================================
+// JLCPCB Detailed Cost Estimation Types
+// =============================================================================
+
+export interface BoardDimensions {
+  widthMm: number;
+  heightMm: number;
+  areaMm2: number;
+  areaCm2: number;
+  isSmallBoard: boolean;
+  isLargeBoard: boolean;
+}
+
+export interface AssemblySides {
+  topCount: number;
+  bottomCount: number;
+  isDoubleSided: boolean;
+  totalComponents: number;
+}
+
+export interface PartsCategorization {
+  basicCount: number;
+  preferredCount: number;
+  extendedCount: number;
+  unknownCount: number;
+  totalUniqueParts: number;
+  partsWithLoadingFee: number;
+}
+
+export interface BoardSummary {
+  dimensions: BoardDimensions | null;
+  layerCount: number;
+  copperLayers: string[];
+  totalThicknessMm: number | null;
+  copperFinish: string | null;
+  assembly: AssemblySides;
+  parts: PartsCategorization;
+  estimatedSolderJoints: number;
+}
+
+export interface DetailedPCBBreakdown {
+  baseCost: number;
+  layerCost: number;
+  sizeCost: number;
+  total: number;
+}
+
+export interface DetailedAssemblyBreakdown {
+  setupFee: number;
+  stencilFee: number;
+  solderJointsCost: number;
+  loadingFees: number;
+  loadingFeePartsCount: number;
+  total: number;
+}
+
+export interface DetailedComponentsBreakdown {
+  total: number;
+  uniqueParts: number;
+  totalParts: number;
+}
+
+export interface DetailedCostEstimate {
+  pcbCost: number;
+  componentsCost: number;
+  assemblyCost: number;
+  totalCost: number;
+  currency: string;
+  quantity: number;
+  assemblyType: 'economic' | 'standard';
+  pcbBreakdown: DetailedPCBBreakdown;
+  componentsBreakdown: DetailedComponentsBreakdown;
+  assemblyBreakdown: DetailedAssemblyBreakdown;
+  boardSummary: BoardSummary | null;
+}
+
 export type FileExportType =
   | 'gerbers'
   | 'bom_csv'

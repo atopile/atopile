@@ -7,7 +7,6 @@ and file export for manufacturing.
 
 from __future__ import annotations
 
-import json
 import logging
 import shutil
 import subprocess
@@ -16,6 +15,8 @@ from pathlib import Path
 from typing import Optional
 
 from faebryk.libs.util import has_uncommitted_changes
+
+from atopile.server.domains import cost_estimation
 
 log = logging.getLogger(__name__)
 
@@ -209,90 +210,133 @@ def estimate_cost(
     project_root: str,
     targets: list[str],
     quantity: int = 1,
+    assembly_type: str = "economic",
+    lcsc_data: Optional[dict[str, dict]] = None,
 ) -> CostEstimate:
     """
-    Estimate manufacturing costs based on BOM data.
+    Estimate manufacturing costs based on BOM data and board properties.
 
-    Cost formula (~5x JLC pricing):
-    - PCB base: $5.00 minimum
-    - PCB area: $0.05 per cm² over 100cm²
-    - PCB layers: $10.00 per layer over 2
-    - Components: sum of unit costs × quantities
-    - Assembly base: $15.00
-    - Assembly per part: $2.50 per unique part
+    Uses JLCPCB pricing model with accurate calculations for:
+    - PCB fabrication (board size, layer count)
+    - Assembly (setup fees, stencil, solder joints, loading fees)
+    - Component costs (with basic vs extended part categorization)
+
+    Args:
+        project_root: Path to project root
+        targets: List of build targets
+        quantity: Number of units to manufacture
+        assembly_type: "economic" or "standard" assembly
+        lcsc_data: Optional LCSC part data for categorization
     """
-    project_path = Path(project_root)
+    # For now, use first target (typical case)
+    # Future: could aggregate costs across multiple targets
+    target = targets[0] if targets else "default"
 
-    # Aggregate BOM data from all targets
-    total_component_cost = 0.0
-    unique_parts_set: set[str] = set()
-    total_parts = 0
-
-    for target in targets:
-        bom_path = project_path / "build" / "builds" / target / f"{target}.bom.json"
-        if not bom_path.exists():
-            continue
-
-        try:
-            with open(bom_path) as f:
-                bom_data = json.load(f)
-
-            for component in bom_data.get("components", []):
-                unit_cost = component.get("unitCost") or component.get("unit_cost", 0)
-                qty = component.get("quantity", 1)
-                total_component_cost += unit_cost * qty
-                total_parts += qty
-
-                # Track unique parts by LCSC number or MPN
-                part_id = component.get("lcsc") or component.get("mpn") or component.get("id")
-                if part_id:
-                    unique_parts_set.add(part_id)
-
-        except Exception as e:
-            log.warning(f"Failed to read BOM for {target}: {e}")
-
-    unique_parts = len(unique_parts_set)
-
-    # PCB cost estimation
-    # For now, use a simple formula. In future, could read board dimensions from KiCad
-    pcb_base_cost = 5.00
-    pcb_area_cost = 0.0  # Would need board dimensions
-    pcb_layer_cost = 0.0  # Would need layer count
-    pcb_cost = pcb_base_cost + pcb_area_cost + pcb_layer_cost
-
-    # Assembly cost
-    assembly_base_cost = 15.00
-    assembly_per_part = 2.50
-    assembly_cost = assembly_base_cost + (unique_parts * assembly_per_part)
-
-    # Scale by quantity
-    components_cost = total_component_cost * quantity
-    total_pcb_cost = pcb_cost * quantity
-    total_assembly_cost = assembly_cost * quantity
-
-    total_cost = total_pcb_cost + components_cost + total_assembly_cost
-
-    return CostEstimate(
-        pcb_cost=total_pcb_cost,
-        components_cost=components_cost,
-        assembly_cost=total_assembly_cost,
-        total_cost=total_cost,
-        currency="USD",
+    estimate = cost_estimation.estimate_manufacturing_cost(
+        project_root=project_root,
+        target=target,
         quantity=quantity,
+        assembly_type=assembly_type,
+        lcsc_data=lcsc_data,
+    )
+
+    # Convert to legacy CostEstimate format for backwards compatibility
+    return CostEstimate(
+        pcb_cost=estimate.pcb_cost,
+        components_cost=estimate.components_cost,
+        assembly_cost=estimate.assembly_cost,
+        total_cost=estimate.total_cost,
+        currency=estimate.currency,
+        quantity=estimate.quantity,
         pcb_breakdown=CostBreakdown(
-            base_cost=pcb_base_cost * quantity,
-            area_cost=pcb_area_cost * quantity,
-            layer_cost=pcb_layer_cost * quantity,
+            base_cost=estimate.pcb_breakdown.base_cost,
+            area_cost=estimate.pcb_breakdown.size_cost,
+            layer_cost=estimate.pcb_breakdown.layer_cost,
         ),
         components_breakdown=ComponentsBreakdown(
-            unique_parts=unique_parts,
-            total_parts=total_parts * quantity,
+            unique_parts=estimate.components_breakdown.unique_parts,
+            total_parts=estimate.components_breakdown.total_parts,
         ),
         assembly_breakdown=AssemblyBreakdown(
-            base_cost=assembly_base_cost * quantity,
-            per_part_cost=assembly_per_part * unique_parts * quantity,
+            base_cost=estimate.assembly_breakdown.setup_fee + estimate.assembly_breakdown.stencil_fee,
+            per_part_cost=estimate.assembly_breakdown.loading_fees + estimate.assembly_breakdown.solder_joints_cost,
         ),
     )
+
+
+def get_board_summary(
+    project_root: str,
+    target: str,
+    lcsc_data: Optional[dict[str, dict]] = None,
+) -> Optional[dict]:
+    """
+    Get board summary information for display.
+
+    Returns board dimensions, layer count, assembly sides, parts categorization.
+
+    Args:
+        project_root: Path to project root
+        target: Build target name
+        lcsc_data: Optional LCSC part data for categorization
+
+    Returns:
+        Dict with board summary or None if unavailable
+    """
+    project_path = Path(project_root)
+    build_dir = project_path / "build" / "builds" / target
+
+    # Parse PCB summary
+    summary_path = build_dir / f"{target}.pcb_summary.json"
+    board_summary = cost_estimation.parse_pcb_summary(summary_path)
+    if not board_summary:
+        board_summary = cost_estimation.BoardSummary()
+
+    # Parse pick and place for assembly sides
+    pnp_path = build_dir / f"{target}.pick_and_place.csv"
+    if not pnp_path.exists():
+        pnp_path = build_dir / f"{target}.jlcpcb_pick_and_place.csv"
+    board_summary.assembly_sides = cost_estimation.parse_pick_and_place(pnp_path)
+
+    # Categorize BOM parts
+    bom_path = build_dir / f"{target}.bom.json"
+    parts_cat, _, _ = cost_estimation.categorize_bom_parts(bom_path, lcsc_data)
+    board_summary.parts = parts_cat
+
+    # Estimate solder joints
+    board_summary.estimated_solder_joints = cost_estimation.estimate_solder_joints(bom_path)
+
+    return cost_estimation.board_summary_to_dict(board_summary)
+
+
+def get_detailed_cost_estimate(
+    project_root: str,
+    target: str,
+    quantity: int = 1,
+    assembly_type: str = "economic",
+    lcsc_data: Optional[dict[str, dict]] = None,
+) -> dict:
+    """
+    Get detailed cost estimate with full breakdown.
+
+    Args:
+        project_root: Path to project root
+        target: Build target name
+        quantity: Number of units to manufacture
+        assembly_type: "economic" or "standard" assembly
+        lcsc_data: Optional LCSC part data for categorization
+
+    Returns:
+        Dict with full cost breakdown and board summary
+    """
+    estimate = cost_estimation.estimate_manufacturing_cost(
+        project_root=project_root,
+        target=target,
+        quantity=quantity,
+        assembly_type=assembly_type,
+        lcsc_data=lcsc_data,
+    )
+
+    return cost_estimation.cost_estimate_to_dict(estimate)
 
 
 def export_files(

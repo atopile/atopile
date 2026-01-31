@@ -551,6 +551,9 @@ def create_app(
         builds as builds_routes,
     )
     from atopile.server.routes import (
+        files as files_routes,
+    )
+    from atopile.server.routes import (
         logs as logs_routes,
     )
     from atopile.server.routes import (
@@ -583,6 +586,7 @@ def create_app(
     app.include_router(projects_routes.router)
     app.include_router(builds_routes.router)
     app.include_router(artifacts_routes.router)
+    app.include_router(files_routes.router)
     app.include_router(parts_search_routes.router)
     app.include_router(parts_routes.router)
     app.include_router(problems_routes.router)

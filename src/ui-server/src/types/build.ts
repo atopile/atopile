@@ -572,6 +572,14 @@ export type {
   CostEstimate,
   FileExportType,
   BuildOutputs,
+  BoardSummary,
+  BoardDimensions,
+  AssemblySides,
+  PartsCategorization,
+  DetailedCostEstimate,
+  DetailedPCBBreakdown,
+  DetailedAssemblyBreakdown,
+  DetailedComponentsBreakdown,
 } from '../components/manufacturing/types';
 
 // --- Problem Types ---

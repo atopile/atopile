@@ -47,7 +47,9 @@ def _handle_build_sync(payload: dict) -> dict:
     entry = payload.get("entry")
     standalone = payload.get("standalone", False)
     frozen = payload.get("frozen", False)
-    include_targets = payload.get("includeTargets") or payload.get("include_targets", [])
+    include_targets = payload.get("includeTargets") or payload.get(
+        "include_targets", []
+    )
     level = payload.get("level")
     payload_id = payload.get("id")
     payload_label = payload.get("label")
@@ -239,7 +241,9 @@ def _handle_build_sync(payload: dict) -> dict:
             build_ids.append(existing_build_id)
             continue
 
-        log.info(f"Creating build for target={target_name}, entry={entry}, include_targets={include_targets}")
+        log.info(
+            f"Creating build for target={target_name}, entry={entry}, include_targets={include_targets}"
+        )
         build_id = generate_build_id(project_root, target_name, timestamp)
         log.info(f"Allocated build_id={build_id}")
         _build_queue.enqueue(
@@ -1657,8 +1661,53 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             return {
                 "success": result["success"],
                 "files": result["files"],
-                "error": result.get("errors", [None])[0] if result.get("errors") else None,
+                "error": result.get("errors", [None])[0]
+                if result.get("errors")
+                else None,
             }
+
+        elif action == "getDetailedCostEstimate":
+            from atopile.server.domains import manufacturing as manufacturing_domain
+
+            project_root = payload.get("projectRoot", "")
+            targets = payload.get("targets", [])
+            quantity = int(payload.get("quantity", 1))
+            assembly_type = payload.get("assemblyType", "economic")
+
+            if not project_root or not targets:
+                return {"success": False, "error": "Missing projectRoot or targets"}
+
+            target = targets[0] if targets else "default"
+
+            estimate = await asyncio.to_thread(
+                manufacturing_domain.get_detailed_cost_estimate,
+                project_root,
+                target,
+                quantity,
+                assembly_type,
+            )
+
+            # The result is already a dict from cost_estimate_to_dict
+            return estimate
+
+        elif action == "getBoardSummary":
+            from atopile.server.domains import manufacturing as manufacturing_domain
+
+            project_root = payload.get("projectRoot", "")
+            target = payload.get("target", "default")
+
+            if not project_root:
+                return {"success": False, "error": "Missing projectRoot"}
+
+            summary = await asyncio.to_thread(
+                manufacturing_domain.get_board_summary,
+                project_root,
+                target,
+            )
+
+            if summary:
+                return {"success": True, "boardSummary": summary}
+            return {"success": False, "error": "Board summary not available"}
 
         return {"success": False, "error": f"Unknown action: {action}"}
 

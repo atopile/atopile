@@ -133,6 +133,10 @@ export interface OpenSourceControlMessage {
   type: 'openSourceControl';
 }
 
+export interface ShowProblemsMessage {
+  type: 'showProblems';
+}
+
 export interface ShowInfoMessage {
   type: 'showInfo';
   message: string;
@@ -160,6 +164,7 @@ export type ExtensionMessage =
   | LoadDirectoryMessage
   | BrowseExportDirectoryMessage
   | OpenSourceControlMessage
+  | ShowProblemsMessage
   | ShowInfoMessage
   | ShowErrorMessage;
 

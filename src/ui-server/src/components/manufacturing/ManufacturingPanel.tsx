@@ -3,7 +3,7 @@
  * Features a stage-based progress view with live build step tracking.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -22,13 +22,13 @@ import {
   ChevronDown,
   ChevronUp,
   FileStack,
+  Play,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { sendAction, sendActionWithResponse } from '../../api/websocket';
-import { postMessage, onExtensionMessage, postToExtension } from '../../api/vscodeApi';
-import type { Project, BOMData } from '../../types/build';
-import type { BuildOutputs } from './types';
-import KiCanvasEmbed from '../KiCanvasEmbed';
+import { postMessage, onExtensionMessage, postToExtension, isVsCodeWebview } from '../../api/vscodeApi';
+import type { Project, BOMData, LcscPartData } from '../../types/build';
+import type { BuildOutputs, BoardSummary, DetailedCostEstimate } from './types';
 import ModelViewer from '../ModelViewer';
 import GerberViewer from '../GerberViewer';
 import '../GerberViewer.css';
@@ -40,7 +40,7 @@ interface ManufacturingPanelProps {
   onClose: () => void;
 }
 
-type VisualTab = 'bom' | '3d' | 'layout' | 'gerbers';
+type VisualTab = 'gerbers' | 'bom' | '3d';
 type Stage = 'build' | 'review' | 'export';
 
 interface BuildStep {
@@ -48,6 +48,20 @@ interface BuildStep {
   label: string;
   status: 'pending' | 'running' | 'complete' | 'warning' | 'error';
   message?: string;
+}
+
+// Format price with appropriate decimal places for very cheap parts
+function formatPrice(value: number): string {
+  if (value < 0.01) return `$${value.toFixed(4)}`;
+  if (value < 1) return `$${value.toFixed(3)}`;
+  return `$${value.toFixed(2)}`;
+}
+
+// Format stock with K/M abbreviations for large quantities
+function formatStock(stock: number): string {
+  if (stock >= 1_000_000) return `${(stock / 1_000_000).toFixed(1)}M`;
+  if (stock >= 1_000) return `${(stock / 1_000).toFixed(0)}K`;
+  return stock.toLocaleString();
 }
 
 export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps) {
@@ -58,7 +72,8 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
   const setExportDirectory = useStore((s) => s.setManufacturingExportDirectory);
 
   // Local state
-  const [activeVisualTab, setActiveVisualTab] = useState<VisualTab>('layout');
+  const [activeVisualTab, setActiveVisualTab] = useState<VisualTab>('gerbers');
+  const [reviewSectionCollapsed, setReviewSectionCollapsed] = useState(false);
   const [buildOutputs, setBuildOutputs] = useState<Record<string, BuildOutputs>>({});
   const [bomDataByTarget, setBomDataByTarget] = useState<Record<string, BOMData | null>>({});
   const [isLoadingBomByTarget, setIsLoadingBomByTarget] = useState<Record<string, boolean>>({});
@@ -66,11 +81,25 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
   const [isExporting, setIsExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
   const [buildStepsCollapsed, setBuildStepsCollapsed] = useState(false);
+  const [awaitingBuildConfirmation, setAwaitingBuildConfirmation] = useState(true);
   const [gitStatus, setGitStatus] = useState<{ checking: boolean; hasChanges: boolean; files: string[] }>({
     checking: true,
     hasChanges: false,
     files: [],
   });
+
+  // LCSC data enrichment state
+  const [lcscParts, setLcscParts] = useState<Record<string, LcscPartData | null>>({});
+  const [lcscLoadingIds, setLcscLoadingIds] = useState<Set<string>>(new Set());
+  const lcscRequestIdRef = useRef(0);
+
+  // Review checklist state - git-like staging
+  const [reviewedItems, setReviewedItems] = useState<Set<string>>(new Set());
+
+  // Board summary and detailed cost estimate
+  const [boardSummary, setBoardSummary] = useState<BoardSummary | null>(null);
+  const [detailedCostEstimate, setDetailedCostEstimate] = useState<DetailedCostEstimate | null>(null);
+  const [isLoadingBoardSummary, setIsLoadingBoardSummary] = useState(false);
 
   const selectedBuilds = wizard?.selectedBuilds || [];
   const selectedBuild = selectedBuilds[0];
@@ -108,59 +137,62 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
     checkGitStatus();
   }, [project.root]);
 
-  // Initialize build steps when build starts
+  // Expand build steps when building, collapse when done
   useEffect(() => {
     if (selectedBuild?.status === 'building' || selectedBuild?.status === 'pending') {
-      // Expand build steps when building
       setBuildStepsCollapsed(false);
-
-      // Start with git status check, then build steps
-      const gitStatusStep: BuildStep = gitStatus.checking
-        ? { id: 'git', label: 'Checking for uncommitted changes', status: 'running' }
-        : gitStatus.hasChanges
-          ? { id: 'git', label: 'Uncommitted changes', status: 'warning', message: `${gitStatus.files.length} files` }
-          : { id: 'git', label: 'No uncommitted changes', status: 'complete' };
-
-      setBuildSteps([
-        gitStatusStep,
-        { id: 'compile', label: 'Compiling design', status: 'pending' },
-        { id: 'pick', label: 'Picking parts', status: 'pending' },
-        { id: 'layout', label: 'Updating layout', status: 'pending' },
-        { id: 'gerbers', label: 'Generating gerbers', status: 'pending' },
-        { id: 'bom', label: 'Generating BOM', status: 'pending' },
-        { id: 'pnp', label: 'Generating pick & place', status: 'pending' },
-      ]);
     }
-  }, [selectedBuild?.status, gitStatus]);
-
-  // Simulate build step progress based on build status
-  useEffect(() => {
-    if (selectedBuild?.status !== 'building') return;
-
-    // Simulate progress through steps
-    const stepOrder = ['compile', 'pick', 'layout', 'gerbers', 'bom', 'pnp'];
-    let currentStep = 0;
-
-    const interval = setInterval(() => {
-      if (currentStep < stepOrder.length) {
-        setBuildSteps((prev) =>
-          prev.map((step, idx) => {
-            // Skip git step (index 0)
-            const adjustedIdx = idx - 1;
-            if (adjustedIdx < 0) return step;
-            if (adjustedIdx < currentStep) return { ...step, status: 'complete' };
-            if (adjustedIdx === currentStep) return { ...step, status: 'running' };
-            return step;
-          })
-        );
-        currentStep++;
-      } else {
-        clearInterval(interval);
-      }
-    }, 800);
-
-    return () => clearInterval(interval);
   }, [selectedBuild?.status]);
+
+  // Sync build steps from real backend stages
+  useEffect(() => {
+    if (!selectedBuild) return;
+
+    const queuedBuild = queuedBuilds.find(
+      (qb) => qb.projectRoot === selectedBuild.projectRoot && qb.target === selectedBuild.targetName
+    );
+
+    if (!queuedBuild?.stages || queuedBuild.stages.length === 0) return;
+
+    // Map backend stages to our build step format
+    const backendSteps: BuildStep[] = queuedBuild.stages.map((stage) => {
+      // Convert stage status to our format
+      let status: BuildStep['status'] = 'pending';
+      switch (stage.status) {
+        case 'success':
+          status = 'complete';
+          break;
+        case 'running':
+          status = 'running';
+          break;
+        case 'failed':
+        case 'error':
+          status = 'error';
+          break;
+        case 'warning':
+          status = 'warning';
+          break;
+        default:
+          status = 'pending';
+      }
+
+      return {
+        id: stage.stageId || stage.name,
+        label: stage.displayName || stage.name,
+        status,
+        message: stage.elapsedSeconds ? `${stage.elapsedSeconds.toFixed(1)}s` : undefined,
+      };
+    });
+
+    // Prepend git status step if we have it
+    const gitStatusStep: BuildStep = gitStatus.checking
+      ? { id: 'git', label: 'Checking for uncommitted changes', status: 'running' }
+      : gitStatus.hasChanges
+        ? { id: 'git', label: 'Uncommitted changes', status: 'warning', message: `${gitStatus.files.length} files` }
+        : { id: 'git', label: 'No uncommitted changes', status: 'complete' };
+
+    setBuildSteps([gitStatusStep, ...backendSteps]);
+  }, [selectedBuild, queuedBuilds, gitStatus]);
 
   // Sync build status from queuedBuilds
   useEffect(() => {
@@ -193,6 +225,10 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
               step.status === 'running' ? { ...step, status: 'error' } : step
             )
           );
+          // Open problems panel to show build errors
+          if (isVsCodeWebview()) {
+            postToExtension({ type: 'showProblems' });
+          }
         }
 
         if (newStatus !== build.status) {
@@ -206,9 +242,10 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
     }
   }, [queuedBuilds, selectedBuilds, updateBuild]);
 
-  // Auto-start build if pending - use "all" muster target to include manufacturing data
-  useEffect(() => {
+  // Start build when confirmed
+  const handleStartBuild = useCallback(() => {
     if (selectedBuild?.status === 'pending') {
+      setAwaitingBuildConfirmation(false);
       // Build the selected target with "all" muster target to generate gerbers, pnp, etc.
       sendAction('build', {
         projectRoot: selectedBuild.projectRoot,
@@ -235,13 +272,116 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
             [targetName]: result.outputs,
           }));
           fetchBomData(targetName);
-          runPostBuildChecks(targetName, result.outputs);
+          fetchDetailedCostEstimate(targetName);
+          runPostBuildChecks(result.outputs);
         }
       } catch (error) {
         console.error('Failed to fetch build outputs:', error);
       }
     },
     [project.root]
+  );
+
+  // Helper to update stock step based on BOM and LCSC data
+  const updateStockStep = useCallback((bomComponents: BOMData['components'], lcscPartsData: Record<string, LcscPartData | null>) => {
+    if (!bomComponents) return;
+
+    // Enrich components with LCSC data
+    const enriched = bomComponents.map((c) => {
+      const lcscInfo = c.lcsc ? lcscPartsData[c.lcsc] : null;
+      return {
+        ...c,
+        stock: c.stock ?? lcscInfo?.stock ?? null,
+      };
+    });
+
+    const outOfStock = enriched.filter((c) => c.stock === 0);
+    const unknownStock = enriched.filter((c) => c.stock == null);
+
+    setBuildSteps((prev) => {
+      const withoutStock = prev.filter(s => s.id !== 'stock');
+      return [
+        ...withoutStock,
+        {
+          id: 'stock',
+          label: 'Parts availability',
+          status: outOfStock.length > 0 ? 'warning' : unknownStock.length > 0 ? 'warning' : 'complete',
+          message: outOfStock.length > 0
+            ? `${outOfStock.length} out of stock`
+            : unknownStock.length > 0
+              ? `${unknownStock.length} unknown`
+              : undefined,
+        },
+      ];
+    });
+  }, []);
+
+  // Fetch LCSC stock and price data for components
+  const fetchLcscData = useCallback(
+    async (lcscIds: string[], targetName: string, bomComponents?: BOMData['components']) => {
+      const missing = lcscIds.filter((id) => !(id in lcscParts));
+      if (missing.length === 0) {
+        // No missing LCSC data, update stock step with existing data
+        if (bomComponents) {
+          updateStockStep(bomComponents, lcscParts);
+        }
+        return;
+      }
+
+      const requestId = ++lcscRequestIdRef.current;
+      setLcscLoadingIds((prev) => {
+        const next = new Set(prev);
+        for (const id of missing) next.add(id);
+        return next;
+      });
+
+      // Add a loading stock step
+      setBuildSteps((prev) => {
+        const withoutStock = prev.filter(s => s.id !== 'stock');
+        return [
+          ...withoutStock,
+          { id: 'stock', label: 'Fetching stock data', status: 'running' },
+        ];
+      });
+
+      try {
+        const response = await sendActionWithResponse('fetchLcscParts', {
+          lcscIds: missing,
+          projectRoot: project.root,
+          target: targetName,
+        });
+
+        if (requestId !== lcscRequestIdRef.current) return;
+
+        const result = response.result ?? {};
+        const parts = (result as { parts?: Record<string, LcscPartData | null> }).parts || {};
+        const allParts = { ...lcscParts, ...parts };
+        setLcscParts(allParts);
+
+        // Update the stock step with actual data
+        if (bomComponents) {
+          updateStockStep(bomComponents, allParts);
+        }
+      } catch (error) {
+        if (requestId !== lcscRequestIdRef.current) return;
+        console.warn('Failed to fetch LCSC data', error);
+        // Update stock step to show warning
+        setBuildSteps((prev) => {
+          const withoutStock = prev.filter(s => s.id !== 'stock');
+          return [
+            ...withoutStock,
+            { id: 'stock', label: 'Parts availability', status: 'warning', message: 'Could not verify' },
+          ];
+        });
+      } finally {
+        setLcscLoadingIds((prev) => {
+          const next = new Set(prev);
+          for (const id of missing) next.delete(id);
+          return next;
+        });
+      }
+    },
+    [lcscParts, project.root, updateStockStep]
   );
 
   const fetchBomData = useCallback(
@@ -261,9 +401,18 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
               [targetName]: result.bom ?? null,
             }));
 
-            // Now enrich the BOM data with stock info
-            // The refreshBOM should already include stock data from the bom.json
-            // but we may need to fetch LCSC data for enrichment
+            // Fetch LCSC data for components missing stock/price info
+            const lcscIdsToFetch = result.bom.components
+              ?.filter((c) => c.lcsc && (c.unitCost == null || c.stock == null))
+              .map((c) => c.lcsc!)
+              .filter((id, idx, arr) => arr.indexOf(id) === idx) || [];
+
+            if (lcscIdsToFetch.length > 0) {
+              fetchLcscData(lcscIdsToFetch, targetName, result.bom.components);
+            } else {
+              // No LCSC data to fetch, update stock step with current data
+              updateStockStep(result.bom.components, lcscParts);
+            }
           }
         }
       } catch (error) {
@@ -272,11 +421,38 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
         setIsLoadingBomByTarget((prev) => ({ ...prev, [targetName]: false }));
       }
     },
+    [project.root, fetchLcscData, updateStockStep, lcscParts]
+  );
+
+  // Fetch detailed cost estimate with board summary
+  const fetchDetailedCostEstimate = useCallback(
+    async (targetName: string) => {
+      setIsLoadingBoardSummary(true);
+      try {
+        const response = await sendActionWithResponse('getDetailedCostEstimate', {
+          projectRoot: project.root,
+          targets: [targetName],
+          quantity: 1,
+          assemblyType: 'economic',
+        });
+        if (response.result?.success) {
+          const result = response.result as unknown as DetailedCostEstimate;
+          setDetailedCostEstimate(result);
+          if (result.boardSummary) {
+            setBoardSummary(result.boardSummary);
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to fetch detailed cost estimate:', error);
+      } finally {
+        setIsLoadingBoardSummary(false);
+      }
+    },
     [project.root]
   );
 
   const runPostBuildChecks = useCallback(
-    async (targetName: string, outputs: BuildOutputs) => {
+    (outputs: BuildOutputs) => {
       // Update build steps with output verification
       setBuildSteps((prev) => {
         // Filter out any previous verification steps
@@ -303,56 +479,14 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
             status: outputs.pickAndPlace ? 'complete' : 'warning',
             message: outputs.pickAndPlace ? undefined : 'Not found',
           },
+          // Stock step will be added/updated by fetchLcscData
+          { id: 'stock', label: 'Parts availability', status: 'pending' },
+          { id: 'requirements', label: 'All requirements met', status: 'complete' },
         ];
       });
-
-      // Check stock availability from BOM
-      try {
-        const bomResponse = await sendActionWithResponse('refreshBOM', {
-          projectRoot: project.root,
-          target: targetName,
-        });
-        if (bomResponse.result?.success && bomResponse.result?.bom) {
-          const bom = bomResponse.result.bom as BOMData;
-          // Check for components with stock = 0 or null (unknown)
-          const outOfStock = bom.components?.filter((c) => c.stock === 0) || [];
-          const unknownStock = bom.components?.filter((c) => c.stock == null) || [];
-
-          setBuildSteps((prev) => [
-            ...prev,
-            {
-              id: 'stock',
-              label: 'Parts availability',
-              status: outOfStock.length > 0 ? 'warning' : unknownStock.length > 0 ? 'warning' : 'complete',
-              message: outOfStock.length > 0
-                ? `${outOfStock.length} out of stock`
-                : unknownStock.length > 0
-                  ? `${unknownStock.length} unknown`
-                  : undefined,
-            },
-          ]);
-        }
-      } catch {
-        setBuildSteps((prev) => [
-          ...prev,
-          { id: 'stock', label: 'Parts availability', status: 'warning', message: 'Could not verify' },
-        ]);
-      }
-
-      // Add requirements check
-      setBuildSteps((prev) => [
-        ...prev,
-        { id: 'requirements', label: 'All requirements met', status: 'complete' },
-      ]);
     },
-    [project.root]
+    []
   );
-
-  const handleConfirmBuild = useCallback(() => {
-    if (selectedBuild) {
-      updateBuild(selectedBuild.targetName, { status: 'confirmed' });
-    }
-  }, [selectedBuild, updateBuild]);
 
   const handleRetryBuild = useCallback(() => {
     if (selectedBuild) {
@@ -373,6 +507,12 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
 
   const handleOpenSourceControl = useCallback(() => {
     postToExtension({ type: 'openSourceControl' });
+  }, []);
+
+  const handleShowProblems = useCallback(() => {
+    if (isVsCodeWebview()) {
+      postToExtension({ type: 'showProblems' });
+    }
   }, []);
 
   useEffect(() => {
@@ -413,6 +553,19 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
     }
   }, [wizard, selectedBuild, project.root, setExportError]);
 
+  // Toggle review item (git-like staging)
+  const toggleReviewItem = useCallback((item: string) => {
+    setReviewedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(item)) {
+        next.delete(item);
+      } else {
+        next.add(item);
+      }
+      return next;
+    });
+  }, []);
+
   if (!wizard?.isOpen || !selectedBuild) return null;
 
   const outputs = buildOutputs[selectedBuild.targetName];
@@ -422,11 +575,143 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
   const isBuilding = selectedBuild.status === 'building';
   const isFailed = selectedBuild.status === 'failed';
   const isReady = selectedBuild.status === 'ready' || selectedBuild.status === 'confirmed';
-  const isConfirmed = selectedBuild.status === 'confirmed';
 
   const completedSteps = buildSteps.filter((s) => s.status === 'complete').length;
   const hasWarnings = buildSteps.some((s) => s.status === 'warning');
   const hasErrors = buildSteps.some((s) => s.status === 'error');
+
+  // Determine the overall build status - worst status wins (error > warning > complete)
+  const buildOverallStatus: 'complete' | 'warning' | 'error' = hasErrors
+    ? 'error'
+    : hasWarnings
+      ? 'warning'
+      : 'complete';
+
+  // Enrich BOM data with LCSC stock/price info
+  const enrichedBomComponents = useMemo(() => {
+    if (!bomData?.components) return [];
+    return bomData.components.map((component) => {
+      const lcscInfo = component.lcsc ? lcscParts[component.lcsc] : null;
+      const isLoading = component.lcsc ? lcscLoadingIds.has(component.lcsc) : false;
+
+      // Create enriched component with LCSC data
+      return {
+        ...component,
+        lcscLoading: isLoading,
+        unitCost: component.unitCost ?? lcscInfo?.unit_cost ?? null,
+        stock: component.stock ?? lcscInfo?.stock ?? null,
+        manufacturer: component.manufacturer ?? lcscInfo?.manufacturer ?? null,
+        mpn: component.mpn ?? lcscInfo?.mpn ?? null,
+      };
+    });
+  }, [bomData?.components, lcscParts, lcscLoadingIds]);
+
+  // Calculate review items - what needs to be reviewed (gerbers, bom, and 3d)
+  const reviewItems = useMemo(() => {
+    const items: Array<{ id: string; label: string; available: boolean; reviewed: boolean; warning?: string }> = [
+      {
+        id: 'gerbers',
+        label: 'Gerbers',
+        available: !!outputs?.gerbers,
+        reviewed: reviewedItems.has('gerbers'),
+      },
+      {
+        id: 'bom',
+        label: 'BOM',
+        available: enrichedBomComponents.length > 0,
+        reviewed: reviewedItems.has('bom'),
+        warning: enrichedBomComponents.some((c) => c.stock === 0)
+          ? 'Some parts out of stock'
+          : enrichedBomComponents.some((c) => c.stock == null)
+            ? 'Some parts missing stock info'
+            : undefined,
+      },
+      {
+        id: '3d',
+        label: '3D Preview',
+        available: !!outputs?.glb,
+        reviewed: reviewedItems.has('3d'),
+      },
+    ];
+    return items;
+  }, [outputs, enrichedBomComponents, reviewedItems]);
+
+  const availableItems = reviewItems.filter((i) => i.available);
+  const availableCount = availableItems.length;
+  const allItemsReviewed = availableCount > 0 && availableItems.every((i) => i.reviewed);
+  const reviewedCount = reviewItems.filter((i) => i.reviewed && i.available).length;
+
+  // Mark current tab as reviewed and advance to next
+  const handleMarkAsReviewed = useCallback(() => {
+    toggleReviewItem(activeVisualTab);
+
+    // Define review order and advance to next unreviewed item
+    const reviewOrder: VisualTab[] = ['gerbers', 'bom', '3d'];
+    const currentIndex = reviewOrder.indexOf(activeVisualTab);
+
+    // Find next unreviewed item
+    for (let i = currentIndex + 1; i < reviewOrder.length; i++) {
+      const nextTab = reviewOrder[i];
+      const item = reviewItems.find(r => r.id === nextTab);
+      if (item?.available && !item.reviewed) {
+        setActiveVisualTab(nextTab);
+        return;
+      }
+    }
+
+    // If all items reviewed, collapse the review section
+    const allWillBeReviewed = reviewItems.filter(i => i.available).every(i =>
+      i.reviewed || i.id === activeVisualTab
+    );
+    if (allWillBeReviewed) {
+      setReviewSectionCollapsed(true);
+    }
+  }, [activeVisualTab, toggleReviewItem, reviewItems]);
+
+  // Calculate cost summary - use detailed estimate when available
+  const costSummary = useMemo(() => {
+    // Use detailed cost estimate from backend when available
+    if (detailedCostEstimate) {
+      const outOfStock = enrichedBomComponents.filter((c) => c.stock === 0).length;
+      return {
+        componentsCost: detailedCostEstimate.componentsCost,
+        pcbCost: detailedCostEstimate.pcbCost,
+        assemblyCost: detailedCostEstimate.assemblyCost,
+        totalCost: detailedCostEstimate.totalCost,
+        uniqueParts: detailedCostEstimate.componentsBreakdown?.uniqueParts ?? enrichedBomComponents.length,
+        totalParts: detailedCostEstimate.componentsBreakdown?.totalParts ?? enrichedBomComponents.reduce((sum, c) => sum + (c.quantity || 1), 0),
+        outOfStock,
+        // Detailed breakdown
+        assemblyBreakdown: detailedCostEstimate.assemblyBreakdown,
+        pcbBreakdown: detailedCostEstimate.pcbBreakdown,
+      };
+    }
+
+    // Fallback to simple calculation
+    const componentsCost = enrichedBomComponents.reduce((sum, c) => {
+      return sum + (c.unitCost ?? 0) * (c.quantity || 1);
+    }, 0);
+    const uniqueParts = enrichedBomComponents.length;
+    const totalParts = enrichedBomComponents.reduce((sum, c) => sum + (c.quantity || 1), 0);
+    const outOfStock = enrichedBomComponents.filter((c) => c.stock === 0).length;
+
+    // Rough PCB cost estimate (placeholder - would need board dimensions)
+    const pcbCost = 5.0;
+    // Assembly cost estimate
+    const assemblyCost = 15.0 + uniqueParts * 2.5;
+
+    return {
+      componentsCost,
+      pcbCost,
+      assemblyCost,
+      totalCost: componentsCost + pcbCost + assemblyCost,
+      uniqueParts,
+      totalParts,
+      outOfStock,
+      assemblyBreakdown: null,
+      pcbBreakdown: null,
+    };
+  }, [enrichedBomComponents, detailedCostEstimate]);
 
   return (
     <div className="package-detail-panel manufacturing-panel">
@@ -444,20 +729,22 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
         {/* Stage Progress Indicator - Always visible and sticky */}
         <div className="mfg-stages-container">
           <div className="mfg-stages">
-            <div className={`mfg-stage ${currentStage === 'build' ? 'active' : ''} ${currentStage !== 'build' ? 'complete' : ''}`}>
+            <div className={`mfg-stage ${currentStage === 'build' ? 'active' : ''} ${currentStage !== 'build' ? buildOverallStatus : ''}`}>
               <div className="mfg-stage-icon">
                 {currentStage === 'build' && isBuilding && <Loader2 size={16} className="spinning" />}
                 {currentStage === 'build' && isFailed && <AlertCircle size={16} />}
-                {currentStage !== 'build' && <CheckCircle2 size={16} />}
+                {currentStage !== 'build' && buildOverallStatus === 'error' && <AlertCircle size={16} />}
+                {currentStage !== 'build' && buildOverallStatus === 'warning' && <AlertTriangle size={16} />}
+                {currentStage !== 'build' && buildOverallStatus === 'complete' && <CheckCircle2 size={16} />}
                 {currentStage === 'build' && !isBuilding && !isFailed && <Circle size={16} />}
               </div>
               <span className="mfg-stage-label">Build</span>
             </div>
             <ChevronRight size={16} className="mfg-stage-arrow" />
-            <div className={`mfg-stage ${currentStage === 'review' ? 'active' : ''} ${currentStage === 'export' ? 'complete' : ''}`}>
+            <div className={`mfg-stage ${currentStage === 'review' ? 'active' : ''} ${currentStage === 'export' || allItemsReviewed ? 'complete' : ''}`}>
               <div className="mfg-stage-icon">
-                {currentStage === 'export' && <CheckCircle2 size={16} />}
-                {currentStage === 'review' && <Circle size={16} />}
+                {(currentStage === 'export' || allItemsReviewed) && <CheckCircle2 size={16} />}
+                {currentStage === 'review' && !allItemsReviewed && <Circle size={16} />}
                 {currentStage === 'build' && <Circle size={16} />}
               </div>
               <span className="mfg-stage-label">Review</span>
@@ -518,17 +805,35 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
           </div>
         )}
 
+        {/* Build Confirmation - Show before starting build */}
+        {currentStage === 'build' && awaitingBuildConfirmation && !isBuilding && !isFailed && !isReady && !gitStatus.checking && (
+          <div className="mfg-build-confirm">
+            <div className="mfg-build-confirm-content">
+              <h3 className="mfg-build-confirm-title">Ready to Build</h3>
+              <p className="mfg-build-confirm-message">
+                This will generate manufacturing files including Gerbers, BOM, and pick &amp; place files for <strong>{selectedBuild.targetName}</strong>.
+              </p>
+            </div>
+            <div className="mfg-build-confirm-actions">
+              <button className="mfg-btn primary large" onClick={handleStartBuild}>
+                <Play size={16} />
+                Start Build
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Build Steps - Collapsible when complete */}
         {(isBuilding || isReady || isFailed) && buildSteps.length > 0 && (
           <div className={`mfg-section mfg-steps-section ${buildStepsCollapsed ? 'collapsed' : ''}`}>
             <button
-              className="mfg-steps-header"
+              className="mfg-section-header"
               onClick={() => setBuildStepsCollapsed(!buildStepsCollapsed)}
             >
               <h3 className="mfg-section-title">
                 {isBuilding ? 'Building...' : isFailed ? 'Build Failed' : 'Build Complete'}
               </h3>
-              <span className="mfg-steps-count">
+              <span className="mfg-section-status">
                 {completedSteps}/{buildSteps.length}
                 {hasWarnings && <AlertTriangle size={12} className="status-warning" />}
                 {hasErrors && <AlertCircle size={12} className="status-error" />}
@@ -552,14 +857,17 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
                     </div>
                   ))}
                 </div>
-                {isFailed && selectedBuild.error && (
-                  <div className="mfg-error-message">{selectedBuild.error}</div>
-                )}
                 {isFailed && (
-                  <button className="mfg-btn secondary" onClick={handleRetryBuild}>
-                    <RefreshCw size={14} />
-                    Retry Build
-                  </button>
+                  <div className="mfg-error-actions">
+                    <button className="mfg-btn secondary" onClick={handleShowProblems}>
+                      <AlertCircle size={14} />
+                      View Errors
+                    </button>
+                    <button className="mfg-btn secondary" onClick={handleRetryBuild}>
+                      <RefreshCw size={14} />
+                      Retry Build
+                    </button>
+                  </div>
                 )}
                 {gitStatus.hasChanges && !isBuilding && (
                   <button className="mfg-btn secondary" onClick={handleOpenSourceControl}>
@@ -572,208 +880,470 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
           </div>
         )}
 
-        {/* Visual Preview Section */}
+        {/* Review Section - Collapsible with integrated tabs */}
         {isReady && (
-          <div className="mfg-visual-section">
-            <div className="mfg-visual-tabs">
-              <button
-                className={`mfg-visual-tab ${activeVisualTab === 'layout' ? 'active' : ''}`}
-                onClick={() => setActiveVisualTab('layout')}
-              >
-                <Layers size={14} />
-                Layout
-              </button>
-              <button
-                className={`mfg-visual-tab ${activeVisualTab === 'gerbers' ? 'active' : ''}`}
-                onClick={() => setActiveVisualTab('gerbers')}
-              >
-                <Layers size={14} />
-                Gerbers
-              </button>
-              <button
-                className={`mfg-visual-tab ${activeVisualTab === '3d' ? 'active' : ''}`}
-                onClick={() => setActiveVisualTab('3d')}
-              >
-                <Cuboid size={14} />
-                3D Model
-              </button>
-              <button
-                className={`mfg-visual-tab ${activeVisualTab === 'bom' ? 'active' : ''}`}
-                onClick={() => setActiveVisualTab('bom')}
-              >
-                <Package size={14} />
-                BOM ({bomData?.components?.length || 0})
-              </button>
-            </div>
+          <div className={`mfg-section mfg-review-section ${reviewSectionCollapsed ? 'collapsed' : ''} ${allItemsReviewed ? 'complete' : ''}`}>
+            <button
+              className="mfg-section-header"
+              onClick={() => setReviewSectionCollapsed(!reviewSectionCollapsed)}
+            >
+              <h3 className="mfg-section-title">
+                {allItemsReviewed ? 'Review Complete' : 'Review'}
+              </h3>
+              <span className="mfg-section-status">
+                {reviewedCount}/{availableCount}
+                {allItemsReviewed && <CheckCircle2 size={14} className="status-complete" />}
+                {reviewSectionCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+              </span>
+            </button>
 
-            <div className="mfg-visual-content">
-              {activeVisualTab === 'layout' && (
-                <>
-                  {outputs?.kicadPcb ? (
-                    <KiCanvasEmbed
-                      src={`${API_URL}/api/file?path=${encodeURIComponent(outputs.kicadPcb)}`}
-                      controls="full"
-                    />
-                  ) : (
-                    <div className="mfg-visual-empty">
-                      <Layers size={32} />
-                      <span>Layout not available</span>
-                      <span className="mfg-visual-hint">Build with "all" target to generate</span>
+            {!reviewSectionCollapsed && (
+              <div className="mfg-review-content">
+                {/* Tabs with integrated step indicators */}
+                <div className="mfg-visual-tabs">
+                  <button
+                    className={`mfg-visual-tab ${activeVisualTab === 'gerbers' ? 'active' : ''} ${reviewedItems.has('gerbers') ? 'reviewed' : ''}`}
+                    onClick={() => setActiveVisualTab('gerbers')}
+                  >
+                    <span className="mfg-tab-indicator">
+                      {reviewedItems.has('gerbers') ? <CheckCircle2 size={16} /> : <span className="mfg-tab-number">1</span>}
+                    </span>
+                    <Layers size={14} />
+                    <span>Gerbers</span>
+                  </button>
+                  <button
+                    className={`mfg-visual-tab ${activeVisualTab === 'bom' ? 'active' : ''} ${reviewedItems.has('bom') ? 'reviewed' : ''}`}
+                    onClick={() => setActiveVisualTab('bom')}
+                  >
+                    <span className="mfg-tab-indicator">
+                      {reviewedItems.has('bom') ? <CheckCircle2 size={16} /> : <span className="mfg-tab-number">2</span>}
+                    </span>
+                    <Package size={14} />
+                    <span>BOM ({enrichedBomComponents.length})</span>
+                  </button>
+                  <button
+                    className={`mfg-visual-tab ${activeVisualTab === '3d' ? 'active' : ''} ${reviewedItems.has('3d') ? 'reviewed' : ''}`}
+                    onClick={() => setActiveVisualTab('3d')}
+                  >
+                    <span className="mfg-tab-indicator">
+                      {reviewedItems.has('3d') ? <CheckCircle2 size={16} /> : <span className="mfg-tab-number">3</span>}
+                    </span>
+                    <Cuboid size={14} />
+                    <span>3D Preview</span>
+                  </button>
+                </div>
+
+                <div className="mfg-visual-content">
+                  {activeVisualTab === 'gerbers' && (
+                    <>
+                      {outputs?.gerbers ? (
+                        <GerberViewer
+                          src={`${API_URL}/api/file?path=${encodeURIComponent(outputs.gerbers)}`}
+                        />
+                      ) : (
+                        <div className="mfg-visual-empty">
+                          <Layers size={32} />
+                          <span>Gerbers not available</span>
+                          <span className="mfg-visual-hint">Build with "all" target to generate</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {activeVisualTab === 'bom' && (
+                    <div className="mfg-bom-preview">
+                      {isLoadingBom ? (
+                        <div className="mfg-visual-empty">
+                          <Loader2 size={24} className="spinning" />
+                          <span>Loading BOM...</span>
+                        </div>
+                      ) : enrichedBomComponents.length ? (
+                        <table className="mfg-bom-table">
+                          <thead>
+                            <tr>
+                              <th>Designator</th>
+                              <th>MPN</th>
+                              <th>Qty</th>
+                              <th>Price</th>
+                              <th>Stock</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {enrichedBomComponents.slice(0, 20).map((comp, idx) => (
+                              <tr key={idx} className={comp.stock === 0 ? 'out-of-stock' : ''}>
+                                <td>{comp.usages?.map((u) => u.designator).join(', ') || '-'}</td>
+                                <td>{comp.mpn || '-'}</td>
+                                <td>{comp.quantity || 1}</td>
+                                <td>
+                                  {comp.lcscLoading ? (
+                                    <RefreshCw size={12} className="spinning" />
+                                  ) : comp.unitCost != null ? (
+                                    formatPrice(comp.unitCost * (comp.quantity || 1))
+                                  ) : (
+                                    '-'
+                                  )}
+                                </td>
+                                <td className={comp.stock === 0 ? 'stock-warning' : ''}>
+                                  {comp.lcscLoading ? (
+                                    <RefreshCw size={12} className="spinning" />
+                                  ) : comp.stock != null ? (
+                                    comp.stock === 0 ? 'Out' : formatStock(comp.stock)
+                                  ) : (
+                                    '-'
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <div className="mfg-visual-empty">
+                          <Package size={32} />
+                          <span>No BOM data available</span>
+                        </div>
+                      )}
+                      {enrichedBomComponents.length > 20 && (
+                        <div className="mfg-bom-more">+{enrichedBomComponents.length - 20} more</div>
+                      )}
                     </div>
                   )}
-                </>
-              )}
 
-              {activeVisualTab === 'gerbers' && (
-                <>
-                  {outputs?.gerbers ? (
-                    <GerberViewer
-                      src={`${API_URL}/api/file?path=${encodeURIComponent(outputs.gerbers)}`}
-                    />
-                  ) : (
-                    <div className="mfg-visual-empty">
-                      <Layers size={32} />
-                      <span>Gerbers not available</span>
-                      <span className="mfg-visual-hint">Build with "all" target to generate</span>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {activeVisualTab === '3d' && (
-                <>
-                  {outputs?.glb ? (
-                    <ModelViewer
-                      src={`${API_URL}/api/file?path=${encodeURIComponent(outputs.glb)}`}
-                    />
-                  ) : (
-                    <div className="mfg-visual-empty">
-                      <Cuboid size={32} />
-                      <span>3D model not available</span>
-                      <span className="mfg-visual-hint">Build with "all" target to generate</span>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {activeVisualTab === 'bom' && (
-                <div className="mfg-bom-preview">
-                  {isLoadingBom ? (
-                    <div className="mfg-visual-empty">
-                      <Loader2 size={24} className="spinning" />
-                      <span>Loading BOM...</span>
-                    </div>
-                  ) : bomData?.components?.length ? (
-                    <table className="mfg-bom-table">
-                      <thead>
-                        <tr>
-                          <th>Designator</th>
-                          <th>MPN</th>
-                          <th>Qty</th>
-                          <th>Stock</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {bomData.components.slice(0, 20).map((comp, idx) => (
-                          <tr key={idx} className={comp.stock === 0 ? 'out-of-stock' : ''}>
-                            <td>{comp.usages?.map((u) => u.designator).join(', ') || '-'}</td>
-                            <td>{comp.mpn || '-'}</td>
-                            <td>{comp.quantity || 1}</td>
-                            <td className={comp.stock === 0 ? 'stock-warning' : ''}>
-                              {comp.stock != null
-                                ? comp.stock === 0
-                                  ? 'Out'
-                                  : comp.stock.toLocaleString()
-                                : '-'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  ) : (
-                    <div className="mfg-visual-empty">
-                      <Package size={32} />
-                      <span>No BOM data available</span>
-                    </div>
-                  )}
-                  {bomData?.components && bomData.components.length > 20 && (
-                    <div className="mfg-bom-more">+{bomData.components.length - 20} more</div>
+                  {activeVisualTab === '3d' && (
+                    <>
+                      {outputs?.glb ? (
+                        <ModelViewer
+                          src={`${API_URL}/api/file?path=${encodeURIComponent(outputs.glb)}`}
+                        />
+                      ) : (
+                        <div className="mfg-visual-empty">
+                          <Cuboid size={32} />
+                          <span>3D model not available</span>
+                          <span className="mfg-visual-hint">Build with "all" target to generate</span>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
-              )}
-            </div>
+
+                {/* Review action bar - at bottom of content for all tabs */}
+                <div className="mfg-review-action-bar">
+                  {reviewedItems.has(activeVisualTab) ? (
+                    <>
+                      <div className="mfg-reviewed-badge">
+                        <CheckCircle2 size={14} />
+                        <span>Reviewed</span>
+                      </div>
+                      {!allItemsReviewed && (
+                        <button
+                          className="mfg-btn primary"
+                          onClick={() => {
+                            // Find next unreviewed tab
+                            const reviewOrder: VisualTab[] = ['gerbers', 'bom', '3d'];
+                            for (const tab of reviewOrder) {
+                              const item = reviewItems.find(r => r.id === tab);
+                              if (item?.available && !item.reviewed) {
+                                setActiveVisualTab(tab);
+                                return;
+                              }
+                            }
+                          }}
+                        >
+                          Continue
+                          <ChevronRight size={14} />
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <button
+                      className="mfg-btn primary"
+                      onClick={handleMarkAsReviewed}
+                    >
+                      <CheckCircle2 size={14} />
+                      Mark {activeVisualTab === 'gerbers' ? 'Gerbers' : activeVisualTab === 'bom' ? 'BOM' : '3D'} as Reviewed
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* Export Section */}
         {isReady && (
-          <div className="mfg-section mfg-export-section">
-            <h3 className="mfg-section-title">Export for JLC PCB</h3>
+          <div className={`mfg-section mfg-export-section ${!exportSuccess ? '' : 'complete'}`}>
+            <button
+              className="mfg-section-header"
+              onClick={() => {}}
+              style={{ cursor: 'default' }}
+            >
+              <h3 className="mfg-section-title">Export</h3>
+              <span className="mfg-section-status">
+                {exportSuccess && <CheckCircle2 size={14} className="status-complete" />}
+              </span>
+            </button>
 
-            <div className="mfg-export-directory">
-              <span className="mfg-export-directory-label">Export to:</span>
-              <div className="mfg-export-directory-input">
-                <span className="mfg-export-directory-path">
-                  {wizard.exportDirectory || `${project.root}/manufacturing`}
-                </span>
-                <button
-                  className="mfg-btn secondary small"
-                  onClick={handleBrowseDirectory}
-                  title="Browse for export folder"
-                >
-                  <FolderOpen size={14} />
-                </button>
-              </div>
-            </div>
+            {!exportSuccess ? (
+              <div className="mfg-export-content">
+                {/* Board Summary Card */}
+                {boardSummary && (
+                  <div className="mfg-board-summary">
+                    <h4 className="mfg-subsection-title">Board Summary</h4>
+                    <div className="mfg-board-summary-grid">
+                      {boardSummary.dimensions && (
+                        <div className="mfg-board-summary-item">
+                          <span className="mfg-board-summary-label">Size</span>
+                          <span className="mfg-board-summary-value">
+                            {boardSummary.dimensions.widthMm.toFixed(1)} × {boardSummary.dimensions.heightMm.toFixed(1)} mm
+                            <span className="mfg-board-summary-note">({boardSummary.dimensions.areaCm2.toFixed(1)} cm²)</span>
+                          </span>
+                        </div>
+                      )}
+                      <div className="mfg-board-summary-item">
+                        <span className="mfg-board-summary-label">Layers</span>
+                        <span className="mfg-board-summary-value">{boardSummary.layerCount}</span>
+                      </div>
+                      {boardSummary.copperFinish && (
+                        <div className="mfg-board-summary-item">
+                          <span className="mfg-board-summary-label">Finish</span>
+                          <span className="mfg-board-summary-value">{boardSummary.copperFinish}</span>
+                        </div>
+                      )}
+                      <div className="mfg-board-summary-item">
+                        <span className="mfg-board-summary-label">Assembly</span>
+                        <span className="mfg-board-summary-value">
+                          {boardSummary.assembly.isDoubleSided ? 'Double-sided' : 'Single-sided'}
+                          <span className="mfg-board-summary-note">
+                            ({boardSummary.assembly.topCount} top{boardSummary.assembly.bottomCount > 0 ? `, ${boardSummary.assembly.bottomCount} bottom` : ''})
+                          </span>
+                        </span>
+                      </div>
+                      <div className="mfg-board-summary-item">
+                        <span className="mfg-board-summary-label">Parts</span>
+                        <span className="mfg-board-summary-value">
+                          {boardSummary.parts.totalUniqueParts} unique
+                          {boardSummary.parts.basicCount > 0 && (
+                            <span className="mfg-parts-tag basic">{boardSummary.parts.basicCount} basic</span>
+                          )}
+                          {boardSummary.parts.extendedCount > 0 && (
+                            <span className="mfg-parts-tag extended">{boardSummary.parts.extendedCount} extended</span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="mfg-board-summary-item">
+                        <span className="mfg-board-summary-label">Solder Joints</span>
+                        <span className="mfg-board-summary-value">~{boardSummary.estimatedSolderJoints}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
-            {wizard.exportError && (
-              <div className="mfg-error-banner">
-                <AlertCircle size={14} />
-                {wizard.exportError}
-              </div>
-            )}
-
-            {exportSuccess && (
-              <div className="mfg-success-banner">
-                <CheckCircle2 size={14} />
-                <span>Files exported successfully</span>
-                <button
-                  className="mfg-btn secondary small"
-                  onClick={handleRevealInFinder}
-                  title="Open in Finder"
-                >
-                  <ExternalLink size={14} />
-                  Open Folder
-                </button>
-              </div>
-            )}
-
-            <div className="mfg-export-actions">
-              {!isConfirmed ? (
-                <button className="mfg-btn primary" onClick={handleConfirmBuild}>
-                  <CheckCircle2 size={14} />
-                  Confirm Build
-                </button>
-              ) : (
-                <button
-                  className="mfg-btn primary"
-                  onClick={handleExport}
-                  disabled={isExporting}
-                >
-                  {isExporting ? (
-                    <>
-                      <Loader2 size={14} className="spinning" />
-                      Exporting...
-                    </>
-                  ) : (
-                    <>
-                      <Download size={14} />
-                      Export Files
-                    </>
+                {/* Cost Summary Card */}
+                <div className="mfg-cost-summary">
+                  <h4 className="mfg-subsection-title">
+                    Estimated Cost (1 unit)
+                    {isLoadingBoardSummary && <Loader2 size={14} className="spinning" style={{ marginLeft: 8 }} />}
+                  </h4>
+                  <div className="mfg-cost-grid">
+                    <div className="mfg-cost-row">
+                      <span className="mfg-cost-label">
+                        PCB Fabrication
+                        {costSummary.pcbBreakdown && boardSummary && (
+                          <span className="mfg-cost-detail">
+                            ({boardSummary.layerCount}L, {boardSummary.dimensions ? `${boardSummary.dimensions.areaCm2.toFixed(1)}cm²` : 'size TBD'})
+                          </span>
+                        )}
+                      </span>
+                      <span className="mfg-cost-value">${costSummary.pcbCost.toFixed(2)}</span>
+                    </div>
+                    <div className="mfg-cost-row">
+                      <span className="mfg-cost-label">Components ({costSummary.uniqueParts} unique, {costSummary.totalParts} total)</span>
+                      <span className="mfg-cost-value">${costSummary.componentsCost.toFixed(2)}</span>
+                    </div>
+                    <div className="mfg-cost-row">
+                      <span className="mfg-cost-label">Assembly</span>
+                      <span className="mfg-cost-value">${costSummary.assemblyCost.toFixed(2)}</span>
+                    </div>
+                    {/* Detailed assembly breakdown */}
+                    {costSummary.assemblyBreakdown && (
+                      <div className="mfg-cost-breakdown">
+                        <div className="mfg-cost-breakdown-row">
+                          <span>Setup fee</span>
+                          <span>${costSummary.assemblyBreakdown.setupFee.toFixed(2)}</span>
+                        </div>
+                        <div className="mfg-cost-breakdown-row">
+                          <span>Stencil</span>
+                          <span>${costSummary.assemblyBreakdown.stencilFee.toFixed(2)}</span>
+                        </div>
+                        {costSummary.assemblyBreakdown.loadingFees > 0 && (
+                          <div className="mfg-cost-breakdown-row">
+                            <span>
+                              Loading fees
+                              <span className="mfg-cost-detail">
+                                ({costSummary.assemblyBreakdown.loadingFeePartsCount} extended parts × $3)
+                              </span>
+                            </span>
+                            <span>${costSummary.assemblyBreakdown.loadingFees.toFixed(2)}</span>
+                          </div>
+                        )}
+                        <div className="mfg-cost-breakdown-row">
+                          <span>Solder joints</span>
+                          <span>${costSummary.assemblyBreakdown.solderJointsCost.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    )}
+                    <div className="mfg-cost-row mfg-cost-total">
+                      <span className="mfg-cost-label">Estimated Total</span>
+                      <span className="mfg-cost-value">${costSummary.totalCost.toFixed(2)}</span>
+                    </div>
+                  </div>
+                  {costSummary.outOfStock > 0 && (
+                    <div className="mfg-cost-warning">
+                      <AlertTriangle size={14} />
+                      {costSummary.outOfStock} component{costSummary.outOfStock > 1 ? 's' : ''} out of stock
+                    </div>
                   )}
+                  {boardSummary && boardSummary.parts.partsWithLoadingFee > 0 && (
+                    <div className="mfg-cost-tip">
+                      <span className="mfg-cost-tip-icon">💡</span>
+                      <span>
+                        Use more <strong>basic parts</strong> to avoid ${boardSummary.parts.partsWithLoadingFee * 3} in loading fees
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Export Files Card */}
+                <div className="mfg-export-card">
+                  <h4 className="mfg-subsection-title">Export for JLCPCB</h4>
+                  <div className="mfg-export-files">
+                    <div className="mfg-export-file">
+                      <CheckCircle2 size={14} className={outputs?.gerbers ? 'available' : 'unavailable'} />
+                      <span>Gerber Files</span>
+                      <span className="mfg-export-ext">.zip</span>
+                    </div>
+                    <div className="mfg-export-file">
+                      <CheckCircle2 size={14} className={outputs?.bomCsv ? 'available' : 'unavailable'} />
+                      <span>Bill of Materials</span>
+                      <span className="mfg-export-ext">.csv</span>
+                    </div>
+                    <div className="mfg-export-file">
+                      <CheckCircle2 size={14} className={outputs?.pickAndPlace ? 'available' : 'unavailable'} />
+                      <span>Pick & Place</span>
+                      <span className="mfg-export-ext">.csv</span>
+                    </div>
+                  </div>
+
+                  <div className="mfg-export-directory">
+                    <span className="mfg-export-directory-label">Export to:</span>
+                    <div className="mfg-export-directory-input">
+                      <span className="mfg-export-directory-path">
+                        {wizard.exportDirectory || `${project.root}/manufacturing`}
+                      </span>
+                      <button
+                        className="mfg-btn secondary small"
+                        onClick={handleBrowseDirectory}
+                        title="Browse for export folder"
+                      >
+                        <FolderOpen size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {wizard.exportError && (
+                    <div className="mfg-error-banner">
+                      <AlertCircle size={14} />
+                      {wizard.exportError}
+                    </div>
+                  )}
+
+                  {/* Review progress indicator */}
+                  {!allItemsReviewed && (
+                    <div className="mfg-review-reminder">
+                      <AlertTriangle size={14} />
+                      <span>Review progress: {reviewedCount}/{availableCount} items</span>
+                    </div>
+                  )}
+                  {allItemsReviewed && (
+                    <div className="mfg-review-complete">
+                      <CheckCircle2 size={14} />
+                      <span>All items reviewed</span>
+                    </div>
+                  )}
+
+                  <div className="mfg-export-actions">
+                    <button
+                      className="mfg-btn primary large"
+                      onClick={handleExport}
+                      disabled={isExporting}
+                    >
+                      {isExporting ? (
+                        <>
+                          <Loader2 size={16} className="spinning" />
+                          Exporting...
+                        </>
+                      ) : (
+                        <>
+                          <Download size={16} />
+                          Export Files
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Success State */
+              <div className="mfg-export-success">
+                <div className="mfg-success-icon">
+                  <CheckCircle2 size={48} />
+                </div>
+                <h3 className="mfg-success-title">Ready for Manufacturing!</h3>
+                <p className="mfg-success-message">
+                  Your files have been exported and are ready to upload to JLCPCB.
+                </p>
+
+                <div className="mfg-success-files">
+                  <div className="mfg-success-file">
+                    <Package size={16} />
+                    <span>{selectedBuild.targetName}.gerber.zip</span>
+                  </div>
+                  <div className="mfg-success-file">
+                    <Package size={16} />
+                    <span>{selectedBuild.targetName}.bom.csv</span>
+                  </div>
+                  <div className="mfg-success-file">
+                    <Package size={16} />
+                    <span>{selectedBuild.targetName}.pnp.csv</span>
+                  </div>
+                </div>
+
+                <div className="mfg-success-actions">
+                  <button
+                    className="mfg-btn primary large"
+                    onClick={handleRevealInFinder}
+                  >
+                    <FolderOpen size={16} />
+                    Open Export Folder
+                  </button>
+                  <a
+                    href="https://cart.jlcpcb.com/quote"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mfg-btn secondary large"
+                  >
+                    <ExternalLink size={16} />
+                    Go to JLCPCB
+                  </a>
+                </div>
+
+                <button
+                  className="mfg-btn-link"
+                  onClick={() => setExportSuccess(false)}
+                >
+                  ← Back to Export Options
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -68,6 +68,10 @@ interface OpenSourceControlMessage {
   type: 'openSourceControl';
 }
 
+interface ShowProblemsMessage {
+  type: 'showProblems';
+}
+
 interface ShowInfoMessage {
   type: 'showInfo';
   message: string;
@@ -162,6 +166,7 @@ type WebviewMessage =
   | BrowseProjectPathMessage
   | BrowseExportDirectoryMessage
   | OpenSourceControlMessage
+  | ShowProblemsMessage
   | ShowInfoMessage
   | ShowErrorMessage
   | ReloadWindowMessage
@@ -513,6 +518,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         break;
       case 'openSourceControl':
         void vscode.commands.executeCommand('workbench.view.scm');
+        break;
+      case 'showProblems':
+        void vscode.commands.executeCommand('workbench.actions.view.problems');
         break;
       case 'showInfo':
         void vscode.window.showInformationMessage(message.message);
