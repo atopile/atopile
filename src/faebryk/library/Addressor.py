@@ -410,7 +410,7 @@ def test_addressor():
         .create_instance(g)
         .setup_from_singleton(
             value=16 + 3,
-            unit=F.Units.Bit.bind_typegraph(tg).create_instance(g).is_unit.get(),
+            unit=None,  # I2C.address is unitless (F.Units.Bit is commented out)
         ),
     )
 
@@ -432,7 +432,7 @@ def test_addressor():
         .create_instance(g)
         .setup_from_singleton(
             value=16 + 3,
-            unit=F.Units.Bit.bind_typegraph(tg).create_instance(g).is_unit.get(),
+            unit=None,  # I2C.address is unitless
         )
     )
 
