@@ -455,7 +455,7 @@ def build(
                     build_cfg.paths.layout, backup_path=build_cfg.paths.output_base
                 )
             except Exception as e:
-                logger.debug(f"Could not reload PCB: {e}")
+                logger.warning(f"{e}\nReload pcb manually in KiCAD")
 
         return
 
