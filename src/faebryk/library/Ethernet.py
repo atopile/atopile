@@ -2,49 +2,77 @@
 # SPDX-License-Identifier: MIT
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 
 logger = logging.getLogger(__name__)
 
 
-class Ethernet(ModuleInterface):
+class Ethernet(fabll.Node):
     """
     1000BASE-T Gigabit Ethernet Interface
     """
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+
     # Ethernet pairs
-    pairs = L.list_field(4, F.DifferentialPair)
+    pairs = [F.DifferentialPair.MakeChild() for _ in range(4)]
 
-    # Status LEDs
-    led_speed: F.ElectricLogic  # Speed LED
-    led_link: F.ElectricLogic  # Link LED
+    # Status LEDs #TODO: should be removed, not part of the interface
+    led_speed = F.ElectricLogic.MakeChild()  # Speed LED
+    led_link = F.ElectricLogic.MakeChild()  # Link LED
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.led_speed.line.add(
-            F.has_net_name("ETH_LED_SPEED", level=F.has_net_name.Level.SUGGESTED)
-        )
-        self.led_link.line.add(
-            F.has_net_name("ETH_LED_LINK", level=F.has_net_name.Level.SUGGESTED)
-        )
-        for i, pair in enumerate(self.pairs):
-            pair.p.line.add(
-                F.has_net_name(f"ETH_P{i}", level=F.has_net_name.Level.SUGGESTED)
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
+    )
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+
+    net_names = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="ETH_LED_SPEED", level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[led_speed],
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="ETH_LED_LINK", level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[led_link],
+        ),
+    ]
+
+    for i, pair in enumerate(pairs):
+        pair.add_dependant(
+            fabll.Traits.MakeEdge(
+                F.has_net_name_suggestion.MakeChild(
+                    name=f"ETH_P{i}", level=F.has_net_name_suggestion.Level.SUGGESTED
+                ),
+                owner=[pair, F.DifferentialPair.p],
             )
-            pair.n.line.add(
-                F.has_net_name(f"ETH_P{i}", level=F.has_net_name.Level.SUGGESTED)
+        )
+        pair.add_dependant(
+            fabll.Traits.MakeEdge(
+                F.has_net_name_suggestion.MakeChild(
+                    name=f"ETH_N{i}", level=F.has_net_name_suggestion.Level.SUGGESTED
+                ),
+                owner=[pair, F.DifferentialPair.n],
             )
+        )
 
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import Ethernet, ElectricPower
 
         ethernet = new Ethernet
@@ -65,5 +93,6 @@ class Ethernet(ModuleInterface):
         ethernet.led_speed ~ speed_led_output
         ethernet.led_link ~ link_led_output
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

@@ -1,155 +1,78 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from abc import abstractmethod
-from enum import Enum, auto
-from typing import Self
+from enum import StrEnum
 
+import pytest
+
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
+import faebryk.library.can_be_pulled as can_be_pulled
 
 
-class ElectricLogic(F.ElectricSignal):
+class ElectricLogic(fabll.Node):
     """
     ElectricLogic is a class that represents a logic signal.
     Logic signals only have two states: high and low.
     For more states / continuous signals check ElectricSignal.
     """
 
-    class has_pulls(F.Logic.TraitT):
-        @abstractmethod
-        def get_pulls(self) -> tuple[F.Resistor | None, F.Resistor | None]: ...
-
-    class has_pulls_defined(has_pulls.impl()):
-        def __init__(self, up: F.Resistor | None, down: F.Resistor | None) -> None:
-            super().__init__()
-            self.up = up
-            self.down = down
-
-        def get_pulls(self) -> tuple[F.Resistor | None, F.Resistor | None]:
-            return self.up, self.down
-
-    class can_be_pulled(F.Logic.TraitT):
-        @abstractmethod
-        def pull(self, up: bool, owner: Module) -> F.Resistor: ...
-
-    class can_be_pulled_defined(can_be_pulled.impl()):
-        def __init__(self, line: F.Electrical, ref: F.ElectricPower) -> None:
-            super().__init__()
-            self.ref = ref
-            self.line = line
-
-        def pull(self, up: bool, owner: Module):
-            obj = self.obj
-
-            up_r, down_r = None, None
-            if obj.has_trait(ElectricLogic.has_pulls):
-                up_r, down_r = obj.get_trait(ElectricLogic.has_pulls).get_pulls()
-
-            if up and up_r:
-                return up_r
-            if not up and down_r:
-                return down_r
-
-            resistor = F.Resistor()
-            name = obj.get_name(accept_no_parent=True)
-            # TODO handle collisions
-            if up:
-                owner.add(resistor, f"pull_up_{name}")
-                up_r = resistor
-            else:
-                owner.add(resistor, f"pull_down_{name}")
-                down_r = resistor
-
-            self.line.connect_via(resistor, self.ref.hv if up else self.ref.lv)
-
-            obj.add(ElectricLogic.has_pulls_defined(up_r, down_r))
-            return resistor
-
-    # class can_be_buffered(Trait):
-    #    @abstractmethod
-    #    def buffer(self):
-    #        ...
-    #
-    #
-    # class can_be_buffered_defined(can_be_buffered.impl()):
-    #    def __init__(self, line: "ElectricLogic") -> None:
-    #        super().__init__()
-    #        self.line = line
-    #
-    #    def buffer(self):
-    #        obj = self.obj
-    #
-    #        if hasattr(obj, "buffer"):
-    #            return cast_assert(SignalBuffer, getattr(obj, "buffer"))
-    #
-    #        buffer = SignalBuffer()
-    #        obj.buffer = buffer
-    #        self.line.connect(buffer.logic_in)
-    #
-    #        return buffer.logic_out
-
-    class PushPull(Enum):
-        PUSH_PULL = auto()
-        OPEN_DRAIN = auto()
-        OPEN_SOURCE = auto()
+    # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
+    class PushPull(StrEnum):
+        PUSH_PULL = "PUSH_PULL"
+        OPEN_DRAIN = "OPEN_DRAIN"
+        OPEN_SOURCE = "OPEN_SOURCE"
 
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    push_pull = L.p_field(
-        domain=L.Domains.ENUM(PushPull),
-    )
+    line = F.Electrical.MakeChild()
+    reference = F.ElectricPower.MakeChild()
 
+    push_pull = F.Parameters.EnumParameter.MakeChild(
+        enum_t=PushPull,
+    )
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    @L.rt_field
-    def pulled(self):
-        return ElectricLogic.can_be_pulled_defined(self.line, self.reference)
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    specializable_types = L.f_field(F.can_specialize_defined)([F.Logic])
+    _can_be_pulled = fabll.Traits.MakeEdge(
+        can_be_pulled.can_be_pulled.MakeChild(line, reference)
+    )
+    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(in_=[""], out_=[""]))
 
     # ----------------------------------------
     #                functions
     # ----------------------------------------
+
     def set(self, on: bool):
         """
         Set the logic signal by directly connecting to the reference.
         """
         r = self.reference
-        self.line.connect(r.hv if on else r.lv)
+        self.line.get()._is_interface.get().connect_to(
+            r.get().hv.get() if on else r.get().lv.get()
+        )
 
-    def set_weak(self, on: bool, owner: Module):
+    def set_weak(self, on: bool, owner: fabll.Node):
         """
         Set the logic signal by connecting to the reference via a pull resistor.
         """
-        return self.get_trait(self.can_be_pulled).pull(up=on, owner=owner)
+        return self.get_trait(can_be_pulled.can_be_pulled).pull(up=on, owner=owner)
 
-    def connect_shallow(
-        self,
-        other: Self,
-        signal: bool = False,
-        reference: bool = False,
-        lv: bool = False,
-    ) -> Self:
-        # TODO this should actually use shallow links
-        assert not (signal and reference)
-        assert not (lv and reference)
+    @property
+    def pull_resistance(self):
+        """Expose effective pull resistance like ElectricSignal."""
+        return self.get_trait(can_be_pulled.can_be_pulled).pull_resistance
 
-        # TODO make custom LinkDirectShallow that also allows the specified params
-        if signal:
-            self.line.connect(other.line)
-        if reference:
-            self.reference.connect(other.reference)
-        if lv:
-            self.reference.lv.connect(other.reference.lv)
-
-        return super().connect_shallow(other)
-
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import ElectricLogic
 
         logic_signal = new ElectricLogic
@@ -162,5 +85,93 @@ class ElectricLogic(F.ElectricSignal):
         # OR
         logic_signal.line ~> example_resistor ~> electrical
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )
+
+
+# -----------------------------------------------------------------------------
+#                                 Tests
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("on", [True, False])
+def test_electric_logic_set(on: bool):
+    """Test that set() correctly connects line to hv (on=True) or lv (on=False)."""
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _App(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        power = F.ElectricPower.MakeChild()
+        logic = ElectricLogic.MakeChild()
+
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Connect the logic reference to the power rail
+    app.logic.get().reference.get()._is_interface.get().connect_to(app.power.get())
+
+    # Call set() to connect line to hv or lv
+    app.logic.get().set(on)
+
+    # Verify the connection
+    logic = app.logic.get()
+    power = app.power.get()
+
+    if on:
+        # line should be connected to hv
+        assert logic.line.get()._is_interface.get().is_connected_to(power.hv.get()), (
+            "set(True) should connect line to hv"
+        )
+        assert (
+            not logic.line.get()._is_interface.get().is_connected_to(power.lv.get())
+        ), "set(True) should NOT connect line to lv"
+    else:
+        # line should be connected to lv
+        assert logic.line.get()._is_interface.get().is_connected_to(power.lv.get()), (
+            "set(False) should connect line to lv"
+        )
+        assert (
+            not logic.line.get()._is_interface.get().is_connected_to(power.hv.get())
+        ), "set(False) should NOT connect line to hv"
+
+
+def test_electric_logic_set_via_reference_child():
+    """Test that set() works when reference is connected to a power interface."""
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _App(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        power = F.ElectricPower.MakeChild()
+        logic = ElectricLogic.MakeChild()
+
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Connect the logic reference to the power rail
+    app.logic.get().reference.get()._is_interface.get().connect_to(app.power.get())
+
+    # Set high, then set low to verify both work
+    app.logic.get().set(True)
+    assert (
+        app.logic.get()
+        .line.get()
+        ._is_interface.get()
+        .is_connected_to(app.power.get().hv.get())
+    )
+
+    # Create a second logic to test set(False)
+    class _App2(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        power = F.ElectricPower.MakeChild()
+        logic = ElectricLogic.MakeChild()
+
+    app2 = _App2.bind_typegraph(tg=tg).create_instance(g=g)
+    app2.logic.get().reference.get()._is_interface.get().connect_to(app2.power.get())
+    app2.logic.get().set(False)
+    assert (
+        app2.logic.get()
+        .line.get()
+        ._is_interface.get()
+        .is_connected_to(app2.power.get().lv.get())
     )

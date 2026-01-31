@@ -1,10 +1,10 @@
-import logging
 from pathlib import Path
 
+from atopile.logging import get_logger
 from atopile.mcp.util import MCPTools
 from faebryk.libs.util import root_by_file
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 project_tools = MCPTools()
 

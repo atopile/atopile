@@ -13,6 +13,7 @@ import typer
 
 logger = logging.getLogger(__name__)
 app = typer.Typer()
+artifact_dir = Path(__file__).parent.parent / "artifacts" / "perf"
 
 
 def is_running_in_vscode_terminal() -> bool:
@@ -87,10 +88,13 @@ def cprofile(
         code_bin = get_code_binary()
 
         if is_running_in_vscode_terminal():
-            subprocess.run(["code", str(dot_file)], check=True)
+            subprocess.run(["cursor", str(dot_file)], check=True)
         elif code_bin and get_vscode_instances_count(code_bin.name) > 0:
             subprocess.run([str(code_bin), "-r", str(dot_file)], check=True)
-        else:
+        elif (
+            subprocess.run(["which", "dot"], capture_output=True, text=True).returncode
+            == 0
+        ):
             png_file = temp_dir_path / "output.png"
             subprocess.run(
                 ["dot", "-Tpng", "-o", str(png_file), str(dot_file)], check=True
@@ -102,6 +106,9 @@ def cprofile(
 
         # Display with cursor
         typer.echo(str(dot_file))
+        import time
+
+        time.sleep(1)
 
 
 @app.command(
@@ -124,13 +131,66 @@ def viztracer(ctx: typer.Context):
 @app.command(
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
 )
-def pyinstrument(ctx: typer.Context):
-    """Profile a Python program using Pyinstrument."""
+def pyspy(ctx: typer.Context, suffix: str = ""):
+    """Profile a Python program using pyspy."""
     if not ctx.args:
         typer.echo("No command provided to profile", err=True)
         raise typer.Exit(1)
 
-    subprocess.run(["pyinstrument", "-r", "text", *ctx.args], check=True)
+    json_file = artifact_dir / f"pyspy{suffix}.speedscope.json"
+
+    subprocess.run(
+        [
+            "py-spy",
+            "record",
+            *["-r", "500"],
+            *["-f", "speedscope"],
+            "-o",
+            str(json_file),
+            "--",
+            *ctx.args,
+        ],
+        check=False,
+    )
+
+
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
+def austin(ctx: typer.Context, suffix: str = ""):
+    """Profile a Python program using austin (and speedscope)."""
+    if not ctx.args:
+        typer.echo("No command provided to profile", err=True)
+        raise typer.Exit(1)
+
+    mojo = artifact_dir / "austin.mojo"
+    austin = artifact_dir / "austin.austin"
+    speedscope_file = artifact_dir / f"austin{suffix}.speedscope.json"
+    subprocess.run(
+        [
+            "austin",
+            # "--full",
+            *["-o", str(mojo)],
+            *ctx.args,
+        ],
+        check=False,
+    )
+    subprocess.run(
+        [
+            "mojo2austin",
+            str(mojo),
+            str(austin),
+        ],
+        check=True,
+    )
+    subprocess.run(
+        [
+            "austin2speedscope",
+            str(austin),
+            str(speedscope_file),
+        ],
+        check=True,
+    )
 
 
 @app.command(
@@ -202,6 +262,99 @@ def memray(
 
         if open_report:
             open_in_default_app(report_path)
+
+
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
+def perf(
+    ctx: typer.Context,
+    report_only: bool = False,
+    samples_per_second: int = typer.Option(
+        3100, "-F", "--samples-per-second", help="Samples per second"
+    ),
+):
+    """Profile a Python program using perf."""
+
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    perf_data_file = artifact_dir / "perf.data"
+    fg_svg_file = artifact_dir / "fg.svg"
+    perf_txt_file = artifact_dir / "perf.txt"
+    perf_zig_txt_file = artifact_dir / "perf_zig.txt"
+    perf_i = artifact_dir / "perf_i.txt"
+
+    if not report_only:
+        subprocess.run(
+            [
+                "perf",
+                "record",
+                *["-F", str(samples_per_second)],
+                *["--call-graph", "dwarf"],
+                "-g",
+                *["-o", str(perf_data_file)],
+                *ctx.args,
+                "--",
+            ],
+            check=True,
+        )
+
+    zig_dso = "--dsos=pyzig.so"
+
+    print("Generating perf_i.txt...")
+    with open(perf_i, "w") as f:
+        subprocess.run(
+            [
+                "perf",
+                "script",
+                *["-i", str(perf_data_file)],
+            ],
+            check=True,
+            stdout=f,
+        )
+
+    print("Generating flamegraph...")
+    subprocess.run(
+        f"cat {perf_i} | stackcollapse-perf.pl | flamegraph.pl > {fg_svg_file}",
+        check=True,
+        shell=True,
+    )
+
+    # perf report --call-graph graph,0.5,caller --stdio > perf.txt
+    print("Generating perf.txt...")
+    with open(perf_txt_file, "w") as f:
+        subprocess.run(
+            [
+                "perf",
+                "report",
+                *["-i", str(perf_data_file)],
+                *["--call-graph", "graph,0.5,caller"],
+                "--stdio",
+            ],
+            check=True,
+            stdout=f,
+        )
+
+    print("Generating perf_zig.txt...")
+    with open(perf_zig_txt_file, "w") as f:
+        subprocess.run(
+            [
+                "perf",
+                "report",
+                *["-i", str(perf_data_file)],
+                zig_dso,
+                *["--call-graph", "graph,0.5,caller"],
+                "--stdio",
+            ],
+            check=True,
+            stdout=f,
+        )
+
+    print(
+        "To run speedscope install the vscode extension "
+        "`speedscope on VScode (need vsix)`. \n"
+        "Then use cmd+p and open the speedscope view. \n"
+        "Navigate it to artifacts/perf/perf_i.txt"
+    )
 
 
 if __name__ == "__main__":

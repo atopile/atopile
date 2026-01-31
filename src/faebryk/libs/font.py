@@ -3,14 +3,17 @@
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import freetype
-from shapely import Point, Polygon
 
 from faebryk.libs.geometry.basic import (
     flatten_polygons,
     transform_polygon,
 )
+
+if TYPE_CHECKING:
+    from shapely import Polygon
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +31,7 @@ class Font:
         bbox: tuple[float, float] | None = None,
         wrap: bool = False,
         scale_to_fit: bool = False,
-    ) -> list[Polygon]:
+    ) -> list["Polygon"]:
         """
         Render the polygons of a string from a ttf font file
 
@@ -40,6 +43,7 @@ class Font:
         :param scale_to_fit: Scale the text to fit the bounding box
         :return: A list of polygons that represent the string
         """
+        from shapely import Point, Polygon
 
         if wrap and not bbox:
             raise ValueError("Bounding box must be given when wrapping text")

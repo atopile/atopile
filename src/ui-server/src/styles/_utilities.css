@@ -1,0 +1,762 @@
+/* ==========================================
+   _utilities.css
+   Shared Empty States, Build Selector, Connection Status,
+   Z-Index Rules, Overflow Handling, Toast Notifications
+   ========================================== */
+
+/* ==========================================
+   Unified Empty States
+   Use these classes for consistent empty/no-data states
+   across all panels for visual cohesion.
+   ========================================== */
+
+/* Base empty state - centered, muted content */
+.panel-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xl) var(--spacing-md);
+  color: var(--text-muted);
+  text-align: center;
+  min-height: 120px;
+}
+
+/* Fixed-height icon container ensures consistent text positioning */
+.panel-empty-state .empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.panel-empty-state svg {
+  opacity: 0.4;
+  color: var(--text-muted);
+}
+
+.panel-empty-state .empty-title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.panel-empty-state .empty-description {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  max-width: 220px;
+  line-height: 1.4;
+}
+
+/* Error variant of empty state */
+.panel-empty-state.error .empty-icon svg {
+  color: var(--error);
+  opacity: 0.6;
+}
+
+.panel-empty-state.error .empty-title {
+  color: var(--error);
+}
+
+/* Inline empty state - for within lists, more compact */
+.inline-empty-state {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-style: italic;
+}
+
+/* Search empty state - when search returns no results */
+.search-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-lg) var(--spacing-md);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.search-empty-state svg {
+  opacity: 0.4;
+}
+
+.search-empty-state .search-query {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+/* ==========================================
+   Build Selector - Unified Project/Build Filter
+   ========================================== */
+
+.build-selector {
+  position: relative;
+  z-index: 100;
+}
+
+.selector-trigger {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xxs);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  min-width: 80px;
+  max-width: 180px;
+}
+
+.selector-trigger:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-color);
+}
+
+.selector-trigger.open {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.selector-trigger.has-selection {
+  background: var(--ato-orange-subtle);
+  border-color: var(--ato-orange);
+  color: var(--ato-orange);
+}
+
+.selector-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.selector-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform var(--transition-fast);
+}
+
+.selector-chevron.rotated {
+  transform: rotate(180deg);
+}
+
+.selector-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 220px;
+  max-height: 320px;
+  /* Solid background - never transparent regardless of theme */
+  background-color: var(--vscode-sideBar-background, var(--bg-secondary, #1e1e2e));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  z-index: 9999;
+  /* Prevent any transparency from parent elements */
+  isolation: isolate;
+}
+
+/* Ensure build selector dropdowns can escape overflow:hidden containers */
+.build-selector {
+  position: relative;
+  z-index: 100;
+}
+
+/* When dropdown is open, ensure it's on top of everything */
+.panel-toolbar,
+.panel-toolbar-row,
+.problems-toolbar,
+.log-header,
+.variables-toolbar,
+.bom-toolbar {
+  overflow: visible !important;
+  position: relative;
+}
+
+/* Panels containing build selectors need overflow visible for dropdowns */
+.problems-panel,
+.variables-panel,
+.bom-panel,
+.log-viewer {
+  overflow: visible;
+}
+
+/* Cards containing panels with dropdowns need overflow visible */
+.card:has(.build-selector),
+.card-flex:has(.build-selector) {
+  overflow: visible;
+}
+
+/* Sidebar needs to allow dropdown overflow */
+.sidebar:has(.selector-dropdown) {
+  overflow: visible;
+}
+
+/* Collapsible sections containing open dropdowns need overflow visible and high z-index */
+.collapsible-section:has(.selector-dropdown) {
+  overflow: visible !important;
+  z-index: 1000;
+  position: relative;
+}
+
+.collapsible-section:has(.selector-dropdown) .section-body {
+  overflow: visible !important;
+}
+
+.section-body:has(.projects-panel-v2) {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Ensure the problems panel specifically allows dropdown overflow */
+.collapsible-section:has(.problems-panel) .section-body {
+  overflow: visible;
+}
+
+.problems-panel:has(.selector-dropdown) {
+  overflow: visible !important;
+}
+
+.problems-toolbar:has(.selector-dropdown) {
+  z-index: 1001;
+  position: relative;
+}
+
+/* Project dropdown overflow rules */
+.collapsible-section:has(.project-dropdown .install-dropdown-menu) {
+  overflow: visible !important;
+  z-index: 1000;
+}
+
+.collapsible-section:has(.project-dropdown .install-dropdown-menu) .section-body {
+  overflow: visible !important;
+}
+
+.panel-toolbar:has(.project-dropdown .install-dropdown-menu) {
+  overflow: visible !important;
+  z-index: 1001;
+  position: relative;
+}
+
+.selector-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-tertiary);
+}
+
+.selector-search svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.selector-search input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.selector-search input::placeholder {
+  color: var(--text-muted);
+}
+
+.selector-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.selector-clear:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.selector-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.selector-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  transition: background var(--transition-fast);
+}
+
+.selector-item:hover {
+  background: var(--bg-hover);
+}
+
+.selector-item.selected {
+  background: var(--ato-orange-subtle);
+  color: var(--ato-orange);
+}
+
+.selector-item.all {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.selector-item-label {
+  flex: 1;
+}
+
+.selector-check {
+  color: var(--success);
+  flex-shrink: 0;
+}
+
+.selector-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 4px 0;
+}
+
+/* Project row */
+.selector-project-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* Match VS Code native tree item height */
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  transition: background var(--transition-fast);
+}
+
+.selector-project-row:hover {
+  background: var(--bg-hover);
+}
+
+.selector-project-row.selected {
+  background: var(--ato-orange-subtle);
+}
+
+.selector-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.selector-expand:hover {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.selector-expand-placeholder {
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.selector-project-icon {
+  color: var(--ctp-lavender);
+  flex-shrink: 0;
+}
+
+.selector-project-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.selector-count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+
+.selector-count.error {
+  background: rgba(var(--ctp-red-rgb), 0.2);
+  color: var(--error);
+}
+
+.selector-count.warning {
+  background: rgba(var(--ctp-yellow-rgb), 0.2);
+  color: var(--warning);
+}
+
+/* Builds */
+.selector-builds {
+  margin-left: 14px;
+  border-left: 1px solid var(--border-subtle);
+  padding-left: 4px;
+  margin-top: 2px;
+}
+
+.selector-build-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* Match VS Code native tree item height */
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  transition: background var(--transition-fast);
+}
+
+.selector-build-row:hover {
+  background: var(--bg-hover);
+}
+
+.selector-build-row.selected {
+  background: var(--ato-orange-subtle);
+  color: var(--text-primary);
+}
+
+.selector-build-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.selector-build-project {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  min-width: 80px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selector-build-entry {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selector-build-meta {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  padding-left: 4px;
+  flex-shrink: 0;
+}
+
+/* Status icons */
+.selector-build-row .status-icon {
+  flex-shrink: 0;
+}
+
+.selector-build-row .status-icon.success {
+  color: var(--success);
+}
+
+.selector-build-row .status-icon.error {
+  color: var(--error);
+}
+
+.selector-build-row .status-icon.warning {
+  color: var(--warning);
+}
+
+/* Symbols */
+.selector-symbols {
+  margin-left: 14px;
+  border-left: 1px solid var(--border-subtle);
+  padding-left: 4px;
+  margin-top: 2px;
+}
+
+.selector-symbol-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* Match VS Code native tree item height */
+  height: var(--row-height-tree-item);
+  min-height: var(--row-height-tree-item);
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  transition: background var(--transition-fast);
+}
+
+.selector-symbol-row:hover {
+  background: var(--bg-hover);
+}
+
+.selector-symbol-row.selected {
+  background: var(--ato-orange-subtle);
+  color: var(--text-primary);
+}
+
+.selector-symbol-row .symbol-icon {
+  flex-shrink: 0;
+}
+
+.selector-symbol-row .symbol-icon.module {
+  color: var(--ctp-blue);
+}
+
+.selector-symbol-row .symbol-icon.interface {
+  color: var(--ctp-yellow);
+}
+
+.selector-symbol-row .symbol-icon.component {
+  color: var(--ctp-green);
+}
+
+.selector-symbol-name {
+  flex: 1;
+}
+
+.selector-symbol-children {
+  margin-left: 14px;
+  border-left: 1px solid var(--border-subtle);
+  padding-left: 4px;
+}
+
+/* Empty state */
+.selector-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* Compact mode */
+.build-selector.compact .selector-trigger {
+  padding: 2px 6px;
+  min-width: 60px;
+  max-width: 140px;
+}
+
+.build-selector.compact .selector-dropdown {
+  min-width: 180px;
+}
+
+/* Connection Status */
+.connection-status {
+  padding: 8px 12px;
+  margin: 8px;
+  border-radius: 4px;
+  font-size: var(--font-size-md);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.connection-status.disconnected {
+  background: var(--ctp-surface0);
+  color: var(--ctp-subtext0);
+}
+
+.connection-status.error {
+  background: rgba(243, 139, 168, 0.1);
+  color: var(--ctp-red);
+}
+
+/* ==========================================
+   Toast Notifications (Sonner)
+   Styled to match the UI theme
+   ========================================== */
+
+/* Base toast styling */
+[data-sonner-toaster] {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+}
+
+[data-sonner-toast] {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-sm) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 4px 12px var(--shadow-color) !important;
+  padding: var(--spacing-xs) var(--spacing-sm) !important;
+  font-size: var(--font-size-xs) !important;
+  min-height: auto !important;
+}
+
+/* Status-specific left border accent */
+[data-sonner-toast][data-type="success"] {
+  border-left: 3px solid var(--success) !important;
+}
+
+[data-sonner-toast][data-type="error"] {
+  border-left: 3px solid var(--error) !important;
+}
+
+[data-sonner-toast][data-type="warning"] {
+  border-left: 3px solid var(--warning) !important;
+}
+
+[data-sonner-toast][data-type="info"] {
+  border-left: 3px solid var(--info) !important;
+}
+
+/* Toast title */
+[data-sonner-toast] [data-title] {
+  color: var(--text-primary) !important;
+  font-weight: 500 !important;
+  font-size: var(--font-size-sm) !important;
+}
+
+/* Toast description */
+[data-sonner-toast] [data-description] {
+  color: var(--text-secondary) !important;
+  font-size: var(--font-size-xs) !important;
+}
+
+/* Toast icon colors */
+[data-sonner-toast][data-type="success"] [data-icon] {
+  color: var(--success) !important;
+}
+
+[data-sonner-toast][data-type="error"] [data-icon] {
+  color: var(--error) !important;
+}
+
+[data-sonner-toast][data-type="warning"] [data-icon] {
+  color: var(--warning) !important;
+}
+
+[data-sonner-toast][data-type="info"] [data-icon] {
+  color: var(--info) !important;
+}
+
+/* Close button */
+[data-sonner-toast] [data-close-button] {
+  background: transparent !important;
+  border: 1px solid var(--border-subtle) !important;
+  color: var(--text-muted) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+[data-sonner-toast] [data-close-button]:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Action button */
+[data-sonner-toast] [data-button] {
+  background: var(--accent) !important;
+  color: white !important;
+  border-radius: var(--radius-sm) !important;
+  font-size: var(--font-size-xs) !important;
+  padding: var(--spacing-xs) var(--spacing-sm) !important;
+  font-weight: 500 !important;
+  transition: background var(--transition-fast) !important;
+}
+
+[data-sonner-toast] [data-button]:hover {
+  background: var(--accent-hover) !important;
+}
+
+/* Cancel button - more subtle styling */
+[data-sonner-toast] [data-cancel] {
+  background: transparent !important;
+  color: var(--text-muted) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-sm) !important;
+  font-size: var(--font-size-xs) !important;
+  padding: var(--spacing-xs) var(--spacing-sm) !important;
+  transition: all var(--transition-fast) !important;
+}
+
+[data-sonner-toast] [data-cancel]:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* Custom toast class overrides for consistency */
+.ato-toast {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 4px 16px var(--shadow-color) !important;
+}
+
+.ato-toast-title {
+  color: var(--text-primary) !important;
+  font-weight: 500 !important;
+  font-size: var(--font-size-sm) !important;
+  line-height: 1.4 !important;
+}
+
+.ato-toast-description {
+  color: var(--text-muted) !important;
+  font-size: var(--font-size-xs) !important;
+  line-height: 1.4 !important;
+  margin-top: 2px !important;
+}
+
+.ato-toast-action {
+  background: var(--ato-orange) !important;
+  color: var(--bg-primary) !important;
+  font-weight: 500 !important;
+}
+
+.ato-toast-action:hover {
+  background: var(--ato-orange-hover, #e67e22) !important;
+}
+
+.ato-toast-close {
+  color: var(--text-muted) !important;
+  opacity: 0.6 !important;
+}
+
+.ato-toast-close:hover {
+  opacity: 1 !important;
+  background: var(--bg-hover) !important;
+}

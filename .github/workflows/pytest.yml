@@ -8,59 +8,92 @@ on:
   workflow_dispatch:
 
 env:
-  KICAD_VERSION: '9.0'
+  KICAD_VERSION: "9.0"
 
 jobs:
   pytest:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    #runs-on: blacksmith-4vcpu-ubuntu-2404
+    #runs-on: blacksmith-32vcpu-ubuntu-2404-arm
+    runs-on: blacksmith-16vcpu-ubuntu-2404
+    #runs-on: [self-hosted]
+    #runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    # Required due to a bug in the checkout action
-    # https://github.com/actions/checkout/issues/1471
-    - run: git fetch --prune --unshallow --tags
+      # Required due to a bug in the checkout action
+      # https://github.com/actions/checkout/issues/1471
+      - run: git fetch --prune --unshallow --tags
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v6
-      with:
-        version: 0.8
-        enable-cache: true
-        cache-dependency-glob: "uv.lock"
+      - name: Prepare artifacts dir
+        run: mkdir -p artifacts
 
-    - name: "Set up Python"
-      uses: actions/setup-python@v5
-      with:
-        python-version-file: "pyproject.toml"
+      # disable for self-hosted runner
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: 0.8
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-    - name: Run pytest
-      id: pytest
-      continue-on-error: true
-      run: >
-        uv run --dev --no-editable --frozen
-        --with pytest-github-actions-annotate-failures
-        pytest
-        -m "not not_in_ci and not slow and not regression"
-        --timeout=300
-      env:
-        GH_TOKEN: ${{ github.token }}
-        COLUMNS: 150  # rich console width will be pulled from this
+      # disable for self-hosted runner
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          # self-hosted runner struggles with this one
+          python-version-file: "pyproject.toml"
+          #python-version: "3.13"
 
-    - name: Upload all test logs
-      if: steps.pytest.outcome == 'failure'
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-logs
-        path: artifacts/**/*.log
-        if-no-files-found: warn
+      - name: "Install dependencies"
+        run: |
+          uv sync --dev --no-install-project --frozen
+        # for self-hosted runner
+        #env:
+        #  UV_CACHE_DIR: /var/cache/uv
 
-    - name: Upload all test report
-      if: steps.pytest.outcome == 'failure'
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-report
-        path: artifacts/test-report.html
+      - name: "Compile & build package"
+        run: |
+          uv pip install --no-deps .
 
-    - name: Check pytest status
-      if: steps.pytest.outcome == 'failure'
-      run: exit 1
+      - name: Run pytest
+        id: pytest
+        continue-on-error: true
+        # FIXME timeout
+        # TODO consider replacing with `ato dev test --ci`
+        run: |
+          uv run \
+            test/runner/main.py \
+            -m "not not_in_ci and not slow and not regression" \
+            --timeout=120 \
+        env:
+          PYTHONPATH: .
+          GH_TOKEN: ${{ github.token }}
+          COLUMNS: 150 # rich console width will be pulled from this
+          FBRK_TEST_REPORT_INTERVAL: 10
+          FBRK_TEST_LONG_THRESHOLD: 30
+          FBRK_TEST_SHOW_PYTEST_OUTPUT: 0
+          FBRK_TEST_WORKERS: -2 # 32 threads/16 cpus -> 32 workers
+          FBRK_TEST_PERIODIC_HTML: 0
+          FBRK_TEST_GENERATE_HTML: 1
+          # threshold for worker to restart after exceeding after a test run
+          FBRK_TEST_WORKER_MEMORY_LIMIT_MB: 1024
+          PYTHON_UNBUFFERED: 1
+
+      - name: Upload test report json artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report.json
+          path: artifacts/test-report.json
+          if-no-files-found: error
+
+      - name: Upload test report html artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report.html
+          path: artifacts/test-report.html
+          if-no-files-found: warn
+
+      - name: Check pytest status
+        if: steps.pytest.outcome == 'failure'
+        run: exit 1

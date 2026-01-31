@@ -18,7 +18,11 @@ DEFAULT_CONFIG = HERE / "default_ato.yaml"
 def exec_build(args: list[str], cwd: Path) -> tuple[str, str, subprocess.Popen]:
     return run_live(
         [sys.executable, "-m", "atopile", "build", *args],
-        env={**os.environ, "NONINTERACTIVE": "1"},
+        env={
+            **os.environ,
+            "NONINTERACTIVE": "1",
+            "FBRK_SKIP_SOLVING": "y",
+        },
         stdout=print,
         stderr=print,
         check=False,
@@ -30,6 +34,8 @@ EXEC_T = Callable[[str, list[str]], tuple[str, str, subprocess.Popen]]
 
 
 def dump_and_run(src: str, args: list[str], working_dir: Path):
+    if "-v" not in args:
+        args.insert(0, "-vv")
     # Copy the default_ato.yaml to the tmpdir
     shutil.copy2(DEFAULT_CONFIG, working_dir / "ato.yaml")
 

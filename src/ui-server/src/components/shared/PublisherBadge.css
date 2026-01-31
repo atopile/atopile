@@ -1,0 +1,22 @@
+/**
+ * PublisherBadge styles
+ */
+
+.publisher-badge {
+  font-size: var(--font-size-xs);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.publisher-badge.official {
+  background: rgba(166, 227, 161, 0.15);
+  color: var(--ctp-green);
+  font-weight: 500;
+}
+
+.publisher-badge .publisher-prefix {
+  opacity: 0.7;
+}

@@ -15,6 +15,7 @@ from ruamel.yaml import YAML
 import atopile.config
 from atopile import version
 from atopile.errors import UserBadParameterError
+from faebryk.libs.package.meta import PackageMeta, PackageSource
 from faebryk.libs.util import not_none, once
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ def _get_non_excluded_project_files(cfg: atopile.config.ProjectConfig) -> list[P
     from git import Repo
 
     prjroot = cfg.paths.root
-    repo = Repo(search_parent_directories=True)
+    repo = Repo(prjroot, search_parent_directories=True)
 
     # For gitignore patterns, we need to get all files and filter out the matched ones,
     # since gitignore patterns specify which files to exclude
@@ -149,7 +150,7 @@ class Dist:
             with (cfg.paths.root / atopile.config.PROJECT_CONFIG_FILENAME).open(
                 "r", encoding="utf-8"
             ) as file:
-                config_data: dict = yaml.load(file) or {}
+                config_data = yaml.load(file) or {}
 
             config_data["package"]["identifier"] = str(cfg.package.identifier)
             config_data["package"]["repository"] = str(cfg.package.repository)
@@ -198,7 +199,7 @@ class Dist:
 
             return Dist(out_file)
 
-    def install(self, path: Path):
+    def install(self, path: Path, source: PackageSource | None = None):
         if path.exists():
             raise FileExistsError(f"Path {path} already exists")
 
@@ -214,3 +215,16 @@ class Dist:
 
         with zipfile.ZipFile(self.path, "r") as zip_file:
             zip_file.extractall(path)
+
+        # Write package metadata for integrity tracking
+        if source is None:
+            # Default to registry source if not specified
+            source = PackageSource(type="registry")
+
+        meta = PackageMeta.create(
+            identifier=self.identifier,
+            version=self.version,
+            source=source,
+            package_path=path,
+        )
+        meta.save(path)

@@ -4,11 +4,11 @@
 	(generator_version "v5")
 	(layer "F.Cu")
 	(tedit "5DC5F6A4")
-	(uuid "a9e2d47c-2ede-4195-afe3-3ab35ebb8ab1")
+	(uuid "2ffc2ad4-1ffa-4a69-96da-ea3f23d180f4")
 	(property "Reference" "REF**"
 		(at 0 -4)
 		(layer "F.SilkS")
-		(uuid "cb4042aa-7a6e-43d7-8b60-d2fcc6e9d85c")
+		(uuid "0de45ec5-0a2a-4c4a-bcb9-c30824bfa564")
 		(effects
 			(font
 				(size 1 1)
@@ -19,7 +19,7 @@
 	(property "Value" "LED0603-RD"
 		(at 0 4)
 		(layer "F.Fab")
-		(uuid "4d5b8d9c-9b0b-483c-9021-1dd3bb1dc19b")
+		(uuid "c26c2ac7-05a7-447d-9100-8c00305e5670")
 		(effects
 			(font
 				(size 1 1)
@@ -37,7 +37,7 @@
 		)
 		(layer "F.Fab")
 		(locked no)
-		(uuid "ec512b15-ff3b-487f-951a-516a7d7ce49f")
+		(uuid "93c84601-ac8b-4bd1-9394-19208d30ebb9")
 	)
 	(fp_line
 		(start 0.22 0.33)
@@ -49,7 +49,7 @@
 		(layer "F.SilkS")
 		(layers "F.SilkS")
 		(locked no)
-		(uuid "603f6601-9bc2-4b81-9877-93b5c28859e7")
+		(uuid "6b1be85f-d1e4-437a-b89a-a5ec41f59305")
 	)
 	(fp_line
 		(start 0.21 0.33)
@@ -61,7 +61,7 @@
 		(layer "F.SilkS")
 		(layers "F.SilkS")
 		(locked no)
-		(uuid "4e2dfa43-1668-4fa0-b780-d62796d0ce79")
+		(uuid "48da7f50-0081-41db-ba3d-b7852cf74dae")
 	)
 	(fp_line
 		(start 0.22 -0.35)
@@ -73,7 +73,7 @@
 		(layer "F.SilkS")
 		(layers "F.SilkS")
 		(locked no)
-		(uuid "4787d0ae-2f82-4800-80df-dae19fbed92c")
+		(uuid "2f6d3f0f-7274-44b9-a443-6946410c3310")
 	)
 	(fp_line
 		(start 0.22 -0.34)
@@ -85,7 +85,7 @@
 		(layer "F.SilkS")
 		(layers "F.SilkS")
 		(locked no)
-		(uuid "8662126d-70b6-4a9b-aae2-dcbed641d8f5")
+		(uuid "3da7fff7-dda4-4470-ab02-8695830f9bdd")
 	)
 	(fp_line
 		(start 0.22 -0.35)
@@ -97,7 +97,7 @@
 		(layer "F.SilkS")
 		(layers "F.SilkS")
 		(locked no)
-		(uuid "5ceb9492-2b27-4eb6-bb25-22add5b73892")
+		(uuid "9ec48792-a516-433e-b5ba-ab99e7e917f5")
 	)
 	(fp_line
 		(start 0.24 -0.75)
@@ -109,7 +109,7 @@
 		(layer "F.SilkS")
 		(layers "F.SilkS")
 		(locked no)
-		(uuid "cca182d9-fdb7-4325-8a21-eba2fa56cb7c")
+		(uuid "35129666-9495-4f09-9845-39fdd814c8e9")
 	)
 	(fp_line
 		(start 0.24 0.75)
@@ -121,7 +121,7 @@
 		(layer "F.SilkS")
 		(layers "F.SilkS")
 		(locked no)
-		(uuid "d4692546-acd8-4401-8eba-49294cf7624b")
+		(uuid "b98c1625-0d81-49df-88a4-e128cb5631ed")
 	)
 	(fp_line
 		(start 1.39 -0.75)
@@ -133,7 +133,7 @@
 		(layer "F.SilkS")
 		(layers "F.SilkS")
 		(locked no)
-		(uuid "ade88195-8771-4fa9-91b9-e78e03c875e2")
+		(uuid "7df87d4f-bce8-4be4-b985-ba6cfb218a78")
 	)
 	(fp_line
 		(start -0.14 0.75)
@@ -145,7 +145,7 @@
 		(layer "F.SilkS")
 		(layers "F.SilkS")
 		(locked no)
-		(uuid "1b6c5fe6-686b-434f-b292-96e374140291")
+		(uuid "3967bd21-e945-4056-95ab-72db780f9749")
 	)
 	(fp_line
 		(start -1.49 0.35)
@@ -157,7 +157,7 @@
 		(layer "F.SilkS")
 		(layers "F.SilkS")
 		(locked no)
-		(uuid "40c32000-c3ce-4218-9c78-b394223e8726")
+		(uuid "e8259e42-9fe3-4b2a-8049-30bad524750a")
 	)
 	(fp_line
 		(start -1.49 0.45)
@@ -169,7 +169,7 @@
 		(layer "F.SilkS")
 		(layers "F.SilkS")
 		(locked no)
-		(uuid "809984be-6b7b-46a5-b325-dd577a7c19fe")
+		(uuid "7a83dd10-88ad-4f08-84fc-58a15cf36032")
 	)
 	(fp_line
 		(start -1.49 -0.35)
@@ -181,7 +181,7 @@
 		(layer "F.SilkS")
 		(layers "F.SilkS")
 		(locked no)
-		(uuid "2c454968-bc07-4b3d-9ada-ab29db719b66")
+		(uuid "aecbd265-92fe-495b-8515-89a100beee30")
 	)
 	(fp_line
 		(start -1.49 -0.35)
@@ -193,7 +193,7 @@
 		(layer "F.SilkS")
 		(layers "F.SilkS")
 		(locked no)
-		(uuid "525579e7-0d67-4492-a8d6-848eaf1a5878")
+		(uuid "0c85daf4-b0f8-47ff-8c02-c2a2d4bfb478")
 	)
 	(fp_line
 		(start -1.49 -0.45)
@@ -205,7 +205,7 @@
 		(layer "F.SilkS")
 		(layers "F.SilkS")
 		(locked no)
-		(uuid "ddb8bcb2-7037-4ede-9611-5630be7a2a86")
+		(uuid "1bc0aa29-44bf-4021-ba85-82eda1fce43d")
 	)
 	(fp_line
 		(start -0.14 -0.75)
@@ -217,7 +217,7 @@
 		(layer "F.SilkS")
 		(layers "F.SilkS")
 		(locked no)
-		(uuid "a20e6a30-b620-4ba7-9dca-aa9d562c0ab3")
+		(uuid "d60f4e3e-3168-4a71-ad2e-2860e07b93b7")
 	)
 	(fp_line
 		(start 0.22 -0)
@@ -229,12 +229,12 @@
 		(layer "F.SilkS")
 		(layers "F.SilkS")
 		(locked no)
-		(uuid "7166c0d8-963a-46d0-acd2-468b149bdd39")
+		(uuid "8ff9b56e-695b-41ae-874f-2a4b13e18aaa")
 	)
 	(fp_text user "%R"
 		(at 0 0)
 		(layer "F.Fab")
-		(uuid "a0f938a7-0a4f-4eab-b4bd-d3c609cdde59")
+		(uuid "ce1525be-de95-401e-9ee9-fc23371c11cb")
 		(effects
 			(font
 				(size 1 1)
@@ -243,16 +243,16 @@
 		)
 	)
 	(pad "2" smd rect
-		(at 0.8 -0 90)
+		(at 0.75 -0 90)
 		(size 0.8 0.8)
 		(layers "F.Cu" "F.Paste" "F.Mask")
-		(uuid "1013863f-e723-40e3-a1fc-8b6b18faf574")
+		(uuid "ee69dba4-a211-4d8c-8a1d-a5de7cfcbc70")
 	)
 	(pad "1" smd rect
-		(at -0.8 0 90)
+		(at -0.75 0 90)
 		(size 0.8 0.8)
 		(layers "F.Cu" "F.Paste" "F.Mask")
-		(uuid "74173bef-1fce-4f80-955c-4fca41c231db")
+		(uuid "8e932d8e-e13f-4184-96d5-0eee5905c242")
 	)
 	(model "${KIPRJMOD}/../../parts/Hubei_KENTO_Elec_KT_0603R/LED0603-RD-YELLOW.STEP"
 		(offset

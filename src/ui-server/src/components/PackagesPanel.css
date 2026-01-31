@@ -1,0 +1,283 @@
+/**
+ * PackagesPanel - Tab-based layout with VS Code native styling
+ */
+
+/* Extends .sidebar-panel from _base.css */
+.packages-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* Tabs */
+.packages-tabs {
+  display: flex;
+  gap: 0;
+  height: 26px;
+  min-height: 26px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.packages-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.packages-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: fit-content;
+  height: 100%;
+  padding: 0 var(--spacing-sm);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--vscode-descriptionForeground, var(--text-muted));
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.packages-tab:hover {
+  color: var(--vscode-foreground, var(--text-secondary));
+  background: var(--vscode-list-hoverBackground, var(--bg-hover));
+}
+
+.packages-tab.active {
+  color: var(--vscode-foreground, var(--text-primary));
+  border-bottom-color: var(--text-primary);
+}
+
+.packages-tab svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.packages-tab.active svg {
+  opacity: 1;
+}
+
+.packages-tab-count {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  background: var(--vscode-badge-background, var(--bg-tertiary));
+  color: var(--vscode-badge-foreground, var(--text-muted));
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  margin-left: 2px;
+}
+
+.packages-tab.active .packages-tab-count {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Tab content */
+.packages-tab-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* Error message */
+.packages-error {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: rgba(243, 139, 168, 0.1);
+  border-bottom: 1px solid var(--ctp-red);
+  color: var(--ctp-red);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  flex-shrink: 0;
+}
+
+/* Results container */
+.packages-results-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
+}
+
+/* Package list */
+.packages-list {
+  padding: var(--spacing-xs);
+}
+
+/* Package row */
+.packages-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.packages-row:hover {
+  background: var(--vscode-list-hoverBackground, var(--bg-hover));
+}
+
+.packages-row.installed {
+  opacity: 0.7;
+}
+
+.packages-row-icon {
+  color: var(--accent-secondary);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.packages-row-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.packages-row-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.packages-row-name {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--vscode-foreground, var(--text-primary));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.packages-installed-badge {
+  color: var(--ctp-green);
+  flex-shrink: 0;
+}
+
+.packages-row-summary {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  color: var(--vscode-descriptionForeground, var(--text-secondary));
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+/* Meta container - publisher and version */
+.packages-row-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.packages-row-publisher {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, var(--text-muted));
+  white-space: nowrap;
+}
+
+.packages-row-version {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, var(--text-muted));
+  white-space: nowrap;
+}
+
+.packages-row-downloads {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Empty states */
+.packages-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xl);
+  color: var(--vscode-descriptionForeground, var(--text-muted));
+  text-align: center;
+  min-height: 200px;
+}
+
+.packages-empty-state svg {
+  opacity: 0.4;
+}
+
+.packages-empty-state span {
+  font-family: var(--font-sans);
+  font-size: var(--vscode-font-size, 13px);
+  max-width: 240px;
+}
+
+.packages-empty-action {
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.packages-empty-action:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+/* Package status badges */
+.packages-status-badge {
+  flex-shrink: 0;
+}
+
+.packages-status-badge.status-fresh {
+  color: var(--ctp-green);
+}
+
+.packages-status-badge.status-modified {
+  color: var(--ctp-yellow);
+}
+
+.packages-status-badge.status-wrong-version {
+  color: var(--ctp-red);
+}
+
+.packages-status-badge.status-not-installed {
+  color: var(--ctp-red);
+}
+
+.packages-status-badge.status-no-meta {
+  color: var(--ctp-peach);
+  /* Untracked: package installed before metadata tracking was added */
+}

@@ -2,101 +2,91 @@
 # SPDX-License-Identifier: MIT
 
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
-from faebryk.libs.units import P
 
 
-class Inductor(Module):
-    unnamed = L.list_field(2, F.Electrical)
+class Inductor(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    unnamed = [F.Electrical.MakeChild() for _ in range(2)]
 
-    inductance = L.p_field(
-        units=P.H,
-        likely_constrained=True,
-        soft_set=L.Range(100 * P.nH, 1 * P.H),
-        tolerance_guess=10 * P.percent,
-    )
-    max_current = L.p_field(
-        units=P.A,
-        likely_constrained=True,
-        soft_set=L.Range(1 * P.mA, 100 * P.A),
-    )
-    dc_resistance = L.p_field(
-        units=P.Ω,
-        soft_set=L.Range(10 * P.mΩ, 100 * P.Ω),
-        tolerance_guess=10 * P.percent,
-    )
-    saturation_current = L.p_field(units=P.A)
-    self_resonant_frequency = L.p_field(
-        units=P.Hz,
-        likely_constrained=True,
-        soft_set=L.Range(100 * P.kHz, 1 * P.GHz),
-        tolerance_guess=10 * P.percent,
+    inductance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Henry)
+    max_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    dc_resistance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    saturation_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    self_resonant_frequency = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Hertz
     )
 
-    @L.rt_field
-    def pickable(self) -> F.is_pickable_by_type:
-        return F.is_pickable_by_type(
-            endpoint=F.is_pickable_by_type.Endpoint.INDUCTORS,
-            params=[
-                self.inductance,
-                self.max_current,
-                self.dc_resistance,
-                self.saturation_current,
-                self.self_resonant_frequency,
-            ],
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+    _is_pickable = fabll.Traits.MakeEdge(
+        F.Pickable.is_pickable_by_type.MakeChild(
+            endpoint=F.Pickable.is_pickable_by_type.Endpoint.INDUCTORS,
+            params={
+                "inductance": inductance,
+                "max_current": max_current,
+                "dc_resistance": dc_resistance,
+                "saturation_current": saturation_current,
+                "self_resonant_frequency": self_resonant_frequency,
+            },
         )
-
-    @L.rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(*self.unnamed)
-
-    attach_to_footprint: F.can_attach_to_footprint_symmetrically
-
-    @L.rt_field
-    def simple_value_representation(self):
-        S = F.has_simple_value_representation_based_on_params_chain.Spec
-        return F.has_simple_value_representation_based_on_params_chain(
-            S(self.inductance, tolerance=True),
-            S(self.self_resonant_frequency),
-            S(self.max_current),
-            S(self.dc_resistance),
-        )
-
-    designator_prefix = L.f_field(F.has_designator_prefix)(
-        F.has_designator_prefix.Prefix.L
     )
 
-    # TODO: remove @https://github.com/atopile/atopile/issues/727
-    @property
-    def p1(self) -> F.Electrical:
-        """Signal to one side of the inductor."""
-        return self.unnamed[0]
+    _can_attatch_to_footprint = fabll.Traits.MakeEdge(
+        F.Footprints.can_attach_to_footprint.MakeChild()
+    )
 
-    @property
-    def p2(self) -> F.Electrical:
-        """Signal to the other side of the inductor."""
-        return self.unnamed[1]
+    for e in unnamed:
+        lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [e])
+        lead.add_dependant(
+            fabll.Traits.MakeEdge(F.Lead.can_attach_to_any_pad.MakeChild(), [lead])
+        )
+        e.add_dependant(lead)
 
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
-        import Inductor
+    _can_bridge = fabll.Traits.MakeEdge(
+        F.can_bridge.MakeChild(["unnamed[0]"], ["unnamed[1]"])
+    )
 
-        inductor = new Inductor
-        inductor.inductance = 10uH +/- 10%
-        inductor.max_current = 2A
-        inductor.dc_resistance = 50mohm +/- 20%
-        inductor.self_resonant_frequency = 100MHz +/- 10%
-        inductor.package = "0805"
+    designator_prefix = fabll.Traits.MakeEdge(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.L)
+    )
 
-        electrical1 ~ inductor.unnamed[0]
-        electrical2 ~ inductor.unnamed[1]
-        # OR
-        electrical1 ~> inductor ~> electrical2
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = fabll.Traits.MakeEdge(
+        F.has_simple_value_representation.MakeChild(
+            S(inductance, tolerance=True, prefix="L"),
+            S(self_resonant_frequency, prefix="SRF"),
+            S(max_current, prefix="Imax"),
+            S(dc_resistance, prefix="DCR"),
+        )
+    )
 
-        # For filtering applications
-        power_input ~> inductor ~> filtered_output
-        """,
-        language=F.has_usage_example.Language.ato,
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
+            import Inductor
+
+            inductor = new Inductor
+            inductor.inductance = 10uH +/- 10%
+            inductor.max_current = 2A
+            inductor.dc_resistance = 50mohm +/- 20%
+            inductor.self_resonant_frequency = 100MHz +/- 10%
+            inductor.package = "0805"
+
+            electrical1 ~ inductor.unnamed[0]
+            electrical2 ~ inductor.unnamed[1]
+            # OR
+            electrical1 ~> inductor ~> electrical2
+
+            # For filtering applications
+            power_input ~> inductor ~> filtered_output
+            """,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

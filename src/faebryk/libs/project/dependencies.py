@@ -10,6 +10,12 @@ from atopile import errors, version
 from faebryk.libs.backend.packages.api import Errors as ApiErrors
 from faebryk.libs.backend.packages.api import PackagesAPIClient
 from faebryk.libs.package.dist import Dist, DistValidationError
+from faebryk.libs.package.meta import (
+    PackageModifiedError,
+    PackageSource,
+    PackageState,
+    get_package_state,
+)
 from faebryk.libs.util import (
     DAG,
     clone_repo,
@@ -26,6 +32,13 @@ logger = logging.getLogger(__name__)
 def _log_add_package(identifier: str, version: str):
     logger.info(
         f"[green]+[/] {identifier}@{version}",
+        extra={"markup": True},
+    )
+
+
+def _log_pin_package(identifier: str, version: str):
+    logger.info(
+        f"📌 {identifier}@{version}",
         extra={"markup": True},
     )
 
@@ -106,9 +119,17 @@ def _select_compatible_registry_release(
 
 
 class BrokenDependencyError(Exception):
-    def __init__(self, identifier: str, error: Exception):
+    def __init__(
+        self,
+        identifier: str,
+        error: Exception,
+        parent: "ProjectDependency | None" = None,
+        release: str | None = None,
+    ):
         self.identifier = identifier
         self.error = error
+        self.parent = parent
+        self.release = release
 
 
 class ProjectDependency:
@@ -244,6 +265,30 @@ class ProjectDependency:
             return
         self.cfg = config.ProjectConfig.from_path(self.target_path)
 
+    def get_package_source(self) -> PackageSource:
+        """Create a PackageSource from this dependency's spec."""
+        if isinstance(self.spec, config.RegistryDependencySpec):
+            return PackageSource(
+                type="registry",
+                url="https://packages.atopileapi.com",
+            )
+        elif isinstance(self.spec, config.GitDependencySpec):
+            return PackageSource(
+                type="git",
+                url=self.spec.repo_url,
+                ref=self.spec.ref,
+                path=str(self.spec.path_within_repo)
+                if self.spec.path_within_repo
+                else None,
+            )
+        elif isinstance(self.spec, config.FileDependencySpec):
+            return PackageSource(
+                type="file",
+                path=str(self.spec.path),
+            )
+        else:
+            return PackageSource(type="unknown")
+
     def __str__(self) -> str:
         return f"{type(self).__name__}(spec={self.spec}, path={self.target_path})"
 
@@ -260,6 +305,9 @@ class ProjectDependencies:
         sync_versions: bool = True,
         install_missing: bool = False,
         clean_unmanaged_dirs: bool = False,
+        pin_versions: bool = False,
+        update_versions: bool = False,
+        force_sync: bool = False,
     ):
         if pcfg is None:
             if self.gcfg is None:
@@ -273,14 +321,31 @@ class ProjectDependencies:
         self.direct_deps = {
             ProjectDependency(spec, pcfg=pcfg) for spec in pcfg.dependencies or []
         }
+
+        if update_versions:
+            # Update manifest specs BEFORE resolving dependencies.
+            # This avoids loading/validating old installed packages that may have
+            # config errors in their ato.yaml (which would fail resolution).
+            if self._update_manifest_versions():
+                if self.gcfg is not None:
+                    self.gcfg.reload()
+                    self.pcfg = self.gcfg.project
+                    pcfg = self.pcfg
+                self.direct_deps = {
+                    ProjectDependency(spec, pcfg=pcfg)
+                    for spec in pcfg.dependencies or []
+                }
+
         self.dag = self.resolve_dependencies()
 
         if sync_versions:
-            self.sync_versions()
+            self.sync_versions(force=force_sync)
         if install_missing:
             self.install_missing_dependencies()
         if clean_unmanaged_dirs:
             self.clean_unmanaged_directories()
+        if pin_versions:
+            self.pin_versions()
 
     @property
     def all_deps(self) -> set[ProjectDependency]:
@@ -301,7 +366,7 @@ class ProjectDependencies:
         for dep in self.not_installed_dependencies:
             assert dep.dist is not None
             _log_add_package(dep.identifier, dep.dist.version)
-            dep.dist.install(dep.target_path)
+            dep.dist.install(dep.target_path, source=dep.get_package_source())
 
     def clean_unmanaged_directories(self):
         module_dir = self.pcfg.paths.modules
@@ -335,10 +400,38 @@ class ProjectDependencies:
 
             robustly_rm_dir(module_dir / unmanaged_dir)
 
+    @staticmethod
+    def _build_dep_chain(
+        identifier: str,
+        parent_map: dict[str, ProjectDependency],
+        release: str | None = None,
+    ) -> str:
+        """Build a dependency chain string like 'root@1.0 → parent@2.0 → child@3.0'."""
+        chain: list[str] = []
+        current_id: str | None = identifier
+        while current_id is not None:
+            parent = parent_map.get(current_id)
+            if parent is not None:
+                spec = parent.spec
+                if isinstance(spec, config.RegistryDependencySpec) and spec.release:
+                    chain.append(f"{parent.identifier}@{spec.release}")
+                else:
+                    chain.append(parent.identifier)
+                current_id = parent.identifier
+            else:
+                current_id = None
+        chain.reverse()
+        leaf = f"{identifier}@{release}" if release else identifier
+        chain.append(leaf)
+        return " → ".join(chain)
+
     def resolve_dependencies(self):
         dag = DAG[ProjectDependency]()
         # TODO: can be replaced with dag.values
         all_deps: set[ProjectDependency] = set()
+
+        # Track parent relationships for error reporting
+        parent_map: dict[str, ProjectDependency] = {}
 
         # Good old BFS for dependency resolution
         deps_to_process: list[tuple[ProjectDependency | None, ProjectDependency]] = [
@@ -350,6 +443,10 @@ class ProjectDependencies:
             to_add: list[tuple[ProjectDependency, ProjectDependency]] = []
             for parent, dep in deps_to_process:
                 try:
+                    # Record parent for chain reporting (first parent wins)
+                    if parent is not None and dep.identifier not in parent_map:
+                        parent_map[dep.identifier] = parent
+
                     dups = all_deps.intersection({dep})
                     assert len(dups) <= 1
                     dup = dups.pop() if dups else None
@@ -373,12 +470,24 @@ class ProjectDependencies:
                     else:
                         dag.add_or_get(dep)
                 except Exception as e:
-                    acc_errors.append(BrokenDependencyError(dep.identifier, e))
+                    release = (
+                        dep.spec.release
+                        if isinstance(dep.spec, config.RegistryDependencySpec)
+                        else None
+                    )
+                    acc_errors.append(
+                        BrokenDependencyError(
+                            dep.identifier, e, parent=parent, release=release
+                        )
+                    )
 
             deps_to_process.clear()
             deps_to_process.extend(to_add)
         if acc_errors:
-            error_list = [f"{e.identifier}: {e.error}" for e in acc_errors]
+            error_list = []
+            for e in acc_errors:
+                chain = self._build_dep_chain(e.identifier, parent_map, e.release)
+                error_list.append(f"{chain}: {e.error}")
             raise errors.UserException(f"Broken dependencies:\n {md_list(error_list)}")
 
         if dag.contains_cycles:
@@ -416,10 +525,27 @@ class ProjectDependencies:
                 and dep.spec.release != existing_dep.spec.release
             ):
                 if existing_dep not in self.direct_deps:
+                    parents = self.dag.all_parents(existing_dep)
+                    direct_parents = parents & self.direct_deps
+                    parent_list = (
+                        md_list([dep.identifier for dep in direct_parents])
+                        if direct_parents
+                        else "unknown"
+                    )
+                    existing_version = (
+                        existing_dep.spec.release
+                        or (existing_dep.dist.version if existing_dep.dist else None)
+                        or (
+                            existing_dep.cfg.package.version
+                            if existing_dep.cfg and existing_dep.cfg.package
+                            else None
+                        )
+                        or "unknown"
+                    )
                     raise errors.UserException(
                         f"Cannot install {identifier} as it is already installed "
                         f"with a different version from a transitive dependency: "
-                        f"{existing_dep.spec.release}"
+                        f"{existing_version}\n\nRequired by:\n{parent_list}"
                     )
                 if not upgrade:
                     raise errors.UserException(
@@ -444,7 +570,7 @@ class ProjectDependencies:
         dep.load_dist()
         assert dep.dist is not None
 
-        dep.dist.install(target_path)
+        dep.dist.install(target_path, source=dep.get_package_source())
         dep.add_to_manifest()
         _log_add_package(dep.identifier, dep.dist.version)
 
@@ -531,16 +657,24 @@ class ProjectDependencies:
         self.reload()
         self.clean_unmanaged_directories()
 
-    def sync_versions(self):
+    def sync_versions(self, force: bool = False):
         """
-        Ensure that installed dependency versions match the manifest
+        Ensure that installed dependency versions match the manifest.
+
+        Args:
+            force: If True, overwrite locally modified packages without error.
+                   If False (default), raise PackageModifiedError for modified packages.
         """
 
-        def _sync_dep(dep: ProjectDependency, installed_version: str) -> bool:
+        def _sync_dep(
+            dep: ProjectDependency,
+            installed_version: str,
+            force_reinstall: bool = False,
+        ) -> bool:
             dep.load_dist()
             assert dep.dist is not None
 
-            if dep.dist.version == installed_version:
+            if dep.dist.version == installed_version and not force_reinstall:
                 return False
 
             target_path = dep.target_path
@@ -549,23 +683,85 @@ class ProjectDependencies:
                 robustly_rm_dir(target_path)
 
             _log_add_package(dep.identifier, dep.dist.version)
-            dep.dist.install(target_path)
+            dep.dist.install(target_path, source=dep.get_package_source())
             return True
 
         dirty = False
         for dep in self.direct_deps:
             match dep.spec.type:
                 case "registry":
-                    if dep.cfg is None or dep.cfg.package is None:
-                        installed_version = "<unknown>"
-                    else:
-                        installed_version = dep.cfg.package.version
-
                     spec = cast(config.RegistryDependencySpec, dep.spec)
                     desired_version = spec.release
 
-                    if installed_version != desired_version:
-                        dirty |= _sync_dep(dep, installed_version)
+                    # Use metadata-based state checking
+                    state, meta, modified_files = get_package_state(
+                        dep.target_path,
+                        expected_version=desired_version,
+                        check_integrity=True,
+                    )
+
+                    match state:
+                        case PackageState.NOT_INSTALLED:
+                            logger.info(
+                                f"Installing missing dependency: "
+                                f"{dep.identifier}@{desired_version}"
+                            )
+                            dirty |= _sync_dep(dep, "<not installed>")
+
+                        case PackageState.INSTALLED_FRESH:
+                            # Package is up to date and unmodified
+                            pass
+
+                        case PackageState.INSTALLED_WRONG_VERSION:
+                            installed_version = meta.version if meta else "<unknown>"
+                            logger.info(
+                                f"Syncing {dep.identifier}: "
+                                f"{installed_version} -> {desired_version}"
+                            )
+                            dirty |= _sync_dep(dep, installed_version)
+
+                        case PackageState.INSTALLED_MODIFIED:
+                            if force:
+                                logger.warning(
+                                    f"Force overwriting modified package: "
+                                    f"{dep.identifier}"
+                                )
+                                installed_version = (
+                                    meta.version if meta else "<unknown>"
+                                )
+                                dirty |= _sync_dep(
+                                    dep, installed_version, force_reinstall=True
+                                )
+                            else:
+                                raise PackageModifiedError(
+                                    dep.identifier,
+                                    modified_files,
+                                    package_path=dep.target_path,
+                                )
+
+                        case PackageState.INSTALLED_NO_META:
+                            # Legacy package without metadata - reinstall to add
+                            # tracking
+                            if dep.cfg is None or dep.cfg.package is None:
+                                installed_version = "<unknown>"
+                            else:
+                                installed_version = dep.cfg.package.version
+
+                            if installed_version != desired_version:
+                                logger.info(
+                                    f"Syncing {dep.identifier}: "
+                                    f"{installed_version} -> {desired_version}"
+                                )
+                                dirty |= _sync_dep(dep, installed_version)
+                            else:
+                                logger.info(
+                                    f"Upgrading {dep.identifier} to tracked format"
+                                )
+                                # Force reinstall to add metadata even though
+                                # version matches
+                                dirty |= _sync_dep(
+                                    dep, installed_version, force_reinstall=True
+                                )
 
                 case "file" | "git":
                     logger.warning(
@@ -581,3 +777,72 @@ class ProjectDependencies:
         if dirty:
             self.reload()
             self.clean_unmanaged_directories()
+
+    def pin_versions(self):
+        """
+        Pin any unpinned registry dependencies to their current installed versions
+        """
+        for dep in self.direct_deps:
+            if (
+                isinstance(dep.spec, config.RegistryDependencySpec)
+                and dep.cfg is not None
+                and dep.cfg.package is not None
+            ):
+                dep.spec.release = dep.cfg.package.version
+                dep.add_to_manifest()
+                _log_pin_package(dep.identifier, dep.cfg.package.version)
+
+    def _clear_all_installed_packages(self) -> None:
+        """
+        Remove all installed package directories from the modules folder.
+
+        Preserves hidden directories (like .cache) but removes all owner/package
+        directories. This ensures a clean slate for dependency resolution.
+        """
+        module_dir = self.pcfg.paths.modules
+        if not module_dir.exists():
+            return
+
+        for owner_dir in module_dir.iterdir():
+            # Skip hidden directories (e.g., .cache)
+            if owner_dir.name.startswith("."):
+                continue
+            if not owner_dir.is_dir():
+                continue
+            # Remove the entire owner directory (contains all packages from that owner)
+            robustly_rm_dir(owner_dir)
+
+    def _update_manifest_versions(self) -> bool:
+        """
+        Update registry dependency specs in the manifest to their latest
+        compatible versions. Returns True if any specs were changed.
+
+        Removes ALL installed package directories (including transitive
+        dependencies) so that resolve_dependencies() downloads fresh copies.
+        This ensures nested dependencies are updated when their parent's
+        required version changes.
+        """
+        # Clear all installed packages first - this ensures transitive
+        # dependencies are also removed and will be re-downloaded with
+        # the correct versions required by their updated parents.
+        self._clear_all_installed_packages()
+
+        api = PackagesAPIClient()
+        dirty = False
+        for dep in self.direct_deps:
+            if not isinstance(dep.spec, config.RegistryDependencySpec):
+                continue
+            # Pass None to get the latest compatible release (fallback behavior)
+            latest_version = _select_compatible_registry_release(
+                api, dep.spec.identifier, None
+            )
+            if dep.spec.release != latest_version:
+                logger.info(
+                    f"Updating {dep.spec.identifier}: "
+                    f"{dep.spec.release or '<unpinned>'} -> {latest_version}"
+                )
+                dep.spec.release = latest_version
+                dep.add_to_manifest()
+                dirty = True
+
+        return dirty

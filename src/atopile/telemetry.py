@@ -18,6 +18,7 @@ import hashlib
 import importlib.metadata
 import logging
 import os
+import threading
 import time
 import uuid
 from collections.abc import Generator
@@ -36,7 +37,7 @@ log = logging.getLogger(__name__)
 
 
 class _MockClient:
-    disabled = False
+    disabled = True
 
     def capture_exception(
         self,
@@ -59,7 +60,7 @@ class _MockClient:
 @once
 def _get_posthog_client() -> Posthog | _MockClient:
     try:
-        return Posthog(
+        ph = Posthog(
             # write-only API key, intended to be made public
             project_api_key="phc_IIl9Bip0fvyIzQFaOAubMYYM2aNZcn26Y784HcTeMVt",
             host="https://telemetry.atopileapi.com",
@@ -68,6 +69,11 @@ def _get_posthog_client() -> Posthog | _MockClient:
             flush_at=1,
             flush_interval=0.1,
         )
+        # PostHog registers atexit.register(self.join) internally, which calls
+        # consumer.join() with no timeout and blocks forever if a consumer thread
+        # is stuck. Remove it so we can handle shutdown ourselves with a timeout.
+        atexit.unregister(ph.join)
+        return ph
     except Exception as e:
         log.debug("Failed to initialize telemetry client: %s", e, exc_info=e)
         return _MockClient()
@@ -80,7 +86,9 @@ def _flush_telemetry_on_exit() -> None:
     """Flush telemetry data when the program exits."""
     try:
         if not client.disabled:
-            client.flush()
+            t = threading.Thread(target=client.shutdown, daemon=True)
+            t.start()
+            t.join(timeout=3)
     except Exception as e:
         log.debug("Failed to flush telemetry data on exit: %s", e, exc_info=e)
 

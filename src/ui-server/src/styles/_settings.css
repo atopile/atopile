@@ -1,0 +1,1068 @@
+/* ============================================
+   _settings.css
+   Settings Dropdown, Settings Groups, Inputs, Toggles,
+   Branch Search, Installation Progress, etc.
+   ============================================ */
+
+/* Settings Dropdown */
+.settings-dropdown-container {
+  position: relative;
+}
+
+.settings-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  min-width: 340px;
+  /* Solid background - never transparent regardless of theme */
+  background-color: var(--vscode-sideBar-background, var(--bg-secondary, #1e1e2e));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  /* Ensure settings dropdown is above disconnected overlay */
+  z-index: calc(var(--z-modal) + 200);
+  padding: var(--spacing-sm);
+  /* Prevent any transparency from parent elements */
+  isolation: isolate;
+}
+
+.settings-group {
+  margin-bottom: var(--spacing-sm);
+}
+
+.settings-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.settings-label-title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.settings-label-desc {
+  font-size: var(--font-size-xxs);
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+.settings-input {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.settings-input:focus {
+  border-color: var(--ato-orange);
+}
+
+.settings-input::placeholder {
+  color: var(--text-muted);
+}
+
+
+.settings-input.small {
+  width: 60px;
+  text-align: center;
+  padding: 4px 8px;
+}
+
+/* Number input wrapper for max concurrent setting */
+/* Inline settings row (label on left, control on right) */
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.settings-inline-control {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+/* Clickable value button (shows current value, click to edit) */
+.settings-value-btn {
+  padding: 4px 10px;
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.settings-value-btn:hover {
+  border-color: var(--ato-orange);
+  color: var(--text-primary);
+}
+
+/* Custom input with reset button */
+.settings-custom-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.settings-reset-btn {
+  padding: 4px 8px;
+  font-size: var(--font-size-xs);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.settings-reset-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text-secondary);
+}
+
+/* Settings Section Title */
+.settings-section-title {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--spacing-sm);
+}
+
+/* Select Dropdown */
+.settings-select-wrapper {
+  position: relative;
+}
+
+.settings-select {
+  width: 100%;
+  padding: 6px 28px 6px 8px;
+  font-size: var(--font-size-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: border-color 0.15s ease;
+}
+
+.settings-select:hover {
+  border-color: var(--border-subtle);
+}
+
+.settings-select:focus {
+  border-color: var(--ato-orange);
+  outline: none;
+}
+
+.settings-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.select-chevron {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* Source Type Selector */
+.settings-source-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.source-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 8px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.source-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.source-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.source-btn.active {
+  background: var(--ato-orange-subtle);
+  border-color: var(--ato-orange);
+  color: var(--ato-orange);
+}
+
+.source-btn.active:hover {
+  background: var(--ato-orange-glow);
+}
+
+/* Settings hint text */
+.settings-hint {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-top: 4px;
+  word-break: break-all;
+  font-family: var(--font-mono);
+}
+
+/* Branch Search */
+.branch-search-container {
+  position: relative;
+}
+
+.branch-search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.branch-search-icon {
+  position: absolute;
+  left: 8px;
+  color: var(--text-muted);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.branch-search-input {
+  width: 100%;
+  padding: 6px 8px 6px 26px;
+  font-size: var(--font-size-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  transition: border-color 0.15s ease;
+}
+
+.branch-search-input:focus {
+  border-color: var(--ato-orange);
+  outline: none;
+}
+
+.branch-search-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.branch-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.branch-current-value {
+  position: absolute;
+  left: 26px;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  pointer-events: none;
+}
+
+.branch-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  /* Solid background - never transparent regardless of theme */
+  background-color: var(--vscode-sideBar-background, var(--bg-secondary, #1e1e2e));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  /* Prevent any transparency from parent elements */
+  isolation: isolate;
+}
+
+.branch-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  font-size: var(--font-size-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.1s ease;
+}
+
+.branch-option:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.branch-option.active {
+  background: var(--ato-orange-subtle);
+  color: var(--ato-orange);
+}
+
+.branch-option svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.branch-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-tag {
+  margin-left: auto;
+  padding: 1px 4px;
+  font-size: var(--font-size-xxs);
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  color: var(--text-muted);
+}
+
+.branch-no-results {
+  padding: 8px;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Path Input with Browse */
+.settings-path-input {
+  display: flex;
+  gap: 4px;
+}
+
+.settings-path-input .settings-input {
+  flex: 1;
+  min-width: 0;
+  text-overflow: clip;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.settings-path-input .settings-input::placeholder {
+  direction: rtl;
+}
+
+.path-browse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.path-browse-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--ato-orange);
+}
+
+/* Installation Progress */
+.install-progress {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+}
+
+.install-progress-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.install-progress-bar {
+  height: 4px;
+  background: var(--bg-secondary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.install-progress-fill {
+  height: 100%;
+  background: var(--ato-orange);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* Spinner Animation */
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Settings Error */
+.settings-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: var(--spacing-sm);
+  background: rgba(243, 139, 168, 0.1);
+  border: 1px solid var(--ctp-red);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  color: var(--ctp-red);
+}
+
+.settings-error svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* Settings Status */
+.settings-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.settings-status svg {
+  flex-shrink: 0;
+}
+
+.settings-status .status-ok {
+  color: var(--success);
+}
+
+/* Status variants */
+.settings-status-success {
+  background: rgba(166, 227, 161, 0.1);
+  border: 1px solid var(--success);
+  color: var(--success);
+}
+
+.settings-status-success svg {
+  color: var(--success);
+}
+
+.settings-status-warning {
+  background: rgba(249, 226, 175, 0.1);
+  border: 1px solid var(--ctp-yellow);
+  color: var(--ctp-yellow);
+}
+
+.settings-status-warning svg {
+  color: var(--ctp-yellow);
+}
+
+.settings-status-error {
+  background: rgba(243, 139, 168, 0.1);
+  border: 1px solid var(--ctp-red);
+  color: var(--ctp-red);
+}
+
+.settings-status-error svg {
+  color: var(--ctp-red);
+}
+
+.settings-status-info {
+  background: rgba(137, 180, 250, 0.1);
+  border: 1px solid var(--ctp-blue);
+  color: var(--ctp-blue);
+}
+
+.settings-status-info svg {
+  color: var(--ctp-blue);
+}
+
+.settings-status-info svg.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Detected Installations */
+.local-path-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detected-installations {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detected-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.detected-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detected-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: var(--font-size-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.detected-item:hover {
+  border-color: var(--ato-orange);
+  background: var(--bg-hover);
+}
+
+.detected-item.active {
+  border-color: var(--ato-orange);
+  background: rgba(249, 80, 21, 0.1);
+  color: var(--ato-orange);
+}
+
+.detected-project {
+  font-weight: 500;
+  font-family: var(--font-mono);
+}
+
+.detected-source {
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.detected-version {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+}
+
+.detected-item.active .detected-version {
+  color: var(--ato-orange);
+  opacity: 0.8;
+}
+
+.settings-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: var(--spacing-sm) 0;
+}
+
+.settings-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) 0;
+  cursor: pointer;
+}
+
+.checkbox-box {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ato-orange);
+  transition: all 0.15s ease;
+  margin-top: 1px;
+}
+
+.checkbox-box:hover {
+  border-color: var(--ato-orange);
+}
+
+.checkbox-label {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.settings-section-header {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--spacing-xs);
+}
+
+.settings-toggle {
+  position: relative;
+  display: inline-block;
+  width: 32px;
+  height: 18px;
+}
+
+.settings-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.settings-toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  transition: 0.2s;
+}
+
+.settings-toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 12px;
+  width: 12px;
+  left: 2px;
+  bottom: 2px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: 0.2s;
+}
+
+.settings-toggle input:checked + .settings-toggle-slider {
+  background: var(--ato-orange);
+  border-color: var(--ato-orange);
+}
+
+.settings-toggle input:checked + .settings-toggle-slider:before {
+  background: white;
+  transform: translateX(14px);
+}
+
+.settings-toggle:hover .settings-toggle-slider {
+  border-color: var(--ato-orange);
+}
+
+/* Theme Toggle Group */
+.theme-toggle-group {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+
+.theme-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 22px;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 1px);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.theme-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.theme-btn.active {
+  background: var(--ato-orange);
+  color: white;
+}
+
+.theme-btn.active:hover {
+  background: var(--ato-orange-light);
+}
+
+/* Path Validation Status */
+.path-validation-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xs);
+  padding: 4px 0;
+  color: var(--text-muted);
+}
+
+.path-validation-status.valid {
+  color: var(--success);
+}
+
+.path-validation-status.invalid {
+  color: var(--error);
+}
+
+.path-validation-status svg {
+  flex-shrink: 0;
+}
+
+.path-validation-status span {
+  word-break: break-word;
+}
+
+/* Input validation states */
+.settings-input.valid {
+  border-color: var(--success);
+}
+
+.settings-input.invalid {
+  border-color: var(--error);
+}
+
+/* Install Status (inline) */
+.install-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xs);
+  color: var(--ato-orange);
+  padding: 6px 0 2px;
+}
+
+.install-status svg {
+  flex-shrink: 0;
+}
+
+.install-status span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.install-cancel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.install-cancel-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  opacity: 1;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  transition: all 0.2s ease;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 2px;
+  bottom: 2px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--ato-orange);
+  border-color: var(--ato-orange);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  background: white;
+  transform: translateX(16px);
+}
+
+.toggle-switch:hover .toggle-slider {
+  border-color: var(--ato-orange);
+}
+
+.toggle-switch input:focus + .toggle-slider {
+  box-shadow: 0 0 0 2px rgba(249, 80, 21, 0.2);
+}
+
+/* Settings Toggle Row (label + toggle inline) */
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+/* Atopile Health Status Indicator */
+.atopile-health-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  transition: all 0.2s ease;
+}
+
+.atopile-health-status svg {
+  flex-shrink: 0;
+}
+
+.health-message {
+  flex: 1;
+  line-height: 1.3;
+}
+
+/* Health status: healthy (green) */
+.atopile-health-status.health-healthy {
+  background: rgba(166, 227, 161, 0.1);
+  border: 1px solid var(--success);
+  color: var(--success);
+}
+
+.atopile-health-status.health-healthy svg {
+  color: var(--success);
+}
+
+/* Health status: unhealthy/error (red) */
+.atopile-health-status.health-unhealthy {
+  background: rgba(243, 139, 168, 0.1);
+  border: 1px solid var(--ctp-red);
+  color: var(--ctp-red);
+}
+
+.atopile-health-status.health-unhealthy svg {
+  color: var(--ctp-red);
+}
+
+/* Health status: installing (blue with spinner) */
+.atopile-health-status.health-installing {
+  background: rgba(137, 180, 250, 0.1);
+  border: 1px solid var(--ctp-blue);
+  color: var(--ctp-blue);
+}
+
+.atopile-health-status.health-installing svg {
+  color: var(--ctp-blue);
+}
+
+/* Health status: unknown/checking (neutral with spinner) */
+.atopile-health-status.health-unknown {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+}
+
+.atopile-health-status.health-unknown svg {
+  color: var(--text-muted);
+}
+
+/* Health status: restart-needed (yellow warning) */
+.atopile-health-status.health-restart-needed {
+  background: rgba(249, 226, 175, 0.15);
+  border: 1px solid var(--ctp-yellow);
+  color: var(--ctp-yellow);
+}
+
+.atopile-health-status.health-restart-needed svg {
+  color: var(--ctp-yellow);
+}
+
+/* Health status: needs-config (yellow/orange warning - toggle on but no path) */
+.atopile-health-status.health-needs-config {
+  background: rgba(249, 226, 175, 0.15);
+  border: 1px solid var(--ctp-peach);
+  color: var(--ctp-peach);
+}
+
+.atopile-health-status.health-needs-config svg {
+  color: var(--ctp-peach);
+}
+
+/* Health status: disconnected (red warning - backend not reachable) */
+.atopile-health-status.health-disconnected {
+  background: rgba(243, 139, 168, 0.15);
+  border: 1px solid var(--ctp-red);
+  color: var(--ctp-red);
+}
+
+.atopile-health-status.health-disconnected svg {
+  color: var(--ctp-red);
+}
+
+/* Health action button (e.g., Restart button) */
+.health-action-btn {
+  padding: 4px 10px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  background: var(--ctp-yellow);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--bg-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.health-action-btn:hover {
+  filter: brightness(1.1);
+}
+
+/* Health message container for multi-line messages */
+.health-message-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.health-message-path {
+  font-size: 10px;
+  opacity: 0.8;
+  word-break: break-all;
+}
+
+/* Validation success with resolved path */
+.validation-success {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.validation-success .resolved-path {
+  font-size: 10px;
+  opacity: 0.8;
+  word-break: break-all;
+}
+
+/* Settings icon error indicator */
+.icon-btn {
+  position: relative;
+}
+
+.settings-error-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  background: var(--ctp-red);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg-primary);
+}
+
+/* Health status logs button */
+.health-logs-btn {
+  padding: 4px 8px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.health-logs-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}

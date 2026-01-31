@@ -1,19 +1,68 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from abc import abstractmethod
-from typing import Any
+from typing import Self
 
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
+import faebryk.library._F as F
+
+BRIDGE_PATH_SUFFIXES = frozenset({"can_bridge", "out_", "in_", ""})
 
 
-class can_bridge(Module.TraitT):
-    def bridge(self, _in, out):
-        _in.connect(self.get_in())
-        out.connect(self.get_out())
+def strip_bridge_path_suffix(path: list[str]) -> list[str]:
+    """
+    Strip can_bridge traversal suffixes from a MakeLink path.
 
-    @abstractmethod
-    def get_in(self) -> Any: ...
+    Bridge connects store paths like ["power_3v3", "can_bridge", "out_", ""]
+    but the actual instance path is just ["power_3v3", "hv"] or similar.
+    """
+    result = list(path)
+    while result and result[-1] in BRIDGE_PATH_SUFFIXES:
+        result.pop()
+    return result
 
-    @abstractmethod
-    def get_out(self) -> Any: ...
+
+class can_bridge(fabll.Node):
+    is_trait = fabll.Traits.MakeEdge((fabll.ImplementsTrait.MakeChild())).put_on_type()
+    is_immutable = fabll.Traits.MakeEdge(fabll.is_immutable.MakeChild()).put_on_type()
+
+    in_ = F.Collections.Pointer.MakeChild()
+    out_ = F.Collections.Pointer.MakeChild()
+
+    def bridge(self, _in: fabll.Node, _out: fabll.Node):
+        _in.get_trait(fabll.is_interface).connect_to(self.get_in())
+        _out.get_trait(fabll.is_interface).connect_to(self.get_out())
+
+    def get_in(self) -> fabll.Node:
+        in_ = self.in_.get().deref()
+        if in_ is None:
+            raise ValueError("in is None")
+        return in_
+
+    def get_out(self) -> fabll.Node:
+        out_ = self.out_.get().deref()
+        if out_ is None:
+            raise ValueError("out is None")
+        return out_
+
+    @classmethod
+    def MakeChild(cls, in_: fabll.RefPath, out_: fabll.RefPath):
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            F.Collections.Pointer.MakeEdge(
+                [out, cls.in_],
+                in_,
+            )
+        )
+        out.add_dependant(
+            F.Collections.Pointer.MakeEdge(
+                [out, cls.out_],
+                out_,
+            )
+        )
+        return out
+
+    def setup(self, in_: fabll.Node, out_: fabll.Node) -> Self:
+        self.in_.get().point(in_)
+        self.out_.get().point(out_)
+        return self

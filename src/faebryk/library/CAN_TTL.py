@@ -1,23 +1,28 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
-from faebryk.libs.units import P
 
 
-class CAN_TTL(ModuleInterface):
-    rx: F.ElectricLogic
-    tx: F.ElectricLogic
+class CAN_TTL(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    rx = F.ElectricLogic.MakeChild()
+    tx = F.ElectricLogic.MakeChild()
 
-    speed = L.p_field(units=P.bps)
+    baudrate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitsPerSecond)
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    def __preinit__(self) -> None:
-        self.speed.add(F.is_bus_parameter())
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
+    )
+
+    bus_parameters = [
+        fabll.Traits.MakeEdge(F.is_alias_bus_parameter.MakeChild(), owner=[baudrate]),
+    ]

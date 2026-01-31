@@ -1,0 +1,370 @@
+/* ============================================
+   _dropdown.css
+   Install Dropdown, Project Dropdown, Dropdown Items
+   (Build Selector styles are in _utilities.css)
+   ============================================ */
+
+/* Install button styles */
+.install-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 62px;
+  padding: 3px 8px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  /* Use VS Code native dropdown styling */
+  background: var(--vscode-dropdown-background, var(--bg-tertiary));
+  color: var(--vscode-dropdown-foreground, var(--text-secondary));
+  border: 1px solid var(--vscode-dropdown-border, var(--border-subtle));
+  border-right: none;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.install-btn:hover:not(.installed) {
+  background: var(--vscode-dropdown-background, var(--bg-hover));
+  border-color: var(--vscode-focusBorder, var(--border-default));
+  color: var(--vscode-dropdown-foreground, var(--text-primary));
+}
+
+.install-btn.installed {
+  background: var(--vscode-dropdown-background, var(--bg-tertiary));
+  color: var(--success);
+  cursor: default;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.install-btn.update-available {
+  background: var(--vscode-dropdown-background, var(--bg-tertiary));
+  color: var(--ato-orange);
+  cursor: pointer;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.install-btn.update-available:hover {
+  background: var(--vscode-dropdown-background, var(--bg-hover));
+}
+
+/* Wide install button variant - shows "Install to <project>" */
+.install-btn.install-btn-wide {
+  width: auto;
+  min-width: 100px;
+  max-width: 180px;
+  padding: 4px 10px;
+  font-size: var(--font-size-sm);
+}
+
+.install-btn.install-btn-wide span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* All install buttons should have consistent border-radius when dropdown exists */
+.install-btn {
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.install-btn.installed {
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  cursor: pointer;
+}
+
+.install-dropdown-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 5px;
+  /* Use VS Code native dropdown styling */
+  background: var(--vscode-dropdown-background, var(--bg-tertiary));
+  color: var(--vscode-dropdown-foreground, var(--text-secondary));
+  border: 1px solid var(--vscode-dropdown-border, var(--border-subtle));
+  border-left: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.install-dropdown-toggle:hover {
+  background: var(--vscode-dropdown-background, var(--bg-hover));
+  border-color: var(--vscode-focusBorder, var(--border-default));
+}
+
+.install-btn:disabled,
+.install-dropdown-toggle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Match toggle color to button state */
+.install-btn.update-available + .install-dropdown-toggle {
+  background: var(--vscode-dropdown-background, var(--bg-tertiary));
+  color: var(--ato-orange);
+}
+
+.install-btn.update-available + .install-dropdown-toggle:hover {
+  background: var(--vscode-dropdown-background, var(--bg-hover));
+}
+
+.install-btn.installed + .install-dropdown-toggle {
+  background: var(--vscode-dropdown-background, var(--bg-tertiary));
+  color: var(--success);
+}
+
+.install-btn.installed + .install-dropdown-toggle:hover {
+  background: var(--vscode-dropdown-background, var(--bg-hover));
+}
+
+.install-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 3px;
+  /* Use VS Code native dropdown styling */
+  background: var(--vscode-dropdown-listBackground, var(--vscode-dropdown-background, var(--bg-secondary)));
+  border: 1px solid var(--vscode-dropdown-border, var(--border-subtle));
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 12px var(--vscode-widget-shadow, rgba(0,0,0,0.3));
+  min-width: 180px;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.install-dropdown-menu.scrollable .dropdown-items {
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.dropdown-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px var(--spacing-sm);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.dropdown-search svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.dropdown-search input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.dropdown-search input::placeholder {
+  color: var(--text-muted);
+}
+
+.dropdown-items {
+  /* Container for scrollable items */
+}
+
+/* Project dropdown specific styles - sensible height that shrinks to content */
+.project-dropdown-menu .dropdown-items {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.project-dropdown .project-targets {
+  margin-left: var(--spacing-md);
+}
+
+.project-dropdown .dropdown-item.target-item {
+  padding-left: var(--spacing-md);
+  font-size: var(--font-size-base);
+  opacity: 0.9;
+}
+
+.project-dropdown .project-target-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+  color: var(--text-muted);
+}
+
+.project-dropdown .project-target-toggle-spacer {
+  display: inline-block;
+  width: 14px;
+  margin-right: 4px;
+}
+
+/* Install dropdown container - used for button + toggle pairs */
+.install-dropdown {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* Ensure project dropdown doesn't get clipped by parent panels */
+.project-dropdown {
+  position: relative;
+  z-index: 100;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+/* Ensure install-btn text in project dropdown doesn't wrap */
+.project-dropdown .install-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.project-dropdown .install-btn span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+.project-dropdown:has(.install-dropdown-menu) {
+  z-index: 1001;
+}
+
+.dropdown-empty {
+  padding: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  text-align: center;
+  font-style: italic;
+}
+
+.dropdown-header {
+  padding: 4px var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-base);
+  color: var(--vscode-dropdown-foreground, var(--text-primary));
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s ease;
+}
+
+.dropdown-item:hover {
+  background: var(--vscode-list-hoverBackground, var(--bg-hover));
+}
+
+.dropdown-item.active {
+  background: var(--vscode-list-activeSelectionBackground, var(--bg-active));
+  color: var(--vscode-list-activeSelectionForeground, var(--text-primary));
+}
+
+.dropdown-item.selected {
+  background: var(--vscode-list-activeSelectionBackground, var(--bg-active));
+  color: var(--vscode-list-activeSelectionForeground, var(--text-primary));
+}
+
+.dropdown-item .selected-check {
+  margin-left: auto;
+  color: var(--success);
+}
+
+.dropdown-item .status-badge {
+  font-size: var(--font-size-xs);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  margin-left: auto;
+  font-family: var(--font-mono);
+}
+
+.dropdown-item .status-badge.installed {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.dropdown-item .status-badge.outdated {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.dropdown-item .status-badge.muted {
+  background: rgba(108, 112, 134, 0.2);
+  color: var(--text-muted);
+}
+
+.dropdown-item .selected-check {
+  flex-shrink: 0;
+}
+
+/* When there's a status badge, move selected check after it */
+.dropdown-item .status-badge + .selected-check {
+  margin-left: var(--spacing-xs);
+}
+
+.active-badge,
+.version-badge {
+  font-size: var(--font-size-xs);
+  padding: 1px 5px;
+  background: var(--accent);
+}
+
+.version-badge {
+  background: var(--success);
+  color: var(--text-on-status);
+  border-radius: var(--radius-sm);
+  margin-left: auto;
+}
+
+.detail-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.detail-btn:hover {
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+
+/* Empty state improvements */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-lg);
+  color: var(--text-muted);
+  font-size: var(--font-size-md);
+  gap: var(--spacing-xs);
+}
+
+.empty-hint {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  opacity: 0.7;
+}

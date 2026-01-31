@@ -10,9 +10,6 @@ if __name__ in ("__main__", "atopile.cli.cli"):
         sys.exit(0)
 
 
-# excepthook must be installed before typer is imported
-import atopile.cli.excepthook  # noqa: F401, I001
-
 import json
 import logging
 from enum import Enum
@@ -27,26 +24,33 @@ from atopile.cli import (
     build,
     configure,
     create,
+    dev,
     inspect_,
     install,
     kicad_ipc,
-    package,
-    view,
     lsp,
     mcp,
+    package,
+    serve,
+    view,
 )
-from atopile.cli.logging_ import handler, logger
-from atopile.errors import UserException, UserNoProjectException
-from atopile.version import check_for_update
-from faebryk.libs.exceptions import (
+from atopile.errors import (
+    UserException,
+    UserNoProjectException,
     UserResourceException,
     iter_leaf_exceptions,
+    log_discord_banner,
 )
-from faebryk.libs.logging import FLOG_FMT
+from atopile.logging import handler, logger
+from faebryk.libs.util import ConfigFlag
+
+SAFE_MODE_OPTION = ConfigFlag(
+    "SAFE_MODE", False, "Handle exceptions gracefully (coredump)"
+)
 
 app = typer.Typer(
     no_args_is_help=True,
-    pretty_exceptions_enable=bool(FLOG_FMT),  # required to override the excepthook
+    pretty_exceptions_enable=False,  # Use custom excepthook instead
     rich_markup_mode="rich",
 )
 
@@ -115,7 +119,54 @@ def cli(
         bool | None,
         typer.Option("--semver", callback=semver_callback, is_eager=True),
     ] = None,
+    safe_mode: Annotated[
+        bool,
+        typer.Option(
+            "--safe", help="Handle exceptions gracefully (coredump)", hidden=True
+        ),
+    ] = SAFE_MODE_OPTION.get(),
 ):
+    if safe_mode:
+        import os
+        import resource
+        import signal
+        import subprocess
+        import time
+
+        def enable_core_dumps():
+            """Enable core dumps in the child process."""
+            try:
+                resource.setrlimit(
+                    resource.RLIMIT_CORE,
+                    (resource.RLIM_INFINITY, resource.RLIM_INFINITY),
+                )
+            except (ValueError, OSError):
+                pass  # Best effort - may fail if system limit is lower
+
+        args = [arg for arg in sys.argv if arg != "--safe"]
+        env = os.environ.copy()
+        env[SAFE_MODE_OPTION.name] = "N"  # Prevent safe wrapper recursion
+        env["ATO_SAFE"] = "1"  # Signal to workers to enable faulthandler
+
+        start_time = time.time()
+        result = subprocess.Popen(args, env=env, preexec_fn=enable_core_dumps)
+        pid = result.pid
+        returncode = result.wait()
+        if returncode not in (0, 1):
+            from faebryk.libs.util import run_gdb
+
+            print(f"Process exited with code {returncode}, PID was {pid}")
+            # Negative return code means killed by signal
+            if returncode < 0:
+                sig = -returncode
+                try:
+                    sig_name = signal.Signals(sig).name
+                except ValueError:
+                    sig_name = f"signal {sig}"
+                print(f"Killed by {sig_name}")
+            run_gdb(created_after=start_time)
+        sys.exit(returncode)
+
     if debug:
         import debugpy  # pylint: disable=import-outside-toplevel
 
@@ -142,8 +193,15 @@ def cli(
 
         config.interactive = not non_interactive
 
-    if ctx.invoked_subcommand:
-        check_for_update()
+    # TODO use file to rate-limit check_for_update
+    # if ctx.invoked_subcommand:
+    #    check_for_update()
+
+    # Set up database logging for all CLI commands (not just builds)
+    # This ensures logs from validate, inspect, etc. are also stored in the database
+    from atopile.logging import BuildLogger
+
+    BuildLogger.setup_logging(enable_database=True, stage="cli")
 
     configure.setup()
 
@@ -151,7 +209,6 @@ def cli(
 app.command()(build.build)
 app.add_typer(create.create_app, name="create")
 app.command(deprecated=True, hidden=True)(install.install)
-app.command(deprecated=True, hidden=True)(configure.configure)
 app.command()(inspect_.inspect)
 app.command()(view.view)
 app.add_typer(package.package_app, name="package", hidden=True)
@@ -162,15 +219,8 @@ app.command(rich_help_panel="Shortcuts")(install.remove)
 app.add_typer(lsp.lsp_app, name="lsp", hidden=True)
 app.add_typer(mcp.mcp_app, name="mcp", hidden=True)
 app.add_typer(kicad_ipc.kicad_ipc_app, name="kicad-ipc", hidden=True)
-
-
-@app.command(hidden=True)
-def internal():
-    import faebryk.core.zig.experiment as pyzig
-
-    print(__file__)
-
-    print(pyzig.get_default_top())
+app.add_typer(dev.dev_app, name="dev", hidden=True)
+app.add_typer(serve.serve_app, name="serve")
 
 
 @app.command(hidden=True)
@@ -192,18 +242,17 @@ class ConfigFormat(str, Enum):
 
 @app.command(hidden=True)
 def dump_config(format: ConfigFormat = ConfigFormat.python):
-    from rich import print
-
     from atopile.config import config
+    from atopile.logging_utils import console
 
-    print(config.project.model_dump(mode=format))
+    console.print(config.project.model_dump(mode=format))
 
 
 @app.command(help="Check file for syntax errors and internal consistency")
 def validate(
     path: Annotated[Path, typer.Argument(exists=True, file_okay=True, dir_okay=False)],
 ):
-    from atopile import front_end
+    from atopile.compiler import front_end
     from atopile.config import config
 
     path = path.resolve().relative_to(Path.cwd())
@@ -229,7 +278,33 @@ def validate(
 
 
 def main():
-    app()
+    """
+    CLI entry point with exception handling.
+
+    Exception Contract:
+        - UserException (and subclasses): Build failures - log error, exit(1)
+        - Other exceptions: Unexpected errors - log error, exit(1)
+        - KeyboardInterrupt: User cancelled - exit(130)
+
+    When run as a subprocess by the server (via build_queue.py), the exit
+    code determines the build status:
+        - exit(0): SUCCESS
+        - exit(1): FAILED
+        - exit(130): CANCELLED (SIGINT)
+    """
+    from atopile import telemetry
+
+    try:
+        app()
+    except KeyboardInterrupt:
+        logger.info("Interrupted")
+        raise SystemExit(130)  # Standard exit code for SIGINT
+    except Exception as exc:
+        for e in iter_leaf_exceptions(exc):
+            logger.error(e, exc_info=e)
+        telemetry.capture_exception(exc)
+        log_discord_banner()
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

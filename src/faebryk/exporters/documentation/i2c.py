@@ -4,10 +4,8 @@
 import logging
 from pathlib import Path
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.graph import GraphFunctions
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.solver.solver import Solver
 from faebryk.libs.util import DAG, groupby, partition_as_list
 
@@ -15,25 +13,29 @@ logger = logging.getLogger(__name__)
 
 
 def export_i2c_tree(
-    app: Module, solver: Solver, path: Path = Path("build/documentation/i2c_tree.md")
+    app: fabll.Node,
+    solver: Solver,
+    path: Path = Path("build/documentation/i2c_tree.md"),
 ):
     """
     Export the I2C tree of the given application to a file.
     """
-
+    return
     # Filter buses
-    mifs = GraphFunctions(app.get_graph()).nodes_of_type(F.I2C)
-    buses = ModuleInterface._group_into_buses(mifs)
+    mifs = app.bind_typegraph_from_self().nodes_of_type(F.I2C)
+    buses = fabll.is_interface.group_into_buses(mifs)
+    # Filter to only include buses with >1 interface that cross pad boundaries
+    # (i.e., connect different physical components)
     buses = {
-        k: v for k, v in buses.items() if len(v) > 1 and k.bus_crosses_pad_boundary()
+        k: v
+        for k, v in buses.items()
+        if len(v) > 1 and k.get_trait(fabll.is_interface).bus_crosses_pad_boundary()
     }
     buses_with_address = [
         {
             mif: lit
             for mif in bus
-            if (
-                lit := solver.inspect_get_known_supersets(mif.address)
-            ).is_single_element()
+            if (lit := solver.extract_superset(mif.address)).op_setic_is_singleton()
         }
         for bus in buses.values()
     ]
@@ -63,7 +65,7 @@ def export_i2c_tree(
         for mif in mifs:
             node_name = f"node_{i}"
             node_names[mif] = node_name
-            address = solver.inspect_get_known_supersets(mif.address)
+            address = solver.extract_superset(mif.address)
 
             label = f"{mif.get_full_name()}"
             is_server = address == 0

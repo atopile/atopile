@@ -90,6 +90,12 @@ class _Schemas:
 
     @dataclass_json
     @dataclass(frozen=True)
+    class ImportStatementInfo:
+        build_name: str
+        import_statement: str
+
+    @dataclass_json
+    @dataclass(frozen=True)
     class PackageReleaseInfo:
         created_at: datetime = field(
             metadata=dataclasses_json_config(decoder=datetime.fromisoformat)
@@ -120,6 +126,7 @@ class _Schemas:
         layouts: "_Schemas.LayoutsInfo | None"
         yanked_at: str | None
         yanked_reason: str | None
+        import_statements: list["_Schemas.ImportStatementInfo"] | None
 
     @dataclass_json
     @dataclass(frozen=True)
@@ -159,6 +166,7 @@ class _Schemas:
         url: str
         repository: str
         homepage: str | None
+        downloads: int | None = None
 
     @dataclass_json
     @dataclass(frozen=True)
@@ -273,6 +281,15 @@ class _Endpoints:
         @dataclass(frozen=True)
         class Request:
             query: str
+
+        Response = _Schemas.QueryResult
+
+    class AllPackages:
+        TYPE = _Type.GET
+
+        @staticmethod
+        def url() -> str:
+            return "/v1/packages/all"
 
         Response = _Schemas.QueryResult
 
@@ -614,6 +631,30 @@ class PackagesAPIClient:
             raise
         return response
 
+    def get_release_dist(
+        self, identifier: str, output_path: Path, version: str | None = None
+    ) -> Dist:
+        release = self.get_package(identifier, version)
+        url = release.info.download_url
+        filepath = output_path / release.info.filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        # download the file to output_path
+        with http_client(
+            self._base_headers,
+            verify=not config.project.dangerously_skip_ssl_verification,
+        ) as client:
+            response = client.get(url)
+            response.raise_for_status()
+            with filepath.open("wb") as f:
+                for chunk in response.iter_bytes(chunk_size=8192):
+                    f.write(chunk)
+
+        return Dist(filepath)
+
+    def query_packages(self, query: str) -> _Endpoints.Packages.Response:
+        r = self._get(_Endpoints.Packages.url(_Endpoints.Packages.Request(query)))
+        return _Endpoints.Packages.Response.from_dict(r.json())  # type: ignore
+
     def get_package_releases(
         self, identifier: str
     ) -> list[_Schemas.PackageReleaseInfo]:
@@ -639,26 +680,11 @@ class PackagesAPIClient:
         assert isinstance(response, _Endpoints.PackageReleases.Response)
         return response.releases
 
-    def get_release_dist(
-        self, identifier: str, output_path: Path, version: str | None = None
-    ) -> Dist:
-        release = self.get_package(identifier, version)
-        url = release.info.download_url
-        filepath = output_path / release.info.filename
-        filepath.parent.mkdir(parents=True, exist_ok=True)
-        # download the file to output_path
-        with http_client(
-            self._base_headers,
-            verify=not config.project.dangerously_skip_ssl_verification,
-        ) as client:
-            response = client.get(url)
-            response.raise_for_status()
-            with filepath.open("wb") as f:
-                for chunk in response.iter_bytes(chunk_size=8192):
-                    f.write(chunk)
+    def get_all_packages(self) -> _Endpoints.AllPackages.Response:
+        """
+        Get all packages from the registry.
 
-        return Dist(filepath)
-
-    def query_packages(self, query: str) -> _Endpoints.Packages.Response:
-        r = self._get(_Endpoints.Packages.url(_Endpoints.Packages.Request(query)))
-        return _Endpoints.Packages.Response.from_dict(r.json())  # type: ignore
+        Endpoint: /v1/packages/all
+        """
+        r = self._get(_Endpoints.AllPackages.url())
+        return _Endpoints.AllPackages.Response.from_dict(r.json())  # type: ignore

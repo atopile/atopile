@@ -1,35 +1,28 @@
-from enum import IntEnum, auto
+# This file is part of the faebryk project
+# SPDX-License-Identifier: MIT
 
-from faebryk.core.trait import TraitImpl
-from faebryk.libs.library import L
+from typing import Self
+
+import faebryk.core.node as fabll
+import faebryk.library._F as F
 
 
-class has_net_name(L.Trait.decless()):
-    """Provide a net name suggestion or expectation"""
+class has_net_name(fabll.Node):
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    # TODO:
-    # Currently this is just a data-class, which is EXPECRTED to be used by
-    # src/faebryk/exporters/netlist/graph.py to compute the net names
-    # The intelligence of graph.py should be split and moved here
+    name_ = fabll._ChildField(F.Parameters.StringParameter)
 
-    class Level(IntEnum):
-        SUGGESTED = auto()
-        EXPECTED = auto()
-
-    def __init__(self, name: str, level: Level = Level.SUGGESTED):
-        super().__init__()
-        self.name = name
-        self.level = level
+    def get_name(self) -> str:
+        return self.name_.get().extract_singleton()
 
     @classmethod
-    def suggested(cls, name: str) -> "has_net_name":
-        return cls(name, cls.Level.SUGGESTED)
+    def MakeChild(cls, name: str) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.name_], name)
+        )
+        return out
 
-    @classmethod
-    def expected(cls, name: str) -> "has_net_name":
-        return cls(name, cls.Level.EXPECTED)
-
-    def handle_duplicate(self, old: TraitImpl, node: L.Node) -> bool:
-        assert isinstance(old, has_net_name)  # Asserting trait, not impl
-        # FIXME: gracefully handle hitting this multiple times
-        return super().handle_duplicate(old, node)
+    def setup(self, name: str) -> Self:
+        self.name_.get().set_singleton(value=name)
+        return self

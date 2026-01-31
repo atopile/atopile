@@ -4,7 +4,7 @@
 
 from dataclasses import dataclass
 from functools import wraps
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
     from faebryk.core.solver.mutator import Mutator
@@ -18,8 +18,9 @@ class SolverAlgorithm:
     func: SolverAlgorithmFunc
     single: bool
     terminal: bool
+    force_copy: bool
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args: Any, **kwargs: Any):
         return self.func(*args, **kwargs)
 
     def __str__(self) -> str:
@@ -30,6 +31,7 @@ def algorithm(
     name: str,
     single: bool = False,
     terminal: bool = True,
+    force_copy: bool = False,
 ) -> Callable[[SolverAlgorithmFunc], SolverAlgorithm]:
     """
     Decorator to wrap an algorithm function
@@ -45,7 +47,7 @@ def algorithm(
 
     def decorator(func: SolverAlgorithmFunc) -> SolverAlgorithm:
         @wraps(func)
-        def wrapped(*args, **kwargs):
+        def wrapped(*args: Any, **kwargs: Any):
             return func(*args, **kwargs)
 
         out = SolverAlgorithm(
@@ -53,6 +55,7 @@ def algorithm(
             func=wrapped,
             single=single,
             terminal=terminal,
+            force_copy=force_copy,
         )
         algorithm._registered_algorithms.append(out)
 

@@ -2,74 +2,93 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from enum import Enum, auto
+from enum import StrEnum
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
-from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
 
-class Fuse(Module):
-    class FuseType(Enum):
-        NON_RESETTABLE = auto()
-        RESETTABLE = auto()
+class Fuse(fabll.Node):
+    # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
+    class FuseType(StrEnum):
+        NON_RESETTABLE = "NON_RESETTABLE"
+        RESETTABLE = "RESETTABLE"
 
-    class ResponseType(Enum):
-        SLOW = auto()
-        FAST = auto()
+    class ResponseType(StrEnum):
+        SLOW = "SLOW"
+        FAST = "FAST"
 
-    unnamed = L.list_field(2, F.Electrical)
-    fuse_type = L.p_field(
-        domain=L.Domains.ENUM(FuseType),
-    )
-    response_type = L.p_field(
-        domain=L.Domains.ENUM(ResponseType),
-    )
-    trip_current = L.p_field(
-        units=P.A,
-        likely_constrained=True,
-        domain=L.Domains.Numbers.REAL(),
-        soft_set=L.Range(100 * P.mA, 100 * P.A),
-    )
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    unnamed = [F.Electrical.MakeChild() for _ in range(2)]
 
-    attach_to_footprint: F.can_attach_to_footprint_symmetrically
+    fuse_type = F.Parameters.EnumParameter.MakeChild(enum_t=FuseType)
+    response_type = F.Parameters.EnumParameter.MakeChild(enum_t=ResponseType)
+    trip_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
 
-    @L.rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(self.unnamed[0], self.unnamed[1])
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-    designator_prefix = L.f_field(F.has_designator_prefix)(
-        F.has_designator_prefix.Prefix.F
+    _can_attatch_to_footprint = fabll.Traits.MakeEdge(
+        F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
-        import Fuse, ElectricPower
+    for e in unnamed:
+        lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [e])
+        lead.add_dependant(
+            fabll.Traits.MakeEdge(F.Lead.can_attach_to_any_pad.MakeChild(), [lead])
+        )
+        e.add_dependant(lead)
 
-        fuse = new Fuse
-        fuse.trip_current = 2A +/- 10%
-        fuse.fuse_type = Fuse.FuseType.NON_RESETTABLE
-        fuse.response_type = Fuse.ResponseType.FAST
-        fuse.package = "1206"
+    can_bridge = fabll.Traits.MakeEdge(
+        F.can_bridge.MakeChild(["unnamed[0]"], ["unnamed[1]"])
+    )
 
-        # Connect fuse in series with power supply
-        power_input = new ElectricPower
-        protected_power = new ElectricPower
+    designator_prefix = fabll.Traits.MakeEdge(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.F)
+    )
 
-        # Fuse protects the circuit from overcurrent
-        power_input.hv ~> fuse ~> protected_power.hv
-        power_input.lv ~ protected_power.lv
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = fabll.Traits.MakeEdge(
+        F.has_simple_value_representation.MakeChild(
+            S(trip_current, prefix="It"),
+        )
+    )
 
-        # For resettable fuse (PTC)
-        ptc_fuse = new Fuse
-        ptc_fuse.trip_current = 500mA +/- 20%
-        ptc_fuse.fuse_type = Fuse.FuseType.RESETTABLE
-        ptc_fuse.response_type = Fuse.ResponseType.SLOW
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
+            import Fuse, ElectricPower
 
-        # Common applications: USB power protection, battery protection
-        """,
-        language=F.has_usage_example.Language.ato,
+            fuse = new Fuse
+            fuse.trip_current = 2A +/- 10%
+            fuse.fuse_type = Fuse.FuseType.NON_RESETTABLE
+            fuse.response_type = Fuse.ResponseType.FAST
+            fuse.package = "1206"
+
+            # Connect fuse in series with power supply
+            power_input = new ElectricPower
+            protected_power = new ElectricPower
+
+            # Fuse protects the circuit from overcurrent
+            power_input.hv ~> fuse ~> protected_power.hv
+            power_input.lv ~ protected_power.lv
+
+            # For resettable fuse (PTC)
+            ptc_fuse = new Fuse
+            ptc_fuse.trip_current = 500mA +/- 20%
+            ptc_fuse.fuse_type = Fuse.FuseType.RESETTABLE
+            ptc_fuse.response_type = Fuse.ResponseType.SLOW
+
+            # Common applications: USB power protection, battery protection
+            """,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

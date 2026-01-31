@@ -1,31 +1,41 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.module import Module
-from faebryk.core.parameter import EnumDomain
-from faebryk.core.solver.solver import Solver
-from faebryk.libs.library import L
-from faebryk.libs.sets.sets import EnumSet
+import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.libs.smd import SMDSize
-from faebryk.libs.util import cast_assert
 
 
-class has_package_requirements(Module.TraitT.decless()):
+class has_package_requirements(fabll.Node):
     """
     Collection of constraints for package of module.
     """
 
-    size = L.p_field(domain=EnumDomain(SMDSize))
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_immutable = fabll.Traits.MakeEdge(fabll.is_immutable.MakeChild()).put_on_type()
+    size = F.Parameters.EnumParameter.MakeChild(enum_t=SMDSize)
 
-    def __init__(self, *, size: SMDSize | EnumSet[SMDSize] | None = None) -> None:
-        super().__init__()
+    def get_sizes(self) -> list[SMDSize]:
+        return self.size.get().force_extract_superset().get_values_typed(SMDSize)
 
-        self._size = size
+    @classmethod
+    def MakeChild(cls, size: SMDSize | str):  # type: ignore[invalid-method-override]
+        # Accept string from ato template syntax and convert to enum
+        if isinstance(size, str):
+            try:
+                size = SMDSize[size]
+            except KeyError:
+                from atopile.compiler import DslException
 
-    def __preinit__(self):
-        if self._size is not None:
-            self.size.constrain_subset(EnumSet(self._size))
-
-    def get_sizes(self, solver: Solver) -> EnumSet[SMDSize]:
-        ss = self.size.get_last_known_deduced_superset(solver)
-        return cast_assert(EnumSet, ss)
+                raise DslException(
+                    f"Invalid value for template arguments 'size' "
+                    f"for has_package_requirements: '{size}'"
+                )
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            F.Literals.AbstractEnums.MakeChild_SetSuperset(
+                [out, cls.size],
+                size,
+            )
+        )
+        return out

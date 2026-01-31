@@ -524,6 +524,14 @@ pub const FpText = struct {
 // Pad structures
 pub const Drill = f64;
 
+pub const PadPrimitives = struct {
+    gr_polys: list(Polygon) = .{},
+
+    pub const fields_meta = .{
+        .gr_polys = structure.SexpField{ .multidict = true, .sexp_name = "gr_poly" },
+    };
+};
+
 // PadDrill can be either a simple number (drill 1.2) or a structured drill with shape/size/offset
 pub const PadDrill = struct {
     shape: ?E_pad_drill_shape = null,
@@ -576,11 +584,13 @@ pub const Pad = struct {
     options: ?PadOptions = null,
     tenting: ?PadTenting = null,
     uuid: ?str = null,
+    primitives: ?PadPrimitives = null,
 
     pub const fields_meta = .{
         .name = structure.SexpField{ .positional = true },
         .type = structure.SexpField{ .positional = true },
         .shape = structure.SexpField{ .positional = true },
+        .primitives = structure.SexpField{ .sexp_name = "primitives" },
     };
 };
 

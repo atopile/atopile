@@ -13,6 +13,10 @@ class Artifacts:
         self.path = path
 
     @staticmethod
+    def builds_dir(cfg: atopile.config.ProjectConfig) -> Path:
+        return cfg.paths.build / "builds"
+
+    @staticmethod
     def build_artifacts(
         cfg: atopile.config.ProjectConfig, output_path: Path
     ) -> "Artifacts":
@@ -22,7 +26,7 @@ class Artifacts:
 
         # TODO: build targets should register their artifacts for inclusion here
 
-        builds_dir = cfg.paths.build / "builds"
+        builds_dir = Artifacts.builds_dir(cfg)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)

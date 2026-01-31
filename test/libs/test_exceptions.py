@@ -4,8 +4,6 @@ import pytest
 
 from atopile.errors import (
     UserException,
-)
-from faebryk.libs.exceptions import (
     accumulate,
     downgrade,
     iter_leaf_exceptions,

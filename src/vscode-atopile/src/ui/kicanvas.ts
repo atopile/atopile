@@ -28,8 +28,56 @@ class KiCanvasWebview extends BaseWebview {
             title: 'KiCanvas Preview',
             scripts: [{ type: 'module', src: scriptUri.toString() }],
             styles: `
+                :root {
+                    --ato-orange: #f95015;
+                    --ato-orange-light: #ff6b35;
+                    /* Board canvas colors - read by patched kicanvas.js */
+                    --kicanvas-board-bg: var(--vscode-editor-background);
+                    --kicanvas-board-grid: var(--vscode-editor-background);
+                }
                 #container {height: 100%; width: 100%;}
-                kicanvas-embed {height: 100%; width: 100%; display: block;}
+                kicanvas-embed {
+                    height: 100%; width: 100%; display: block;
+                    /* UI chrome - remove gradients, use VS Code theme */
+                    --bg: var(--vscode-editor-background);
+                    --fg: var(--vscode-foreground);
+                    --gradient-purple-green-light: var(--vscode-sideBarSectionHeader-background);
+                    --gradient-purple-blue-medium: var(--vscode-input-background);
+                    --gradient-purple-blue-dark: var(--vscode-editor-background);
+                    --gradient-purple-green-highlight: var(--vscode-list-hoverBackground);
+                    --gradient-cyan-blue-light: var(--ato-orange);
+                    --gradient-purple-red: var(--ato-orange);
+                    --gradient-purple-red-highlight: var(--ato-orange-light);
+                    --activity-bar-bg: var(--vscode-sideBar-background);
+                    --activity-bar-fg: var(--vscode-foreground);
+                    --activity-bar-active-bg: var(--vscode-editor-background);
+                    --panel-bg: var(--vscode-editor-background);
+                    --panel-fg: var(--vscode-foreground);
+                    --panel-title-bg: var(--vscode-sideBarSectionHeader-background);
+                    --panel-title-fg: var(--vscode-foreground);
+                    --panel-subtitle-bg: var(--vscode-input-background);
+                    --resizer-bg: var(--vscode-panel-border);
+                    --resizer-active-bg: var(--ato-orange);
+                    --scrollbar-bg: var(--vscode-editor-background);
+                    --scrollbar-fg: var(--vscode-scrollbarSlider-background);
+                    --scrollbar-hover-fg: var(--ato-orange);
+                    --button-bg: var(--ato-orange);
+                    --button-fg: white;
+                    --button-hover-bg: var(--ato-orange-light);
+                    --button-toolbar-bg: var(--vscode-sideBar-background);
+                    --button-toolbar-fg: var(--vscode-foreground);
+                    --button-toolbar-hover-bg: var(--vscode-list-hoverBackground);
+                    --dropdown-bg: var(--vscode-sideBar-background);
+                    --dropdown-fg: var(--vscode-foreground);
+                    --dropdown-hover-bg: var(--vscode-list-hoverBackground);
+                    --input-bg: var(--vscode-input-background);
+                    --input-fg: var(--vscode-input-foreground);
+                    --input-accent: var(--ato-orange);
+                    --list-item-hover-bg: var(--vscode-list-hoverBackground);
+                    --list-item-active-bg: var(--vscode-list-activeSelectionBackground);
+                    --tooltip-bg: var(--vscode-editorWidget-background);
+                    --tooltip-fg: var(--vscode-foreground);
+                }
             `,
             body: `
                 <div id="container">

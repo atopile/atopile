@@ -1,20 +1,29 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from __future__ import annotations
 
+import ctypes
 import logging
+from typing import TYPE_CHECKING, Self
 
-from faebryk.core.solver.solver import Solver
-from faebryk.core.trait import Trait
+import faebryk.core.node as fabll
+import faebryk.library._F as F
+
+if TYPE_CHECKING:
+    from faebryk.core.solver.solver import Solver
 
 logger = logging.getLogger(__name__)
 
 
-class has_solver(Trait.decless()):
-    def __init__(self, solver: Solver):
-        self._solver = solver
-        super().__init__()
+class has_solver(fabll.Node):
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    solver_ = F.Parameters.StringParameter.MakeChild()
 
-    @property
-    def solver(self) -> Solver:
-        return self._solver
+    def setup(self, solver: Solver) -> Self:  # type: ignore[invalid-method-override]
+        self.solver_.get().set_singleton(value=str(id(solver)))
+        return self
+
+    def get_solver(self) -> Solver:
+        solver_id = int(self.solver_.get().extract_singleton())
+        return ctypes.cast(solver_id, ctypes.py_object).value

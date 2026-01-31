@@ -1,0 +1,415 @@
+/**
+ * GerberViewer Styles
+ * Theme-aware styling for tracespace PCB renders with smooth pan/zoom
+ */
+
+.gerber-viewer {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  background: #1e1e22;
+  position: relative;
+  overflow: hidden;
+}
+
+.gerber-viewer-loading,
+.gerber-viewer-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.gerber-viewer-error {
+  color: var(--error);
+}
+
+/* Transform wrapper for pan/zoom */
+.gerber-transform-wrapper {
+  width: 100% !important;
+  height: 100% !important;
+  flex: 1;
+  background: #1e1e22;
+}
+
+.gerber-transform-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* SVG Container */
+.gerber-svg-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-md);
+  min-width: 100px;
+  min-height: 100px;
+}
+
+.gerber-svg-container svg {
+  max-width: none;
+  max-height: none;
+  width: auto;
+  height: auto;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3));
+  border-radius: var(--radius-sm);
+  /* Ensure crisp rendering */
+  shape-rendering: geometricPrecision;
+}
+
+/* Override any default grey fills from tracespace */
+.gerber-svg-container svg rect:not([class]),
+.gerber-svg-container svg path:not([class]) {
+  /* Don't override unclassed elements - they might be intentional */
+}
+
+/* Ensure background of SVG is transparent, not grey */
+.gerber-svg-container svg > rect:first-child {
+  fill: transparent !important;
+}
+
+/* PCB Layer Colors - Override tracespace defaults for realistic look */
+.gerber-svg-container svg {
+  /* Base board color (FR4 substrate) - dark to match black soldermask */
+  --pcb-fr4: #1a1a1a;
+  --pcb-fr4-dark: #0d0d0d;
+
+  /* Copper - golden/brass color */
+  --pcb-copper: #c9a227;
+  --pcb-copper-bright: #e6be3a;
+
+  /* Soldermask - black matte */
+  --pcb-soldermask: rgba(20, 20, 22, 0.92);
+  --pcb-soldermask-dark: rgba(10, 10, 12, 0.95);
+
+  /* Silkscreen - white */
+  --pcb-silkscreen: #ffffff;
+
+  /* Solder paste - silver */
+  --pcb-paste: #d4d4d4;
+
+  /* HASL/ENIG pads - golden */
+  --pcb-finish: #c9a227;
+}
+
+/* Style the tracespace-generated SVG elements */
+/* FR4 substrate */
+.gerber-svg-container .tracespace-fr4,
+.gerber-svg-container [class*="_fr4"] {
+  fill: var(--pcb-fr4) !important;
+}
+
+/* Copper layers */
+.gerber-svg-container .tracespace-cu,
+.gerber-svg-container [class*="_cu"],
+.gerber-svg-container [class*="_copper"] {
+  fill: var(--pcb-copper) !important;
+}
+
+/* Copper finish (exposed pads) */
+.gerber-svg-container .tracespace-cf,
+.gerber-svg-container [class*="_cf"] {
+  fill: var(--pcb-copper-bright) !important;
+}
+
+/* Soldermask - black */
+.gerber-svg-container .tracespace-sm,
+.gerber-svg-container [class*="_sm"],
+.gerber-svg-container [class*="_mask"] {
+  fill: var(--pcb-soldermask) !important;
+}
+
+/* Silkscreen - white */
+.gerber-svg-container .tracespace-ss,
+.gerber-svg-container [class*="_ss"],
+.gerber-svg-container [class*="_silk"] {
+  fill: var(--pcb-silkscreen) !important;
+}
+
+/* Solder paste */
+.gerber-svg-container .tracespace-sp,
+.gerber-svg-container [class*="_sp"],
+.gerber-svg-container [class*="_paste"] {
+  fill: var(--pcb-paste) !important;
+}
+
+/* Board outline */
+.gerber-svg-container [class*="_out"],
+.gerber-svg-container [class*="_edge"] {
+  stroke: var(--pcb-fr4-dark) !important;
+}
+
+/* Drills */
+.gerber-svg-container [class*="_drl"],
+.gerber-svg-container [class*="_drill"] {
+  fill: #1a1a1a !important;
+}
+
+/* Controls Container */
+.gerber-controls {
+  position: absolute;
+  bottom: var(--spacing-md);
+  left: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  z-index: 10;
+}
+
+/* View Toggle (Top/Bottom) */
+.gerber-view-toggle {
+  display: flex;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.gerber-view-btn {
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.gerber-view-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.gerber-view-btn.active {
+  background: var(--accent);
+  color: white;
+}
+
+.gerber-view-btn:first-child {
+  border-right: 1px solid var(--border-subtle);
+}
+
+/* Zoom Controls */
+.gerber-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-xs);
+}
+
+.gerber-zoom-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.gerber-zoom-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.gerber-zoom-btn:active {
+  background: var(--bg-active);
+}
+
+.gerber-zoom-level {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  min-width: 40px;
+  text-align: center;
+  font-family: var(--font-mono);
+  padding: 0 var(--spacing-xs);
+}
+
+/* Layer Controls Panel */
+.gerber-layer-controls {
+  width: 180px;
+  padding: var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border-left: 1px solid var(--border-subtle);
+  overflow-y: auto;
+  position: relative;
+  transition: width var(--transition-normal);
+  flex-shrink: 0;
+}
+
+.gerber-layer-controls.collapsed {
+  width: 36px;
+  padding: var(--spacing-xs);
+}
+
+.gerber-layer-collapse-btn {
+  position: absolute;
+  top: var(--spacing-sm);
+  left: var(--spacing-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  z-index: 1;
+}
+
+.gerber-layer-collapse-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.gerber-layer-controls:not(.collapsed) .gerber-layer-collapse-btn {
+  left: auto;
+  right: var(--spacing-xs);
+}
+
+.gerber-layer-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding-bottom: var(--spacing-xs);
+  margin-bottom: var(--spacing-sm);
+  margin-top: calc(var(--spacing-sm) + 24px);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.gerber-layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gerber-layer-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 4px var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.gerber-layer-item:hover {
+  background: var(--bg-hover);
+}
+
+.gerber-layer-item.hidden-layer {
+  opacity: 0.5;
+}
+
+.gerber-layer-checkbox {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.gerber-layer-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  border: 1px solid var(--border-subtle);
+}
+
+/* Layer type colors - matching black soldermask theme */
+.gerber-layer-copper {
+  background: #c9a227;
+}
+
+.gerber-layer-soldermask {
+  background: #1a1a1a;
+}
+
+.gerber-layer-silkscreen {
+  background: #ffffff;
+}
+
+.gerber-layer-solderpaste {
+  background: #d4d4d4;
+}
+
+.gerber-layer-drill {
+  background: #333333;
+}
+
+.gerber-layer-outline {
+  background: #666666;
+}
+
+.gerber-layer-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+
+.gerber-layer-side {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  background: var(--bg-secondary);
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+/* Scrollbar styling */
+.gerber-layer-controls::-webkit-scrollbar {
+  width: 6px;
+}
+
+.gerber-layer-controls::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.gerber-layer-controls::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+.gerber-layer-controls::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Spinning animation for loader */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

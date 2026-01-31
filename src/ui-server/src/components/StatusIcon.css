@@ -1,0 +1,136 @@
+/**
+ * Status Icon Styles
+ * Atopile Design System
+ */
+
+/* Status Icon */
+.status-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.status-icon svg {
+  display: block;
+}
+
+/* Orange loading spinner for building/running status */
+.status-icon.building,
+.status-icon.running {
+  color: var(--ato-orange);
+}
+
+/* Spin animation for Loader2 - matches existing spinners in codebase */
+.status-icon .spin {
+  animation: status-spin 1s linear infinite;
+}
+
+/* Queue position badge */
+.status-icon .queue-position {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 12px;
+  height: 12px;
+  padding: 0 3px;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 12px;
+  text-align: center;
+  color: var(--text-primary);
+  background: var(--ctp-blue);
+  border-radius: 6px;
+}
+
+/* Dimmed version for last build status */
+.status-icon.dimmed {
+  opacity: 0.5;
+}
+
+/* Status-specific colors */
+.status-icon.success { color: var(--success); }
+.status-icon.warning { color: var(--warning); }
+.status-icon.error,
+.status-icon.failed { color: var(--error); }
+.status-icon.queued { color: var(--text-muted); }
+.status-icon.idle,
+.status-icon.pending,
+.status-icon.skipped { color: var(--text-muted); }
+
+@keyframes status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Status Dot */
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.status-dot.success { 
+  background: var(--ctp-green); 
+}
+
+.status-dot.error { 
+  background: var(--ctp-red); 
+}
+
+.status-dot.warning { 
+  background: var(--ctp-yellow); 
+}
+
+.status-dot.idle { 
+  background: var(--text-muted); 
+}
+
+.status-dot.building {
+  background: var(--ato-orange);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-dot.queued {
+  background: var(--ctp-blue);
+}
+
+/* Status Badge */
+.status-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  border-radius: 8px;
+}
+
+.status-badge.error {
+  background: rgba(243, 139, 168, 0.2);
+  color: var(--ctp-red);
+}
+
+.status-badge.warning {
+  background: rgba(249, 226, 175, 0.2);
+  color: var(--ctp-yellow);
+}
+
+.status-badge.success {
+  background: rgba(166, 227, 161, 0.2);
+  color: var(--ctp-green);
+}
+
+.status-badge.info {
+  background: rgba(137, 180, 250, 0.2);
+  color: var(--ctp-blue);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}

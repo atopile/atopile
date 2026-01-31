@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Annotated, Any, Callable, Iterator, cast, over
 
 import caseconverter
 import questionary
-import rich
 import typer
 from cookiecutter.exceptions import FailedHookException, OutputDirExistsException
 from cookiecutter.main import cookiecutter
@@ -20,6 +19,8 @@ from rich.table import Table
 
 from atopile import errors, version
 from atopile.address import AddrStr
+from atopile.logging import get_logger
+from atopile.logging_utils import console, rich_print_robust
 from atopile.telemetry import capture
 from faebryk.libs.github import (
     GITHUB_USERNAME_REGEX,
@@ -29,7 +30,6 @@ from faebryk.libs.github import (
     GithubRepoNotFound,
     GithubUserNotLoggedIn,
 )
-from faebryk.libs.logging import rich_print_robust
 from faebryk.libs.util import (
     get_code_bin_of_terminal,
     in_git_repo,
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 
     from faebryk.libs.picker.api.api import Component
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 logger.setLevel(logging.INFO)
 
 
@@ -488,7 +488,9 @@ def project(path: Annotated[Path | None, typer.Option()] = None):
 
     template = _ProjectTemplate(
         extra_context={
-            "__ato_version": version.get_installed_atopile_version(),
+            "__ato_version": version.clean_version(
+                version.get_installed_atopile_version()
+            ),
             "__python_path": sys.executable,
         }
     )
@@ -562,7 +564,9 @@ def package(
             "project_slug": package_slug,
             "entry_name": entry_name,
             "package_owner": package_owner,
-            "__ato_version": version.get_installed_atopile_version(),
+            "__ato_version": version.clean_version(
+                version.get_installed_atopile_version()
+            ),
             "__python_path": sys.executable,
         }
     )
@@ -811,7 +815,7 @@ def part(
                 str(component.stock),
             )
 
-        rich.print(component_table)
+        console.print(component_table)
 
         if len(components) == 1 and accept_single:
             component = first(components)

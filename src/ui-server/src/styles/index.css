@@ -1,0 +1,32 @@
+/* ============================================
+   index.css
+   Main entry point for all CSS modules
+   Import order matters - variables first, then base, then components
+   ============================================ */
+
+/* Core */
+@import './_variables.css';
+@import './_base.css';
+
+/* Layout & Navigation */
+@import './_toolbar.css';
+@import './_collapsible.css';
+
+/* Panels */
+@import './_settings.css';
+@import './_build.css';
+@import './_log.css';
+@import './_explorer.css';
+@import './_projects.css';
+
+/* Package Management */
+@import './_packages.css';
+@import './_package-detail.css';
+@import './_dropdown.css';
+
+/* Data Panels */
+@import './_variables-panel.css';
+@import './_bom.css';
+
+/* Utilities (should be last for proper cascade) */
+@import './_utilities.css';

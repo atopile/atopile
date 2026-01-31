@@ -1,0 +1,5 @@
+Designator,Footprint,Quantity,Value,Manufacturer,Partnumber,LCSC Part #
+C1,Samsung_Electro_Mechanics_CL05B104KO5NNNC:C0402,1,100±10.0%nF 16V X7R,Samsung Electro-Mechanics,CL05B104KO5NNNC,C1525
+C2,Samsung_Electro_Mechanics_CL05A225MQ5NSNC:C0402,1,2.2±20.0%µF 6.3V X5R,Samsung Electro-Mechanics,CL05A225MQ5NSNC,C12530
+R1,UNI_ROYAL_0402WGF1002TCE:R0402,1,10±1.0%kΩ 62.5mW 50V,UNI-ROYAL(Uniroyal Elec),0402WGF1002TCE,C25744
+U2,Texas_Instruments_TCA9548APWR:TSSOP-24_L7.8-W4.4-P0.65-LS6.4-BL,1,,Texas Instruments,TCA9548APWR,C130026

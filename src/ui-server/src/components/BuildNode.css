@@ -1,0 +1,199 @@
+/**
+ * BuildNode styles
+ * Note: Most styles are currently in the main styles.css file.
+ * This file can be used for component-specific overrides.
+ */
+
+/* Styles inherited from styles.css:
+ * .build-card, .build-card-header, .build-card-name
+ * .build-status-icon, .status-icon, .status-dot
+ * .build-indicators, .error-indicator, .warning-indicator
+ * .build-target-play-btn, .build-target-cancel-btn
+ * .build-progress-container, .build-progress-bar, .build-progress-fill
+ * .build-card-entry-row, .entry-path, .entry-picker
+ * .build-stages-section, .stages-toggle, .build-stages-list
+ * .stage-row, .stage-icon, .stage-name, .stage-duration
+ * .build-card-actions, .build-action-btn
+ * .build-card-symbols
+ */
+
+/* Delete button in header - same positioning as play button */
+.build-target-delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--error);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.build-target-delete-btn:hover {
+  background: var(--error-bg);
+  opacity: 1;
+}
+
+.build-target-delete-btn:focus-visible {
+  outline: 1px solid var(--error);
+  outline-offset: 1px;
+}
+
+/* Delete confirmation dialog */
+.build-delete-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--error-bg);
+  border-top: 1px solid var(--error);
+}
+
+.delete-confirm-text {
+  font-size: var(--font-size-xs);
+  color: var(--error);
+  font-weight: 500;
+}
+
+.delete-confirm-buttons {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.delete-confirm-btn {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.delete-confirm-btn.cancel {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.delete-confirm-btn.cancel:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-default);
+}
+
+.delete-confirm-btn.confirm {
+  background: var(--error);
+  border: 1px solid var(--error);
+  color: var(--text-on-status);
+}
+
+.delete-confirm-btn.confirm:hover {
+  filter: brightness(1.05);
+}
+
+/* Duplicate entry warning dialog */
+.build-duplicate-warning {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--warning);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.duplicate-warning-icon {
+  display: flex;
+  align-items: center;
+  color: var(--warning);
+  flex-shrink: 0;
+}
+
+.duplicate-warning-text {
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  font-weight: 600;
+  flex: 1;
+}
+
+.duplicate-warning-buttons {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
+}
+
+.duplicate-warning-btn {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.duplicate-warning-btn.cancel {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.duplicate-warning-btn.cancel:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-default);
+}
+
+.duplicate-warning-btn.confirm {
+  background: var(--warning);
+  border: 1px solid var(--warning);
+  color: var(--text-on-status);
+}
+
+.duplicate-warning-btn.confirm:hover {
+  filter: brightness(1.05);
+}
+
+/* Loading and error states for module tree */
+.build-card-symbols.loading,
+.build-card-symbols.error {
+  padding: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.build-card-symbols.loading .spinner {
+  animation: spin 1s linear infinite;
+  color: var(--info);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.build-card-symbols.loading .loading-text {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.build-card-symbols.error .error-text {
+  color: var(--error);
+  opacity: 0.8;
+}
+
+/* Build ID label in expanded view */
+.build-id-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  background: var(--bg-tertiary);
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}

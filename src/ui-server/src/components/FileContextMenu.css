@@ -1,0 +1,89 @@
+/**
+ * FileContextMenu - VSCode-style context menu styling.
+ */
+
+.file-context-menu {
+  position: fixed;
+  z-index: 10000;
+  min-width: 200px;
+  max-width: 300px;
+  padding: 4px 0;
+  background: var(--vscode-menu-background, var(--bg-secondary, #252526));
+  border: 1px solid var(--vscode-menu-border, var(--border-color, #454545));
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
+  font-size: 13px;
+  color: var(--vscode-menu-foreground, var(--text-primary, #cccccc));
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 4px 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  gap: 8px;
+}
+
+.context-menu-item:hover:not(.disabled) {
+  background: var(--vscode-menu-selectionBackground, var(--accent, #094771));
+  color: var(--vscode-menu-selectionForeground, var(--text-primary, #ffffff));
+}
+
+.context-menu-item:focus {
+  outline: none;
+  background: var(--vscode-menu-selectionBackground, var(--accent, #094771));
+  color: var(--vscode-menu-selectionForeground, var(--text-primary, #ffffff));
+}
+
+.context-menu-item.disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.menu-item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.menu-item-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menu-item-shortcut {
+  margin-left: auto;
+  padding-left: 16px;
+  font-size: 11px;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+.context-menu-divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--vscode-menu-separatorBackground, var(--border-color, #454545));
+}
+
+/* Danger item (delete) */
+.context-menu-item.danger {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.context-menu-item.danger:hover:not(.disabled) {
+  background: var(--vscode-inputValidation-errorBackground, rgba(244, 76, 76, 0.2));
+  color: var(--vscode-errorForeground, #f14c4c);
+}

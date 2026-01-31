@@ -1,0 +1,401 @@
+/**
+ * Atopile Design System
+ * Main entry point - imports modular CSS with theme support
+ */
+
+/* Import all styles from the organized styles folder */
+@import './styles/index.css';
+
+/* ===========================================
+   Standard Library Panel Styles
+   (These extend the base design system)
+   =========================================== */
+
+.stdlib-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.stdlib-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 1px 0;
+  flex-shrink: 0;
+}
+.stdlib-toolbar .search-box {
+  flex: 1;
+  background: var(--bg-tertiary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+}
+.stdlib-toolbar .search-box:focus-within {
+  border-color: var(--accent);
+  background: var(--bg-secondary);
+}
+
+.stdlib-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+
+/* Loading State */
+.stdlib-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl) var(--spacing-md);
+  gap: var(--spacing-md);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.stdlib-loading .loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border-subtle);
+  border-top-color: var(--ato-orange);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Empty State */
+.stdlib-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl) var(--spacing-md);
+  gap: var(--spacing-sm);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.stdlib-empty svg {
+  opacity: 0.4;
+}
+
+/* Search Results */
+.stdlib-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.search-results-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+}
+
+/* Groups */
+.stdlib-group {
+  margin-bottom: 4px;
+}
+
+.stdlib-group.collapsed .stdlib-group-items {
+  display: none;
+}
+
+.stdlib-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  letter-spacing: 0.15px;
+  text-align: left;
+  line-height: 1.1;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.stdlib-group-header:hover {
+  background: var(--bg-hover);
+}
+
+.stdlib-group-header .group-chevron {
+  color: var(--text-muted);
+}
+
+.stdlib-group-header .group-icon {
+  display: flex;
+}
+
+.stdlib-group-header .group-label {
+  flex: 1;
+}
+
+.stdlib-group-header .group-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-weight: normal;
+}
+
+.stdlib-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding-left: 0;
+  margin-top: 0;
+}
+
+/* Standard Library Card */
+.stdlib-card {
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0 1px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.stdlib-card:hover {
+  background: var(--bg-hover);
+}
+
+.stdlib-card.selected {
+  background: transparent;
+}
+
+.stdlib-card-header {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  line-height: 1.1;
+}
+
+.stdlib-expand-icon {
+  display: inline-flex;
+  width: 12px;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.stdlib-expand-spacer {
+  display: inline-flex;
+  width: 12px;
+}
+
+.stdlib-type-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.stdlib-card-name {
+  flex: 1;
+  font-weight: 500;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+
+/* Description - left-aligned with name, close spacing */
+.stdlib-card-description {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-top: 2px;
+  margin-bottom: var(--spacing-sm);
+  padding-left: calc(12px + 16px + 4px); /* Align with name: expand-icon + type-icon + gap */
+  padding-right: var(--spacing-sm);
+}
+
+/* Child Tree View */
+.stdlib-card-children {
+  margin-top: var(--spacing-sm);
+  padding-left: var(--spacing-xs);
+  border-left: 1px solid var(--border-subtle);
+  margin-left: calc(7px + var(--spacing-xs)); /* Align with icon center */
+}
+
+.stdlib-child-node {
+  font-size: var(--font-size-xs);
+}
+
+.stdlib-child-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 0 2px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.stdlib-child-row.expandable {
+  cursor: pointer;
+}
+
+.stdlib-child-row:hover {
+  background: var(--bg-hover);
+}
+
+.stdlib-child-row .expand-btn {
+  display: flex;
+  padding: 0;
+  color: var(--text-muted);
+}
+
+.stdlib-child-row .expand-spacer {
+  width: 12px;
+}
+
+.stdlib-child-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.stdlib-child-name {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.stdlib-child-type {
+  font-size: var(--font-size-xs);
+  opacity: 0.7;
+  margin-left: auto;
+}
+
+.stdlib-child-children {
+  margin-left: var(--spacing-xs);
+}
+
+/* Usage Example */
+.stdlib-card-usage {
+  margin-top: var(--spacing-sm);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.stdlib-card-usage .usage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.stdlib-card-usage .copy-btn {
+  display: flex;
+  padding: 2px;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+}
+
+.stdlib-card-usage .copy-btn:hover {
+  background: var(--hover);
+  color: var(--text-primary);
+}
+
+.stdlib-card-usage .usage-code {
+  padding: var(--spacing-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  margin: 0;
+}
+
+/* Action Buttons */
+.stdlib-card-actions {
+  display: flex;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.stdlib-action-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  transition: all var(--transition-fast);
+}
+
+.stdlib-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.stdlib-action-btn.primary {
+  background: var(--ato-orange);
+  color: white;
+  border-color: var(--ato-orange);
+}
+
+.stdlib-action-btn.primary:hover {
+  background: var(--ato-orange-light);
+}
+
+/* Search Box (shared) */
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.search-box:focus-within {
+  border-color: var(--ato-orange);
+}
+
+.search-box svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.search-box input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.search-box input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Empty State (shared) */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl) var(--spacing-md);
+  gap: var(--spacing-sm);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.empty-state .empty-hint {
+  font-size: var(--font-size-xs);
+  opacity: 0.7;
+}
