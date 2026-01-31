@@ -14,4 +14,3 @@ def test_dev_flags_runs_and_prints_table_title():
 
     # Rich renders to stdout; ensure we got a table header/title.
     assert "ConfigFlags" in stdout or "ConfigFlags" in stderr
-

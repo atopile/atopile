@@ -145,7 +145,10 @@ def export_power_tree(
                 edge_power_label = None
 
                 edge_label = f"I={current_label}, P={edge_power_label}"
-                mermaid_lines.append(f'{power_node_id} -- "{escape_label(edge_label)}" --> {sink_node_id}')
+                escaped = escape_label(edge_label)
+                mermaid_lines.append(
+                    f'{power_node_id} -- "{escaped}" --> {sink_node_id}'
+                )
 
         mermaid_lines.append("  end")
 

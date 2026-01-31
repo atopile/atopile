@@ -34,7 +34,8 @@ class has_single_electric_reference(fabll.Node):
     # Whether to only connect the ground (lv) pins, not the full power rails
     ground_only_ = F.Parameters.BooleanParameter.MakeChild()
 
-    # Design check to run connect_all_references automatically during POST_INSTANTIATION_SETUP
+    # Design check to run connect_all_references automatically
+    # during POST_INSTANTIATION_SETUP
     design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
 
     def get_reference(self) -> "ElectricPower":

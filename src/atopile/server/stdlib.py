@@ -5,19 +5,26 @@ Provides data about the faebryk standard library (modules, interfaces, traits, e
 for the dashboard UI.
 """
 
+from __future__ import annotations
+
 import inspect
 import logging
 import textwrap
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 from atopile.dataclasses import (
     StdLibChild,
     StdLibItem,
     StdLibItemType,
-    StdLibResponse,
+    StdLibResponse,  # noqa: F401 - re-exported
 )
+
+if TYPE_CHECKING:
+    import faebryk.core.faebrykpy as fbrk
+    import faebryk.core.graph as graph
+    import faebryk.core.node as fabll
 
 log = logging.getLogger(__name__)
 

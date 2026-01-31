@@ -26,31 +26,27 @@ class SWD(fabll.Node):
     net_names = [
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="CLK",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="CLK", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[clk]
+            owner=[clk],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="DIO",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="DIO", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[dio]
+            owner=[dio],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="SWO",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="SWO", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[swo]
+            owner=[swo],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="RESET",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="RESET", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[reset]
+            owner=[reset],
         ),
     ]
 

@@ -533,7 +533,7 @@ def test_malformed_sexp_empty_list():
 
 
 def test_malformed_sexp_key_only():
-    """Test that parsing key-only elements like (stroke) doesn't crash (segfault fix)."""
+    """Test that parsing key-only elements like (stroke) doesn't crash."""
     sexp = """
     (footprint "test"
         (version 20241229)

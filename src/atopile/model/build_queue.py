@@ -55,7 +55,13 @@ class BuildOutputMsg:
     is_stderr: bool = False
 
 
-BuildResultMsg = BuildStartedMsg | BuildStageMsg | BuildCompletedMsg | BuildCancelledMsg | BuildOutputMsg
+BuildResultMsg = (
+    BuildStartedMsg
+    | BuildStageMsg
+    | BuildCompletedMsg
+    | BuildCancelledMsg
+    | BuildOutputMsg
+)
 
 log = logging.getLogger(__name__)
 
@@ -207,11 +213,13 @@ def _run_build_subprocess(
             def stream_output(pipe, is_stderr: bool) -> None:
                 try:
                     for line in pipe:
-                        result_q.put(BuildOutputMsg(
-                            build_id=build.build_id,
-                            text=line,
-                            is_stderr=is_stderr,
-                        ))
+                        result_q.put(
+                            BuildOutputMsg(
+                                build_id=build.build_id,
+                                text=line,
+                                is_stderr=is_stderr,
+                            )
+                        )
                 except Exception:
                     pass
                 finally:
@@ -236,6 +244,7 @@ def _run_build_subprocess(
                 preexec_fn=preexec_fn,
                 text=True,
             )
+
             # Collect stderr in background thread
             def collect_stderr(pipe) -> None:
                 try:
@@ -357,7 +366,9 @@ class BuildQueue:
         # Callbacks
         self.on_change: Callable[[str, str], None] | None = None
         self.on_completed: Callable[[Build], None] | None = None
-        self.on_output: Callable[[str, str, bool], None] | None = None  # build_id, text, is_stderr
+        self.on_output: Callable[[str, str, bool], None] | None = (
+            None  # build_id, text, is_stderr
+        )
 
     def start(self) -> None:
         """Start the thread pool and orchestrator thread."""
@@ -461,7 +472,9 @@ class BuildQueue:
         with self._builds_lock:
             return list(self._builds.values())
 
-    def is_duplicate(self, project_root: str, target: str, entry: str | None) -> str | None:
+    def is_duplicate(
+        self, project_root: str, target: str, entry: str | None
+    ) -> str | None:
         """
         Check if a build with the same config is already running or queued.
 
@@ -785,9 +798,7 @@ class BuildQueue:
                 log.exception("BuildQueue: on_completed callback failed")
 
         if msg.error and status == BuildStatus.FAILED:
-            log.error(
-                "BuildQueue: Build %s failed:\n%s", msg.build_id, msg.error
-            )
+            log.error("BuildQueue: Build %s failed:\n%s", msg.build_id, msg.error)
         else:
             log.info(
                 "BuildQueue: Build %s completed with status %s", msg.build_id, status
@@ -975,7 +986,11 @@ class BuildQueue:
                 if status not in (BuildStatus.QUEUED, BuildStatus.BUILDING):
                     elapsed_seconds = build.elapsed_seconds or 0.0
                     completed_at = (started_at or 0.0) + elapsed_seconds
-                    if started_at and elapsed_seconds and (now - completed_at) > cleanup_delay:
+                    if (
+                        started_at
+                        and elapsed_seconds
+                        and (now - completed_at) > cleanup_delay
+                    ):
                         to_remove.append(build.build_id)
                 else:
                     if started_at and (now - started_at) > stale_threshold:

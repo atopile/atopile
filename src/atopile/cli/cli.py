@@ -1,6 +1,5 @@
 import sys
 
-
 # fast-path for self-check
 # makes extension a lot faster
 if __name__ in ("__main__", "atopile.cli.cli"):
@@ -11,7 +10,6 @@ if __name__ in ("__main__", "atopile.cli.cli"):
         sys.exit(0)
 
 
-from faebryk.libs.util import ConfigFlag
 import json
 import logging
 from enum import Enum
@@ -44,6 +42,7 @@ from atopile.errors import (
     log_discord_banner,
 )
 from atopile.logging import handler, logger
+from faebryk.libs.util import ConfigFlag
 
 SAFE_MODE_OPTION = ConfigFlag(
     "SAFE_MODE", False, "Handle exceptions gracefully (coredump)"

@@ -288,7 +288,7 @@ def create_project(
     except Exception:
         ato_version = "0.9.0"
 
-    ato_yaml_content = f'''requires-atopile: "^{ato_version}"
+    ato_yaml_content = f"""requires-atopile: "^{ato_version}"
 
 paths:
   src: ./
@@ -297,7 +297,7 @@ paths:
 builds:
   default:
     entry: main.ato:App
-'''
+"""
     (project_dir / "ato.yaml").write_text(ato_yaml_content)
 
     main_ato_content = f'''"""{project_name} - A new atopile project"""

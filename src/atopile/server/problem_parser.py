@@ -4,7 +4,6 @@ Problem parsing helpers.
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import logging
 import sqlite3
@@ -47,7 +46,8 @@ def _load_problems_from_db(
 
     Args:
         limit: Maximum number of problems to load
-        developer_mode: If True, show all audiences. If False (default), only show 'user' audience.
+        developer_mode: If True, show all audiences.
+            If False (default), only show 'user' audience.
     """
     db_path = BuildLogger.get_log_db()
     if not db_path.exists():
@@ -128,8 +128,9 @@ def sync_problems_to_state(developer_mode: bool | None = None) -> None:
     Uses event_bus.emit_sync for thread-safe event emission.
 
     Args:
-        developer_mode: If True, show all audiences. If False, only show 'user' audience.
-            If None, uses the current developer_mode setting from server_state.
+        developer_mode: If True, show all audiences. If False, only show
+            'user' audience. If None, uses the current developer_mode
+            setting from server_state.
     """
     payload = {"developer_mode": developer_mode} if developer_mode is not None else {}
     event_bus.emit_sync(EventType.PROBLEMS_CHANGED, payload)

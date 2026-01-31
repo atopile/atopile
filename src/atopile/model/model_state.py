@@ -6,8 +6,6 @@ from pathlib import Path
 from typing import Optional
 
 
-
-
 class ModelState:
     """
     Shared model state for the application.

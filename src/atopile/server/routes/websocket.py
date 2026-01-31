@@ -10,8 +10,8 @@ import logging
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
-from ..domains.actions import handle_data_action
 from ..connections import ServerConnections, get_server_state
+from ..domains.actions import handle_data_action
 
 log = logging.getLogger(__name__)
 

@@ -63,14 +63,14 @@ class is_alias_bus_parameter(fabll.Node):
             bus_parameters, lambda p: get_bus_param_owner(p[1])[0]
         )
 
-        busses = fabll.is_interface.group_into_buses(
-            params_grouped_by_interface.keys()
-        )
+        busses = fabll.is_interface.group_into_buses(params_grouped_by_interface.keys())
 
-        # find for all buses an interface that represents it, and puts its params here
-        # we use that connected interfaces are the same type and thus have the same params
+        # find for all buses an interface that represents it, and puts its params
+        # here - we use that connected interfaces have the same type and params
         # TODO: limitation: specialization (need to subgroup by type) (see exception)
-        param_bus_representatives: set[tuple[fabll.Node, is_alias_bus_parameter]] = set()
+        param_bus_representatives: set[tuple[fabll.Node, is_alias_bus_parameter]] = (
+            set()
+        )
 
         for bus_interfaces in busses.values():
             if len(set(map(type, bus_interfaces))) > 1:

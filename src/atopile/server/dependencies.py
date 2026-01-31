@@ -72,6 +72,7 @@ class AppDependencies:
             self._server_state = server_state
         return self._server_state
 
+
 # Dependency functions for FastAPI
 
 
@@ -93,5 +94,3 @@ def get_build_queue(deps: AppDependencies = Depends(get_deps)):
 def get_server_state(deps: AppDependencies = Depends(get_deps)):
     """FastAPI dependency to get the server state."""
     return deps.server_state
-
-

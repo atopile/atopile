@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
 import { postMessage } from '../api/vscodeApi'
+import { StatusIcon } from './StatusIcon'
 import './ActiveProjectPanel.css'
 
 // Re-export BuildQueueItem for use in standalone BuildQueue panel

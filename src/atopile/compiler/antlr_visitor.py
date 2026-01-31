@@ -493,7 +493,9 @@ class ANTLRVisitor(AtoParserVisitor):
                     literal_physical_ctx
                 )._is_assignable.get()
             case (None, None, arithmetic_expression_ctx, None, None):
-                arith_result = self.visitArithmetic_expression(arithmetic_expression_ctx)
+                arith_result = self.visitArithmetic_expression(
+                    arithmetic_expression_ctx
+                )
                 # Check if this is just a field reference (e.g., `r1 = Resistor`)
                 # which is not a valid assignable - user likely forgot `new`
                 underlying = fabll.Traits(arith_result).get_obj_raw()
@@ -501,7 +503,8 @@ class ANTLRVisitor(AtoParserVisitor):
                     ref_text = arithmetic_expression_ctx.getText()
                     raise UserSyntaxError.from_ctx(
                         arithmetic_expression_ctx,
-                        f"Cannot assign type reference. To create an instance, use: `new {ref_text}`",
+                        "Cannot assign type reference. "
+                        f"To create an instance, use: `new {ref_text}`",
                     )
                 return arith_result.as_assignable.get()
             case (None, None, None, string_ctx, None):
