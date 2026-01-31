@@ -172,6 +172,8 @@ export function BuildQueueItem({
   const targetName = build.target || build.entry || 'default'
   const isComplete = build.status === 'success' || build.status === 'failed' || build.status === 'cancelled' || build.status === 'warning'
   const hasStages = build.stages && build.stages.length > 0
+  // Check if any stage has failed - used to hide progress bar even if build status hasn't updated yet
+  const hasFailedStage = build.stages?.some(s => s.status === 'failed' || s.status === 'error') ?? false
   const canExpand = true
   const buildCounter = useMemo(() => getBuildCounter(build.buildId), [build.buildId])
   const currentStage = useMemo(() => getCurrentStage(build), [build])
@@ -226,9 +228,10 @@ export function BuildQueueItem({
           />
         )}
         {isComplete && <BuildStatusIcon status={build.status} />}
+        {!isComplete && hasFailedStage && <BuildStatusIcon status="failed" />}
         <div className="build-queue-info">
           <span className="build-queue-target">{targetName}</span>
-          {build.status === 'building' && currentStage && (
+          {build.status === 'building' && !hasFailedStage && currentStage && (
             <span className="build-queue-stage" title={currentStage.name}>
               {currentStage.name}
             </span>
@@ -242,7 +245,7 @@ export function BuildQueueItem({
             )}
           </div>
         )}
-        {build.status === 'building' && (
+        {build.status === 'building' && !hasFailedStage && (
           <div className="build-queue-progress">
             <div
               className="build-queue-progress-bar"
