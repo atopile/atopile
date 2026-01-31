@@ -5,16 +5,34 @@
   padding: var(--spacing-xs) 8px;
   flex: 1 1 auto;
   min-height: 0;
+  container-type: inline-size;
 }
 
-/* Section Labels - sub-headers within panels, smaller than main panel headers */
+/* Section Header - consistent header for Project/Build sections */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 2px 0;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 50%, transparent);
+}
+
+/* Section Labels - sub-headers within panels */
 .section-label {
   font-family: var(--vscode-font-family, var(--font-sans));
   font-size: var(--font-size-xxs);
-  font-weight: 400;
-  text-transform: none;
+  font-weight: 600;
+  text-transform: uppercase;
   color: var(--vscode-descriptionForeground, var(--text-muted));
-  letter-spacing: 0;
+  letter-spacing: 0.5px;
+}
+
+/* Project Section */
+.project-section {
+  display: flex;
+  flex-direction: column;
 }
 
 /* Project Selector Row */
@@ -24,14 +42,45 @@
   align-items: stretch;
 }
 
+/* Legacy - Project Display (keeping for potential future use) */
+.project-display-icon {
+  color: var(--ctp-blue);
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+}
+
+.project-display-name {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-display-path {
+  flex: 1;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
 .new-project-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
+  width: 26px;
+  height: 26px;
   flex-shrink: 0;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
+  border: none;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -39,7 +88,6 @@
 }
 
 .new-project-btn:hover {
-  border-color: var(--border-default);
   background: var(--bg-hover);
   color: var(--text-primary);
 }
@@ -54,22 +102,21 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  padding: 0 var(--spacing-sm);
-  min-height: 28px;
+  padding: 0 var(--spacing-xs);
+  min-height: 26px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
+  border: none;
   background: transparent;
-  transition: border-color 0.15s ease, background-color 0.15s ease;
+  transition: background-color 0.15s ease;
 }
 
 .combobox-input-wrapper:hover {
-  border-color: var(--border-default);
+  background: var(--bg-hover);
 }
 
 .combobox-input-wrapper.open,
 .combobox-input-wrapper:focus-within {
-  border-color: var(--ctp-blue);
-  background: transparent;
+  background: var(--bg-tertiary);
 }
 
 .combobox-icon {
@@ -245,9 +292,16 @@
   flex-direction: column;
   gap: var(--spacing-xs);
   padding-top: var(--spacing-xs);
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 50%, transparent);
   flex: 1 1 auto;
   min-height: 0;
+}
+
+/* Build targets (target selector) */
+.build-targets {
+  padding-bottom: var(--spacing-xs);
+  margin-bottom: var(--spacing-xs);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 50%, transparent);
 }
 
 .builds-header {
@@ -289,9 +343,9 @@
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 0 var(--spacing-sm);
-  min-height: 28px;
-  border: 1px solid var(--border-subtle);
+  padding: 0 var(--spacing-xs);
+  min-height: 26px;
+  border: none;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-primary);
@@ -302,12 +356,11 @@
 }
 
 .target-combobox-trigger:hover:not(:disabled) {
-  border-color: var(--border-default);
+  background: var(--bg-hover);
 }
 
 .target-combobox-trigger.open {
-  border-color: var(--ctp-blue);
-  background: transparent;
+  background: var(--bg-tertiary);
 }
 
 .target-combobox-trigger:disabled {
@@ -416,10 +469,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
+  width: 26px;
+  height: 26px;
   flex-shrink: 0;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
+  border: none;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -427,7 +481,6 @@
 }
 
 .create-target-btn:hover:not(:disabled) {
-  border-color: var(--border-default);
   background: var(--bg-hover);
   color: var(--text-primary);
 }
@@ -586,72 +639,95 @@
   color: var(--text-primary);
 }
 
-.build-outputs {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
+/* Action buttons row - tab-bar style layout */
+.build-actions-row {
+  display: flex;
+  gap: 0;
+  padding: 0;
+  height: 28px;
+  min-height: 28px;
+  width: 100%;
 }
 
-.control-btn {
+.action-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 6px 4px;
-  font-size: var(--font-size-xs);
+  flex: 1 1 auto;
+  min-width: fit-content;
+  height: 100%;
+  padding: 0 12px;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
   font-weight: 500;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
-  background: transparent;
-  color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.15s ease;
   white-space: nowrap;
-  min-width: 0;
+  transition: all var(--transition-fast);
 }
 
-.control-btn svg {
+.action-btn svg {
   width: 12px;
   height: 12px;
   flex-shrink: 0;
 }
 
-.control-btn span {
+.action-btn .action-label {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.control-btn:hover:not(:disabled) {
-  border-color: var(--border-default);
-  background: var(--bg-hover);
+.action-btn:hover:not(:disabled) {
+  background: var(--bg-hover) !important;
   color: var(--text-primary);
 }
 
-.control-btn.primary {
-  border-color: var(--ato-orange);
-  background: transparent;
-  color: var(--text-secondary);
+.action-btn.primary {
+  color: var(--ato-orange) !important;
 }
 
-.control-btn.primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ato-orange) 10%, var(--bg-tertiary));
-  color: var(--ato-orange);
+.action-btn.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ato-orange) 12%, transparent) !important;
+  color: var(--ato-orange) !important;
 }
 
-
-.control-btn:disabled {
+.action-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.control-btn.output-btn {
-  background: transparent;
-  border-color: var(--border-subtle);
+/* Vertical divider between buttons */
+.action-divider {
+  width: 1px;
+  height: 12px;
+  align-self: center;
+  background: var(--border-subtle);
+  opacity: 0.5;
+  flex-shrink: 0;
 }
 
-.control-btn.output-btn:hover:not(:disabled) {
-  background: var(--bg-tertiary);
-  border-color: var(--border-default);
+/* Hide labels when container is narrow */
+@container (max-width: 280px) {
+  .action-btn .action-label {
+    display: none;
+  }
+
+  .action-btn {
+    padding: 0 8px;
+  }
+}
+
+/* Legacy - keep for backwards compatibility */
+.build-outputs {
+  display: none;
+}
+
+.control-btn {
+  display: none;
 }
 
 /* Build Queue - matches Variables panel table styling */
@@ -833,17 +909,121 @@
 
 .build-queue-progress {
   width: 48px;
-  height: 3px;
+  height: 4px;
   background: var(--bg-secondary);
   border-radius: 2px;
   overflow: hidden;
+  position: relative;
 }
 
 .build-queue-progress-bar {
   height: 100%;
-  background: var(--ctp-yellow);
+  background: linear-gradient(
+    90deg,
+    var(--ctp-yellow) 0%,
+    var(--ato-orange) 50%,
+    var(--ctp-yellow) 100%
+  );
+  background-size: 200% 100%;
   border-radius: 2px;
-  transition: width 0.2s ease;
+  transition: width 0.3s ease;
+  animation: progress-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes progress-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Glowing effect for active progress bar */
+.build-queue-item.building .build-queue-progress {
+  box-shadow: 0 0 8px rgba(249, 226, 175, 0.3);
+}
+
+.build-queue-item.building .build-queue-progress-bar {
+  box-shadow: 0 0 6px rgba(249, 226, 175, 0.5);
+}
+
+/* Build complete animations */
+@keyframes build-complete-success {
+  0% {
+    background: rgba(166, 227, 161, 0.3);
+    box-shadow: 0 0 12px rgba(166, 227, 161, 0.4);
+  }
+  50% {
+    background: rgba(166, 227, 161, 0.15);
+    box-shadow: 0 0 6px rgba(166, 227, 161, 0.2);
+  }
+  100% {
+    background: rgba(166, 227, 161, 0.08);
+    box-shadow: none;
+  }
+}
+
+@keyframes build-complete-failed {
+  0% {
+    background: rgba(243, 139, 168, 0.3);
+    box-shadow: 0 0 12px rgba(243, 139, 168, 0.4);
+  }
+  50% {
+    background: rgba(243, 139, 168, 0.15);
+    box-shadow: 0 0 6px rgba(243, 139, 168, 0.2);
+  }
+  100% {
+    background: rgba(243, 139, 168, 0.08);
+    box-shadow: none;
+  }
+}
+
+@keyframes build-complete-warning {
+  0% {
+    background: rgba(249, 226, 175, 0.3);
+    box-shadow: 0 0 12px rgba(249, 226, 175, 0.4);
+  }
+  50% {
+    background: rgba(249, 226, 175, 0.15);
+    box-shadow: 0 0 6px rgba(249, 226, 175, 0.2);
+  }
+  100% {
+    background: rgba(249, 226, 175, 0.08);
+    box-shadow: none;
+  }
+}
+
+/* Apply completion animation - triggered via .just-completed class */
+.build-queue-item.success.just-completed {
+  animation: build-complete-success 0.6s ease-out forwards;
+}
+
+.build-queue-item.failed.just-completed {
+  animation: build-complete-failed 0.6s ease-out forwards;
+}
+
+.build-queue-item.warning.just-completed {
+  animation: build-complete-warning 0.6s ease-out forwards;
+}
+
+/* Status icon pop animation for completion */
+@keyframes status-icon-pop {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.build-queue-item.just-completed .status-icon {
+  animation: status-icon-pop 0.4s ease-out forwards;
 }
 
 .build-queue-cancel {

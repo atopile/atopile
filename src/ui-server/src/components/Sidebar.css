@@ -427,6 +427,15 @@
   margin-bottom: var(--spacing-xs);
 }
 
+/* Projects Section - Fixed at top */
+.projects-section-fixed {
+  flex-shrink: 0;
+  padding-bottom: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
 /* Tabbed Panels */
 .tabbed-panels {
   display: flex;
@@ -434,6 +443,98 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+/* Build Queue Panel - Collapsible and resizable at bottom */
+.build-queue-panel-container {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-primary);
+  position: relative;
+  min-height: 28px;
+}
+
+.build-queue-panel-container.collapsed {
+  height: auto !important;
+}
+
+/* Resize handle at top of panel */
+.build-queue-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  cursor: ns-resize;
+  z-index: 10;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
+.build-queue-resize-handle:hover {
+  background: var(--ctp-blue);
+}
+
+.build-queue-resize-handle:active {
+  background: var(--ctp-blue);
+}
+
+.build-queue-panel-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+
+.build-queue-panel-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.build-queue-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.build-queue-chevron.open {
+  transform: rotate(180deg);
+}
+
+.build-queue-panel-title {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.build-queue-panel-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin-left: auto;
+  background: var(--ctp-yellow);
+  border-radius: 8px;
+  font-size: var(--font-size-xxs);
+  font-weight: 600;
+  color: var(--ctp-base);
+}
+
+.build-queue-panel-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--spacing-xs);
 }
 
 .tab-bar {
@@ -446,14 +547,7 @@
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
   width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge */
-}
-
-.tab-bar::-webkit-scrollbar {
-  display: none; /* Chrome/Safari */
+  overflow: hidden;
 }
 
 .tab-button {
@@ -461,21 +555,32 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  flex: 1 1 auto;
-  min-width: fit-content;
+  flex: 1 1 0;
+  min-width: 0;
   height: 100%;
-  padding: 0 12px;
+  padding: 0 8px;
   border: none;
   border-bottom: 2px solid transparent;
   background: transparent;
   color: var(--text-muted);
   font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   border-radius: 0;
   white-space: nowrap;
   transition: all var(--transition-fast);
+}
+
+.tab-button svg {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+
+.tab-button .tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tab-button:hover {
