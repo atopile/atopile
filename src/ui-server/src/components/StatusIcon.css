@@ -9,15 +9,55 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  position: relative;
 }
 
 .status-icon svg {
   display: block;
 }
 
-.status-icon.spinning svg {
+/* Orange loading spinner for building/running status */
+.status-icon.building,
+.status-icon.running {
+  color: var(--ato-orange);
+}
+
+/* Spin animation for Loader2 - matches existing spinners in codebase */
+.status-icon .spin {
   animation: status-spin 1s linear infinite;
 }
+
+/* Queue position badge */
+.status-icon .queue-position {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 12px;
+  height: 12px;
+  padding: 0 3px;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 12px;
+  text-align: center;
+  color: var(--text-primary);
+  background: var(--ctp-blue);
+  border-radius: 6px;
+}
+
+/* Dimmed version for last build status */
+.status-icon.dimmed {
+  opacity: 0.5;
+}
+
+/* Status-specific colors */
+.status-icon.success { color: var(--success); }
+.status-icon.warning { color: var(--warning); }
+.status-icon.error,
+.status-icon.failed { color: var(--error); }
+.status-icon.queued { color: var(--text-muted); }
+.status-icon.idle,
+.status-icon.pending,
+.status-icon.skipped { color: var(--text-muted); }
 
 @keyframes status-spin {
   to {
