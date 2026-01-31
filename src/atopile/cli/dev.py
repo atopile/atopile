@@ -120,22 +120,24 @@ def compile(
 
 @dev_app.command()
 @capture("cli:dev_install_start", "cli:dev_install_end")
-def install():
+def install(
+    ide: str = typer.Argument(
+        None,
+        help="IDE to install the extension for: 'cursor' or 'vscode'",
+    ),
+):
     """
     Install the locally built VS Code extension.
 
     Installs the latest .vsix built by 'ato dev compile vscode'.
-    Must be run from within VS Code or Cursor's integrated terminal.
     """
-    # Detect IDE from TERM_PROGRAM
-    term_program = os.environ.get("TERM_PROGRAM", "").lower()
-    if term_program == "vscode":
+    if ide in ("vscode", "code"):
         cli = "code"
-    elif term_program == "cursor":
+    elif ide == "cursor":
         cli = "cursor"
     else:
         typer.secho(
-            "Run this command from VS Code or Cursor's integrated terminal.",
+            "Usage: ato dev install <cursor|vscode>",
             fg=typer.colors.RED,
         )
         raise typer.Exit(1)
