@@ -284,11 +284,11 @@ def create_project(
     (project_dir / "layouts").mkdir()
 
     try:
-        ato_version = version.get_installed_atopile_version()
+        ato_version = version.clean_version(version.get_installed_atopile_version())
     except Exception:
-        ato_version = "^0.9.0"
+        ato_version = "0.9.0"
 
-    ato_yaml_content = f'''requires-atopile: "{ato_version}"
+    ato_yaml_content = f'''requires-atopile: "^{ato_version}"
 
 paths:
   src: ./

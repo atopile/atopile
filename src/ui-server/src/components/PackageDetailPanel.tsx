@@ -467,7 +467,12 @@ export function PackageDetailPanel({
             </button>
           </div>
           <div className="package-visual-content">
-            {activeVisualTab === '3d' ? (
+            {isLoading ? (
+              <div className="detail-visual-loading">
+                <Loader2 size={24} className="spin" />
+                <span>Loading model...</span>
+              </div>
+            ) : activeVisualTab === '3d' ? (
               selectedBuildTarget ? (
                 modelArtifact ? (
                   <ModelViewer
@@ -537,7 +542,12 @@ export function PackageDetailPanel({
             <FileCode size={14} />
             Readme
           </h3>
-          {details?.readme ? (
+          {isLoading ? (
+            <div className="detail-panel-loading">
+              <Loader2 size={20} className="spin" />
+              <span>Loading details...</span>
+            </div>
+          ) : details?.readme ? (
             <MarkdownRenderer content={details.readme} />
           ) : (
             <div className="detail-empty">

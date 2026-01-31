@@ -202,7 +202,7 @@ interface StoreActions {
   setLoadingPackages: (loading: boolean) => void;
   setPackagesError: (error: string | null) => void;
   setPackageDetails: (details: PackageDetails | null) => void;
-  setLoadingPackageDetails: (loading: boolean) => void;
+  clearPackageDetailsAndStartLoading: () => void;
   addInstallingPackage: (packageId: string) => void;
   removeInstallingPackage: (packageId: string) => void;
   clearInstallingPackages: () => void;
@@ -476,8 +476,12 @@ export const useStore = create<Store>()(
           isLoadingPackageDetails: false,
         }),
 
-      setLoadingPackageDetails: (loading) =>
-        set({ isLoadingPackageDetails: loading }),
+      clearPackageDetailsAndStartLoading: () =>
+        set({
+          selectedPackageDetails: null,
+          isLoadingPackageDetails: true,
+          packageDetailsError: null,
+        }),
 
       addInstallingPackage: (packageId) => {
         if (installErrorTimeout) {
