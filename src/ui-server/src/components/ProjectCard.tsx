@@ -649,12 +649,12 @@ export const ProjectCard = memo(function ProjectCard({
               </button>
             ) : (
               <button
-                className="project-build-btn-icon"
+                className={`project-build-btn-icon${project.needsMigration ? ' needs-migration' : ''}`}
                 onClick={(e) => {
                   e.stopPropagation()
                   onBuild('project', project.id, project.name)
                 }}
-                title={`Build all targets in ${project.name}`}
+                title={project.needsMigration ? `Migrate project` : `Build all targets in ${project.name}`}
               >
                 <Play size={14} fill="currentColor" />
               </button>

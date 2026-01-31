@@ -134,6 +134,7 @@ export interface Project {
   description?: string;  // Project description from ato.yaml
   targets: BuildTarget[];
   dependencies?: ProjectDependency[];  // Project dependencies from ato.yaml
+  needsMigration?: boolean;  // Whether project needs migration (requires-atopile < 0.14.0)
 }
 
 /**

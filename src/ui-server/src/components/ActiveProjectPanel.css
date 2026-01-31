@@ -695,6 +695,15 @@
   color: var(--ato-orange) !important;
 }
 
+.action-btn.primary.needs-migration {
+  color: var(--ctp-yellow, #f9e2af) !important;
+}
+
+.action-btn.primary.needs-migration:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ctp-yellow, #f9e2af) 12%, transparent) !important;
+  color: var(--ctp-yellow, #f9e2af) !important;
+}
+
 .action-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;

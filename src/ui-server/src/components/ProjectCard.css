@@ -210,6 +210,14 @@
   background: rgba(243, 139, 168, 0.15);
 }
 
+.project-build-btn-icon.needs-migration {
+  color: var(--ctp-yellow, #f9e2af);
+}
+
+.project-build-btn-icon.needs-migration:hover {
+  background: rgba(249, 226, 175, 0.15);
+}
+
 /* Description */
 .project-card-description {
   font-size: var(--font-size-xs);

@@ -1031,16 +1031,16 @@ export function ActiveProjectPanel({
         {/* Action buttons - single row: Build | KiCad | 3D | Layout | Manufacture */}
         <div className="build-actions-row">
           <button
-            className="action-btn primary"
+            className={`action-btn primary${activeProject?.needsMigration ? ' needs-migration' : ''}`}
             onClick={() => {
               if (!activeProject || !activeTargetName) return
               onBuildTarget(activeProject.root, activeTargetName)
             }}
             disabled={!activeProject || !activeTargetName}
-            title={activeTargetName ? `Build ${activeTargetName}` : 'Select a build first'}
+            title={activeProject?.needsMigration ? 'Migrate project' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first')}
           >
             <Play size={12} />
-            <span className="action-label">Build</span>
+            <span className="action-label">{activeProject?.needsMigration ? 'Migrate' : 'Build'}</span>
           </button>
 
           <div className="action-divider" />
