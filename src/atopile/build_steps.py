@@ -42,6 +42,7 @@ from faebryk.exporters.pcb.kicad.artifacts import (
     export_dxf,
     export_gerber,
     export_glb,
+    export_pcb_summary,
     export_pick_and_place,
     export_step,
     export_svg,
@@ -1032,6 +1033,27 @@ def generate_manufacturing_data(ctx: BuildStepContext) -> None:
                 ".testpoints.json"
             ),
         )
+
+        # Export PCB summary with board dimensions and stackup
+        try:
+            export_pcb_summary(
+                tmp_layout,
+                summary_file=config.build.paths.output_base.with_suffix(
+                    ".pcb_summary.json"
+                ),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to generate PCB summary: {e}")
+
+        # Copy kicad_pcb to build directory for manufacturing export
+        import shutil
+
+        kicad_pcb_dest = config.build.paths.output_base.with_suffix(".kicad_pcb")
+        try:
+            shutil.copy2(tmp_layout, kicad_pcb_dest)
+            logger.info(f"Copied KiCad PCB to {kicad_pcb_dest}")
+        except Exception as e:
+            logger.warning(f"Failed to copy KiCad PCB: {e}")
 
 
 @muster.register(

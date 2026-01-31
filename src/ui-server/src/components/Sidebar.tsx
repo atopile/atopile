@@ -28,6 +28,7 @@ import {
   type SelectedPackage,
   type SelectedPart,
 } from './sidebar-modules';
+import { ManufacturingPanel } from './manufacturing';
 import './Sidebar.css';
 import '../styles.css';
 
@@ -224,13 +225,14 @@ export function Sidebar() {
     action('build', { projectRoot, targets: [targetName] });
   }, [panels]);
 
-  // Generate manufacturing data - triggers a build which includes manufacturing outputs
+  // Manufacturing panel
+  const manufacturingWizard = useStore((s) => s.manufacturingWizard);
+  const openManufacturingWizard = useStore((s) => s.openManufacturingWizard);
+  const closeManufacturingWizard = useStore((s) => s.closeManufacturingWizard);
   const handleGenerateManufacturingData = useCallback((projectRoot: string, targetName: string) => {
-    // Manufacturing data is generated as part of the build process
-    // The build outputs include gerbers, BOM, and pick-and-place files
-    panels.collapseAllExceptProjects();
-    action('build', { projectRoot, targets: [targetName] });
-  }, [panels]);
+    // Open the manufacturing panel with the selected target
+    openManufacturingWizard(projectRoot, [targetName]);
+  }, [openManufacturingWizard]);
 
   const handleOpenOutput = useCallback(async (
     output: 'openKiCad' | 'open3D' | 'openLayout',
@@ -373,7 +375,7 @@ export function Sidebar() {
   }
 
   return (
-    <div className={`unified-layout ${selectedPackage || selectedPart ? 'package-detail-open' : ''}`}>
+    <div className={`unified-layout ${selectedPackage || selectedPart || manufacturingWizard?.isOpen ? 'package-detail-open' : ''}`}>
       {/* Header with settings */}
       <SidebarHeader
         atopile={atopile}
@@ -591,7 +593,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Detail Panel (slides in when package selected) */}
+      {/* Detail Panel (slides in when package/part/manufacturing selected) */}
       {selectedPart ? (
         <div className="detail-panel-container">
           <PartsDetailPanel
@@ -600,7 +602,7 @@ export function Sidebar() {
             onClose={handlePartClose}
           />
         </div>
-      ) : selectedPackage && (
+      ) : selectedPackage ? (
         <div className="detail-panel-container">
           <PackageDetailPanel
             package={selectedPackage}
@@ -612,6 +614,13 @@ export function Sidebar() {
             onClose={handlePackageClose}
             onInstall={handlePackageInstall}
             onUninstall={handlePackageUninstall}
+          />
+        </div>
+      ) : manufacturingWizard?.isOpen && selectedProjectRoot && projects?.find((p) => p.root === selectedProjectRoot) && (
+        <div className="detail-panel-container">
+          <ManufacturingPanel
+            project={projects.find((p) => p.root === selectedProjectRoot)!}
+            onClose={closeManufacturingWizard}
           />
         </div>
       )}

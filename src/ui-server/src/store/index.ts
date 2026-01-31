@@ -25,6 +25,13 @@ import type {
   TestItem,
   TestRun,
 } from '../types/build';
+import type {
+  ManufacturingWizardState,
+  ManufacturingBuild,
+  FileExportType,
+  CostEstimate,
+} from '../components/manufacturing/types';
+import { DEFAULT_FILE_TYPES } from '../components/manufacturing/types';
 
 const ERROR_TIMEOUT_MS = 8000;
 
@@ -165,6 +172,9 @@ const initialState: AppState = {
   testFilter: '',
   testPaths: 'test src',
   testMarkers: '',
+
+  // Manufacturing Wizard
+  manufacturingWizard: null as ManufacturingWizardState | null,
 };
 
 // Store actions interface
@@ -256,6 +266,21 @@ interface StoreActions {
   clearTestSelection: () => void;
   startTestRun: (testRunId: string) => void;
   completeTestRun: () => void;
+
+  // Manufacturing Wizard
+  openManufacturingWizard: (projectRoot: string, targets: string[]) => void;
+  closeManufacturingWizard: () => void;
+  setManufacturingStep: (step: 1 | 2 | 3) => void;
+  toggleManufacturingBuild: (targetName: string) => void;
+  updateManufacturingBuild: (targetName: string, update: Partial<ManufacturingBuild>) => void;
+  setManufacturingGitStatus: (hasChanges: boolean, files: string[]) => void;
+  dismissUncommittedWarning: () => void;
+  setManufacturingExportDirectory: (directory: string) => void;
+  toggleManufacturingFileType: (fileType: FileExportType) => void;
+  setManufacturingCostEstimate: (estimate: CostEstimate | null) => void;
+  setManufacturingQuantity: (quantity: number) => void;
+  setManufacturingLoading: (key: 'gitStatus' | 'cost' | 'exporting', loading: boolean) => void;
+  setManufacturingExportError: (error: string | null) => void;
 
   // Reset
   reset: () => void;
@@ -690,6 +715,192 @@ export const useStore = create<Store>()(
 
       completeTestRun: () =>
         set((state) => ({ testRun: { ...state.testRun, isRunning: false } })),
+
+      // Manufacturing Wizard
+      openManufacturingWizard: (projectRoot, targets) =>
+        set({
+          manufacturingWizard: {
+            isOpen: true,
+            currentStep: 1,
+            selectedBuilds: targets.map((targetName) => ({
+              projectRoot,
+              targetName,
+              status: 'pending',
+              buildId: null,
+              error: null,
+            })),
+            hasUncommittedChanges: false,
+            uncommittedWarningDismissed: false,
+            changedFiles: [],
+            exportDirectory: '',
+            selectedFileTypes: [...DEFAULT_FILE_TYPES],
+            costEstimate: null,
+            quantity: 1,
+            isLoadingGitStatus: false,
+            isLoadingCost: false,
+            isExporting: false,
+            exportError: null,
+          },
+        }),
+
+      closeManufacturingWizard: () => set({ manufacturingWizard: null }),
+
+      setManufacturingStep: (step) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingWizard) return {};
+          return {
+            manufacturingWizard: {
+              ...state.manufacturingWizard,
+              currentStep: step,
+            },
+          };
+        }),
+
+      toggleManufacturingBuild: (targetName) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingWizard) return {};
+          const builds = state.manufacturingWizard.selectedBuilds;
+          const exists = builds.some((b: ManufacturingBuild) => b.targetName === targetName);
+          if (exists) {
+            return {
+              manufacturingWizard: {
+                ...state.manufacturingWizard,
+                selectedBuilds: builds.filter((b: ManufacturingBuild) => b.targetName !== targetName),
+              },
+            };
+          }
+          const projectRoot = builds[0]?.projectRoot || '';
+          return {
+            manufacturingWizard: {
+              ...state.manufacturingWizard,
+              selectedBuilds: [
+                ...builds,
+                {
+                  projectRoot,
+                  targetName,
+                  status: 'pending' as const,
+                  buildId: null,
+                  error: null,
+                },
+              ],
+            },
+          };
+        }),
+
+      updateManufacturingBuild: (targetName, update) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingWizard) return {};
+          return {
+            manufacturingWizard: {
+              ...state.manufacturingWizard,
+              selectedBuilds: state.manufacturingWizard.selectedBuilds.map((b: ManufacturingBuild) =>
+                b.targetName === targetName ? { ...b, ...update } : b
+              ),
+            },
+          };
+        }),
+
+      setManufacturingGitStatus: (hasChanges, files) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingWizard) return {};
+          return {
+            manufacturingWizard: {
+              ...state.manufacturingWizard,
+              hasUncommittedChanges: hasChanges,
+              changedFiles: files,
+              isLoadingGitStatus: false,
+            },
+          };
+        }),
+
+      dismissUncommittedWarning: () =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingWizard) return {};
+          return {
+            manufacturingWizard: {
+              ...state.manufacturingWizard,
+              uncommittedWarningDismissed: true,
+            },
+          };
+        }),
+
+      setManufacturingExportDirectory: (directory) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingWizard) return {};
+          return {
+            manufacturingWizard: {
+              ...state.manufacturingWizard,
+              exportDirectory: directory,
+            },
+          };
+        }),
+
+      toggleManufacturingFileType: (fileType) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingWizard) return {};
+          const types = state.manufacturingWizard.selectedFileTypes;
+          const exists = types.includes(fileType);
+          return {
+            manufacturingWizard: {
+              ...state.manufacturingWizard,
+              selectedFileTypes: exists
+                ? types.filter((t: FileExportType) => t !== fileType)
+                : [...types, fileType],
+            },
+          };
+        }),
+
+      setManufacturingCostEstimate: (estimate) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingWizard) return {};
+          return {
+            manufacturingWizard: {
+              ...state.manufacturingWizard,
+              costEstimate: estimate,
+              isLoadingCost: false,
+            },
+          };
+        }),
+
+      setManufacturingQuantity: (quantity) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingWizard) return {};
+          return {
+            manufacturingWizard: {
+              ...state.manufacturingWizard,
+              quantity: Math.max(1, quantity),
+            },
+          };
+        }),
+
+      setManufacturingLoading: (key, loading) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingWizard) return {};
+          const loadingKey =
+            key === 'gitStatus'
+              ? 'isLoadingGitStatus'
+              : key === 'cost'
+              ? 'isLoadingCost'
+              : 'isExporting';
+          return {
+            manufacturingWizard: {
+              ...state.manufacturingWizard,
+              [loadingKey]: loading,
+            },
+          };
+        }),
+
+      setManufacturingExportError: (error) =>
+        set((state): Partial<Store> => {
+          if (!state.manufacturingWizard) return {};
+          return {
+            manufacturingWizard: {
+              ...state.manufacturingWizard,
+              exportError: error,
+              isExporting: false,
+            },
+          };
+        }),
 
       // Reset
       reset: () => set(initialState),
