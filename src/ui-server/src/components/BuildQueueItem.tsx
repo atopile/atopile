@@ -9,6 +9,7 @@ import type { QueuedBuild } from '../types/build'
 import { useStore } from '../store'
 import { sendAction } from '../api/websocket'
 import { postMessage } from '../api/vscodeApi'
+import { StatusIcon } from './StatusIcon'
 
 // Track recently completed builds for animation
 const recentlyCompletedBuilds = new Set<string>()
@@ -74,24 +75,10 @@ function BuildStatusIcon({ status }: { status: QueuedBuild['status'] }) {
   }
 }
 
-// Stage status icon component
+// Stage status icon component - uses unified StatusIcon for consistency
 function StageStatusIcon({ status }: { status: string }) {
-  switch (status) {
-    case 'success':
-      return <CheckCircle2 size={10} className="stage-icon success" />
-    case 'failed':
-    case 'error':
-      return <XCircle size={10} className="stage-icon failed" />
-    case 'warning':
-      return <AlertCircle size={10} className="stage-icon warning" />
-    case 'running':
-    case 'building':
-      return <span className="stage-icon running">●</span>
-    case 'skipped':
-      return <span className="stage-icon skipped">○</span>
-    default:
-      return <span className="stage-icon pending">○</span>
-  }
+  // Map to StatusIcon component for consistent styling across the app
+  return <StatusIcon status={status as any} size={12} />
 }
 
 function getCurrentStage(build: QueuedBuild): { name: string } | null {
@@ -227,8 +214,13 @@ export function BuildQueueItem({
             className={`build-expand-icon ${isExpanded ? 'open' : ''}`}
           />
         )}
-        {isComplete && <BuildStatusIcon status={build.status} />}
-        {!isComplete && hasFailedStage && <BuildStatusIcon status="failed" />}
+        {isComplete ? (
+          <BuildStatusIcon status={build.status} />
+        ) : hasFailedStage ? (
+          <BuildStatusIcon status="failed" />
+        ) : build.status === 'building' ? (
+          <StatusIcon status="building" size={14} />
+        ) : null}
         <div className="build-queue-info">
           <span className="build-queue-target">{targetName}</span>
           {build.status === 'building' && !hasFailedStage && currentStage && (
