@@ -487,11 +487,14 @@ class Tests:
         )
 
     def test_logs(self) -> None:
+        import uuid
+
+        build_id = f"test-{uuid.uuid4()}"
         Logs.init_db()
         Logs.append_chunk(
             [
                 LogRow(
-                    build_id="123",
+                    build_id=build_id,
                     timestamp="2025-01-01T00:00:00",
                     stage="compile",
                     level="INFO",
@@ -500,18 +503,21 @@ class Tests:
                 )
             ]
         )
-        rows, last_id = Logs.fetch_chunk("123")
+        rows, last_id = Logs.fetch_chunk(build_id)
         assert len(rows) == 1
         assert rows[0]["message"] == "hello"
         assert last_id > 0
 
     def test_test_logs(self) -> None:
+        import uuid
+
+        test_run_id = f"test-run-{uuid.uuid4()}"
         TestLogs.init_db()
-        TestLogs.register_run("run-1")
+        TestLogs.register_run(test_run_id)
         TestLogs.append_chunk(
             [
                 TestLogRow(
-                    test_run_id="run-1",
+                    test_run_id=test_run_id,
                     timestamp="2025-01-01T00:00:00",
                     test_name="test_foo",
                     level="INFO",
@@ -520,7 +526,7 @@ class Tests:
                 )
             ]
         )
-        rows, last_id = TestLogs.fetch_chunk("run-1")
+        rows, last_id = TestLogs.fetch_chunk(test_run_id)
         assert len(rows) == 1
         assert rows[0]["message"] == "passed"
         assert last_id > 0
