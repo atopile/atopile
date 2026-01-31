@@ -1,6 +1,8 @@
 import json
 import os
 import sqlite3
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -14,13 +16,51 @@ BUILD_LOGS_DB = get_log_dir() / Path("build_logs.db")
 
 logger = get_logger(__name__)
 
+# Thread-local storage for database connections
+# Each thread gets its own connection to avoid race conditions
+_thread_local = threading.local()
+_init_lock = threading.Lock()
+
+
+def _ensure_db_dir(db_path: Path) -> None:
+    """Ensure database directory exists (called once per database)."""
+    with _init_lock:
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+
+@contextmanager
+def _get_connection(db_path: Path, timeout: float = 30.0):
+    """
+    Get a thread-local database connection, creating one if needed.
+    Each thread gets its own connection to avoid race conditions.
+    """
+    # Get or create thread-local connection dict
+    if not hasattr(_thread_local, "connections"):
+        _thread_local.connections = {}
+
+    connections = _thread_local.connections
+
+    if db_path not in connections:
+        _ensure_db_dir(db_path)
+        conn = sqlite3.connect(db_path, timeout=timeout)
+        # Enable WAL mode for better concurrent access
+        conn.execute("PRAGMA journal_mode=WAL")
+        connections[db_path] = conn
+
+    conn = connections[db_path]
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
 
 # build_history.db -> build_history schema helper
 class BuildHistory:
     @staticmethod
     def init_db() -> None:
-        BUILD_HISTORY_DB.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(BUILD_HISTORY_DB) as conn:
+        with _get_connection(BUILD_HISTORY_DB) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS build_history (
                     build_id         TEXT PRIMARY KEY,
@@ -78,7 +118,7 @@ class BuildHistory:
         This allows partial updates without losing previously set fields.
         """
         try:
-            with sqlite3.connect(BUILD_HISTORY_DB) as conn:
+            with _get_connection(BUILD_HISTORY_DB) as conn:
                 conn.row_factory = sqlite3.Row
                 # Get existing record to merge with
                 existing_row = conn.execute(
@@ -165,15 +205,15 @@ class BuildHistory:
     def get(build_id: str) -> Build | None:
         """Get a build by ID. Returns None if missing, exits on error."""
         try:
-            with sqlite3.connect(BUILD_HISTORY_DB) as conn:
+            with _get_connection(BUILD_HISTORY_DB) as conn:
                 conn.row_factory = sqlite3.Row
                 row = conn.execute(
                     "SELECT * FROM build_history WHERE build_id = ?",
                     (build_id,),
                 ).fetchone()
-            if row is None:
-                return None
-            return BuildHistory._from_row(row)
+                if row is None:
+                    return None
+                return BuildHistory._from_row(row)
         except Exception:
             logger.exception(
                 f"Failed to get build {build_id} from history. "
@@ -185,13 +225,13 @@ class BuildHistory:
     def get_all(limit: int = 50) -> list[Build]:
         """Get recent builds. Exits on error."""
         try:
-            with sqlite3.connect(BUILD_HISTORY_DB) as conn:
+            with _get_connection(BUILD_HISTORY_DB) as conn:
                 conn.row_factory = sqlite3.Row
                 rows = conn.execute(
                     "SELECT * FROM build_history ORDER BY started_at DESC LIMIT ?",
                     (limit,),
                 ).fetchall()
-            return [BuildHistory._from_row(r) for r in rows]
+                return [BuildHistory._from_row(r) for r in rows]
         except Exception:
             logger.exception(
                 "Failed to load build history. Try running 'ato dev clear_logs'."
@@ -203,8 +243,7 @@ class BuildHistory:
 class Logs:
     @staticmethod
     def init_db() -> None:
-        BUILD_LOGS_DB.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(BUILD_LOGS_DB) as conn:
+        with _get_connection(BUILD_LOGS_DB) as conn:
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS logs (
                     id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -251,7 +290,7 @@ class Logs:
     def append_chunk(entries: list[LogRow]) -> None:
         if not entries:
             return
-        with sqlite3.connect(BUILD_LOGS_DB, timeout=30.0) as conn:
+        with _get_connection(BUILD_LOGS_DB) as conn:
             conn.executemany(
                 """
                 INSERT INTO logs
@@ -310,28 +349,26 @@ class Logs:
         params.append(min(count, 5000))
         order_dir = "DESC" if order.upper() == "DESC" else "ASC"
 
-        with sqlite3.connect(BUILD_LOGS_DB, timeout=30.0) as conn:
+        with _get_connection(BUILD_LOGS_DB) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM logs"
                 " WHERE " + " AND ".join(where) + f" ORDER BY id {order_dir} LIMIT ?",
                 params,
             ).fetchall()
-
-        last_id = after_id
-        results = []
-        for row in rows:
-            last_id = row["id"]
-            results.append(Logs._from_row(row))
-        return results, last_id
+            last_id = after_id
+            results = []
+            for row in rows:
+                last_id = row["id"]
+                results.append(Logs._from_row(row))
+            return results, last_id
 
 
 # test_logs.db -> test_logs table helper
 class TestLogs:
     @staticmethod
     def init_db() -> None:
-        TEST_LOGS_DB.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(TEST_LOGS_DB) as conn:
+        with _get_connection(TEST_LOGS_DB) as conn:
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS test_runs (
                     test_run_id TEXT PRIMARY KEY,
@@ -358,7 +395,7 @@ class TestLogs:
 
     @staticmethod
     def register_run(test_run_id: str) -> None:
-        with sqlite3.connect(TEST_LOGS_DB, timeout=30.0) as conn:
+        with _get_connection(TEST_LOGS_DB) as conn:
             conn.execute(
                 "INSERT OR IGNORE INTO test_runs (test_run_id) VALUES (?)",
                 (test_run_id,),
@@ -391,7 +428,7 @@ class TestLogs:
     def append_chunk(entries: list[TestLogRow]) -> None:
         if not entries:
             return
-        with sqlite3.connect(TEST_LOGS_DB, timeout=30.0) as conn:
+        with _get_connection(TEST_LOGS_DB) as conn:
             conn.executemany(
                 """
                 INSERT INTO test_logs
@@ -450,20 +487,19 @@ class TestLogs:
         params.append(min(count, 5000))
         order_dir = "DESC" if order.upper() == "DESC" else "ASC"
 
-        with sqlite3.connect(TEST_LOGS_DB, timeout=30.0) as conn:
+        with _get_connection(TEST_LOGS_DB) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM test_logs"
                 " WHERE " + " AND ".join(where) + f" ORDER BY id {order_dir} LIMIT ?",
                 params,
             ).fetchall()
-
-        last_id = after_id
-        results = []
-        for row in rows:
-            last_id = row["id"]
-            results.append(TestLogs._from_row(row))
-        return results, last_id
+            last_id = after_id
+            results = []
+            for row in rows:
+                last_id = row["id"]
+                results.append(TestLogs._from_row(row))
+            return results, last_id
 
 
 class Tests:
