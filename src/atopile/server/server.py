@@ -761,7 +761,8 @@ def run_server(
         port: Port to run the server on
         workspace_paths: Workspace paths to scan for projects (defaults to cwd)
         force: Kill existing server on the port if True
-        ato_source: Source of the atopile binary ('explicit-path', 'from-setting', 'default')
+        ato_source: Source of the atopile binary
+            ('explicit-path', 'from-setting', 'default')
         ato_binary_path: Actual resolved path to the ato binary
         ato_local_path: Local path to display in the UI (for explicit-path mode)
         ato_from_branch: Git branch name when installed from git via uv
