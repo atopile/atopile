@@ -309,7 +309,7 @@ def test_single_pin_addressor_factory(states: int):
     tg = fbrk.TypeGraph.create(g=g)
 
     # Create unique App type per test run
-    AppType = fabll.Node._copy_type(fabll.Node, name=f"App_factory_{states}")
+    AppType = fabll.Node._copy_type(fabll.Node, name=f"_App_factory_{states}")
 
     # Dynamically add the addressor with the correct count
     AppType._handle_cls_attr("addressor", SinglePinAddressor.MakeChild(states=states))
