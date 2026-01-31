@@ -13,6 +13,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 from atopile.compiler import (
     DslException,
+    DslImportError,
     DslRichException,
     DslUndefinedSymbolError,
 )
@@ -399,6 +400,7 @@ class Linker:
 
             raise DslRichException(
                 message=str(e),
+                original=DslImportError(str(e)),
                 source_node=source_node,
             ) from e
 
