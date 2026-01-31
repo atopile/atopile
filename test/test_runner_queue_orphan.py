@@ -8,10 +8,8 @@ def test_requeues_claimed_but_unstarted_on_worker_crash():
 
     test_q = queue.Queue()
     workers = {}
-    set_report_globals(test_q, workers, runner_main.commit_info, runner_main.ci_info)
-
     # Set globals in report module so handle_worker_crash can access test_queue
-    set_report_globals(runner_main.test_queue, runner_main.workers, None, None)
+    set_report_globals(test_q, workers, runner_main.commit_info, runner_main.ci_info)
 
     agg = runner_main.TestAggregator(["t1"], runner_main.RemoteBaseline())
 
@@ -33,7 +31,6 @@ def test_requeues_claimed_but_unstarted_on_worker_crash():
 def test_finish_event_sets_start_time_if_missing():
     import test.runner.main as runner_main
     from test.runner.common import EventRequest, EventType, Outcome
-
 
     agg = runner_main.TestAggregator(["t1"], runner_main.RemoteBaseline())
 
