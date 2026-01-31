@@ -111,11 +111,13 @@ app.include_router(ui_router)
 
 # Mount log viewer static assets at root (must be last - acts as fallback)
 # Specific routes like /logs, /report take precedence over this catch-all
-app.mount(
-    "/",
-    StaticFiles(directory=LOG_VIEWER_DIST_DIR, html=False),
-    name="log-viewer-static",
-)
+# Only mount if the directory exists (it won't in CI where frontend isn't built)
+if LOG_VIEWER_DIST_DIR.exists():
+    app.mount(
+        "/",
+        StaticFiles(directory=LOG_VIEWER_DIST_DIR, html=False),
+        name="log-viewer-static",
+    )
 
 
 def get_log_file(worker_id: int) -> Path:
