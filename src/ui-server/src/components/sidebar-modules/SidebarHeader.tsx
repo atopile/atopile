@@ -224,7 +224,7 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
     localPath: atopile?.localPath,
     actualBinaryPath: atopile?.actualBinaryPath,
     actualSource: atopile?.actualSource,
-    isRunningExplicitlyConfigured,
+    isRunningExplicitPath,
     source: atopile?.source,
     pendingRestartNeeded,
   });

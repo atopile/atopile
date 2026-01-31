@@ -71,13 +71,11 @@ export function useSidebarHandlers({
   };
 
   const handleOpenPackageDetail = async (pkg: SelectedPackage) => {
+    const store = useStore.getState();
+    store.clearPackageDetailsAndStartLoading();
     setSelectedPackage(pkg);
     setSelectedPart(null);
     const requestedVersion = pkg.latestVersion || pkg.version;
-    const store = useStore.getState();
-    store.setLoadingPackageDetails(true);
-    store.setPackageDetails(null);
-    useStore.setState({ packageDetailsError: null });
     try {
       const response = await sendActionWithResponse('getPackageDetails', {
         packageId: pkg.fullName,

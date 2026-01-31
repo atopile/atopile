@@ -206,7 +206,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
 
     const webviewsDir = path.join(extensionPath, 'resources', 'webviews');
     const jsPath = path.join(webviewsDir, 'logViewer.js');
-    const cssPath = path.join(webviewsDir, 'logViewer.css');
+    const cssPath = path.join(webviewsDir, 'LogViewer.css');
     const baseCssPath = path.join(webviewsDir, 'index.css');
 
     if (!fs.existsSync(jsPath)) {

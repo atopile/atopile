@@ -375,3 +375,65 @@
     /* Uses dark theme (default) - inherits VS Code vars from :root */
   }
 }
+
+/* ============================================
+   VS Code Webview Theme Detection
+   VS Code adds vscode-light/vscode-dark classes to body
+   ============================================ */
+body.vscode-light,
+body.vscode-high-contrast-light {
+  /* Catppuccin Latte palette for light VS Code themes */
+  --ctp-rosewater: #dc8a78;
+  --ctp-flamingo: #dd7878;
+  --ctp-pink: #ea76cb;
+  --ctp-mauve: #8839ef;
+  --ctp-red: #d20f39;
+  --ctp-maroon: #e64553;
+  --ctp-peach: #fe640b;
+  --ctp-yellow: #df8e1d;
+  --ctp-green: #40a02b;
+  --ctp-teal: #179299;
+
+  /* RGB variants for rgba() usage (Latte) */
+  --ctp-red-rgb: 210, 15, 57;
+  --ctp-yellow-rgb: 223, 142, 29;
+  --ctp-green-rgb: 64, 160, 43;
+  --ctp-blue-rgb: 30, 102, 245;
+  --ctp-peach-rgb: 254, 100, 11;
+  --ctp-mauve-rgb: 136, 57, 239;
+
+  --ctp-sky: #04a5e5;
+  --ctp-sapphire: #209fb5;
+  --ctp-blue: #1e66f5;
+  --ctp-lavender: #7287fd;
+  --ctp-text: #4c4f69;
+  --ctp-subtext1: #5c5f77;
+  --ctp-subtext0: #6c6f85;
+  --ctp-overlay2: #7c7f93;
+  --ctp-overlay1: #8c8fa1;
+  --ctp-overlay0: #9ca0b0;
+  --ctp-surface2: #acb0be;
+  --ctp-surface1: #bcc0cc;
+  --ctp-surface0: #ccd0da;
+  --ctp-base: #eff1f5;
+  --ctp-mantle: #e6e9ef;
+  --ctp-crust: #dce0e8;
+
+  /* Light mode specific */
+  --shadow-color: rgba(0, 0, 0, 0.1);
+
+  /* Primary accent - slightly darker orange for light bg */
+  --accent: var(--ato-orange-dark);
+  --accent-hover: var(--ato-orange);
+  --accent-glow: rgba(217, 68, 16, 0.12);
+  --accent-subtle: rgba(217, 68, 16, 0.06);
+
+  /* Interactive States */
+  --hover: var(--vscode-list-hoverBackground, rgba(0, 0, 0, 0.04));
+  --active: var(--vscode-list-activeSelectionBackground, rgba(0, 0, 0, 0.08));
+  --selected: var(--accent-subtle);
+
+  /* Text on colored backgrounds */
+  --text-on-accent: var(--ctp-base);
+  --text-on-status: var(--ctp-base);
+}
