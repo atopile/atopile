@@ -125,6 +125,10 @@ export interface LoadDirectoryMessage {
   directoryPath: string;
 }
 
+export interface GetAtopileSettingsMessage {
+  type: 'getAtopileSettings';
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -139,7 +143,8 @@ export type ExtensionMessage =
   | ShowBackendMenuMessage
   | OpenInSimpleBrowserMessage
   | ListFilesMessage
-  | LoadDirectoryMessage;
+  | LoadDirectoryMessage
+  | GetAtopileSettingsMessage;
 
 /**
  * Type-safe helper to post messages to the extension.
@@ -220,6 +225,14 @@ export interface DirectoryLoadedMessage {
   error?: string;
 }
 
+export interface AtopileSettingsResponseMessage {
+  type: 'atopileSettingsResponse';
+  settings: {
+    atoPath: string | null;  // atopile.ato setting
+    fromSpec: string | null;  // atopile.from setting
+  };
+}
+
 export type ExtensionToWebviewMessage =
   | TriggerBuildMessage
   | SetAtopileInstallingMessage
@@ -230,7 +243,8 @@ export type ExtensionToWebviewMessage =
   | AtopileInstallErrorMessage
   | ServerReadyMessage
   | FilesListedMessage
-  | DirectoryLoadedMessage;
+  | DirectoryLoadedMessage
+  | AtopileSettingsResponseMessage;
 
 // Callback type for extension message handlers
 type ExtensionMessageHandler = (message: ExtensionToWebviewMessage) => void;

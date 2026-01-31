@@ -784,11 +784,20 @@ function updateAtopileConfig(data: Record<string, unknown>): void {
     update.fromBranch = fromBranch;
   }
 
+  const fromSpec =
+    (typeof data.from_spec === 'string' && data.from_spec) ||
+    (typeof data.fromSpec === 'string' && data.fromSpec) ||
+    null;
+  if (fromSpec !== null) {
+    update.fromSpec = fromSpec;
+  }
+
   console.log('[WS] updateAtopileConfig received:', {
     actualVersion,
     actualSource,
     actualBinaryPath,
     fromBranch,
+    fromSpec,
     source: data.source,
     localPath: data.local_path || data.localPath,
   });

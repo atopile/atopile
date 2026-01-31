@@ -90,6 +90,11 @@ def backend(
         "--ato-from-branch",
         help="Git branch name when installed from git via uv",
     ),
+    ato_from_spec: Optional[str] = typer.Option(
+        None,
+        "--ato-from-spec",
+        help="The pip/uv spec used to install atopile (e.g., 'atopile==0.14.0' or git URL)",
+    ),
 ) -> None:
     """Start the backend server in the current terminal."""
     from atopile.server.server import run_server
@@ -103,6 +108,7 @@ def backend(
         ato_binary_path=ato_binary_path,
         ato_local_path=ato_local_path,
         ato_from_branch=ato_from_branch,
+        ato_from_spec=ato_from_spec,
     )
 
 

@@ -13,6 +13,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
 import { traceInfo, traceError } from '../common/log/logging';
+import { getWorkspaceSettings } from '../common/settings';
+import { getProjectRoot } from '../common/utilities';
 import { openPcb } from '../common/kicad';
 import { setCurrentPCB } from '../common/pcb';
 import { setCurrentThreeDModel } from '../common/3dmodel';
@@ -135,6 +137,10 @@ interface LoadDirectoryMessage {
   directoryPath: string;  // Relative path to directory
 }
 
+interface GetAtopileSettingsMessage {
+  type: 'getAtopileSettings';
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -156,7 +162,8 @@ type WebviewMessage =
   | DuplicateFileMessage
   | OpenInTerminalMessage
   | ListFilesMessage
-  | LoadDirectoryMessage;
+  | LoadDirectoryMessage
+  | GetAtopileSettingsMessage;
 
 /**
  * Check if we're running in development mode.
@@ -458,6 +465,34 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   /**
+   * Send current atopile settings to the webview.
+   * Used to initialize the toggle state correctly.
+   */
+  private async _sendAtopileSettings(): Promise<void> {
+    try {
+      const projectRoot = await getProjectRoot();
+      const settings = await getWorkspaceSettings(projectRoot);
+      traceInfo(`[SidebarProvider] Sending atopile settings: ato=${settings.ato}, from=${settings.from}`);
+      this._postToWebview({
+        type: 'atopileSettingsResponse',
+        settings: {
+          atoPath: settings.ato || null,
+          fromSpec: settings.from || null,
+        },
+      });
+    } catch (error) {
+      traceError(`[SidebarProvider] Error getting atopile settings: ${error}`);
+      this._postToWebview({
+        type: 'atopileSettingsResponse',
+        settings: {
+          atoPath: null,
+          fromSpec: null,
+        },
+      });
+    }
+  }
+
+  /**
    * Handle messages from the webview (forwarded from ui-server via postMessage).
    */
   private _handleWebviewMessage(message: WebviewMessage): void {
@@ -494,6 +529,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'restartExtension':
         // Restart the extension host to apply new atopile settings
         vscode.commands.executeCommand('workbench.action.restartExtensionHost');
+        break;
+      case 'getAtopileSettings':
+        // Send current atopile settings to the webview
+        this._sendAtopileSettings();
         break;
       case 'showLogs':
         backendServer.showLogs();

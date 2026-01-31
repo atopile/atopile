@@ -32,9 +32,10 @@ const action = (name: string, data?: Record<string, unknown>) => {
 interface AtopileState {
   // Actual running atopile info
   actualVersion?: string | null;
-  actualSource?: string | null;
+  actualSource?: string | null;  // 'explicit-path', 'from-setting', or 'default'
   actualBinaryPath?: string | null;
   fromBranch?: string | null;  // Git branch when installed via uv from git
+  fromSpec?: string | null;  // The pip/uv spec (for from-setting mode)
   // User selection state
   isInstalling?: boolean;
   installProgress?: {
@@ -74,13 +75,40 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
 
   // Local state for toggle (allows UI to work even when backend is down)
   const [useLocalAtopile, setUseLocalAtopile] = useState(atopile?.source === 'local');
+  // Track if we've received settings from the extension (to avoid overwriting with backend state)
+  const [settingsReceived, setSettingsReceived] = useState(false);
 
-  // Sync toggle state when backend state changes
+  // Request settings from the extension on mount
   useEffect(() => {
-    if (atopile?.source !== undefined) {
+    // Request current atopile settings from the extension
+    postMessage({ type: 'getAtopileSettings' });
+
+    // Listen for the response
+    const unsubscribe = onExtensionMessage((message: ExtensionToWebviewMessage) => {
+      if (message.type === 'atopileSettingsResponse') {
+        const { atoPath } = message.settings;
+        console.log('[SidebarHeader] Received atopile settings from extension:', message.settings);
+        // If atopile.ato is set, toggle should be ON
+        const shouldUseLocal = !!atoPath;
+        setUseLocalAtopile(shouldUseLocal);
+        if (atoPath) {
+          setLocalPathInput(atoPath);
+        }
+        setSettingsReceived(true);
+      }
+    });
+
+    return unsubscribe;
+  }, []);
+
+  // Sync toggle state when backend state changes (but only after initial settings or if no settings received)
+  useEffect(() => {
+    // Only sync from backend if we haven't received settings from extension
+    // OR if the backend explicitly tells us the source
+    if (atopile?.source !== undefined && !settingsReceived) {
       setUseLocalAtopile(atopile.source === 'local');
     }
-  }, [atopile?.source]);
+  }, [atopile?.source, settingsReceived]);
 
   // Local state for path input (controlled input needs synchronous state updates)
   const [localPathInput, setLocalPathInput] = useState(atopile?.localPath || '');
@@ -148,44 +176,45 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
   // Key insight: restart is only needed when user's DESIRED state differs from RUNNING state.
   //
   // actualSource tells us HOW the backend resolved its binary on startup:
-  // - 'settings' = user explicitly configured atopile.ato → this is "explicitly local"
-  // - 'local-uv' = extension-managed default (installs from git branch via uv)
+  // - 'explicit-path' = user explicitly configured atopile.ato
+  // - 'from-setting' = user explicitly configured atopile.from
+  // - 'default' = extension-managed default (installs matching release via uv)
   //
-  // Only 'settings' counts as "user explicitly configured local" because:
-  // - local-uv is the default for all users
-  // - If user never configured anything, they shouldn't see restart warnings
-  const isRunningExplicitlyConfigured = atopile?.actualSource === 'settings';
+  // Only 'explicit-path' counts as "user explicitly configured local path" because:
+  // - from-setting and default are uv-managed
+  // - If user never configured atopile.ato, they shouldn't see restart warnings for path changes
+  const isRunningExplicitPath = atopile?.actualSource === 'explicit-path';
 
   const pendingRestartNeeded = (() => {
     if (useLocalAtopile) {
       // Toggle is ON - user wants to use an explicitly configured local path
       const pathToUse = atopile?.localPath || localPathInput;
 
-      if (atopile?.actualSource !== 'settings') {
-        // Currently running from default (local-uv/git branch), not from explicit local path
+      if (atopile?.actualSource !== 'explicit-path') {
+        // Currently running from default or from-setting, not from explicit local path
         // Need restart only if user has entered a valid path to switch to
         return !!pathToUse;
       }
 
-      // Already running from settings (explicit local path)
+      // Already running from explicit-path
       // Check if the configured path differs from what's running
       if (!pathToUse) return false;
       if (!atopile?.actualBinaryPath) return !!localPathInput;
       return !pathMatchesActualBinary(pathToUse);
     } else {
-      // Toggle is OFF - user wants to use default (extension-managed uv from git branch)
-      // Only show restart if we're running an EXPLICITLY configured binary
+      // Toggle is OFF - user wants to use default (extension-managed)
+      // Only show restart if we're running from an EXPLICIT PATH
       // (i.e., user previously set atopile.ato and restarted with it)
       //
-      // If actualSource is 'local-uv', that's the default, so no restart needed.
-      return isRunningExplicitlyConfigured;
+      // If actualSource is 'default' or 'from-setting', no restart needed.
+      return isRunningExplicitPath;
     }
   })();
 
-  // Check if toggle is ON but we're not running from local and no path entered yet
+  // Check if toggle is ON but we're not running from explicit-path and no path entered yet
   // This is a "needs configuration" state - user turned on local but hasn't set it up
   const needsLocalConfig = useLocalAtopile
-    && atopile?.actualSource !== 'settings'
+    && atopile?.actualSource !== 'explicit-path'
     && !atopile?.localPath
     && !localPathInput;
 
@@ -450,11 +479,29 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
                     <>
                       <Check size={14} />
                       <span className="health-message">
-                        {useLocalAtopile && atopile?.actualSource === 'settings'
-                          ? `Using local atopile v${atopile?.actualVersion || '?'}`
-                          : atopile?.fromBranch
-                            ? `Using atopile v${atopile?.actualVersion || '?'} (${atopile.fromBranch})`
-                            : `Using atopile v${atopile?.actualVersion || '?'}`}
+                        {(() => {
+                          const version = atopile?.actualVersion || '?';
+                          const source = atopile?.actualSource;
+
+                          // explicit-path: show version + path
+                          if (source === 'explicit-path') {
+                            const path = atopile?.localPath || atopile?.actualBinaryPath || '';
+                            return `Using atopile v${version} (${path})`;
+                          }
+
+                          // from-setting: show version + branch or spec
+                          if (source === 'from-setting') {
+                            if (atopile?.fromBranch) {
+                              return `Using atopile v${version} (${atopile.fromBranch})`;
+                            }
+                            if (atopile?.fromSpec) {
+                              return `Using atopile v${version} (${atopile.fromSpec})`;
+                            }
+                          }
+
+                          // default: just show version
+                          return `Using atopile v${version}`;
+                        })()}
                       </span>
                     </>
                   )}
@@ -505,9 +552,13 @@ export function SidebarHeader({ atopile, isConnected = true }: SidebarHeaderProp
                 <span className="settings-hint">
                   {useLocalAtopile
                     ? 'Using a local installation from filesystem'
-                    : atopile?.fromBranch
-                      ? `Using atopile from branch: ${atopile.fromBranch}`
-                      : 'Using the standard atopile from PyPI'}
+                    : atopile?.actualSource === 'from-setting'
+                      ? atopile?.fromBranch
+                        ? `Using atopile from branch: ${atopile.fromBranch}`
+                        : atopile?.fromSpec
+                          ? `Using atopile from: ${atopile.fromSpec}`
+                          : 'Using a custom atopile source'
+                      : 'Using the standard atopile release'}
                 </span>
               </div>
 

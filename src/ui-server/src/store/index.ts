@@ -107,9 +107,10 @@ const initialState: AppState = {
   atopile: {
     // Actual running atopile info
     actualVersion: null as string | null,
-    actualSource: null as string | null,
+    actualSource: null as string | null,  // 'explicit-path', 'from-setting', or 'default'
     actualBinaryPath: null as string | null,
     fromBranch: null as string | null,  // Git branch when installed via uv from git
+    fromSpec: null as string | null,  // The pip/uv spec (for from-setting mode)
     // User selection state
     source: 'release' as 'release' | 'local',
     localPath: null as string | null,

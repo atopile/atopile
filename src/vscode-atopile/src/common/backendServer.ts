@@ -549,31 +549,25 @@ class BackendServerManager implements vscode.Disposable {
             });
 
             let localPathForUI: string | undefined;
+            let fromSpec: string | undefined;
             let fromBranch: string | undefined;
 
-            if (atoBin.source === 'settings') {
-                // Running from a local path (explicitly configured)
+            if (atoBin.source === 'explicit-path') {
+                // Running from a local path (explicitly configured via atopile.ato)
                 localPathForUI = settings.ato || atoBin.command[0];
             }
 
-            // Extract branch name from git URL if using uv
-            // Format: git+https://github.com/org/repo.git@branch_name
-            if (atoBin.source === 'local-uv') {
-                // First check if user explicitly set atopile.from
-                let gitUrl = settings.from;
+            // For from-setting or default, extract the --from spec from the command
+            if (atoBin.source === 'from-setting' || atoBin.source === 'default') {
+                // Command format: [uv, tool, run, -p, 3.14, --from, <spec>, ato]
+                const fromIndex = atoBin.command.indexOf('--from');
+                if (fromIndex !== -1 && fromIndex + 1 < atoBin.command.length) {
+                    fromSpec = atoBin.command[fromIndex + 1];
+                    traceInfo(`[BackendServer] From spec: ${fromSpec}`);
 
-                // If not explicitly set, extract from the command (contains the --from value)
-                if (!gitUrl) {
-                    // Command format: [uv, tool, run, -p, 3.14, --from, <git_url>, ato]
-                    const fromIndex = atoBin.command.indexOf('--from');
-                    if (fromIndex !== -1 && fromIndex + 1 < atoBin.command.length) {
-                        gitUrl = atoBin.command[fromIndex + 1];
-                    }
-                }
-
-                if (gitUrl) {
-                    // Match branch after @ (allow slashes for branches like feature/xxx)
-                    const gitUrlMatch = gitUrl.match(/@([^@]+)$/);
+                    // Extract branch name from git URL if present
+                    // Format: git+https://github.com/org/repo.git@branch_name
+                    const gitUrlMatch = fromSpec.match(/@([^@]+)$/);
                     if (gitUrlMatch) {
                         fromBranch = gitUrlMatch[1];
                         traceInfo(`[BackendServer] Extracted branch from git URL: ${fromBranch}`);
@@ -592,9 +586,13 @@ class BackendServerManager implements vscode.Disposable {
                 '--ato-source', atoBin.source,
                 '--ato-binary-path', atoBinaryPath,
             ];
-            // Pass local path if we're in local mode (for UI display)
+            // Pass local path if we're in explicit-path mode (for UI display)
             if (localPathForUI) {
                 args.push('--ato-local-path', localPathForUI);
+            }
+            // Pass the from spec if using from-setting mode (for UI display)
+            if (fromSpec && atoBin.source === 'from-setting') {
+                args.push('--ato-from-spec', fromSpec);
             }
             // Pass branch name if installed from git via uv
             if (fromBranch) {
