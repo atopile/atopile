@@ -30,14 +30,27 @@ export async function openAtoShell(): Promise<void> {
     const workspaceRoots = getWorkspaceRoots();
     const cwd = workspaceRoots.length > 0 ? workspaceRoots[0] : undefined;
 
+    // Detect PowerShell (check both Windows PowerShell and cross-platform pwsh)
+    const inPowershell =
+        vscode.env.shell &&
+        (vscode.env.shell.toLowerCase().includes('powershell') ||
+         vscode.env.shell.toLowerCase().includes('pwsh'));
+
     const terminal = vscode.window.createTerminal({
         name: 'ato shell',
         cwd: cwd,
     });
 
-    // Set up the alias (use double quotes to allow single-quoted paths inside)
-    terminal.sendText(`alias ato="${atoCommand}"`);
-    terminal.sendText('clear');
+    if (inPowershell) {
+        // PowerShell: Use Function with & for invocation and @args for argument forwarding
+        terminal.sendText(`Function ato { & ${atoCommand} @args }`);
+        terminal.sendText('cls');
+    } else {
+        // Bash/Zsh: Standard alias (use double quotes to allow single-quoted paths inside)
+        terminal.sendText(`alias ato="${atoCommand}"`);
+        terminal.sendText('clear');
+    }
+
     terminal.sendText('ato');
     terminal.show();
 }
