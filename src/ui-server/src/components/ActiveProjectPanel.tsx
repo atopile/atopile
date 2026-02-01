@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target } from 'lucide-react'
+import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2 } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
 import { postMessage } from '../api/vscodeApi'
+import { sendAction } from '../api/websocket'
+import { useStore } from '../store'
 import './ActiveProjectPanel.css'
 
 // Re-export BuildQueueItem for use in standalone BuildQueue panel
@@ -253,13 +255,11 @@ function TargetSelector({
   targets,
   activeTargetName,
   onSelectTarget,
-  onCreateTarget,
   disabled,
 }: {
   targets: BuildTarget[]
   activeTargetName: string | null
   onSelectTarget: (targetName: string) => void
-  onCreateTarget?: () => void
   disabled?: boolean
 }) {
   const [isOpen, setIsOpen] = useState(false)
@@ -317,77 +317,54 @@ function TargetSelector({
     return (
       <div className="target-selector-empty">
         <span>No builds defined</span>
-        {onCreateTarget && (
-          <button
-            className="create-target-btn"
-            onClick={onCreateTarget}
-            title="Create new build"
-          >
-            <Plus size={12} />
-          </button>
-        )}
       </div>
     )
   }
 
   return (
-    <div className="target-selector-row">
-      <div className="target-combobox" ref={comboboxRef}>
-        <button
-          type="button"
-          className={`target-combobox-trigger ${isOpen ? 'open' : ''}`}
-          onClick={() => !disabled && setIsOpen(!isOpen)}
-          onKeyDown={handleKeyDown}
-          disabled={disabled}
-          aria-haspopup="listbox"
-          aria-expanded={isOpen}
-        >
-          <Target size={14} className="target-icon" />
-          <span className="target-trigger-name">{activeTarget?.name || 'Select build'}</span>
-          {activeTarget?.entry && (
-            <span className="target-trigger-entry">{activeTarget.entry.split(':').pop()}</span>
-          )}
+    <div className="target-combobox" ref={comboboxRef}>
+      <button
+        type="button"
+        className={`target-combobox-trigger ${isOpen ? 'open' : ''}`}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        onKeyDown={handleKeyDown}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+      >
+        <Target size={14} className="target-icon" />
+        <span className="target-trigger-name">{activeTarget?.name || 'Select build'}</span>
+        <span className="target-combobox-chevron">
           <ChevronDown size={14} className={`chevron ${isOpen ? 'open' : ''}`} />
-        </button>
+        </span>
+      </button>
 
-        {isOpen && (
-          <div className="target-combobox-dropdown">
-            <div className="target-combobox-list" role="listbox">
-              {targets.map((target, index) => {
-                const isActive = target.name === activeTargetName
-                const isHighlighted = index === highlightedIndex
-                return (
-                  <button
-                    key={target.name}
-                    className={`target-option ${isActive ? 'active' : ''} ${isHighlighted ? 'highlighted' : ''}`}
-                    onClick={() => selectTarget(target)}
-                    onMouseEnter={() => setHighlightedIndex(index)}
-                    role="option"
-                    aria-selected={isActive}
-                  >
-                    <Target size={12} className="option-icon" />
-                    <span className="target-option-name">{target.name}</span>
-                    {target.entry && (
-                      <span className="target-option-entry">{target.entry.split(':').pop()}</span>
-                    )}
-                    {isActive && <Check size={12} className="check-icon" />}
-                  </button>
-                )
-              })}
-            </div>
+      {isOpen && (
+        <div className="target-combobox-dropdown">
+          <div className="target-combobox-list" role="listbox">
+            {targets.map((target, index) => {
+              const isActive = target.name === activeTargetName
+              const isHighlighted = index === highlightedIndex
+              return (
+                <button
+                  key={target.name}
+                  className={`target-option ${isActive ? 'active' : ''} ${isHighlighted ? 'highlighted' : ''}`}
+                  onClick={() => selectTarget(target)}
+                  onMouseEnter={() => setHighlightedIndex(index)}
+                  role="option"
+                  aria-selected={isActive}
+                >
+                  <Target size={12} className="option-icon" />
+                  <span className="target-option-name">{target.name}</span>
+                  {target.entry && (
+                    <span className="target-option-entry">{target.entry.split(':').pop()}</span>
+                  )}
+                  {isActive && <Check size={12} className="check-icon" />}
+                </button>
+              )
+            })}
           </div>
-        )}
-      </div>
-
-      {onCreateTarget && (
-        <button
-          className="create-target-btn"
-          onClick={onCreateTarget}
-          title="Create new build"
-          disabled={disabled}
-        >
-          <Plus size={12} />
-        </button>
+        </div>
       )}
     </div>
   )
@@ -880,6 +857,21 @@ export function ActiveProjectPanel({
   const [createProjectError, setCreateProjectError] = useState<string | null>(null)
   const [createTargetError, setCreateTargetError] = useState<string | null>(null)
 
+  // Migration state from store
+  const migratingProjectRoots = useStore((state) => state.migratingProjectRoots)
+  const migrationErrors = useStore((state) => state.migrationErrors)
+  const addMigratingProject = useStore((state) => state.addMigratingProject)
+  const setMigrationError = useStore((state) => state.setMigrationError)
+
+  // Compute isMigrating based on selected project
+  const isMigrating = useMemo(() => {
+    if (!selectedProjectRoot) return false
+    return migratingProjectRoots.includes(selectedProjectRoot)
+  }, [selectedProjectRoot, migratingProjectRoots])
+
+  // Get migration error for current project
+  const migrationError = selectedProjectRoot ? migrationErrors[selectedProjectRoot] : null
+
   const handleCreateProject = useCallback(async (data: NewProjectData) => {
     if (!onCreateProject) return
     setIsCreatingProject(true)
@@ -986,10 +978,13 @@ export function ActiveProjectPanel({
 
       {/* Project Section */}
       <div className="project-section">
-        <div className="section-header">
-          <span className="section-label">Project</span>
-        </div>
         <div className="project-selector-row">
+          <span
+            className="section-label has-tooltip"
+            data-tooltip="A project groups your design modules and the builds created from them."
+          >
+            Project
+          </span>
           <ProjectSelector
             projects={projects}
             activeProject={activeProject}
@@ -1010,11 +1005,13 @@ export function ActiveProjectPanel({
 
       {/* Build Section */}
       <div className="builds-section">
-        <div className="section-header">
-          <span className="section-label">Build</span>
-        </div>
-
         <div className="build-targets">
+          <span
+            className="section-label has-tooltip"
+            data-tooltip="A build creates one PCB or reusable layout block from a selected module entry point."
+          >
+            Build
+          </span>
           <TargetSelector
             targets={activeProject?.targets || []}
             activeTargetName={activeTargetName}
@@ -1023,24 +1020,45 @@ export function ActiveProjectPanel({
                 onSelectTarget(activeProject.root, targetName)
               }
             }}
-            onCreateTarget={onCreateTarget && activeProject ? () => setShowNewTargetForm(true) : undefined}
             disabled={!activeProject}
           />
+          {onCreateTarget && activeProject && (
+            <button
+              className="new-project-btn"
+              onClick={() => setShowNewTargetForm(true)}
+              title="Create new build"
+            >
+              <Plus size={14} />
+            </button>
+          )}
         </div>
 
         {/* Action buttons - single row: Build | KiCad | 3D | Layout | Manufacture */}
         <div className="build-actions-row">
           <button
-            className="action-btn primary"
+            className={`action-btn primary${activeProject?.needsMigration ? ' needs-migration' : ''}`}
             onClick={() => {
-              if (!activeProject || !activeTargetName) return
-              onBuildTarget(activeProject.root, activeTargetName)
+              if (!activeProject) return
+              if (activeProject.needsMigration && !isMigrating) {
+                // Clear any previous error and start migration
+                if (migrationError) {
+                  setMigrationError(activeProject.root, null)
+                }
+                // Add to migrating list and fire-and-forget
+                addMigratingProject(activeProject.root)
+                sendAction('migrateProject', {
+                  projectRoot: activeProject.root,
+                })
+              } else if (!isMigrating) {
+                if (!activeTargetName) return
+                onBuildTarget(activeProject.root, activeTargetName)
+              }
             }}
-            disabled={!activeProject || !activeTargetName}
-            title={activeTargetName ? `Build ${activeTargetName}` : 'Select a build first'}
+            disabled={!activeProject || isMigrating || (!activeProject.needsMigration && !activeTargetName)}
+            title={isMigrating ? 'Migrating...' : (activeProject?.needsMigration ? 'Your project and dependencies are incompatible with this version of atopile. Use this button to download the latest compatible dependencies. You might need to manually make some minor changes in your project afterwards.' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first'))}
           >
-            <Play size={12} />
-            <span className="action-label">Build</span>
+            {isMigrating ? <Loader2 size={12} className="spin" /> : <Play size={12} />}
+            <span className="action-label">{isMigrating ? 'Migrating...' : (activeProject?.needsMigration ? 'Migrate' : 'Build')}</span>
           </button>
 
           <div className="action-divider" />
@@ -1109,6 +1127,21 @@ export function ActiveProjectPanel({
             </button>
           )}
         </div>
+
+        {/* Migration error display */}
+        {migrationError && (
+          <div className="migration-error">
+            <AlertCircle size={14} />
+            <span className="error-message">{migrationError}</span>
+            <button
+              className="dismiss-btn"
+              onClick={() => activeProject && setMigrationError(activeProject.root, null)}
+              title="Dismiss"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -605,6 +605,7 @@ class Project(CamelModel):
     display_path: Optional[str] = (
         None  # Relative path for display (e.g., "packages/proj")
     )
+    needs_migration: bool = False
 
 
 class ProjectsResponse(CamelModel):

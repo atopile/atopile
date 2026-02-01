@@ -1,6 +1,9 @@
+import pytest
+
 from .conftest import EXEC_T
 
 
+@pytest.mark.not_in_ci  # requires kicad-cli
 def test_net_names_deterministic(build_app: EXEC_T, save_tmp_path_on_failure: None):
     # Build a simple chain so multiple nets are generated deterministically
     src = """

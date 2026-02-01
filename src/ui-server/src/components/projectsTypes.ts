@@ -77,6 +77,8 @@ export interface Project {
   lastBuildTimestamp?: string;
   // Usage example content (from usage.ato file if available)
   usageContent?: string;
+  // Whether project needs migration (requires-atopile < 0.14.0)
+  needsMigration?: boolean;
 }
 
 // Module definition from API
