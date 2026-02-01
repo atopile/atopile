@@ -1,5 +1,5 @@
 # a minimal Dockerfile for CI
-ARG KICAD_VERSION=9.0.3
+ARG KICAD_VERSION=9.0.6
 FROM ghcr.io/kicad/kicad:${KICAD_VERSION}
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -8,6 +8,7 @@ ENV PATH=/venv/bin:/root/.local/bin:$PATH
 
 ENV UV_LINK_MODE=copy
 ENV UV_COMPILE_BYTECODE=1
+ENV UV_HTTP_TIMEOUT=300
 
 # build all targets
 ENV NONINTERACTIVE=1
@@ -36,9 +37,12 @@ EORUN
 
 COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /bin/uv
 
-COPY --chown=kicad:kicad dist/atopile-*-cp313-cp313-manylinux*.whl /tmp/
+# Pre-download Python 3.14 (cacheable step, KiCad image has Python 3.11)
+RUN uv python install 3.14
 
-RUN uv tool install /tmp/atopile-*-cp313-cp313-manylinux*.whl
+COPY --chown=kicad:kicad dist/atopile-*-cp314-cp314-manylinux*.whl /tmp/
+
+RUN uv tool install --python 3.14 /tmp/atopile-*-cp314-cp314-manylinux*.whl
 
 ENTRYPOINT ["ato"]
 
