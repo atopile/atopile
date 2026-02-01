@@ -1,8 +1,13 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 from faebryk.libs.kicad.fileformats import Property, kicad
 from test.end_to_end.conftest import dump_and_run
+
+# These tests require kicad-cli which is not available in CI
+pytestmark = pytest.mark.not_in_ci
 
 
 @dataclass

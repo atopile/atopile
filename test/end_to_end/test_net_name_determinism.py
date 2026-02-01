@@ -1,4 +1,9 @@
+import pytest
+
 from .conftest import EXEC_T
+
+# These tests require kicad-cli which is not available in CI
+pytestmark = pytest.mark.not_in_ci
 
 
 def test_net_names_deterministic(build_app: EXEC_T, save_tmp_path_on_failure: None):

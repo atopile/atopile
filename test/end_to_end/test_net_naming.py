@@ -1,9 +1,14 @@
 from pathlib import Path
 
+import pytest
+
 from test.end_to_end.conftest import dump_and_run
 from test.end_to_end.test_pcb_export import PcbSummary, summarize_pcb_file
 
 from .conftest import EXEC_T
+
+# These tests require kicad-cli which is not available in CI
+pytestmark = pytest.mark.not_in_ci
 
 
 def test_duplicate_specified_net_names(

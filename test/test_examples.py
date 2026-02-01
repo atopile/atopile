@@ -8,6 +8,9 @@ import pytest
 from faebryk.libs.util import repo_root as _repo_root
 from faebryk.libs.util import run_live
 
+# These tests require kicad-cli which is not available in CI
+pytestmark = pytest.mark.not_in_ci
+
 # Get the examples directory relative to this test file
 EXAMPLES_DIR = _repo_root() / "examples"
 
