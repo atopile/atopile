@@ -6,6 +6,7 @@
   flex: 1 1 auto;
   min-height: 0;
   container-type: inline-size;
+  --project-row-label-width: 72px;
 }
 
 /* Section Header - consistent header for Project/Build sections */
@@ -24,9 +25,42 @@
   font-family: var(--vscode-font-family, var(--font-sans));
   font-size: var(--font-size-xxs);
   font-weight: 600;
-  text-transform: uppercase;
   color: var(--vscode-descriptionForeground, var(--text-muted));
-  letter-spacing: 0.5px;
+}
+
+.section-label.has-tooltip {
+  position: relative;
+  cursor: help;
+  display: inline-block;
+}
+
+.section-label.has-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: var(--vscode-editorHoverWidget-background, var(--bg-secondary));
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--border-subtle));
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: var(--font-size-xs);
+  color: var(--vscode-editorHoverWidget-foreground, var(--text-primary));
+  white-space: normal;
+  width: calc(100cqw - 16px);
+  max-width: none;
+  box-sizing: border-box;
+  line-height: 1.4;
+  z-index: 1000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.1s ease-out;
+  transition-delay: 0s;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+}
+
+.section-label.has-tooltip:hover::after {
+  opacity: 1;
+  transition-delay: 0.15s;
 }
 
 /* Project Section */
@@ -37,9 +71,17 @@
 
 /* Project Selector Row */
 .project-selector-row {
-  display: flex;
-  gap: var(--spacing-xs);
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: var(--project-row-label-width) minmax(0, 1fr) auto;
+  column-gap: 6px;
+  align-items: center;
+}
+
+/* Inline section labels - shared style for consistent alignment */
+.project-selector-row .section-label,
+.build-targets .section-label {
+  flex: 0 0 auto;
+  justify-self: start;
 }
 
 /* Legacy - Project Display (keeping for potential future use) */
@@ -96,11 +138,13 @@
 .project-combobox {
   position: relative;
   flex: 1;
+  min-width: 0;
 }
 
 .combobox-input-wrapper {
   display: flex;
   align-items: center;
+  width: 100%;
   gap: var(--spacing-xs);
   padding: 0 var(--spacing-xs);
   min-height: 26px;
@@ -299,6 +343,10 @@
 
 /* Build targets (target selector) */
 .build-targets {
+  display: grid;
+  grid-template-columns: var(--project-row-label-width) minmax(0, 1fr) auto;
+  column-gap: 6px;
+  align-items: center;
   padding-bottom: var(--spacing-xs);
   margin-bottom: var(--spacing-xs);
   border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 50%, transparent);
@@ -336,6 +384,7 @@
 .target-combobox {
   position: relative;
   flex: 1;
+  min-width: 0;
 }
 
 .target-combobox-trigger {
@@ -353,6 +402,7 @@
   cursor: pointer;
   transition: all 0.15s ease;
   text-align: left;
+  overflow: hidden;
 }
 
 .target-combobox-trigger:hover:not(:disabled) {
@@ -385,17 +435,21 @@
   font-family: var(--font-sans);
   font-size: var(--font-size-xs);
   outline: none;
-}
-
-.target-trigger-entry {
-  flex: 1;
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  font-family: var(--font-sans);
-  text-align: right;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.target-combobox-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  margin-left: auto;
 }
 
 .target-combobox-dropdown {
