@@ -22,6 +22,7 @@ SKIP_EXAMPLES = [
 ]
 
 
+@pytest.mark.not_in_ci  # requires kicad-cli
 @pytest.mark.parametrize(
     "example",
     [
@@ -69,6 +70,7 @@ def test_examples_build_fast(
     assert combined.count("⚠") <= 3
 
 
+@pytest.mark.not_in_ci  # requires kicad-cli
 @pytest.mark.slow
 @pytest.mark.parametrize(
     "example",

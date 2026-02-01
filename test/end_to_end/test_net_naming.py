@@ -1,11 +1,14 @@
 from pathlib import Path
 
+import pytest
+
 from test.end_to_end.conftest import dump_and_run
 from test.end_to_end.test_pcb_export import PcbSummary, summarize_pcb_file
 
 from .conftest import EXEC_T
 
 
+@pytest.mark.not_in_ci  # requires kicad-cli
 def test_duplicate_specified_net_names(
     build_app: EXEC_T, save_tmp_path_on_failure: None
 ):
@@ -25,6 +28,7 @@ def test_duplicate_specified_net_names(
     assert "Net name collision" in stdout
 
 
+@pytest.mark.not_in_ci  # requires kicad-cli
 def test_conflicting_net_names(build_app: EXEC_T, save_tmp_path_on_failure: None):
     stdout, _, p = build_app(
         """
@@ -43,6 +47,7 @@ def test_conflicting_net_names(build_app: EXEC_T, save_tmp_path_on_failure: None
     assert "Multiple conflicting required net names" in stdout
 
 
+@pytest.mark.not_in_ci  # requires kicad-cli
 def test_agreeing_net_names(build_app: EXEC_T, save_tmp_path_on_failure: None):
     _, _, p = build_app(
         """
@@ -60,6 +65,7 @@ def test_agreeing_net_names(build_app: EXEC_T, save_tmp_path_on_failure: None):
     assert p.returncode == 0
 
 
+@pytest.mark.not_in_ci  # requires kicad-cli
 def test_duplicate_suggested_net_names(
     build_app: EXEC_T, save_tmp_path_on_failure: None
 ):
@@ -82,6 +88,7 @@ def test_duplicate_suggested_net_names(
     assert p.returncode == 0
 
 
+@pytest.mark.not_in_ci  # requires kicad-cli
 def test_conflicting_suggested_names_on_same_net(
     build_app: EXEC_T, save_tmp_path_on_failure: None
 ):
@@ -105,6 +112,7 @@ def test_conflicting_suggested_names_on_same_net(
     assert p.returncode == 0
 
 
+@pytest.mark.not_in_ci  # requires kicad-cli
 def test_differential_pair_suffixes(build_app: EXEC_T, save_tmp_path_on_failure: None):
     """
     DifferentialPair should enforce `_p` and `_n` suffixes on the nets.
@@ -124,6 +132,7 @@ def test_differential_pair_suffixes(build_app: EXEC_T, save_tmp_path_on_failure:
     assert p.returncode == 0
 
 
+@pytest.mark.not_in_ci  # requires kicad-cli
 def test_expected_net_name(tmpdir: Path):
     pcb_file = tmpdir / Path("layout/app/app.kicad_pcb")
     assert not pcb_file.exists()
