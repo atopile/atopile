@@ -17,8 +17,8 @@ import { getWorkspaceSettings } from '../common/settings';
 import { getProjectRoot } from '../common/utilities';
 import { openPcb } from '../common/kicad';
 import { setCurrentPCB } from '../common/pcb';
-import { setCurrentThreeDModel } from '../common/3dmodel';
-import { setProjectRoot, setSelectedTargets } from '../common/target';
+import { setCurrentThreeDModel, startThreeDModelBuild } from '../common/3dmodel';
+import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/target';
 import { loadBuilds, getBuilds } from '../common/manifest';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openModelViewerPreview } from '../ui/modelviewer';
@@ -787,7 +787,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       this._openWithKicad(msg.openKicad);
     }
     if (msg.open3d) {
-      this._open3dPreview(msg.open3d);
+      void this._open3dPreview(msg.open3d);
     }
   }
 
@@ -868,15 +868,32 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  private _open3dPreview(filePath: string): void {
-    const modelPath = this._resolveFilePath(filePath, '.glb');
-    if (!modelPath) {
-      traceError(`[SidebarProvider] 3D model not found: ${filePath}`);
-      vscode.window.showErrorMessage('3D model not found. Run a build to generate it.');
+  private async _open3dPreview(filePath: string): Promise<void> {
+    const modelPath = this._resolveFilePath(filePath, '.glb') ?? filePath;
+    setCurrentThreeDModel({ path: modelPath, exists: fs.existsSync(modelPath) });
+    await openModelViewerPreview();
+
+    const build = getBuildTarget();
+    if (!build?.root || !build.name) {
+      traceError('[SidebarProvider] No build target selected for 3D export.');
       return;
     }
-    setCurrentThreeDModel({ path: modelPath, exists: true });
-    void openModelViewerPreview();
+
+    const triggerThreeDModelBuild = () => {
+      backendServer.sendToWebview({
+        type: 'triggerBuild',
+        projectRoot: build.root,
+        targets: [build.name],
+        includeTargets: ['glb'],
+      });
+    };
+
+    startThreeDModelBuild({
+      retryAttempts: 1,
+      onRetry: triggerThreeDModelBuild,
+    });
+
+    triggerThreeDModelBuild();
   }
 
   /**

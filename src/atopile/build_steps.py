@@ -985,7 +985,7 @@ def generate_2d_render(ctx: BuildStepContext) -> None:
 @muster.register(
     "mfg-data",
     tags={Tags.REQUIRES_KICAD},
-    dependencies=[generate_3d_models, post_pcb_checks],
+    dependencies=[generate_step, post_pcb_checks],
     produces_artifact=True,
 )
 def generate_manufacturing_data(ctx: BuildStepContext) -> None:
@@ -1149,7 +1149,6 @@ def generate_datasheets(ctx: BuildStepContext) -> None:
     aliases=["__default__"],  # for backwards compatibility
     dependencies=[
         generate_bom,
-        generate_glb,
         generate_manifest,
         generate_variable_report,
         # generate_power_tree,

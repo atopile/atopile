@@ -1445,11 +1445,14 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             project_path = Path(resolved_project_root)
             target = path_utils.resolve_3d_path(project_path, target_name)
-            if not target or not target.exists():
-                return {
-                    "success": False,
-                    "error": f"3D view not found for target: {target_name}",
-                }
+            if target is None:
+                target = (
+                    project_path
+                    / "build"
+                    / "builds"
+                    / target_name
+                    / f"{target_name}.pcba.glb"
+                )
 
             await server_state.emit_event("open_3d", {"path": str(target)})
             return {"success": True}
