@@ -884,7 +884,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         type: 'triggerBuild',
         projectRoot: build.root,
         targets: [build.name],
-        includeTargets: ['glb'],
+        includeTargets: ['glb-only'],
+        excludeTargets: ['default'],
       });
     };
 

@@ -32,6 +32,7 @@ export function useConnection() {
             requestId: message.requestId,
             includeTargets: message.includeTargets,
             frozen: message.frozen,
+            excludeTargets: message.excludeTargets,
           });
           break;
         case 'atopileInstalling':

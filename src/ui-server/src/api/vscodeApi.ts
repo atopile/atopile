@@ -183,6 +183,7 @@ export interface TriggerBuildMessage {
   requestId?: string;  // For tracking responses
   includeTargets?: string[];
   frozen?: boolean;
+  excludeTargets?: string[];
 }
 
 export interface SetAtopileInstallingMessage {
