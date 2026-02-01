@@ -1019,7 +1019,7 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
                         <div className="mfg-visual-empty">
                           <Cuboid size={32} />
                           <span>3D model not available</span>
-                          <span className="mfg-visual-hint">Build with "all" target to generate</span>
+                          <span className="mfg-visual-hint">Build with "3d-models" target to generate</span>
                         </div>
                       )}
                     </>
