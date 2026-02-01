@@ -1,4 +1,5 @@
 const std = @import("std");
+const compat = @import("compat");
 const structure = @import("../structure.zig");
 
 const str = []const u8;
@@ -13,7 +14,7 @@ pub const FpLibEntry = struct {
 };
 
 fn list(comptime T: type) type {
-    return std.DoublyLinkedList(T);
+    return compat.DoublyLinkedList(T);
 }
 
 pub const FpLibTable = struct {

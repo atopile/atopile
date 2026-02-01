@@ -59,7 +59,7 @@ fn wrap_edge_composition_create() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const identifier_const: []const u8 = bind.unwrap_str_copy(kwarg_obj.child_identifier) orelse return null;
@@ -93,7 +93,7 @@ fn wrap_edge_composition_build() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const identifier_copy = bind.unwrap_str_copy(kwarg_obj.child_identifier) orelse return null;
 
@@ -125,7 +125,7 @@ fn wrap_edge_composition_is_instance() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const is_match = faebryk.composition.EdgeComposition.is_instance(kwarg_obj.edge.*);
@@ -151,7 +151,7 @@ fn wrap_edge_composition_visit_children_edges() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             var visit_ctx = graph_py.BoundEdgeVisitor{
@@ -199,7 +199,7 @@ fn wrap_edge_composition_get_parent_edge() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const parent_edge = faebryk.composition.EdgeComposition.get_parent_edge(kwarg_obj.bound_node.*);
@@ -228,7 +228,7 @@ fn wrap_edge_composition_get_parent_node() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const node_ref = faebryk.composition.EdgeComposition.get_parent_node(kwarg_obj.edge.*);
@@ -252,7 +252,7 @@ fn wrap_edge_composition_get_child_node() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const node_ref = faebryk.composition.EdgeComposition.get_child_node(kwarg_obj.edge.*);
@@ -278,7 +278,7 @@ fn wrap_edge_composition_get_child_of() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.composition.EdgeComposition.get_child_of(kwarg_obj.edge.*, kwarg_obj.node.*)) |node_ref| {
@@ -307,7 +307,7 @@ fn wrap_edge_composition_get_parent_of() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.composition.EdgeComposition.get_parent_of(kwarg_obj.edge.*, kwarg_obj.node.*)) |node_ref| {
@@ -334,7 +334,7 @@ fn wrap_edge_composition_get_parent_node_of() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.composition.EdgeComposition.get_parent_node_of(kwarg_obj.bound_node.*)) |parent| {
@@ -364,7 +364,7 @@ fn wrap_edge_composition_add_child() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const identifier_c = py.PyUnicode_AsUTF8(kwarg_obj.child_identifier);
@@ -416,7 +416,7 @@ fn wrap_edge_composition_add_anon_child() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const bound_edge = faebryk.composition.EdgeComposition.add_child(
@@ -452,7 +452,7 @@ fn wrap_edge_composition_get_name() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const name = faebryk.composition.EdgeComposition.get_name(kwarg_obj.edge.*) catch |err| {
@@ -485,7 +485,7 @@ fn wrap_edge_composition_get_tid() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             _ = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const tid = faebryk.composition.EdgeComposition.tid;
@@ -505,7 +505,7 @@ fn wrap_edge_composition_traverse() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             _ = self;
             const kwarg_obj = bind.parse_kwargs(null, args, kwargs, descr.args_def) orelse return null;
 
@@ -554,7 +554,7 @@ fn wrap_edge_composition_get_child_by_identifier() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const identifier = bind.unwrap_str(kwarg_obj.child_identifier) orelse return null;
@@ -588,7 +588,7 @@ fn wrap_edge_composition_visit_children_of_type() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             var visit_ctx = graph_py.BoundEdgeVisitor{
@@ -638,7 +638,7 @@ fn wrap_edge_composition_try_get_single_child_of_type() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.composition.EdgeComposition.try_get_single_child_of_type(kwarg_obj.bound_node.*, kwarg_obj.child_type.*)) |child| {
@@ -670,7 +670,7 @@ fn wrap_edge_composition_get_children_query() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             // Unwrap boolean arguments
@@ -679,7 +679,7 @@ fn wrap_edge_composition_get_children_query() type {
             const sort = if (kwarg_obj.sort) |obj| bind.unwrap_bool(obj) else false;
 
             // Convert Python types list to Zig slice
-            var types_list = std.ArrayList(graph.NodeReference).init(std.heap.c_allocator);
+            var types_list = std.array_list.Managed(graph.NodeReference).init(std.heap.c_allocator);
             defer types_list.deinit();
 
             if (kwarg_obj.types) |types_obj| {
@@ -709,7 +709,7 @@ fn wrap_edge_composition_get_children_query() type {
             }
 
             // Convert Python required_traits list to Zig slice
-            var traits_list = std.ArrayList(graph.NodeReference).init(std.heap.c_allocator);
+            var traits_list = std.array_list.Managed(graph.NodeReference).init(std.heap.c_allocator);
             defer traits_list.deinit();
 
             if (kwarg_obj.required_traits) |traits_obj| {
@@ -823,7 +823,7 @@ fn wrap_edge_operand_create() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             var identifier_const: ?[]const u8 = null;
@@ -864,7 +864,7 @@ fn wrap_edge_operand_build() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             var identifier_copy: ?[]u8 = null;
@@ -904,7 +904,7 @@ fn wrap_edge_operand_is_instance() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const is_match = faebryk.operand.EdgeOperand.is_instance(kwarg_obj.edge.*);
@@ -930,7 +930,7 @@ fn wrap_edge_operand_visit_operand_edges() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             var visit_ctx = graph_py.BoundEdgeVisitor{
@@ -982,7 +982,7 @@ fn wrap_edge_operand_visit_operands_of_type() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             var visit_ctx = graph_py.BoundEdgeVisitor{
@@ -1033,7 +1033,7 @@ fn wrap_edge_operand_visit_expression_edges() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             var visit_ctx = graph_py.BoundEdgeVisitor{
@@ -1081,7 +1081,7 @@ fn wrap_edge_operand_get_expression_edge() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const expression_edge = faebryk.operand.EdgeOperand.get_expression_edge(kwarg_obj.bound_node.*);
@@ -1110,7 +1110,7 @@ fn wrap_edge_operand_get_expression_node() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const node_ref = faebryk.operand.EdgeOperand.get_expression_node(kwarg_obj.bound_edge.*);
@@ -1134,7 +1134,7 @@ fn wrap_edge_operand_get_operands_set_node() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.operand.EdgeOperand.get_operands_set_node(kwarg_obj.bound_node.*)) |operands_set| {
@@ -1160,7 +1160,7 @@ fn wrap_edge_operand_get_operand_node() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const node_ref = faebryk.operand.EdgeOperand.get_operand_node(kwarg_obj.edge.*);
@@ -1186,7 +1186,7 @@ fn wrap_edge_operand_get_operand_of() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.operand.EdgeOperand.get_operand_of(kwarg_obj.edge.*, kwarg_obj.node.*)) |operand| {
@@ -1214,7 +1214,7 @@ fn wrap_edge_operand_get_expression_of() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.operand.EdgeOperand.get_expression_of(kwarg_obj.bound_edge.*, kwarg_obj.node.*)) |expression| {
@@ -1243,7 +1243,7 @@ fn wrap_edge_operand_add_operand() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const allocator = kwarg_obj.bound_node.g.allocator;
@@ -1297,7 +1297,7 @@ fn wrap_edge_operand_get_name() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const name = faebryk.operand.EdgeOperand.get_name(kwarg_obj.edge.*) catch |err| {
@@ -1345,7 +1345,7 @@ fn wrap_edge_operand_visit_expression_edges_of_type() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             var visit_ctx = graph_py.BoundEdgeVisitor{
@@ -1388,7 +1388,7 @@ fn wrap_edge_operand_get_tid() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             _ = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const tid = faebryk.operand.EdgeOperand.tid;
@@ -1408,7 +1408,7 @@ fn wrap_edge_operand_traverse() type {
             .static = true,
         };
 
-        pub fn impl(_: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(_: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(null, args, kwargs, descr.args_def) orelse return null;
 
             const identifier_str = bind.unwrap_str(kwarg_obj.identifier) orelse return null;
@@ -1456,7 +1456,7 @@ fn wrap_edge_operand_get_operand_by_identifier() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const identifier = bind.unwrap_str(kwarg_obj.operand_identifier) orelse return null;
@@ -1507,7 +1507,7 @@ fn wrap_edge_interface_connection_build() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const shallow = if (kwarg_obj.shallow) |shallow_obj| bind.unwrap_bool(shallow_obj) else false;
             const allocator = std.heap.c_allocator;
@@ -1535,7 +1535,7 @@ fn wrap_edge_interface_connection_get_tid() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             _ = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const tid = faebryk.interface.EdgeInterfaceConnection.get_tid();
             return py.PyLong_FromLongLong(@intCast(tid));
@@ -1558,7 +1558,7 @@ fn wrap_edge_interface_connection_is_instance() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const is_match = faebryk.interface.EdgeInterfaceConnection.is_instance(kwarg_obj.edge.*);
             return bind.wrap_bool(is_match);
@@ -1583,7 +1583,7 @@ fn wrap_edge_interface_connection_get_other_connected_node() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.interface.EdgeInterfaceConnection.get_other_connected_node(kwarg_obj.edge.*, kwarg_obj.node.*)) |other| {
@@ -1612,7 +1612,7 @@ fn wrap_edge_interface_connection_connect() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const bound_edge = faebryk.interface.EdgeInterfaceConnection.connect(kwarg_obj.bn1.*, kwarg_obj.bn2.*) catch {
@@ -1642,7 +1642,7 @@ fn wrap_edge_interface_connection_connect_shallow() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const bound_edge = faebryk.interface.EdgeInterfaceConnection.connect_shallow(kwarg_obj.bn1.*, kwarg_obj.bn2.*) catch {
@@ -1672,7 +1672,7 @@ fn wrap_edge_interface_connection_visit_connected_edges() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             var visit_ctx = graph_py.BoundEdgeVisitor{
@@ -1720,7 +1720,7 @@ fn wrap_edge_interface_connection_is_connected_to() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const path = faebryk.interface.EdgeInterfaceConnection.is_connected_to(
@@ -1753,7 +1753,7 @@ fn wrap_edge_interface_connection_get_connected() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             // Parse include_self parameter (default to true for backwards compatibility)
@@ -1823,7 +1823,7 @@ fn wrap_edge_type_create() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const edge_ref = faebryk.node_type.EdgeType.init(
@@ -1851,7 +1851,7 @@ fn wrap_edge_type_build() type {
             .static = true,
         };
 
-        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const allocator = std.heap.c_allocator;
             const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
                 py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
@@ -1878,7 +1878,7 @@ fn wrap_edge_type_is_instance() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const is_match = faebryk.node_type.EdgeType.is_instance(kwarg_obj.edge.*);
             return bind.wrap_bool(is_match);
@@ -1903,7 +1903,7 @@ fn wrap_edge_type_visit_instance_edges() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             var visit_ctx = graph_py.BoundEdgeVisitor{
@@ -1950,7 +1950,7 @@ fn wrap_edge_type_get_type_node() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const node_ref = faebryk.node_type.EdgeType.get_type_node(kwarg_obj.edge.*);
             return graph_py.makeNodePyObject(node_ref);
@@ -1973,7 +1973,7 @@ fn wrap_edge_type_get_instance_node() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.node_type.EdgeType.get_instance_node(kwarg_obj.edge.*)) |instance| {
@@ -2001,7 +2001,7 @@ fn wrap_edge_type_get_type_edge() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.node_type.EdgeType.get_type_edge(kwarg_obj.bound_node.*)) |edge_ref| {
@@ -2031,7 +2031,7 @@ fn wrap_edge_type_add_instance() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const bound_edge = faebryk.node_type.EdgeType.add_instance(
@@ -2060,7 +2060,7 @@ fn wrap_edge_type_get_tid() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             _ = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const tid = faebryk.node_type.EdgeType.tid;
             return py.PyLong_FromLongLong(@intCast(tid));
@@ -2085,7 +2085,7 @@ fn wrap_edge_type_is_node_instance_of() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const is_instance = faebryk.node_type.EdgeType.is_node_instance_of(
                 kwarg_obj.bound_node.*,
@@ -2130,7 +2130,7 @@ fn wrap_edge_next_create() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const edge_ref = faebryk.next.EdgeNext.init(
@@ -2158,7 +2158,7 @@ fn wrap_edge_next_build() type {
             .static = true,
         };
 
-        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const allocator = std.heap.c_allocator;
             const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
                 py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
@@ -2187,7 +2187,7 @@ fn wrap_edge_next_add_next() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const bound_edge = faebryk.next.EdgeNext.add_next(
@@ -2222,7 +2222,7 @@ fn wrap_edge_next_is_instance() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const is_match = faebryk.next.EdgeNext.is_instance(kwarg_obj.edge.*);
             return bind.wrap_bool(is_match);
@@ -2245,7 +2245,7 @@ fn wrap_edge_next_get_previous_node() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.next.EdgeNext.get_previous_node(kwarg_obj.edge.*)) |node_ref| {
@@ -2273,7 +2273,7 @@ fn wrap_edge_next_get_next_node() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.next.EdgeNext.get_next_node(kwarg_obj.edge.*)) |node_ref| {
@@ -2301,7 +2301,7 @@ fn wrap_edge_next_get_previous_edge() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.next.EdgeNext.get_previous_edge(kwarg_obj.node.*)) |edge_ref| {
@@ -2329,7 +2329,7 @@ fn wrap_edge_next_get_next_edge() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.next.EdgeNext.get_next_edge(kwarg_obj.node.*)) |edge_ref| {
@@ -2357,7 +2357,7 @@ fn wrap_edge_next_get_previous_node_from_node() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.next.EdgeNext.get_previous_node_from_node(kwarg_obj.node.*)) |node_ref| {
@@ -2385,7 +2385,7 @@ fn wrap_edge_next_get_next_node_from_node() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.next.EdgeNext.get_next_node_from_node(kwarg_obj.node.*)) |node_ref| {
@@ -2433,7 +2433,7 @@ fn wrap_edge_pointer_create() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             var identifier_copy: ?[]u8 = null;
@@ -2474,7 +2474,7 @@ fn wrap_edge_pointer_build() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             var identifier_copy: ?[]u8 = null;
@@ -2519,7 +2519,7 @@ fn wrap_edge_pointer_is_instance() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const is_match = faebryk.pointer.EdgePointer.is_instance(kwarg_obj.edge.*);
             return bind.wrap_bool(is_match);
@@ -2542,7 +2542,7 @@ fn wrap_edge_pointer_get_referenced_node() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const node_ref = faebryk.pointer.EdgePointer.get_referenced_node(kwarg_obj.edge.*);
@@ -2566,7 +2566,7 @@ fn wrap_edge_pointer_get_referenced_node_from_node() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.pointer.EdgePointer.get_referenced_node_from_node(kwarg_obj.node.*)) |node| {
@@ -2588,7 +2588,7 @@ fn wrap_edge_pointer_get_tid() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             _ = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             return py.PyLong_FromLongLong(@intCast(faebryk.pointer.EdgePointer.tid));
         }
@@ -2604,7 +2604,7 @@ fn wrap_edge_pointer_traverse() type {
             .static = true,
         };
 
-        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             // Return a SimpleNamespace with identifier="" and edge_type attributes
             const types_module = py.PyImport_ImportModule("types") orelse return null;
             defer py.Py_DECREF(types_module);
@@ -2644,7 +2644,7 @@ fn wrap_edge_pointer_get_index() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const index = faebryk.pointer.EdgePointer.get_index(kwarg_obj.edge.*);
             return bind.wrap_int(index orelse 0);
@@ -2671,7 +2671,7 @@ fn wrap_edge_pointer_point_to() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const allocator = kwarg_obj.bound_node.g.allocator;
@@ -2730,7 +2730,7 @@ fn wrap_edge_pointer_visit_pointed_edges() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             var visit_ctx = graph_py.BoundEdgeVisitor{
@@ -2780,7 +2780,7 @@ fn wrap_edge_pointer_visit_pointed_edges_with_identifier() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const identifier = bind.unwrap_str(kwarg_obj.identifier) orelse return null;
@@ -2831,7 +2831,7 @@ fn wrap_edge_pointer_get_pointed_node_by_identifier() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const identifier = bind.unwrap_str(kwarg_obj.identifier) orelse return null;
@@ -2880,7 +2880,7 @@ fn wrap_nodebuilder_init() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const allocator = std.heap.c_allocator;
@@ -2917,7 +2917,7 @@ fn wrap_nodebuilder_apply_to() type {
             },
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const attributes = bind.castWrapper("NodeCreationAttributes", &node_creation_attributes_type, NodeCreationAttributesWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             attributes.data.apply_to(kwarg_obj.node.*);
@@ -2949,7 +2949,7 @@ fn wrap_edgebuilder_init() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const edge_type_raw = py.PyLong_AsLongLong(kwarg_obj.edge_type);
@@ -2995,7 +2995,7 @@ fn wrap_edgebuilder_apply_to() type {
             },
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const attributes = bind.castWrapper("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             attributes.data.apply_to(kwarg_obj.edge.*);
@@ -3020,7 +3020,7 @@ fn wrap_edgebuilder_create_edge() type {
             },
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const attributes = bind.castWrapper("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const edge = attributes.data.create_edge(kwarg_obj.source.*, kwarg_obj.target.*);
@@ -3047,7 +3047,7 @@ fn wrap_edgebuilder_insert_edge() type {
             },
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const attributes = bind.castWrapper("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             var edge = attributes.data.insert_edge(kwarg_obj.g, kwarg_obj.source.*, kwarg_obj.target.*) catch |err| {
@@ -3071,7 +3071,7 @@ fn wrap_edgebuilder_get_tid() type {
             .args_def = struct {},
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const attributes = bind.castWrapper("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, self) orelse return null;
             _ = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const tid = attributes.data.get_tid();
@@ -3124,7 +3124,7 @@ fn wrap_typegraph_init() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const typegraph = faebryk.typegraph.TypeGraph.init(kwarg_obj.g);
@@ -3148,7 +3148,7 @@ fn wrap_typegraph_of_type() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.typegraph.TypeGraph.of_type(kwarg_obj.type_node.*)) |tg| {
@@ -3175,7 +3175,7 @@ fn wrap_typegraph_of_instance() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             if (faebryk.typegraph.TypeGraph.of_instance(kwarg_obj.instance_node.*)) |tg| {
@@ -3202,7 +3202,7 @@ fn wrap_typegraph_of() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             // _ = self;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -3237,7 +3237,7 @@ fn wrap_typegraph_add_type() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const allocator = wrapper.data.self_node.g.allocator;
@@ -3272,7 +3272,7 @@ fn wrap_typegraph_make_child_node_build() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const allocator = std.heap.c_allocator;
@@ -3328,7 +3328,7 @@ fn wrap_typegraph_add_make_child() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -3392,7 +3392,7 @@ fn wrap_typegraph_add_make_child_deferred() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -3453,7 +3453,7 @@ fn wrap_typegraph_add_type_reference() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -3492,7 +3492,7 @@ fn wrap_typegraph_get_make_child_type_reference() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             _ = wrapper;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
@@ -3518,7 +3518,7 @@ fn wrap_typegraph_get_make_child_type_reference_by_identifier() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -3550,11 +3550,11 @@ fn wrap_typegraph_resolve_child_path() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            var path_list = std.ArrayList([]const u8).init(std.heap.c_allocator);
+            var path_list = std.array_list.Managed([]const u8).init(std.heap.c_allocator);
             defer path_list.deinit();
 
             _copy_string_sequence(kwarg_obj.path, &path_list) catch |err| {
@@ -3611,7 +3611,7 @@ fn _unwrap_literal(value_obj: *py.PyObject) !graph.Literal {
 
 fn _copy_string_sequence(
     seq_obj: *py.PyObject,
-    out: *std.ArrayList([]const u8),
+    out: *std.array_list.Managed([]const u8),
 ) error{ MemoryError, TypeError }!void {
     const length = py.PySequence_Size(seq_obj);
     if (length < 0) {
@@ -4218,7 +4218,7 @@ fn wrap_typegraph_add_make_link() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -4256,14 +4256,14 @@ fn wrap_typegraph_copy_type_structure() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const allocator = std.heap.c_allocator;
 
             // Parse skip_identifiers list
-            var skip_list = std.ArrayList([]const u8).init(allocator);
+            var skip_list = std.array_list.Managed([]const u8).init(allocator);
             defer skip_list.deinit();
 
             if (py.PyList_Check(kwarg_obj.skip_identifiers) == 0) {
@@ -4321,7 +4321,7 @@ fn wrap_typegraph_collect_make_children() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -4381,7 +4381,7 @@ fn wrap_typegraph_validate_type() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -4451,7 +4451,7 @@ fn wrap_typegraph_instantiate() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -4487,7 +4487,7 @@ fn wrap_typegraph_instantiate_node() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -4525,7 +4525,7 @@ fn wrap_typegraph_debug_add_reference() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -4542,7 +4542,7 @@ fn wrap_typegraph_debug_add_reference() type {
 
             // Parse path items into EdgeTraversals
             const ET = faebryk.typegraph.TypeGraph.ChildReferenceNode.EdgeTraversal;
-            var traversals = std.ArrayList(ET).init(std.heap.c_allocator);
+            var traversals = std.array_list.Managed(ET).init(std.heap.c_allocator);
             defer traversals.deinit();
 
             var idx: usize = 0;
@@ -4592,7 +4592,7 @@ fn wrap_typegraph_reference_resolve() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             _ = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -4621,7 +4621,7 @@ fn wrap_typegraph_get_graph_view() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             if (!bind.check_no_positional_args(self, args)) return null;
             _ = kwargs;
 
@@ -4641,7 +4641,7 @@ fn wrap_typegraph_get_self_node() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             if (!bind.check_no_positional_args(self, args)) return null;
             _ = kwargs;
 
@@ -4662,7 +4662,7 @@ fn wrap_typegraph_get_type_by_name() type {
             .doc = "Get a type node by name",
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -4693,7 +4693,7 @@ fn wrap_typegraph_get_type_name() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             _ = self;
             const kwarg_obj = bind.parse_kwargs(null, args, kwargs, descr.args_def) orelse return null;
 
@@ -4722,7 +4722,7 @@ fn wrap_typegraph_get_type_reference_identifier() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             _ = self;
             const kwarg_obj = bind.parse_kwargs(null, args, kwargs, descr.args_def) orelse return null;
 
@@ -4746,7 +4746,7 @@ fn wrap_typegraph_get_or_create_type() type {
             .doc = "Get or create a type node by name",
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -4776,7 +4776,7 @@ fn wrap_typegraph_get_type_instance_overview() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             if (!bind.check_no_positional_args(self, args)) return null;
             _ = kwargs;
 
@@ -4863,7 +4863,7 @@ fn wrap_typegraph_copy_node_into() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             faebryk.typegraph.TypeGraph.copy_node_into(kwarg_obj.start_node.*, kwarg_obj.target_graph, false);
@@ -4887,7 +4887,7 @@ fn wrap_typegraph_copy_into() type {
             },
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const minimal = py.PyObject_IsTrue(kwarg_obj.minimal) == 1;
@@ -4917,7 +4917,7 @@ fn wrap_typegraph_make_child_node(root: *py.PyObject) void {
     make_child_node_type = type_registry.getRegisteredTypeObject("MakeChildNode");
 }
 
-fn typegraph_dealloc(self: *py.PyObject) callconv(.C) void {
+fn typegraph_dealloc(self: *py.PyObject) callconv(.c) void {
     const allocator = std.heap.c_allocator;
     const wrapper = @as(*TypeGraphWrapper, @ptrCast(@alignCast(self)));
     const tg_ptr = wrapper.data;
@@ -4927,7 +4927,7 @@ fn typegraph_dealloc(self: *py.PyObject) callconv(.C) void {
 
     if (py.Py_TYPE(self)) |type_obj| {
         if (type_obj.tp_free) |free_fn_any| {
-            const free_fn = @as(*const fn (?*py.PyObject) callconv(.C) void, @ptrCast(@alignCast(free_fn_any)));
+            const free_fn = @as(*const fn (?*py.PyObject) callconv(.c) void, @ptrCast(@alignCast(free_fn_any)));
             free_fn(self);
             return;
         }
@@ -4935,7 +4935,7 @@ fn typegraph_dealloc(self: *py.PyObject) callconv(.C) void {
     py._Py_Dealloc(self);
 }
 
-fn typegraph_repr(self: *py.PyObject) callconv(.C) ?*py.PyObject {
+fn typegraph_repr(self: *py.PyObject) callconv(.c) ?*py.PyObject {
     const wrapper = @as(*TypeGraphWrapper, @ptrCast(@alignCast(self)));
     const tg = wrapper.data;
 
@@ -5030,7 +5030,7 @@ fn wrap_linker_get_resolved_type() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const resolved = faebryk.linker.Linker.try_get_resolved_type(kwarg_obj.type_reference.*);
@@ -5057,7 +5057,7 @@ fn wrap_linker_collect_unresolved_type_references() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const allocator = std.heap.c_allocator;
@@ -5118,7 +5118,7 @@ fn wrap_linker_link_type_reference() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             faebryk.linker.Linker.link_type_reference(
@@ -5159,7 +5159,7 @@ fn wrap_linker_update_type_reference() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             faebryk.linker.Linker.update_type_reference(
@@ -5208,7 +5208,7 @@ fn wrap_trait_add_trait_to() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const trait_instance = faebryk.trait.Trait.add_trait_to(kwarg_obj.target.*, kwarg_obj.trait_type.*) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "add_trait_to failed");
@@ -5236,7 +5236,7 @@ fn wrap_trait_add_trait_instance_to() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const trait_instance = faebryk.trait.Trait.add_trait_instance_to(kwarg_obj.target.*, kwarg_obj.trait_instance.*) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "add_trait_instance_to failed");
@@ -5262,7 +5262,7 @@ fn wrap_trait_mark_as_trait() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             faebryk.trait.Trait.mark_as_trait(kwarg_obj.trait_type.*) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "mark_as_trait failed");
@@ -5290,7 +5290,7 @@ fn wrap_trait_try_get_trait() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             if (faebryk.trait.Trait.try_get_trait(kwarg_obj.target.*, kwarg_obj.trait_type.*)) |trait_instance| {
                 return graph_py.makeBoundNodePyObject(trait_instance);
@@ -5316,7 +5316,7 @@ fn wrap_trait_try_get_traits() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             // Validate trait_types is a list
@@ -5331,7 +5331,7 @@ fn wrap_trait_try_get_traits() type {
             }
 
             // Extract NodeReferences from Python list
-            var trait_type_nodes = std.ArrayList(graph.NodeReference).init(std.heap.c_allocator);
+            var trait_type_nodes = std.array_list.Managed(graph.NodeReference).init(std.heap.c_allocator);
             defer trait_type_nodes.deinit();
 
             var i: isize = 0;
@@ -5403,7 +5403,7 @@ fn wrap_trait_visit_implementers() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const VisitCtx = struct {
@@ -5512,7 +5512,7 @@ fn wrap_edge_trait_create() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const edge_ref = faebryk.trait.EdgeTrait.init(
@@ -5540,7 +5540,7 @@ fn wrap_edge_trait_build() type {
             .static = true,
         };
 
-        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const allocator = std.heap.c_allocator;
             const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
                 py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
@@ -5567,7 +5567,7 @@ fn wrap_edge_trait_is_instance() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const is_match = faebryk.trait.EdgeTrait.is_instance(kwarg_obj.edge.*);
             return bind.wrap_bool(is_match);
@@ -5590,7 +5590,7 @@ fn wrap_edge_trait_get_owner_node() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const node_ref = faebryk.trait.EdgeTrait.get_owner_node(kwarg_obj.edge.*);
             return graph_py.makeNodePyObject(node_ref);
@@ -5613,7 +5613,7 @@ fn wrap_edge_trait_get_trait_instance_node() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const node_ref = faebryk.trait.EdgeTrait.get_trait_instance_node(kwarg_obj.edge.*);
             return graph_py.makeNodePyObject(node_ref);
@@ -5638,7 +5638,7 @@ fn wrap_edge_trait_get_trait_instance_of() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             if (faebryk.trait.EdgeTrait.get_trait_instance_of(kwarg_obj.edge.*, kwarg_obj.node.*)) |trait_instance| {
                 return graph_py.makeNodePyObject(trait_instance);
@@ -5665,7 +5665,7 @@ fn wrap_edge_trait_get_owner_of() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             if (faebryk.trait.EdgeTrait.get_owner_of(kwarg_obj.edge.*, kwarg_obj.node.*)) |owner| {
                 return graph_py.makeNodePyObject(owner);
@@ -5692,7 +5692,7 @@ fn wrap_edge_trait_visit_trait_instance_edges() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             var visit_ctx = graph_py.BoundEdgeVisitor{
@@ -5739,7 +5739,7 @@ fn wrap_edge_trait_get_owner_edge() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             if (faebryk.trait.EdgeTrait.get_owner_edge(kwarg_obj.bound_node.*)) |edge_ref| {
                 return graph_py.makeBoundEdgePyObject(edge_ref);
@@ -5764,7 +5764,7 @@ fn wrap_edge_trait_get_owner_node_of() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             if (faebryk.trait.EdgeTrait.get_owner_node_of(kwarg_obj.bound_node.*)) |owner| {
                 return graph_py.makeBoundNodePyObject(owner);
@@ -5791,7 +5791,7 @@ fn wrap_edge_trait_add_trait_instance() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             const bound_edge = faebryk.trait.EdgeTrait.add_trait_instance(
                 kwarg_obj.bound_node.*,
@@ -5828,7 +5828,7 @@ fn wrap_edge_trait_visit_trait_instances_of_type() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             var visit_ctx = graph_py.BoundEdgeVisitor{
@@ -5878,7 +5878,7 @@ fn wrap_edge_trait_try_get_trait_instance_of_type() type {
             .static = true,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             if (faebryk.trait.EdgeTrait.try_get_trait_instance_of_type(
                 kwarg_obj.bound_node.*,
@@ -5900,7 +5900,7 @@ fn wrap_edge_trait_get_tid() type {
             .static = true,
         };
 
-        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const tid = faebryk.trait.EdgeTrait.tid;
             return py.PyLong_FromLongLong(@intCast(tid));
         }
@@ -5918,7 +5918,7 @@ fn wrap_edge_trait_traverse() type {
             .static = true,
         };
 
-        pub fn impl(_: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(_: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(null, args, kwargs, descr.args_def) orelse return null;
 
             const type_name_str = bind.unwrap_str(kwarg_obj.trait_type_name) orelse return null;
@@ -6168,7 +6168,7 @@ fn wrap_typegraph_collect_make_links() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -6270,7 +6270,7 @@ fn wrap_typegraph_get_reference_path() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -6372,7 +6372,7 @@ fn wrap_typegraph_ensure_child_reference() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -6389,7 +6389,7 @@ fn wrap_typegraph_ensure_child_reference() type {
 
             // Parse path items into EdgeTraversals
             const ET = faebryk.typegraph.TypeGraph.ChildReferenceNode.EdgeTraversal;
-            var traversals = std.ArrayList(ET).init(std.heap.c_allocator);
+            var traversals = std.array_list.Managed(ET).init(std.heap.c_allocator);
             defer traversals.deinit();
 
             var idx: usize = 0;
@@ -6415,7 +6415,7 @@ fn wrap_typegraph_ensure_child_reference() type {
             var failure: ?faebryk.typegraph.TypeGraph.PathResolutionFailure = null;
 
             // Extract string identifiers from traversals for error reporting
-            var path_strings = std.ArrayList([]const u8).init(std.heap.c_allocator);
+            var path_strings = std.array_list.Managed([]const u8).init(std.heap.c_allocator);
             defer path_strings.deinit();
             for (traversals.items) |t| {
                 path_strings.append(t.identifier) catch {
@@ -6462,7 +6462,7 @@ fn wrap_typegraph_collect_pointer_members() type {
             .static = false,
         };
 
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
@@ -6471,7 +6471,7 @@ fn wrap_typegraph_collect_pointer_members() type {
                 return null;
             }
 
-            var segments = std.ArrayList([]const u8).init(std.heap.c_allocator);
+            var segments = std.array_list.Managed([]const u8).init(std.heap.c_allocator);
             defer segments.deinit();
 
             if (_copy_string_sequence(kwarg_obj.container_path, &segments)) |_| {} else |err| {

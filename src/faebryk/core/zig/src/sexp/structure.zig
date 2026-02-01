@@ -184,14 +184,14 @@ inline fn setCtxPath(comptime path: []const u8, sexp: SExp, field_name: ?[]const
 
 // Helper to format S-expression preview
 fn formatSexpPreview(allocator: std.mem.Allocator, sexp: SExp) ![]u8 {
-    var buf = std.ArrayList(u8).init(allocator);
+    var buf = std.array_list.Managed(u8).init(allocator);
     defer buf.deinit();
 
     try formatSexpPreviewInternal(sexp, &buf, 0, 50); // max 50 chars
     return try buf.toOwnedSlice();
 }
 
-fn formatSexpPreviewInternal(sexp: SExp, buf: *std.ArrayList(u8), depth: usize, max_len: usize) !void {
+fn formatSexpPreviewInternal(sexp: SExp, buf: *std.array_list.Managed(u8), depth: usize, max_len: usize) !void {
     if (buf.items.len >= max_len) {
         try buf.appendSlice("...");
         return;
@@ -494,7 +494,7 @@ fn handleKeyValuesAndBooleans(comptime T: type, allocator: std.mem.Allocator, it
                     if (comptime isSlice(field.type, false)) {
                         if (!fields_set.isSet(field_idx)) {
                             const ChildType = std.meta.Child(field.type);
-                            var values = std.ArrayList(ChildType).initCapacity(allocator, items.len + 8) catch return error.OutOfMemory;
+                            var values = std.array_list.Managed(ChildType).initCapacity(allocator, items.len + 8) catch return error.OutOfMemory;
                             var scan_idx: usize = i;
                             while (scan_idx < items.len) : (scan_idx += 1) {
                                 if (!ast.isList(items[scan_idx])) continue;
@@ -512,7 +512,7 @@ fn handleKeyValuesAndBooleans(comptime T: type, allocator: std.mem.Allocator, it
                     } else if (comptime isLinkedList(field.type)) {
                         if (!fields_set.isSet(field_idx)) {
                             const NodeType = field.type.Node;
-                            const ChildType = std.meta.FieldType(NodeType, .data);
+                            const ChildType = @FieldType(NodeType, "data");
                             var ll = field.type{};
                             var scan_idx: usize = i;
                             while (scan_idx < items.len) : (scan_idx += 1) {
@@ -668,7 +668,7 @@ fn decodeOptional(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, me
 fn decodeLinkedList(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metadata: SexpField) DecodeError!T {
     _ = metadata;
     const NodeType = T.Node;
-    const child_type = std.meta.FieldType(NodeType, .data);
+    const child_type = @FieldType(NodeType, "data");
     const items = ast.getList(sexp) orelse {
         setCtx(T, sexp, null, "expected list for linked list");
         return error.UnexpectedType;
@@ -763,7 +763,8 @@ fn decodeFloat(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T 
             return error.UnexpectedType;
         },
         .list => |l| {
-            setCtx(T, sexp, null, std.fmt.allocPrint(std.heap.page_allocator, "got list '{s}' but expected number", .{l}) catch "list instead of number");
+            _ = l; // list value not needed for error message
+            setCtx(T, sexp, null, "got list but expected number");
             return error.UnexpectedType;
         },
         else => {
@@ -1002,7 +1003,7 @@ fn sortFieldIndices(comptime T: type) [std.meta.fields(T).len]usize {
 fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpField) EncodeError!SExp {
     _ = metadata;
     const T = @TypeOf(value);
-    var items = std.ArrayList(SExp).init(allocator);
+    var items = std.array_list.Managed(SExp).init(allocator);
     defer items.deinit();
 
     const fields = std.meta.fields(T);
@@ -1058,7 +1059,7 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpFiel
     return SExp{ .value = .{ .list = out }, .location = null };
 }
 
-fn appendKeyValue(allocator: std.mem.Allocator, items: *std.ArrayList(SExp), key: []const u8, encoded: SExp) EncodeError!void {
+fn appendKeyValue(allocator: std.mem.Allocator, items: *std.array_list.Managed(SExp), key: []const u8, encoded: SExp) EncodeError!void {
     if (ast.getList(encoded)) |lst| {
         if (lst.len == 0) return; // omit empty list fields entirely
         var kv = try allocator.alloc(SExp, lst.len + 1);
@@ -1242,8 +1243,9 @@ pub fn dumps(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u
                     const file = try std.fs.cwd().createFile(p, .{ .truncate = true });
                     defer file.close();
 
-                    const writer = file.writer();
-                    try writer.writeAll(out_str);
+                    // In Zig 0.15+, writer() requires a buffer. Use empty for unbuffered writes.
+                    var file_writer = file.writer(&.{});
+                    try file_writer.interface.writeAll(out_str);
                 },
                 .sexp => unreachable,
             }

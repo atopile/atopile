@@ -100,10 +100,10 @@ pub const EdgeType = struct {
 //zig test --dep graph -Mroot=src/faebryk/node_type.zig -Mgraph=src/graph/lib.zig
 test "basic typegraph" {
     // Visitor callback that collects instance edges into a provided ArrayList
-    // Expects ctx to be a *std.ArrayList(graph.BoundEdgeReference)
+    // Expects ctx to be a *std.array_list.Managed(graph.BoundEdgeReference)
     const collect = struct {
         pub fn collect_into_list(ctx: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
-            const list: *std.ArrayList(graph.BoundEdgeReference) = @ptrCast(@alignCast(ctx));
+            const list: *std.array_list.Managed(graph.BoundEdgeReference) = @ptrCast(@alignCast(ctx));
             list.append(bound_edge) catch |e| return visitor.VisitResult(void){ .ERROR = e };
             return visitor.VisitResult(void){ .CONTINUE = {} };
         }
@@ -148,7 +148,7 @@ test "basic typegraph" {
     try std.testing.expect(EdgeType.is_node_instance_of(bin2, btn1.node) == false);
 
     // visit_instance_edges -------------------------------------------------------------------------------
-    var instances = std.ArrayList(graph.BoundEdgeReference).init(a);
+    var instances = std.array_list.Managed(graph.BoundEdgeReference).init(a);
     defer instances.deinit();
     const visit_result = EdgeType.visit_instance_edges(btn2, &instances, collect.collect_into_list);
     switch (visit_result) {
