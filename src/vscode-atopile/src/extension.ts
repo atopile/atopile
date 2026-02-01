@@ -15,6 +15,7 @@ import { Build } from './common/manifest';
 import { openPackageExplorer } from './ui/packagexplorer';
 import * as llm from './common/llm';
 import { backendServer } from './common/backendServer';
+import { initMenu } from './common/vscode-menu';
 import { SidebarProvider, LogViewerProvider } from './providers';
 
 export let g_lsClient: LanguageClient | undefined;
@@ -103,7 +104,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         backendServer,
     );
 
-    // 2. Initialize (telemetry, ato binary detection)
+    // 2. Initialize menu, telemetry, ato binary detection
+    initMenu(context);
     await initializeTelemetry(context);
     captureEvent('vsce:startup');
     await initServer(context);

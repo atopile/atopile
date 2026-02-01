@@ -233,8 +233,8 @@
                 "category": "atopile"
             },
             {
-                "command": "atopile.backendStatus",
-                "title": "Backend Connection Status",
+                "command": "atopile.showMenu",
+                "title": "Show Menu",
                 "category": "atopile"
             }
         ],
