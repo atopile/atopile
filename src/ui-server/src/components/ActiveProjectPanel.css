@@ -749,6 +749,15 @@
   color: var(--ato-orange) !important;
 }
 
+.action-btn.primary.needs-migration {
+  color: var(--ctp-yellow, #f9e2af) !important;
+}
+
+.action-btn.primary.needs-migration:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ctp-yellow, #f9e2af) 12%, transparent) !important;
+  color: var(--ctp-yellow, #f9e2af) !important;
+}
+
 .action-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -762,6 +771,49 @@
   background: var(--border-subtle);
   opacity: 0.5;
   flex-shrink: 0;
+}
+
+/* Migration error display */
+.migration-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin-top: 6px;
+  background: color-mix(in srgb, var(--ctp-red, #f38ba8) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ctp-red, #f38ba8) 40%, transparent);
+  border-radius: var(--radius-sm);
+  color: var(--ctp-red, #f38ba8);
+  font-size: var(--font-size-xs);
+}
+
+.migration-error svg {
+  flex-shrink: 0;
+}
+
+.migration-error .error-message {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.migration-error .dismiss-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 2px;
+  opacity: 0.7;
+}
+
+.migration-error .dismiss-btn:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--ctp-red, #f38ba8) 20%, transparent);
 }
 
 /* Hide labels when container is narrow */
@@ -1588,6 +1640,16 @@
 
 .build-queue-item.cancelled {
   opacity: 0.6;
+}
+
+/* Spinner animation */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Legacy styles for backwards compatibility */

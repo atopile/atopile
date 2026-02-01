@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target } from 'lucide-react'
+import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2 } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
 import { postMessage } from '../api/vscodeApi'
+import { sendAction } from '../api/websocket'
+import { useStore } from '../store'
 import './ActiveProjectPanel.css'
 
 // Re-export BuildQueueItem for use in standalone BuildQueue panel
@@ -855,6 +857,21 @@ export function ActiveProjectPanel({
   const [createProjectError, setCreateProjectError] = useState<string | null>(null)
   const [createTargetError, setCreateTargetError] = useState<string | null>(null)
 
+  // Migration state from store
+  const migratingProjectRoots = useStore((state) => state.migratingProjectRoots)
+  const migrationErrors = useStore((state) => state.migrationErrors)
+  const addMigratingProject = useStore((state) => state.addMigratingProject)
+  const setMigrationError = useStore((state) => state.setMigrationError)
+
+  // Compute isMigrating based on selected project
+  const isMigrating = useMemo(() => {
+    if (!selectedProjectRoot) return false
+    return migratingProjectRoots.includes(selectedProjectRoot)
+  }, [selectedProjectRoot, migratingProjectRoots])
+
+  // Get migration error for current project
+  const migrationError = selectedProjectRoot ? migrationErrors[selectedProjectRoot] : null
+
   const handleCreateProject = useCallback(async (data: NewProjectData) => {
     if (!onCreateProject) return
     setIsCreatingProject(true)
@@ -1019,16 +1036,29 @@ export function ActiveProjectPanel({
         {/* Action buttons - single row: Build | KiCad | 3D | Layout | Manufacture */}
         <div className="build-actions-row">
           <button
-            className="action-btn primary"
+            className={`action-btn primary${activeProject?.needsMigration ? ' needs-migration' : ''}`}
             onClick={() => {
-              if (!activeProject || !activeTargetName) return
-              onBuildTarget(activeProject.root, activeTargetName)
+              if (!activeProject) return
+              if (activeProject.needsMigration && !isMigrating) {
+                // Clear any previous error and start migration
+                if (migrationError) {
+                  setMigrationError(activeProject.root, null)
+                }
+                // Add to migrating list and fire-and-forget
+                addMigratingProject(activeProject.root)
+                sendAction('migrateProject', {
+                  projectRoot: activeProject.root,
+                })
+              } else if (!isMigrating) {
+                if (!activeTargetName) return
+                onBuildTarget(activeProject.root, activeTargetName)
+              }
             }}
-            disabled={!activeProject || !activeTargetName}
-            title={activeTargetName ? `Build ${activeTargetName}` : 'Select a build first'}
+            disabled={!activeProject || isMigrating || (!activeProject.needsMigration && !activeTargetName)}
+            title={isMigrating ? 'Migrating...' : (activeProject?.needsMigration ? 'Your project and dependencies are incompatible with this version of atopile. Use this button to download the latest compatible dependencies. You might need to manually make some minor changes in your project afterwards.' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first'))}
           >
-            <Play size={12} />
-            <span className="action-label">Build</span>
+            {isMigrating ? <Loader2 size={12} className="spin" /> : <Play size={12} />}
+            <span className="action-label">{isMigrating ? 'Migrating...' : (activeProject?.needsMigration ? 'Migrate' : 'Build')}</span>
           </button>
 
           <div className="action-divider" />
@@ -1097,6 +1127,21 @@ export function ActiveProjectPanel({
             </button>
           )}
         </div>
+
+        {/* Migration error display */}
+        {migrationError && (
+          <div className="migration-error">
+            <AlertCircle size={14} />
+            <span className="error-message">{migrationError}</span>
+            <button
+              className="dismiss-btn"
+              onClick={() => activeProject && setMigrationError(activeProject.root, null)}
+              title="Dismiss"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

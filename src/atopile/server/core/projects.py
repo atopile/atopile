@@ -20,6 +20,7 @@ from atopile.dataclasses import (
     Project,
 )
 from atopile.model import build_history
+from atopile.version import needs_migration
 
 log = logging.getLogger(__name__)
 
@@ -241,6 +242,9 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                             name=project_root.name,
                             display_path=display_path,
                             targets=targets,
+                            needs_migration=needs_migration(
+                                data.get("requires-atopile")
+                            ),
                         )
                     )
 

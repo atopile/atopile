@@ -210,6 +210,27 @@
   background: rgba(243, 139, 168, 0.15);
 }
 
+.project-build-btn-icon.needs-migration {
+  color: var(--ctp-yellow, #f9e2af);
+}
+
+.project-build-btn-icon.needs-migration:hover {
+  background: rgba(249, 226, 175, 0.15);
+}
+
+.project-build-btn-icon.migrating {
+  opacity: 1;
+  color: var(--ctp-yellow, #f9e2af);
+}
+
+.project-build-btn-icon.has-error {
+  color: var(--ctp-red, #f38ba8);
+}
+
+.project-build-btn-icon.has-error:hover {
+  background: rgba(243, 139, 168, 0.15);
+}
+
 /* Description */
 .project-card-description {
   font-size: var(--font-size-xs);
@@ -563,7 +584,8 @@
   font-size: var(--font-size-xs);
 }
 
-.package-loading .spin {
+.package-loading .spin,
+.spin {
   animation: spin 1s linear infinite;
 }
 
