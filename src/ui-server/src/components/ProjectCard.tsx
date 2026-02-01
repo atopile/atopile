@@ -357,8 +357,11 @@ export const ProjectCard = memo(function ProjectCard({
 
   // Migration state from store
   const migratingProjectRoots = useStore((state) => state.migratingProjectRoots)
+  const migrationErrors = useStore((state) => state.migrationErrors)
   const addMigratingProject = useStore((state) => state.addMigratingProject)
+  const setMigrationError = useStore((state) => state.setMigrationError)
   const isMigrating = migratingProjectRoots.includes(project.root)
+  const migrationError = migrationErrors[project.root]
 
   // Build status (for editable mode) - use project.builds here since builds variable isn't defined yet
   const totalErrors = project.builds.reduce((sum, b) => sum + (b.errors || 0), 0)
@@ -655,10 +658,14 @@ export const ProjectCard = memo(function ProjectCard({
               </button>
             ) : (
               <button
-                className={`project-build-btn-icon${project.needsMigration ? ' needs-migration' : ''}${isMigrating ? ' migrating' : ''}`}
+                className={`project-build-btn-icon${project.needsMigration ? ' needs-migration' : ''}${isMigrating ? ' migrating' : ''}${migrationError ? ' has-error' : ''}`}
                 onClick={(e) => {
                   e.stopPropagation()
                   if (project.needsMigration) {
+                    // Clear any previous error and start migration
+                    if (migrationError) {
+                      setMigrationError(project.root, null)
+                    }
                     // Add to migrating list and fire-and-forget
                     addMigratingProject(project.root)
                     sendAction('migrateProject', {
@@ -669,7 +676,7 @@ export const ProjectCard = memo(function ProjectCard({
                   }
                 }}
                 disabled={isMigrating}
-                title={isMigrating ? 'Migrating...' : (project.needsMigration ? `Migrate project to the latest atopile version` : `Build all targets in ${project.name}`)}
+                title={migrationError ? `Migration failed: ${migrationError}` : (isMigrating ? 'Migrating...' : (project.needsMigration ? `Migrate project to the latest atopile version` : `Build all targets in ${project.name}`))}
               >
                 {isMigrating ? <Loader2 size={14} className="spin" /> : <Play size={14} fill="currentColor" />}
               </button>

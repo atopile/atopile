@@ -1404,6 +1404,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "packages_changed",
                     {"migrated": True, "project_root": project_root},
                 )
+                await server_state.emit_event(
+                    "migration_result",
+                    {"project_root": project_root, "success": True},
+                )
 
                 return {
                     "success": True,
@@ -1426,6 +1430,14 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 await server_state.emit_event(
                     "projects_changed",
                     {"error": error_msg, "project_root": project_root},
+                )
+                await server_state.emit_event(
+                    "migration_result",
+                    {
+                        "project_root": project_root,
+                        "success": False,
+                        "error": error_msg,
+                    },
                 )
                 return {
                     "success": False,

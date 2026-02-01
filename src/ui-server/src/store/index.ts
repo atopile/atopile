@@ -70,6 +70,7 @@ const initialState: AppState = {
   selectedProjectRoot: null,
   selectedTargetNames: [],
   migratingProjectRoots: [] as string[],
+  migrationErrors: {} as Record<string, string>,
 
   // Builds
   builds: [],
@@ -198,6 +199,8 @@ interface StoreActions {
   // Migration
   addMigratingProject: (projectRoot: string) => void;
   removeMigratingProject: (projectRoot: string) => void;
+  setMigrationError: (projectRoot: string, error: string | null) => void;
+  migrationErrors: Record<string, string>;
 
   // Builds
   setBuilds: (builds: Build[]) => void;
@@ -475,7 +478,27 @@ export const useStore = create<Store>()(
       removeMigratingProject: (projectRoot) =>
         set((state) => ({
           migratingProjectRoots: state.migratingProjectRoots.filter((r) => r !== projectRoot),
+          migrationErrors: Object.fromEntries(
+            Object.entries(state.migrationErrors).filter(([k]) => k !== projectRoot)
+          ),
         })),
+
+      setMigrationError: (projectRoot, error) =>
+        set((state) => {
+          // Remove from migrating list
+          const newMigratingRoots = state.migratingProjectRoots.filter((r) => r !== projectRoot);
+          // Update error state
+          const newErrors = { ...state.migrationErrors };
+          if (error) {
+            newErrors[projectRoot] = error;
+          } else {
+            delete newErrors[projectRoot];
+          }
+          return {
+            migratingProjectRoots: newMigratingRoots,
+            migrationErrors: newErrors,
+          };
+        }),
 
   // Builds
   setBuilds: (builds) => set({ builds }),

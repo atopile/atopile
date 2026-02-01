@@ -441,6 +441,7 @@ export interface AppState {
   selectedProjectRoot: string | null;
   selectedTargetNames: string[];
   migratingProjectRoots: string[];  // Projects currently being migrated
+  migrationErrors: Record<string, string>;  // Migration errors by project root
 
   // Builds from /api/summary - completed builds and project context
   builds: Build[];

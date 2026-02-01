@@ -598,6 +598,21 @@ function handleEventMessage(message: EventMessage): void {
     (typeof data.project_root === 'string' && data.project_root) ||
     null;
 
+  // Handle migration_result event (not in EventType enum)
+  if ((message.event as string) === 'migration_result') {
+    const success = data.success === true;
+    const error = typeof data.error === 'string' ? data.error : null;
+
+    if (projectRoot) {
+      if (success) {
+        useStore.getState().removeMigratingProject(projectRoot);
+      } else {
+        useStore.getState().setMigrationError(projectRoot, error || 'Migration failed');
+      }
+    }
+    return;
+  }
+
   switch (message.event) {
     case EventType.OpenLayout: {
       const path = typeof data.path === 'string' ? data.path : null;

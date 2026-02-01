@@ -223,6 +223,14 @@
   color: var(--ctp-yellow, #f9e2af);
 }
 
+.project-build-btn-icon.has-error {
+  color: var(--ctp-red, #f38ba8);
+}
+
+.project-build-btn-icon.has-error:hover {
+  background: rgba(243, 139, 168, 0.15);
+}
+
 /* Description */
 .project-card-description {
   font-size: var(--font-size-xs);

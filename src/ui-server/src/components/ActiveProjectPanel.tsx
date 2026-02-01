@@ -884,13 +884,18 @@ export function ActiveProjectPanel({
 
   // Migration state from store
   const migratingProjectRoots = useStore((state) => state.migratingProjectRoots)
+  const migrationErrors = useStore((state) => state.migrationErrors)
   const addMigratingProject = useStore((state) => state.addMigratingProject)
+  const setMigrationError = useStore((state) => state.setMigrationError)
 
   // Compute isMigrating based on selected project
   const isMigrating = useMemo(() => {
     if (!selectedProjectRoot) return false
     return migratingProjectRoots.includes(selectedProjectRoot)
   }, [selectedProjectRoot, migratingProjectRoots])
+
+  // Get migration error for current project
+  const migrationError = selectedProjectRoot ? migrationErrors[selectedProjectRoot] : null
 
   const handleCreateProject = useCallback(async (data: NewProjectData) => {
     if (!onCreateProject) return
@@ -1047,6 +1052,10 @@ export function ActiveProjectPanel({
             onClick={() => {
               if (!activeProject) return
               if (activeProject.needsMigration && !isMigrating) {
+                // Clear any previous error and start migration
+                if (migrationError) {
+                  setMigrationError(activeProject.root, null)
+                }
                 // Add to migrating list and fire-and-forget
                 addMigratingProject(activeProject.root)
                 sendAction('migrateProject', {
@@ -1130,6 +1139,21 @@ export function ActiveProjectPanel({
             </button>
           )}
         </div>
+
+        {/* Migration error display */}
+        {migrationError && (
+          <div className="migration-error">
+            <AlertCircle size={14} />
+            <span className="error-message">{migrationError}</span>
+            <button
+              className="dismiss-btn"
+              onClick={() => activeProject && setMigrationError(activeProject.root, null)}
+              title="Dismiss"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
