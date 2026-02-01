@@ -66,6 +66,7 @@ def dashboard_server(tmp_path: Path, quickstart_project: Path):
 class TestRealBuilds:
     """Integration tests that run actual builds."""
 
+    @pytest.mark.not_in_ci  # requires kicad-cli
     def test_build_quickstart_and_poll_status(
         self, dashboard_server: str, quickstart_project: Path
     ):
