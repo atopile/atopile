@@ -607,19 +607,19 @@
   top: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
+  background: var(--vscode-editorHoverWidget-background, var(--bg-secondary));
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--border-subtle));
   border-radius: var(--radius-sm);
-  padding: 4px 8px;
+  padding: 6px 8px;
   font-size: var(--font-size-xs);
-  color: var(--text-primary);
+  color: var(--vscode-editorHoverWidget-foreground, var(--text-primary));
   white-space: nowrap;
   z-index: 1000;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.1s ease-out;
   transition-delay: 0s;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
 }
 
 .tab-button:hover::after {

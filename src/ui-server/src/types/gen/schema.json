@@ -146,6 +146,11 @@
         ],
         "default": null,
         "title": "Displaypath"
+      },
+      "needsMigration": {
+        "default": false,
+        "title": "Needsmigration",
+        "type": "boolean"
       }
     },
     "required": [

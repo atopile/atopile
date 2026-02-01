@@ -192,6 +192,10 @@ pub const PyTypeObject = extern struct {
     tp_version_tag: c_uint = 0,
     tp_finalize: ?*anyopaque = null,
     tp_vectorcall: ?*anyopaque = null,
+    // Added in Python 3.12 - bitset of which type-watchers care about this type
+    tp_watched: u8 = 0,
+    // Added in Python 3.12 - number of tp_version_tag values used
+    tp_versions_used: u16 = 0,
 };
 
 pub const PyVarObject = extern struct {

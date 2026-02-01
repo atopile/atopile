@@ -293,8 +293,8 @@ const TreeNode = memo(function TreeNode({
     setRenameValue(node.name);
   }, [node.name]);
 
-  // Indent: 16px for twistie + 8px per depth level
-  const indent = 4 + depth * 16;
+  // Indent: slightly tighter spacing per depth level
+  const indent = 4 + depth * 6;
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1139,7 +1139,6 @@ export function FileExplorerPanel({ projectRoot }: FileExplorerPanelProps) {
     >
       {/* Header with actions */}
       <div className="file-explorer-header">
-        <span className="file-explorer-title">Explorer</span>
         <div className="file-explorer-actions">
           <button
             className="file-explorer-action-btn"

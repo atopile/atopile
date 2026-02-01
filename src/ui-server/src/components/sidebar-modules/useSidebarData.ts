@@ -163,6 +163,7 @@ export function useSidebarData({ state }: UseSidebarDataParams) {
         builds,
         lastBuildStatus: projectStatus,
         lastBuildTimestamp: mostRecentTimestamp,
+        needsMigration: p.needsMigration,
       };
     });
   }, [state?.projects, state?.builds, state?.projectModules]);

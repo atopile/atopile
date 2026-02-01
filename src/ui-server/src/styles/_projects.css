@@ -695,6 +695,17 @@
   height: 10px;
 }
 
+/* Needs migration - yellow warning state */
+.project-build-btn-icon.needs-migration {
+  border-color: var(--vscode-editorWarning-foreground, #cca700);
+  color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.project-build-btn-icon.needs-migration:hover {
+  background: var(--vscode-editorWarning-foreground, #cca700);
+  color: var(--vscode-editor-background, #1e1e1e);
+}
+
 /* Collapsed state - single line */
 .project-card.collapsed .project-card-name-row {
   margin-bottom: 0;

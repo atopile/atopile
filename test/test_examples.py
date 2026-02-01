@@ -22,6 +22,7 @@ SKIP_EXAMPLES = [
 ]
 
 
+@pytest.mark.not_in_ci  # requires kicad-cli
 @pytest.mark.parametrize(
     "example",
     [

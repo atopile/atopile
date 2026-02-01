@@ -216,6 +216,26 @@ export async function handleEvent(
       if (projectRoot) await fetchProjectDependencies(projectRoot);
       break;
     }
+    case 'migration_result': {
+      const projectRoot = typeof detail.project_root === 'string'
+        ? detail.project_root
+        : typeof detail.projectRoot === 'string'
+          ? detail.projectRoot
+          : null;
+      const success = detail.success === true;
+      const error = typeof detail.error === 'string' ? detail.error : null;
+
+      if (projectRoot) {
+        if (success) {
+          // Clear migrating state on success
+          store.removeMigratingProject(projectRoot);
+        } else {
+          // Set error and clear migrating state on failure
+          store.setMigrationError(projectRoot, error || 'Migration failed');
+        }
+      }
+      break;
+    }
     case EventType.AtopileConfigChanged:
       updateAtopileConfig({
         // Actual running atopile info

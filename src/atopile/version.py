@@ -52,6 +52,36 @@ def parse(version_str: str) -> Version:
     return version
 
 
+MIGRATION_THRESHOLD = parse("0.14.0")
+
+
+def needs_migration(spec: str | None) -> bool:
+    """
+    Check if a project needs migration (requires-atopile version < MIGRATION_THRESHOLD).
+    """
+    if spec is None:
+        return False
+
+    spec = spec.strip()
+
+    # Find and strip the operator to get the version
+    for op in OPERATORS:
+        if spec.startswith(op):
+            version_str = spec[len(op) :]
+            try:
+                parsed = clean_version(parse(version_str))
+                return parsed < MIGRATION_THRESHOLD
+            except ValueError:
+                return False
+
+    # No operator found, try to parse as plain version
+    try:
+        parsed = clean_version(parse(spec))
+        return parsed < MIGRATION_THRESHOLD
+    except ValueError:
+        return False
+
+
 def clean_version(verion: Version) -> Version:
     """
     Clean a version by dropping any prerelease or build information

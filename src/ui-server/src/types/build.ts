@@ -134,6 +134,7 @@ export interface Project {
   description?: string;  // Project description from ato.yaml
   targets: BuildTarget[];
   dependencies?: ProjectDependency[];  // Project dependencies from ato.yaml
+  needsMigration?: boolean;  // Whether project needs migration (requires-atopile < 0.14.0)
 }
 
 /**
@@ -439,6 +440,8 @@ export interface AppState {
   projectsError: string | null;
   selectedProjectRoot: string | null;
   selectedTargetNames: string[];
+  migratingProjectRoots: string[];  // Projects currently being migrated
+  migrationErrors: Record<string, string>;  // Migration errors by project root
 
   // Builds from /api/summary - completed builds and project context
   builds: Build[];
