@@ -650,11 +650,18 @@ export const ProjectCard = memo(function ProjectCard({
             ) : (
               <button
                 className={`project-build-btn-icon${project.needsMigration ? ' needs-migration' : ''}`}
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.stopPropagation()
-                  onBuild('project', project.id, project.name)
+                  if (project.needsMigration) {
+                    const { sendActionWithResponse } = await import('../api/websocket')
+                    await sendActionWithResponse('migrateProject', {
+                      projectRoot: project.root,
+                    })
+                  } else {
+                    onBuild('project', project.id, project.name)
+                  }
                 }}
-                title={project.needsMigration ? `Migrate project` : `Build all targets in ${project.name}`}
+                title={project.needsMigration ? `Migrate project to ato 0.14+` : `Build all targets in ${project.name}`}
               >
                 <Play size={14} fill="currentColor" />
               </button>

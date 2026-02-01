@@ -1032,12 +1032,21 @@ export function ActiveProjectPanel({
         <div className="build-actions-row">
           <button
             className={`action-btn primary${activeProject?.needsMigration ? ' needs-migration' : ''}`}
-            onClick={() => {
-              if (!activeProject || !activeTargetName) return
-              onBuildTarget(activeProject.root, activeTargetName)
+            onClick={async () => {
+              if (!activeProject) return
+              if (activeProject.needsMigration) {
+                // Trigger migration action
+                const { sendActionWithResponse } = await import('../api/websocket')
+                await sendActionWithResponse('migrateProject', {
+                  projectRoot: activeProject.root,
+                })
+              } else {
+                if (!activeTargetName) return
+                onBuildTarget(activeProject.root, activeTargetName)
+              }
             }}
-            disabled={!activeProject || !activeTargetName}
-            title={activeProject?.needsMigration ? 'Migrate project' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first')}
+            disabled={!activeProject || (!activeProject.needsMigration && !activeTargetName)}
+            title={activeProject?.needsMigration ? 'Migrate project to ato 0.14+' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first')}
           >
             <Play size={12} />
             <span className="action-label">{activeProject?.needsMigration ? 'Migrate' : 'Build'}</span>
