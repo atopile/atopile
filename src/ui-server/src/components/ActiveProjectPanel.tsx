@@ -253,13 +253,11 @@ function TargetSelector({
   targets,
   activeTargetName,
   onSelectTarget,
-  onCreateTarget,
   disabled,
 }: {
   targets: BuildTarget[]
   activeTargetName: string | null
   onSelectTarget: (targetName: string) => void
-  onCreateTarget?: () => void
   disabled?: boolean
 }) {
   const [isOpen, setIsOpen] = useState(false)
@@ -317,77 +315,59 @@ function TargetSelector({
     return (
       <div className="target-selector-empty">
         <span>No builds defined</span>
-        {onCreateTarget && (
-          <button
-            className="create-target-btn"
-            onClick={onCreateTarget}
-            title="Create new build"
-          >
-            <Plus size={12} />
-          </button>
-        )}
       </div>
     )
   }
 
   return (
-    <div className="target-selector-row">
-      <div className="target-combobox" ref={comboboxRef}>
-        <button
-          type="button"
-          className={`target-combobox-trigger ${isOpen ? 'open' : ''}`}
-          onClick={() => !disabled && setIsOpen(!isOpen)}
-          onKeyDown={handleKeyDown}
-          disabled={disabled}
-          aria-haspopup="listbox"
-          aria-expanded={isOpen}
-        >
-          <Target size={14} className="target-icon" />
-          <span className="target-trigger-name">{activeTarget?.name || 'Select build'}</span>
+    <div className="target-combobox" ref={comboboxRef}>
+      <button
+        type="button"
+        className={`target-combobox-trigger ${isOpen ? 'open' : ''}`}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        onKeyDown={handleKeyDown}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+      >
+        <Target size={14} className="target-icon" />
+        <span className="target-trigger-name">{activeTarget?.name || 'Select build'}</span>
+        <span className="target-combobox-right">
           {activeTarget?.entry && (
             <span className="target-trigger-entry">{activeTarget.entry.split(':').pop()}</span>
           )}
-          <ChevronDown size={14} className={`chevron ${isOpen ? 'open' : ''}`} />
-        </button>
+          <span className="target-combobox-chevron">
+            <ChevronDown size={14} className={`chevron ${isOpen ? 'open' : ''}`} />
+          </span>
+        </span>
+      </button>
 
-        {isOpen && (
-          <div className="target-combobox-dropdown">
-            <div className="target-combobox-list" role="listbox">
-              {targets.map((target, index) => {
-                const isActive = target.name === activeTargetName
-                const isHighlighted = index === highlightedIndex
-                return (
-                  <button
-                    key={target.name}
-                    className={`target-option ${isActive ? 'active' : ''} ${isHighlighted ? 'highlighted' : ''}`}
-                    onClick={() => selectTarget(target)}
-                    onMouseEnter={() => setHighlightedIndex(index)}
-                    role="option"
-                    aria-selected={isActive}
-                  >
-                    <Target size={12} className="option-icon" />
-                    <span className="target-option-name">{target.name}</span>
-                    {target.entry && (
-                      <span className="target-option-entry">{target.entry.split(':').pop()}</span>
-                    )}
-                    {isActive && <Check size={12} className="check-icon" />}
-                  </button>
-                )
-              })}
-            </div>
+      {isOpen && (
+        <div className="target-combobox-dropdown">
+          <div className="target-combobox-list" role="listbox">
+            {targets.map((target, index) => {
+              const isActive = target.name === activeTargetName
+              const isHighlighted = index === highlightedIndex
+              return (
+                <button
+                  key={target.name}
+                  className={`target-option ${isActive ? 'active' : ''} ${isHighlighted ? 'highlighted' : ''}`}
+                  onClick={() => selectTarget(target)}
+                  onMouseEnter={() => setHighlightedIndex(index)}
+                  role="option"
+                  aria-selected={isActive}
+                >
+                  <Target size={12} className="option-icon" />
+                  <span className="target-option-name">{target.name}</span>
+                  {target.entry && (
+                    <span className="target-option-entry">{target.entry.split(':').pop()}</span>
+                  )}
+                  {isActive && <Check size={12} className="check-icon" />}
+                </button>
+              )
+            })}
           </div>
-        )}
-      </div>
-
-      {onCreateTarget && (
-        <button
-          className="create-target-btn"
-          onClick={onCreateTarget}
-          title="Create new build"
-          disabled={disabled}
-        >
-          <Plus size={12} />
-        </button>
+        </div>
       )}
     </div>
   )
@@ -986,10 +966,13 @@ export function ActiveProjectPanel({
 
       {/* Project Section */}
       <div className="project-section">
-        <div className="section-header">
-          <span className="section-label">Project</span>
-        </div>
         <div className="project-selector-row">
+          <span
+            className="section-label has-tooltip"
+            data-tooltip="A project groups your design modules and the builds created from them."
+          >
+            Project
+          </span>
           <ProjectSelector
             projects={projects}
             activeProject={activeProject}
@@ -1010,11 +993,13 @@ export function ActiveProjectPanel({
 
       {/* Build Section */}
       <div className="builds-section">
-        <div className="section-header">
-          <span className="section-label">Build</span>
-        </div>
-
         <div className="build-targets">
+          <span
+            className="section-label has-tooltip"
+            data-tooltip="A build creates one PCB or reusable layout block from a selected module entry point."
+          >
+            Build
+          </span>
           <TargetSelector
             targets={activeProject?.targets || []}
             activeTargetName={activeTargetName}
@@ -1023,9 +1008,17 @@ export function ActiveProjectPanel({
                 onSelectTarget(activeProject.root, targetName)
               }
             }}
-            onCreateTarget={onCreateTarget && activeProject ? () => setShowNewTargetForm(true) : undefined}
             disabled={!activeProject}
           />
+          {onCreateTarget && activeProject && (
+            <button
+              className="new-project-btn"
+              onClick={() => setShowNewTargetForm(true)}
+              title="Create new build"
+            >
+              <Plus size={14} />
+            </button>
+          )}
         </div>
 
         {/* Action buttons - single row: Build | KiCad | 3D | Layout | Manufacture */}
