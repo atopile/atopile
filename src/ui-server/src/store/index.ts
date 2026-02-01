@@ -69,6 +69,7 @@ const initialState: AppState = {
   projectsError: null,
   selectedProjectRoot: null,
   selectedTargetNames: [],
+  migratingProjectRoots: [] as string[],
 
   // Builds
   builds: [],
@@ -193,6 +194,10 @@ interface StoreActions {
   setSelectedTargets: (targetNames: string[]) => void;
   toggleTarget: (targetName: string) => void;
   toggleTargetExpanded: (targetName: string) => void;
+
+  // Migration
+  addMigratingProject: (projectRoot: string) => void;
+  removeMigratingProject: (projectRoot: string) => void;
 
   // Builds
   setBuilds: (builds: Build[]) => void;
@@ -392,7 +397,19 @@ export const useStore = create<Store>()(
       },
 
       // Projects
-      setProjects: (projects) => set({ projects, isLoadingProjects: false }),
+      setProjects: (projects) => set((state) => {
+        // Clear migrating state for projects that no longer need migration
+        const stillMigrating = state.migratingProjectRoots.filter((root) => {
+          const project = projects.find((p) => p.root === root);
+          // Keep in migrating list if project still needs migration
+          return project?.needsMigration === true;
+        });
+        return {
+          projects,
+          isLoadingProjects: false,
+          migratingProjectRoots: stillMigrating,
+        };
+      }),
 
       setLoadingProjects: (loading) => set({ isLoadingProjects: loading }),
 
@@ -446,6 +463,19 @@ export const useStore = create<Store>()(
             expandedTargets: [...expanded, targetName],
           };
         }),
+
+      // Migration
+      addMigratingProject: (projectRoot) =>
+        set((state) => ({
+          migratingProjectRoots: state.migratingProjectRoots.includes(projectRoot)
+            ? state.migratingProjectRoots
+            : [...state.migratingProjectRoots, projectRoot],
+        })),
+
+      removeMigratingProject: (projectRoot) =>
+        set((state) => ({
+          migratingProjectRoots: state.migratingProjectRoots.filter((r) => r !== projectRoot),
+        })),
 
   // Builds
   setBuilds: (builds) => set({ builds }),

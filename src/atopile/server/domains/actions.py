@@ -1353,78 +1353,66 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 }
 
             def run_migration():
-                try:
-                    from atopile import version as ato_version
-                    from atopile.config import config
-                    from faebryk.libs.project.dependencies import ProjectDependencies
+                from atopile import version as ato_version
+                from atopile.config import config
+                from faebryk.libs.project.dependencies import ProjectDependencies
 
-                    log.info(f"Starting migration for {project_root}")
+                log.info(f"[migrate] Starting migration for {project_root}")
 
-                    # Run ProjectDependencies to sync packages
+                # Update ato.yaml FIRST with new requires-atopile version
+                # This ensures the project is marked as migrated even if sync fails
+                current_version = ato_version.clean_version(
+                    ato_version.get_installed_atopile_version()
+                )
+                new_requires = f"^{current_version}"
+                data, ato_file = core_projects._load_ato_yaml(project_path)
+                data["requires-atopile"] = new_requires
+                core_projects._save_ato_yaml(ato_file, data)
+                log.info(f"[migrate] Updated requires-atopile to {new_requires}")
 
-                    config.apply_options(None, working_dir=project_path)
-                    log.info("Running ProjectDependencies to sync packages...")
-                    ProjectDependencies(
-                        sync_versions=True,
-                        install_missing=True,
-                        clean_unmanaged_dirs=True,
-                        update_versions=True,
-                        # pin_versions=True,
-                        force_sync=True,
-                    )
-                    log.info("Migration completed successfully")
+                # Run ProjectDependencies to sync packages
+                log.info("[migrate] Applying config options...")
+                config.apply_options(None, working_dir=project_path)
+                log.info("[migrate] Running ProjectDependencies to sync packages...")
+                ProjectDependencies(
+                    sync_versions=True,
+                    install_missing=True,
+                    clean_unmanaged_dirs=True,
+                    update_versions=True,
+                    force_sync=True,
+                )
+                log.info("[migrate] ProjectDependencies completed")
 
-                    # Get current atopile version (cleaned)
-                    current_version = ato_version.clean_version(
-                        ato_version.get_installed_atopile_version()
-                    )
-                    new_requires = f"^{current_version}"
+            try:
+                # Run migration synchronously so frontend can show spinner
+                await asyncio.to_thread(run_migration)
 
-                    # Update ato.yaml with new requires-atopile version
-                    data, ato_file = core_projects._load_ato_yaml(project_path)
-                    data["requires-atopile"] = new_requires
-                    core_projects._save_ato_yaml(ato_file, data)
-                    log.info(f"Updated requires-atopile to {new_requires}")
+                # Emit success events after migration completes
+                from atopile.server.module_introspection import clear_module_cache
 
-                    # Emit success events
-                    loop = event_bus._event_loop
-                    if loop and loop.is_running():
-                        from atopile.server.module_introspection import (
-                            clear_module_cache,
-                        )
+                clear_module_cache()
+                await packages_domain.refresh_packages_state(scan_path=project_path)
+                await server_state.emit_event("projects_changed")
+                await server_state.emit_event(
+                    "packages_changed",
+                    {"migrated": True, "project_root": project_root},
+                )
 
-                        async def finalize_migration():
-                            clear_module_cache()
-                            await packages_domain.refresh_packages_state(
-                                scan_path=project_path
-                            )
-                            await server_state.emit_event("projects_changed")
-                            await server_state.emit_event(
-                                "packages_changed",
-                                {"migrated": True, "project_root": project_root},
-                            )
-
-                        asyncio.run_coroutine_threadsafe(finalize_migration(), loop)
-
-                except Exception as exc:
-                    error_msg = str(exc)[:500] or "Unknown error"
-                    log.exception(f"Migration failed: {error_msg}")
-                    loop = event_bus._event_loop
-                    if loop and loop.is_running():
-                        asyncio.run_coroutine_threadsafe(
-                            server_state.emit_event(
-                                "projects_changed",
-                                {"error": error_msg, "project_root": project_root},
-                            ),
-                            loop,
-                        )
-
-            threading.Thread(target=run_migration, daemon=True).start()
-
-            return {
-                "success": True,
-                "message": "Migrating project...",
-            }
+                return {
+                    "success": True,
+                    "message": "Migration completed successfully",
+                }
+            except Exception as exc:
+                error_msg = str(exc)[:500] or "Unknown error"
+                log.exception(f"Migration failed: {error_msg}")
+                await server_state.emit_event(
+                    "projects_changed",
+                    {"error": error_msg, "project_root": project_root},
+                )
+                return {
+                    "success": False,
+                    "error": f"Migration failed: {error_msg}",
+                }
 
         if action == "ping":
             return {"success": True}

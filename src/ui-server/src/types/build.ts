@@ -440,6 +440,7 @@ export interface AppState {
   projectsError: string | null;
   selectedProjectRoot: string | null;
   selectedTargetNames: string[];
+  migratingProjectRoots: string[];  // Projects currently being migrated
 
   // Builds from /api/summary - completed builds and project context
   builds: Build[];

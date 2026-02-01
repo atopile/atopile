@@ -218,6 +218,11 @@
   background: rgba(249, 226, 175, 0.15);
 }
 
+.project-build-btn-icon.migrating {
+  opacity: 1;
+  color: var(--ctp-yellow, #f9e2af);
+}
+
 /* Description */
 .project-card-description {
   font-size: var(--font-size-xs);
@@ -571,7 +576,8 @@
   font-size: var(--font-size-xs);
 }
 
-.package-loading .spin {
+.package-loading .spin,
+.spin {
   animation: spin 1s linear infinite;
 }
 

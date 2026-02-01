@@ -1545,6 +1545,16 @@
   opacity: 0.6;
 }
 
+/* Spinner animation */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Legacy styles for backwards compatibility */
 .active-project-header,
 .create-project-btn,

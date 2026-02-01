@@ -26,7 +26,8 @@ import { UsageCard } from './UsageCard'
 import { validateName } from '../utils/nameValidation'
 import { compareVersionsDesc, isInstalledInProject } from '../utils/packageUtils'
 import { generateImportStatement, generateUsageExample } from '../utils/codeHighlight'
-import { sendActionWithResponse } from '../api/websocket'
+import { sendAction, sendActionWithResponse } from '../api/websocket'
+import { useStore } from '../store'
 import type { BuildTarget as ProjectBuildTarget, PackageDetails } from '../types/build'
 import type {
   Selection,
@@ -354,6 +355,11 @@ export const ProjectCard = memo(function ProjectCard({
   const [descExpanded, setDescExpanded] = useState(false)
   const isSelected = selection.type === 'project' && selection.projectId === project.id
 
+  // Migration state from store
+  const migratingProjectRoots = useStore((state) => state.migratingProjectRoots)
+  const addMigratingProject = useStore((state) => state.addMigratingProject)
+  const isMigrating = migratingProjectRoots.includes(project.root)
+
   // Build status (for editable mode) - use project.builds here since builds variable isn't defined yet
   const totalErrors = project.builds.reduce((sum, b) => sum + (b.errors || 0), 0)
   const totalWarnings = project.builds.reduce((sum, b) => sum + (b.warnings || 0), 0)
@@ -649,21 +655,23 @@ export const ProjectCard = memo(function ProjectCard({
               </button>
             ) : (
               <button
-                className={`project-build-btn-icon${project.needsMigration ? ' needs-migration' : ''}`}
-                onClick={async (e) => {
+                className={`project-build-btn-icon${project.needsMigration ? ' needs-migration' : ''}${isMigrating ? ' migrating' : ''}`}
+                onClick={(e) => {
                   e.stopPropagation()
                   if (project.needsMigration) {
-                    const { sendActionWithResponse } = await import('../api/websocket')
-                    await sendActionWithResponse('migrateProject', {
+                    // Add to migrating list and fire-and-forget
+                    addMigratingProject(project.root)
+                    sendAction('migrateProject', {
                       projectRoot: project.root,
                     })
                   } else {
                     onBuild('project', project.id, project.name)
                   }
                 }}
-                title={project.needsMigration ? `Migrate project to ato 0.14+` : `Build all targets in ${project.name}`}
+                disabled={isMigrating}
+                title={isMigrating ? 'Migrating...' : (project.needsMigration ? `Migrate project to the latest atopile version` : `Build all targets in ${project.name}`)}
               >
-                <Play size={14} fill="currentColor" />
+                {isMigrating ? <Loader2 size={14} className="spin" /> : <Play size={14} fill="currentColor" />}
               </button>
             )}
           </div>

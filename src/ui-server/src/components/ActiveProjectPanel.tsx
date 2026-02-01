@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target } from 'lucide-react'
+import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2 } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
 import { postMessage } from '../api/vscodeApi'
+import { sendAction } from '../api/websocket'
+import { useStore } from '../store'
 import './ActiveProjectPanel.css'
 
 // Re-export BuildQueueItem for use in standalone BuildQueue panel
@@ -880,6 +882,16 @@ export function ActiveProjectPanel({
   const [createProjectError, setCreateProjectError] = useState<string | null>(null)
   const [createTargetError, setCreateTargetError] = useState<string | null>(null)
 
+  // Migration state from store
+  const migratingProjectRoots = useStore((state) => state.migratingProjectRoots)
+  const addMigratingProject = useStore((state) => state.addMigratingProject)
+
+  // Compute isMigrating based on selected project
+  const isMigrating = useMemo(() => {
+    if (!selectedProjectRoot) return false
+    return migratingProjectRoots.includes(selectedProjectRoot)
+  }, [selectedProjectRoot, migratingProjectRoots])
+
   const handleCreateProject = useCallback(async (data: NewProjectData) => {
     if (!onCreateProject) return
     setIsCreatingProject(true)
@@ -1032,24 +1044,24 @@ export function ActiveProjectPanel({
         <div className="build-actions-row">
           <button
             className={`action-btn primary${activeProject?.needsMigration ? ' needs-migration' : ''}`}
-            onClick={async () => {
+            onClick={() => {
               if (!activeProject) return
-              if (activeProject.needsMigration) {
-                // Trigger migration action
-                const { sendActionWithResponse } = await import('../api/websocket')
-                await sendActionWithResponse('migrateProject', {
+              if (activeProject.needsMigration && !isMigrating) {
+                // Add to migrating list and fire-and-forget
+                addMigratingProject(activeProject.root)
+                sendAction('migrateProject', {
                   projectRoot: activeProject.root,
                 })
-              } else {
+              } else if (!isMigrating) {
                 if (!activeTargetName) return
                 onBuildTarget(activeProject.root, activeTargetName)
               }
             }}
-            disabled={!activeProject || (!activeProject.needsMigration && !activeTargetName)}
-            title={activeProject?.needsMigration ? 'Migrate project to ato 0.14+' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first')}
+            disabled={!activeProject || isMigrating || (!activeProject.needsMigration && !activeTargetName)}
+            title={isMigrating ? 'Migrating...' : (activeProject?.needsMigration ? 'Migrate project to ato 0.14+' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first'))}
           >
-            <Play size={12} />
-            <span className="action-label">{activeProject?.needsMigration ? 'Migrate' : 'Build'}</span>
+            {isMigrating ? <Loader2 size={12} className="spin" /> : <Play size={12} />}
+            <span className="action-label">{isMigrating ? 'Migrating...' : (activeProject?.needsMigration ? 'Migrate' : 'Build')}</span>
           </button>
 
           <div className="action-divider" />
