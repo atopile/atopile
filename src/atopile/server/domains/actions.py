@@ -1359,18 +1359,8 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
                 log.info(f"[migrate] Starting migration for {project_root}")
 
-                # Update ato.yaml FIRST with new requires-atopile version
-                # This ensures the project is marked as migrated even if sync fails
-                current_version = ato_version.clean_version(
-                    ato_version.get_installed_atopile_version()
-                )
-                new_requires = f"^{current_version}"
-                data, ato_file = core_projects._load_ato_yaml(project_path)
-                data["requires-atopile"] = new_requires
-                core_projects._save_ato_yaml(ato_file, data)
-                log.info(f"[migrate] Updated requires-atopile to {new_requires}")
-
-                # Run ProjectDependencies to sync packages
+                # Run ProjectDependencies FIRST to sync packages. This ensures
+                # packages are updated before we mark the project as migrated
                 log.info("[migrate] Applying config options...")
                 config.apply_options(None, working_dir=project_path)
                 log.info("[migrate] Running ProjectDependencies to sync packages...")
@@ -1383,6 +1373,16 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 )
                 log.info("[migrate] ProjectDependencies completed")
 
+                # Update ato.yaml AFTER package sync completes
+                current_version = ato_version.clean_version(
+                    ato_version.get_installed_atopile_version()
+                )
+                new_requires = f"^{current_version}"
+                data, ato_file = core_projects._load_ato_yaml(project_path)
+                data["requires-atopile"] = new_requires
+                core_projects._save_ato_yaml(ato_file, data)
+                log.info(f"[migrate] Updated requires-atopile to {new_requires}")
+
             try:
                 # Run migration synchronously so frontend can show spinner
                 await asyncio.to_thread(run_migration)
@@ -1392,6 +1392,13 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
                 clear_module_cache()
                 await packages_domain.refresh_packages_state(scan_path=project_path)
+
+                # Re-discover projects to pick up updated needs_migration value
+                if ctx.workspace_paths:
+                    await asyncio.to_thread(
+                        core_projects.discover_projects_in_paths, ctx.workspace_paths
+                    )
+
                 await server_state.emit_event("projects_changed")
                 await server_state.emit_event(
                     "packages_changed",
@@ -1405,6 +1412,17 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             except Exception as exc:
                 error_msg = str(exc)[:500] or "Unknown error"
                 log.exception(f"Migration failed: {error_msg}")
+
+                # Re-discover projects even on error to update state
+                if ctx.workspace_paths:
+                    try:
+                        await asyncio.to_thread(
+                            core_projects.discover_projects_in_paths,
+                            ctx.workspace_paths,
+                        )
+                    except Exception:
+                        pass
+
                 await server_state.emit_event(
                     "projects_changed",
                     {"error": error_msg, "project_root": project_root},
