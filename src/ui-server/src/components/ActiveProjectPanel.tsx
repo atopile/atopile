@@ -1067,7 +1067,7 @@ export function ActiveProjectPanel({
               }
             }}
             disabled={!activeProject || isMigrating || (!activeProject.needsMigration && !activeTargetName)}
-            title={isMigrating ? 'Migrating...' : (activeProject?.needsMigration ? 'Migrate project to ato 0.14+' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first'))}
+            title={isMigrating ? 'Migrating...' : (activeProject?.needsMigration ? 'Your project and dependencies are incompatible with this version of atopile. Use this button to download the latest compatible dependencies. You might need to manually make some minor changes in your project afterwards.' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first'))}
           >
             {isMigrating ? <Loader2 size={12} className="spin" /> : <Play size={12} />}
             <span className="action-label">{isMigrating ? 'Migrating...' : (activeProject?.needsMigration ? 'Migrate' : 'Build')}</span>

@@ -676,7 +676,7 @@ export const ProjectCard = memo(function ProjectCard({
                   }
                 }}
                 disabled={isMigrating}
-                title={migrationError ? `Migration failed: ${migrationError}` : (isMigrating ? 'Migrating...' : (project.needsMigration ? `Migrate project to the latest atopile version` : `Build all targets in ${project.name}`))}
+                title={migrationError ? `Migration failed: ${migrationError}` : (isMigrating ? 'Migrating...' : (project.needsMigration ? 'Your project and dependencies are incompatible with this version of atopile. Use this button to download the latest compatible dependencies. You might need to manually make some minor changes in your project afterwards.' : `Build all targets in ${project.name}`))}
               >
                 {isMigrating ? <Loader2 size={14} className="spin" /> : <Play size={14} fill="currentColor" />}
               </button>
