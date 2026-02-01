@@ -964,36 +964,63 @@ pub const GraphView = struct {
         //}
     }
 
-    // Simple queue for BFS using ArrayList with front index for O(1) pop.
-    // Memory tradeoff: Items aren't freed until deinit() (array grows, front advances).
-    // This is acceptable for BFS since the queue is short-lived and path count is bounded.
-    // If memory becomes an issue for large graphs, consider periodic compaction or
-    // a ring buffer implementation.
+    // Ring buffer queue for BFS - reuses memory slots to prevent unbounded growth.
+    // Replaces std.fifo.LinearFifo which was removed in Zig 0.15.
     const PathQueue = struct {
-        items: std.array_list.Managed(*BFSPath),
-        front: usize = 0,
+        buffer: []*BFSPath,
+        head: usize = 0, // write position
+        tail: usize = 0, // read position
+        count: usize = 0,
+        allocator: std.mem.Allocator,
+
+        const initial_capacity = 256;
 
         fn init(allocator: std.mem.Allocator) @This() {
-            return .{ .items = std.array_list.Managed(*BFSPath).init(allocator) };
+            const buffer = allocator.alloc(*BFSPath, initial_capacity) catch @panic("OOM");
+            return .{ .buffer = buffer, .allocator = allocator };
         }
 
         fn deinit(self: *@This()) void {
             // Clean up remaining items
-            for (self.items.items[self.front..]) |p| {
+            while (self.pop()) |p| {
                 p.deinit();
             }
-            self.items.deinit();
+            self.allocator.free(self.buffer);
         }
 
         fn push(self: *@This(), item: *BFSPath) void {
-            self.items.append(item) catch @panic("OOM");
+            if (self.count == self.buffer.len) {
+                self.grow();
+            }
+            self.buffer[self.head] = item;
+            self.head = (self.head + 1) % self.buffer.len;
+            self.count += 1;
         }
 
         fn pop(self: *@This()) ?*BFSPath {
-            if (self.front >= self.items.items.len) return null;
-            const item = self.items.items[self.front];
-            self.front += 1;
+            if (self.count == 0) return null;
+            const item = self.buffer[self.tail];
+            self.tail = (self.tail + 1) % self.buffer.len;
+            self.count -= 1;
             return item;
+        }
+
+        fn grow(self: *@This()) void {
+            const new_cap = self.buffer.len * 2;
+            const new_buffer = self.allocator.alloc(*BFSPath, new_cap) catch @panic("OOM");
+
+            // Copy items in order from tail to head
+            var i: usize = 0;
+            var idx = self.tail;
+            while (i < self.count) : (i += 1) {
+                new_buffer[i] = self.buffer[idx];
+                idx = (idx + 1) % self.buffer.len;
+            }
+
+            self.allocator.free(self.buffer);
+            self.buffer = new_buffer;
+            self.tail = 0;
+            self.head = self.count;
         }
     };
 
