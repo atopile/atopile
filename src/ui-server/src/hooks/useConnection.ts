@@ -30,6 +30,8 @@ export function useConnection() {
             projectRoot: message.projectRoot,
             targets: message.targets,
             requestId: message.requestId,
+            includeTargets: message.includeTargets,
+            frozen: message.frozen,
           });
           break;
         case 'atopileInstalling':

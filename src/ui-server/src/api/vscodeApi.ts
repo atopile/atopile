@@ -181,6 +181,8 @@ export interface TriggerBuildMessage {
   projectRoot: string;
   targets: string[];
   requestId?: string;  // For tracking responses
+  includeTargets?: string[];
+  frozen?: boolean;
 }
 
 export interface SetAtopileInstallingMessage {

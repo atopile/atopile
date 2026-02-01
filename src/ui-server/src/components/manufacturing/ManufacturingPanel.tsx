@@ -250,7 +250,7 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
       sendAction('build', {
         projectRoot: selectedBuild.projectRoot,
         targets: [selectedBuild.targetName],  // Build config from ato.yaml (e.g., "default")
-        includeTargets: ['all'],  // Muster target to include mfg-data, 3d models, etc.
+        includeTargets: ['mfg-data'],  // Muster target for manufacturing artifacts (no 3D models by default).
         frozen: true,
       });
       updateBuild(selectedBuild.targetName, { status: 'building' });
@@ -1019,7 +1019,7 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
                         <div className="mfg-visual-empty">
                           <Cuboid size={32} />
                           <span>3D model not available</span>
-                          <span className="mfg-visual-hint">Build with "all" target to generate</span>
+                          <span className="mfg-visual-hint">Build with "3d-models" target to generate</span>
                         </div>
                       )}
                     </>
