@@ -964,7 +964,11 @@ pub const GraphView = struct {
         //}
     }
 
-    // Simple queue for BFS using ArrayList with front index for O(1) pop
+    // Simple queue for BFS using ArrayList with front index for O(1) pop.
+    // Memory tradeoff: Items aren't freed until deinit() (array grows, front advances).
+    // This is acceptable for BFS since the queue is short-lived and path count is bounded.
+    // If memory becomes an issue for large graphs, consider periodic compaction or
+    // a ring buffer implementation.
     const PathQueue = struct {
         items: std.array_list.Managed(*BFSPath),
         front: usize = 0,

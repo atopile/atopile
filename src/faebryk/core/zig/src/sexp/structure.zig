@@ -1242,10 +1242,7 @@ pub fn dumps(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u
                     defer allocator.free(out_str);
                     const file = try std.fs.cwd().createFile(p, .{ .truncate = true });
                     defer file.close();
-
-                    // In Zig 0.15+, writer() requires a buffer. Use empty for unbuffered writes.
-                    var file_writer = file.writer(&.{});
-                    try file_writer.interface.writeAll(out_str);
+                    try file.writeAll(out_str);
                 },
                 .sexp => unreachable,
             }

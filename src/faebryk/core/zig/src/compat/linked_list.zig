@@ -1,3 +1,15 @@
+//! Compatibility layer for Zig 0.15 standard library changes.
+//!
+//! Zig 0.15 de-generified std.DoublyLinkedList, removing the generic T parameter.
+//! The new intrusive design requires embedding Node in user structs, which would
+//! require significant refactoring of pyzig/linked_list.zig (Python bindings).
+//!
+//! This module provides a generic wrapper matching the pre-0.15 API to minimize
+//! code changes during the upgrade.
+//!
+//! TODO(zig-upgrade): Evaluate migrating to std.DoublyLinkedList intrusive design
+//! or custom data structures when the Python binding layer is refactored.
+
 const std = @import("std");
 
 /// Generic DoublyLinkedList compatible with the pre-0.15 API.
