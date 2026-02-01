@@ -332,13 +332,8 @@ function TargetSelector({
       >
         <Target size={14} className="target-icon" />
         <span className="target-trigger-name">{activeTarget?.name || 'Select build'}</span>
-        <span className="target-combobox-right">
-          {activeTarget?.entry && (
-            <span className="target-trigger-entry">{activeTarget.entry.split(':').pop()}</span>
-          )}
-          <span className="target-combobox-chevron">
-            <ChevronDown size={14} className={`chevron ${isOpen ? 'open' : ''}`} />
-          </span>
+        <span className="target-combobox-chevron">
+          <ChevronDown size={14} className={`chevron ${isOpen ? 'open' : ''}`} />
         </span>
       </button>
 
