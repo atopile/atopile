@@ -7,6 +7,9 @@ from test.end_to_end.test_pcb_export import PcbSummary, summarize_pcb_file
 
 from .conftest import EXEC_T
 
+# These tests require kicad-cli which is not available in CI
+pytestmark = pytest.mark.not_in_ci
+
 
 @pytest.mark.not_in_ci  # requires kicad-cli
 def test_duplicate_specified_net_names(
