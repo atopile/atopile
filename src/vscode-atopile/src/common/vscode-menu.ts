@@ -43,6 +43,21 @@ export async function openAtoShell(): Promise<void> {
 }
 
 /**
+ * Clear build logs using the resolved ato command.
+ */
+async function clearBuildLogs(): Promise<void> {
+    const atoCommand = await getAtoCommand(undefined, ['dev', 'clear-logs']);
+    if (!atoCommand) {
+        void vscode.window.showErrorMessage('Unable to resolve ato command. Check your atopile settings.');
+        return;
+    }
+
+    const terminal = vscode.window.createTerminal('atopile');
+    terminal.show();
+    terminal.sendText(atoCommand);
+}
+
+/**
  * Show the main atopile menu.
  */
 async function showMenu(): Promise<void> {
@@ -87,9 +102,7 @@ async function showMenu(): Promise<void> {
             await openAtoShell();
             break;
         case 'clear_logs':
-            const terminal = vscode.window.createTerminal('atopile');
-            terminal.show();
-            terminal.sendText('ato dev clear-logs');
+            await clearBuildLogs();
             break;
         case 'restart_extension_host':
             void vscode.commands.executeCommand('workbench.action.restartExtensionHost');
