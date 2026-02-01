@@ -565,7 +565,7 @@ pub const TraversedEdge = struct {
 };
 
 pub const BFSPath = struct {
-    traversed_edges: std.ArrayList(TraversedEdge),
+    traversed_edges: std.array_list.Managed(TraversedEdge),
     allocator: std.mem.Allocator,
     g: *GraphView,
     start_node: BoundNodeReference,
@@ -584,7 +584,7 @@ pub const BFSPath = struct {
     pub fn init(allocator: std.mem.Allocator, start: BoundNodeReference) !*@This() {
         var path = try allocator.create(BFSPath);
         path.* = BFSPath{
-            .traversed_edges = std.ArrayList(TraversedEdge).init(allocator),
+            .traversed_edges = std.array_list.Managed(TraversedEdge).init(allocator),
             .allocator = allocator,
             .g = start.g,
             .start_node = start,
@@ -625,7 +625,7 @@ pub const BFSPath = struct {
     pub fn copy(self: *const @This(), allocator: std.mem.Allocator) !*@This() {
         var new_path = try allocator.create(BFSPath);
         new_path.* = BFSPath{
-            .traversed_edges = std.ArrayList(TraversedEdge).init(allocator),
+            .traversed_edges = std.array_list.Managed(TraversedEdge).init(allocator),
             .allocator = allocator,
             .g = self.g,
             .start_node = self.start_node,
@@ -679,11 +679,11 @@ pub const BFSPath = struct {
 };
 
 pub const BFSPaths = struct {
-    paths: std.ArrayList(*BFSPath),
+    paths: std.array_list.Managed(*BFSPath),
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) @This() {
-        return .{ .paths = std.ArrayList(*BFSPath).init(allocator), .allocator = allocator };
+        return .{ .paths = std.array_list.Managed(*BFSPath).init(allocator), .allocator = allocator };
     }
 
     pub fn deinit(self: *@This()) void {
@@ -722,7 +722,7 @@ pub const GraphView = struct {
     allocator: std.mem.Allocator,
 
     // fast (Node, LinkType) -> Edge + Node Storage
-    nodes: NodeRefMap.T(EdgeTypeMap.T(std.ArrayList(EdgeReference))),
+    nodes: NodeRefMap.T(EdgeTypeMap.T(std.array_list.Managed(EdgeReference))),
 
     // Fast O(1) membership bitsets
     node_set: UUIDBitSet,
@@ -738,7 +738,7 @@ pub const GraphView = struct {
             .base_allocator = b_allocator,
             .arena = arena_ptr,
             .allocator = allocator,
-            .nodes = NodeRefMap.T(EdgeTypeMap.T(std.ArrayList(EdgeReference))).init(allocator),
+            .nodes = NodeRefMap.T(EdgeTypeMap.T(std.array_list.Managed(EdgeReference))).init(allocator),
             .node_set = UUIDBitSet.init(allocator),
             .edge_set = UUIDBitSet.init(allocator),
             .self_node = NodeReference.init(),
@@ -762,7 +762,7 @@ pub const GraphView = struct {
         }
         const gop = g.nodes.getOrPut(node) catch @panic("OOM");
         if (!gop.found_existing) {
-            gop.value_ptr.* = EdgeTypeMap.T(std.ArrayList(EdgeReference)).init(g.allocator);
+            gop.value_ptr.* = EdgeTypeMap.T(std.array_list.Managed(EdgeReference)).init(g.allocator);
             g.node_set.add(node.uuid);
         }
         return g.bind(node);
@@ -809,7 +809,7 @@ pub const GraphView = struct {
         // Use getOrPut for edge type maps
         const from_gop = from_neighbors.getOrPut(edge_type) catch @panic("OOM");
         if (!from_gop.found_existing) {
-            from_gop.value_ptr.* = std.ArrayList(EdgeReference).initCapacity(g.allocator, 1) catch @panic("OOM");
+            from_gop.value_ptr.* = std.array_list.Managed(EdgeReference).initCapacity(g.allocator, 1) catch @panic("OOM");
             from_gop.value_ptr.appendAssumeCapacity(edge);
         } else {
             from_gop.value_ptr.append(edge) catch @panic("OOM");
@@ -817,7 +817,7 @@ pub const GraphView = struct {
 
         const to_gop = to_neighbors.getOrPut(edge_type) catch @panic("OOM");
         if (!to_gop.found_existing) {
-            to_gop.value_ptr.* = std.ArrayList(EdgeReference).initCapacity(g.allocator, 1) catch @panic("OOM");
+            to_gop.value_ptr.* = std.array_list.Managed(EdgeReference).initCapacity(g.allocator, 1) catch @panic("OOM");
             to_gop.value_ptr.appendAssumeCapacity(edge);
         } else {
             to_gop.value_ptr.append(edge) catch @panic("OOM");
@@ -853,7 +853,7 @@ pub const GraphView = struct {
         // Use getOrPut for edge type maps
         const from_gop = from_neighbors.getOrPut(edge_type) catch @panic("OOM");
         if (!from_gop.found_existing) {
-            from_gop.value_ptr.* = std.ArrayList(EdgeReference).initCapacity(g.allocator, 1) catch @panic("OOM");
+            from_gop.value_ptr.* = std.array_list.Managed(EdgeReference).initCapacity(g.allocator, 1) catch @panic("OOM");
             from_gop.value_ptr.appendAssumeCapacity(edge);
         } else {
             from_gop.value_ptr.append(edge) catch @panic("OOM");
@@ -861,7 +861,7 @@ pub const GraphView = struct {
 
         const to_gop = to_neighbors.getOrPut(edge_type) catch @panic("OOM");
         if (!to_gop.found_existing) {
-            to_gop.value_ptr.* = std.ArrayList(EdgeReference).initCapacity(g.allocator, 1) catch @panic("OOM");
+            to_gop.value_ptr.* = std.array_list.Managed(EdgeReference).initCapacity(g.allocator, 1) catch @panic("OOM");
             to_gop.value_ptr.appendAssumeCapacity(edge);
         } else {
             to_gop.value_ptr.append(edge) catch @panic("OOM");
@@ -878,7 +878,7 @@ pub const GraphView = struct {
         return g.edge_set.contains(edge.uuid);
     }
 
-    pub fn get_edges_of_type(g: *@This(), node: NodeReference, T: Edge.EdgeType) ?*const std.ArrayList(EdgeReference) {
+    pub fn get_edges_of_type(g: *@This(), node: NodeReference, T: Edge.EdgeType) ?*const std.array_list.Managed(EdgeReference) {
         const by_type = g.nodes.getPtr(node) orelse return null;
         return by_type.getPtr(T);
     }
@@ -913,7 +913,7 @@ pub const GraphView = struct {
         return Result{ .EXHAUSTED = {} };
     }
 
-    pub fn get_subgraph_from_nodes(g: *@This(), nodes: std.ArrayList(NodeReference)) GraphView {
+    pub fn get_subgraph_from_nodes(g: *@This(), nodes: std.array_list.Managed(NodeReference)) GraphView {
         var new_g = GraphView.init(g.base_allocator);
 
         // Pre-allocate capacity for nodes
@@ -964,6 +964,35 @@ pub const GraphView = struct {
         //}
     }
 
+    // Simple queue for BFS using ArrayList with front index for O(1) pop
+    const PathQueue = struct {
+        items: std.array_list.Managed(*BFSPath),
+        front: usize = 0,
+
+        fn init(allocator: std.mem.Allocator) @This() {
+            return .{ .items = std.array_list.Managed(*BFSPath).init(allocator) };
+        }
+
+        fn deinit(self: *@This()) void {
+            // Clean up remaining items
+            for (self.items.items[self.front..]) |p| {
+                p.deinit();
+            }
+            self.items.deinit();
+        }
+
+        fn push(self: *@This(), item: *BFSPath) void {
+            self.items.append(item) catch @panic("OOM");
+        }
+
+        fn pop(self: *@This()) ?*BFSPath {
+            if (self.front >= self.items.items.len) return null;
+            const item = self.items.items[self.front];
+            self.front += 1;
+            return item;
+        }
+    };
+
     pub fn visit_paths_bfs(
         g: *@This(),
         start_node: BoundNodeReference,
@@ -976,11 +1005,8 @@ pub const GraphView = struct {
         // Paths are manually deinitialized when popped from the queue.
         const allocator = std.heap.c_allocator;
 
-        var open_path_queue = std.fifo.LinearFifo(*BFSPath, .Dynamic).init(allocator);
-        defer {
-            while (open_path_queue.readItem()) |p| p.deinit();
-            open_path_queue.deinit();
-        }
+        var open_path_queue = PathQueue.init(allocator);
+        defer open_path_queue.deinit();
 
         var visited_nodes = NodeRefMap.T(VisitInfo).init(allocator);
         defer visited_nodes.deinit();
@@ -988,7 +1014,7 @@ pub const GraphView = struct {
         const EdgeVisitor = struct {
             start_node_ev: BoundNodeReference,
             current_path: *BFSPath,
-            open_path_queue: *std.fifo.LinearFifo(*BFSPath, .Dynamic),
+            open_path_queue: *PathQueue,
             visited_nodes_ev: *NodeRefMap.T(VisitInfo),
             path_allocator: std.mem.Allocator,
 
@@ -1005,15 +1031,15 @@ pub const GraphView = struct {
                     }
                 }
                 const new_path = BFSPath.cloneAndExtend(self.path_allocator, self.current_path, self.start_node_ev, bound_edge.edge) catch @panic("OOM");
-                self.open_path_queue.writeItem(new_path) catch @panic("OOM");
+                self.open_path_queue.push(new_path);
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         };
 
         const empty_path_copy = BFSPath.init(allocator, start_node) catch @panic("OOM");
-        open_path_queue.writeItem(empty_path_copy) catch @panic("OOM");
+        open_path_queue.push(empty_path_copy);
 
-        while (open_path_queue.readItem()) |path| {
+        while (open_path_queue.pop()) |path| {
             defer path.deinit();
             if (visited_nodes.get(path.get_last_node().node)) |info| {
                 if (info.accepted) {
@@ -1176,7 +1202,7 @@ test "get_subgraph_from_nodes" {
     _ = try g.insert_edge(e23);
     _ = try g.insert_edge(e13);
 
-    var nodes = std.ArrayList(NodeReference).init(a);
+    var nodes = std.array_list.Managed(NodeReference).init(a);
     defer nodes.deinit();
     try nodes.append(bn1.node);
     try nodes.append(bn2.node);
