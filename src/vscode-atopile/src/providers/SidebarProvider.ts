@@ -587,10 +587,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         void vscode.commands.executeCommand('atopile.logViewer.focus');
         break;
       case 'showBackendMenu':
-        void vscode.commands.executeCommand('atopile.backendStatus');
-        break;
-      case 'showBackendMenu':
-        void vscode.commands.executeCommand('atopile.backendStatus');
+        void vscode.commands.executeCommand('atopile.showMenu');
         break;
       case 'openInSimpleBrowser':
         void vscode.commands.executeCommand('simpleBrowser.show', message.url);
