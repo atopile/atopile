@@ -2,13 +2,9 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import {
-    onThreeDModelChanged,
-    onThreeDModelStatusChanged,
-    getCurrentThreeDModel,
-    getThreeDModelStatus,
-    getOptimizedPath,
-    setThreeDModelStatusFromViewer,
-    startOptimizationFromViewer,
+    onThreeDViewerStateChanged,
+    getThreeDViewerState,
+    type ThreeDViewerState,
 } from '../common/3dmodel';
 import { BaseWebview } from './webview-base';
 import { buildHtml } from './html-builder';
@@ -23,40 +19,13 @@ class ModelViewerWebview extends BaseWebview {
     }
 
     protected getHtmlContent(webview: vscode.Webview): string {
-        const model = getCurrentThreeDModel();
-        const status = getThreeDModelStatus();
+        const state = getThreeDViewerState();
+        return this.buildHtmlForState(webview, state);
+    }
 
-        // Determine which GLB path to use based on status
-        let modelPath: string | undefined;
-        let isBuilding = false;
-
-        if (status.state === 'optimized') {
-            // Use optimized version
-            modelPath = status.optimizedPath;
-        } else if (status.state === 'optimizing') {
-            // Show raw while optimizing
-            modelPath = status.rawPath;
-        } else if (status.state === 'raw_ready') {
-            // Show raw GLB
-            modelPath = status.rawPath;
-        } else if (status.state === 'building') {
-            // While building, keep showing existing model if available
-            // Prefer optimized > raw > model watcher path
-            isBuilding = true;
-            if (model?.path) {
-                const optimizedPath = model.path.replace(/\.glb$/, '.optimized.glb');
-                if (fs.existsSync(optimizedPath)) {
-                    modelPath = optimizedPath;
-                } else if (fs.existsSync(model.path)) {
-                    modelPath = model.path;
-                }
-            }
-        } else if (model?.path) {
-            // Fall back to model watcher path
-            modelPath = model.path;
-        }
-
-        if (status.state === 'failed') {
+    private buildHtmlForState(webview: vscode.Webview, state: ThreeDViewerState): string {
+        // Failed state - show error
+        if (state.state === 'failed') {
             return buildHtml({
                 title: '3D Model Preview',
                 styles: `
@@ -96,15 +65,14 @@ class ModelViewerWebview extends BaseWebview {
                     <div class="state">
                         <div class="icon">!</div>
                         <div class="title">3D export failed</div>
-                        <div class="message">${status.message}</div>
+                        <div class="message">${state.message}</div>
                     </div>
                 `,
             });
         }
 
-        // Show building spinner only if no model path available
-        // (when building with existing model, we keep showing the old model)
-        if (!modelPath || !fs.existsSync(modelPath)) {
+        // Loading state - show spinner
+        if (state.state === 'loading') {
             return buildHtml({
                 title: '3D Model Preview',
                 styles: `
@@ -141,15 +109,28 @@ class ModelViewerWebview extends BaseWebview {
             });
         }
 
+        // Showing state - render the 3D model
+        const modelPath = state.modelPath;
+        if (!modelPath || !fs.existsSync(modelPath)) {
+            // Model path is set but file doesn't exist - show loading
+            return this.buildHtmlForState(webview, { state: 'loading' });
+        }
+
         const modelWebUri = this.getWebviewUri(webview, modelPath);
 
-        // Build status badge - only show when building with existing model
-        const statusBadge = (isBuilding && modelPath)
-            ? `<div class="status-badge">
-                   <span class="badge-spinner"></span>
-                   <span>Building...</span>
-               </div>`
-            : '';
+        // Build status badge
+        let statusBadge = '';
+        if (state.isBuilding) {
+            statusBadge = `<div class="status-badge building">
+                <span class="badge-spinner"></span>
+                <span>Building...</span>
+            </div>`;
+        } else if (state.isOptimizing) {
+            statusBadge = `<div class="status-badge optimizing">
+                <span class="badge-spinner"></span>
+                <span>Optimizing...</span>
+            </div>`;
+        }
 
         // Three.js enhanced viewer script
         const viewerScript = `
@@ -370,9 +351,12 @@ class ModelViewerWebview extends BaseWebview {
                     gap: 5px;
                     font-size: 11px;
                     color: var(--vscode-descriptionForeground);
-                    opacity: 0.7;
+                    opacity: 0.8;
                     z-index: 10;
                     font-family: var(--vscode-font-family);
+                    background: var(--vscode-editor-background);
+                    padding: 4px 8px;
+                    border-radius: 4px;
                 }
                 .badge-spinner {
                     width: 8px;
@@ -396,24 +380,12 @@ class ModelViewerWebview extends BaseWebview {
 
     protected getLocalResourceRoots(): vscode.Uri[] {
         const roots = super.getLocalResourceRoots();
-        const model = getCurrentThreeDModel();
-        const status = getThreeDModelStatus();
+        const state = getThreeDViewerState();
 
-        // Add the model directory for both raw and optimized paths
-        if (model && fs.existsSync(model.path)) {
-            roots.push(vscode.Uri.file(path.dirname(model.path)));
-        }
-
-        // Also add paths from status if they exist (for optimization states)
-        if (status.state === 'optimizing' || status.state === 'raw_ready') {
-            const rawDir = path.dirname(status.rawPath);
-            if (!roots.some((r) => r.fsPath === rawDir)) {
-                roots.push(vscode.Uri.file(rawDir));
-            }
-        } else if (status.state === 'optimized') {
-            const optimizedDir = path.dirname(status.optimizedPath);
-            if (!roots.some((r) => r.fsPath === optimizedDir)) {
-                roots.push(vscode.Uri.file(optimizedDir));
+        if (state.state === 'showing' && state.modelPath) {
+            const modelDir = path.dirname(state.modelPath);
+            if (fs.existsSync(modelDir) && !roots.some((r) => r.fsPath === modelDir)) {
+                roots.push(vscode.Uri.file(modelDir));
             }
         }
 
@@ -429,33 +401,6 @@ export async function openModelViewerPreview() {
     if (!modelViewer) {
         modelViewer = new ModelViewerWebview();
     }
-
-    // Check if we need to start optimization when opening the viewer
-    const status = getThreeDModelStatus();
-    const model = getCurrentThreeDModel();
-
-    // If we're in idle state with an existing model, check if we need to optimize
-    if (status.state === 'idle' && model?.exists && model.path) {
-        const optimizedPath = getOptimizedPath(model.path);
-
-        if (fs.existsSync(optimizedPath)) {
-            const rawMtime = fs.statSync(model.path).mtimeMs;
-            const optimizedMtime = fs.statSync(optimizedPath).mtimeMs;
-            if (optimizedMtime >= rawMtime) {
-                // Optimized version is up to date
-                setThreeDModelStatusFromViewer({ state: 'optimized', rawPath: model.path, optimizedPath });
-            } else {
-                // Need to re-optimize
-                setThreeDModelStatusFromViewer({ state: 'raw_ready', rawPath: model.path });
-                startOptimizationFromViewer(model.path);
-            }
-        } else {
-            // No optimized version exists - start optimization
-            setThreeDModelStatusFromViewer({ state: 'raw_ready', rawPath: model.path });
-            startOptimizationFromViewer(model.path);
-        }
-    }
-
     await modelViewer.open();
 }
 
@@ -469,15 +414,9 @@ export function isModelViewerOpen(): boolean {
 }
 
 export async function activate(context: vscode.ExtensionContext) {
+    // Refresh the viewer when state changes
     context.subscriptions.push(
-        onThreeDModelChanged((_) => {
-            if (modelViewer?.isOpen()) {
-                openModelViewerPreview();
-            }
-        }),
-    );
-    context.subscriptions.push(
-        onThreeDModelStatusChanged((_) => {
+        onThreeDViewerStateChanged((_) => {
             if (modelViewer?.isOpen()) {
                 openModelViewerPreview();
             }

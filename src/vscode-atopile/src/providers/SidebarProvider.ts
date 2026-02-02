@@ -17,7 +17,7 @@ import { getWorkspaceSettings } from '../common/settings';
 import { getProjectRoot } from '../common/utilities';
 import { openPcb } from '../common/kicad';
 import { setCurrentPCB } from '../common/pcb';
-import { setCurrentThreeDModel, startThreeDModelBuild, handleThreeDModelBuildResult, getThreeDModelForBuild } from '../common/3dmodel';
+import { prepareThreeDViewer, handleThreeDModelBuildResult } from '../common/3dmodel';
 import { isModelViewerOpen, openModelViewerPreview } from '../ui/modelviewer';
 import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/target';
 import { loadBuilds, getBuilds } from '../common/manifest';
@@ -784,20 +784,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       : [];
     setSelectedTargets(selectedBuilds);
 
-    // If the 3D model viewer is open, trigger a build for the new target
+    // If the 3D model viewer is open, prepare viewer for the new target
     if (isModelViewerOpen() && selectedBuilds.length > 0) {
       const build = selectedBuilds[0];
-      if (build?.root && build?.name) {
-        traceInfo(`[SidebarProvider] 3D viewer open, triggering build for new target: ${build.name}`);
+      if (build?.root && build?.name && build?.model_path) {
+        traceInfo(`[SidebarProvider] 3D viewer open, preparing viewer for new target: ${build.name}`);
 
-        // Update the current 3D model path for the new target
-        const model = getThreeDModelForBuild(build);
-        if (model) {
-          setCurrentThreeDModel(model);
-        }
-
-        // Trigger glb-only build for the new target
-        const triggerThreeDModelBuild = () => {
+        prepareThreeDViewer(build.model_path, () => {
           backendServer.sendToWebview({
             type: 'triggerBuild',
             projectRoot: build.root,
@@ -805,16 +798,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             includeTargets: ['glb-only'],
             excludeTargets: ['default'],
           });
-        };
-
-        startThreeDModelBuild({
-          retryAttempts: 1,
-          onRetry: triggerThreeDModelBuild,
         });
 
-        triggerThreeDModelBuild();
-
-        // Refresh the model viewer to show the loading state
         await openModelViewerPreview();
       }
     }
@@ -916,8 +901,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private async _open3dPreview(filePath: string): Promise<void> {
+    traceInfo(`[SidebarProvider] _open3dPreview called with: ${filePath}`);
     const modelPath = this._resolveFilePath(filePath, '.glb') ?? filePath;
-    setCurrentThreeDModel({ path: modelPath, exists: fs.existsSync(modelPath) });
+    traceInfo(`[SidebarProvider] Resolved model path: ${modelPath}`);
 
     const build = getBuildTarget();
     if (!build?.root || !build.name) {
@@ -926,10 +912,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    // Trigger the build FIRST, before opening the viewer
-    // This ensures the status is 'building' when the viewer opens,
-    // preventing premature optimization that would just get cancelled
-    const triggerThreeDModelBuild = () => {
+    prepareThreeDViewer(modelPath, () => {
       backendServer.sendToWebview({
         type: 'triggerBuild',
         projectRoot: build.root,
@@ -937,16 +920,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         includeTargets: ['glb-only'],
         excludeTargets: ['default'],
       });
-    };
-
-    startThreeDModelBuild({
-      retryAttempts: 1,
-      onRetry: triggerThreeDModelBuild,
     });
 
-    triggerThreeDModelBuild();
-
-    // Now open the viewer - status is already 'building' so optimization won't start yet
     await openModelViewerPreview();
   }
 
