@@ -86,8 +86,9 @@ export function startOptimizationFromViewer(rawPath: string) {
  * Start background optimization of a raw GLB file.
  * Sets status to 'optimizing' and then 'optimized' when complete.
  * On failure, logs the error and continues with raw GLB (graceful degradation).
+ * @param silent If true, don't update status to 'optimizing' - keeps existing model showing
  */
-async function startOptimization(rawPath: string) {
+async function startOptimization(rawPath: string, silent: boolean = false) {
     // Cancel any existing optimization
     cancelOptimization();
 
@@ -98,7 +99,12 @@ async function startOptimization(rawPath: string) {
     }
 
     const optimizedPath = getOptimizedPath(rawPath);
-    setThreeDModelStatus({ state: 'optimizing', rawPath });
+
+    // Only update to 'optimizing' status if not silent
+    // Silent mode keeps showing existing model until optimization completes
+    if (!silent) {
+        setThreeDModelStatus({ state: 'optimizing', rawPath });
+    }
 
     // Create new abort controller for this optimization
     currentOptimizationAbortController = new AbortController();
@@ -390,13 +396,14 @@ export function handleThreeDModelBuildResult(success: boolean, error?: string | 
         // Success - check if file exists and update status
         const model = getThreeDModelForBuild();
         if (model?.path && fs.existsSync(model.path)) {
-            // File exists - update the watcher and show raw GLB immediately
+            // File exists - update the watcher
             modelWatcher.setCurrent({ path: model.path, exists: true });
-            modelWatcher.forceNotify();
+
+            const optimizedPath = getOptimizedPath(model.path);
+            const existingOptimizedExists = fs.existsSync(optimizedPath);
 
             // Check if we already have an optimized version that's newer than the raw
-            const optimizedPath = getOptimizedPath(model.path);
-            if (fs.existsSync(optimizedPath)) {
+            if (existingOptimizedExists) {
                 const rawMtime = fs.statSync(model.path).mtimeMs;
                 const optimizedMtime = fs.statSync(optimizedPath).mtimeMs;
                 if (optimizedMtime >= rawMtime) {
@@ -406,16 +413,23 @@ export function handleThreeDModelBuildResult(success: boolean, error?: string | 
                 }
             }
 
-            // Set raw_ready and start background optimization after a short delay
-            // to ensure the viewer has time to load the raw GLB first
-            setThreeDModelStatus({ state: 'raw_ready', rawPath: model.path });
-            // Start optimization in background after delay (don't await)
-            setTimeout(() => {
-                // Only start optimization if we're still in raw_ready state
-                if (modelStatus.state === 'raw_ready') {
-                    startOptimization(model.path);
-                }
-            }, 2000);
+            // If there's an existing optimized model (even if stale), keep showing it
+            // and run optimization in background - only update viewer when optimization completes
+            if (existingOptimizedExists) {
+                // Keep current display, start optimization silently
+                // Don't change status - this keeps the existing model showing
+                startOptimization(model.path, true); // silent mode
+            } else {
+                // No existing optimized model - show raw immediately, then optimize
+                modelWatcher.forceNotify();
+                setThreeDModelStatus({ state: 'raw_ready', rawPath: model.path });
+                // Start optimization in background after delay (don't await)
+                setTimeout(() => {
+                    if (modelStatus.state === 'raw_ready') {
+                        startOptimization(model.path);
+                    }
+                }, 2000);
+            }
         } else {
             // File doesn't exist yet - wait a bit and retry
             // This handles cases where the build completed but file write is delayed
@@ -423,11 +437,12 @@ export function handleThreeDModelBuildResult(success: boolean, error?: string | 
                 const retryModel = getThreeDModelForBuild();
                 if (retryModel?.path && fs.existsSync(retryModel.path)) {
                     modelWatcher.setCurrent({ path: retryModel.path, exists: true });
-                    modelWatcher.forceNotify();
 
-                    // Check for existing optimized version
                     const optimizedPath = getOptimizedPath(retryModel.path);
-                    if (fs.existsSync(optimizedPath)) {
+                    const existingOptimizedExists = fs.existsSync(optimizedPath);
+
+                    // Check for existing optimized version that's up to date
+                    if (existingOptimizedExists) {
                         const rawMtime = fs.statSync(retryModel.path).mtimeMs;
                         const optimizedMtime = fs.statSync(optimizedPath).mtimeMs;
                         if (optimizedMtime >= rawMtime) {
@@ -436,13 +451,19 @@ export function handleThreeDModelBuildResult(success: boolean, error?: string | 
                         }
                     }
 
-                    // Set raw_ready and start optimization after delay
-                    setThreeDModelStatus({ state: 'raw_ready', rawPath: retryModel.path });
-                    setTimeout(() => {
-                        if (modelStatus.state === 'raw_ready') {
-                            startOptimization(retryModel.path);
-                        }
-                    }, 2000);
+                    // If there's an existing optimized model, keep showing it
+                    if (existingOptimizedExists) {
+                        startOptimization(retryModel.path, true); // silent mode
+                    } else {
+                        // No existing optimized - show raw and optimize
+                        modelWatcher.forceNotify();
+                        setThreeDModelStatus({ state: 'raw_ready', rawPath: retryModel.path });
+                        setTimeout(() => {
+                            if (modelStatus.state === 'raw_ready') {
+                                startOptimization(retryModel.path);
+                            }
+                        }, 2000);
+                    }
                 } else {
                     // Still no file - show failure
                     setThreeDModelStatus({
