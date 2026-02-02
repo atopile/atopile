@@ -10,9 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from faebryk.libs.util import repo_root
+from faebryk.libs.util import global_lock, repo_root
 
 ZIG_COMMAND = [sys.executable, "-m", "ziglang"]
+
+# Global lock path to serialize Zig compilation across parallel test workers.
+# Zig compilation is resource-intensive and multiple simultaneous compilations
+# cause resource contention (memory, disk I/O) leading to hangs on CI.
+ZIG_COMPILE_LOCK_PATH = Path("/tmp/zig_compile.lock")
 
 ZIG_SRC_DIR = repo_root() / "src" / "faebryk" / "core" / "zig"
 
@@ -129,15 +134,20 @@ def test_zig_embedded(
             "Reproduce with: `python test/core/zig/test_zig_embedded.py "
             f'"{zig_file.name}" "{test_name}"`'
         )
-        compile_result = subprocess.run(
-            compile_cmd,
-            cwd=ZIG_SRC_DIR,
-            capture_output=False,
-        )
+
+        # Acquire lock to serialize Zig compilation across parallel workers
+        # Else parallel compilitation might crash test system
+        with global_lock(ZIG_COMPILE_LOCK_PATH, timeout_s=600):
+            compile_result = subprocess.run(
+                compile_cmd,
+                cwd=ZIG_SRC_DIR,
+                capture_output=False,
+            )
         if not compile_result.returncode == 0:
             print("Compile failed")
             assert False
 
+        # Test execution doesn't need the lock - only compilation is resource-intensive
         result = subprocess.run(
             [test_bin],
             capture_output=False,
