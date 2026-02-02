@@ -1,0 +1,148 @@
+(footprint "Nexperia_PBSS5350X_115:SOT-89-3_L4.5-W2.5-P1.50-LS4.1-TR"
+	(version 20241229)
+	(generator "faebryk_convert")
+	(generator_version "v5")
+	(layer "F.Cu")
+	(tedit "5DC5F6A4")
+	(uuid "ef7cdf4f-c18b-48da-bc94-e7a14a0148a8")
+	(property "Reference" "REF**"
+		(at 0 -5.5)
+		(layer "F.SilkS")
+		(uuid "dcee36e0-6888-4227-8b65-8f392b5b5c4f")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "SOT-89-3_L4.5-W2.5-P1.50-LS4.1-TR"
+		(at 0 5.5)
+		(layer "F.Fab")
+		(uuid "43f8286a-87f4-4a58-b47e-141db00f4a62")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr smd)
+	(fp_circle
+		(center 1.85 -2.25)
+		(end 1.88 -2.25)
+		(stroke
+			(width 0.06)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(locked no)
+		(uuid "deba1184-d80d-4f5b-98f7-39e2d23a5317")
+	)
+	(fp_circle
+		(center 1.41 -2.02)
+		(end 1.61 -2.02)
+		(stroke
+			(width 0.4)
+			(type solid)
+		)
+		(layer "Cmts.User")
+		(locked no)
+		(uuid "36297a97-3970-4a62-b068-ae26a3fda156")
+	)
+	(fp_line
+		(start -1.85 -1.4)
+		(end -1.85 -2.3)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(layers "F.SilkS")
+		(locked no)
+		(uuid "631482a0-4c19-4214-a018-549c8380d5fe")
+	)
+	(fp_line
+		(start -1.85 -2.3)
+		(end 0.75 -2.3)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(layers "F.SilkS")
+		(locked no)
+		(uuid "ac1cdfb4-97fd-4035-ad3a-f16c18e1db64")
+	)
+	(fp_line
+		(start 0.75 2.3)
+		(end -1.85 2.3)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(layers "F.SilkS")
+		(locked no)
+		(uuid "50bd35bf-d8e7-4195-9456-2f78751adb03")
+	)
+	(fp_line
+		(start -1.85 2.3)
+		(end -1.85 1.4)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(layers "F.SilkS")
+		(locked no)
+		(uuid "0452529f-cf88-4737-8131-e39dee6562a4")
+	)
+	(fp_text user "%R"
+		(at 0 0)
+		(layer "F.Fab")
+		(uuid "f936da0d-54af-47fb-80ca-7c24225a3319")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "2" smd oval
+		(at -1.25 0 -90)
+		(size 2 3.5)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+		(uuid "cd3409f3-53e9-40e1-a60d-4fc20e7f7283")
+	)
+	(pad "2" smd oval
+		(at 1.15 0 -90)
+		(size 0.7 2.1)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+		(uuid "0b3cf864-1b95-424c-ae64-cbe7f9e74dd2")
+	)
+	(pad "1" smd oval
+		(at 1.25 -1.5 -90)
+		(size 0.7 1.9)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+		(uuid "e7fac420-c80d-469e-8a48-b9c10469776c")
+	)
+	(pad "3" smd oval
+		(at 1.25 1.5 -90)
+		(size 0.7 1.9)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+		(uuid "b3f85f16-c1a9-441a-8216-ddfe556f03a3")
+	)
+	(model "${KIPRJMOD}/../../parts/Nexperia_PBSS5350X_115/SOT-89-3_L4.3-W2.5-H1.6-LS4.1-P1.50.step"
+		(offset
+			(xyz 0 0 -0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 180)
+		)
+	)
+	(embedded_fonts no)
+)

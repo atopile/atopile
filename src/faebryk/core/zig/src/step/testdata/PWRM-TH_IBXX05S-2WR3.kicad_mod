@@ -1,0 +1,152 @@
+(footprint "YLPTEC_B0524S_2WR3:PWRM-TH_IBXX05S-2WR3"
+	(version 20241229)
+	(generator "faebryk_convert")
+	(generator_version "v5")
+	(layer "F.Cu")
+	(tedit "5DC5F6A4")
+	(uuid "f691b403-6289-4899-9e83-22d2b12694f0")
+	(property "Reference" "REF**"
+		(at 0 -4)
+		(layer "F.SilkS")
+		(uuid "64de79c3-e872-4d5b-85ae-111999a75090")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "PWRM-TH_IBXX05S-2WR3"
+		(at 0 4)
+		(layer "F.Fab")
+		(uuid "0669e6c2-94ab-41a1-a76a-d90ee87a1df7")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr through_hole)
+	(fp_circle
+		(center -8.56 6.15)
+		(end -8.53 6.15)
+		(stroke
+			(width 0.06)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(locked no)
+		(uuid "1e1ff258-cef1-473c-972b-0c2f3854f2f5")
+	)
+	(fp_line
+		(start -8.56 6.1)
+		(end -8.56 -1.02)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(layers "F.SilkS")
+		(locked no)
+		(uuid "35bf19f9-890a-407e-b0f4-b607a179bbf0")
+	)
+	(fp_line
+		(start -8.56 -1.02)
+		(end 11.18 -1.02)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(layers "F.SilkS")
+		(locked no)
+		(uuid "41aa9eb6-4e77-413d-b01b-52b3e1f12971")
+	)
+	(fp_line
+		(start 11.18 -1.02)
+		(end 11.18 6.1)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(layers "F.SilkS")
+		(locked no)
+		(uuid "64b7640a-1fce-46b0-989e-1ca2c860ef66")
+	)
+	(fp_line
+		(start -8.56 6.1)
+		(end 11.09 6.1)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(layers "F.SilkS")
+		(locked no)
+		(uuid "0f146e17-73cc-49ff-ac86-fa196c528e97")
+	)
+	(fp_text user "%R"
+		(at 0 0)
+		(layer "F.Fab")
+		(uuid "17386661-5e56-4e26-9cd6-5d709811a84c")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 -4)
+		(layer "F.SilkS")
+		(uuid "fd4d2fe6-0580-4db4-83e6-42224a53193d")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" thru_hole rect
+		(at -6.35 0 0)
+		(size 1.6 1.6)
+		(drill 0.9000236)
+		(layers "*.Cu" "*.Mask")
+		(uuid "0fceb3ab-d4e7-48cb-81f2-84e1f3c8a05c")
+	)
+	(pad "2" thru_hole circle
+		(at -3.81 0 0)
+		(size 1.6 1.6)
+		(drill 0.9000236)
+		(layers "*.Cu" "*.Mask")
+		(uuid "2a1f497d-01a0-4d1f-addc-d662ef8d1471")
+	)
+	(pad "4" thru_hole circle
+		(at 1.27 0 0)
+		(size 1.6 1.6)
+		(drill 0.9000236)
+		(layers "*.Cu" "*.Mask")
+		(uuid "e09e05cd-34ba-43ce-8082-c53cc16530cd")
+	)
+	(pad "6" thru_hole circle
+		(at 6.35 0 0)
+		(size 1.6 1.6)
+		(drill 0.9000236)
+		(layers "*.Cu" "*.Mask")
+		(uuid "67003ea7-cf94-4636-ae10-ef4ccb35700e")
+	)
+	(model "${KIPRJMOD}/../../parts/YLPTEC_B0524S_2WR3/PWRM-TH_IBXX05S-2WR3.step"
+		(offset
+			(xyz 1.29 -2.56 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 0)
+		)
+	)
+	(embedded_fonts no)
+)

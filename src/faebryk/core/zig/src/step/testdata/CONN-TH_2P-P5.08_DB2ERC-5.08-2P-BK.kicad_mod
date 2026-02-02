@@ -1,0 +1,166 @@
+(footprint "CONN-TH_2P-P5.08_DB2ERC-5.08-2P-BK"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(property "Reference" "REF**"
+		(at 0 -4 0)
+		(layer "F.SilkS")
+		(uuid "e7d93ca6-197e-4bd0-aca9-b38f52436a1a")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "CONN-TH_2P-P5.08_DB2ERC-5.08-2P-BK"
+		(at 0 4 0)
+		(layer "F.Fab")
+		(uuid "711be07d-937e-428e-9ebf-27a8cc4c7fbc")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "012ed61c-3ccb-4a1f-8307-d191812a7f2a")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "3fe40426-0989-4010-a814-192791cf1960")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "checksum" "63d96b2e8a8d47868ebba6493621bd6c2a568c2d11f38af204d90f8696010f6d"
+		(at 0 0 0)
+		(layer "User.9")
+		(hide yes)
+		(uuid "40be47eb-2be4-4ec7-8ab4-eca743b424f1")
+		(effects
+			(font
+				(size 0.125 0.125)
+				(thickness 0.01875)
+			)
+		)
+	)
+	(attr through_hole)
+	(fp_line
+		(start -6.08 -2)
+		(end 6.08 -2)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "f069ae7e-b31e-4f4b-9886-3546e282e322")
+	)
+	(fp_line
+		(start -6.08 10)
+		(end -6.08 -2)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "dddb1cea-e45d-4540-9e05-dac693c6885a")
+	)
+	(fp_line
+		(start 6.08 -2)
+		(end 6.08 10)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "1f363411-9123-4cd6-93b9-9dd088a6eb23")
+	)
+	(fp_line
+		(start 6.08 10)
+		(end -6.08 10)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "0eda42b3-5178-4d43-8e01-1ed3f433dda9")
+	)
+	(fp_circle
+		(center -6.08 10)
+		(end -6.05 10)
+		(stroke
+			(width 0.06)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "d5e043d4-99e2-48e2-bd59-6772a1133826")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 -4 0)
+		(layer "F.SilkS")
+		(uuid "e7d93ca6-197e-4bd0-aca9-b38f52436a1a")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "18d887f7-bd9d-4fd1-a64a-acf8e15e2c81")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" thru_hole circle
+		(at -2.54 0)
+		(size 2.5 2.5)
+		(drill 1.700022)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "5f72e7ab-a95e-43e7-b042-f176d2b80d73")
+	)
+	(pad "2" thru_hole circle
+		(at 2.54 0)
+		(size 2.5 2.5)
+		(drill 1.700022)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "543088bd-f9a9-4b3c-8ff9-9e5b00515c66")
+	)
+	(embedded_fonts no)
+	(model "${KIPRJMOD}/../../parts/DIBO_DB2ERC_5_08_2P_BK/CONN-TH_2P-P5.08_DB2ERC-5.08-2P-BK.step"
+		(offset
+			(xyz -2.5 0 2.5)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz -0 -0 -0)
+		)
+	)
+)
