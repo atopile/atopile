@@ -12,7 +12,6 @@ import {
 } from '../common/3dmodel';
 import { BaseWebview } from './webview-base';
 import { buildHtml } from './html-builder';
-import { getAndCheckResource, getResourcesPath } from '../common/resources';
 
 class ModelViewerWebview extends BaseWebview {
     constructor() {
@@ -142,7 +141,6 @@ class ModelViewerWebview extends BaseWebview {
             });
         }
 
-        const scriptUri = this.getModelViewerScriptUri(webview);
         const modelWebUri = this.getWebviewUri(webview, modelPath);
 
         // Build status badge - only show when building with existing model
@@ -153,25 +151,216 @@ class ModelViewerWebview extends BaseWebview {
                </div>`
             : '';
 
-        // Script to auto-fit the camera to the model when it loads
-        const autoFrameScript = `
-            <script type="module">
-                const mv = document.getElementById('mv');
-                if (mv) {
-                    mv.addEventListener('load', () => {
-                        // Update framing to fit the model in view
-                        mv.updateFraming();
-                    });
+        // Three.js enhanced viewer script
+        const viewerScript = `
+            <script type="importmap">
+            {
+                "imports": {
+                    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+                    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
                 }
+            }
+            </script>
+            <script type="module">
+                import * as THREE from 'three';
+                import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+                import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+                import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+                import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+
+                const container = document.getElementById('container');
+
+                // Scene setup
+                const scene = new THREE.Scene();
+                const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.01, 1000);
+
+                // High-quality WebGL renderer
+                const renderer = new THREE.WebGLRenderer({
+                    antialias: true,
+                    powerPreference: 'high-performance'
+                });
+                renderer.setSize(container.clientWidth, container.clientHeight);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                renderer.toneMapping = THREE.ACESFilmicToneMapping;
+                renderer.toneMappingExposure = 1.2;
+                renderer.outputColorSpace = THREE.SRGBColorSpace;
+                container.appendChild(renderer.domElement);
+
+                // Controls
+                const controls = new OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.05;
+                controls.minDistance = 0.01;
+
+                // Get background color from VSCode theme
+                function getThemeBackground() {
+                    const style = getComputedStyle(document.body);
+                    const bgColor = style.getPropertyValue('--vscode-editor-background').trim();
+                    return new THREE.Color(bgColor || '#1e1e1e');
+                }
+
+                // Load HDR environment
+                async function loadEnvironment() {
+                    const bgColor = getThemeBackground();
+                    const rgbeLoader = new RGBELoader();
+                    try {
+                        const envMap = await rgbeLoader.loadAsync('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_08_1k.hdr');
+                        envMap.mapping = THREE.EquirectangularReflectionMapping;
+                        scene.environment = envMap;
+                        scene.background = bgColor;
+                    } catch (e) {
+                        console.warn('Failed to load HDR', e);
+                        scene.background = bgColor;
+                    }
+                }
+
+                // Load GLB model
+                async function loadModel() {
+                    const loader = new GLTFLoader();
+                    const dracoLoader = new DRACOLoader();
+                    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+                    loader.setDRACOLoader(dracoLoader);
+
+                    try {
+                        const gltf = await loader.loadAsync('${modelWebUri}');
+                        const model = gltf.scene;
+
+                        // Enhance materials for realistic PCB rendering
+                        model.traverse((child) => {
+                            if (child.isMesh && child.material) {
+                                    const oldMat = child.material;
+
+                                    if (oldMat.map) {
+                                        // Process texture to enhance PCB appearance
+                                        const canvas = document.createElement('canvas');
+                                        const img = oldMat.map.image;
+                                        canvas.width = img.width;
+                                        canvas.height = img.height;
+                                        const ctx = canvas.getContext('2d');
+                                        ctx.drawImage(img, 0, 0);
+
+                                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                                        const data = imageData.data;
+
+                                        for (let i = 0; i < data.length; i += 4) {
+                                            const r = data[i], g = data[i + 1], b = data[i + 2];
+
+                                            // Green soldermask -> matte black
+                                            if (g > 80 && g > r * 1.3 && g > b * 1.3) {
+                                                data[i] = 30;
+                                                data[i + 1] = 32;
+                                                data[i + 2] = 35;
+                                            }
+                                            // FR4 edge enhancement
+                                            else if (r > 150 && g > 120 && b > 60 && r > b * 1.5) {
+                                                data[i] = Math.min(255, r * 0.85);
+                                                data[i + 1] = Math.min(255, g * 0.8);
+                                                data[i + 2] = Math.min(255, b * 0.6);
+                                            }
+                                        }
+
+                                        ctx.putImageData(imageData, 0, 0);
+
+                                        const newTexture = new THREE.CanvasTexture(canvas);
+                                        newTexture.flipY = oldMat.map.flipY;
+                                        newTexture.colorSpace = THREE.SRGBColorSpace;
+
+                                        const mat = new THREE.MeshPhysicalMaterial({
+                                            map: newTexture,
+                                            roughness: 0.6,
+                                            metalness: 0.0,
+                                            clearcoat: 0.15,
+                                            clearcoatRoughness: 0.4,
+                                            envMapIntensity: 0.8,
+                                        });
+                                        child.material = mat;
+                                        oldMat.dispose();
+                                    } else {
+                                        const mat = new THREE.MeshPhysicalMaterial({
+                                            color: oldMat.color,
+                                            roughness: 0.5,
+                                            metalness: 0.0,
+                                            envMapIntensity: 1.0,
+                                        });
+                                        child.material = mat;
+                                        oldMat.dispose();
+                                    }
+                                }
+                        });
+
+                        // Center and frame model
+                        const box = new THREE.Box3().setFromObject(model);
+                        const center = box.getCenter(new THREE.Vector3());
+                        const size = box.getSize(new THREE.Vector3());
+                        const maxDim = Math.max(size.x, size.y, size.z);
+
+                        model.position.sub(center);
+
+                        const distance = maxDim * 2;
+                        camera.position.set(distance * 0.7, distance * 0.5, distance * 0.7);
+                        camera.lookAt(0, 0, 0);
+                        controls.target.set(0, 0, 0);
+                        controls.update();
+
+                        scene.add(model);
+
+                        // Three-point lighting (no shadows - using HDR environment instead)
+                        const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
+                        keyLight.position.set(5, 10, 5);
+                        scene.add(keyLight);
+
+                        const fillLight = new THREE.DirectionalLight(0xffffff, 0.5);
+                        fillLight.position.set(-5, 5, -5);
+                        scene.add(fillLight);
+
+                        const rimLight = new THREE.DirectionalLight(0xffffff, 0.6);
+                        rimLight.position.set(0, 5, -10);
+                        scene.add(rimLight);
+
+                    } catch (error) {
+                        console.error('Failed to load model:', error);
+                    }
+                }
+
+                // Animation loop
+                function animate() {
+                    requestAnimationFrame(animate);
+                    controls.update();
+                    renderer.render(scene, camera);
+                }
+
+                // Resize handler
+                const resizeObserver = new ResizeObserver(() => {
+                    camera.aspect = container.clientWidth / container.clientHeight;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(container.clientWidth, container.clientHeight);
+                });
+                resizeObserver.observe(container);
+
+                // Watch for theme changes
+                const themeObserver = new MutationObserver(() => {
+                    const bgColor = getThemeBackground();
+                    scene.background = bgColor;
+                    renderer.setClearColor(bgColor);
+                });
+                themeObserver.observe(document.body, {
+                    attributes: true,
+                    attributeFilter: ['class', 'style']
+                });
+
+                // Initialize
+                loadEnvironment();
+                loadModel();
+                animate();
             </script>
         `;
 
         return buildHtml({
             title: '3D Model Preview',
-            scripts: [{ type: 'module', src: scriptUri.toString() }],
             styles: `
-                #container {height: 100%; width: 100%; position: relative;}
-                model-viewer {height: 100%; width: 100%; display: block;}
+                html, body, #container {height: 100%; width: 100%; margin: 0; padding: 0; overflow: hidden;}
+                #container {position: relative; background: var(--vscode-editor-background);}
+                canvas {display: block;}
                 .status-badge {
                     position: absolute;
                     bottom: 8px;
@@ -198,19 +387,9 @@ class ModelViewerWebview extends BaseWebview {
             `,
             body: `
                 <div id="container">
-                    <model-viewer
-                        id="mv"
-                        src="${modelWebUri}"
-                        camera-controls
-                        min-camera-orbit="auto auto 2%"
-                        tone-mapping="neutral"
-                        exposure="1.2"
-                        shadow-intensity="0.7"
-                        shadow-softness="0.8"
-                    ></model-viewer>
                     ${statusBadge}
                 </div>
-                ${autoFrameScript}
+                ${viewerScript}
             `,
         });
     }
@@ -239,10 +418,6 @@ class ModelViewerWebview extends BaseWebview {
         }
 
         return roots;
-    }
-
-    private getModelViewerScriptUri(webview: vscode.Webview): vscode.Uri {
-        return webview.asWebviewUri(vscode.Uri.file(getAndCheckResource('model-viewer/model-viewer.min.js')));
     }
 
     protected setupPanel(): void {}
