@@ -901,10 +901,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private async _open3dPreview(filePath: string): Promise<void> {
-    traceInfo(`[SidebarProvider] _open3dPreview called with: ${filePath}`);
     const modelPath = this._resolveFilePath(filePath, '.glb') ?? filePath;
-    traceInfo(`[SidebarProvider] Resolved model path: ${modelPath}`);
-
     const build = getBuildTarget();
     if (!build?.root || !build.name) {
       traceError('[SidebarProvider] No build target selected for 3D export.');
