@@ -289,3 +289,34 @@ def collect_env_subset() -> dict[str, str]:
 def get_platform_name() -> str:
     """Get normalized platform name."""
     return platform.system().lower()
+
+
+def get_system_resources() -> dict[str, Any]:
+    """
+    Get current system resource utilization (CPU, memory).
+
+    Returns a dict with:
+      - cpu_percent: current CPU utilization (0-100)
+      - cpu_count: number of logical CPUs
+      - memory_total_mb: total physical memory in MB
+      - memory_available_mb: available memory in MB
+      - memory_used_mb: used memory in MB
+      - memory_percent: memory utilization (0-100)
+    """
+    try:
+        import psutil
+
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        cpu_count = psutil.cpu_count(logical=True)
+        mem = psutil.virtual_memory()
+
+        return {
+            "cpu_percent": cpu_percent,
+            "cpu_count": cpu_count,
+            "memory_total_mb": round(mem.total / (1024 * 1024), 2),
+            "memory_available_mb": round(mem.available / (1024 * 1024), 2),
+            "memory_used_mb": round(mem.used / (1024 * 1024), 2),
+            "memory_percent": mem.percent,
+        }
+    except Exception:
+        return {}
