@@ -5,7 +5,10 @@
 import { useEffect } from 'react';
 import { useStore } from '../store';
 import { connect, disconnect, isConnected, sendAction } from '../api/websocket';
-import { initExtensionMessageListener, onExtensionMessage } from '../api/vscodeApi';
+import { initExtensionMessageListener, onExtensionMessage, postMessage } from '../api/vscodeApi';
+
+// Track pending glb-only builds to report success/failure to extension
+let pendingGlbBuildIds: Set<string> = new Set();
 
 /**
  * Hook to manage WebSocket connection lifecycle.
@@ -21,10 +24,115 @@ export function useConnection() {
     // Initialize listener for messages from VS Code extension
     initExtensionMessageListener();
 
+    // Listen for action results to track glb-only build IDs
+    const handleActionResult = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const message = customEvent.detail;
+      if (message?.action === 'build') {
+        // Check if this is a response to a glb-only build
+        const includeTargets = message?.payload?.includeTargets;
+        const isGlbOnly = Array.isArray(includeTargets) && includeTargets.includes('glb-only');
+
+        if (isGlbOnly) {
+          if (message?.result?.success) {
+            // Build was queued successfully - track the build ID
+            const buildId = message?.result?.build_id ?? message?.result?.buildId;
+            const buildIds = message?.result?.build_ids ?? message?.result?.buildIds;
+            const ids: string[] = [];
+            if (typeof buildId === 'string') ids.push(buildId);
+            if (Array.isArray(buildIds)) {
+              for (const id of buildIds) {
+                if (typeof id === 'string') ids.push(id);
+              }
+            }
+            for (const id of ids) {
+              pendingGlbBuildIds.add(id);
+            }
+          } else {
+            // Build failed to start - report failure immediately
+            const error = message?.result?.error ?? message?.error ?? 'Failed to start build';
+            postMessage({
+              type: 'threeDModelBuildResult',
+              success: false,
+              error: typeof error === 'string' ? error : 'Failed to start build',
+            });
+          }
+        }
+      }
+    };
+    window.addEventListener('atopile:action_result', handleActionResult);
+
+    // Subscribe to build state changes to detect glb-only build failures
+    // NOTE: We only report failures here. Success is detected by the file watcher
+    // in the extension, which avoids race conditions with build history updates.
+    const unsubscribeBuilds = useStore.subscribe(
+      (state) => state.builds,
+      (builds) => {
+        // Check if any pending glb-only build has failed or been cancelled
+        for (const buildId of [...pendingGlbBuildIds]) {
+          const build = builds.find((b) => b.buildId === buildId);
+
+          if (build) {
+            // Build is still in active builds
+            if (build.status === 'failed' || build.status === 'cancelled') {
+              pendingGlbBuildIds.delete(buildId);
+              postMessage({
+                type: 'threeDModelBuildResult',
+                success: false,
+                error: build.error || (build.status === 'cancelled' ? 'Build was cancelled' : 'Build failed'),
+              });
+            } else if (build.status === 'success' || build.status === 'warning') {
+              // Build succeeded - notify extension to check for file and update status
+              pendingGlbBuildIds.delete(buildId);
+              postMessage({
+                type: 'threeDModelBuildResult',
+                success: true,
+              });
+            }
+          } else {
+            // Build is no longer in active builds - check if it completed successfully
+            // by looking at history, but only for definitive terminal states
+            const historyBuilds = useStore.getState().buildHistory;
+            const historyBuild = historyBuilds.find((b) => b.buildId === buildId);
+            if (historyBuild) {
+              // Only report if we have a definitive terminal state
+              if (historyBuild.status === 'success' || historyBuild.status === 'warning') {
+                pendingGlbBuildIds.delete(buildId);
+                postMessage({
+                  type: 'threeDModelBuildResult',
+                  success: true,
+                });
+              } else if (historyBuild.status === 'failed' || historyBuild.status === 'cancelled') {
+                const errorMsg = historyBuild.error || (historyBuild.status === 'cancelled' ? 'Build was cancelled' : 'Build failed');
+                // Skip "interrupted" errors from history - these are stale and shouldn't affect current builds
+                if (errorMsg.includes('interrupted')) {
+                  pendingGlbBuildIds.delete(buildId);
+                } else {
+                  pendingGlbBuildIds.delete(buildId);
+                  postMessage({
+                    type: 'threeDModelBuildResult',
+                    success: false,
+                    error: errorMsg,
+                  });
+                }
+              }
+              // If status is still 'building' or 'queued' in history, ignore it
+              // as it might be stale data (the "interrupted" issue)
+            }
+          }
+        }
+      }
+    );
+
     // Handle messages from extension (build requests, etc.)
     const unsubscribe = onExtensionMessage((message) => {
       switch (message.type) {
         case 'triggerBuild':
+          // If this is a new glb-only build, clear any previous pending builds
+          // to avoid stale tracking
+          if (Array.isArray(message.includeTargets) && message.includeTargets.includes('glb-only')) {
+            pendingGlbBuildIds.clear();
+          }
           // Forward build request to backend via WebSocket
           sendAction('build', {
             projectRoot: message.projectRoot,
@@ -68,6 +176,9 @@ export function useConnection() {
     // Disconnect on unmount
     return () => {
       unsubscribe();
+      unsubscribeBuilds();
+      window.removeEventListener('atopile:action_result', handleActionResult);
+      pendingGlbBuildIds.clear();
       disconnect();
     };
   }, []);

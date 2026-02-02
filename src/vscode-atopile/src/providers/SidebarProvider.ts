@@ -17,11 +17,11 @@ import { getWorkspaceSettings } from '../common/settings';
 import { getProjectRoot } from '../common/utilities';
 import { openPcb } from '../common/kicad';
 import { setCurrentPCB } from '../common/pcb';
-import { setCurrentThreeDModel, startThreeDModelBuild } from '../common/3dmodel';
+import { setCurrentThreeDModel, startThreeDModelBuild, handleThreeDModelBuildResult, getThreeDModelForBuild } from '../common/3dmodel';
+import { isModelViewerOpen, openModelViewerPreview } from '../ui/modelviewer';
 import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/target';
 import { loadBuilds, getBuilds } from '../common/manifest';
 import { openKiCanvasPreview } from '../ui/kicanvas';
-import { openModelViewerPreview } from '../ui/modelviewer';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
 // Message types from the webview
@@ -159,6 +159,12 @@ interface GetAtopileSettingsMessage {
   type: 'getAtopileSettings';
 }
 
+interface ThreeDModelBuildResultMessage {
+  type: 'threeDModelBuildResult';
+  success: boolean;
+  error?: string | null;
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -185,7 +191,8 @@ type WebviewMessage =
   | OpenInTerminalMessage
   | ListFilesMessage
   | LoadDirectoryMessage
-  | GetAtopileSettingsMessage;
+  | GetAtopileSettingsMessage
+  | ThreeDModelBuildResultMessage;
 
 /**
  * Check if we're running in development mode.
@@ -747,6 +754,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         // Load contents of a lazy-loaded directory
         this._handleLoadDirectory(message.projectRoot, message.directoryPath);
         break;
+      case 'threeDModelBuildResult':
+        // Handle 3D model build result from webview
+        traceInfo(`[SidebarProvider] Received threeDModelBuildResult: success=${message.success}, error="${message.error}"`);
+        handleThreeDModelBuildResult(message.success, message.error);
+        break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
     }
@@ -771,6 +783,41 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       ? projectBuilds.filter((build) => message.targetNames.includes(build.name))
       : [];
     setSelectedTargets(selectedBuilds);
+
+    // If the 3D model viewer is open, trigger a build for the new target
+    if (isModelViewerOpen() && selectedBuilds.length > 0) {
+      const build = selectedBuilds[0];
+      if (build?.root && build?.name) {
+        traceInfo(`[SidebarProvider] 3D viewer open, triggering build for new target: ${build.name}`);
+
+        // Update the current 3D model path for the new target
+        const model = getThreeDModelForBuild(build);
+        if (model) {
+          setCurrentThreeDModel(model);
+        }
+
+        // Trigger glb-only build for the new target
+        const triggerThreeDModelBuild = () => {
+          backendServer.sendToWebview({
+            type: 'triggerBuild',
+            projectRoot: build.root,
+            targets: [build.name],
+            includeTargets: ['glb-only'],
+            excludeTargets: ['default'],
+          });
+        };
+
+        startThreeDModelBuild({
+          retryAttempts: 1,
+          onRetry: triggerThreeDModelBuild,
+        });
+
+        triggerThreeDModelBuild();
+
+        // Refresh the model viewer to show the loading state
+        await openModelViewerPreview();
+      }
+    }
   }
 
   /**
@@ -871,14 +918,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private async _open3dPreview(filePath: string): Promise<void> {
     const modelPath = this._resolveFilePath(filePath, '.glb') ?? filePath;
     setCurrentThreeDModel({ path: modelPath, exists: fs.existsSync(modelPath) });
-    await openModelViewerPreview();
 
     const build = getBuildTarget();
     if (!build?.root || !build.name) {
       traceError('[SidebarProvider] No build target selected for 3D export.');
+      await openModelViewerPreview();
       return;
     }
 
+    // Trigger the build FIRST, before opening the viewer
+    // This ensures the status is 'building' when the viewer opens,
+    // preventing premature optimization that would just get cancelled
     const triggerThreeDModelBuild = () => {
       backendServer.sendToWebview({
         type: 'triggerBuild',
@@ -895,6 +945,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     });
 
     triggerThreeDModelBuild();
+
+    // Now open the viewer - status is already 'building' so optimization won't start yet
+    await openModelViewerPreview();
   }
 
   /**

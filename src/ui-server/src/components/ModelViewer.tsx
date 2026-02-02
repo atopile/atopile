@@ -10,6 +10,7 @@ interface ModelViewerProps {
   src: string
   className?: string
   style?: React.CSSProperties
+  isOptimizing?: boolean
 }
 
 interface ModelViewerElement extends HTMLElement {
@@ -25,7 +26,7 @@ interface ModelViewerElement extends HTMLElement {
   'ar-modes'?: string
 }
 
-export default function ModelViewer({ src, className, style }: ModelViewerProps) {
+export default function ModelViewer({ src, className, style, isOptimizing }: ModelViewerProps) {
   const viewerRef = useRef<ModelViewerElement>(null)
   const [isReady, setIsReady] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -145,6 +146,12 @@ export default function ModelViewer({ src, className, style }: ModelViewerProps)
             <div className="detail-visual-spinner">
               <span className="spinner" />
               <span>Loading 3D...</span>
+            </div>
+          )}
+          {isOptimizing && !isLoading && (
+            <div className="optimization-badge">
+              <span className="spinner" />
+              <span>Optimizing...</span>
             </div>
           )}
         </>

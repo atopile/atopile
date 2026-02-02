@@ -143,6 +143,12 @@ export interface ShowErrorMessage {
   message: string;
 }
 
+export interface ThreeDModelBuildResultMessage {
+  type: 'threeDModelBuildResult';
+  success: boolean;
+  error?: string | null;
+}
+
 export interface GetAtopileSettingsMessage {
   type: 'getAtopileSettings';
 }
@@ -166,7 +172,8 @@ export type ExtensionMessage =
   | ShowProblemsMessage
   | ShowInfoMessage
   | ShowErrorMessage
-  | GetAtopileSettingsMessage;
+  | GetAtopileSettingsMessage
+  | ThreeDModelBuildResultMessage;
 
 /**
  * Type-safe helper to post messages to the extension.

@@ -6,27 +6,137 @@ import * as fs from 'fs';
 import { FileResource, FileResourceWatcher } from './file-resource-watcher';
 import { getCurrentPcb } from './pcb';
 import { traceInfo, traceWarn } from './log/logging';
-import { build3DModelGLB } from './kicad';
+import { build3DModelGLB, optimizeGLB } from './kicad';
 
 export interface ThreeDModel extends FileResource {}
 
 export type ThreeDModelStatus =
     | { state: 'idle' }
     | { state: 'building' }
-    | { state: 'failed'; message: string };
+    | { state: 'failed'; message: string }
+    | { state: 'raw_ready'; rawPath: string }
+    | { state: 'optimizing'; rawPath: string }
+    | { state: 'optimized'; rawPath: string; optimizedPath: string };
 
 let modelStatus: ThreeDModelStatus = { state: 'idle' };
 const modelStatusEvent = new vscode.EventEmitter<ThreeDModelStatus>();
 export const onThreeDModelStatusChanged = modelStatusEvent.event;
 let buildStatusTimer: NodeJS.Timeout | undefined;
 
+// Track current optimization operation so we can cancel it if a new build starts
+let currentOptimizationAbortController: AbortController | undefined;
+
+// Track when we've successfully processed a build to ignore late failure messages
+// This is reset when a new build starts
+let hasProcessedSuccessForCurrentBuild = false;
+
 export function getThreeDModelStatus(): ThreeDModelStatus {
     return modelStatus;
 }
 
 function setThreeDModelStatus(status: ThreeDModelStatus) {
+    const currentState = modelStatus.state;
+
+    // Prevent going from optimization-related states back to failed
+    // This handles race conditions where stale failure messages arrive after success
+    if (status.state === 'failed' &&
+        (currentState === 'raw_ready' || currentState === 'optimizing' || currentState === 'optimized')) {
+        traceInfo(`3dmodel: BLOCKING state transition from ${currentState} to failed: ${(status as { message?: string }).message}`);
+        return;
+    }
+
+    traceInfo(`3dmodel: State transition: ${currentState} -> ${status.state}`);
     modelStatus = status;
     modelStatusEvent.fire(status);
+}
+
+/**
+ * Get the optimized GLB path from the raw GLB path.
+ * Raw: {target}.pcba.glb → Optimized: {target}.pcba.optimized.glb
+ */
+export function getOptimizedPath(rawPath: string): string {
+    return rawPath.replace(/\.glb$/, '.optimized.glb');
+}
+
+/**
+ * Exposed for the model viewer to set status.
+ */
+export function setThreeDModelStatusFromViewer(status: ThreeDModelStatus) {
+    setThreeDModelStatus(status);
+}
+
+/**
+ * Cancel any running optimization operation.
+ */
+function cancelOptimization() {
+    if (currentOptimizationAbortController) {
+        currentOptimizationAbortController.abort();
+        currentOptimizationAbortController = undefined;
+    }
+}
+
+/**
+ * Exposed for the model viewer to start optimization.
+ */
+export function startOptimizationFromViewer(rawPath: string) {
+    startOptimization(rawPath);
+}
+
+/**
+ * Start background optimization of a raw GLB file.
+ * Sets status to 'optimizing' and then 'optimized' when complete.
+ * On failure, logs the error and continues with raw GLB (graceful degradation).
+ */
+async function startOptimization(rawPath: string) {
+    // Cancel any existing optimization
+    cancelOptimization();
+
+    // Also clear any pending build timeout (safety measure)
+    if (buildStatusTimer) {
+        clearTimeout(buildStatusTimer);
+        buildStatusTimer = undefined;
+    }
+
+    const optimizedPath = getOptimizedPath(rawPath);
+    setThreeDModelStatus({ state: 'optimizing', rawPath });
+
+    // Create new abort controller for this optimization
+    currentOptimizationAbortController = new AbortController();
+    const signal = currentOptimizationAbortController.signal;
+
+    try {
+        await optimizeGLB(rawPath, optimizedPath, signal);
+
+        // Check if we were cancelled during optimization
+        if (signal.aborted) {
+            return;
+        }
+
+        // Verify the optimized file was created
+        if (fs.existsSync(optimizedPath)) {
+            traceInfo(`3dmodel: Optimization complete. Raw: ${rawPath}, Optimized: ${optimizedPath}`);
+            setThreeDModelStatus({ state: 'optimized', rawPath, optimizedPath });
+        } else {
+            // File not created - fall back to raw
+            traceWarn('3dmodel: Optimized file was not created, using raw GLB');
+            setThreeDModelStatus({ state: 'raw_ready', rawPath });
+        }
+    } catch (error) {
+        // Check if this was a cancellation
+        if (signal.aborted) {
+            traceInfo('3dmodel: Optimization was cancelled');
+            return;
+        }
+
+        // Log error and gracefully degrade to raw GLB
+        traceWarn(`3dmodel: GLB optimization failed, using raw GLB: ${error}`);
+        setThreeDModelStatus({ state: 'raw_ready', rawPath });
+    } finally {
+        // Clean up abort controller if it's still ours
+        if (currentOptimizationAbortController?.signal === signal) {
+            currentOptimizationAbortController = undefined;
+        }
+    }
 }
 
 class ThreeDModelWatcher extends FileResourceWatcher<ThreeDModel> {
@@ -119,7 +229,20 @@ export async function ensureThreeDModel(options?: { showProgress?: boolean }) {
         const modelMtime = fs.statSync(model.path).mtimeMs;
         if (modelMtime >= pcbMtime) {
             modelWatcher.setCurrent({ path: model.path, exists: true });
-            setThreeDModelStatus({ state: 'idle' });
+
+            // Check if we have an up-to-date optimized version
+            const optimizedPath = getOptimizedPath(model.path);
+            if (fs.existsSync(optimizedPath)) {
+                const optimizedMtime = fs.statSync(optimizedPath).mtimeMs;
+                if (optimizedMtime >= modelMtime) {
+                    setThreeDModelStatus({ state: 'optimized', rawPath: model.path, optimizedPath });
+                    return model;
+                }
+            }
+
+            // Model exists but needs optimization - show raw and start optimization
+            setThreeDModelStatus({ state: 'raw_ready', rawPath: model.path });
+            startOptimization(model.path);
             return model;
         }
     }
@@ -171,7 +294,10 @@ export async function ensureThreeDModel(options?: { showProgress?: boolean }) {
     const updated = { path: model.path, exists: fs.existsSync(model.path) };
     modelWatcher.setCurrent(updated);
     modelWatcher.forceNotify();
-    setThreeDModelStatus({ state: 'idle' });
+
+    // Start optimization after successful build
+    setThreeDModelStatus({ state: 'raw_ready', rawPath: model.path });
+    startOptimization(model.path);
     return updated;
 }
 
@@ -186,9 +312,15 @@ export function startThreeDModelBuild(options?: {
         buildStatusTimer = undefined;
     }
 
+    // Cancel any ongoing optimization when a new build starts
+    cancelOptimization();
+
+    // Reset the success flag for the new build
+    hasProcessedSuccessForCurrentBuild = false;
+
     setThreeDModelStatus({ state: 'building' });
 
-    const timeoutMs = options?.timeoutMs ?? 60000;
+    const timeoutMs = options?.timeoutMs ?? 300000; // 5 minutes for complex boards
     let remainingRetries = options?.retryAttempts ?? 0;
 
     const scheduleTimeout = () => {
@@ -219,6 +351,116 @@ export function startThreeDModelBuild(options?: {
     scheduleTimeout();
 }
 
+/**
+ * Handle the result of a 3D model build from the webview.
+ * Called when the build completes, fails, or is cancelled.
+ * On success, immediately shows the raw GLB and starts background optimization.
+ */
+export function handleThreeDModelBuildResult(success: boolean, error?: string | null) {
+    const currentState = modelStatus.state;
+
+    // Clear any pending timeout since we have a definitive result
+    if (buildStatusTimer) {
+        clearTimeout(buildStatusTimer);
+        buildStatusTimer = undefined;
+    }
+
+    // Special case: Always ignore "Build was interrupted" messages
+    // These come from stale build history and should never override a successful build
+    if (!success && error && error.includes('interrupted')) {
+        return;
+    }
+
+    // If we've already processed a success for this build, ignore any failure messages.
+    // This handles race conditions where success and failure messages arrive out of order
+    // or where stale "interrupted" status is reported from build history.
+    if (!success && hasProcessedSuccessForCurrentBuild) {
+        return;
+    }
+
+    // Also check state-based protection as a backup
+    if (!success && (currentState === 'raw_ready' || currentState === 'optimizing' || currentState === 'optimized')) {
+        return;
+    }
+
+    if (success) {
+        // Mark that we've processed a success for this build
+        hasProcessedSuccessForCurrentBuild = true;
+
+        // Success - check if file exists and update status
+        const model = getThreeDModelForBuild();
+        if (model?.path && fs.existsSync(model.path)) {
+            // File exists - update the watcher and show raw GLB immediately
+            modelWatcher.setCurrent({ path: model.path, exists: true });
+            modelWatcher.forceNotify();
+
+            // Check if we already have an optimized version that's newer than the raw
+            const optimizedPath = getOptimizedPath(model.path);
+            if (fs.existsSync(optimizedPath)) {
+                const rawMtime = fs.statSync(model.path).mtimeMs;
+                const optimizedMtime = fs.statSync(optimizedPath).mtimeMs;
+                if (optimizedMtime >= rawMtime) {
+                    // Optimized version is up to date, use it directly
+                    setThreeDModelStatus({ state: 'optimized', rawPath: model.path, optimizedPath });
+                    return;
+                }
+            }
+
+            // Set raw_ready and start background optimization after a short delay
+            // to ensure the viewer has time to load the raw GLB first
+            setThreeDModelStatus({ state: 'raw_ready', rawPath: model.path });
+            // Start optimization in background after delay (don't await)
+            setTimeout(() => {
+                // Only start optimization if we're still in raw_ready state
+                if (modelStatus.state === 'raw_ready') {
+                    startOptimization(model.path);
+                }
+            }, 2000);
+        } else {
+            // File doesn't exist yet - wait a bit and retry
+            // This handles cases where the build completed but file write is delayed
+            setTimeout(() => {
+                const retryModel = getThreeDModelForBuild();
+                if (retryModel?.path && fs.existsSync(retryModel.path)) {
+                    modelWatcher.setCurrent({ path: retryModel.path, exists: true });
+                    modelWatcher.forceNotify();
+
+                    // Check for existing optimized version
+                    const optimizedPath = getOptimizedPath(retryModel.path);
+                    if (fs.existsSync(optimizedPath)) {
+                        const rawMtime = fs.statSync(retryModel.path).mtimeMs;
+                        const optimizedMtime = fs.statSync(optimizedPath).mtimeMs;
+                        if (optimizedMtime >= rawMtime) {
+                            setThreeDModelStatus({ state: 'optimized', rawPath: retryModel.path, optimizedPath });
+                            return;
+                        }
+                    }
+
+                    // Set raw_ready and start optimization after delay
+                    setThreeDModelStatus({ state: 'raw_ready', rawPath: retryModel.path });
+                    setTimeout(() => {
+                        if (modelStatus.state === 'raw_ready') {
+                            startOptimization(retryModel.path);
+                        }
+                    }, 2000);
+                } else {
+                    // Still no file - show failure
+                    setThreeDModelStatus({
+                        state: 'failed',
+                        message: 'Build completed but 3D model file was not created.',
+                    });
+                }
+            }, 1000);
+        }
+    } else {
+        // Build failed or was cancelled - show the error
+        setThreeDModelStatus({
+            state: 'failed',
+            message: error || 'Build failed or was cancelled.',
+        });
+    }
+}
+
 export async function activate(context: vscode.ExtensionContext) {
     await modelWatcher.activate(context);
 
@@ -229,7 +471,12 @@ export async function activate(context: vscode.ExtensionContext) {
                     clearTimeout(buildStatusTimer);
                     buildStatusTimer = undefined;
                 }
-                setThreeDModelStatus({ state: 'idle' });
+                // Only reset to idle if we're not in an optimization-related state
+                // This prevents the watcher from overriding our optimization flow
+                const currentState = modelStatus.state;
+                if (currentState !== 'raw_ready' && currentState !== 'optimizing' && currentState !== 'optimized') {
+                    setThreeDModelStatus({ state: 'idle' });
+                }
             }
         }),
     );
