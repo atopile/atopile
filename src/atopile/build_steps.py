@@ -911,6 +911,32 @@ def generate_glb(ctx: BuildStepContext) -> None:
 
 
 @muster.register(
+    name="glb-only",
+    aliases=["3d-model-only"],
+    tags={Tags.REQUIRES_KICAD},
+    dependencies=[],
+    produces_artifact=True,
+)
+def generate_glb_only(ctx: BuildStepContext) -> None:
+    """Generate GLB from existing layout without rebuilding. For fast 3D preview."""
+    layout_path = config.build.paths.layout
+    if not layout_path.exists():
+        raise UserException(
+            f"Layout file not found: {layout_path}\n\n"
+            "Run a full build first to generate the layout."
+        )
+    with _githash_layout(layout_path) as tmp_layout:
+        try:
+            export_glb(
+                tmp_layout,
+                glb_file=config.build.paths.output_base.with_suffix(".pcba.glb"),
+                project_dir=layout_path.parent,
+            )
+        except KicadCliExportError as e:
+            raise UserExportError(f"Failed to generate 3D model: {e}") from e
+
+
+@muster.register(
     name="step",
     tags={Tags.REQUIRES_KICAD},
     dependencies=[build_design],

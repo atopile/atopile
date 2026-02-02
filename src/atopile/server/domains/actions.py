@@ -50,6 +50,14 @@ def _handle_build_sync(payload: dict) -> dict:
     include_targets = payload.get("includeTargets") or payload.get(
         "include_targets", []
     )
+    exclude_targets = payload.get("excludeTargets") or payload.get(
+        "exclude_targets", []
+    )
+    log.info(
+        "Build request targets: include=%s exclude=%s",
+        include_targets,
+        exclude_targets,
+    )
     level = payload.get("level")
     payload_id = payload.get("id")
     payload_label = payload.get("label")
@@ -206,6 +214,7 @@ def _handle_build_sync(payload: dict) -> dict:
                                 standalone=standalone,
                                 frozen=frozen,
                                 include_targets=include_targets,
+                                exclude_targets=exclude_targets,
                                 status=BuildStatus.QUEUED,
                                 started_at=time.time(),
                             )
@@ -258,6 +267,7 @@ def _handle_build_sync(payload: dict) -> dict:
                 standalone=standalone,
                 frozen=frozen,
                 include_targets=include_targets,
+                exclude_targets=exclude_targets,
                 status=BuildStatus.QUEUED,
                 started_at=time.time(),
             )

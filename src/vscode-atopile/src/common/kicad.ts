@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as util from 'util';
 import { traceError, traceInfo, traceWarn } from './log/logging';
 import { captureEvent } from './telemetry';
+import { getExtension } from './vscodeapi';
 
 const execFile = util.promisify(cp.execFile);
 
@@ -112,6 +113,52 @@ export async function openPcb(pcbPath: string): Promise<void> {
     });
 
     child.unref(); // Allows the parent (VS Code extension) to exit independently
+}
+
+/**
+ * Optimizes a GLB file using gltf-transform with Draco compression.
+ * This can reduce file sizes by ~95% (e.g., 29MB → 1.6MB).
+ * @param inputPath The path to the raw GLB file from KiCad export.
+ * @param outputPath The path to write the optimized GLB file.
+ * @param signal Optional AbortSignal to cancel the optimization.
+ * @throws Error if optimization fails or times out (3 minute limit).
+ */
+export async function optimizeGLB(inputPath: string, outputPath: string, signal?: AbortSignal): Promise<void> {
+    const timeoutMs = 600000; // 10 minutes for large/complex files
+
+    // Get the extension path where @gltf-transform/cli is installed
+    const extensionPath = getExtension().extensionUri.fsPath;
+
+    // Find the gltf-transform binary in node_modules
+    const binPath = path.join(extensionPath, 'node_modules', '.bin', 'gltf-transform');
+    const binPathWindows = binPath + '.cmd';
+    const actualBinPath = process.platform === 'win32' ? binPathWindows : binPath;
+
+    // Check if binary exists
+    const fs = require('fs');
+    const binExists = fs.existsSync(actualBinPath);
+
+    const command = binExists ? actualBinPath : (process.platform === 'win32' ? 'npx.cmd' : 'npx');
+    // When using npx, we need the full package name @gltf-transform/cli
+    // The binary is named 'gltf-transform' but npx needs the package name
+    const commandArgs = binExists
+        ? ['optimize', inputPath, outputPath, '--compress', 'draco']
+        : ['--package', '@gltf-transform/cli', 'gltf-transform', 'optimize', inputPath, outputPath, '--compress', 'draco'];
+
+    try {
+        await execFile(command, commandArgs, {
+            timeout: timeoutMs,
+            signal,
+            cwd: extensionPath, // Run from extension directory
+        });
+        traceInfo(`GLB optimized: ${outputPath}`);
+    } catch (error) {
+        if (signal?.aborted) {
+            throw new Error('GLB optimization cancelled');
+        }
+        traceError('GLB optimization failed:', error);
+        throw error;
+    }
 }
 
 export async function build3DModelGLB(pcbPath: string, modelPath: string) {
