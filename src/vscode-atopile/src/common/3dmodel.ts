@@ -248,6 +248,14 @@ function onBuildSuccess(rawGlbPath: string) {
 
     modelWatcher.setCurrent({ path: rawGlbPath, exists: true });
 
+    // If already showing an optimized model, keep showing it while we optimize the new build
+    if (viewerState.state === 'showing' && viewerState.isOptimized) {
+        setViewerState({ ...viewerState, isBuilding: false, isOptimizing: true });
+        runOptimization(rawGlbPath);
+        return;
+    }
+
+    // Otherwise show the best available GLB
     const bestGlb = findBestGlbPath(rawGlbPath);
 
     if (bestGlb) {
