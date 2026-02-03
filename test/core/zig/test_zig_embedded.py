@@ -136,22 +136,34 @@ def test_zig_embedded(
         )
 
         # Acquire lock to serialize Zig compilation across parallel workers
-        # Else parallel compilitation might crash test system
-        with global_lock(ZIG_COMPILE_LOCK_PATH, timeout_s=600):
-            compile_result = subprocess.run(
-                compile_cmd,
-                cwd=ZIG_SRC_DIR,
-                capture_output=False,
-            )
+        # Else parallel compilation might crash test system
+        # Lock timeout: 60s (compilation should be quick if not blocked)
+        # Compile timeout: 90s (normal compile is <10s, allow headroom for slow CI)
+        with global_lock(ZIG_COMPILE_LOCK_PATH, timeout_s=60):
+            try:
+                compile_result = subprocess.run(
+                    compile_cmd,
+                    cwd=ZIG_SRC_DIR,
+                    capture_output=False,
+                    timeout=90,
+                )
+            except subprocess.TimeoutExpired:
+                print("Compile TIMEOUT after 90s")
+                assert False, "Zig compilation timed out"
         if not compile_result.returncode == 0:
             print("Compile failed")
             assert False
 
         # Test execution doesn't need the lock - only compilation is resource-intensive
-        result = subprocess.run(
-            [test_bin],
-            capture_output=False,
-        )
+        try:
+            result = subprocess.run(
+                [test_bin],
+                capture_output=False,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            print("Test execution TIMEOUT after 30s")
+            assert False, "Test execution timed out"
 
         if result.returncode != 0:
             from faebryk.libs.util import run_gdb

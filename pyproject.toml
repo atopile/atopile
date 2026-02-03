@@ -35,6 +35,7 @@ dependencies = [
     "deprecated~=1.2.14",
     "fastapi>=0.110.0",
     "fastapi-github-oidc>=0.2.1",
+    "filelock>=3.13.0",
     "freetype-py>=2.4",
     "gitpython>=3.1.41",
     "httpx>=0.28.1",

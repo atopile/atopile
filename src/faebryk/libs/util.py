@@ -1765,43 +1765,27 @@ def run_live(
 @contextmanager
 def global_lock(lock_file_path: Path, timeout_s: float | None = None):
     """
-    Cross-process lock using kernel-level file locking (fcntl.flock).
+    Cross-process lock using filelock library.
 
-    Unlike PID-file based locking, this automatically releases the lock when:
+    This automatically releases the lock when:
     - The process exits normally
     - The process crashes
     - The process is killed (even with SIGKILL)
 
-    This avoids race conditions and PID-reuse issues that plague PID-file approaches.
+    Works on Linux, macOS, and Windows.
     """
-    import fcntl
+    from filelock import FileLock, Timeout
 
     lock_file_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Open file for writing (create if doesn't exist)
-    lock_fd = os.open(str(lock_file_path), os.O_RDWR | os.O_CREAT)
+    lock = FileLock(lock_file_path, timeout=timeout_s if timeout_s else -1)
     try:
-        start_time = time.time()
-        while True:
-            try:
-                # Try to acquire exclusive lock (non-blocking)
-                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break  # Lock acquired
-            except (BlockingIOError, OSError):
-                # Lock is held by another process
-                if timeout_s and time.time() - start_time > timeout_s:
-                    raise TimeoutError(f"Timed out waiting for lock: {lock_file_path}")
-                time.sleep(0.1)
-
-        # Write our PID for debugging (not used for locking)
-        os.ftruncate(lock_fd, 0)
-        os.write(lock_fd, str(os.getpid()).encode())
-
+        lock.acquire()
         yield
+    except Timeout:
+        raise TimeoutError(f"Timed out waiting for lock: {lock_file_path}")
     finally:
-        # Release lock and close file descriptor
-        # Note: closing the fd automatically releases the flock
-        os.close(lock_fd)
+        lock.release()
 
 
 def consume(iter: Iterable, n: int) -> list:
