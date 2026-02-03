@@ -137,9 +137,10 @@ def test_zig_embedded(
 
         # Acquire lock to serialize Zig compilation across parallel workers
         # Else parallel compilation might crash test system
-        # Lock timeout: 60s (compilation should be quick if not blocked)
+        # Lock timeout: 300 (5 min) - must be long enough for all 53 tests to run
+        #   since each test waits for all preceding tests to compile
         # Compile timeout: 90s (normal compile is <10s, allow headroom for slow CI)
-        with global_lock(ZIG_COMPILE_LOCK_PATH, timeout_s=60):
+        with global_lock(ZIG_COMPILE_LOCK_PATH, timeout_s=300):
             try:
                 compile_result = subprocess.run(
                     compile_cmd,
