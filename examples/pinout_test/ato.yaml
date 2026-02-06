@@ -5,3 +5,7 @@ paths:
 builds:
   default:
     entry: pinout_test.ato:PinoutTest
+dependencies:
+- type: registry
+  identifier: atopile/raspberry-rp2040
+  release: 0.2.5

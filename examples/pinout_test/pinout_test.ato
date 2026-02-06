@@ -8,6 +8,7 @@ import Resistor
 import Capacitor
 
 from "espressif-esp32-c3/espressif-esp32-c3-mini.ato" import ESP32_C3_MINI_1
+from "atopile/raspberry-rp2040/raspberry-rp2040.ato" import Raspberry_RP2040
 
 module PinoutTest:
     """Simple test module to validate pinout explorer JSON output."""
@@ -19,6 +20,10 @@ module PinoutTest:
     # ESP32-C3 WROOM module
     mcu = new ESP32_C3_MINI_1
     power_3v3 ~ mcu.power
+
+    # Raspberry RP2040 module
+    rp2040 = new Raspberry_RP2040
+    power_3v3 ~ rp2040.power
 
     # I2C bus with pull-ups
     i2c_bus = new I2C

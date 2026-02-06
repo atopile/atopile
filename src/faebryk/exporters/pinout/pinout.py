@@ -122,6 +122,24 @@ def _get_interface_path(node: fabll.Node, component_node: fabll.Node) -> str | N
         return None
 
 
+def _is_external_connection(
+    connected_node: fabll.Node,
+    component_parent: fabll.Node | None,
+) -> bool:
+    """
+    Check if a connected interface node is OUTSIDE the component's parent module.
+    This mirrors the logic from requires_external_usage: a connection is external
+    if the connected node is not a descendant of the component's parent.
+    """
+    if component_parent is None:
+        return False
+    try:
+        hierarchy = connected_node.get_hierarchy()
+        return not any(component_parent.is_same(ancestor) for ancestor, _ in hierarchy)
+    except Exception:
+        return False
+
+
 def _trace_lead_interfaces(
     lead_electrical: fabll.Node,
     component_node: fabll.Node,
@@ -130,10 +148,19 @@ def _trace_lead_interfaces(
     From a lead's Electrical node, trace connected interfaces to find
     all the functions this pin can serve.
 
-    Returns a list of dicts: [{"name": "gpio[0]", "type": "GPIO"}, ...]
+    Returns a list of dicts:
+    [{"name": "gpio[0]", "type": "GPIO", "external": False}, ...]
+
+    The "external" flag indicates whether this interface is connected
+    to something outside the component's parent module (i.e. actually
+    used in the user's design, not just internal chip wiring).
     """
     functions: list[dict] = []
     seen_names: set[str] = set()
+
+    # Get the component's parent module for external detection
+    comp_parent_info = component_node.get_parent()
+    comp_parent = comp_parent_info[0] if comp_parent_info else None
 
     # Internal names and patterns to skip
     _SKIP_NAMES = {"part_of", "can_bridge", "reference", "line"}
@@ -147,7 +174,7 @@ def _trace_lead_interfaces(
         is_if = lead_electrical.get_trait(fabll.is_interface)
         connected = is_if.get_connected(include_self=False)
 
-        for connected_node, _path in connected.items():
+        for connected_node, path in connected.items():
             try:
                 iface_path = _get_interface_path(connected_node, component_node)
                 if not iface_path:
@@ -190,7 +217,17 @@ def _trace_lead_interfaces(
                 seen_names.add(display_name)
 
                 bus_type = _classify_interface(iface_path)
-                functions.append({"name": display_name, "type": bus_type})
+
+                # Check if this connection goes outside the component
+                external = _is_external_connection(connected_node, comp_parent)
+
+                functions.append(
+                    {
+                        "name": display_name,
+                        "type": bus_type,
+                        "external": external,
+                    }
+                )
 
             except Exception:
                 continue
@@ -548,36 +585,11 @@ def export_pinout_json(
             )
 
             # Build pad_name -> (lead_electrical, lead_display_name) mapping
-            # The display name should be the signal name from the .ato code
-            # (e.g. "EN", "GND", "IO0", "P3V3") not the raw pad number.
             pad_to_lead: dict[str, fabll.Node] = {}
             pad_to_lead_name: dict[str, str] = {}
             for lead_node in lead_nodes:
                 lead_trait = lead_node.get_trait(F.Lead.is_lead)
-                # Try multiple approaches to get a meaningful name:
-                # 1. The lead's own name (from get_lead_name)
                 lead_name = lead_trait.get_lead_name()
-                # 2. The node's name in the parent hierarchy
-                try:
-                    node_name = lead_node.get_name(accept_no_parent=True)
-                    if node_name and not node_name.isdigit():
-                        lead_name = node_name
-                except Exception:
-                    pass
-                # 3. Walk up to find a named parent that isn't the component
-                if lead_name.isdigit():
-                    try:
-                        parent_info = lead_node.get_parent()
-                        if parent_info:
-                            parent_node, child_name = parent_info
-                            if child_name and not child_name.isdigit():
-                                lead_name = child_name
-                            elif parent_node:
-                                pname = parent_node.get_name(accept_no_parent=True)
-                                if pname and not pname.isdigit():
-                                    lead_name = pname
-                    except Exception:
-                        pass
 
                 if lead_trait.has_trait(F.Lead.has_associated_pads):
                     assoc_pads = lead_trait.get_trait(
@@ -730,14 +742,18 @@ def export_pinout_json(
 
 def _pick_active_function(functions: list[dict]) -> dict | None:
     """
-    Pick the most specific active function for a pin.
-    Prefers bus-specific functions (I2C, SPI) over generic (GPIO, Signal).
+    Pick the active function for a pin.
+
+    Priority:
+    1. Externally connected interfaces (actually used in user's design)
+    2. Among those, prefer specific buses (I2C, SPI) over generic (GPIO)
+    3. If nothing external, fall back to highest-priority internal connection
     """
     if not functions:
         return None
 
     # Priority order: specific buses > analog > GPIO > generic
-    priority = {
+    type_priority = {
         "I2C": 10,
         "SPI": 10,
         "UART": 10,
@@ -752,7 +768,13 @@ def _pick_active_function(functions: list[dict]) -> dict | None:
         "Signal": 1,
     }
 
-    best = max(functions, key=lambda f: priority.get(f["type"], 0))
+    def score(fn: dict) -> tuple[int, int]:
+        # External connections get a massive boost (100) so they always win
+        ext = 100 if fn.get("external", False) else 0
+        tp = type_priority.get(fn["type"], 0)
+        return (ext, tp)
+
+    best = max(functions, key=score)
     return best
 
 
