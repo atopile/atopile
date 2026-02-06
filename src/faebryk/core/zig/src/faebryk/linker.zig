@@ -79,13 +79,13 @@ pub const Linker = struct {
     };
 
     pub fn collect_unresolved_type_references(type_graph: *TypeGraph, allocator: std.mem.Allocator) []UnresolvedTypeReference {
-        var list = std.ArrayList(UnresolvedTypeReference).init(allocator);
+        var list = std.array_list.Managed(UnresolvedTypeReference).init(allocator);
         errdefer list.deinit();
 
         const VisitMakeChildren = struct {
             type_graph: *TypeGraph,
             type_node: BoundNodeReference,
-            list: *std.ArrayList(UnresolvedTypeReference),
+            list: *std.array_list.Managed(UnresolvedTypeReference),
 
             pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(self_ptr));
@@ -104,7 +104,7 @@ pub const Linker = struct {
 
         const VisitTypes = struct {
             type_graph: *TypeGraph,
-            list: *std.ArrayList(UnresolvedTypeReference),
+            list: *std.array_list.Managed(UnresolvedTypeReference),
 
             pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(self_ptr));

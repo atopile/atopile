@@ -1,4 +1,5 @@
 const std = @import("std");
+const compat = @import("compat");
 const py = @import("pybindings.zig");
 const pyzig_mod = @import("pyzig.zig");
 
@@ -6,10 +7,10 @@ pub fn MutableLinkedList(comptime T: type) type {
     return struct {
         const Self = @This();
         ob_base: py.PyObject_HEAD,
-        list: *std.DoublyLinkedList(T),
+        list: *compat.DoublyLinkedList(T),
         element_type_obj: ?*py.PyTypeObject,
 
-        fn create(list_ptr: *std.DoublyLinkedList(T), element_type_obj: ?*py.PyTypeObject) ?*py.PyObject {
+        fn create(list_ptr: *compat.DoublyLinkedList(T), element_type_obj: ?*py.PyTypeObject) ?*py.PyObject {
             const obj = py.PyType_GenericAlloc(&type_object, 0);
             if (obj == null) return null;
             const self: *Self = @ptrCast(@alignCast(obj));
@@ -19,9 +20,9 @@ pub fn MutableLinkedList(comptime T: type) type {
         }
 
         fn count(self: *Self) usize {
-            return self.list.len;
+            return self.list.len();
         }
-        fn nodeAt(self: *Self, idx: usize) ?*std.DoublyLinkedList(T).Node {
+        fn nodeAt(self: *Self, idx: usize) ?*compat.DoublyLinkedList(T).Node {
             var i: usize = 0;
             var it = self.list.first;
             while (it) |n| : (it = n.next) {
@@ -31,11 +32,11 @@ pub fn MutableLinkedList(comptime T: type) type {
             return null;
         }
 
-        fn sq_length(self: ?*py.PyObject) callconv(.C) isize {
+        fn sq_length(self: ?*py.PyObject) callconv(.c) isize {
             const s: *Self = @ptrCast(@alignCast(self));
             return @intCast(s.count());
         }
-        fn sq_item(self: ?*py.PyObject, index: isize) callconv(.C) ?*py.PyObject {
+        fn sq_item(self: ?*py.PyObject, index: isize) callconv(.c) ?*py.PyObject {
             const s: *Self = @ptrCast(@alignCast(self));
             const len: isize = @intCast(s.count());
             const actual = if (index < 0) len + index else index;
@@ -46,15 +47,15 @@ pub fn MutableLinkedList(comptime T: type) type {
             const n = s.nodeAt(@intCast(actual)) orelse return null;
             return s.convertZigToPython(&n.data);
         }
-        fn list_getitem(self: ?*py.PyObject, index: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        fn list_getitem(self: ?*py.PyObject, index: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const idx = py.PyLong_AsLong(index);
             if (py.PyErr_Occurred() != null) return null;
             return sq_item(self, idx);
         }
 
-        fn list_append(self: ?*py.PyObject, value: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        fn list_append(self: ?*py.PyObject, value: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const s: *Self = @ptrCast(@alignCast(self));
-            const Node = std.DoublyLinkedList(T).Node;
+            const Node = compat.DoublyLinkedList(T).Node;
             const node = std.heap.c_allocator.create(Node) catch {
                 py.PyErr_SetString(py.PyExc_MemoryError, "append failed");
                 return null;
@@ -69,7 +70,7 @@ pub fn MutableLinkedList(comptime T: type) type {
             py.Py_INCREF(none);
             return none;
         }
-        fn list_insert(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        fn list_insert(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const s: *Self = @ptrCast(@alignCast(self));
             var index: isize = 0;
             var item: ?*py.PyObject = null;
@@ -78,7 +79,7 @@ pub fn MutableLinkedList(comptime T: type) type {
             var actual: isize = if (index < 0) len + index else index;
             if (actual < 0) actual = 0;
             if (actual > len) actual = len;
-            const Node = std.DoublyLinkedList(T).Node;
+            const Node = compat.DoublyLinkedList(T).Node;
             const node = std.heap.c_allocator.create(Node) catch {
                 py.PyErr_SetString(py.PyExc_MemoryError, "insert failed");
                 return null;
@@ -104,7 +105,7 @@ pub fn MutableLinkedList(comptime T: type) type {
             py.Py_INCREF(none);
             return none;
         }
-        fn list_clear(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        fn list_clear(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             _ = args;
             const s: *Self = @ptrCast(@alignCast(self));
             while (s.list.pop()) |node| {
@@ -114,7 +115,7 @@ pub fn MutableLinkedList(comptime T: type) type {
             py.Py_INCREF(none);
             return none;
         }
-        fn list_remove(self: ?*py.PyObject, item: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        fn list_remove(self: ?*py.PyObject, item: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const s: *Self = @ptrCast(@alignCast(self));
             const Wrap = pyzig_mod.PyObjectWrapper(T);
             const w: *Wrap = @ptrCast(@alignCast(item));
@@ -131,11 +132,11 @@ pub fn MutableLinkedList(comptime T: type) type {
             py.PyErr_SetString(py.PyExc_ValueError, "list.remove(x): x not in list");
             return null;
         }
-        fn list_len(self: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        fn list_len(self: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const s: *Self = @ptrCast(@alignCast(self));
             return py.PyLong_FromLong(@intCast(s.count()));
         }
-        fn list_iter(self: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        fn list_iter(self: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const s: *Self = @ptrCast(@alignCast(self));
             const py_list = py.PyList_New(@intCast(s.count()));
             if (py_list == null) return null;
@@ -154,7 +155,7 @@ pub fn MutableLinkedList(comptime T: type) type {
             py.Py_DECREF(py_list.?);
             return itobj;
         }
-        fn list_pop(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        fn list_pop(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.c) ?*py.PyObject {
             const s: *Self = @ptrCast(@alignCast(self));
             var index: isize = 0;
             if (py.PyArg_ParseTuple(args, "i", &index) == 0) return null;
@@ -244,7 +245,7 @@ pub fn MutableLinkedList(comptime T: type) type {
 
         var sequence_methods = py.PySequenceMethods{ .sq_length = sq_length, .sq_item = sq_item };
         var list_methods = [_]py.PyMethodDef{ .{ .ml_name = "append", .ml_meth = @ptrCast(&list_append), .ml_flags = py.METH_O, .ml_doc = "Append item" }, .{ .ml_name = "insert", .ml_meth = @ptrCast(&list_insert), .ml_flags = py.METH_VARARGS, .ml_doc = "Insert item at index" }, .{ .ml_name = "clear", .ml_meth = @ptrCast(&list_clear), .ml_flags = py.METH_VARARGS, .ml_doc = "Clear list" }, .{ .ml_name = "remove", .ml_meth = @ptrCast(&list_remove), .ml_flags = py.METH_O, .ml_doc = "Remove value" }, .{ .ml_name = "__len__", .ml_meth = @ptrCast(&list_len), .ml_flags = py.METH_NOARGS, .ml_doc = "len" }, .{ .ml_name = "__getitem__", .ml_meth = @ptrCast(&list_getitem), .ml_flags = py.METH_O, .ml_doc = "getitem" }, .{ .ml_name = "pop", .ml_meth = @ptrCast(&list_pop), .ml_flags = py.METH_VARARGS, .ml_doc = "pop" }, py.ML_SENTINEL };
-        fn list_richcompare(self: ?*py.PyObject, other: ?*py.PyObject, op: c_int) callconv(.C) ?*py.PyObject {
+        fn list_richcompare(self: ?*py.PyObject, other: ?*py.PyObject, op: c_int) callconv(.c) ?*py.PyObject {
             // Support equality/inequality against any Python sequence
             // Only Py_EQ is defined in our bindings; treat all other ops as NE
             const s: *Self = @ptrCast(@alignCast(self));
@@ -283,7 +284,7 @@ pub fn MutableLinkedList(comptime T: type) type {
     };
 }
 
-pub fn createMutableList(comptime T: type, list_ptr: *std.DoublyLinkedList(T), element_type_obj: ?*py.PyTypeObject) ?*py.PyObject {
+pub fn createMutableList(comptime T: type, list_ptr: *compat.DoublyLinkedList(T), element_type_obj: ?*py.PyTypeObject) ?*py.PyObject {
     const L = MutableLinkedList(T);
     if (py.PyType_Ready(&L.type_object) < 0) return null;
     return L.create(list_ptr, element_type_obj);

@@ -10,9 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from faebryk.libs.util import repo_root
+from faebryk.libs.util import global_lock, repo_root
 
 ZIG_COMMAND = [sys.executable, "-m", "ziglang"]
+
+# Global lock path to serialize Zig compilation across parallel test workers.
+# Zig compilation is resource-intensive and multiple simultaneous compilations
+# cause resource contention (memory, disk I/O) leading to hangs on CI.
+ZIG_COMPILE_LOCK_PATH = Path("/tmp/zig_compile.lock")
 
 ZIG_SRC_DIR = repo_root() / "src" / "faebryk" / "core" / "zig"
 
@@ -129,19 +134,37 @@ def test_zig_embedded(
             "Reproduce with: `python test/core/zig/test_zig_embedded.py "
             f'"{zig_file.name}" "{test_name}"`'
         )
-        compile_result = subprocess.run(
-            compile_cmd,
-            cwd=ZIG_SRC_DIR,
-            capture_output=False,
-        )
+
+        # Acquire lock to serialize Zig compilation across parallel workers
+        # Else parallel compilation might crash test system
+        # Lock timeout: 300 (5 min) - must be long enough for all 53 tests to run
+        #   since each test waits for all preceding tests to compile
+        # Compile timeout: 90s (normal compile is <10s, allow headroom for slow CI)
+        with global_lock(ZIG_COMPILE_LOCK_PATH, timeout_s=300):
+            try:
+                compile_result = subprocess.run(
+                    compile_cmd,
+                    cwd=ZIG_SRC_DIR,
+                    capture_output=False,
+                    timeout=90,
+                )
+            except subprocess.TimeoutExpired:
+                print("Compile TIMEOUT after 90s")
+                assert False, "Zig compilation timed out"
         if not compile_result.returncode == 0:
             print("Compile failed")
             assert False
 
-        result = subprocess.run(
-            [test_bin],
-            capture_output=False,
-        )
+        # Test execution doesn't need the lock - only compilation is resource-intensive
+        try:
+            result = subprocess.run(
+                [test_bin],
+                capture_output=False,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            print("Test execution TIMEOUT after 30s")
+            assert False, "Test execution timed out"
 
         if result.returncode != 0:
             from faebryk.libs.util import run_gdb

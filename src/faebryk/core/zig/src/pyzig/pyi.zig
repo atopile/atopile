@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub const PyiGenerator = struct {
     allocator: std.mem.Allocator,
-    output: std.ArrayList(u8),
+    output: std.array_list.Managed(u8),
 
     const Self = @This();
 
@@ -33,7 +33,7 @@ pub const PyiGenerator = struct {
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
             .allocator = allocator,
-            .output = std.ArrayList(u8).init(allocator),
+            .output = std.array_list.Managed(u8).init(allocator),
         };
     }
 
@@ -78,7 +78,7 @@ pub const PyiGenerator = struct {
         // Treat std.DoublyLinkedList(T) as list[T]
         if (ti == .@"struct" and @hasField(T, "first") and @hasField(T, "last") and @hasDecl(T, "Node")) {
             const NodeType = T.Node;
-            const Elem = std.meta.FieldType(NodeType, .data);
+            const Elem = @FieldType(NodeType, "data");
             try writer.writeAll("list[");
             try self.writeZigTypeToPython(writer, Elem);
             try writer.writeAll("]");
@@ -111,11 +111,11 @@ pub const PyiGenerator = struct {
             .@"struct" => {
                 const full_name = @typeName(T);
                 if (@hasField(T, "unmanaged")) {
-                    const unmanaged_type = std.meta.FieldType(T, .unmanaged);
+                    const unmanaged_type = @FieldType(T, "unmanaged");
                     if (@hasDecl(unmanaged_type, "KV")) {
                         const kv_type = unmanaged_type.KV;
-                        const key_type = std.meta.FieldType(kv_type, .key);
-                        const value_type = std.meta.FieldType(kv_type, .value);
+                        const key_type = @FieldType(kv_type, "key");
+                        const value_type = @FieldType(kv_type, "value");
                         try writer.writeAll("dict[");
                         try self.writeZigTypeToPython(writer, key_type);
                         try writer.writeAll(", ");
@@ -125,7 +125,7 @@ pub const PyiGenerator = struct {
                     }
                 }
                 if (@hasField(T, "items")) {
-                    const items_type = std.meta.FieldType(T, .items);
+                    const items_type = @FieldType(T, "items");
                     const item_info = @typeInfo(items_type);
                     if (item_info == .pointer and item_info.pointer.size == .slice) {
                         try writer.writeAll("list[");

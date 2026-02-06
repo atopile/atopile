@@ -46,7 +46,7 @@ const TypeElement = struct {
 };
 
 const TypeElementList = struct {
-    elements: std.ArrayList(TypeElement),
+    elements: std.array_list.Managed(TypeElement),
 
     fn equals(self: *const @This(), other: *const @This()) bool {
         if (self.elements.items.len != other.elements.items.len) return false;
@@ -66,7 +66,7 @@ const TypeElementList = struct {
 };
 
 const InstancePathList = struct {
-    elements: std.ArrayList(*BFSPath),
+    elements: std.array_list.Managed(*BFSPath),
 
     fn add_path(self: *@This(), path: *BFSPath) void {
         const path_last = path.get_last_node();
@@ -112,7 +112,7 @@ const TypePath = struct {
 
 const TypePathList = struct {
     allocator: std.mem.Allocator,
-    elements: std.ArrayList(*TypePath),
+    elements: std.array_list.Managed(*TypePath),
 
     fn add_element(self: *@This(), key: TypeElementList, value: InstancePathList) void {
         for (self.elements.items) |type_path| {
@@ -122,7 +122,7 @@ const TypePathList = struct {
         }
 
         var deduped = InstancePathList{
-            .elements = std.ArrayList(*BFSPath).init(value.elements.allocator),
+            .elements = std.array_list.Managed(*BFSPath).init(value.elements.allocator),
         };
         deduped.add_paths(value);
 
@@ -160,8 +160,8 @@ pub const PathFinder = struct {
     allocator: std.mem.Allocator,
     arena: std.heap.ArenaAllocator,
     visited_path_counter: u64,
-    current_bfs_paths: std.ArrayList(*BFSPath),
-    nodes_to_bfs: std.ArrayList(BoundNodeReference),
+    current_bfs_paths: std.array_list.Managed(*BFSPath),
+    nodes_to_bfs: std.array_list.Managed(BoundNodeReference),
     bfs_type_element_stack: TypeElementList,
     to_visit_list: TypePathList,
     visited_list: TypePathList,
@@ -177,18 +177,18 @@ pub const PathFinder = struct {
             .to_visit_list = undefined,
             .visited_list = undefined,
         };
-        self.current_bfs_paths = std.ArrayList(*BFSPath).init(allocator);
-        self.nodes_to_bfs = std.ArrayList(BoundNodeReference).init(allocator);
+        self.current_bfs_paths = std.array_list.Managed(*BFSPath).init(allocator);
+        self.nodes_to_bfs = std.array_list.Managed(BoundNodeReference).init(allocator);
         self.bfs_type_element_stack = TypeElementList{
-            .elements = std.ArrayList(TypeElement).init(self.arena.allocator()),
+            .elements = std.array_list.Managed(TypeElement).init(self.arena.allocator()),
         };
         self.to_visit_list = TypePathList{
             .allocator = self.arena.allocator(),
-            .elements = std.ArrayList(*TypePath).init(self.arena.allocator()),
+            .elements = std.array_list.Managed(*TypePath).init(self.arena.allocator()),
         };
         self.visited_list = TypePathList{
             .allocator = self.arena.allocator(),
-            .elements = std.ArrayList(*TypePath).init(self.arena.allocator()),
+            .elements = std.array_list.Managed(*TypePath).init(self.arena.allocator()),
         };
     }
 
@@ -219,7 +219,7 @@ pub const PathFinder = struct {
 
         const start_path = BFSPath.init(self.arena.allocator(), start_node) catch @panic("OOM");
         var first_instance_path_list = InstancePathList{
-            .elements = std.ArrayList(*BFSPath).init(self.arena.allocator()),
+            .elements = std.array_list.Managed(*BFSPath).init(self.arena.allocator()),
         };
         first_instance_path_list.add_path(start_path);
         self.to_visit_list.add_element(self.bfs_type_element_stack, first_instance_path_list);
@@ -243,7 +243,7 @@ pub const PathFinder = struct {
                 );
 
                 var visited_path_list = InstancePathList{
-                    .elements = std.ArrayList(*BFSPath).init(self.arena.allocator()),
+                    .elements = std.array_list.Managed(*BFSPath).init(self.arena.allocator()),
                 };
 
                 for (self.current_bfs_paths.items) |path| {
@@ -276,7 +276,7 @@ pub const PathFinder = struct {
                         const child_edge = EdgeComposition.get_parent_edge(child_node) orelse @panic("child edge not found");
                         const child_path = self.extend_path(path, last_node, child_edge);
                         var child_type_element_list = TypeElementList{
-                            .elements = std.ArrayList(TypeElement).init(self.arena.allocator()),
+                            .elements = std.array_list.Managed(TypeElement).init(self.arena.allocator()),
                         };
                         const type_items = type_path.type_element_list.elements.items;
                         if (type_items.len > 0) {
@@ -284,7 +284,7 @@ pub const PathFinder = struct {
                         }
 
                         var child_path_list = InstancePathList{
-                            .elements = std.ArrayList(*BFSPath).init(self.arena.allocator()),
+                            .elements = std.array_list.Managed(*BFSPath).init(self.arena.allocator()),
                         };
                         child_path_list.add_path(child_path);
 
@@ -316,7 +316,7 @@ pub const PathFinder = struct {
                         };
 
                         var type_element_list = TypeElementList{
-                            .elements = std.ArrayList(TypeElement).init(self.arena.allocator()),
+                            .elements = std.array_list.Managed(TypeElement).init(self.arena.allocator()),
                         };
 
                         for (type_path.type_element_list.elements.items) |element| {
@@ -326,7 +326,7 @@ pub const PathFinder = struct {
                         type_element_list.elements.append(type_element) catch @panic("OOM");
 
                         var parent_path_list = InstancePathList{
-                            .elements = std.ArrayList(*BFSPath).init(self.arena.allocator()),
+                            .elements = std.array_list.Managed(*BFSPath).init(self.arena.allocator()),
                         };
                         parent_path_list.add_path(parent_path);
 
@@ -347,7 +347,7 @@ pub const PathFinder = struct {
                     path.deinit();
                 }
                 self.current_bfs_paths.deinit();
-                self.current_bfs_paths = std.ArrayList(*BFSPath).init(self.allocator);
+                self.current_bfs_paths = std.array_list.Managed(*BFSPath).init(self.allocator);
             }
         }
 

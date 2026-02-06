@@ -1,5 +1,6 @@
 const py = @import("pybindings.zig");
 const std = @import("std");
+const compat = @import("compat");
 const linked_list = @import("linked_list.zig");
 const util = @import("util.zig");
 const pyzig = @import("pyzig.zig");
@@ -76,7 +77,7 @@ fn int_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comp
     const is_signed = info.signedness == .signed;
 
     const getter = struct {
-        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
+        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.c) ?*py.PyObject {
             const obj = castSelf(struct_type, self);
             const value = wrapperFieldValue(struct_type, FieldType, field_name_slice, obj);
             if (is_signed) {
@@ -89,7 +90,7 @@ fn int_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comp
     }.impl;
 
     const setter = struct {
-        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
+        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.c) c_int {
             const obj = castSelf(struct_type, self);
             if (value == null) return -1;
 
@@ -116,7 +117,7 @@ fn int_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comp
 fn enum_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime EnumType: type) py.PyGetSetDef {
     const field_name_slice = comptime sentinelToSlice(field_name);
     const getter = struct {
-        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
+        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.c) ?*py.PyObject {
             const obj = castSelf(struct_type, self);
             const val = wrapperFieldValue(struct_type, EnumType, field_name_slice, obj);
             const enum_str = @tagName(val);
@@ -125,7 +126,7 @@ fn enum_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, com
     }.impl;
 
     const setter = struct {
-        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
+        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.c) c_int {
             const obj = castSelf(struct_type, self);
             if (value == null) return -1;
 
@@ -154,7 +155,7 @@ fn enum_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, com
 fn str_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime FieldType: type) py.PyGetSetDef {
     const field_name_slice = comptime sentinelToSlice(field_name);
     const getter = struct {
-        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
+        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.c) ?*py.PyObject {
             const obj = castSelf(struct_type, self);
             const val = wrapperFieldValue(struct_type, FieldType, field_name_slice, obj);
             return py.PyUnicode_FromStringAndSize(val.ptr, @intCast(val.len));
@@ -162,7 +163,7 @@ fn str_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comp
     }.impl;
 
     const setter = struct {
-        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
+        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.c) c_int {
             const obj = castSelf(struct_type, self);
             if (value == null) return -1;
 
@@ -191,7 +192,7 @@ fn obj_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comp
 
     // create thin python object wrapper around the zig object
     const getter = struct {
-        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
+        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.c) ?*py.PyObject {
             const obj = castSelf(struct_type, self);
             const zigval_ptr = wrapperFieldPtr(struct_type, FieldType, field_name_slice, obj);
 
@@ -215,7 +216,7 @@ fn obj_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comp
 
     // copy the value from the python object to the zig object
     const setter = struct {
-        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
+        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.c) c_int {
             const obj = castSelf(struct_type, self);
             if (value == null) return -1;
 
@@ -237,7 +238,7 @@ fn obj_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comp
 fn float_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime FieldType: type) py.PyGetSetDef {
     const field_name_slice = comptime sentinelToSlice(field_name);
     const getter = struct {
-        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
+        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.c) ?*py.PyObject {
             const obj = castSelf(struct_type, self);
             const value = wrapperFieldValue(struct_type, FieldType, field_name_slice, obj);
             return py.PyFloat_FromDouble(@floatCast(value));
@@ -245,7 +246,7 @@ fn float_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, co
     }.impl;
 
     const setter = struct {
-        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
+        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.c) c_int {
             const obj = castSelf(struct_type, self);
             if (value == null) return -1;
             const new_val = py.PyFloat_AsDouble(value);
@@ -266,7 +267,7 @@ fn float_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, co
 fn bool_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime FieldType: type) py.PyGetSetDef {
     const field_name_slice = comptime sentinelToSlice(field_name);
     const getter = struct {
-        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
+        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.c) ?*py.PyObject {
             const obj = castSelf(struct_type, self);
             const val = wrapperFieldValue(struct_type, FieldType, field_name_slice, obj);
             if (val) return py.Py_True() else return py.Py_False();
@@ -274,7 +275,7 @@ fn bool_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, com
     }.impl;
 
     const setter = struct {
-        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
+        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.c) c_int {
             const obj = castSelf(struct_type, self);
             if (value == null) return -1;
             const is_true = py.PyObject_IsTrue(value);
@@ -304,7 +305,7 @@ fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const u8,
         "";
 
     const getter = struct {
-        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
+        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.c) ?*py.PyObject {
             const obj = castSelf(struct_type, self);
             const field_ptr = wrapperFieldPtr(struct_type, OptionalFieldType, field_name_slice, obj);
             const val = field_ptr.*;
@@ -342,7 +343,7 @@ fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const u8,
     }.impl;
 
     const setter = struct {
-        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
+        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.c) c_int {
             const obj = castSelf(struct_type, self);
             const field_ptr = wrapperFieldPtr(struct_type, OptionalFieldType, field_name_slice, obj);
 
@@ -407,14 +408,14 @@ fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const u8,
 fn linked_list_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime ChildType: type) py.PyGetSetDef {
     const field_name_slice = comptime sentinelToSlice(field_name);
     const child_info = @typeInfo(ChildType);
-    const FieldType = std.DoublyLinkedList(ChildType);
+    const FieldType = compat.DoublyLinkedList(ChildType);
     const type_name_for_registry = if (child_info == .@"struct")
         @typeName(ChildType) ++ "\x00"
     else
         "";
 
     const getter = struct {
-        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
+        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.c) ?*py.PyObject {
             const obj = castSelf(struct_type, self);
             const list_ptr = wrapperFieldPtr(struct_type, FieldType, field_name_slice, obj);
             const element_type_obj = if (child_info == .@"struct")
@@ -426,12 +427,12 @@ fn linked_list_prop(comptime struct_type: type, comptime field_name: [*:0]const 
     }.impl;
 
     const setter = struct {
-        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
+        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.c) c_int {
             const obj = castSelf(struct_type, self);
             if (value == null) return -1;
 
             // Generic: accept any Python sequence and build a DoublyLinkedList
-            const LL = std.DoublyLinkedList(ChildType);
+            const LL = compat.DoublyLinkedList(ChildType);
             const NodeType = LL.Node;
             var ll = LL{};
 
@@ -534,7 +535,7 @@ fn struct_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, c
     const type_name_for_registry = @typeName(FieldType) ++ "\x00";
 
     const getter = struct {
-        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
+        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.c) ?*py.PyObject {
             const obj = castSelf(struct_type, self);
             const nested_data = wrapperFieldPtr(struct_type, FieldType, field_name_slice, obj);
             const type_obj = pyzig.ensureTypeObject(FieldType, type_name_for_registry, "Failed to initialize nested type");
@@ -551,7 +552,7 @@ fn struct_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, c
     }.impl;
 
     const setter = struct {
-        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
+        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.c) c_int {
             const obj = castSelf(struct_type, self);
             if (value == null) return -1;
 
@@ -591,7 +592,7 @@ pub fn genProp(comptime WrapperType: type, comptime FieldType: type, comptime fi
         .optional => |opt| return optional_prop(WrapperType, field_name, opt.child),
         .@"struct" => if (linked_list.isLinkedList(FieldType)) {
             const NodeType = FieldType.Node;
-            const child_t = std.meta.FieldType(NodeType, .data);
+            const child_t = @FieldType(NodeType, "data");
             return linked_list_prop(WrapperType, field_name, child_t);
         } else {
             return struct_prop(WrapperType, field_name, FieldType);

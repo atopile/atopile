@@ -126,8 +126,8 @@ pub const PyMemberDef = extern struct {
 /// Getter/Setter descriptor for properties
 pub const PyGetSetDef = extern struct {
     name: ?[*:0]const u8,
-    get: ?*const fn (?*PyObject, ?*anyopaque) callconv(.C) ?*PyObject,
-    set: ?*const fn (?*PyObject, ?*PyObject, ?*anyopaque) callconv(.C) c_int,
+    get: ?*const fn (?*PyObject, ?*anyopaque) callconv(.c) ?*PyObject,
+    set: ?*const fn (?*PyObject, ?*PyObject, ?*anyopaque) callconv(.c) c_int,
     doc: ?[*:0]const u8 = null,
     closure: ?*anyopaque = null,
 };
@@ -147,20 +147,20 @@ pub const PyTypeObject = extern struct {
     tp_name: [*:0]const u8,
     tp_basicsize: isize,
     tp_itemsize: isize = 0,
-    tp_dealloc: ?*const fn (*PyObject) callconv(.C) void = null,
+    tp_dealloc: ?*const fn (*PyObject) callconv(.c) void = null,
     tp_vectorcall_offset: isize = 0,
     tp_getattr: ?*anyopaque = null,
     tp_setattr: ?*anyopaque = null,
     tp_as_async: ?*anyopaque = null,
-    tp_repr: ?*const fn (?*PyObject) callconv(.C) ?*PyObject = null,
+    tp_repr: ?*const fn (?*PyObject) callconv(.c) ?*PyObject = null,
     tp_as_number: ?*anyopaque = null,
     tp_as_sequence: ?*anyopaque = null,
     tp_as_mapping: ?*anyopaque = null,
     tp_hash: ?*anyopaque = null,
     tp_call: ?*anyopaque = null,
-    tp_str: ?*const fn (?*PyObject) callconv(.C) ?*PyObject = null,
-    tp_getattro: ?*const fn (?*PyObject, ?*PyObject) callconv(.C) ?*PyObject = null,
-    tp_setattro: ?*const fn (?*PyObject, ?*PyObject, ?*PyObject) callconv(.C) c_int = null,
+    tp_str: ?*const fn (?*PyObject) callconv(.c) ?*PyObject = null,
+    tp_getattro: ?*const fn (?*PyObject, ?*PyObject) callconv(.c) ?*PyObject = null,
+    tp_setattro: ?*const fn (?*PyObject, ?*PyObject, ?*PyObject) callconv(.c) c_int = null,
     tp_as_buffer: ?*anyopaque = null,
     tp_flags: c_ulong,
     tp_doc: ?[*:0]const u8 = null,
@@ -178,9 +178,9 @@ pub const PyTypeObject = extern struct {
     tp_descr_get: ?*anyopaque = null,
     tp_descr_set: ?*anyopaque = null,
     tp_dictoffset: isize = 0,
-    tp_init: ?*const fn (?*PyObject, ?*PyObject, ?*PyObject) callconv(.C) c_int = null,
-    tp_alloc: ?*const fn (*PyTypeObject, isize) callconv(.C) ?*PyObject = PyType_GenericAlloc,
-    tp_new: ?*const fn (*PyTypeObject, ?*PyObject, ?*PyObject) callconv(.C) ?*PyObject = PyType_GenericNew,
+    tp_init: ?*const fn (?*PyObject, ?*PyObject, ?*PyObject) callconv(.c) c_int = null,
+    tp_alloc: ?*const fn (*PyTypeObject, isize) callconv(.c) ?*PyObject = PyType_GenericAlloc,
+    tp_new: ?*const fn (*PyTypeObject, ?*PyObject, ?*PyObject) callconv(.c) ?*PyObject = PyType_GenericNew,
     tp_free: ?*anyopaque = null,
     tp_is_gc: ?*anyopaque = null,
     tp_bases: ?*PyObject = null,
@@ -360,14 +360,14 @@ pub const Py_EQ: c_int = 2;
 
 // Sequence protocol for lists
 pub const PySequenceMethods = extern struct {
-    sq_length: ?*const fn (?*PyObject) callconv(.C) isize = null,
-    sq_concat: ?*const fn (?*PyObject, ?*PyObject) callconv(.C) ?*PyObject = null,
-    sq_repeat: ?*const fn (?*PyObject, isize) callconv(.C) ?*PyObject = null,
-    sq_item: ?*const fn (?*PyObject, isize) callconv(.C) ?*PyObject = null,
-    sq_ass_item: ?*const fn (?*PyObject, isize, ?*PyObject) callconv(.C) c_int = null,
-    sq_contains: ?*const fn (?*PyObject, ?*PyObject) callconv(.C) c_int = null,
-    sq_inplace_concat: ?*const fn (?*PyObject, ?*PyObject) callconv(.C) ?*PyObject = null,
-    sq_inplace_repeat: ?*const fn (?*PyObject, isize) callconv(.C) ?*PyObject = null,
+    sq_length: ?*const fn (?*PyObject) callconv(.c) isize = null,
+    sq_concat: ?*const fn (?*PyObject, ?*PyObject) callconv(.c) ?*PyObject = null,
+    sq_repeat: ?*const fn (?*PyObject, isize) callconv(.c) ?*PyObject = null,
+    sq_item: ?*const fn (?*PyObject, isize) callconv(.c) ?*PyObject = null,
+    sq_ass_item: ?*const fn (?*PyObject, isize, ?*PyObject) callconv(.c) c_int = null,
+    sq_contains: ?*const fn (?*PyObject, ?*PyObject) callconv(.c) c_int = null,
+    sq_inplace_concat: ?*const fn (?*PyObject, ?*PyObject) callconv(.c) ?*PyObject = null,
+    sq_inplace_repeat: ?*const fn (?*PyObject, isize) callconv(.c) ?*PyObject = null,
 };
 
 // Additional Python ABC registration functions
@@ -379,5 +379,5 @@ pub extern fn PySequence_Size(obj: ?*PyObject) isize;
 pub extern fn PySequence_GetItem(obj: ?*PyObject, index: isize) ?*PyObject;
 pub extern fn PySequence_Check(obj: ?*PyObject) c_int;
 
-pub const PyMethodDefFn = fn (self: ?*PyObject, args: ?*PyObject) callconv(.C) ?*PyObject;
-pub const PyMethodDefFnKW = fn (self: ?*PyObject, args: ?*PyObject, kwargs: ?*PyObject) callconv(.C) ?*PyObject;
+pub const PyMethodDefFn = fn (self: ?*PyObject, args: ?*PyObject) callconv(.c) ?*PyObject;
+pub const PyMethodDefFnKW = fn (self: ?*PyObject, args: ?*PyObject, kwargs: ?*PyObject) callconv(.c) ?*PyObject;

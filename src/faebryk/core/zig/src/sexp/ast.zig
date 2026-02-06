@@ -73,7 +73,7 @@ pub const SExp = struct {
         const xy_special_case_column_limit: usize = 99;
         const consecutive_token_wrap_threshold: usize = 72;
 
-        var formatted = std.ArrayList(u8).init(allocator);
+        var formatted = std.array_list.Managed(u8).init(allocator);
         defer formatted.deinit();
         try formatted.ensureTotalCapacity(source.len);
 
@@ -116,7 +116,7 @@ pub const SExp = struct {
         const isShortFormToken = struct {
             fn call(src: []const u8, pos: usize) bool {
                 var seek = pos + 1;
-                var token = std.ArrayList(u8).init(std.heap.page_allocator);
+                var token = std.array_list.Managed(u8).init(std.heap.page_allocator);
                 defer token.deinit();
 
                 while (seek < src.len and std.ascii.isAlphabetic(src[seek])) {
@@ -269,7 +269,7 @@ pub const SExp = struct {
     }
 
     pub fn pretty(self: SExp, allocator: std.mem.Allocator) ![]const u8 {
-        var in = std.ArrayList(u8).init(allocator);
+        var in = std.array_list.Managed(u8).init(allocator);
         defer in.deinit();
 
         try self.str(in.writer());
@@ -307,7 +307,7 @@ fn _write_escaped_string(str: []const u8, writer: anytype) !void {
 }
 
 fn _unescape_string(allocator: std.mem.Allocator, str: []const u8) ![]const u8 {
-    var unescaped = std.ArrayList(u8).init(allocator);
+    var unescaped = std.array_list.Managed(u8).init(allocator);
     // Pre-allocate with known maximum capacity since unescaping can only remove characters
     try unescaped.ensureTotalCapacity(str.len);
 
@@ -381,7 +381,7 @@ pub const Parser = struct {
     }
 
     fn parseList(self: *Parser, start_location: TokenLocation) ParseError!SExp {
-        var items = std.ArrayList(SExp).init(self.allocator);
+        var items = std.array_list.Managed(SExp).init(self.allocator);
         defer items.deinit();
 
         while (self.position < self.tokens.len) {
