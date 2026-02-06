@@ -428,7 +428,7 @@ function PinPad({ pin, originX, originY, highlightedPins, isSelected, onPinClick
 
   return (
     <div
-      style={containerStyle}
+      style={{ ...containerStyle, '--pin-color': color } as React.CSSProperties}
       className={`pinout-pin-unit${faded ? ' faded' : ''}${isSelected ? ' selected' : ''}${ncClass}`}
       onClick={e => onPinClick(pin, e)}
       title={`Pin ${pin.number}: ${pin.name}${fnText ? ' — ' + fnText : ''}\n${pin.alternate_functions.map(f => f.name + ' (' + f.type + ')').join('\n')}`}

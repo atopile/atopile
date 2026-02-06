@@ -328,23 +328,24 @@
 .pinout-pin-unit {
   z-index: 2;
   transition: opacity 0.15s, background 0.1s;
-  background: rgba(255,255,255,0.04);
+  /* Tinted background using the pin's bus color */
+  background: color-mix(in srgb, var(--pin-color, #888) 12%, transparent);
   border-radius: 3px;
   overflow: hidden;
   gap: 0;
 }
 .pinout-pin-unit:hover {
-  background: rgba(255,255,255,0.08);
+  background: color-mix(in srgb, var(--pin-color, #888) 22%, transparent);
 }
 .pinout-pin-unit.faded {
   opacity: 0.15;
 }
 .pinout-pin-unit.selected {
-  background: rgba(255,255,255,0.1);
-  box-shadow: 0 0 0 1px var(--accent, #f95015);
+  background: color-mix(in srgb, var(--pin-color, #888) 25%, transparent);
+  box-shadow: 0 0 0 1px var(--pin-color, var(--accent, #f95015));
 }
 .pinout-pin-unit.nc {
-  background: transparent;
+  background: rgba(255,255,255,0.03);
 }
 
 /* Color accent bar — the bus-color stripe on the chip-body side */
