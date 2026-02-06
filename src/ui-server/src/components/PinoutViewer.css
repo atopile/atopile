@@ -203,10 +203,7 @@
 .pinout-canvas {
   flex: 1;
   position: relative;
-  overflow: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden;
 }
 
 .pinout-menu-btn {
@@ -283,9 +280,7 @@
 /* (header removed - info is on the chip body and side panel) */
 
 .pinout-diagram-scroll {
-  overflow: auto;
-  max-width: 100%;
-  max-height: calc(100vh - 60px);
+  /* No scrolling — pan/zoom handles navigation */
 }
 
 .pinout-diagram {
