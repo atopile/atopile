@@ -178,6 +178,64 @@ def install(
     print("Remember to reload your extension!")
 
 
+@dev_app.command()
+@capture("cli:dev_worktree_start", "cli:dev_worktree_end")
+def worktree(
+    name: str = typer.Argument(..., help="Branch/worktree name to create."),
+    path: Path | None = typer.Option(
+        None,
+        "--path",
+        help="Explicit worktree path. Defaults to <parent-of-main-worktree>/<name>.",
+    ),
+    start_point: str = typer.Option(
+        "HEAD",
+        "--start-point",
+        help="Git ref to branch from when creating a new branch.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Base directory used when --path is not provided.",
+    ),
+    source_root: Path | None = typer.Option(
+        None,
+        "--source-root",
+        help="Main worktree to clone caches/venv from (auto-detected by default).",
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite existing cloned cache targets if needed."
+    ),
+    skip_editable_install: bool = typer.Option(
+        False,
+        "--skip-editable-install",
+        help="Skip editable install step in the cloned worktree venv.",
+    ),
+):
+    """
+    Create a fast development worktree with CoW-cloned `.venv` and Zig artifacts.
+    """
+    repo_root = Path(__file__).resolve().parents[3]
+    script = repo_root / "scripts" / "worktree_fast.sh"
+    if not script.exists():
+        raise typer.BadParameter(f"worktree helper script not found: {script}")
+
+    cmd = [str(script), name, "--start-point", start_point]
+    if path is not None:
+        cmd.extend(["--path", str(path)])
+    if base_dir is not None:
+        cmd.extend(["--base-dir", str(base_dir)])
+    if source_root is not None:
+        cmd.extend(["--source-root", str(source_root)])
+    if force:
+        cmd.append("--force")
+    if skip_editable_install:
+        cmd.append("--skip-editable-install")
+
+    result = subprocess.run(cmd, cwd=repo_root)
+    if result.returncode != 0:
+        raise typer.Exit(result.returncode)
+
+
 def _env_truthy(name: str) -> bool | None:
     val = os.getenv(name)
     if val is None:
