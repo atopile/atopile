@@ -46,6 +46,7 @@ interface PinData {
   y: number | null
   w: number | null
   h: number | null
+  rotation: number
 }
 
 interface BusData {

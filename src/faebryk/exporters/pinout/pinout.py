@@ -706,6 +706,7 @@ def export_pinout_json(
                         "y": pad_geo["y"] if pad_geo else None,
                         "w": pad_geo["w"] if pad_geo else None,
                         "h": pad_geo["h"] if pad_geo else None,
+                        "rotation": pad_geo["rotation"] if pad_geo else 0,
                     }
                 )
 
