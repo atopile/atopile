@@ -1,0 +1,7 @@
+requires-atopile: ^0.14.0
+paths:
+  src: ./
+  layout: ./layout
+builds:
+  default:
+    entry: pinout_test.ato:PinoutTest

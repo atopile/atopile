@@ -58,6 +58,10 @@ export interface TreeNode {
   sublabel?: string;
   meta?: Record<string, string>;
   resolved?: boolean;
+  /** Group ID for nodes that should be visually grouped (e.g. same parent module). */
+  group?: string;
+  /** Group display label (e.g. "mcu"). */
+  groupLabel?: string;
 }
 
 export interface TreeEdge {

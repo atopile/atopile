@@ -33,7 +33,6 @@ from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom
 from faebryk.exporters.bom.json_bom import write_json_bom
 from faebryk.exporters.documentation.datasheets import export_datasheets
-
 from faebryk.exporters.documentation.i2c import export_i2c_tree_json
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
 from faebryk.exporters.pcb.kicad.artifacts import (
@@ -53,6 +52,7 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
+from faebryk.exporters.pinout.pinout import export_pinout_json
 from faebryk.exporters.power_tree.power_tree import (
     export_power_tree,
     export_power_tree_json,
@@ -364,8 +364,12 @@ class Muster:
                         )
 
         subgraph = self.dependency_dag.get_subgraph(
-            selector_func=lambda name: name in selected_targets
-            or any(alias in selected_targets for alias in self.targets[name].aliases)
+            selector_func=lambda name: (
+                name in selected_targets
+                or any(
+                    alias in selected_targets for alias in self.targets[name].aliases
+                )
+            )
         )
 
         sorted_names = subgraph.topologically_sorted()
@@ -1181,6 +1185,22 @@ def generate_i2c_tree(ctx: BuildStepContext) -> None:
 
 
 @muster.register(
+    "pinout",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
+def generate_pinout(ctx: BuildStepContext) -> None:
+    """Generate pinout visualization as JSON."""
+    app = ctx.require_app()
+    solver = ctx.require_solver()
+    export_pinout_json(
+        app,
+        solver,
+        json_path=config.build.paths.output_base.with_suffix(".pinout.json"),
+    )
+
+
+@muster.register(
     "default",
     aliases=["__default__"],  # for backwards compatibility
     dependencies=[
@@ -1190,6 +1210,7 @@ def generate_i2c_tree(ctx: BuildStepContext) -> None:
         generate_power_tree,
         generate_datasheets,
         generate_i2c_tree,
+        generate_pinout,
     ],
     virtual=True,
 )

@@ -165,6 +165,26 @@ interface ThreeDModelBuildResultMessage {
   error?: string | null;
 }
 
+interface OpenPowerTreeMessage {
+  type: 'openPowerTree';
+}
+
+interface OpenI2CTreeMessage {
+  type: 'openI2CTree';
+}
+
+interface OpenLayoutPreviewMessage {
+  type: 'openLayoutPreview';
+}
+
+interface Open3DPreviewMessage {
+  type: 'open3DPreview';
+}
+
+interface OpenPinoutExplorerMessage {
+  type: 'openPinoutExplorer';
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -192,7 +212,12 @@ type WebviewMessage =
   | ListFilesMessage
   | LoadDirectoryMessage
   | GetAtopileSettingsMessage
-  | ThreeDModelBuildResultMessage;
+  | ThreeDModelBuildResultMessage
+  | OpenPowerTreeMessage
+  | OpenI2CTreeMessage
+  | OpenLayoutPreviewMessage
+  | Open3DPreviewMessage
+  | OpenPinoutExplorerMessage;
 
 /**
  * Check if we're running in development mode.
@@ -596,8 +621,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'showBackendMenu':
         void vscode.commands.executeCommand('atopile.backendStatus');
         break;
-      case 'showBackendMenu':
-        void vscode.commands.executeCommand('atopile.backendStatus');
+      case 'openPowerTree':
+        void vscode.commands.executeCommand('atopile.power_tree_preview');
+        break;
+      case 'openI2CTree':
+        void vscode.commands.executeCommand('atopile.i2c_tree_preview');
+        break;
+      case 'openLayoutPreview':
+        void vscode.commands.executeCommand('atopile.kicanvas_preview');
+        break;
+      case 'open3DPreview':
+        void vscode.commands.executeCommand('atopile.model_viewer_preview');
+        break;
+      case 'openPinoutExplorer':
+        void vscode.commands.executeCommand('atopile.pinout_explorer');
         break;
       case 'openInSimpleBrowser':
         void vscode.commands.executeCommand('simpleBrowser.show', message.url);

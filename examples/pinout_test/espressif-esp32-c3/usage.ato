@@ -1,0 +1,47 @@
+#pragma experiment("FOR_LOOP")
+#pragma experiment("BRIDGE_CONNECT")
+
+import ElectricPower
+import Resistor
+import I2C
+import SPI
+import I2S
+
+from "atopile/espressif-esp32-c3/espressif-esp32-c3-mini.ato" import ESP32_C3_MINI_1
+from "atopile/espressif-esp32-c3/espressif-esp32-c3-wroom.ato" import ESP32_C3_WROOM_02
+
+module Usage:
+
+    # Interfaces
+    power_3v3 = new ElectricPower
+    power_3v3.voltage = 3.3V +/- 10%
+    i2c = new I2C
+    spi = new SPI
+    i2s = new I2S
+
+    # I2C pull-up resistors
+    pullup_resistors = new Resistor[2]
+    for res in pullup_resistors:
+        res.resistance = 10kohm +/- 1%
+        res.package = "R0402"
+    i2c.sda.reference.hv ~> pullup_resistors[0] ~> i2c.sda.line
+    i2c.scl.reference.hv ~> pullup_resistors[1] ~> i2c.scl.line
+
+    """
+    Example of how to use the driver for ESP32-C3-MINI-1 modules
+    """
+    mini_module = new ESP32_C3_MINI_1
+    power_3v3 ~ mini_module.power
+    mini_module.i2c ~ i2c
+    mini_module.spi ~ spi
+    mini_module.i2s ~ i2s
+
+    """
+    Example of how to use the driver for ESP32-C3-WROOM-02 modules
+    """
+    wroom_module = new ESP32_C3_WROOM_02
+
+    power_3v3 ~ wroom_module.power
+    wroom_module.i2c ~ i2c
+    wroom_module.spi ~ spi
+    wroom_module.i2s ~ i2s
