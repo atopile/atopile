@@ -72,7 +72,6 @@ function getPinColor(pin: PinData): string {
 // ── Scale: convert mm to px ────────────────────────────────────────────
 
 const SCALE = 24 // px per mm
-const LABEL_OFFSET = 4 // px gap between pad edge and label
 
 // ── Main Component ─────────────────────────────────────────────────────
 
