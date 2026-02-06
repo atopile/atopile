@@ -548,11 +548,37 @@ def export_pinout_json(
             )
 
             # Build pad_name -> (lead_electrical, lead_display_name) mapping
+            # The display name should be the signal name from the .ato code
+            # (e.g. "EN", "GND", "IO0", "P3V3") not the raw pad number.
             pad_to_lead: dict[str, fabll.Node] = {}
             pad_to_lead_name: dict[str, str] = {}
             for lead_node in lead_nodes:
                 lead_trait = lead_node.get_trait(F.Lead.is_lead)
+                # Try multiple approaches to get a meaningful name:
+                # 1. The lead's own name (from get_lead_name)
                 lead_name = lead_trait.get_lead_name()
+                # 2. The node's name in the parent hierarchy
+                try:
+                    node_name = lead_node.get_name(accept_no_parent=True)
+                    if node_name and not node_name.isdigit():
+                        lead_name = node_name
+                except Exception:
+                    pass
+                # 3. Walk up to find a named parent that isn't the component
+                if lead_name.isdigit():
+                    try:
+                        parent_info = lead_node.get_parent()
+                        if parent_info:
+                            parent_node, child_name = parent_info
+                            if child_name and not child_name.isdigit():
+                                lead_name = child_name
+                            elif parent_node:
+                                pname = parent_node.get_name(accept_no_parent=True)
+                                if pname and not pname.isdigit():
+                                    lead_name = pname
+                    except Exception:
+                        pass
+
                 if lead_trait.has_trait(F.Lead.has_associated_pads):
                     assoc_pads = lead_trait.get_trait(
                         F.Lead.has_associated_pads

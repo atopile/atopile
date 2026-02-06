@@ -383,11 +383,15 @@
   width: 120px;
   min-width: 120px;
 }
-/* Left side: label is first, right-aligned */
+/* Left side (row-reverse): label text should be right-aligned */
 .pinout-pin-unit[style*="row-reverse"] .pinout-pin-label {
   text-align: right;
   padding-right: 0;
   padding-left: 4px;
+}
+/* Left side: pin number right-aligned too */
+.pinout-pin-unit[style*="row-reverse"] .pinout-pin-num {
+  text-align: center;
 }
 /* NC pins — dimmer */
 .pinout-pin-unit.nc .pinout-pin-label {

@@ -377,44 +377,50 @@ function PinPad({ pin, originX, originY, highlightedPins, isSelected, onPinClick
   // For left side, it's reversed: [label][number][accent]
   // For top/bottom, the unit is rotated as a whole.
 
-  let containerStyle: React.CSSProperties = {
+  // All sides: position at pad center, auto-size to content.
+  // The accent bar is always on the chip-body side.
+  // Left: row-reverse (accent right, label left, overflows leftward)
+  // Right/Top/Bottom: row (accent left, label right)
+  // Top/Bottom: rotated ±90° around pad center
+
+  const base: React.CSSProperties = {
     position: 'absolute',
-    display: 'flex',
+    display: 'inline-flex',
     alignItems: 'center',
     height: padH,
     cursor: 'pointer',
+    left: cx - padW / 2,
+    top: cy - padH / 2,
   }
 
+  let containerStyle: React.CSSProperties
+
   if (isLeft) {
+    // Anchor right edge at pad right edge, content grows leftward
     containerStyle = {
-      ...containerStyle,
-      flexDirection: 'row-reverse', // accent on right (nearest body), label on left
-      left: 0,
-      width: cx + padW / 2,  // stretches from left edge to pad's right edge
-      top: cy - padH / 2,
+      ...base,
+      flexDirection: 'row-reverse',
+      // Override: position right edge at pad right edge
+      left: undefined,
+      right: undefined,
+      // Use transform to flip anchor point: position at pad left edge, shift left by own width
+      left: cx + padW / 2,
+      transform: 'translateX(-100%)',
     }
   } else if (isRight) {
-    containerStyle = {
-      ...containerStyle,
-      flexDirection: 'row', // accent on left (nearest body), label on right
-      left: cx - padW / 2,
-      top: cy - padH / 2,
-    }
+    containerStyle = { ...base, flexDirection: 'row' }
   } else if (isTop) {
     containerStyle = {
-      ...containerStyle,
+      ...base,
       flexDirection: 'row',
-      left: cx - padW / 2,
-      top: cy - padH / 2,
       transform: 'rotate(-90deg)',
       transformOrigin: `${padW / 2}px ${padH / 2}px`,
     }
-  } else if (isBottom) {
+  } else {
+    // bottom
     containerStyle = {
-      ...containerStyle,
+      ...base,
       flexDirection: 'row',
-      left: cx - padW / 2,
-      top: cy - padH / 2,
       transform: 'rotate(90deg)',
       transformOrigin: `${padW / 2}px ${padH / 2}px`,
     }
@@ -435,8 +441,8 @@ function PinPad({ pin, originX, originY, highlightedPins, isSelected, onPinClick
       <span className="pinout-pin-accent" style={{ background: color }} />
       {/* Pin number */}
       <span className="pinout-pin-num">{pin.number}</span>
-      {/* Function label — show for left/right, hide for NC, compact for top/bottom */}
-      {!isNC && (isLeft || isRight) && (
+      {/* Function label — show for all sides, hide for NC */}
+      {!isNC && (
         <span className="pinout-pin-label">{label}</span>
       )}
     </div>
