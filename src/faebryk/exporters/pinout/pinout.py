@@ -176,6 +176,24 @@ def _trace_lead_interfaces(
 
         for connected_node, path in connected.items():
             try:
+                # Only include interfaces that belong to the component's
+                # parent module (the driver) OR are direct external
+                # connections (one hop outside the parent, like a bus
+                # variable at the app level). Skip nodes deep inside
+                # other unrelated components.
+                if comp_parent is not None:
+                    try:
+                        hierarchy = connected_node.get_hierarchy()
+                        ancestors = [a for a, _ in hierarchy]
+                        is_in_parent = any(comp_parent.is_same(a) for a in ancestors)
+                        if not is_in_parent:
+                            # Allow direct external connections (path length 1)
+                            # but skip deep traversals into other components
+                            if path.length > 1:
+                                continue
+                    except Exception:
+                        pass
+
                 iface_path = _get_interface_path(connected_node, component_node)
                 if not iface_path:
                     continue
