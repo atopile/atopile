@@ -9,13 +9,12 @@ Usage:
 
 Creates a git worktree optimized for atopile development by reusing:
   - main tree virtualenv via CoW clone (isolated on write)
-  - zig build cache via CoW clone
-  - zig outputs via CoW clone
+  - zig outputs via CoW clone + source hash (skips recompile)
 
 It also writes:
-  - .atopile-worktree-env.sh (exports PYTHONPATH + ZIG_NORECOMPILE=1)
+  - .atopile-worktree-env.sh (exports PYTHONPATH)
   - ato (wrapper that runs .venv/bin/ato with the env above)
-  - editable install for this worktree via: python -m pip install -e <worktree>
+  - venv path rewriting (replaces editable install; no recompile)
 EOF
 }
 
@@ -79,7 +78,6 @@ create_helper_files() {
 #!/usr/bin/env sh
 WORKTREE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 export PYTHONPATH="$WORKTREE_ROOT/src:$WORKTREE_ROOT/tools/atopile_mkdocs_plugin${PYTHONPATH:+:$PYTHONPATH}"
-export ZIG_NORECOMPILE="${ZIG_NORECOMPILE:-1}"
 EOF
     chmod +x "$worktree_path/.atopile-worktree-env.sh"
 
@@ -93,23 +91,48 @@ EOF
     chmod +x "$worktree_path/ato"
 }
 
-install_editable() {
-    local worktree_path="$1"
-    local python_bin="$worktree_path/.venv/bin/python"
+rewrite_venv_paths() {
+    local source_root="$1"
+    local worktree_path="$2"
+    local venv="$worktree_path/.venv"
 
-    if "$python_bin" -m pip --version >/dev/null 2>&1; then
-        "$python_bin" -m pip install -e "$worktree_path"
-        return 0
+    # 1. Rewrite .pth files (editable install source paths)
+    local site_packages
+    site_packages="$(find "$venv/lib" -maxdepth 2 -name site-packages -type d | head -1)"
+    if [[ -n "$site_packages" ]]; then
+        for pth in "$site_packages"/_atopile*.pth; do
+            [[ -f "$pth" ]] || continue
+            sed -i "s|$source_root|$worktree_path|g" "$pth"
+            log "rewrote: $pth"
+        done
+
+        # 2. Rewrite direct_url.json (PEP 660 editable metadata)
+        for durl in "$site_packages"/atopile*.dist-info/direct_url.json; do
+            [[ -f "$durl" ]] || continue
+            sed -i "s|$source_root|$worktree_path|g" "$durl"
+            log "rewrote: $durl"
+        done
     fi
 
-    if command -v uv >/dev/null 2>&1; then
-        uv pip install --python "$python_bin" -e "$worktree_path"
-        return 0
-    fi
+    # 3. Rewrite shebangs in all venv bin scripts
+    local count=0
+    for script in "$venv/bin/"*; do
+        [[ -f "$script" ]] || continue
+        # Only process text files (skip binaries)
+        if file -b --mime-type "$script" 2>/dev/null | grep -q text; then
+            if grep -q "$source_root" "$script" 2>/dev/null; then
+                sed -i "s|$source_root|$worktree_path|g" "$script"
+                count=$((count + 1))
+            fi
+        fi
+    done
+    log "rewrote shebangs/paths in $count scripts under .venv/bin/"
 
-    log "pip not found in worktree venv; trying ensurepip"
-    "$python_bin" -m ensurepip --upgrade
-    "$python_bin" -m pip install -e "$worktree_path"
+    # 4. Rewrite pyvenv.cfg if it references the source root
+    if [[ -f "$venv/pyvenv.cfg" ]] && grep -q "$source_root" "$venv/pyvenv.cfg" 2>/dev/null; then
+        sed -i "s|$source_root|$worktree_path|g" "$venv/pyvenv.cfg"
+        log "rewrote: $venv/pyvenv.cfg"
+    fi
 }
 
 NAME=""
@@ -214,20 +237,28 @@ fi
 log "cloning venv (CoW if supported)"
 cow_clone_dir "$SOURCE_ROOT/.venv" "$WORKTREE_PATH/.venv" "$FORCE" || die "failed to clone .venv"
 
-if [[ -d "$SOURCE_ROOT/src/faebryk/core/zig/.zig-cache" ]]; then
-    cow_clone_dir \
-        "$SOURCE_ROOT/src/faebryk/core/zig/.zig-cache" \
-        "$WORKTREE_PATH/src/faebryk/core/zig/.zig-cache" \
-        "$FORCE" || die "failed to clone zig cache"
-else
-    log "zig cache not found in source tree; skipping cache clone"
-fi
-
 if [[ -d "$SOURCE_ROOT/src/faebryk/core/zig/zig-out" ]]; then
     cow_clone_dir \
         "$SOURCE_ROOT/src/faebryk/core/zig/zig-out" \
         "$WORKTREE_PATH/src/faebryk/core/zig/zig-out" \
         "$FORCE" || die "failed to clone zig-out"
+
+    # Write source hash so Python's build-on-import knows the .so files
+    # match the current source and skips the expensive zig build.
+    log "computing zig source hash"
+    ZIG_DIR="$WORKTREE_PATH/src/faebryk/core/zig"
+    SOURCE_HASH=$("$WORKTREE_PATH/.venv/bin/python" -c "
+import hashlib, pathlib, sys
+d = pathlib.Path('$ZIG_DIR')
+h = hashlib.sha256()
+for p in sorted([*d.joinpath('src').rglob('*.zig'), d / 'build.zig']):
+    h.update(p.relative_to(d).as_posix().encode())
+    h.update(p.read_bytes())
+h.update(b'ReleaseFast')
+print(h.hexdigest())
+")
+    echo "$SOURCE_HASH" > "$WORKTREE_PATH/src/faebryk/core/zig/zig-out/lib/.zig-source-hash"
+    log "wrote zig source hash: $SOURCE_HASH"
 else
     log "zig-out not found in source tree; skipping zig-out clone"
 fi
@@ -235,10 +266,10 @@ fi
 create_helper_files "$WORKTREE_PATH"
 
 if [[ "$SKIP_EDITABLE_INSTALL" == "0" ]]; then
-    log "installing editable package into worktree venv"
-    install_editable "$WORKTREE_PATH"
+    log "rewriting venv paths: $SOURCE_ROOT → $WORKTREE_PATH"
+    rewrite_venv_paths "$SOURCE_ROOT" "$WORKTREE_PATH"
 else
-    log "skipping editable install (--skip-editable-install)"
+    log "skipping venv path rewrite (--skip-editable-install)"
 fi
 
 cat <<EOF
@@ -252,5 +283,5 @@ Use this worktree with:
 Notes:
   - This creates an isolated venv clone for the worktree.
   - Clone is CoW when supported by your filesystem/tools, otherwise a full copy.
-  - Editable install is scoped to this worktree.
+  - Venv paths are rewritten in-place (no recompile needed).
 EOF
