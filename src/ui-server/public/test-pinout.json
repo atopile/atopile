@@ -1,0 +1,2322 @@
+{
+  "version": "1.0",
+  "components": [
+    {
+      "id": "c0",
+      "name": "mcu.esp32_c3",
+      "module_type": "Espressif_Systems_ESP32_C3_MINI_1_N4_package",
+      "designator": "U1",
+      "package": "WIFIM-SMD_ESP32-C3-MINI-1.kicad_mod",
+      "pin_count": 53,
+      "total_pads": 53,
+      "geometry": {
+        "x": -5.738,
+        "y": -4.738,
+        "width": 11.477,
+        "height": 9.477,
+        "pad_bbox": {
+          "min_x": -5.95,
+          "min_y": -4.95,
+          "max_x": 5.95,
+          "max_y": 4.95
+        }
+      },
+      "pins": [
+        {
+          "number": "1",
+          "name": "1",
+          "side": "left",
+          "position": 1,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": -5.9,
+          "y": -4.0,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "2",
+          "name": "2",
+          "side": "left",
+          "position": 2,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": -5.9,
+          "y": -3.2,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "3",
+          "name": "3",
+          "side": "left",
+          "position": 3,
+          "type": "power",
+          "active_function": {
+            "name": "power_radio.hv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.hv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.hv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.hv",
+              "type": "Power"
+            },
+            {
+              "name": "power.hv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.hv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.hv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.vcc",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.vcc",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.vcc",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.vcc",
+              "type": "Power"
+            },
+            {
+              "name": "power.vcc",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.vcc",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": -5.9,
+          "y": -2.4,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "4",
+          "name": "4",
+          "side": "left",
+          "position": 4,
+          "type": "signal",
+          "active_function": null,
+          "alternate_functions": [],
+          "pad_count": null,
+          "x": -5.9,
+          "y": -1.6,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "5",
+          "name": "5",
+          "side": "left",
+          "position": 5,
+          "type": "signal",
+          "active_function": {
+            "name": "mspi[2].data[1]",
+            "type": "SPI"
+          },
+          "alternate_functions": [
+            {
+              "name": "gpio[2]",
+              "type": "GPIO"
+            },
+            {
+              "name": "adc1[2]",
+              "type": "Analog"
+            },
+            {
+              "name": "mspi[2].data[1]",
+              "type": "SPI"
+            }
+          ],
+          "pad_count": null,
+          "x": -5.9,
+          "y": -0.8,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "6",
+          "name": "6",
+          "side": "left",
+          "position": 6,
+          "type": "signal",
+          "active_function": {
+            "name": "i2s.ws",
+            "type": "I2S"
+          },
+          "alternate_functions": [
+            {
+              "name": "adc1[3]",
+              "type": "Analog"
+            },
+            {
+              "name": "gpio[3]",
+              "type": "GPIO"
+            },
+            {
+              "name": "i2s.ws",
+              "type": "I2S"
+            }
+          ],
+          "pad_count": null,
+          "x": -5.9,
+          "y": 0.0,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "7",
+          "name": "7",
+          "side": "left",
+          "position": 7,
+          "type": "signal",
+          "active_function": null,
+          "alternate_functions": [],
+          "pad_count": null,
+          "x": -5.9,
+          "y": 0.8,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "8",
+          "name": "8",
+          "side": "left",
+          "position": 8,
+          "type": "signal",
+          "active_function": {
+            "name": "jtag.n_trst",
+            "type": "JTAG"
+          },
+          "alternate_functions": [
+            {
+              "name": "enable",
+              "type": "Control"
+            },
+            {
+              "name": "jtag.n_trst",
+              "type": "JTAG"
+            }
+          ],
+          "pad_count": null,
+          "x": -5.9,
+          "y": 1.6,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "9",
+          "name": "9",
+          "side": "left",
+          "position": 9,
+          "type": "signal",
+          "active_function": null,
+          "alternate_functions": [],
+          "pad_count": null,
+          "x": -5.9,
+          "y": 2.4,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "10",
+          "name": "10",
+          "side": "left",
+          "position": 10,
+          "type": "signal",
+          "active_function": null,
+          "alternate_functions": [],
+          "pad_count": null,
+          "x": -5.9,
+          "y": 3.2,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "11",
+          "name": "11",
+          "side": "left",
+          "position": 11,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": -5.9,
+          "y": 4.0,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "12",
+          "name": "12",
+          "side": "bottom",
+          "position": 0,
+          "type": "signal",
+          "active_function": {
+            "name": "i2s.sck",
+            "type": "I2S"
+          },
+          "alternate_functions": [
+            {
+              "name": "adc1[0]",
+              "type": "Analog"
+            },
+            {
+              "name": "i2s.sck",
+              "type": "I2S"
+            },
+            {
+              "name": "gpio[0]",
+              "type": "GPIO"
+            }
+          ],
+          "pad_count": null,
+          "x": -4.8,
+          "y": 4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "13",
+          "name": "13",
+          "side": "bottom",
+          "position": 1,
+          "type": "signal",
+          "active_function": {
+            "name": "i2s.sd",
+            "type": "I2S"
+          },
+          "alternate_functions": [
+            {
+              "name": "adc1[1]",
+              "type": "Analog"
+            },
+            {
+              "name": "gpio[1]",
+              "type": "GPIO"
+            },
+            {
+              "name": "i2s.sd",
+              "type": "I2S"
+            }
+          ],
+          "pad_count": null,
+          "x": -4.0,
+          "y": 4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "14",
+          "name": "14",
+          "side": "bottom",
+          "position": 2,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": -3.2,
+          "y": 4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "15",
+          "name": "15",
+          "side": "bottom",
+          "position": 3,
+          "type": "signal",
+          "active_function": null,
+          "alternate_functions": [],
+          "pad_count": null,
+          "x": -2.4,
+          "y": 4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "16",
+          "name": "16",
+          "side": "bottom",
+          "position": 4,
+          "type": "signal",
+          "active_function": {
+            "name": "mspi[2].chip_select",
+            "type": "SPI"
+          },
+          "alternate_functions": [
+            {
+              "name": "gpio[10]",
+              "type": "GPIO"
+            },
+            {
+              "name": "mspi[2].chip_select",
+              "type": "SPI"
+            },
+            {
+              "name": "spi.sclk",
+              "type": "SPI"
+            }
+          ],
+          "pad_count": null,
+          "x": -1.6,
+          "y": 4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "17",
+          "name": "17",
+          "side": "bottom",
+          "position": 5,
+          "type": "signal",
+          "active_function": null,
+          "alternate_functions": [],
+          "pad_count": null,
+          "x": -0.8,
+          "y": 4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "18",
+          "name": "18",
+          "side": "bottom",
+          "position": 6,
+          "type": "signal",
+          "active_function": {
+            "name": "mspi[2].data[3]",
+            "type": "SPI"
+          },
+          "alternate_functions": [
+            {
+              "name": "mspi[2].data[3]",
+              "type": "SPI"
+            },
+            {
+              "name": "gpio[4]",
+              "type": "GPIO"
+            },
+            {
+              "name": "adc1[4]",
+              "type": "Analog"
+            },
+            {
+              "name": "jtag.tms",
+              "type": "JTAG"
+            }
+          ],
+          "pad_count": null,
+          "x": 0.0,
+          "y": 4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "19",
+          "name": "19",
+          "side": "bottom",
+          "position": 7,
+          "type": "signal",
+          "active_function": {
+            "name": "i2c.sda",
+            "type": "I2C"
+          },
+          "alternate_functions": [
+            {
+              "name": "jtag.tdi",
+              "type": "JTAG"
+            },
+            {
+              "name": "i2c.sda",
+              "type": "I2C"
+            },
+            {
+              "name": "i2c_bus.sda",
+              "type": "I2C"
+            },
+            {
+              "name": "gpio[5]",
+              "type": "GPIO"
+            },
+            {
+              "name": "mspi[2].data[2]",
+              "type": "SPI"
+            },
+            {
+              "name": "adc2",
+              "type": "Analog"
+            }
+          ],
+          "pad_count": null,
+          "x": 0.8,
+          "y": 4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "20",
+          "name": "20",
+          "side": "bottom",
+          "position": 8,
+          "type": "signal",
+          "active_function": {
+            "name": "mspi[2].clock",
+            "type": "SPI"
+          },
+          "alternate_functions": [
+            {
+              "name": "mspi[2].clock",
+              "type": "SPI"
+            },
+            {
+              "name": "i2c.scl",
+              "type": "I2C"
+            },
+            {
+              "name": "gpio[6]",
+              "type": "GPIO"
+            },
+            {
+              "name": "i2c_bus.scl",
+              "type": "I2C"
+            },
+            {
+              "name": "jtag.tck",
+              "type": "JTAG"
+            }
+          ],
+          "pad_count": null,
+          "x": 1.6,
+          "y": 4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "21",
+          "name": "21",
+          "side": "bottom",
+          "position": 9,
+          "type": "signal",
+          "active_function": {
+            "name": "mspi[2].data[0]",
+            "type": "SPI"
+          },
+          "alternate_functions": [
+            {
+              "name": "mspi[2].data[0]",
+              "type": "SPI"
+            },
+            {
+              "name": "jtag.tdo",
+              "type": "JTAG"
+            },
+            {
+              "name": "gpio[7]",
+              "type": "GPIO"
+            },
+            {
+              "name": "spi.mosi",
+              "type": "SPI"
+            }
+          ],
+          "pad_count": null,
+          "x": 2.4,
+          "y": 4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "22",
+          "name": "22",
+          "side": "bottom",
+          "position": 10,
+          "type": "signal",
+          "active_function": {
+            "name": "spi.miso",
+            "type": "SPI"
+          },
+          "alternate_functions": [
+            {
+              "name": "spi.miso",
+              "type": "SPI"
+            },
+            {
+              "name": "gpio[8]",
+              "type": "GPIO"
+            }
+          ],
+          "pad_count": null,
+          "x": 3.2,
+          "y": 4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "23",
+          "name": "23",
+          "side": "bottom",
+          "position": 11,
+          "type": "signal",
+          "active_function": {
+            "name": "gpio[9]",
+            "type": "GPIO"
+          },
+          "alternate_functions": [
+            {
+              "name": "gpio[9]",
+              "type": "GPIO"
+            }
+          ],
+          "pad_count": null,
+          "x": 4.0,
+          "y": 4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "24",
+          "name": "24",
+          "side": "bottom",
+          "position": 12,
+          "type": "signal",
+          "active_function": null,
+          "alternate_functions": [],
+          "pad_count": null,
+          "x": 4.8,
+          "y": 4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "25",
+          "name": "25",
+          "side": "right",
+          "position": 1,
+          "type": "signal",
+          "active_function": null,
+          "alternate_functions": [],
+          "pad_count": null,
+          "x": 5.9,
+          "y": 4.0,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "26",
+          "name": "26",
+          "side": "right",
+          "position": 2,
+          "type": "signal",
+          "active_function": {
+            "name": "usb_if.d.n",
+            "type": "USB"
+          },
+          "alternate_functions": [
+            {
+              "name": "gpio[18]",
+              "type": "GPIO"
+            },
+            {
+              "name": "usb_if.d.n",
+              "type": "USB"
+            }
+          ],
+          "pad_count": null,
+          "x": 5.9,
+          "y": 3.2,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "27",
+          "name": "27",
+          "side": "right",
+          "position": 3,
+          "type": "signal",
+          "active_function": {
+            "name": "usb_if.d.p",
+            "type": "USB"
+          },
+          "alternate_functions": [
+            {
+              "name": "usb_if.d.p",
+              "type": "USB"
+            },
+            {
+              "name": "gpio[19]",
+              "type": "GPIO"
+            }
+          ],
+          "pad_count": null,
+          "x": 5.9,
+          "y": 2.4,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "28",
+          "name": "28",
+          "side": "right",
+          "position": 4,
+          "type": "signal",
+          "active_function": null,
+          "alternate_functions": [],
+          "pad_count": null,
+          "x": 5.9,
+          "y": 1.6,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "29",
+          "name": "29",
+          "side": "right",
+          "position": 5,
+          "type": "signal",
+          "active_function": null,
+          "alternate_functions": [],
+          "pad_count": null,
+          "x": 5.9,
+          "y": 0.8,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "30",
+          "name": "30",
+          "side": "right",
+          "position": 6,
+          "type": "signal",
+          "active_function": {
+            "name": "uart[0].base_uart.rx",
+            "type": "UART"
+          },
+          "alternate_functions": [
+            {
+              "name": "gpio[20]",
+              "type": "GPIO"
+            },
+            {
+              "name": "uart[0].base_uart.rx",
+              "type": "UART"
+            }
+          ],
+          "pad_count": null,
+          "x": 5.9,
+          "y": 0.0,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "31",
+          "name": "31",
+          "side": "right",
+          "position": 7,
+          "type": "signal",
+          "active_function": {
+            "name": "uart[0].base_uart.tx",
+            "type": "UART"
+          },
+          "alternate_functions": [
+            {
+              "name": "uart[0].base_uart.tx",
+              "type": "UART"
+            },
+            {
+              "name": "gpio[21]",
+              "type": "GPIO"
+            }
+          ],
+          "pad_count": null,
+          "x": 5.9,
+          "y": -0.8,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "32",
+          "name": "32",
+          "side": "right",
+          "position": 8,
+          "type": "signal",
+          "active_function": null,
+          "alternate_functions": [],
+          "pad_count": null,
+          "x": 5.9,
+          "y": -1.6,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "33",
+          "name": "33",
+          "side": "right",
+          "position": 9,
+          "type": "signal",
+          "active_function": null,
+          "alternate_functions": [],
+          "pad_count": null,
+          "x": 5.9,
+          "y": -2.4,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "34",
+          "name": "34",
+          "side": "right",
+          "position": 10,
+          "type": "signal",
+          "active_function": null,
+          "alternate_functions": [],
+          "pad_count": null,
+          "x": 5.9,
+          "y": -3.2,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "35",
+          "name": "35",
+          "side": "right",
+          "position": 11,
+          "type": "signal",
+          "active_function": null,
+          "alternate_functions": [],
+          "pad_count": null,
+          "x": 5.9,
+          "y": -4.0,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "36",
+          "name": "36",
+          "side": "top",
+          "position": 0,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": 4.8,
+          "y": -4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "37",
+          "name": "37",
+          "side": "top",
+          "position": 1,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": 4.0,
+          "y": -4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "38",
+          "name": "38",
+          "side": "top",
+          "position": 2,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": 3.2,
+          "y": -4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "39",
+          "name": "39",
+          "side": "top",
+          "position": 3,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": 2.4,
+          "y": -4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "40",
+          "name": "40",
+          "side": "top",
+          "position": 4,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": 1.6,
+          "y": -4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "41",
+          "name": "41",
+          "side": "top",
+          "position": 5,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": 0.8,
+          "y": -4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "42",
+          "name": "42",
+          "side": "top",
+          "position": 6,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": 0.0,
+          "y": -4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "43",
+          "name": "43",
+          "side": "top",
+          "position": 7,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": -0.8,
+          "y": -4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "44",
+          "name": "44",
+          "side": "top",
+          "position": 8,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": -1.6,
+          "y": -4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "45",
+          "name": "45",
+          "side": "top",
+          "position": 10,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": -2.4,
+          "y": -4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "46",
+          "name": "46",
+          "side": "top",
+          "position": 11,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": -3.2,
+          "y": -4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "47",
+          "name": "47",
+          "side": "top",
+          "position": 12,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": -4.0,
+          "y": -4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "48",
+          "name": "48",
+          "side": "top",
+          "position": 13,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": -4.8,
+          "y": -4.9,
+          "w": 0.4,
+          "h": 0.8
+        },
+        {
+          "number": "49",
+          "name": "49",
+          "side": "top",
+          "position": 9,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": -1.98,
+          "y": -1.98,
+          "w": 0.01,
+          "h": 0.01
+        },
+        {
+          "number": "50",
+          "name": "50",
+          "side": "right",
+          "position": 12,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": 5.95,
+          "y": -4.95,
+          "w": 0.7,
+          "h": 0.7
+        },
+        {
+          "number": "51",
+          "name": "51",
+          "side": "right",
+          "position": 0,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": 5.95,
+          "y": 4.95,
+          "w": 0.7,
+          "h": 0.7
+        },
+        {
+          "number": "52",
+          "name": "52",
+          "side": "left",
+          "position": 12,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": -5.95,
+          "y": 4.95,
+          "w": 0.7,
+          "h": 0.7
+        },
+        {
+          "number": "53",
+          "name": "53",
+          "side": "left",
+          "position": 0,
+          "type": "ground",
+          "active_function": {
+            "name": "power_radio.lv",
+            "type": "Power"
+          },
+          "alternate_functions": [
+            {
+              "name": "power_radio.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power_analog.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_cpu.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_rtc.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_radio.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power_3v3.gnd",
+              "type": "Power"
+            },
+            {
+              "name": "power.lv",
+              "type": "Power"
+            },
+            {
+              "name": "power.gnd",
+              "type": "Power"
+            }
+          ],
+          "pad_count": null,
+          "x": -5.95,
+          "y": -4.95,
+          "w": 0.7,
+          "h": 0.7
+        }
+      ],
+      "buses": [
+        {
+          "id": "mcu_esp32_c3_package_Power_power_radio",
+          "type": "Power",
+          "name": "power_radio",
+          "pin_numbers": [
+            "1",
+            "2",
+            "3",
+            "11",
+            "14",
+            "36",
+            "37",
+            "38",
+            "39",
+            "40",
+            "41",
+            "42",
+            "43",
+            "44",
+            "45",
+            "46",
+            "47",
+            "48",
+            "49",
+            "50",
+            "51",
+            "52",
+            "53"
+          ]
+        },
+        {
+          "id": "mcu_esp32_c3_package_SPI_mspi[2]",
+          "type": "SPI",
+          "name": "mspi[2]",
+          "pin_numbers": [
+            "5",
+            "16",
+            "18",
+            "20",
+            "21"
+          ]
+        },
+        {
+          "id": "mcu_esp32_c3_package_I2S_i2s",
+          "type": "I2S",
+          "name": "i2s",
+          "pin_numbers": [
+            "6",
+            "12",
+            "13"
+          ]
+        },
+        {
+          "id": "mcu_esp32_c3_package_JTAG_jtag",
+          "type": "JTAG",
+          "name": "jtag",
+          "pin_numbers": [
+            "8"
+          ]
+        },
+        {
+          "id": "mcu_esp32_c3_package_I2C_i2c",
+          "type": "I2C",
+          "name": "i2c",
+          "pin_numbers": [
+            "19"
+          ]
+        },
+        {
+          "id": "mcu_esp32_c3_package_SPI_spi",
+          "type": "SPI",
+          "name": "spi",
+          "pin_numbers": [
+            "22"
+          ]
+        },
+        {
+          "id": "mcu_esp32_c3_package_GPIO_gpio[9]",
+          "type": "GPIO",
+          "name": "gpio[9]",
+          "pin_numbers": [
+            "23"
+          ]
+        },
+        {
+          "id": "mcu_esp32_c3_package_USB_usb_if",
+          "type": "USB",
+          "name": "usb_if",
+          "pin_numbers": [
+            "26",
+            "27"
+          ]
+        },
+        {
+          "id": "mcu_esp32_c3_package_UART_uart[0]",
+          "type": "UART",
+          "name": "uart[0]",
+          "pin_numbers": [
+            "30",
+            "31"
+          ]
+        }
+      ]
+    }
+  ]
+}
