@@ -255,13 +255,17 @@ export function PinoutViewer({ data }: PinoutViewerProps) {
           </button>
         )}
         <TransformWrapper
-          initialScale={0.9}
-          minScale={0.3}
-          maxScale={5}
+          initialScale={0.8}
+          minScale={0.2}
+          maxScale={8}
           centerOnInit
+          centerZoomedOut={false}
+          limitToBounds={false}
           wheel={{ step: 0.08 }}
           panning={{ velocityDisabled: true }}
           doubleClick={{ disabled: true }}
+          alignmentAnimation={{ disabled: true }}
+          velocityAnimation={{ disabled: true }}
         >
           {({ zoomIn, zoomOut, resetTransform }) => (
             <>
@@ -271,8 +275,7 @@ export function PinoutViewer({ data }: PinoutViewerProps) {
                 <button onClick={() => resetTransform()} title="Reset view">&#8634;</button>
               </div>
               <TransformComponent
-                wrapperStyle={{ width: '100%', height: '100%' }}
-                contentStyle={{ width: 'fit-content', height: 'fit-content' }}
+                wrapperStyle={{ width: '100%', height: '100%', overflow: 'visible' }}
               >
                 <ChipDiagram
                   comp={comp}
