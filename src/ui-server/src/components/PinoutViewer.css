@@ -379,10 +379,7 @@
   text-overflow: ellipsis;
   padding-right: 4px;
   line-height: 1;
-  /* Fixed width for uniform sizing */
-  width: 110px;
-  min-width: 110px;
-  max-width: 110px;
+  max-width: 130px;
 }
 /* Left side: label is first, right-aligned */
 .pinout-pin-unit[style*="row-reverse"] .pinout-pin-label {

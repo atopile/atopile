@@ -422,7 +422,8 @@ function PinPad({ pin, originX, originY, highlightedPins, isSelected, onPinClick
   }
 
   const hasFunction = !!fnText
-  const ncClass = (!hasFunction && pin.type === 'signal') ? ' nc' : ''
+  const isNC = !hasFunction && pin.type === 'signal'
+  const ncClass = isNC ? ' nc' : ''
 
   return (
     <div
@@ -435,8 +436,10 @@ function PinPad({ pin, originX, originY, highlightedPins, isSelected, onPinClick
       <span className="pinout-pin-accent" style={{ background: color }} />
       {/* Pin number */}
       <span className="pinout-pin-num">{pin.number}</span>
-      {/* Function / name label */}
-      <span className="pinout-pin-label">{label}</span>
+      {/* Function label — show for left/right, hide for NC, compact for top/bottom */}
+      {!isNC && (isLeft || isRight) && (
+        <span className="pinout-pin-label">{label}</span>
+      )}
     </div>
   )
 }
