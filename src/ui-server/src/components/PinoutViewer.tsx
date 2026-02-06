@@ -366,7 +366,6 @@ function PinPad({ pin, originX, originY, highlightedPins, isSelected, onPinClick
   const isLeft = pin.side === 'left'
   const isRight = pin.side === 'right'
   const isTop = pin.side === 'top'
-  const isBottom = pin.side === 'bottom'
 
   // All pins use the NATIVE pad dimensions (no swapping).
   // Left/right: container is horizontal, pad is vertical (padW x padH).
@@ -400,10 +399,7 @@ function PinPad({ pin, originX, originY, highlightedPins, isSelected, onPinClick
     containerStyle = {
       ...base,
       flexDirection: 'row-reverse',
-      // Override: position right edge at pad right edge
-      left: undefined,
-      right: undefined,
-      // Use transform to flip anchor point: position at pad left edge, shift left by own width
+      // Position right edge at pad right edge, content grows leftward
       left: cx + padW / 2,
       transform: 'translateX(-100%)',
     }
