@@ -334,7 +334,7 @@ function PanZoomCanvas({ children, onClick, panelOpen, setPanelOpen }: PanZoomCa
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      onClick={(e) => { if (!isPanning.current) onClick() }}
+      onClick={() => { if (!isPanning.current) onClick() }}
     >
       {!panelOpen && (
         <button className="pinout-menu-btn" onClick={e => { e.stopPropagation(); setPanelOpen(true) }}>
