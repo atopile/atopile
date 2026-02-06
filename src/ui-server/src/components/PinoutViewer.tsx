@@ -7,7 +7,6 @@
  */
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
-import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch'
 import './PinoutViewer.css'
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -248,51 +247,114 @@ export function PinoutViewer({ data }: PinoutViewerProps) {
       </div>
 
       {/* Main canvas with zoom/pan */}
-      <div className="pinout-canvas" onClick={handleBgClick}>
-        {!panelOpen && (
-          <button className="pinout-menu-btn" onClick={e => { e.stopPropagation(); setPanelOpen(true) }}>
-            &#9776;
-          </button>
-        )}
-        <TransformWrapper
-          initialScale={0.8}
-          minScale={0.2}
-          maxScale={8}
-          centerOnInit
-          centerZoomedOut={false}
-          limitToBounds={false}
-          wheel={{ step: 0.08 }}
-          panning={{ velocityDisabled: true }}
-          doubleClick={{ disabled: true }}
-          alignmentAnimation={{ disabled: true }}
-          velocityAnimation={{ disabled: true }}
-        >
-          {({ zoomIn, zoomOut, resetTransform }) => (
-            <>
-              <div className="pinout-zoom-controls">
-                <button onClick={() => zoomIn()} title="Zoom in">+</button>
-                <button onClick={() => zoomOut()} title="Zoom out">&minus;</button>
-                <button onClick={() => resetTransform()} title="Reset view">&#8634;</button>
-              </div>
-              <TransformComponent
-                wrapperStyle={{ width: '100%', height: '100%', overflow: 'visible' }}
-              >
-                <ChipDiagram
-                  comp={comp}
-                  highlightedPins={highlightedPins}
-                  selectedPin={selectedPin}
-                  onPinClick={handlePinClick}
-                />
-              </TransformComponent>
-            </>
-          )}
-        </TransformWrapper>
-      </div>
+      <PanZoomCanvas onClick={handleBgClick} panelOpen={panelOpen} setPanelOpen={setPanelOpen}>
+        <ChipDiagram
+          comp={comp}
+          highlightedPins={highlightedPins}
+          selectedPin={selectedPin}
+          onPinClick={handlePinClick}
+        />
+      </PanZoomCanvas>
 
       {/* Detail popup */}
       {selectedPin && popupPos && (
         <PinDetail pin={selectedPin} pos={popupPos} onClose={() => { setSelectedPin(null); setPopupPos(null) }} />
       )}
+    </div>
+  )
+}
+
+// ── Pan/Zoom Canvas — simple native implementation ─────────────────────
+
+interface PanZoomCanvasProps {
+  children: React.ReactNode
+  onClick: () => void
+  panelOpen: boolean
+  setPanelOpen: (v: boolean) => void
+}
+
+function PanZoomCanvas({ children, onClick, panelOpen, setPanelOpen }: PanZoomCanvasProps) {
+  const [scale, setScale] = useState(0.8)
+  const [translate, setTranslate] = useState({ x: 0, y: 0 })
+  const isPanning = useRef(false)
+  const lastMouse = useRef({ x: 0, y: 0 })
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault()
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+
+    const mouseX = e.clientX - rect.left
+    const mouseY = e.clientY - rect.top
+
+    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9
+    const newScale = Math.max(0.1, Math.min(10, scale * zoomFactor))
+
+    // Zoom toward mouse position
+    const scaleChange = newScale / scale
+    setTranslate(prev => ({
+      x: mouseX - scaleChange * (mouseX - prev.x),
+      y: mouseY - scaleChange * (mouseY - prev.y),
+    }))
+    setScale(newScale)
+  }, [scale])
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button === 0 || e.button === 1) { // left or middle click
+      isPanning.current = true
+      lastMouse.current = { x: e.clientX, y: e.clientY }
+      e.preventDefault()
+    }
+  }, [])
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isPanning.current) return
+    const dx = e.clientX - lastMouse.current.x
+    const dy = e.clientY - lastMouse.current.y
+    lastMouse.current = { x: e.clientX, y: e.clientY }
+    setTranslate(prev => ({ x: prev.x + dx, y: prev.y + dy }))
+  }, [])
+
+  const handleMouseUp = useCallback(() => {
+    isPanning.current = false
+  }, [])
+
+  const resetView = useCallback(() => {
+    setScale(0.8)
+    setTranslate({ x: 0, y: 0 })
+  }, [])
+
+  return (
+    <div
+      ref={containerRef}
+      className="pinout-canvas"
+      onWheel={handleWheel}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      onClick={(e) => { if (!isPanning.current) onClick() }}
+    >
+      {!panelOpen && (
+        <button className="pinout-menu-btn" onClick={e => { e.stopPropagation(); setPanelOpen(true) }}>
+          &#9776;
+        </button>
+      )}
+      <div className="pinout-zoom-controls">
+        <button onClick={(e) => { e.stopPropagation(); setScale(s => Math.min(10, s * 1.3)) }}>+</button>
+        <button onClick={(e) => { e.stopPropagation(); setScale(s => Math.max(0.1, s / 1.3)) }}>&minus;</button>
+        <button onClick={(e) => { e.stopPropagation(); resetView() }}>&#8634;</button>
+      </div>
+      <div
+        className="pinout-zoom-content"
+        style={{
+          transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
+          transformOrigin: '0 0',
+        }}
+      >
+        {children}
+      </div>
     </div>
   )
 }

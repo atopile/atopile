@@ -230,6 +230,15 @@
   color: var(--vscode-editor-foreground, #d4d4d4);
 }
 
+/* Zoom content — transformed child of canvas */
+.pinout-zoom-content {
+  will-change: transform;
+  cursor: grab;
+}
+.pinout-zoom-content:active {
+  cursor: grabbing;
+}
+
 /* Zoom controls */
 .pinout-zoom-controls {
   position: absolute;
