@@ -15,9 +15,9 @@ That's it. The Docker build compiles everything from source (wheel + extension) 
 
 ## What's Included
 
-- **OpenVSCode Server 1.106.3** — full VS Code in the browser
+- **OpenVSCode Server 1.105.1** — full VS Code in the browser
 - **Pre-installed atopile extension** — syntax highlighting, LSP, webviews
-- **Python 3.13** with atopile CLI via uv
+- **Python 3.14** with atopile CLI via uv
 - **KiCad 9.0.7** for PCB workflows (headless)
 - **Example project** — a quickstart `.ato` project seeded on first run
 

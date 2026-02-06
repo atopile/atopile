@@ -8,7 +8,7 @@ on:
       openvscode_version:
         description: 'OpenVSCode Server version'
         required: false
-        default: '1.106.3'
+        default: '1.105.1'
       kicad_version:
         description: 'KiCad version'
         required: false
@@ -72,7 +72,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            OPENVSCODE_VERSION=${{ inputs.openvscode_version || '1.106.3' }}
+            OPENVSCODE_VERSION=${{ inputs.openvscode_version || '1.105.1' }}
             KICAD_VERSION=${{ inputs.kicad_version || '9.0.7' }}
             ATOPILE_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha

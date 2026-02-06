@@ -12,7 +12,7 @@ services:
       context: ..
       dockerfile: web-ide/Dockerfile
       args:
-        OPENVSCODE_VERSION: "1.106.3"
+        OPENVSCODE_VERSION: "1.105.1"
         KICAD_VERSION: "9.0.7"
         ATOPILE_VERSION: "0.0.0dev"
     image: atopile-web-ide:dev

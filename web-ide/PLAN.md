@@ -22,7 +22,7 @@ Self-hosted, browser-based VS Code environment for atopile using [OpenVSCode Ser
 ┌─────────────────────────────────────────────────────────────────┐
 │              Docker Container: atopile-web-ide                   │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │  OpenVSCode Server v1.106.3 (port 3000)                   │  │
+│  │  OpenVSCode Server v1.105.1 (port 3000)                   │  │
 │  │  - Extensions: atopile (VSIX), Python                      │  │
 │  │  - Default folder: /home/openvscode-server/workspace       │  │
 │  └───────────────────────────────────────────────────────────┘  │
@@ -104,8 +104,8 @@ Key design decisions:
 - [x] Create `.github/workflows/web-ide.yml`
 - [x] Create `workspace/` example project
 - [x] Add `.dockerignore` at repo root
-- [ ] Test locally: `cd web-ide && docker compose up --build`
-- [ ] Verify all test cases
+- [x] Test locally: `cd web-ide && docker compose up --build`
+- [x] Verify all test cases
 
 ## Testing
 

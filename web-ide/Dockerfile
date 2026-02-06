@@ -4,7 +4,7 @@
 # Build context must be the REPO ROOT (not web-ide/).
 # Example: docker build -f web-ide/Dockerfile .
 
-ARG OPENVSCODE_VERSION=1.106.3
+ARG OPENVSCODE_VERSION=1.105.1
 ARG KICAD_VERSION=9.0.7
 ARG ATOPILE_VERSION=0.0.0dev
 
@@ -29,6 +29,8 @@ ENV SETUPTOOLS_SCM_PRETEND_VERSION=${ATOPILE_VERSION}
 
 # Copy only what's needed for the wheel build
 COPY pyproject.toml /src/pyproject.toml
+COPY LICENSE /src/LICENSE
+COPY README.md /src/README.md
 COPY src/faebryk /src/src/faebryk
 COPY src/atopile /src/src/atopile
 
@@ -50,12 +52,16 @@ COPY src/ui-server /src/src/ui-server
 WORKDIR /src/src/vscode-atopile
 RUN npm ci && \
     npm run vscode:prepublish && \
+    mkdir -p /vsix && \
     npx vsce package --out /vsix/
 
 # ──────────────────────────────────────────────────────────────────
 # Stage 4: Final image on KiCad base
 # ──────────────────────────────────────────────────────────────────
 FROM ghcr.io/kicad/kicad:${KICAD_VERSION}
+
+# KiCad image may use a non-root user; switch to root for system setup
+USER root
 
 # Environment
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -64,17 +70,19 @@ ENV HOME=/home/openvscode-server
 ENV OPENVSCODE_SERVER_ROOT=/home/.openvscode-server
 ENV PATH=${OPENVSCODE_SERVER_ROOT}/bin:${HOME}/.local/bin:$PATH
 
-# Install runtime dependencies
+# Install runtime + build dependencies (build deps removed after pip install)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     ca-certificates \
+    build-essential \
+    cmake \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
 RUN useradd -m -s /bin/bash -d ${HOME} openvscode-server && \
     mkdir -p ${OPENVSCODE_SERVER_ROOT} && \
-    chown -R openvscode-server:openvscode-server ${HOME}
+    chown -R openvscode-server:openvscode-server ${HOME} ${OPENVSCODE_SERVER_ROOT}
 
 # Copy OpenVSCode Server from stage 1
 COPY --from=openvscode --chown=openvscode-server:openvscode-server \
@@ -89,9 +97,11 @@ COPY --from=wheel-builder --chown=openvscode-server:openvscode-server \
 COPY --from=vsix-builder --chown=openvscode-server:openvscode-server \
     /vsix/*.vsix /tmp/artifacts/
 
-# Copy scripts and default workspace
+# Copy scripts, branding, and default workspace
 COPY --chown=openvscode-server:openvscode-server \
     web-ide/scripts/ /tmp/scripts/
+COPY --chown=openvscode-server:openvscode-server \
+    web-ide/branding/ /tmp/branding/
 COPY --chown=openvscode-server:openvscode-server \
     web-ide/workspace/ /tmp/default-workspace/
 
@@ -106,6 +116,9 @@ RUN uv tool install --python 3.14 /tmp/artifacts/atopile-*.whl
 # Install VS Code extensions
 RUN /tmp/scripts/install-extensions.sh
 
+# Apply atopile branding (favicon, title, manifest)
+RUN /tmp/branding/apply-branding.sh
+
 # Copy default VS Code settings
 RUN mkdir -p ${OPENVSCODE_SERVER_ROOT}/data/Machine && \
     cp /tmp/scripts/settings.json ${OPENVSCODE_SERVER_ROOT}/data/Machine/settings.json
@@ -118,7 +131,7 @@ RUN cp /tmp/scripts/entrypoint.sh ${HOME}/.local/bin/entrypoint.sh && \
 RUN mkdir -p ${HOME}/workspace
 
 # Clean up build artifacts (keep default-workspace for entrypoint seeding)
-RUN rm -rf /tmp/artifacts /tmp/scripts
+RUN rm -rf /tmp/artifacts /tmp/scripts /tmp/branding
 
 # Expose OpenVSCode Server port
 EXPOSE 3000
