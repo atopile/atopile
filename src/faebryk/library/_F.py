@@ -20,6 +20,8 @@ from faebryk.library.NumberDomain import NumberDomain
 from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.is_sink import is_sink
 from faebryk.library.is_source import is_source
+from faebryk.library.is_i2c_controller import is_i2c_controller
+from faebryk.library.is_i2c_target import is_i2c_target
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.Signal import Signal
@@ -123,6 +125,8 @@ __all__ = [
     "has_part_removed",
     "is_sink",
     "is_source",
+    "is_i2c_controller",
+    "is_i2c_target",
     "Logic",
     "Mechanical",
     "Signal",

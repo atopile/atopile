@@ -17,6 +17,7 @@ import { openPackageExplorer } from './packagexplorer';
 import { captureEvent } from '../common/telemetry';
 import * as kicanvas from './kicanvas';
 import * as modelviewer from './modelviewer';
+import * as treeVisualizer from './tree-visualizer';
 import {
     getBuildTarget,
     getSelectedTargets,
@@ -75,6 +76,8 @@ const cmdKicanvasPreview = registerCommand('atopile.kicanvas_preview', atoKicanv
 const cmdModelViewerPreview = registerCommand('atopile.model_viewer_preview', atoModelViewerPreview);
 const cmdExport = registerCommand('atopile.export', atoExport);
 const cmdServe = registerCommand('atopile.serve', atoServe);
+const cmdPowerTreePreview = registerCommand('atopile.power_tree_preview', atoPowerTreePreview);
+const cmdI2CTreePreview = registerCommand('atopile.i2c_tree_preview', atoI2CTreePreview);
 
 // Register buttons for sidebar display
 registerButton('server-process', cmdServe, 'Start/show ato server', 'ato serve');
@@ -89,6 +92,8 @@ registerButton('circuit-board', cmdLaunchKicad, 'Open board in KiCad', 'Open boa
 registerButton('symbol-misc', cmdPackageExplorer, 'Open Package Explorer', 'Open Package Explorer');
 registerButton('eye', cmdKicanvasPreview, 'Open Layout Preview', 'Open Layout Preview');
 registerButton('symbol-constructor', cmdModelViewerPreview, 'Open 3D Model Preview', 'Open 3D Model Preview');
+registerButton('zap', cmdPowerTreePreview, 'Open Power Tree', 'Power Tree');
+registerButton('git-branch', cmdI2CTreePreview, 'Open I2C Tree', 'I2C Tree');
 registerButton('checklist', cmdChooseBuild, 'Select build targets', 'Select build targets');
 registerButton('folder', cmdChooseProject, 'Select project folder', 'Select project folder');
 
@@ -476,6 +481,14 @@ async function atoKicanvasPreview() {
 
 async function atoModelViewerPreview() {
     await modelviewer.openModelViewerPreview();
+}
+
+async function atoPowerTreePreview() {
+    await treeVisualizer.openPowerTreePreview();
+}
+
+async function atoI2CTreePreview() {
+    await treeVisualizer.openI2CTreePreview();
 }
 
 async function atoServe() {

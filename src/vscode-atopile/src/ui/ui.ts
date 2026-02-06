@@ -4,8 +4,11 @@ import * as buttons from './buttons';
 import * as example from './example';
 import * as kicanvas from './kicanvas';
 import * as modelviewer from './modelviewer';
+import * as treeVisualizer from './tree-visualizer';
 import * as pcb from '../common/pcb';
 import * as threeDModel from '../common/3dmodel';
+import * as powerTree from '../common/power-tree';
+import * as i2cTree from '../common/i2c-tree';
 import { traceInfo } from '../common/log/logging';
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -27,8 +30,11 @@ export async function activate(context: vscode.ExtensionContext) {
         example.activate(context),
         kicanvas.activate(context),
         modelviewer.activate(context),
+        treeVisualizer.activate(context),
         pcb.activate(context),
         threeDModel.activate(context),
+        powerTree.activate(context),
+        i2cTree.activate(context),
     ]);
 }
 
@@ -38,6 +44,9 @@ export function deactivate() {
     example.deactivate();
     kicanvas.deactivate();
     modelviewer.deactivate();
+    treeVisualizer.deactivate();
     pcb.deactivate();
     threeDModel.deactivate();
+    powerTree.deactivate();
+    i2cTree.deactivate();
 }

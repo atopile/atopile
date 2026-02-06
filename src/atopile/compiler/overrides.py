@@ -103,6 +103,26 @@ _ASSIGNMENT_OVERRIDES: dict[str, TraitOverrideSpec] = {
         expected_type=bool,
         skip_value=lambda v: not v,
     ),
+    "is_power_source": TraitOverrideSpec(
+        trait_class=F.is_source,
+        expected_type=bool,
+        skip_value=lambda v: not v,
+    ),
+    "is_power_sink": TraitOverrideSpec(
+        trait_class=F.is_sink,
+        expected_type=bool,
+        skip_value=lambda v: not v,
+    ),
+    "is_controller": TraitOverrideSpec(
+        trait_class=F.is_i2c_controller,
+        expected_type=bool,
+        skip_value=lambda v: not v,
+    ),
+    "is_target": TraitOverrideSpec(
+        trait_class=F.is_i2c_target,
+        expected_type=bool,
+        skip_value=lambda v: not v,
+    ),
     "package": TraitOverrideSpec(
         trait_class=F.has_package_requirements,
         expected_type=str,
