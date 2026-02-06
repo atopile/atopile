@@ -1712,27 +1712,22 @@ def run_live(
 
     # Keep reading until both streams hit EOF (not just until process exits)
     # This ensures we capture all buffered output even after process termination
+    process_exit_time = None
     while reads:
         # Use a timeout so we can check for EOF after process exits
         readable, _, _ = select.select(reads, [], [], 0.1)
 
+        # Check if process has exited and we've waited long enough
+        if process.poll() is not None:
+            if process_exit_time is None:
+                process_exit_time = time.time()
+            # Give background threads 5 seconds to close pipes, then force exit
+            # This handles cases where libraries (e.g., Posthog telemetry)
+            # spawn threads that inherit stdout/stderr and don't close them
+            elif time.time() - process_exit_time > 5:
+                break
+
         if not readable:
-            # No data available - if process has exited, try one more read
-            # to drain any remaining buffered data
-            if process.poll() is not None:
-                for stream in list(reads):
-                    remaining = stream.read()
-                    if remaining:
-                        for line in remaining.splitlines(keepends=True):
-                            if stream == process.stdout:
-                                stdout_lines.append(line)
-                                if stdout:
-                                    stdout(line.rstrip())
-                            elif stream == process.stderr:
-                                stderr_lines.append(line)
-                                if stderr:
-                                    stderr(line.rstrip())
-                    reads.remove(stream)
             continue
 
         for stream in readable:
