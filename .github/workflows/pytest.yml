@@ -38,6 +38,7 @@ jobs:
 
       # disable for self-hosted runner
       - name: "Set up Python"
+        id: setup-python
         uses: actions/setup-python@v5
         with:
           # self-hosted runner struggles with this one
@@ -50,6 +51,21 @@ jobs:
         # for self-hosted runner
         #env:
         #  UV_CACHE_DIR: /var/cache/uv
+
+      - name: Compute zig source hash
+        id: zig-hash
+        run: |
+          echo "hash=$( \
+            find src/faebryk/core/zig/src src/faebryk/core/zig/build.zig \
+              -name '*.zig' -print0 | sort -z | xargs -0 sha256sum \
+            | sha256sum | cut -d' ' -f1 \
+          )" >> "$GITHUB_OUTPUT"
+
+      - name: Cache zig build
+        uses: actions/cache@v4
+        with:
+          path: src/faebryk/core/zig/zig-out
+          key: zig-${{ runner.os }}-${{ runner.arch }}-py${{ steps.setup-python.outputs.python-version }}-${{ steps.zig-hash.outputs.hash }}
 
       - name: "Compile & build package"
         run: |
