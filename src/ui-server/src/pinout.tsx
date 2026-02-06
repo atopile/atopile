@@ -30,12 +30,20 @@ function PinoutApp() {
 
   useEffect(() => {
     const config = window.__PINOUT_CONFIG__;
-    if (!config?.dataUrl) {
-      setError('No pinout data URL configured');
+    let dataUrl = config?.dataUrl;
+
+    // Dev mode: load from URL query param or default test file
+    if (!dataUrl) {
+      const params = new URLSearchParams(window.location.search);
+      dataUrl = params.get('dataUrl') || undefined;
+    }
+
+    if (!dataUrl) {
+      setError('No pinout data URL. In dev mode, use ?dataUrl=path/to/pinout.json');
       return;
     }
 
-    fetch(config.dataUrl)
+    fetch(dataUrl)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();

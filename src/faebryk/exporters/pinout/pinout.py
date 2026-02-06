@@ -328,12 +328,13 @@ def _compute_body_geometry(
             geo = geometry.get(name, {})
             w = geo.get("w", 0.5)
             h = geo.get("h", 0.5)
-            perimeter_pad_sizes.append(max(w, h))
+            # Pads stick out by half their SHORT dimension from the body
+            perimeter_pad_sizes.append(min(w, h))
 
     inset = (
         sum(perimeter_pad_sizes) / len(perimeter_pad_sizes) / 2
         if perimeter_pad_sizes
-        else 0.3
+        else 0.15
     )
 
     body_x = min_x + inset
