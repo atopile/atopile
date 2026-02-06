@@ -392,8 +392,6 @@ function ChipDiagram({ comp, highlightedPins, selectedPin, onPinClick }: ChipDia
   const bodyH = geo.height * scale
 
   return (
-    <div className="pinout-diagram-wrap">
-      <div className="pinout-diagram-scroll">
         <div
           ref={containerRef}
           className="pinout-diagram"
@@ -428,8 +426,6 @@ function ChipDiagram({ comp, highlightedPins, selectedPin, onPinClick }: ChipDia
             )
           })}
         </div>
-      </div>
-    </div>
   )
 }
 

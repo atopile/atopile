@@ -270,19 +270,6 @@
 
 /* ── Chip Diagram ────────────────────────────────────────────── */
 
-.pinout-diagram-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-/* (header removed - info is on the chip body and side panel) */
-
-.pinout-diagram-scroll {
-  /* No scrolling — pan/zoom handles navigation */
-}
-
 .pinout-diagram {
   position: relative;
 }
