@@ -72,7 +72,37 @@ function getPinColor(pin: PinData): string {
 
 // ── Scale: convert mm to px ────────────────────────────────────────────
 
-const SCALE = 24 // px per mm
+const TARGET_PIN_HEIGHT_PX = 20 // desired visual height per pin slot
+const MIN_SCALE = 8
+const MAX_SCALE = 40
+const FALLBACK_SCALE = 24
+
+/** Compute per-component scale so pins render at a consistent visual size. */
+function computeScale(comp: ComponentData): number {
+  // Find minimum pad pitch (smallest gap between adjacent pads)
+  const sides: Record<string, number[]> = {}
+  for (const p of comp.pins) {
+    if (p.x == null || p.y == null) continue
+    const key = p.side
+    if (!sides[key]) sides[key] = []
+    sides[key].push(key === 'left' || key === 'right' ? p.y : p.x)
+  }
+
+  let minPitch = Infinity
+  for (const coords of Object.values(sides)) {
+    const sorted = [...coords].sort((a, b) => a - b)
+    for (let i = 1; i < sorted.length; i++) {
+      const diff = sorted[i] - sorted[i - 1]
+      if (diff > 0.01) minPitch = Math.min(minPitch, diff)
+    }
+  }
+
+  if (!isFinite(minPitch) || minPitch <= 0) return FALLBACK_SCALE
+
+  // Scale so that one pitch = TARGET_PIN_HEIGHT_PX
+  const scale = TARGET_PIN_HEIGHT_PX / minPitch
+  return Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale))
+}
 
 // ── Main Component ─────────────────────────────────────────────────────
 
@@ -279,19 +309,22 @@ function ChipDiagram({ comp, highlightedPins, selectedPin, onPinClick }: ChipDia
   const geo = comp.geometry
   if (!geo) return null
 
+  // Per-component scale so pins are visually consistent across packages
+  const scale = useMemo(() => computeScale(comp), [comp])
+
   const bbox = geo.pad_bbox
   // Total area in mm including label margins
   const labelMargin = 14 // mm for labels
-  const totalW = (bbox.max_x - bbox.min_x + labelMargin * 2) * SCALE
-  const totalH = (bbox.max_y - bbox.min_y + labelMargin * 2) * SCALE
-  const originX = (-bbox.min_x + labelMargin) * SCALE
-  const originY = (-bbox.min_y + labelMargin) * SCALE
+  const totalW = (bbox.max_x - bbox.min_x + labelMargin * 2) * scale
+  const totalH = (bbox.max_y - bbox.min_y + labelMargin * 2) * scale
+  const originX = (-bbox.min_x + labelMargin) * scale
+  const originY = (-bbox.min_y + labelMargin) * scale
 
   // Chip body in px
-  const bodyX = originX + geo.x * SCALE
-  const bodyY = originY + geo.y * SCALE
-  const bodyW = geo.width * SCALE
-  const bodyH = geo.height * SCALE
+  const bodyX = originX + geo.x * scale
+  const bodyY = originY + geo.y * scale
+  const bodyW = geo.width * scale
+  const bodyH = geo.height * scale
 
   return (
     <div className="pinout-diagram-wrap">
@@ -322,6 +355,7 @@ function ChipDiagram({ comp, highlightedPins, selectedPin, onPinClick }: ChipDia
                 pin={pin}
                 originX={originX}
                 originY={originY}
+                scale={scale}
                 highlightedPins={highlightedPins}
                 isSelected={selectedPin?.number === pin.number}
                 onPinClick={onPinClick}
@@ -340,18 +374,19 @@ interface PinPadProps {
   pin: PinData
   originX: number
   originY: number
+  scale: number
   highlightedPins: Set<string> | null
   isSelected: boolean
   onPinClick: (pin: PinData, e: React.MouseEvent) => void
 }
 
-function PinPad({ pin, originX, originY, highlightedPins, isSelected, onPinClick }: PinPadProps) {
+function PinPad({ pin, originX, originY, scale, highlightedPins, isSelected, onPinClick }: PinPadProps) {
   const color = getPinColor(pin)
   // Raw pad dimensions from KiCad (before any rotation)
-  const padW = (pin.w || 0.5) * SCALE
-  const padH = (pin.h || 0.5) * SCALE
-  const cx = originX + pin.x! * SCALE
-  const cy = originY + pin.y! * SCALE
+  const padW = (pin.w || 0.5) * scale
+  const padH = (pin.h || 0.5) * scale
+  const cx = originX + pin.x! * scale
+  const cy = originY + pin.y! * scale
 
   const faded = highlightedPins ? !highlightedPins.has(pin.number) : false
   const fnText = pin.active_function?.name || ''
