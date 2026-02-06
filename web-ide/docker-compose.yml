@@ -1,0 +1,33 @@
+# Local development setup for atopile Web IDE
+#
+# Usage:
+#   cd web-ide
+#   docker compose up --build
+#
+# Access at: http://localhost:3000
+
+services:
+  atopile-web-ide:
+    build:
+      context: ..
+      dockerfile: web-ide/Dockerfile
+      args:
+        OPENVSCODE_VERSION: "1.106.3"
+        KICAD_VERSION: "9.0.7"
+        ATOPILE_VERSION: "0.0.0dev"
+    image: atopile-web-ide:dev
+    container_name: atopile-web-ide
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persist workspace between restarts (seeded by entrypoint on first run)
+      - workspace-data:/home/openvscode-server/workspace
+      # Persist VS Code user data between restarts
+      - vscode-user-data:/home/.openvscode-server/data/User
+    environment:
+      - OPENVSCODE_SERVER_ROOT=/home/.openvscode-server
+    restart: unless-stopped
+
+volumes:
+  workspace-data:
+  vscode-user-data:
