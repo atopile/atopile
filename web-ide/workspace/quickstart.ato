@@ -1,0 +1,37 @@
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
+
+import Resistor
+import Capacitor
+import ElectricPower
+
+module App:
+    """
+    Welcome to atopile!
+    This is a simple example to get you started.
+
+    Try running `ato build` in the terminal to compile this project.
+    """
+
+    # Define a power rail
+    power = new ElectricPower
+
+    # Create some resistors
+    r1 = new Resistor
+    r1.resistance = 10kohm +/- 10%
+    r1.package = "0402"
+
+    r2 = new Resistor
+    r2.resistance = 4.7kohm +/- 5%
+    r2.package = "0402"
+
+    # Create a decoupling capacitor
+    decap = new Capacitor
+    decap.capacitance = 100nF +/- 20%
+    decap.package = "0402"
+
+    # Connect resistors as a voltage divider
+    power.hv ~> r1 ~> r2 ~> power.lv
+
+    # Connect decoupling cap across power
+    power.hv ~> decap ~> power.lv

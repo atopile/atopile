@@ -1,0 +1,22 @@
+{
+    "editor.fontSize": 14,
+    "editor.fontFamily": "'Fira Code', 'Droid Sans Mono', 'monospace'",
+    "editor.tabSize": 4,
+    "editor.formatOnSave": true,
+    "editor.minimap.enabled": false,
+
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 1000,
+
+    "terminal.integrated.defaultProfile.linux": "bash",
+
+    "atopile.autoInstall": false,
+    "atopile.telemetry": true,
+
+    "workbench.colorTheme": "Default Dark Modern",
+    "workbench.startupEditor": "none",
+
+    "telemetry.telemetryLevel": "off",
+
+    "security.workspace.trust.enabled": false
+}
