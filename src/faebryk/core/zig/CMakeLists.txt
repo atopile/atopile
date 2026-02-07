@@ -81,19 +81,53 @@ endif()
 # source checkout (e.g., cibuildwheel building x86_64 and arm64) don't skip each other.
 set(ZIG_BUILD_STAMP "${ZIG_WORKDIR}/zig-out/pyzig.${_TARGET_ARCH_FOR_STAMP}.build.stamp")
 
+# CI cache support: use pre-built zig artifacts from external directory --------
+set(_use_prebuilt FALSE)
+if(DEFINED ENV{ATOPILE_ZIG_OUT_DIR})
+  set(_prebuilt_dir "$ENV{ATOPILE_ZIG_OUT_DIR}")
+  set(_prebuilt_lib "${_prebuilt_dir}/lib/${PYZIG_NAME}")
+  set(_prebuilt_lib_sexp "${_prebuilt_dir}/lib/${PYZIG_SEXP_NAME}")
+  if(EXISTS "${_prebuilt_lib}" AND EXISTS "${_prebuilt_lib_sexp}")
+    message(STATUS "Using pre-built zig artifacts from ${_prebuilt_dir}")
+    set(ZIG_OUT_LIB "${_prebuilt_lib}")
+    set(ZIG_OUT_LIB_SEXP "${_prebuilt_lib_sexp}")
+    set(_use_prebuilt TRUE)
+  endif()
+endif()
+
 # custom rule to build the Zig extension --------------------------------------
-add_custom_command(
-  OUTPUT  "${ZIG_BUILD_STAMP}"
-  COMMAND ${ZIG_ENV_PREFIX} "${Python3_EXECUTABLE}" -m ziglang build python-ext
-          -Doptimize=ReleaseFast
-          -Dpython-include=${PY_INCLUDE}
-          ${ZIG_TARGET_ARG} ${ZIG_PY_LIB_NAME_ARG} ${ZIG_PY_LIB_DIR_ARG_USE}
-  COMMAND ${CMAKE_COMMAND} -E touch "${ZIG_BUILD_STAMP}"
-  WORKING_DIRECTORY "${ZIG_WORKDIR}"
-  BYPRODUCTS "${ZIG_OUT_LIB}" "${ZIG_OUT_LIB_SEXP}"
-  COMMENT "Building Zig Python extension"
-  VERBATIM)
+if(_use_prebuilt)
+  file(MAKE_DIRECTORY "${ZIG_WORKDIR}/zig-out")
+  file(TOUCH "${ZIG_BUILD_STAMP}")
+  add_custom_command(
+    OUTPUT "${ZIG_BUILD_STAMP}"
+    COMMAND ${CMAKE_COMMAND} -E true
+    COMMENT "Zig build skipped (using pre-built artifacts)"
+    VERBATIM)
+else()
+  add_custom_command(
+    OUTPUT  "${ZIG_BUILD_STAMP}"
+    COMMAND ${ZIG_ENV_PREFIX} "${Python3_EXECUTABLE}" -m ziglang build python-ext
+            -Doptimize=ReleaseFast
+            -Dpython-include=${PY_INCLUDE}
+            ${ZIG_TARGET_ARG} ${ZIG_PY_LIB_NAME_ARG} ${ZIG_PY_LIB_DIR_ARG_USE}
+    COMMAND ${CMAKE_COMMAND} -E touch "${ZIG_BUILD_STAMP}"
+    WORKING_DIRECTORY "${ZIG_WORKDIR}"
+    BYPRODUCTS "${ZIG_OUT_LIB}" "${ZIG_OUT_LIB_SEXP}"
+    COMMENT "Building Zig Python extension"
+    VERBATIM)
+endif()
 add_custom_target(pyzig ALL DEPENDS "${ZIG_BUILD_STAMP}")
+
+# On cache miss with ATOPILE_ZIG_OUT_DIR set, copy artifacts for future caching
+if(NOT _use_prebuilt AND DEFINED ENV{ATOPILE_ZIG_OUT_DIR})
+  add_custom_command(TARGET pyzig POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$ENV{ATOPILE_ZIG_OUT_DIR}/lib"
+    COMMAND ${CMAKE_COMMAND} -E copy "${ZIG_OUT_LIB}" "$ENV{ATOPILE_ZIG_OUT_DIR}/lib/"
+    COMMAND ${CMAKE_COMMAND} -E copy "${ZIG_OUT_LIB_SEXP}" "$ENV{ATOPILE_ZIG_OUT_DIR}/lib/"
+    COMMENT "Caching zig artifacts to $ENV{ATOPILE_ZIG_OUT_DIR}"
+    VERBATIM)
+endif()
 
 # print current zig version
 execute_process(
