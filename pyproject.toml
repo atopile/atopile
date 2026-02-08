@@ -321,3 +321,4 @@ atopile-mkdocs-plugin = { path = "tools/atopile_mkdocs_plugin", editable = true 
 
 [tool.uv]
 cache-keys = [{ git = { commit = false, tags = true } }]
+override-dependencies = ["pynng>=0.9.0"]                 # for python 3.14 compatibility
