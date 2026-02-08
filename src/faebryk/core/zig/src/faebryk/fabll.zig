@@ -2,28 +2,18 @@ const std = @import("std");
 const graph_mod = @import("graph");
 const graph = graph_mod.graph;
 const faebryk = @import("faebryk");
-const str = []u8;
+const str = []const u8;
 
-// design questions ===============================================================
-// - compile-time vs run-time
-//  - in python fabll every Node (recipee) gets constructed once on file import
-//     construction means we collect all fields in cls.__fields
-//     - then on typegraph creation (get_or_create_type) we call Node._create_type
-//       which will call _exec_field for each field in cls.__fields
-//      this will create the type in the typegraph and thus our recipee is executed
-//  - recreating _exec_field should be easy, because it just typegraph operations
-//  - the hard bit to replicate is field collection in a zig way
-//      the most similar way would be to use zig comptime to build the recipees
-//      - its not 100% clear whether comptime is powerful enough for this,
-//          we are calling a bunch of functions like MakeChild and MakeEdge that might do hard stuff
-//      - alternatively we will have to do some runtime stuff with type registries for cache reasons
-//          very ugly and would love to avoid this if possible
-//=================================================================================
+fn is_child_field_type(comptime MaybeChildField: type) bool {
+    return @typeInfo(MaybeChildField) == .@"struct" and
+        @hasField(MaybeChildField, "field") and
+        @hasField(MaybeChildField, "T");
+}
 
 pub const Node = struct {
     instance: graph.BoundNodeReference,
 
-    pub fn MakeChild(T: type) ChildField {
+    pub fn MakeChild(comptime T: type) ChildField {
         return ChildField{
             .field = .{
                 .identifier = null,
@@ -33,28 +23,72 @@ pub const Node = struct {
         };
     }
 
-    pub fn bind_typegraph(T: type, tg: *faebryk.typegraph.TypeGraph) TypeNodeBoundTG {
-        return TypeNodeBoundTG{
-            .T = T,
-            .tg = tg,
-        };
+    pub fn bind_typegraph(comptime T: type, tg: *faebryk.typegraph.TypeGraph) TypeNodeBoundTG(T) {
+        return .{ .tg = tg };
     }
 };
 
-const TypeNodeBoundTG = struct {
-    T: type,
-    tg: *faebryk.typegraph.TypeGraph,
+pub fn TypeNodeBoundTG(comptime T: type) type {
+    return struct {
+        tg: *faebryk.typegraph.TypeGraph,
 
-    pub fn create_instance(self: @This(), g: *graph.GraphView) self.T {
-        // TODO
-        _ = g;
-    }
+        pub fn create_instance(self: @This(), g: *graph.GraphView) T {
+            const type_node = self.get_or_create_type();
+            if (type_node.g != g) {
+                @panic("create_instance graph must match the bound typegraph graph");
+            }
 
-    pub fn get_or_create_type(self: @This()) graph.BoundNodeReference {
-        // TODO
-        _ = self;
-    }
-};
+            const result = self.tg.instantiate_node(type_node);
+            const instance = switch (result) {
+                .ok => |n| n,
+                .err => |err| {
+                    std.debug.print("fabll instantiate failed: {s}\n", .{err.message});
+                    @panic("fabll instantiate failed");
+                },
+            };
+
+            return wrap_instance(T, instance);
+        }
+
+        pub fn get_or_create_type(self: @This()) graph.BoundNodeReference {
+            const identifier = @typeName(T);
+            if (self.tg.get_type_by_name(identifier)) |existing| {
+                return existing;
+            }
+
+            const type_node = self.tg.add_type(identifier) catch |err| switch (err) {
+                error.TypeAlreadyExists => self.tg.get_type_by_name(identifier) orelse unreachable,
+                else => @panic("failed to add type"),
+            };
+
+            const decls = @typeInfo(T).@"struct".decls;
+            inline for (decls) |decl| {
+                const value = @field(T, decl.name);
+                if (comptime is_child_field_type(@TypeOf(value))) {
+                    const child_bound = Node.bind_typegraph(value.T, self.tg);
+                    const child_type = child_bound.get_or_create_type();
+                    const child_identifier = value.field.identifier orelse decl.name;
+                    _ = self.tg.add_make_child(type_node, child_type, child_identifier, null, false) catch
+                        @panic("failed to add make child");
+                }
+            }
+
+            return type_node;
+        }
+    };
+}
+
+fn wrap_instance(comptime T: type, instance: graph.BoundNodeReference) T {
+    comptime if (!@hasField(T, "node")) {
+        @compileError("FabLL Zig node types must have a `node: Node` field");
+    };
+
+    return .{
+        .node = .{
+            .instance = instance,
+        },
+    };
+}
 
 pub const Field = struct {
     identifier: ?str,
@@ -69,18 +103,13 @@ pub const FieldE = union(enum) {
 pub const ChildField = struct {
     field: Field,
     T: type,
-    //attributes: NodeAttributes,
-
-    //_dependants: std.ArrayList(FieldE),
 
     pub fn add_dependant(self: *@This(), dependant: FieldE) void {
-        // TODO
         _ = self;
         _ = dependant;
     }
 
-    pub fn add_as_dependant(self: *@This(), to: ChildField) void {
-        // TODO
+    pub fn add_as_dependant(self: *@This(), to: *ChildField) void {
         _ = self;
         _ = to;
     }
@@ -89,32 +118,20 @@ pub const ChildField = struct {
 pub const EdgeField = struct {
     lhs: RefPath,
     rhs: RefPath,
-    edge: faebryk.edgebuilder.EdgeCreationAtttributes,
+    edge: faebryk.edgebuilder.EdgeCreationAttributes,
     identifier: ?str,
 };
 
 pub const RefPath = struct {
-    pub const Element = enum {
-        //
-    };
+    pub const Element = enum {};
     path: std.ArrayList(Element),
 };
 
-// ----------------------------------------------------------------------------------
-
 pub const is_trait = struct {
-    is_node: Node,
-    //
+    node: Node,
+
     pub fn MakeEdge(traitchildfield: ChildField, owner: ?RefPath) ChildField {
-        traitchildfield.add_dependant(owner);
-        // TODO
-        // traitchildfield.add_dependant(
-        //     {.EdgeField = .{
-        //         .lhs = owner,
-        //         .rhs = RefPath{.path = .[traitchildfield]},
-        //         .edge=fbrk.EdgeTrait.build(),
-        //     }};
-        // )
+        _ = owner;
         return traitchildfield;
     }
 
@@ -125,11 +142,9 @@ pub const is_trait = struct {
 
 pub const is_interface = struct {
     node: Node,
-    //
-    const _is_trait = is_trait.MakeChild();
+    pub const _is_trait = is_trait.MakeChild();
 
-    pub fn MakeConnectionEdge(n1: RefPath, n2: RefPath, shallow: bool) null {
-        // TODO
+    pub fn MakeConnectionEdge(n1: RefPath, n2: RefPath, shallow: bool) void {
         _ = n1;
         _ = n2;
         _ = shallow;
@@ -143,7 +158,7 @@ pub const is_interface = struct {
 pub const Electrical = struct {
     node: Node,
 
-    const _is_interface = is_trait.MakeEdge(is_interface.MakeChild(), null);
+    pub const _is_interface = is_trait.MakeEdge(is_interface.MakeChild(), null);
 
     pub fn MakeChild() ChildField {
         return Node.MakeChild(@This());
@@ -153,7 +168,7 @@ pub const Electrical = struct {
 pub const ElectricPower = struct {
     node: Node,
 
-    const hv_lowlevel = ChildField{
+    pub const hv_lowlevel = ChildField{
         .field = .{
             .identifier = "vcc",
             .locator = null,
@@ -161,15 +176,54 @@ pub const ElectricPower = struct {
         .T = Electrical,
     };
 
-    const hv_highlevel = Electrical.MakeChild();
+    pub const lv_highlevel = Electrical.MakeChild();
 };
 
-test "basic fabll" {
-    const a = std.testing.allocator;
-    var g = graph.GraphView.init(a);
-    defer g.deinit();
-    const tg = faebryk.typegraph.TypeGraph.init(&g);
+fn comptime_child_field_count(comptime T: type) usize {
+    comptime var count: usize = 0;
+    const decls = @typeInfo(T).@"struct".decls;
+    inline for (decls) |decl| {
+        if (comptime is_child_field_type(@TypeOf(@field(T, decl.name)))) {
+            count += 1;
+        }
+    }
+    return count;
+}
 
-    const e1 = Node.bind_typegraph(Electrical, &tg).create_instance(&g);
+fn comptime_child_field_name(comptime T: type, comptime idx: usize) []const u8 {
+    comptime var i: usize = 0;
+    const decls = @typeInfo(T).@"struct".decls;
+    inline for (decls) |decl| {
+        if (comptime is_child_field_type(@TypeOf(@field(T, decl.name)))) {
+            if (i == idx) return decl.name;
+            i += 1;
+        }
+    }
+    @compileError("child field index out of bounds");
+}
+
+test "comptime child field discovery" {
+    try std.testing.expectEqual(@as(usize, 2), comptime_child_field_count(ElectricPower));
+    try std.testing.expect(std.mem.eql(u8, comptime_child_field_name(ElectricPower, 0), "hv_lowlevel"));
+    try std.testing.expect(std.mem.eql(u8, comptime_child_field_name(ElectricPower, 1), "hv_highlevel"));
+}
+
+test "basic fabll" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const bound = Node.bind_typegraph(Electrical, &tg);
+    const e1 = bound.create_instance(&g);
     _ = e1;
+}
+
+test "basic+1 fabll" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const bound = Node.bind_typegraph(ElectricPower, &tg);
+    const ep1 = bound.create_instance(&g);
+    _ = ep1;
 }
