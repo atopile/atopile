@@ -104,6 +104,7 @@ class BackendServerManager implements vscode.Disposable {
     private _port: number = 0;
     private _apiUrl: string = buildApiUrl(0);
     private _wsUrl: string = buildWsUrl(0);
+    private _internalApiUrl: string = buildApiUrl(0);
 
     private readonly _onStatusChange = new vscode.EventEmitter<boolean>();
     public readonly onStatusChange = this._onStatusChange.event;
@@ -435,10 +436,26 @@ class BackendServerManager implements vscode.Disposable {
         return this._wsUrl;
     }
 
-    private _setPort(port: number): void {
+    private async _setPort(port: number): Promise<void> {
         this._port = port;
-        this._apiUrl = buildApiUrl(port);
-        this._wsUrl = buildWsUrl(port);
+        this._internalApiUrl = buildApiUrl(port);
+
+        // In browser-based VS Code (e.g., OpenVSCode Server), the webview runs in
+        // the browser and can't reach 127.0.0.1:<port> inside Docker/the remote host.
+        // Use asExternalUri to get a URL the browser can reach via VS Code's port proxy.
+        try {
+            const externalUri = await vscode.env.asExternalUri(
+                vscode.Uri.parse(`http://localhost:${port}`)
+            );
+            const externalBase = externalUri.toString().replace(/\/$/, '');
+            this._apiUrl = externalBase;
+            this._wsUrl = externalBase.replace(/^http/, 'ws') + '/ws/state';
+            traceInfo(`BackendServer: External URLs: api=${this._apiUrl} ws=${this._wsUrl}`);
+        } catch {
+            // Fallback to internal URLs (works in desktop VS Code)
+            this._apiUrl = this._internalApiUrl;
+            this._wsUrl = buildWsUrl(port);
+        }
     }
 
     /**
@@ -509,10 +526,13 @@ class BackendServerManager implements vscode.Disposable {
         traceInfo('[BackendServer] Starting server initialization...');
 
         try {
-            // Get a port to use - prefer the provided port, or get an available one
-            const port = preferredPort || await getAvailablePort();
-            this._setPort(port);
-            traceInfo(`[BackendServer] Using port: ${port}`);
+            // Get a port to use - prefer the provided port, env var, or get an available one
+            const envPort = process.env.ATOPILE_BACKEND_PORT ? parseInt(process.env.ATOPILE_BACKEND_PORT, 10) : undefined;
+            const envHost = process.env.ATOPILE_BACKEND_HOST;
+            traceInfo(`[BackendServer] Env vars: ATOPILE_BACKEND_PORT=${process.env.ATOPILE_BACKEND_PORT ?? '(not set)'}, ATOPILE_BACKEND_HOST=${envHost ?? '(not set)'}`);
+            const port = preferredPort || envPort || await getAvailablePort();
+            await this._setPort(port);
+            traceInfo(`[BackendServer] Using port: ${port} (preferred=${preferredPort}, envPort=${envPort})`);
 
             const workspaceRoots = getWorkspaceRoots();
             traceInfo(`[BackendServer] Workspace roots: ${workspaceRoots.join(', ') || '(none)'}`);
@@ -578,11 +598,13 @@ class BackendServerManager implements vscode.Disposable {
             // Get the actual binary path (first element of the command)
             const atoBinaryPath = atoBin.command[0];
 
-            // Build command args: ato serve backend --port <port> [--workspace <path>...]
+            // Build command args: ato serve backend --port <port> [--host <host>] [--workspace <path>...]
+            const backendHost = process.env.ATOPILE_BACKEND_HOST;
             const args = [
                 ...atoBin.command.slice(1),
                 'serve', 'backend',
                 '--port', String(this.port),
+                ...(backendHost ? ['--host', backendHost] : []),
                 '--ato-source', atoBin.source,
                 '--ato-binary-path', atoBinaryPath,
             ];
@@ -732,7 +754,8 @@ class BackendServerManager implements vscode.Disposable {
             if (this._process !== child) {
                 return false;
             }
-            if (await checkServerHealthHttp(this.apiUrl)) {
+            // Use internal URL for health checks (extension host runs on same machine as server)
+            if (await checkServerHealthHttp(this._internalApiUrl)) {
                 return true;
             }
             await new Promise(resolve => setTimeout(resolve, 500));

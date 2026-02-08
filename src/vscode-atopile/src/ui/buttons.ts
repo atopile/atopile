@@ -17,6 +17,7 @@ import { openPackageExplorer } from './packagexplorer';
 import { captureEvent } from '../common/telemetry';
 import * as kicanvas from './kicanvas';
 import * as modelviewer from './modelviewer';
+import * as pcbnewVnc from './pcbnew-vnc';
 import {
     getBuildTarget,
     getSelectedTargets,
@@ -73,6 +74,7 @@ const cmdChooseProject = registerCommand('atopile.choose_project', atoChooseProj
 const cmdLaunchKicad = registerCommand('atopile.launch_kicad', atoLaunchKicad);
 const cmdKicanvasPreview = registerCommand('atopile.kicanvas_preview', atoKicanvasPreview);
 const cmdModelViewerPreview = registerCommand('atopile.model_viewer_preview', atoModelViewerPreview);
+const cmdPcbnewVnc = registerCommand('atopile.pcbnew_vnc', atoPcbnewVnc);
 const cmdExport = registerCommand('atopile.export', atoExport);
 const cmdServe = registerCommand('atopile.serve', atoServe);
 
@@ -86,6 +88,7 @@ registerButton('trash', cmdRemovePackage, 'Remove package dependency', 'Remove p
 registerButton('play', cmdBuild, 'Build project', 'Build project');
 registerButton('file-zip', cmdExport, 'Generate manufacturing data', 'Generate manufacturing data');
 registerButton('circuit-board', cmdLaunchKicad, 'Open board in KiCad', 'Open board in KiCad');
+registerButton('remote-explorer', cmdPcbnewVnc, 'Open PCBnew (VNC)', 'Open PCBnew (VNC)');
 registerButton('symbol-misc', cmdPackageExplorer, 'Open Package Explorer', 'Open Package Explorer');
 registerButton('eye', cmdKicanvasPreview, 'Open Layout Preview', 'Open Layout Preview');
 registerButton('symbol-constructor', cmdModelViewerPreview, 'Open 3D Model Preview', 'Open 3D Model Preview');
@@ -476,6 +479,10 @@ async function atoKicanvasPreview() {
 
 async function atoModelViewerPreview() {
     await modelviewer.openModelViewerPreview();
+}
+
+async function atoPcbnewVnc() {
+    await pcbnewVnc.openPcbnewVnc();
 }
 
 async function atoServe() {

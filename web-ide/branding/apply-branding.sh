@@ -48,4 +48,18 @@ sed -i 's|<link rel="icon" href="{{WORKBENCH_WEB_BASE_URL}}/resources/server/fav
 # Patch apple-mobile-web-app-title
 sed -i 's|content="Code"|content="atopile"|' "${WORKBENCH_HTML}"
 
+# Patch product.json: disable workspace trust prompt (this is a cloud dev environment)
+# Must use top-level "disableWorkspaceTrust" key, NOT configurationDefaults —
+# the trust check happens at the environment level before settings are consulted.
+PRODUCT_JSON="${OPENVSCODE_SERVER_ROOT}/product.json"
+if [ -f "${PRODUCT_JSON}" ]; then
+    "${OPENVSCODE_SERVER_ROOT}/node" -e "
+const fs = require('fs');
+const p = JSON.parse(fs.readFileSync('${PRODUCT_JSON}', 'utf8'));
+p.disableWorkspaceTrust = true;
+fs.writeFileSync('${PRODUCT_JSON}', JSON.stringify(p, null, '\t'));
+console.log('Patched product.json: disableWorkspaceTrust=true');
+"
+fi
+
 echo "=== Branding applied ==="

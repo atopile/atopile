@@ -69,14 +69,22 @@ ENV PYTHONUNBUFFERED=1
 ENV HOME=/home/openvscode-server
 ENV OPENVSCODE_SERVER_ROOT=/home/.openvscode-server
 ENV PATH=${OPENVSCODE_SERVER_ROOT}/bin:${HOME}/.local/bin:$PATH
+# Backend server: bind to all interfaces on fixed port for Docker port mapping
+ENV ATOPILE_BACKEND_HOST=0.0.0.0
+ENV ATOPILE_BACKEND_PORT=8501
 
-# Install runtime + build dependencies (build deps removed after pip install)
+# Install runtime + build dependencies + VNC stack for PCBnew viewer
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     ca-certificates \
     build-essential \
     cmake \
+    xvfb \
+    x11vnc \
+    openbox \
+    websockify \
+    novnc \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -119,13 +127,17 @@ RUN /tmp/scripts/install-extensions.sh
 # Apply atopile branding (favicon, title, manifest)
 RUN /tmp/branding/apply-branding.sh
 
-# Copy default VS Code settings
-RUN mkdir -p ${OPENVSCODE_SERVER_ROOT}/data/Machine && \
-    cp /tmp/scripts/settings.json ${OPENVSCODE_SERVER_ROOT}/data/Machine/settings.json
+# Copy default VS Code settings (runtime data dir is $HOME/.openvscode-server/data/,
+# NOT $OPENVSCODE_SERVER_ROOT/data/ — the install-extensions.sh step already creates this tree)
+RUN cp /tmp/scripts/settings.json ${HOME}/.openvscode-server/data/Machine/settings.json
 
-# Set up entrypoint
+# Note: uv symlink is created by entrypoint.sh on each startup because the
+# User data volume mount shadows this directory on subsequent container starts
+
+# Set up entrypoint and VNC startup script
 RUN cp /tmp/scripts/entrypoint.sh ${HOME}/.local/bin/entrypoint.sh && \
-    chmod +x ${HOME}/.local/bin/entrypoint.sh
+    cp /tmp/scripts/start-pcbnew-vnc.sh ${HOME}/.local/bin/start-pcbnew-vnc.sh && \
+    chmod +x ${HOME}/.local/bin/entrypoint.sh ${HOME}/.local/bin/start-pcbnew-vnc.sh
 
 # Create workspace directory
 RUN mkdir -p ${HOME}/workspace
@@ -133,8 +145,8 @@ RUN mkdir -p ${HOME}/workspace
 # Clean up build artifacts (keep default-workspace for entrypoint seeding)
 RUN rm -rf /tmp/artifacts /tmp/scripts /tmp/branding
 
-# Expose OpenVSCode Server port
-EXPOSE 3000
+# Expose OpenVSCode Server port + backend server + websockify (VNC)
+EXPOSE 3000 6080 8501
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
@@ -143,4 +155,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 # Entrypoint seeds workspace on first run, then starts server
 ENTRYPOINT ["entrypoint.sh"]
 CMD ["--host", "0.0.0.0", "--port", "3000", "--without-connection-token", \
+     "--disable-workspace-trust", \
      "--default-folder", "/home/openvscode-server/workspace"]

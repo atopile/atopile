@@ -58,6 +58,10 @@ def backend(
         DEFAULT_DASHBOARD_PORT,
         help="Port to run the backend server on",
     ),
+    host: str = typer.Option(
+        "127.0.0.1",
+        help="Host to bind the backend server to (use 0.0.0.0 for Docker)",
+    ),
     workspace: Optional[list[Path]] = typer.Option(
         None,
         "--workspace",
@@ -103,6 +107,7 @@ def backend(
     workspace_paths = list(workspace) if workspace else None
     run_server(
         port=port,
+        host=host,
         workspace_paths=workspace_paths,
         force=force,
         ato_source=ato_source,

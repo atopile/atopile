@@ -19,11 +19,13 @@ services:
     container_name: atopile-web-ide
     ports:
       - "3000:3000"
+      - "6080:6080"
+      - "8501:8501"
     volumes:
       # Persist workspace between restarts (seeded by entrypoint on first run)
       - workspace-data:/home/openvscode-server/workspace
-      # Persist VS Code user data between restarts
-      - vscode-user-data:/home/.openvscode-server/data/User
+      # Persist VS Code user data between restarts (runtime data dir is under HOME)
+      - vscode-user-data:/home/openvscode-server/.openvscode-server/data/User
     environment:
       - OPENVSCODE_SERVER_ROOT=/home/.openvscode-server
     restart: unless-stopped

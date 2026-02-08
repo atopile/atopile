@@ -223,6 +223,11 @@
                 "category": "atopile"
             },
             {
+                "command": "atopile.pcbnew_vnc",
+                "title": "Open PCBnew (VNC)",
+                "category": "atopile"
+            },
+            {
                 "command": "atopile.llm.setup",
                 "title": "Setup LLM rules & MCP",
                 "category": "atopile"

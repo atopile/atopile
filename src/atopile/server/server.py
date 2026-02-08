@@ -660,6 +660,7 @@ class DashboardServer:
     def __init__(
         self,
         port: Optional[int] = None,
+        host: str = "127.0.0.1",
         workspace_paths: Optional[list[Path]] = None,
         ato_source: Optional[str] = None,
         ato_local_path: Optional[str] = None,
@@ -668,6 +669,7 @@ class DashboardServer:
         ato_from_spec: Optional[str] = None,
     ):
         self.port = port or find_free_port()
+        self.host = host
         self.workspace_paths = workspace_paths or []
         self.app = create_app(
             workspace_paths=self.workspace_paths,
@@ -689,7 +691,7 @@ class DashboardServer:
         """Start the server in a background thread."""
         config = uvicorn.Config(
             self.app,
-            host="127.0.0.1",
+            host=self.host,
             port=self.port,
             log_level="warning",
             ws_max_size=2 * 1024 * 1024,
@@ -718,6 +720,7 @@ class DashboardServer:
 
 def start_dashboard_server(
     port: Optional[int] = None,
+    host: str = "127.0.0.1",
     workspace_paths: Optional[list[Path]] = None,
 ) -> tuple[DashboardServer, str]:
     """
@@ -725,12 +728,13 @@ def start_dashboard_server(
 
     Args:
         port: Port to use (defaults to a free port)
+        host: Host to bind to (default 127.0.0.1)
         workspace_paths: Workspace paths to scan for projects
 
     Returns:
         Tuple of (DashboardServer, url)
     """
-    server = DashboardServer(port=port, workspace_paths=workspace_paths)
+    server = DashboardServer(port=port, host=host, workspace_paths=workspace_paths)
     server.start()
     return server, server.url
 
@@ -754,6 +758,7 @@ def is_atopile_server_running(port: int) -> bool:
 
 def run_server(
     port: int,
+    host: str = "127.0.0.1",
     workspace_paths: Optional[list[Path]] = None,
     force: bool = False,
     ato_source: Optional[str] = None,
@@ -767,6 +772,7 @@ def run_server(
 
     Args:
         port: Port to run the server on
+        host: Host to bind the server to (default 127.0.0.1)
         workspace_paths: Workspace paths to scan for projects (defaults to cwd)
         force: Kill existing server on the port if True
         ato_source: Source of the atopile binary
@@ -784,8 +790,9 @@ def run_server(
     try:
         _run_server_impl(
             port,
-            workspace_paths,
-            force,
+            host=host,
+            workspace_paths=workspace_paths,
+            force=force,
             ato_source=ato_source,
             ato_binary_path=ato_binary_path,
             ato_local_path=ato_local_path,
@@ -805,8 +812,9 @@ def run_server(
 
 def _run_server_impl(
     port: int,
-    workspace_paths: Optional[list[Path]],
-    force: bool,
+    host: str = "127.0.0.1",
+    workspace_paths: Optional[list[Path]] = None,
+    force: bool = False,
     ato_source: Optional[str] = None,
     ato_binary_path: Optional[str] = None,
     ato_local_path: Optional[str] = None,
@@ -855,6 +863,7 @@ def _run_server_impl(
     # Create and start server
     server = DashboardServer(
         port=port,
+        host=host,
         workspace_paths=workspace_paths,
         ato_source=ato_source,
         ato_local_path=ato_local_path,
@@ -863,7 +872,7 @@ def _run_server_impl(
         ato_from_spec=ato_from_spec,
     )
 
-    print(f"Starting dashboard server on http://localhost:{port}")
+    print(f"Starting dashboard server on http://{host}:{port}")
     print(f"Workspace paths: {', '.join(str(p) for p in workspace_paths)}")
     print("Press Ctrl+C to stop")
 

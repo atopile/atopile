@@ -11,6 +11,7 @@
     "terminal.integrated.defaultProfile.linux": "bash",
 
     "atopile.autoInstall": false,
+    "atopile.ato": "/home/openvscode-server/.local/bin/ato",
     "atopile.telemetry": true,
 
     "workbench.colorTheme": "Default Dark Modern",

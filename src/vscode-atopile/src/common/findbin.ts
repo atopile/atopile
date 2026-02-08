@@ -319,9 +319,24 @@ export async function getAtoBin(settings?: ISettings, timeout_ms?: number): Prom
         return null;
     }
 
-    // 3. No user configuration - use default (extension-managed)
+    // 3. No user configuration - try ato on PATH first (e.g. Docker with pre-installed ato)
+    traceInfo(`[findbin] No user configuration, checking PATH for ato...`);
+    const atoOnPath = await which('ato', { nothrow: true });
+    if (atoOnPath) {
+        traceInfo(`[findbin] Found ato on PATH: ${atoOnPath}`);
+        const pathBin: AtoBinLocator = { command: [atoOnPath], source: 'system-path' };
+        const pathWorks = await _runSelfCheck(pathBin, _timeout_ms);
+        if (pathWorks) {
+            traceInfo(`[findbin] SUCCESS: Using ato from PATH: ${atoOnPath}`);
+            traceInfo(`[findbin] ========== Search complete ==========`);
+            return pathBin;
+        }
+        traceInfo(`[findbin] ato on PATH failed self-check, falling back to default`);
+    }
+
+    // 4. Fall back to extension-managed uv installation
     const defaultFrom = getDefaultAtoFrom();
-    traceInfo(`[findbin] Using default mode (no user configuration)`);
+    traceInfo(`[findbin] Using default mode (extension-managed)`);
     traceInfo(`[findbin] Default source: ${defaultFrom}`);
 
     const defaultBin = await _getDefaultAtoBin();
