@@ -403,10 +403,6 @@ pub fn get_typed_attributes(node: anytype) AttributesType(@TypeOf(node)) {
     return out;
 }
 
-// =============================================================================
-// Child field model & dependant model
-// =============================================================================
-
 pub const ChildAttribute = struct {
     key: str,
     value: graph.Literal,
@@ -430,6 +426,10 @@ fn child_attributes_from_struct(comptime S: type, comptime attrs: S) []const Chi
 pub fn MakeChildWithTypedAttrs(comptime T: type, comptime attrs: anytype) type {
     return Node.MakeChildWithAttrs(T, child_attributes_from_struct(@TypeOf(attrs), attrs));
 }
+
+// =============================================================================
+// Child field model & dependant model
+// =============================================================================
 
 pub fn ChildField(
     comptime T: type,
