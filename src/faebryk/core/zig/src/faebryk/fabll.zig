@@ -12,8 +12,7 @@ const str = []const u8;
 fn is_child_field_type(comptime MaybeChildField: type) bool {
     return @typeInfo(MaybeChildField) == .@"struct" and
         @hasDecl(MaybeChildField, "ChildType") and
-        @hasDecl(MaybeChildField, "Identifier") and
-        @hasDecl(MaybeChildField, "FieldToken");
+        @hasDecl(MaybeChildField, "Identifier");
 }
 
 fn is_dependant_edge_type(comptime MaybeDependant: type) bool {
@@ -34,16 +33,6 @@ fn append_type(comptime items: []const type, comptime item: type) []const type {
         const finalized = out;
         break :blk &finalized;
     };
-}
-
-fn field_token_from_source(comptime src: std.builtin.SourceLocation) u64 {
-    // Stable-ish compile-time field identity:
-    // two `MakeChild()` callsites in the same file get different tokens due to line/column.
-    // This gives us a handle we can carry through types and later resolve back on the parent.
-    const file_hash = std.hash.Wyhash.hash(0, src.file);
-    return file_hash ^
-        (@as(u64, src.line) << 24) ^
-        (@as(u64, src.column) << 8);
 }
 
 fn AttributesType(comptime T: type) type {
@@ -109,7 +98,6 @@ pub const Node = struct {
             &.{},
             &.{},
             &.{},
-            field_token_from_source(@src()),
         );
     }
 
@@ -120,7 +108,6 @@ pub const Node = struct {
             attributes,
             &.{},
             &.{},
-            field_token_from_source(@src()),
         );
     }
 
@@ -213,24 +200,6 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                     }
                 }
 
-                fn child_identifier_for_token(comptime token: u64) []const u8 {
-                    // RefPath can reference a sibling/owner child via `child_field_token`.
-                    // Here we resolve that token back to the actual identifier used on the parent type.
-                    inline for (std.meta.fields(T)) |field| {
-                        if (comptime is_child_field_type(field.type) and field.type.FieldToken == token) {
-                            return field_identifier(field.name, field.type);
-                        }
-                    }
-                    const decls = @typeInfo(T).@"struct".decls;
-                    inline for (decls) |decl| {
-                        const value = @field(T, decl.name);
-                        if (comptime is_child_field_type(@TypeOf(value)) and value.FieldToken == token) {
-                            return field_identifier(decl.name, value);
-                        }
-                    }
-                    @panic("refpath child field token not found on parent type");
-                }
-
                 fn build_path(
                     owner_identifier: []const u8,
                     comptime path: RefPath,
@@ -243,7 +212,6 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                             .self_node => faebryk.composition.EdgeComposition.traverse(""),
                             .owner_child => faebryk.composition.EdgeComposition.traverse(owner_identifier),
                             .child_identifier => |path_identifier| faebryk.composition.EdgeComposition.traverse(path_identifier),
-                            .child_field_token => |token| faebryk.composition.EdgeComposition.traverse(child_identifier_for_token(token)),
                         };
                     }
                     return out;
@@ -429,7 +397,6 @@ pub fn ChildField(
     comptime attributes: []const ChildAttribute,
     comptime prepend_dependants: []const type,
     comptime dependants: []const type,
-    comptime field_token: u64,
 ) type {
     return struct {
         // Compile-time metadata of the declared child field (stage-0/type side).
@@ -438,7 +405,6 @@ pub fn ChildField(
         pub const Attributes = attributes;
         pub const PrependDependants = prepend_dependants;
         pub const Dependants = dependants;
-        pub const FieldToken = field_token;
         parent_instance: ?graph.BoundNodeReference = null,
         locator: ?str = null,
 
@@ -460,7 +426,6 @@ pub fn ChildField(
                 attributes,
                 prepend_dependants,
                 append_type(dependants, dependant),
-                field_token,
             );
         }
 
@@ -471,7 +436,6 @@ pub fn ChildField(
                 attributes,
                 append_type(prepend_dependants, dependant),
                 dependants,
-                field_token,
             );
         }
 
@@ -515,7 +479,6 @@ pub const RefPath = struct {
         self_node: void,
         owner_child: void,
         child_identifier: str,
-        child_field_token: u64,
     };
 
     segments: []const Segment,
@@ -538,15 +501,6 @@ pub const RefPath = struct {
         };
     }
 
-    pub fn child_field(comptime field_type: type) @This() {
-        if (comptime !is_child_field_type(field_type)) {
-            @compileError("RefPath.child_field expects a ChildField type");
-        }
-        // Indirect lookup through field token solves the "child field has no parent locator yet" issue.
-        return .{
-            .segments = &.{.{ .child_field_token = field_type.FieldToken }},
-        };
-    }
 };
 
 fn wrap_instance(comptime T: type, instance: graph.BoundNodeReference) T {
