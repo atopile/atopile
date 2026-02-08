@@ -8,14 +8,15 @@ const str = []const u8;
 fn is_child_field_type(comptime MaybeChildField: type) bool {
     return @typeInfo(MaybeChildField) == .@"struct" and
         @hasDecl(MaybeChildField, "ChildType") and
-        @hasDecl(MaybeChildField, "Identifier");
+        @hasDecl(MaybeChildField, "Identifier") and
+        @hasDecl(MaybeChildField, "FieldToken");
 }
 
 fn is_dependant_edge_type(comptime MaybeDependant: type) bool {
     return @typeInfo(MaybeDependant) == .@"struct" and
         @hasDecl(MaybeDependant, "DependantKind") and
-        @hasDecl(MaybeDependant, "Lhs") and
-        @hasDecl(MaybeDependant, "Rhs") and
+        @hasDecl(MaybeDependant, "LhsPath") and
+        @hasDecl(MaybeDependant, "RhsPath") and
         @hasDecl(MaybeDependant, "EdgeType") and
         @hasDecl(MaybeDependant, "Directional") and
         @hasDecl(MaybeDependant, "Name");
@@ -31,6 +32,13 @@ fn append_type(comptime items: []const type, comptime item: type) []const type {
         const finalized = out;
         break :blk &finalized;
     };
+}
+
+fn field_token_from_source(comptime src: std.builtin.SourceLocation) u64 {
+    const file_hash = std.hash.Wyhash.hash(0, src.file);
+    return file_hash ^
+        (@as(u64, src.line) << 24) ^
+        (@as(u64, src.column) << 8);
 }
 
 fn AttributesType(comptime T: type) type {
@@ -82,11 +90,25 @@ pub const Node = struct {
         if (comptime requires_attrs(T)) {
             @compileError("Type defines `Attributes`; use `T.MakeChild(...)` to provide attributes");
         }
-        return ChildField(T, null, &.{}, &.{}, &.{});
+        return ChildField(
+            T,
+            null,
+            &.{},
+            &.{},
+            &.{},
+            field_token_from_source(@src()),
+        );
     }
 
     pub fn MakeChildWithAttrs(comptime T: type, comptime attributes: []const ChildAttribute) type {
-        return ChildField(T, null, attributes, &.{}, &.{});
+        return ChildField(
+            T,
+            null,
+            attributes,
+            &.{},
+            &.{},
+            field_token_from_source(@src()),
+        );
     }
 
     pub fn bind_typegraph(comptime T: type, tg: *faebryk.typegraph.TypeGraph) TypeNodeBoundTG(T) {
@@ -178,6 +200,38 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                     }
                 }
 
+                fn child_identifier_for_token(comptime token: u64) []const u8 {
+                    inline for (std.meta.fields(T)) |field| {
+                        if (comptime is_child_field_type(field.type) and field.type.FieldToken == token) {
+                            return field_identifier(field.name, field.type);
+                        }
+                    }
+                    const decls = @typeInfo(T).@"struct".decls;
+                    inline for (decls) |decl| {
+                        const value = @field(T, decl.name);
+                        if (comptime is_child_field_type(@TypeOf(value)) and value.FieldToken == token) {
+                            return field_identifier(decl.name, value);
+                        }
+                    }
+                    @panic("refpath child field token not found on parent type");
+                }
+
+                fn build_path(
+                    owner_identifier: []const u8,
+                    comptime path: RefPath,
+                ) [path.segments.len]faebryk.typegraph.TypeGraph.ChildReferenceNode.EdgeTraversal {
+                    var out: [path.segments.len]faebryk.typegraph.TypeGraph.ChildReferenceNode.EdgeTraversal = undefined;
+                    inline for (path.segments, 0..) |segment, i| {
+                        out[i] = switch (segment) {
+                            .self_node => faebryk.composition.EdgeComposition.traverse(""),
+                            .owner_child => faebryk.composition.EdgeComposition.traverse(owner_identifier),
+                            .child_identifier => |path_identifier| faebryk.composition.EdgeComposition.traverse(path_identifier),
+                            .child_field_token => |token| faebryk.composition.EdgeComposition.traverse(child_identifier_for_token(token)),
+                        };
+                    }
+                    return out;
+                }
+
                 fn apply_dependant(ctx: *@This(), owner_child_identifier: []const u8, comptime dependant_type: type) void {
                     if (comptime is_child_field_type(dependant_type)) {
                         const dependant_identifier = dependant_type.Identifier orelse
@@ -194,21 +248,15 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                             .name = dependant_type.Name,
                             .dynamic = graph.DynamicAttributes.init_on_stack(),
                         };
-                        const lhs_path = switch (dependant_type.Lhs) {
-                            .self_node => &.{faebryk.composition.EdgeComposition.traverse("")},
-                            .child => &.{faebryk.composition.EdgeComposition.traverse(owner_child_identifier)},
-                        };
-                        const rhs_path = switch (dependant_type.Rhs) {
-                            .self_node => &.{faebryk.composition.EdgeComposition.traverse("")},
-                            .child => &.{faebryk.composition.EdgeComposition.traverse(owner_child_identifier)},
-                        };
+                        const lhs_path = build_path(owner_child_identifier, dependant_type.LhsPath);
+                        const rhs_path = build_path(owner_child_identifier, dependant_type.RhsPath);
                         const lhs_ref = faebryk.typegraph.TypeGraph.ChildReferenceNode.create_and_insert(
                             ctx.self.tg,
-                            lhs_path,
+                            &lhs_path,
                         ) catch @panic("failed to build dependant lhs reference");
                         const rhs_ref = faebryk.typegraph.TypeGraph.ChildReferenceNode.create_and_insert(
                             ctx.self.tg,
-                            rhs_path,
+                            &rhs_path,
                         ) catch @panic("failed to build dependant rhs reference");
 
                         _ = ctx.self.tg.add_make_link(
@@ -393,6 +441,7 @@ pub fn ChildField(
     comptime attributes: []const ChildAttribute,
     comptime prepend_dependants: []const type,
     comptime dependants: []const type,
+    comptime field_token: u64,
 ) type {
     return struct {
         pub const ChildType = T;
@@ -400,6 +449,7 @@ pub fn ChildField(
         pub const Attributes = attributes;
         pub const PrependDependants = prepend_dependants;
         pub const Dependants = dependants;
+        pub const FieldToken = field_token;
         parent_instance: ?graph.BoundNodeReference = null,
         locator: ?str = null,
 
@@ -421,6 +471,7 @@ pub fn ChildField(
                 attributes,
                 prepend_dependants,
                 append_type(dependants, dependant),
+                field_token,
             );
         }
 
@@ -431,6 +482,7 @@ pub fn ChildField(
                 attributes,
                 append_type(prepend_dependants, dependant),
                 dependants,
+                field_token,
             );
         }
 
@@ -440,22 +492,17 @@ pub fn ChildField(
     };
 }
 
-pub const DependantEndpoint = enum {
-    self_node,
-    child,
-};
-
 pub fn MakeDependantEdge(
-    comptime lhs: DependantEndpoint,
-    comptime rhs: DependantEndpoint,
+    comptime lhs_path: RefPath,
+    comptime rhs_path: RefPath,
     comptime edge_type: graph.Edge.EdgeType,
     comptime directional: ?bool,
     comptime name: ?str,
 ) type {
     return struct {
         pub const DependantKind = .edge;
-        pub const Lhs = lhs;
-        pub const Rhs = rhs;
+        pub const LhsPath = lhs_path;
+        pub const RhsPath = rhs_path;
         pub const EdgeType = edge_type;
         pub const Directional = directional;
         pub const Name = name;
@@ -475,8 +522,41 @@ pub const EdgeField = struct {
 };
 
 pub const RefPath = struct {
-    pub const Element = enum {};
-    path: std.ArrayList(Element),
+    pub const Segment = union(enum) {
+        self_node: void,
+        owner_child: void,
+        child_identifier: str,
+        child_field_token: u64,
+    };
+
+    segments: []const Segment,
+
+    pub fn self() @This() {
+        return .{
+            .segments = &.{.{ .self_node = {} }},
+        };
+    }
+
+    pub fn owner_child() @This() {
+        return .{
+            .segments = &.{.{ .owner_child = {} }},
+        };
+    }
+
+    pub fn child_identifier(comptime identifier: str) @This() {
+        return .{
+            .segments = &.{.{ .child_identifier = identifier }},
+        };
+    }
+
+    pub fn child_field(comptime field_type: type) @This() {
+        if (comptime !is_child_field_type(field_type)) {
+            @compileError("RefPath.child_field expects a ChildField type");
+        }
+        return .{
+            .segments = &.{.{ .child_field_token = field_type.FieldToken }},
+        };
+    }
 };
 
 // TESTING ====================================================================
@@ -484,12 +564,12 @@ pub const RefPath = struct {
 pub const is_trait = struct {
     node: Node,
 
-    pub fn MakeEdge(comptime traitchildfield: type, owner: ?RefPath) type {
-        _ = owner;
+    pub fn MakeEdge(comptime traitchildfield: type, comptime owner: ?RefPath) type {
+        const owner_path = owner orelse RefPath.self();
         return traitchildfield.add_dependant(
             MakeDependantEdge(
-                .self_node,
-                .child,
+                owner_path,
+                RefPath.owner_child(),
                 faebryk.trait.EdgeTrait.get_tid(),
                 true,
                 null,
