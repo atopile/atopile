@@ -70,6 +70,24 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                     const child_identifier = value.field.identifier orelse decl.name;
                     _ = self.tg.add_make_child(type_node, child_type, child_identifier, null, false) catch
                         @panic("failed to add make child");
+
+                    if (value.trait_owner_is_self) {
+                        const lhs_ref = faebryk.typegraph.TypeGraph.ChildReferenceNode.create_and_insert(
+                            self.tg,
+                            &.{faebryk.composition.EdgeComposition.traverse("")},
+                        ) catch @panic("failed to build trait lhs reference");
+                        const rhs_ref = faebryk.typegraph.TypeGraph.ChildReferenceNode.create_and_insert(
+                            self.tg,
+                            &.{faebryk.composition.EdgeComposition.traverse(child_identifier)},
+                        ) catch @panic("failed to build trait rhs reference");
+
+                        _ = self.tg.add_make_link(
+                            type_node,
+                            lhs_ref,
+                            rhs_ref,
+                            faebryk.trait.EdgeTrait.build(),
+                        ) catch @panic("failed to add trait make link");
+                    }
                 }
             }
 
@@ -103,6 +121,7 @@ pub const FieldE = union(enum) {
 pub const ChildField = struct {
     field: Field,
     T: type,
+    trait_owner_is_self: bool = false,
 
     pub fn add_dependant(self: *@This(), dependant: FieldE) void {
         _ = self;
@@ -132,7 +151,9 @@ pub const is_trait = struct {
 
     pub fn MakeEdge(traitchildfield: ChildField, owner: ?RefPath) ChildField {
         _ = owner;
-        return traitchildfield;
+        var out = traitchildfield;
+        out.trait_owner_is_self = true;
+        return out;
     }
 
     pub fn MakeChild() ChildField {
@@ -207,8 +228,8 @@ fn print_type_overview(tg: *faebryk.typegraph.TypeGraph, allocator: std.mem.Allo
 
 test "comptime child field discovery" {
     try std.testing.expectEqual(@as(usize, 2), comptime_child_field_count(ElectricPower));
-    try std.testing.expect(std.mem.eql(u8, comptime_child_field_name(ElectricPower, 0), "hv_lowlevel"));
-    try std.testing.expect(std.mem.eql(u8, comptime_child_field_name(ElectricPower, 1), "hv_highlevel"));
+    try std.testing.expect(std.mem.eql(u8, comptime_child_field_name(ElectricPower, 0), "hv"));
+    try std.testing.expect(std.mem.eql(u8, comptime_child_field_name(ElectricPower, 1), "lv"));
 }
 
 test "basic fabll" {
@@ -235,4 +256,29 @@ test "basic+1 fabll" {
     _ = power_bound.create_instance(&g);
 
     print_type_overview(&tg, std.testing.allocator, "basic+1 fabll");
+}
+
+test "basic+2 fabll trait edges" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const power_bound = Node.bind_typegraph(ElectricPower, &tg);
+    const power_instance = power_bound.create_instance(&g).node.instance;
+
+    const hv = faebryk.composition.EdgeComposition.get_child_by_identifier(power_instance, "hv") orelse
+        @panic("missing hv child");
+    const lv = faebryk.composition.EdgeComposition.get_child_by_identifier(power_instance, "lv") orelse
+        @panic("missing lv child");
+
+    const is_interface_type = tg.get_type_by_name(@typeName(is_interface)) orelse
+        @panic("missing is_interface type");
+
+    const hv_trait = faebryk.trait.EdgeTrait.try_get_trait_instance_of_type(hv, is_interface_type.node);
+    const lv_trait = faebryk.trait.EdgeTrait.try_get_trait_instance_of_type(lv, is_interface_type.node);
+
+    try std.testing.expect(hv_trait != null);
+    try std.testing.expect(lv_trait != null);
+
+    print_type_overview(&tg, std.testing.allocator, "basic+2 fabll trait edges");
 }
