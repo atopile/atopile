@@ -6,6 +6,30 @@ const faebryk = @import("faebryk");
 const str = []const u8;
 
 // =============================================================================
+// Still missing (vs Python FabLL)
+// =============================================================================
+// - Full RefPath parity beyond self/owner_child/child_identifier
+// - First-class EdgeField declaration + execution parity
+// - Rich dependant child ergonomics
+// - ListField equivalent
+// - Type-field / put_on_type semantics
+// - Deferred/linked child types (string nodetypes)
+// - soft_create semantics
+// - Broader Traits API parity
+// - Broader Node runtime API parity
+// - Better non-panic error surface
+
+// =============================================================================
+// Next milestone: edge declaration parity TODO
+// =============================================================================
+// 1) Define first-class edge declaration field type
+// 2) Define typed refpath spec usable by edge declarations
+// 3) Execute declared edges during type creation
+// 4) Add tests: direct sibling edge
+// 5) Add tests: multi-segment nested edge
+// 6) Add tests: interaction with dependant-created edges
+
+// =============================================================================
 // Compile-time reflection & utility helpers
 // =============================================================================
 
