@@ -831,3 +831,68 @@ test "basic+6 interface connection edge dependant" {
     try std.testing.expect(ctx.found);
     try std.testing.expect(ctx.shallow_is_false);
 }
+
+test "basic+7 two-segment refpath dependant edge" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const ElectricPowerNestedConnected = struct {
+        node: Node,
+
+        hv: Electrical.MakeChild().add_dependant(
+            is_interface.MakeConnectionEdge(
+                .{
+                    .segments = &.{
+                        .{ .owner_child = {} },
+                        .{ .child_identifier = "_is_interface" },
+                    },
+                },
+                .{
+                    .segments = &.{
+                        .{ .child_identifier = "lv" },
+                        .{ .child_identifier = "_is_interface" },
+                    },
+                },
+                false,
+            ),
+        ),
+        lv: Electrical.MakeChild(),
+    };
+
+    const bound = Node.bind_typegraph(ElectricPowerNestedConnected, &tg);
+    const power_instance = bound.create_instance(&g);
+
+    const hv_iface = power_instance.hv.get()._is_interface.get();
+    const lv_iface = power_instance.lv.get()._is_interface.get();
+
+    const Ctx = struct {
+        hv_iface: graph.BoundNodeReference,
+        lv_iface: graph.BoundNodeReference,
+        found: bool = false,
+
+        fn visit(ctx_ptr: *anyopaque, be: graph.BoundEdgeReference) visitor.VisitResult(void) {
+            const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+            if (!faebryk.interface.EdgeInterfaceConnection.is_instance(be.edge)) {
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+            const other = faebryk.interface.EdgeInterfaceConnection.get_other_connected_node(be.edge, ctx.hv_iface.node) orelse
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            if (other.is_same(ctx.lv_iface.node)) {
+                ctx.found = true;
+            }
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+    };
+
+    var ctx: Ctx = .{
+        .hv_iface = hv_iface.node.instance,
+        .lv_iface = lv_iface.node.instance,
+    };
+    switch (faebryk.interface.EdgeInterfaceConnection.visit_connected_edges(hv_iface.node.instance, &ctx, Ctx.visit)) {
+        .ERROR => @panic("visit_connected_edges failed"),
+        else => {},
+    }
+
+    try std.testing.expect(ctx.found);
+}
