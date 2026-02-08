@@ -1,0 +1,407 @@
+{
+  "version": "2.0",
+  "root": {
+    "modules": [
+      {
+        "kind": "module",
+        "id": "power",
+        "name": "power",
+        "typeName": "TLV75901_driver",
+        "componentCount": 3,
+        "interfacePins": [
+          { "id": "power_in", "name": "VIN", "side": "left", "category": "power", "interfaceType": "ElectricPower", "x": -11.54, "y": 2, "bodyX": -9, "bodyY": 2 },
+          { "id": "power_gnd_in", "name": "GND", "side": "left", "category": "ground", "interfaceType": "ElectricPower", "x": -11.54, "y": -2, "bodyX": -9, "bodyY": -2 },
+          { "id": "power_out", "name": "3V3", "side": "right", "category": "power", "interfaceType": "ElectricPower", "x": 11.54, "y": 2, "bodyX": 9, "bodyY": 2 },
+          { "id": "power_gnd_out", "name": "GND", "side": "right", "category": "ground", "interfaceType": "ElectricPower", "x": 11.54, "y": -2, "bodyX": 9, "bodyY": -2 }
+        ],
+        "bodyWidth": 18,
+        "bodyHeight": 10,
+        "sheet": {
+          "modules": [],
+          "components": [
+            {
+              "kind": "component",
+              "id": "power.ldo",
+              "name": "TLV75901",
+              "designator": "U1",
+              "reference": "U",
+              "bodyWidth": 14,
+              "bodyHeight": 10,
+              "pins": [
+                { "number": "1", "name": "IN", "side": "left", "electricalType": "power_in", "category": "power", "x": -9.54, "y": 2.5, "bodyX": -7, "bodyY": 2.5 },
+                { "number": "2", "name": "EN", "side": "left", "electricalType": "input", "category": "input", "x": -9.54, "y": 0, "bodyX": -7, "bodyY": 0 },
+                { "number": "3", "name": "GND", "side": "left", "electricalType": "power_in", "category": "ground", "x": -9.54, "y": -2.5, "bodyX": -7, "bodyY": -2.5 },
+                { "number": "4", "name": "OUT", "side": "right", "electricalType": "power_out", "category": "power", "x": 9.54, "y": 2.5, "bodyX": 7, "bodyY": 2.5 },
+                { "number": "5", "name": "NR", "side": "right", "electricalType": "passive", "category": "signal", "x": 9.54, "y": -2.5, "bodyX": 7, "bodyY": -2.5 }
+              ]
+            },
+            {
+              "kind": "component",
+              "id": "power.c_in",
+              "name": "10uF",
+              "designator": "C1",
+              "reference": "C",
+              "bodyWidth": 5.08,
+              "bodyHeight": 2.04,
+              "pins": [
+                { "number": "1", "name": "1", "side": "left", "electricalType": "passive", "category": "passive", "x": -5.08, "y": 0, "bodyX": -2.54, "bodyY": 0 },
+                { "number": "2", "name": "2", "side": "right", "electricalType": "passive", "category": "passive", "x": 5.08, "y": 0, "bodyX": 2.54, "bodyY": 0 }
+              ]
+            },
+            {
+              "kind": "component",
+              "id": "power.c_out",
+              "name": "10uF",
+              "designator": "C2",
+              "reference": "C",
+              "bodyWidth": 5.08,
+              "bodyHeight": 2.04,
+              "pins": [
+                { "number": "1", "name": "1", "side": "left", "electricalType": "passive", "category": "passive", "x": -5.08, "y": 0, "bodyX": -2.54, "bodyY": 0 },
+                { "number": "2", "name": "2", "side": "right", "electricalType": "passive", "category": "passive", "x": 5.08, "y": 0, "bodyX": 2.54, "bodyY": 0 }
+              ]
+            }
+          ],
+          "nets": [
+            {
+              "id": "power__vin_int",
+              "name": "VIN",
+              "type": "power",
+              "pins": [
+                { "componentId": "power_in", "pinNumber": "1" },
+                { "componentId": "power.ldo", "pinNumber": "1" },
+                { "componentId": "power.ldo", "pinNumber": "2" },
+                { "componentId": "power.c_in", "pinNumber": "1" }
+              ]
+            },
+            {
+              "id": "power__vout_int",
+              "name": "3V3",
+              "type": "power",
+              "pins": [
+                { "componentId": "power.ldo", "pinNumber": "4" },
+                { "componentId": "power.c_out", "pinNumber": "1" },
+                { "componentId": "power_out", "pinNumber": "1" }
+              ]
+            },
+            {
+              "id": "power__gnd_int",
+              "name": "GND",
+              "type": "ground",
+              "pins": [
+                { "componentId": "power_gnd_in", "pinNumber": "1" },
+                { "componentId": "power.ldo", "pinNumber": "3" },
+                { "componentId": "power.c_in", "pinNumber": "2" },
+                { "componentId": "power.c_out", "pinNumber": "2" },
+                { "componentId": "power_gnd_out", "pinNumber": "1" }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "kind": "module",
+        "id": "mcu_system",
+        "name": "mcu_system",
+        "typeName": "ESP32C3_driver",
+        "componentCount": 2,
+        "interfacePins": [
+          { "id": "mcu_vdd", "name": "VDD", "side": "left", "category": "power", "interfaceType": "ElectricPower", "x": -13.54, "y": 6, "bodyX": -11, "bodyY": 6 },
+          { "id": "mcu_gnd", "name": "GND", "side": "left", "category": "ground", "interfaceType": "ElectricPower", "x": -13.54, "y": 3, "bodyX": -11, "bodyY": 3 },
+          { "id": "mcu_scl", "name": "SCL", "side": "right", "category": "i2c", "interfaceType": "I2C", "x": 13.54, "y": 6, "bodyX": 11, "bodyY": 6 },
+          { "id": "mcu_sda", "name": "SDA", "side": "right", "category": "i2c", "interfaceType": "I2C", "x": 13.54, "y": 3, "bodyX": 11, "bodyY": 3 },
+          { "id": "mcu_tx", "name": "TX", "side": "right", "category": "uart", "interfaceType": "UART", "x": 13.54, "y": -1, "bodyX": 11, "bodyY": -1 },
+          { "id": "mcu_rx", "name": "RX", "side": "right", "category": "uart", "interfaceType": "UART", "x": 13.54, "y": -4, "bodyX": 11, "bodyY": -4 },
+          { "id": "mcu_gpio0", "name": "GPIO0", "side": "right", "category": "signal", "interfaceType": "ElectricLogic", "x": 13.54, "y": -7, "bodyX": 11, "bodyY": -7 }
+        ],
+        "bodyWidth": 22,
+        "bodyHeight": 20,
+        "sheet": {
+          "modules": [],
+          "components": [
+            {
+              "kind": "component",
+              "id": "mcu_system.mcu",
+              "name": "ESP32-C3",
+              "designator": "U2",
+              "reference": "U",
+              "bodyWidth": 20,
+              "bodyHeight": 28,
+              "pins": [
+                { "number": "1", "name": "VDD", "side": "left", "electricalType": "power_in", "category": "power", "x": -12.54, "y": 11, "bodyX": -10, "bodyY": 11 },
+                { "number": "2", "name": "GND", "side": "left", "electricalType": "power_in", "category": "ground", "x": -12.54, "y": 8.5, "bodyX": -10, "bodyY": 8.5 },
+                { "number": "3", "name": "IO0", "side": "left", "electricalType": "bidirectional", "category": "signal", "x": -12.54, "y": 5.5, "bodyX": -10, "bodyY": 5.5 },
+                { "number": "4", "name": "IO1", "side": "left", "electricalType": "bidirectional", "category": "signal", "x": -12.54, "y": 3, "bodyX": -10, "bodyY": 3 },
+                { "number": "5", "name": "IO2", "side": "left", "electricalType": "bidirectional", "category": "signal", "x": -12.54, "y": 0.5, "bodyX": -10, "bodyY": 0.5 },
+                { "number": "6", "name": "IO3", "side": "left", "electricalType": "bidirectional", "category": "signal", "x": -12.54, "y": -2, "bodyX": -10, "bodyY": -2 },
+                { "number": "7", "name": "SCL", "side": "right", "electricalType": "bidirectional", "category": "i2c", "x": 12.54, "y": 5.5, "bodyX": 10, "bodyY": 5.5 },
+                { "number": "8", "name": "SDA", "side": "right", "electricalType": "bidirectional", "category": "i2c", "x": 12.54, "y": 3, "bodyX": 10, "bodyY": 3 },
+                { "number": "9", "name": "TX", "side": "right", "electricalType": "output", "category": "uart", "x": 12.54, "y": 0, "bodyX": 10, "bodyY": 0 },
+                { "number": "10", "name": "RX", "side": "right", "electricalType": "input", "category": "uart", "x": 12.54, "y": -2.5, "bodyX": 10, "bodyY": -2.5 },
+                { "number": "11", "name": "EN", "side": "left", "electricalType": "input", "category": "reset", "x": -12.54, "y": -5, "bodyX": -10, "bodyY": -5 },
+                { "number": "12", "name": "IO8", "side": "right", "electricalType": "bidirectional", "category": "signal", "x": 12.54, "y": -5.5, "bodyX": 10, "bodyY": -5.5 },
+                { "number": "13", "name": "IO9", "side": "right", "electricalType": "bidirectional", "category": "signal", "x": 12.54, "y": -8, "bodyX": 10, "bodyY": -8 },
+                { "number": "14", "name": "IO10", "side": "left", "electricalType": "bidirectional", "category": "signal", "x": -12.54, "y": -8, "bodyX": -10, "bodyY": -8 },
+                { "number": "15", "name": "XTAL_P", "side": "left", "electricalType": "passive", "category": "signal", "x": -12.54, "y": -10.5, "bodyX": -10, "bodyY": -10.5 },
+                { "number": "16", "name": "XTAL_N", "side": "right", "electricalType": "passive", "category": "signal", "x": 12.54, "y": -10.5, "bodyX": 10, "bodyY": -10.5 }
+              ]
+            },
+            {
+              "kind": "component",
+              "id": "mcu_system.c_decoup",
+              "name": "100nF",
+              "designator": "C3",
+              "reference": "C",
+              "bodyWidth": 5.08,
+              "bodyHeight": 2.04,
+              "pins": [
+                { "number": "1", "name": "1", "side": "left", "electricalType": "passive", "category": "passive", "x": -5.08, "y": 0, "bodyX": -2.54, "bodyY": 0 },
+                { "number": "2", "name": "2", "side": "right", "electricalType": "passive", "category": "passive", "x": 5.08, "y": 0, "bodyX": 2.54, "bodyY": 0 }
+              ]
+            }
+          ],
+          "nets": [
+            {
+              "id": "mcu__vdd_int",
+              "name": "VDD",
+              "type": "power",
+              "pins": [
+                { "componentId": "mcu_vdd", "pinNumber": "1" },
+                { "componentId": "mcu_system.mcu", "pinNumber": "1" },
+                { "componentId": "mcu_system.c_decoup", "pinNumber": "1" }
+              ]
+            },
+            {
+              "id": "mcu__gnd_int",
+              "name": "GND",
+              "type": "ground",
+              "pins": [
+                { "componentId": "mcu_gnd", "pinNumber": "1" },
+                { "componentId": "mcu_system.mcu", "pinNumber": "2" },
+                { "componentId": "mcu_system.c_decoup", "pinNumber": "2" }
+              ]
+            },
+            {
+              "id": "mcu__scl_int",
+              "name": "SCL",
+              "type": "bus",
+              "pins": [
+                { "componentId": "mcu_system.mcu", "pinNumber": "7" },
+                { "componentId": "mcu_scl", "pinNumber": "1" }
+              ]
+            },
+            {
+              "id": "mcu__sda_int",
+              "name": "SDA",
+              "type": "bus",
+              "pins": [
+                { "componentId": "mcu_system.mcu", "pinNumber": "8" },
+                { "componentId": "mcu_sda", "pinNumber": "1" }
+              ]
+            },
+            {
+              "id": "mcu__tx_int",
+              "name": "TX",
+              "type": "signal",
+              "pins": [
+                { "componentId": "mcu_system.mcu", "pinNumber": "9" },
+                { "componentId": "mcu_tx", "pinNumber": "1" }
+              ]
+            },
+            {
+              "id": "mcu__rx_int",
+              "name": "RX",
+              "type": "signal",
+              "pins": [
+                { "componentId": "mcu_system.mcu", "pinNumber": "10" },
+                { "componentId": "mcu_rx", "pinNumber": "1" }
+              ]
+            },
+            {
+              "id": "mcu__gpio0_int",
+              "name": "GPIO0",
+              "type": "signal",
+              "pins": [
+                { "componentId": "mcu_system.mcu", "pinNumber": "3" },
+                { "componentId": "mcu_gpio0", "pinNumber": "1" }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "kind": "module",
+        "id": "sensor_system",
+        "name": "sensor_system",
+        "typeName": "BME280_driver",
+        "componentCount": 3,
+        "interfacePins": [
+          { "id": "sens_vdd", "name": "VDD", "side": "left", "category": "power", "interfaceType": "ElectricPower", "x": -11.54, "y": 3, "bodyX": -9, "bodyY": 3 },
+          { "id": "sens_gnd", "name": "GND", "side": "left", "category": "ground", "interfaceType": "ElectricPower", "x": -11.54, "y": 0, "bodyX": -9, "bodyY": 0 },
+          { "id": "sens_scl", "name": "SCL", "side": "left", "category": "i2c", "interfaceType": "I2C", "x": -11.54, "y": -3, "bodyX": -9, "bodyY": -3 },
+          { "id": "sens_sda", "name": "SDA", "side": "left", "category": "i2c", "interfaceType": "I2C", "x": -11.54, "y": -6, "bodyX": -9, "bodyY": -6 }
+        ],
+        "bodyWidth": 18,
+        "bodyHeight": 16,
+        "sheet": {
+          "modules": [],
+          "components": [
+            {
+              "kind": "component",
+              "id": "sensor_system.sensor",
+              "name": "BME280",
+              "designator": "U3",
+              "reference": "U",
+              "bodyWidth": 14,
+              "bodyHeight": 14,
+              "pins": [
+                { "number": "1", "name": "VDD", "side": "left", "electricalType": "power_in", "category": "power", "x": -9.54, "y": 4, "bodyX": -7, "bodyY": 4 },
+                { "number": "2", "name": "GND", "side": "left", "electricalType": "power_in", "category": "ground", "x": -9.54, "y": 1.5, "bodyX": -7, "bodyY": 1.5 },
+                { "number": "3", "name": "SCL", "side": "left", "electricalType": "input", "category": "i2c", "x": -9.54, "y": -1, "bodyX": -7, "bodyY": -1 },
+                { "number": "4", "name": "SDA", "side": "left", "electricalType": "bidirectional", "category": "i2c", "x": -9.54, "y": -3.5, "bodyX": -7, "bodyY": -3.5 },
+                { "number": "5", "name": "SDO", "side": "right", "electricalType": "output", "category": "signal", "x": 9.54, "y": 1.5, "bodyX": 7, "bodyY": 1.5 },
+                { "number": "6", "name": "CSB", "side": "right", "electricalType": "input", "category": "signal", "x": 9.54, "y": -1, "bodyX": 7, "bodyY": -1 }
+              ]
+            },
+            {
+              "kind": "component",
+              "id": "sensor_system.r_scl",
+              "name": "10k",
+              "designator": "R1",
+              "reference": "R",
+              "bodyWidth": 5.08,
+              "bodyHeight": 2.04,
+              "pins": [
+                { "number": "1", "name": "1", "side": "left", "electricalType": "passive", "category": "passive", "x": -5.08, "y": 0, "bodyX": -2.54, "bodyY": 0 },
+                { "number": "2", "name": "2", "side": "right", "electricalType": "passive", "category": "passive", "x": 5.08, "y": 0, "bodyX": 2.54, "bodyY": 0 }
+              ]
+            },
+            {
+              "kind": "component",
+              "id": "sensor_system.r_sda",
+              "name": "10k",
+              "designator": "R2",
+              "reference": "R",
+              "bodyWidth": 5.08,
+              "bodyHeight": 2.04,
+              "pins": [
+                { "number": "1", "name": "1", "side": "left", "electricalType": "passive", "category": "passive", "x": -5.08, "y": 0, "bodyX": -2.54, "bodyY": 0 },
+                { "number": "2", "name": "2", "side": "right", "electricalType": "passive", "category": "passive", "x": 5.08, "y": 0, "bodyX": 2.54, "bodyY": 0 }
+              ]
+            }
+          ],
+          "nets": [
+            {
+              "id": "sens__vdd_int",
+              "name": "VDD",
+              "type": "power",
+              "pins": [
+                { "componentId": "sens_vdd", "pinNumber": "1" },
+                { "componentId": "sensor_system.sensor", "pinNumber": "1" },
+                { "componentId": "sensor_system.r_scl", "pinNumber": "1" },
+                { "componentId": "sensor_system.r_sda", "pinNumber": "1" }
+              ]
+            },
+            {
+              "id": "sens__gnd_int",
+              "name": "GND",
+              "type": "ground",
+              "pins": [
+                { "componentId": "sens_gnd", "pinNumber": "1" },
+                { "componentId": "sensor_system.sensor", "pinNumber": "2" }
+              ]
+            },
+            {
+              "id": "sens__scl_int",
+              "name": "SCL",
+              "type": "bus",
+              "pins": [
+                { "componentId": "sens_scl", "pinNumber": "1" },
+                { "componentId": "sensor_system.sensor", "pinNumber": "3" },
+                { "componentId": "sensor_system.r_scl", "pinNumber": "2" }
+              ]
+            },
+            {
+              "id": "sens__sda_int",
+              "name": "SDA",
+              "type": "bus",
+              "pins": [
+                { "componentId": "sens_sda", "pinNumber": "1" },
+                { "componentId": "sensor_system.sensor", "pinNumber": "4" },
+                { "componentId": "sensor_system.r_sda", "pinNumber": "2" }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "components": [
+      {
+        "kind": "component",
+        "id": "usb_connector",
+        "name": "USB-C",
+        "designator": "J1",
+        "reference": "J",
+        "bodyWidth": 10,
+        "bodyHeight": 12,
+        "pins": [
+          { "number": "1", "name": "VBUS", "side": "right", "electricalType": "power_out", "category": "power", "x": 7.54, "y": 3, "bodyX": 5, "bodyY": 3 },
+          { "number": "2", "name": "D-", "side": "right", "electricalType": "bidirectional", "category": "signal", "x": 7.54, "y": 1, "bodyX": 5, "bodyY": 1 },
+          { "number": "3", "name": "D+", "side": "right", "electricalType": "bidirectional", "category": "signal", "x": 7.54, "y": -1, "bodyX": 5, "bodyY": -1 },
+          { "number": "4", "name": "GND", "side": "right", "electricalType": "power_out", "category": "ground", "x": 7.54, "y": -3, "bodyX": 5, "bodyY": -3 }
+        ]
+      }
+    ],
+    "nets": [
+      {
+        "id": "VBUS",
+        "name": "VBUS",
+        "type": "power",
+        "pins": [
+          { "componentId": "usb_connector", "pinNumber": "1" },
+          { "componentId": "power", "pinNumber": "power_in" }
+        ]
+      },
+      {
+        "id": "V3V3",
+        "name": "3V3",
+        "type": "power",
+        "pins": [
+          { "componentId": "power", "pinNumber": "power_out" },
+          { "componentId": "mcu_system", "pinNumber": "mcu_vdd" },
+          { "componentId": "sensor_system", "pinNumber": "sens_vdd" }
+        ]
+      },
+      {
+        "id": "GND",
+        "name": "GND",
+        "type": "ground",
+        "pins": [
+          { "componentId": "usb_connector", "pinNumber": "4" },
+          { "componentId": "power", "pinNumber": "power_gnd_in" },
+          { "componentId": "power", "pinNumber": "power_gnd_out" },
+          { "componentId": "mcu_system", "pinNumber": "mcu_gnd" },
+          { "componentId": "sensor_system", "pinNumber": "sens_gnd" }
+        ]
+      },
+      {
+        "id": "I2C_SCL",
+        "name": "SCL",
+        "type": "bus",
+        "pins": [
+          { "componentId": "mcu_system", "pinNumber": "mcu_scl" },
+          { "componentId": "sensor_system", "pinNumber": "sens_scl" }
+        ]
+      },
+      {
+        "id": "I2C_SDA",
+        "name": "SDA",
+        "type": "bus",
+        "pins": [
+          { "componentId": "mcu_system", "pinNumber": "mcu_sda" },
+          { "componentId": "sensor_system", "pinNumber": "sens_sda" }
+        ]
+      }
+    ]
+  }
+}

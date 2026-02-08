@@ -1,0 +1,183 @@
+#pragma experiment("MODULE_TEMPLATING")
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
+#pragma experiment("TRAITS")
+
+import Capacitor
+import ElectricLogic
+import ElectricPower
+import I2C
+import SPI
+import SWD
+import UART
+import USB2_0
+import XtalIF
+
+from "parts/STMicroelectronics_STM32F042F6P6/STMicroelectronics_STM32F042F6P6.ato" import STMicroelectronics_STM32F042F6P6_package
+
+module ST_STM32F042F6P6:
+    """
+    STMicroelectronics STM32F042F6Px (Arm Cortex-M0 up to 48 MHz).
+    32 KB Flash, 6 KB SRAM, TSSOP20.
+    """
+
+    # --- Package ---
+    package = new STMicroelectronics_STM32F042F6P6_package
+
+    # ===================================================================
+    # Power domains
+    # ===================================================================
+
+    power_3v3 = new ElectricPower
+    """Primary supply domain (2.0V to 3.6V)."""
+    power_3v3.required = True
+    assert power_3v3.voltage within 2.0V to 3.6V
+
+    power_analog = new ElectricPower
+    """Analog supply domain (VDDA/VSSA)."""
+
+    power_3v3 ~ power_analog
+
+    # ===================================================================
+    # External interfaces
+    # ===================================================================
+
+    swd = new SWD
+    """Program/debug via Serial Wire Debug."""
+
+    usb = new USB2_0
+    """USB 2.0 Full-Speed device."""
+
+    uart = new UART[2]
+    """[0]=USART1, [1]=USART2."""
+
+    spi = new SPI
+    """SPI1."""
+
+    i2c = new I2C
+    """I2C1."""
+
+    hse = new XtalIF
+    """High-speed external crystal oscillator."""
+
+    # ===================================================================
+    # GPIO arrays by port
+    # ===================================================================
+
+    gpio_a = new ElectricLogic[15]
+    """Port A: 14 of 15 pins bonded out."""
+
+    gpio_b = new ElectricLogic[9]
+    """Port B: 2 of 9 pins bonded out."""
+
+    gpio_f = new ElectricLogic[2]
+    """Port F: all 2 pins bonded out."""
+
+    # ===================================================================
+    # Decoupling capacitors
+    # ===================================================================
+
+    decoupling_power_3v3_100nF = new Capacitor
+    decoupling_power_3v3_100nF.capacitance = 100nF +/- 20%
+    decoupling_power_3v3_100nF.package = "0402"
+    power_3v3.hv ~> decoupling_power_3v3_100nF ~> power_3v3.lv
+
+    decoupling_power_3v3_1uF = new Capacitor
+    decoupling_power_3v3_1uF.capacitance = 1uF +/- 20%
+    decoupling_power_3v3_1uF.package = "0402"
+    power_3v3.hv ~> decoupling_power_3v3_1uF ~> power_3v3.lv
+
+    decoupling_power_analog_1uF = new Capacitor
+    decoupling_power_analog_1uF.capacitance = 1uF +/- 20%
+    decoupling_power_analog_1uF.package = "0402"
+    power_analog.hv ~> decoupling_power_analog_1uF ~> power_analog.lv
+
+    decoupling_power_analog_100nF = new Capacitor
+    decoupling_power_analog_100nF.capacitance = 100nF +/- 20%
+    decoupling_power_analog_100nF.package = "0402"
+    power_analog.hv ~> decoupling_power_analog_100nF ~> power_analog.lv
+
+    # ===================================================================
+    # Package power connections
+    # ===================================================================
+
+    package.VDD ~ power_3v3.hv
+    package.VSS ~ power_3v3.lv
+
+    package.VDDA ~ power_analog.hv
+
+    # ===================================================================
+    # Interface pin assignments
+    # ===================================================================
+
+    # SWD debug
+    swd.dio ~ gpio_a[13]
+    swd.clk ~ gpio_a[14]
+
+    # USB Full-Speed
+    usb.usb_if.d.n ~ gpio_a[11]
+    usb.usb_if.d.p ~ gpio_a[12]
+
+    # USART1 (PA9=TX, PA10=RX)
+    uart[0].base_uart.tx ~ gpio_a[9]
+    uart[0].base_uart.rx ~ gpio_a[10]
+
+    # USART2 (PA2=TX, PA3=RX)
+    uart[1].base_uart.tx ~ gpio_a[2]
+    uart[1].base_uart.rx ~ gpio_a[3]
+
+    # SPI1
+    spi.sclk ~ gpio_a[5]
+    spi.miso ~ gpio_a[6]
+    spi.mosi ~ gpio_a[7]
+
+    # I2C1
+    i2c.scl ~ gpio_b[8]
+    i2c.sda ~ gpio_f[0]
+
+    # ===================================================================
+    # Crystal connections
+    # ===================================================================
+
+    hse.xin ~ package.PF0_OSCIN
+    hse.xout ~ package.PF1_OSCOUT
+    hse.gnd ~ power_3v3.lv
+
+    # ===================================================================
+    # GPIO-to-package pin mappings
+    # ===================================================================
+
+    # Port A
+    package.PA0 ~ gpio_a[0].line
+    package.PA1 ~ gpio_a[1].line
+    package.PA2 ~ gpio_a[2].line
+    package.PA3 ~ gpio_a[3].line
+    package.PA4 ~ gpio_a[4].line
+    package.PA5 ~ gpio_a[5].line
+    package.PA6 ~ gpio_a[6].line
+    package.PA7 ~ gpio_a[7].line
+    package.PA9PA11 ~ gpio_a[9].line
+    package.PA10PA12 ~ gpio_a[10].line
+    # WARNING: no package signal found for PA11
+    # WARNING: no package signal found for PA12
+    package.PA13 ~ gpio_a[13].line
+    package.PA14 ~ gpio_a[14].line
+
+    # Port B
+    package.PB1 ~ gpio_b[1].line
+    package.PB8_BOOT0 ~ gpio_b[8].line
+
+    # Port F
+    package.PF0_OSCIN ~ gpio_f[0].line
+    package.PF1_OSCOUT ~ gpio_f[1].line
+
+    # ===================================================================
+    # GPIO reference power connections
+    # ===================================================================
+
+    for io in gpio_a:
+        io.reference ~ power_3v3
+    for io in gpio_b:
+        io.reference ~ power_3v3
+    for io in gpio_f:
+        io.reference ~ power_3v3

@@ -234,6 +234,16 @@
                 "category": "atopile"
             },
             {
+                "command": "atopile.pinout_explorer",
+                "title": "Open Pinout",
+                "category": "atopile"
+            },
+            {
+                "command": "atopile.schematic_preview",
+                "title": "Open Schematic",
+                "category": "atopile"
+            },
+            {
                 "command": "atopile.llm.setup",
                 "title": "Setup LLM rules & MCP",
                 "category": "atopile"

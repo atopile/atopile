@@ -64,6 +64,7 @@ STDLIB_ALLOWLIST: AllowListT = (
     {
         F.Addressor,
         F.SinglePinAddressor,
+        F.PinMuxSelector,
         F.BJT,
         F.CAN_TTL,
         F.Capacitor,

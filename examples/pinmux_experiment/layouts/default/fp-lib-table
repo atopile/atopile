@@ -1,0 +1,10 @@
+(fp_lib_table
+	(version 7)
+	(lib
+		(name "UNI_ROYAL_0201WMF1001TEE")
+		(type "KiCad")
+		(uri "${KIPRJMOD}/../../parts/UNI_ROYAL_0201WMF1001TEE")
+		(options "")
+		(descr "atopile: part lib: UNI_ROYAL_0201WMF1001TEE")
+	)
+)

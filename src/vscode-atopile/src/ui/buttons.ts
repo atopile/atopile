@@ -19,6 +19,7 @@ import * as kicanvas from './kicanvas';
 import * as modelviewer from './modelviewer';
 import * as treeVisualizer from './tree-visualizer';
 import * as pinoutExplorer from './pinout-explorer';
+import * as schematicViewer from './schematic-viewer';
 import {
     getBuildTarget,
     getSelectedTargets,
@@ -80,6 +81,7 @@ const cmdServe = registerCommand('atopile.serve', atoServe);
 const cmdPowerTreePreview = registerCommand('atopile.power_tree_preview', atoPowerTreePreview);
 const cmdI2CTreePreview = registerCommand('atopile.i2c_tree_preview', atoI2CTreePreview);
 const cmdPinoutExplorer = registerCommand('atopile.pinout_explorer', atoPinoutExplorer);
+const cmdSchematicPreview = registerCommand('atopile.schematic_preview', atoSchematicPreview);
 
 // Register buttons for sidebar display
 registerButton('server-process', cmdServe, 'Start/show ato server', 'ato serve');
@@ -97,6 +99,7 @@ registerButton('symbol-constructor', cmdModelViewerPreview, 'Open 3D Model Previ
 registerButton('zap', cmdPowerTreePreview, 'Open Power Tree', 'Power Tree');
 registerButton('git-branch', cmdI2CTreePreview, 'Open I2C Tree', 'I2C Tree');
 registerButton('cpu', cmdPinoutExplorer, 'Open Pinout', 'Pinout');
+registerButton('circuit-board', cmdSchematicPreview, 'Open Schematic', 'Schematic');
 registerButton('checklist', cmdChooseBuild, 'Select build targets', 'Select build targets');
 registerButton('folder', cmdChooseProject, 'Select project folder', 'Select project folder');
 
@@ -496,6 +499,10 @@ async function atoI2CTreePreview() {
 
 async function atoPinoutExplorer() {
     await pinoutExplorer.openPinoutExplorer();
+}
+
+async function atoSchematicPreview() {
+    await schematicViewer.openSchematicPreview();
 }
 
 async function atoServe() {

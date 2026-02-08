@@ -1,0 +1,438 @@
+#pragma experiment("MODULE_TEMPLATING")
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
+#pragma experiment("TRAITS")
+
+import Capacitor
+import ElectricLogic
+import ElectricPower
+import I2C
+import SPI
+import SWD
+import UART
+import USB2_0
+import XtalIF
+
+from "parts/STMicroelectronics_STM32F746ZGT6/STMicroelectronics_STM32F746ZGT6.ato" import STMicroelectronics_STM32F746ZGT6_package
+
+module ST_STM32F746ZGT6:
+    """
+    STMicroelectronics STM32F746ZGTx (Arm Cortex-M7 up to 216 MHz).
+    1024 KB Flash, 320 KB SRAM, LQFP144.
+    """
+
+    # --- Package ---
+    package = new STMicroelectronics_STM32F746ZGT6_package
+
+    # ===================================================================
+    # Power domains
+    # ===================================================================
+
+    power_3v3 = new ElectricPower
+    """Primary supply domain (1.7V to 3.6V)."""
+    power_3v3.required = True
+    assert power_3v3.voltage within 1.7V to 3.6V
+
+    power_analog = new ElectricPower
+    """Analog supply domain (VDDA/VSSA)."""
+
+    power_usb = new ElectricPower
+    """USB dedicated supply."""
+
+    power_vcap = new ElectricPower
+    """Core regulator output (VCAP)."""
+
+    vbat = new ElectricPower
+    """Backup battery domain (VBAT)."""
+
+    power_vref = new ElectricPower
+    """Voltage reference (VREF+)."""
+
+    power_3v3 ~ power_analog
+    power_3v3 ~ power_usb
+
+    # ===================================================================
+    # External interfaces
+    # ===================================================================
+
+    swd = new SWD
+    """Program/debug via Serial Wire Debug."""
+
+    usb = new USB2_0
+    """USB 2.0 Full-Speed device."""
+
+    uart = new UART[8]
+    """[0]=UART4, [1]=UART5, [2]=UART7, [3]=UART8, [4]=USART1, [5]=USART2, [6]=USART3, [7]=USART6."""
+
+    spi = new SPI[5]
+    """[0]=SPI1, [1]=SPI2, [2]=SPI3, [3]=SPI4, [4]=SPI6."""
+
+    i2c = new I2C[4]
+    """[0]=I2C1, [1]=I2C2, [2]=I2C3, [3]=I2C4."""
+
+    hse = new XtalIF
+    """High-speed external crystal oscillator."""
+
+    lse = new XtalIF
+    """Low-speed external crystal (32.768 kHz for RTC)."""
+
+    # ===================================================================
+    # GPIO arrays by port
+    # ===================================================================
+
+    gpio_a = new ElectricLogic[16]
+    """Port A: all 16 pins bonded out."""
+
+    gpio_b = new ElectricLogic[16]
+    """Port B: all 16 pins bonded out."""
+
+    gpio_c = new ElectricLogic[16]
+    """Port C: all 16 pins bonded out."""
+
+    gpio_d = new ElectricLogic[16]
+    """Port D: all 16 pins bonded out."""
+
+    gpio_e = new ElectricLogic[16]
+    """Port E: all 16 pins bonded out."""
+
+    gpio_f = new ElectricLogic[16]
+    """Port F: all 16 pins bonded out."""
+
+    gpio_g = new ElectricLogic[16]
+    """Port G: all 16 pins bonded out."""
+
+    gpio_h = new ElectricLogic[2]
+    """Port H: all 2 pins bonded out."""
+
+    # ===================================================================
+    # Decoupling capacitors
+    # ===================================================================
+
+    decoupling_power_3v3_100nF = new Capacitor[11]
+    for cap in decoupling_power_3v3_100nF:
+        cap.capacitance = 100nF +/- 20%
+        cap.package = "0402"
+        power_3v3.hv ~> cap ~> power_3v3.lv
+
+    decoupling_power_3v3_4p7uF = new Capacitor
+    decoupling_power_3v3_4p7uF.capacitance = 4.7uF +/- 20%
+    decoupling_power_3v3_4p7uF.package = "0402"
+    power_3v3.hv ~> decoupling_power_3v3_4p7uF ~> power_3v3.lv
+
+    decoupling_power_analog_1uF = new Capacitor
+    decoupling_power_analog_1uF.capacitance = 1uF +/- 20%
+    decoupling_power_analog_1uF.package = "0402"
+    power_analog.hv ~> decoupling_power_analog_1uF ~> power_analog.lv
+
+    decoupling_power_analog_100nF = new Capacitor
+    decoupling_power_analog_100nF.capacitance = 100nF +/- 20%
+    decoupling_power_analog_100nF.package = "0402"
+    power_analog.hv ~> decoupling_power_analog_100nF ~> power_analog.lv
+
+    decoupling_power_usb_100nF = new Capacitor
+    decoupling_power_usb_100nF.capacitance = 100nF +/- 20%
+    decoupling_power_usb_100nF.package = "0402"
+    power_usb.hv ~> decoupling_power_usb_100nF ~> power_usb.lv
+
+    decoupling_power_usb_1uF = new Capacitor
+    decoupling_power_usb_1uF.capacitance = 1uF +/- 20%
+    decoupling_power_usb_1uF.package = "0402"
+    power_usb.hv ~> decoupling_power_usb_1uF ~> power_usb.lv
+
+    decoupling_power_vcap_2p2uF = new Capacitor[2]
+    for cap in decoupling_power_vcap_2p2uF:
+        cap.capacitance = 2.2uF +/- 20%
+        cap.package = "0402"
+        power_vcap.hv ~> cap ~> power_vcap.lv
+
+    decoupling_vbat_100nF = new Capacitor
+    decoupling_vbat_100nF.capacitance = 100nF +/- 20%
+    decoupling_vbat_100nF.package = "0402"
+    vbat.hv ~> decoupling_vbat_100nF ~> vbat.lv
+
+    decoupling_power_vref_1uF = new Capacitor
+    decoupling_power_vref_1uF.capacitance = 1uF +/- 20%
+    decoupling_power_vref_1uF.package = "0402"
+    power_vref.hv ~> decoupling_power_vref_1uF ~> power_vref.lv
+
+    decoupling_power_vref_100nF = new Capacitor
+    decoupling_power_vref_100nF.capacitance = 100nF +/- 20%
+    decoupling_power_vref_100nF.package = "0402"
+    power_vref.hv ~> decoupling_power_vref_100nF ~> power_vref.lv
+
+    # ===================================================================
+    # Package power connections
+    # ===================================================================
+
+    package.VDD ~ power_3v3.hv
+    package.VSS ~ power_3v3.lv
+
+    package.VDDA ~ power_analog.hv
+    package.VSSA ~ power_analog.lv
+
+    package.VDDUSB ~ power_usb.hv
+    power_usb.lv ~ power_3v3.lv
+
+    package.VCAP_1 ~ power_vcap.hv
+    package.VCAP_2 ~ power_vcap.hv
+    power_vcap.lv ~ power_3v3.lv
+
+    package.VBAT ~ vbat.hv
+    vbat.lv ~ power_3v3.lv
+
+    package.VREFpos ~ power_analog.hv
+
+    # PDR_ON — connect to VDD for internal power-on reset
+    package.PDR_ON ~ power_3v3.hv
+
+    # ===================================================================
+    # Interface pin assignments
+    # ===================================================================
+
+    # SWD debug
+    swd.dio ~ gpio_a[13]
+    swd.clk ~ gpio_a[14]
+
+    # USB Full-Speed
+    usb.usb_if.d.n ~ gpio_a[11]
+    usb.usb_if.d.p ~ gpio_a[12]
+
+    # UART4 (PA0=TX, PA1=RX)
+    uart[0].base_uart.tx ~ gpio_a[0]
+    uart[0].base_uart.rx ~ gpio_a[1]
+
+    # UART5 (PC12=TX, PD2=RX)
+    uart[1].base_uart.tx ~ gpio_c[12]
+    uart[1].base_uart.rx ~ gpio_d[2]
+
+    # UART7 (PF7=TX, PF6=RX)
+    uart[2].base_uart.tx ~ gpio_f[7]
+    uart[2].base_uart.rx ~ gpio_f[6]
+
+    # UART8 (PE1=TX, PE0=RX)
+    uart[3].base_uart.tx ~ gpio_e[1]
+    uart[3].base_uart.rx ~ gpio_e[0]
+
+    # USART1 (PA9=TX, PA10=RX)
+    uart[4].base_uart.tx ~ gpio_a[9]
+    uart[4].base_uart.rx ~ gpio_a[10]
+
+    # USART2 (PA2=TX, PA3=RX)
+    uart[5].base_uart.tx ~ gpio_a[2]
+    uart[5].base_uart.rx ~ gpio_a[3]
+
+    # USART3 (PB10=TX, PB11=RX)
+    uart[6].base_uart.tx ~ gpio_b[10]
+    uart[6].base_uart.rx ~ gpio_b[11]
+
+    # USART6 (PC6=TX, PC7=RX)
+    uart[7].base_uart.tx ~ gpio_c[6]
+    uart[7].base_uart.rx ~ gpio_c[7]
+
+    # SPI1
+    spi[0].sclk ~ gpio_a[5]
+    spi[0].miso ~ gpio_a[6]
+    spi[0].mosi ~ gpio_a[7]
+
+    # SPI2
+    spi[1].sclk ~ gpio_b[13]
+    spi[1].miso ~ gpio_c[2]
+    spi[1].mosi ~ gpio_c[1]
+
+    # SPI3
+    spi[2].sclk ~ gpio_c[10]
+    spi[2].miso ~ gpio_c[11]
+    spi[2].mosi ~ gpio_b[2]
+
+    # SPI4
+    spi[3].sclk ~ gpio_e[2]
+    spi[3].miso ~ gpio_e[5]
+    spi[3].mosi ~ gpio_e[6]
+
+    # SPI6
+    spi[4].sclk ~ gpio_g[13]
+    spi[4].miso ~ gpio_g[12]
+    spi[4].mosi ~ gpio_g[14]
+
+    # I2C1
+    i2c[0].scl ~ gpio_b[6]
+    i2c[0].sda ~ gpio_b[7]
+
+    # I2C2
+    i2c[1].scl ~ gpio_f[1]
+    i2c[1].sda ~ gpio_f[0]
+
+    # I2C3
+    i2c[2].scl ~ gpio_a[8]
+    i2c[2].sda ~ gpio_c[9]
+
+    # I2C4
+    i2c[3].scl ~ gpio_f[14]
+    i2c[3].sda ~ gpio_f[15]
+
+    # ===================================================================
+    # Crystal connections
+    # ===================================================================
+
+    hse.xin ~ package.PH0
+    hse.xout ~ package.PH1
+    hse.gnd ~ power_3v3.lv
+
+    lse.xin ~ package.PC14
+    lse.xout ~ package.PC15
+    lse.gnd ~ power_3v3.lv
+
+    # ===================================================================
+    # GPIO-to-package pin mappings
+    # ===================================================================
+
+    # Port A
+    package.PA0 ~ gpio_a[0].line
+    package.PA1 ~ gpio_a[1].line
+    package.PA2 ~ gpio_a[2].line
+    package.PA3 ~ gpio_a[3].line
+    package.PA4 ~ gpio_a[4].line
+    package.PA5 ~ gpio_a[5].line
+    package.PA6 ~ gpio_a[6].line
+    package.PA7 ~ gpio_a[7].line
+    package.PA8 ~ gpio_a[8].line
+    package.PA9 ~ gpio_a[9].line
+    package.PA10 ~ gpio_a[10].line
+    package.PA11 ~ gpio_a[11].line
+    package.PA12 ~ gpio_a[12].line
+    package.PA13 ~ gpio_a[13].line
+    package.PA14 ~ gpio_a[14].line
+    package.PA15 ~ gpio_a[15].line
+
+    # Port B
+    package.PB0 ~ gpio_b[0].line
+    package.PB1 ~ gpio_b[1].line
+    package.PB2 ~ gpio_b[2].line
+    package.PB3 ~ gpio_b[3].line
+    package.PB4 ~ gpio_b[4].line
+    package.PB5 ~ gpio_b[5].line
+    package.PB6 ~ gpio_b[6].line
+    package.PB7 ~ gpio_b[7].line
+    package.PB8 ~ gpio_b[8].line
+    package.PB9 ~ gpio_b[9].line
+    package.PB10 ~ gpio_b[10].line
+    package.PB11 ~ gpio_b[11].line
+    package.PB12 ~ gpio_b[12].line
+    package.PB13 ~ gpio_b[13].line
+    package.PB14 ~ gpio_b[14].line
+    package.PB15 ~ gpio_b[15].line
+
+    # Port C
+    package.PC0 ~ gpio_c[0].line
+    package.PC1 ~ gpio_c[1].line
+    package.PC2 ~ gpio_c[2].line
+    package.PC3 ~ gpio_c[3].line
+    package.PC4 ~ gpio_c[4].line
+    package.PC5 ~ gpio_c[5].line
+    package.PC6 ~ gpio_c[6].line
+    package.PC7 ~ gpio_c[7].line
+    package.PC8 ~ gpio_c[8].line
+    package.PC9 ~ gpio_c[9].line
+    package.PC10 ~ gpio_c[10].line
+    package.PC11 ~ gpio_c[11].line
+    package.PC12 ~ gpio_c[12].line
+    package.PC13 ~ gpio_c[13].line
+    package.PC14 ~ gpio_c[14].line
+    package.PC15 ~ gpio_c[15].line
+
+    # Port D
+    package.PD0 ~ gpio_d[0].line
+    package.PD1 ~ gpio_d[1].line
+    package.PD2 ~ gpio_d[2].line
+    package.PD3 ~ gpio_d[3].line
+    package.PD4 ~ gpio_d[4].line
+    package.PD5 ~ gpio_d[5].line
+    package.PD6 ~ gpio_d[6].line
+    package.PD7 ~ gpio_d[7].line
+    package.PD8 ~ gpio_d[8].line
+    package.PD9 ~ gpio_d[9].line
+    package.PD10 ~ gpio_d[10].line
+    package.PD11 ~ gpio_d[11].line
+    package.PD12 ~ gpio_d[12].line
+    package.PD13 ~ gpio_d[13].line
+    package.PD14 ~ gpio_d[14].line
+    package.PD15 ~ gpio_d[15].line
+
+    # Port E
+    package.PE0 ~ gpio_e[0].line
+    package.PE1 ~ gpio_e[1].line
+    package.PE2 ~ gpio_e[2].line
+    package.PE3 ~ gpio_e[3].line
+    package.PE4 ~ gpio_e[4].line
+    package.PE5 ~ gpio_e[5].line
+    package.PE6 ~ gpio_e[6].line
+    package.PE7 ~ gpio_e[7].line
+    package.PE8 ~ gpio_e[8].line
+    package.PE9 ~ gpio_e[9].line
+    package.PE10 ~ gpio_e[10].line
+    package.PE11 ~ gpio_e[11].line
+    package.PE12 ~ gpio_e[12].line
+    package.PE13 ~ gpio_e[13].line
+    package.PE14 ~ gpio_e[14].line
+    package.PE15 ~ gpio_e[15].line
+
+    # Port F
+    package.PF0 ~ gpio_f[0].line
+    package.PF1 ~ gpio_f[1].line
+    package.PF2 ~ gpio_f[2].line
+    package.PF3 ~ gpio_f[3].line
+    package.PF4 ~ gpio_f[4].line
+    package.PF5 ~ gpio_f[5].line
+    package.PF6 ~ gpio_f[6].line
+    package.PF7 ~ gpio_f[7].line
+    package.PF8 ~ gpio_f[8].line
+    package.PF9 ~ gpio_f[9].line
+    package.PF10 ~ gpio_f[10].line
+    package.PF11 ~ gpio_f[11].line
+    package.PF12 ~ gpio_f[12].line
+    package.PF13 ~ gpio_f[13].line
+    package.PF14 ~ gpio_f[14].line
+    package.PF15 ~ gpio_f[15].line
+
+    # Port G
+    package.PG0 ~ gpio_g[0].line
+    package.PG1 ~ gpio_g[1].line
+    package.PG2 ~ gpio_g[2].line
+    package.PG3 ~ gpio_g[3].line
+    package.PG4 ~ gpio_g[4].line
+    package.PG5 ~ gpio_g[5].line
+    package.PG6 ~ gpio_g[6].line
+    package.PG7 ~ gpio_g[7].line
+    package.PG8 ~ gpio_g[8].line
+    package.PG9 ~ gpio_g[9].line
+    package.PG10 ~ gpio_g[10].line
+    package.PG11 ~ gpio_g[11].line
+    package.PG12 ~ gpio_g[12].line
+    package.PG13 ~ gpio_g[13].line
+    package.PG14 ~ gpio_g[14].line
+    package.PG15 ~ gpio_g[15].line
+
+    # Port H
+    package.PH0 ~ gpio_h[0].line
+    package.PH1 ~ gpio_h[1].line
+
+    # ===================================================================
+    # GPIO reference power connections
+    # ===================================================================
+
+    for io in gpio_a:
+        io.reference ~ power_3v3
+    for io in gpio_b:
+        io.reference ~ power_3v3
+    for io in gpio_c:
+        io.reference ~ power_3v3
+    for io in gpio_d:
+        io.reference ~ power_3v3
+    for io in gpio_e:
+        io.reference ~ power_3v3
+    for io in gpio_f:
+        io.reference ~ power_3v3
+    for io in gpio_g:
+        io.reference ~ power_3v3
+    for io in gpio_h:
+        io.reference ~ power_3v3

@@ -14,7 +14,6 @@ For each component with enough pins (>= MIN_PIN_COUNT), exports:
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from pathlib import Path
@@ -22,6 +21,11 @@ from pathlib import Path
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.solver import Solver
+from faebryk.exporters.utils import (
+    natural_sort_key as _natural_sort_key,
+    strip_root_hex as _strip_root_hex,
+    write_json as _write_json,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,12 +48,6 @@ _INTERFACE_TYPES: list[tuple[str, str]] = [
     ("ElectricSignal", "Analog"),
     ("Electrical", "Signal"),
 ]
-
-
-def _strip_root_hex(name: str) -> str:
-    """Strip leading hex node ID prefix like '0xF8C9.' from names."""
-    stripped = re.sub(r"^0x[0-9A-Fa-f]+\.", "", name)
-    return stripped if stripped else name
 
 
 def _classify_interface(name: str) -> str:
@@ -811,25 +809,5 @@ def _extract_bus_name(interface_name: str) -> str:
     return interface_name
 
 
-def _natural_sort_key(s: str) -> list:
-    """Sort key that handles mixed alpha-numeric strings naturally."""
-    parts = re.split(r"(\d+)", s)
-    result = []
-    for part in parts:
-        if part.isdigit():
-            result.append(int(part))
-        else:
-            result.append(part.lower())
-    return result
 
-
-def _write_json(data: dict, path: Path) -> None:
-    """Write JSON atomically via temp file."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = path.with_suffix(path.suffix + ".tmp")
-    try:
-        temp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        temp_path.replace(path)
-    finally:
-        if temp_path.exists():
-            temp_path.unlink()
+# _natural_sort_key and _write_json are imported from faebryk.exporters.utils

@@ -53,6 +53,7 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.exporters.pinout.pinout import export_pinout_json
+from faebryk.exporters.schematic.schematic import export_schematic_json
 from faebryk.exporters.power_tree.power_tree import (
     export_power_tree,
     export_power_tree_json,
@@ -1201,6 +1202,24 @@ def generate_pinout(ctx: BuildStepContext) -> None:
 
 
 @muster.register(
+    "schematic",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
+def generate_schematic(ctx: BuildStepContext) -> None:
+    """Generate schematic visualization as JSON."""
+    app = ctx.require_app()
+    solver = ctx.require_solver()
+    layout_path = config.build.paths.layout.with_suffix(".ato_sch")
+    export_schematic_json(
+        app,
+        solver,
+        json_path=config.build.paths.output_base.with_suffix(".schematic.json"),
+        layout_path=layout_path,
+    )
+
+
+@muster.register(
     "default",
     aliases=["__default__"],  # for backwards compatibility
     dependencies=[
@@ -1211,6 +1230,7 @@ def generate_pinout(ctx: BuildStepContext) -> None:
         generate_datasheets,
         generate_i2c_tree,
         generate_pinout,
+        generate_schematic,
     ],
     virtual=True,
 )

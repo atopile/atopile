@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import json
 import logging
 import re
 from pathlib import Path
@@ -9,15 +8,12 @@ from pathlib import Path
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.solver import Solver
+from faebryk.exporters.utils import (
+    strip_root_hex as _strip_root_hex,
+    write_json as _write_json,
+)
 
 logger = logging.getLogger(__name__)
-
-
-def _strip_root_hex(name: str) -> str:
-    """Strip leading hex node ID prefix like '0xF8C9.' from names."""
-    stripped = re.sub(r"^0x[0-9A-Fa-f]+\.", "", name)
-    # If the whole name was just a hex ID, return it as-is
-    return stripped if stripped else name
 
 
 def _is_standalone_bus_var(member: F.I2C) -> bool:
@@ -298,13 +294,5 @@ def export_i2c_tree_json(
     logger.info("Wrote I2C tree JSON to %s", json_path)
 
 
-def _write_json(data: dict, path: Path) -> None:
-    """Write JSON atomically via temp file."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = path.with_suffix(path.suffix + ".tmp")
-    try:
-        temp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        temp_path.replace(path)
-    finally:
-        if temp_path.exists():
-            temp_path.unlink()
+
+# _write_json is imported from faebryk.exporters.utils

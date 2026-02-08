@@ -185,6 +185,10 @@ interface OpenPinoutExplorerMessage {
   type: 'openPinoutExplorer';
 }
 
+interface OpenSchematicPreviewMessage {
+  type: 'openSchematicPreview';
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -217,7 +221,8 @@ type WebviewMessage =
   | OpenI2CTreeMessage
   | OpenLayoutPreviewMessage
   | Open3DPreviewMessage
-  | OpenPinoutExplorerMessage;
+  | OpenPinoutExplorerMessage
+  | OpenSchematicPreviewMessage;
 
 /**
  * Check if we're running in development mode.
@@ -635,6 +640,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         break;
       case 'openPinoutExplorer':
         void vscode.commands.executeCommand('atopile.pinout_explorer');
+        break;
+      case 'openSchematicPreview':
+        void vscode.commands.executeCommand('atopile.schematic_preview');
         break;
       case 'openInSimpleBrowser':
         void vscode.commands.executeCommand('simpleBrowser.show', message.url);

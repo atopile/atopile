@@ -1,0 +1,177 @@
+{
+  "timestamp": "2026-02-06T23:08:08",
+  "total": 28,
+  "passed": 25,
+  "failed": 3,
+  "elapsed": 836.2,
+  "results": [
+    {
+      "name": "stm32c011f6p6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 9.8
+    },
+    {
+      "name": "stm32c031c6t6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 11.8
+    },
+    {
+      "name": "stm32f030f4p6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 9.5
+    },
+    {
+      "name": "stm32f042f6p6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 10.8
+    },
+    {
+      "name": "stm32f072cbt6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 15.0
+    },
+    {
+      "name": "stm32f103c8t6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 15.7
+    },
+    {
+      "name": "stm32f303cct6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 15.0
+    },
+    {
+      "name": "stm32f401ccu6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 15.6
+    },
+    {
+      "name": "stm32f407vgt6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 34.3
+    },
+    {
+      "name": "stm32f411ceu6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 18.3
+    },
+    {
+      "name": "stm32f429zit6",
+      "ok": false,
+      "msg": "22:57:45  I  atopile.logging  Unfortunately errors ^^^ stopped the build. If you need a hand jump on Discord! https://discord.gg/CRe5xaDBr3 \ud83d\udc4b",
+      "duration": 58.6
+    },
+    {
+      "name": "stm32f446ret6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 21.1
+    },
+    {
+      "name": "stm32f722ret6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 26.5
+    },
+    {
+      "name": "stm32f746zgt6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 67.9
+    },
+    {
+      "name": "stm32g0b1ret6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 20.3
+    },
+    {
+      "name": "stm32g431cbt6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 21.4
+    },
+    {
+      "name": "stm32g474ret6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 27.3
+    },
+    {
+      "name": "stm32h723zgt6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 68.9
+    },
+    {
+      "name": "stm32h743zit6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 69.3
+    },
+    {
+      "name": "stm32h750vbt6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 39.5
+    },
+    {
+      "name": "stm32l073rzt6",
+      "ok": false,
+      "msg": "23:04:12  I  atopile.logging  Unfortunately errors ^^^ stopped the build. If you need a hand jump on Discord! https://discord.gg/CRe5xaDBr3 \ud83d\udc4b",
+      "duration": 24.6
+    },
+    {
+      "name": "stm32l151cbt6a",
+      "ok": true,
+      "msg": "OK",
+      "duration": 17.8
+    },
+    {
+      "name": "stm32l432kcu6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 15.5
+    },
+    {
+      "name": "stm32l476rgt6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 24.5
+    },
+    {
+      "name": "stm32l552zet6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 57.6
+    },
+    {
+      "name": "stm32u575zit6q",
+      "ok": true,
+      "msg": "OK",
+      "duration": 63.5
+    },
+    {
+      "name": "stm32wb55rgv6",
+      "ok": false,
+      "msg": "\u2502   195 \u2502   \u2502   \u2502   logger.error(e, exc_info=e)                                                                                                                                                         ",
+      "duration": 29.9
+    },
+    {
+      "name": "stm32wle5jbi6",
+      "ok": true,
+      "msg": "OK",
+      "duration": 26.1
+    }
+  ]
+}

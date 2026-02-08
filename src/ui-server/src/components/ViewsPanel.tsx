@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   Box,
   Cpu,
+  CircuitBoard,
   Eye,
   ChevronDown,
   ChevronRight,
@@ -90,6 +91,14 @@ export function ViewsPanel({
       icon: <Cpu size={14} />,
       description: 'IC pinout visualization with bus highlighting',
       messageType: 'openPinoutExplorer',
+      available: hasActiveProject,
+    },
+    {
+      id: 'schematic',
+      label: 'Schematic',
+      icon: <CircuitBoard size={14} />,
+      description: 'Interactive schematic viewer',
+      messageType: 'openSchematicPreview',
       available: hasActiveProject,
     },
   ]

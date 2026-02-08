@@ -1,0 +1,214 @@
+#pragma experiment("MODULE_TEMPLATING")
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
+#pragma experiment("TRAITS")
+
+import Capacitor
+import ElectricLogic
+import ElectricPower
+import I2C
+import SPI
+import SWD
+import UART
+import XtalIF
+
+from "parts/STMicroelectronics_STM32C031C6T6/STMicroelectronics_STM32C031C6T6.ato" import STMicroelectronics_STM32C031C6T6_package
+
+module ST_STM32C031C4T6:
+    """
+    STMicroelectronics STM32C031C(4-6)Tx (ARM Cortex-M0+ up to 48 MHz).
+    16/32 KB Flash, 12 KB SRAM, LQFP48.
+    """
+
+    # --- Package ---
+    package = new STMicroelectronics_STM32C031C6T6_package
+
+    # ===================================================================
+    # Power domains
+    # ===================================================================
+
+    power_3v3 = new ElectricPower
+    """Primary supply domain (2.0V to 3.6V)."""
+    power_3v3.required = True
+    assert power_3v3.voltage within 2.0V to 3.6V
+
+    power_vref = new ElectricPower
+    """Voltage reference (VREF+)."""
+
+    # ===================================================================
+    # External interfaces
+    # ===================================================================
+
+    swd = new SWD
+    """Program/debug via Serial Wire Debug."""
+
+    uart = new UART[2]
+    """[0]=USART1, [1]=USART2."""
+
+    spi = new SPI
+    """SPI1."""
+
+    i2c = new I2C
+    """I2C1."""
+
+    hse = new XtalIF
+    """High-speed external crystal oscillator."""
+
+    # ===================================================================
+    # GPIO arrays by port
+    # ===================================================================
+
+    gpio_a = new ElectricLogic[16]
+    """Port A: all 16 pins bonded out."""
+
+    gpio_b = new ElectricLogic[16]
+    """Port B: all 16 pins bonded out."""
+
+    gpio_c = new ElectricLogic[16]
+    """Port C: 5 of 16 pins bonded out."""
+
+    gpio_d = new ElectricLogic[4]
+    """Port D: all 4 pins bonded out."""
+
+    gpio_f = new ElectricLogic[4]
+    """Port F: all 4 pins bonded out."""
+
+    # ===================================================================
+    # Decoupling capacitors
+    # ===================================================================
+
+    decoupling_power_3v3_100nF = new Capacitor
+    decoupling_power_3v3_100nF.capacitance = 100nF +/- 20%
+    decoupling_power_3v3_100nF.package = "0402"
+    power_3v3.hv ~> decoupling_power_3v3_100nF ~> power_3v3.lv
+
+    decoupling_power_3v3_1uF = new Capacitor
+    decoupling_power_3v3_1uF.capacitance = 1uF +/- 20%
+    decoupling_power_3v3_1uF.package = "0402"
+    power_3v3.hv ~> decoupling_power_3v3_1uF ~> power_3v3.lv
+
+    decoupling_power_vref_1uF = new Capacitor
+    decoupling_power_vref_1uF.capacitance = 1uF +/- 20%
+    decoupling_power_vref_1uF.package = "0402"
+    power_vref.hv ~> decoupling_power_vref_1uF ~> power_vref.lv
+
+    decoupling_power_vref_100nF = new Capacitor
+    decoupling_power_vref_100nF.capacitance = 100nF +/- 20%
+    decoupling_power_vref_100nF.package = "0402"
+    power_vref.hv ~> decoupling_power_vref_100nF ~> power_vref.lv
+
+    # ===================================================================
+    # Package power connections
+    # ===================================================================
+
+    package.VDD_VDDA ~ power_3v3.hv
+    package.VSS_VSSA ~ power_3v3.lv
+
+    package.VREFpos ~ power_3v3.hv
+
+    # ===================================================================
+    # Interface pin assignments
+    # ===================================================================
+
+    # SWD debug
+    swd.dio ~ gpio_a[13]
+    swd.clk ~ gpio_a[14]
+
+    # USART1 (PA0=TX, PA1=RX)
+    uart[0].base_uart.tx ~ gpio_a[0]
+    uart[0].base_uart.rx ~ gpio_a[1]
+
+    # USART2 (PA2=TX, PA3=RX)
+    uart[1].base_uart.tx ~ gpio_a[2]
+    uart[1].base_uart.rx ~ gpio_a[3]
+
+    # SPI1
+    spi.sclk ~ gpio_a[5]
+    spi.miso ~ gpio_a[6]
+    spi.mosi ~ gpio_a[7]
+
+    # I2C1
+    i2c.scl ~ gpio_a[9]
+    i2c.sda ~ gpio_c[14]
+
+    # ===================================================================
+    # Crystal connections
+    # ===================================================================
+
+    hse.xin ~ package.PF0_OSC_IN
+    hse.xout ~ package.PF1_OSC_OUT
+    hse.gnd ~ power_3v3.lv
+
+    # ===================================================================
+    # GPIO-to-package pin mappings
+    # ===================================================================
+
+    # Port A
+    package.PA0 ~ gpio_a[0].line
+    package.PA1 ~ gpio_a[1].line
+    package.PA2 ~ gpio_a[2].line
+    package.PA3 ~ gpio_a[3].line
+    package.PA4 ~ gpio_a[4].line
+    package.PA5 ~ gpio_a[5].line
+    package.PA6 ~ gpio_a[6].line
+    package.PA7 ~ gpio_a[7].line
+    package.PA8 ~ gpio_a[8].line
+    package.PA9 ~ gpio_a[9].line
+    package.PA10 ~ gpio_a[10].line
+    package.PA11PA9 ~ gpio_a[11].line
+    package.PA12PA10 ~ gpio_a[12].line
+    package.PA13 ~ gpio_a[13].line
+    package.PA14_BOOT0 ~ gpio_a[14].line
+    package.PA15 ~ gpio_a[15].line
+
+    # Port B
+    package.PB0 ~ gpio_b[0].line
+    package.PB1 ~ gpio_b[1].line
+    package.PB2 ~ gpio_b[2].line
+    package.PB3 ~ gpio_b[3].line
+    package.PB4 ~ gpio_b[4].line
+    package.PB5 ~ gpio_b[5].line
+    package.PB6 ~ gpio_b[6].line
+    package.PB7 ~ gpio_b[7].line
+    package.PB8 ~ gpio_b[8].line
+    package.PB9 ~ gpio_b[9].line
+    package.PB10 ~ gpio_b[10].line
+    package.PB11 ~ gpio_b[11].line
+    package.PB12 ~ gpio_b[12].line
+    package.PB13 ~ gpio_b[13].line
+    package.PB14 ~ gpio_b[14].line
+    package.PB15 ~ gpio_b[15].line
+
+    # Port C
+    package.PC6 ~ gpio_c[6].line
+    package.PC7 ~ gpio_c[7].line
+    package.PC13 ~ gpio_c[13].line
+    package.PC14_OSCX_IN ~ gpio_c[14].line
+    package.PC15_OSCX_OUT ~ gpio_c[15].line
+
+    # Port D
+    package.PD0 ~ gpio_d[0].line
+    package.PD1 ~ gpio_d[1].line
+    package.PD2 ~ gpio_d[2].line
+    package.PD3 ~ gpio_d[3].line
+
+    # Port F
+    package.PF0_OSC_IN ~ gpio_f[0].line
+    package.PF1_OSC_OUT ~ gpio_f[1].line
+    package.PF2_NRST ~ gpio_f[2].line
+    package.PF3 ~ gpio_f[3].line
+
+    # ===================================================================
+    # GPIO reference power connections
+    # ===================================================================
+
+    for io in gpio_a:
+        io.reference ~ power_3v3
+    for io in gpio_b:
+        io.reference ~ power_3v3
+    for io in gpio_c:
+        io.reference ~ power_3v3
+    for io in gpio_d:
+        io.reference ~ power_3v3
+    for io in gpio_f:
+        io.reference ~ power_3v3

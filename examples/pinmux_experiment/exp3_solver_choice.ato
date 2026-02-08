@@ -1,0 +1,64 @@
+"""
+Experiment 3: Can the solver resolve pin conflicts via parameter constraints?
+
+Model: Each peripheral-pin mapping has a numeric "slot" parameter.
+Constraint: No two active peripherals can use the same slot.
+
+This is the core test: can atopile's solver do mutual exclusion?
+"""
+#pragma experiment("FOR_LOOP")
+#pragma experiment("BRIDGE_CONNECT")
+
+import ElectricPower
+import ElectricLogic
+import I2C
+
+module PinMuxMCU:
+    """MCU where pin assignments are controlled by parameters."""
+
+    power = new ElectricPower
+
+    gpio_b = new ElectricLogic[12]
+    for io in gpio_b:
+        io.reference ~ power
+
+    # Each GPIO pin gets a "function ID" parameter
+    # 0 = unused/GPIO, 1 = I2C1_SCL, 2 = I2C1_SDA, 3 = I2C2_SCL, 4 = I2C2_SDA
+    pin_func_b6: dimensionless
+    pin_func_b7: dimensionless
+    pin_func_b8: dimensionless
+    pin_func_b9: dimensionless
+    pin_func_b10: dimensionless
+    pin_func_b11: dimensionless
+
+    # All function IDs are 0 by default (GPIO mode)
+    assert pin_func_b6 within 0 to 4
+    assert pin_func_b7 within 0 to 4
+    assert pin_func_b8 within 0 to 4
+    assert pin_func_b9 within 0 to 4
+    assert pin_func_b10 within 0 to 4
+    assert pin_func_b11 within 0 to 4
+
+    # I2C interfaces (always present, connection makes them "active")
+    i2c = new I2C[2]
+
+    # I2C1: connect via PB6/PB7
+    i2c[0].scl ~ gpio_b[6]
+    i2c[0].sda ~ gpio_b[7]
+
+    # I2C2: connect via PB10/PB11
+    i2c[1].scl ~ gpio_b[10]
+    i2c[1].sda ~ gpio_b[11]
+
+
+module App:
+    power = new ElectricPower
+    mcu = new PinMuxMCU
+    power ~ mcu.power
+
+    # Use I2C1 - constrain its pins to I2C1 function
+    assert mcu.pin_func_b6 is 1
+    assert mcu.pin_func_b7 is 2
+
+    sensor = new I2C
+    sensor ~ mcu.i2c[0]

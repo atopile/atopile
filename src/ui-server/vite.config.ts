@@ -353,6 +353,7 @@ export default defineConfig(({ mode }) => {
               logViewer: resolve(__dirname, 'log-viewer.html'),
               testExplorer: resolve(__dirname, 'test-explorer.html'),
               pinout: resolve(__dirname, 'pinout.html'),
+              schematic: resolve(__dirname, 'schematic.html'),
             },
         output: {
           entryFileNames: '[name].js',
