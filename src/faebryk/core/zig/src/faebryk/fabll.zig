@@ -15,29 +15,8 @@ fn AttributesType(comptime T: type) type {
     return if (@hasDecl(T, "Attributes")) T.Attributes else struct {};
 }
 
-fn requires_instance_attrs(comptime T: type) bool {
-    if (@hasDecl(T, "RequireCreateInstanceAttrs")) {
-        return T.RequireCreateInstanceAttrs;
-    }
-    return false;
-}
-
-pub const CreateInstanceMode = enum {
-    generic,
-    requires_attrs,
-};
-
-fn create_instance_mode(comptime T: type) CreateInstanceMode {
-    if (@hasDecl(T, "CreateInstanceMode")) {
-        return T.CreateInstanceMode;
-    }
-    if (@hasDecl(T, "Attributes")) {
-        return .requires_attrs;
-    }
-    if (requires_instance_attrs(T)) {
-        return .requires_attrs;
-    }
-    return .generic;
+fn requires_attrs(comptime T: type) bool {
+    return @hasDecl(T, "Attributes");
 }
 
 fn visit_fields(
@@ -78,6 +57,9 @@ pub const Node = struct {
     instance: graph.BoundNodeReference,
 
     pub fn MakeChild(comptime T: type) type {
+        if (comptime requires_attrs(T)) {
+            @compileError("Type defines `Attributes`; use `T.MakeChild(...)` to provide attributes");
+        }
         return ChildField(T, .{}, &.{});
     }
 
@@ -119,7 +101,7 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
         }
 
         pub fn create_instance(self: @This(), g: *graph.GraphView) T {
-            if (comptime create_instance_mode(T) == .requires_attrs) {
+            if (comptime requires_attrs(T)) {
                 @compileError("Type requires explicit attributes: use create_instance_with_attrs(...)");
             }
             const instance = self.instantiate_raw(g);
