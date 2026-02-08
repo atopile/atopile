@@ -7,8 +7,8 @@ const str = []const u8;
 
 fn is_child_field_type(comptime MaybeChildField: type) bool {
     return @typeInfo(MaybeChildField) == .@"struct" and
-        @hasField(MaybeChildField, "field") and
-        @hasDecl(MaybeChildField, "ChildType");
+        @hasDecl(MaybeChildField, "ChildType") and
+        @hasDecl(MaybeChildField, "Options");
 }
 
 fn visit_fields(
@@ -18,11 +18,8 @@ fn visit_fields(
     comptime f: anytype,
 ) visitor.VisitResult(R) {
     inline for (std.meta.fields(T)) |field| {
-        const default_value_ptr = field.default_value_ptr orelse continue;
-        const typed_ptr: *const field.type = @ptrCast(@alignCast(default_value_ptr));
-        const value = typed_ptr.*;
         if (comptime is_child_field_type(field.type)) {
-            switch (f(ctx, field.name, value)) {
+            switch (f(ctx, field.name, field.type)) {
                 .CONTINUE => {},
                 .STOP => return visitor.VisitResult(R){ .STOP = {} },
                 .OK => |result| return visitor.VisitResult(R){ .OK = result },
@@ -51,22 +48,12 @@ fn visit_fields(
 pub const Node = struct {
     instance: graph.BoundNodeReference,
 
-    pub fn MakeChild(comptime T: type) ChildField(T) {
-        return ChildField(T){
-            .field = .{
-                .identifier = null,
-                .locator = null,
-            },
-        };
+    pub fn MakeChild(comptime T: type) type {
+        return ChildField(T, .{});
     }
 
-    pub fn MakeChildNamed(comptime T: type, comptime identifier: []const u8) ChildField(T) {
-        return ChildField(T){
-            .field = .{
-                .identifier = identifier,
-                .locator = null,
-            },
-        };
+    pub fn MakeChildNamed(comptime T: type, comptime identifier: []const u8) type {
+        return ChildField(T, .{ .identifier = identifier });
     }
 
     pub fn bind_typegraph(comptime T: type, tg: *faebryk.typegraph.TypeGraph) TypeNodeBoundTG(T) {
@@ -112,15 +99,15 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                 self: Self,
                 type_node: graph.BoundNodeReference,
 
-                fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, value: anytype) visitor.VisitResult(void) {
+                fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, field_type: type) visitor.VisitResult(void) {
                     const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
-                    const child_bound = Node.bind_typegraph(@TypeOf(value).ChildType, ctx.self.tg);
+                    const child_bound = Node.bind_typegraph(field_type.ChildType, ctx.self.tg);
                     const child_type = child_bound.get_or_create_type();
-                    const child_identifier = field_identifier(decl_name, value);
+                    const child_identifier = field_identifier(decl_name, field_type);
                     _ = ctx.self.tg.add_make_child(ctx.type_node, child_type, child_identifier, null, false) catch
                         @panic("failed to add make child");
 
-                    if (value.trait_owner_is_self) {
+                    if (field_type.Options.trait_owner_is_self) {
                         const lhs_ref = faebryk.typegraph.TypeGraph.ChildReferenceNode.create_and_insert(
                             ctx.self.tg,
                             &.{faebryk.composition.EdgeComposition.traverse("")},
@@ -161,44 +148,50 @@ fn wrap_instance(comptime T: type, instance: graph.BoundNodeReference) T {
         @compileError("FabLL Zig node types must have a `node: Node` field");
     };
 
-    var out: T = .{
-        .node = .{
-            .instance = instance,
-        },
-    };
+    var out: T = undefined;
 
     inline for (std.meta.fields(T)) |field| {
-        if (comptime std.mem.eql(u8, field.name, "node")) continue;
-        if (comptime is_child_field_type(field.type)) {
-            const default_value_ptr = field.default_value_ptr orelse
-                @panic("Child field requires default MakeChild initializer");
-            const typed_ptr: *const field.type = @ptrCast(@alignCast(default_value_ptr));
-            var child = typed_ptr.*;
-            child.parent_instance = instance;
-            if (child.field.locator == null) {
-                child.field.locator = field.name;
-            }
-            @field(out, field.name) = child;
+        if (comptime std.mem.eql(u8, field.name, "node")) {
+            @field(out, field.name) = .{ .instance = instance };
+            continue;
         }
+        if (comptime is_child_field_type(field.type)) {
+            var child: field.type = .{};
+            child.parent_instance = instance;
+            child.locator = field.name;
+            @field(out, field.name) = child;
+            continue;
+        }
+        if (field.default_value_ptr) |ptr| {
+            const typed_ptr: *const field.type = @ptrCast(@alignCast(ptr));
+            @field(out, field.name) = typed_ptr.*;
+            continue;
+        }
+        @compileError("Non-child fields must have default values");
     }
 
     return out;
 }
 
-fn field_identifier(decl_name: []const u8, field: anytype) []const u8 {
-    return field.field.identifier orelse decl_name;
+fn field_identifier(decl_name: []const u8, field_type: type) []const u8 {
+    return field_type.Options.identifier orelse decl_name;
 }
 
-pub fn ChildField(comptime T: type) type {
+pub const ChildFieldOptions = struct {
+    identifier: ?str = null,
+    trait_owner_is_self: bool = false,
+};
+
+pub fn ChildField(comptime T: type, comptime options: ChildFieldOptions) type {
     return struct {
         pub const ChildType = T;
-        field: Field,
-        trait_owner_is_self: bool = false,
+        pub const Options = options;
         parent_instance: ?graph.BoundNodeReference = null,
+        locator: ?str = null,
 
         pub fn get(self: @This()) T {
             const parent = self.parent_instance orelse @panic("child field is not bound");
-            const identifier = self.field.identifier orelse self.field.locator orelse
+            const identifier = Options.identifier orelse self.locator orelse
                 @panic("child field has no identifier or locator");
             const child = faebryk.composition.EdgeComposition.get_child_by_identifier(
                 parent,
@@ -241,21 +234,25 @@ pub const RefPath = struct {
 pub const is_trait = struct {
     node: Node,
 
-    pub fn MakeEdge(traitchildfield: anytype, owner: ?RefPath) @TypeOf(traitchildfield) {
+    pub fn MakeEdge(comptime traitchildfield: type, owner: ?RefPath) type {
         _ = owner;
-        var out = traitchildfield;
-        out.trait_owner_is_self = true;
-        return out;
+        return ChildField(
+            traitchildfield.ChildType,
+            .{
+                .identifier = traitchildfield.Options.identifier,
+                .trait_owner_is_self = true,
+            },
+        );
     }
 
-    pub fn MakeChild() ChildField(@This()) {
+    pub fn MakeChild() type {
         return Node.MakeChild(@This());
     }
 };
 
 pub const is_interface = struct {
     node: Node,
-    pub const _is_trait = is_trait.MakeChild();
+    _is_trait: is_trait.MakeChild(),
 
     pub fn MakeConnectionEdge(n1: RefPath, n2: RefPath, shallow: bool) void {
         _ = n1;
@@ -263,7 +260,7 @@ pub const is_interface = struct {
         _ = shallow;
     }
 
-    pub fn MakeChild() ChildField(@This()) {
+    pub fn MakeChild() type {
         return Node.MakeChild(@This());
     }
 };
@@ -271,9 +268,9 @@ pub const is_interface = struct {
 pub const Electrical = struct {
     node: Node,
 
-    pub const _is_interface = is_trait.MakeEdge(is_interface.MakeChild(), null);
+    _is_interface: is_trait.MakeEdge(is_interface.MakeChild(), null),
 
-    pub fn MakeChild() ChildField(@This()) {
+    pub fn MakeChild() type {
         return Node.MakeChild(@This());
     }
 };
@@ -281,8 +278,8 @@ pub const Electrical = struct {
 pub const ElectricPower = struct {
     node: Node,
 
-    hv: ChildField(Electrical) = Electrical.MakeChild(),
-    lv: ChildField(Electrical) = Electrical.MakeChild(),
+    hv: Electrical.MakeChild(),
+    lv: Electrical.MakeChild(),
 };
 
 fn comptime_child_field_count(comptime T: type) usize {
@@ -309,7 +306,7 @@ fn comptime_child_field_name(comptime T: type, comptime idx: usize) []const u8 {
         i: usize = 0,
         target: usize,
 
-        fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, field: anytype) visitor.VisitResult([]const u8) {
+        fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, field: type) visitor.VisitResult([]const u8) {
             const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
             if (ctx.i == ctx.target) {
                 return visitor.VisitResult([]const u8){ .OK = field_identifier(decl_name, field) };
