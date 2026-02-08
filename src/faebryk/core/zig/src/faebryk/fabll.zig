@@ -1,5 +1,7 @@
 const std = @import("std");
-const graph = @import("graph");
+const graph_mod = @import("graph");
+const graph = graph_mod.graph;
+const faebryk = @import("faebryk");
 const str = []u8;
 
 // design questions ===============================================================
@@ -12,23 +14,45 @@ const str = []u8;
 //  - recreating _exec_field should be easy, because it just typegraph operations
 //  - the hard bit to replicate is field collection in a zig way
 //      the most similar way would be to use zig comptime to build the recipees
-//      - its not 100% clear whether comptime is powerful enough for this, 
+//      - its not 100% clear whether comptime is powerful enough for this,
 //          we are calling a bunch of functions like MakeChild and MakeEdge that might do hard stuff
 //      - alternatively we will have to do some runtime stuff with type registries for cache reasons
 //          very ugly and would love to avoid this if possible
 //=================================================================================
 
 pub const Node = struct {
-    instance: graph.BoundNode,
+    instance: graph.BoundNodeReference,
 
-    pub fn MakeChild(nodetype: type) ChildField {
+    pub fn MakeChild(T: type) ChildField {
         return ChildField{
             .field = .{
                 .identifier = null,
                 .locator = null,
             },
-            .nodetype = nodetype,
+            .T = T,
         };
+    }
+
+    pub fn bind_typegraph(T: type, tg: *faebryk.typegraph.TypeGraph) TypeNodeBoundTG {
+        return TypeNodeBoundTG{
+            .T = T,
+            .tg = tg,
+        };
+    }
+};
+
+const TypeNodeBoundTG = struct {
+    T: type,
+    tg: *faebryk.typegraph.TypeGraph,
+
+    pub fn create_instance(self: @This(), g: *graph.GraphView) self.T {
+        // TODO
+        _ = g;
+    }
+
+    pub fn get_or_create_type(self: @This()) graph.BoundNodeReference {
+        // TODO
+        _ = self;
     }
 };
 
@@ -44,24 +68,28 @@ pub const FieldE = union(enum) {
 
 pub const ChildField = struct {
     field: Field,
-    nodetype: type,
+    T: type,
     //attributes: NodeAttributes,
 
     //_dependants: std.ArrayList(FieldE),
 
     pub fn add_dependant(self: *@This(), dependant: FieldE) void {
-        //
+        // TODO
+        _ = self;
+        _ = dependant;
     }
 
     pub fn add_as_dependant(self: *@This(), to: ChildField) void {
-        //
+        // TODO
+        _ = self;
+        _ = to;
     }
 };
 
 pub const EdgeField = struct {
     lhs: RefPath,
     rhs: RefPath,
-    edge: fbrk.EdgeCreationAtttributes,
+    edge: faebryk.edgebuilder.EdgeCreationAtttributes,
     identifier: ?str,
 };
 
@@ -77,27 +105,34 @@ pub const RefPath = struct {
 pub const is_trait = struct {
     is_node: Node,
     //
-    pub fn MakeEdge(traitchildfield: ChildField, owner: RefPath) ChildField {
+    pub fn MakeEdge(traitchildfield: ChildField, owner: ?RefPath) ChildField {
         traitchildfield.add_dependant(owner);
-        // TODO 
-        traitchildfield.add_dependant(
-            {.EdgeField = .{
-                .lhs = owner,
-                .rhs = RefPath{.path = [traitchildfield]},
-                .edge=fbrk.EdgeTrait.build(),
-            }};
-        )
+        // TODO
+        // traitchildfield.add_dependant(
+        //     {.EdgeField = .{
+        //         .lhs = owner,
+        //         .rhs = RefPath{.path = .[traitchildfield]},
+        //         .edge=fbrk.EdgeTrait.build(),
+        //     }};
+        // )
         return traitchildfield;
+    }
+
+    pub fn MakeChild() ChildField {
+        return Node.MakeChild(@This());
     }
 };
 
 pub const is_interface = struct {
-    is_node: Node,
+    node: Node,
     //
-    is_trait: is_trait,
+    const _is_trait = is_trait.MakeChild();
 
     pub fn MakeConnectionEdge(n1: RefPath, n2: RefPath, shallow: bool) null {
-        //
+        // TODO
+        _ = n1;
+        _ = n2;
+        _ = shallow;
     }
 
     pub fn MakeChild() ChildField {
@@ -107,8 +142,8 @@ pub const is_interface = struct {
 
 pub const Electrical = struct {
     node: Node,
-    //
-    _is_interface = is_interface.MakeChild(),
+
+    const _is_interface = is_trait.MakeEdge(is_interface.MakeChild(), null);
 
     pub fn MakeChild() ChildField {
         return Node.MakeChild(@This());
@@ -123,8 +158,18 @@ pub const ElectricPower = struct {
             .identifier = "vcc",
             .locator = null,
         },
-        .nodetype = Electrical,
+        .T = Electrical,
     };
 
     const hv_highlevel = Electrical.MakeChild();
 };
+
+test "basic fabll" {
+    const a = std.testing.allocator;
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+    const tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const e1 = Node.bind_typegraph(Electrical, &tg).create_instance(&g);
+    _ = e1;
+}
