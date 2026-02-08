@@ -21,9 +21,7 @@ fn is_dependant_edge_type(comptime MaybeDependant: type) bool {
         @hasDecl(MaybeDependant, "DependantKind") and
         @hasDecl(MaybeDependant, "LhsPath") and
         @hasDecl(MaybeDependant, "RhsPath") and
-        @hasDecl(MaybeDependant, "EdgeType") and
-        @hasDecl(MaybeDependant, "Directional") and
-        @hasDecl(MaybeDependant, "Name");
+        @hasDecl(MaybeDependant, "EdgeFactory");
 }
 
 fn append_type(comptime items: []const type, comptime item: type) []const type {
@@ -264,13 +262,7 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                     }
 
                     if (comptime is_dependant_edge_type(dependant_type)) {
-                        graph.Edge.register_type(dependant_type.EdgeType) catch {};
-                        const edge_attrs: faebryk.edgebuilder.EdgeCreationAttributes = .{
-                            .edge_type = dependant_type.EdgeType,
-                            .directional = dependant_type.Directional,
-                            .name = dependant_type.Name,
-                            .dynamic = graph.DynamicAttributes.init_on_stack(),
-                        };
+                        const edge_attrs = dependant_type.EdgeFactory.build();
                         const lhs_path = build_path(owner_child_identifier, dependant_type.LhsPath);
                         const rhs_path = build_path(owner_child_identifier, dependant_type.RhsPath);
                         const lhs_ref = faebryk.typegraph.TypeGraph.ChildReferenceNode.create_and_insert(
@@ -492,18 +484,16 @@ pub fn ChildField(
 pub fn MakeDependantEdge(
     comptime lhs_path: RefPath,
     comptime rhs_path: RefPath,
-    // TODO see if we can make builder comptime compatible
-    comptime edge_type: graph.Edge.EdgeType,
-    comptime directional: ?bool,
-    comptime name: ?str,
+    comptime edge_factory: type,
 ) type {
+    if (comptime !@hasDecl(edge_factory, "build")) {
+        @compileError("MakeDependantEdge edge_factory must provide build()");
+    }
     return struct {
         pub const DependantKind = .edge;
         pub const LhsPath = lhs_path;
         pub const RhsPath = rhs_path;
-        pub const EdgeType = edge_type;
-        pub const Directional = directional;
-        pub const Name = name;
+        pub const EdgeFactory = edge_factory;
     };
 }
 
@@ -605,9 +595,7 @@ pub const is_trait = struct {
             MakeDependantEdge(
                 owner_path,
                 RefPath.owner_child(),
-                faebryk.trait.EdgeTrait.get_tid(),
-                true,
-                null,
+                faebryk.trait.EdgeTrait,
             ),
         );
     }
