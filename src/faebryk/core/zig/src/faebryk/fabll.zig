@@ -586,7 +586,7 @@ fn wrap_instance(comptime T: type, instance: graph.BoundNodeReference) T {
 
 // TESTING ====================================================================
 
-pub const is_trait = struct {
+const is_trait = struct {
     node: Node,
 
     pub fn MakeEdge(comptime traitchildfield: type, comptime owner: ?RefPath) type {
@@ -605,14 +605,18 @@ pub const is_trait = struct {
     }
 };
 
-pub const is_interface = struct {
+const is_interface = struct {
     node: Node,
     _is_trait: is_trait.MakeChild(),
 
-    pub fn MakeConnectionEdge(n1: RefPath, n2: RefPath, shallow: bool) void {
-        _ = n1;
-        _ = n2;
-        _ = shallow;
+    pub fn MakeConnectionEdge(comptime n1: RefPath, comptime n2: RefPath, comptime shallow: bool) type {
+        const EdgeFactory = struct {
+            pub fn build() faebryk.edgebuilder.EdgeCreationAttributes {
+                return faebryk.interface.EdgeInterfaceConnection.build(shallow) catch
+                    @panic("failed to build interface connection edge attributes");
+            }
+        };
+        return MakeDependantEdge(n1, n2, EdgeFactory);
     }
 
     pub fn MakeChild() type {
@@ -620,7 +624,7 @@ pub const is_interface = struct {
     }
 };
 
-pub const Electrical = struct {
+const Electrical = struct {
     node: Node,
 
     _is_interface: is_trait.MakeEdge(is_interface.MakeChild(), null),
@@ -630,14 +634,14 @@ pub const Electrical = struct {
     }
 };
 
-pub const ElectricPower = struct {
+const ElectricPower = struct {
     node: Node,
 
     hv: Electrical.MakeChild(),
     lv: Electrical.MakeChild(),
 };
 
-pub const Number = struct {
+const Number = struct {
     node: Node,
 
     pub const Attributes = struct {
@@ -653,53 +657,6 @@ pub const Number = struct {
     }
 };
 
-pub const NumberContainer = struct {
-    node: Node,
-
-    n: Number.MakeChild(.{ .number = 3.14 }),
-};
-
-fn comptime_child_field_count(comptime T: type) usize {
-    const Ctx = struct {
-        count: usize = 0,
-
-        fn visit(ctx_ptr: *anyopaque, _: []const u8, _: anytype) visitor.VisitResult(void) {
-            const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
-            ctx.count += 1;
-            return visitor.VisitResult(void){ .CONTINUE = {} };
-        }
-    };
-
-    var ctx: Ctx = .{};
-    switch (visit_fields(T, void, &ctx, Ctx.visit)) {
-        .ERROR => @panic("count visit failed"),
-        else => {},
-    }
-    return ctx.count;
-}
-
-fn comptime_child_field_name(comptime T: type, comptime idx: usize) []const u8 {
-    const Ctx = struct {
-        i: usize = 0,
-        target: usize,
-
-        fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, field: type) visitor.VisitResult([]const u8) {
-            const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
-            if (ctx.i == ctx.target) {
-                return visitor.VisitResult([]const u8){ .OK = field_identifier(decl_name, field) };
-            }
-            ctx.i += 1;
-            return visitor.VisitResult([]const u8){ .CONTINUE = {} };
-        }
-    };
-
-    var ctx: Ctx = .{ .target = idx };
-    return switch (visit_fields(T, []const u8, &ctx, Ctx.visit)) {
-        .OK => |name| name,
-        else => @panic("child field index out of bounds"),
-    };
-}
-
 fn print_type_overview(tg: *faebryk.typegraph.TypeGraph, allocator: std.mem.Allocator, label: []const u8) void {
     var overview = tg.get_type_instance_overview(allocator);
     defer overview.deinit();
@@ -711,9 +668,52 @@ fn print_type_overview(tg: *faebryk.typegraph.TypeGraph, allocator: std.mem.Allo
 }
 
 test "comptime child field discovery" {
-    try std.testing.expectEqual(@as(usize, 2), comptime_child_field_count(ElectricPower));
-    try std.testing.expect(std.mem.eql(u8, comptime_child_field_name(ElectricPower, 0), "hv"));
-    try std.testing.expect(std.mem.eql(u8, comptime_child_field_name(ElectricPower, 1), "lv"));
+    const F = struct {
+        fn comptime_child_field_count(comptime T: type) usize {
+            const Ctx = struct {
+                count: usize = 0,
+
+                fn visit(ctx_ptr: *anyopaque, _: []const u8, _: anytype) visitor.VisitResult(void) {
+                    const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                    ctx.count += 1;
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                }
+            };
+
+            var ctx: Ctx = .{};
+            switch (visit_fields(T, void, &ctx, Ctx.visit)) {
+                .ERROR => @panic("count visit failed"),
+                else => {},
+            }
+            return ctx.count;
+        }
+
+        fn comptime_child_field_name(comptime T: type, comptime idx: usize) []const u8 {
+            const Ctx = struct {
+                i: usize = 0,
+                target: usize,
+
+                fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, field: type) visitor.VisitResult([]const u8) {
+                    const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                    if (ctx.i == ctx.target) {
+                        return visitor.VisitResult([]const u8){ .OK = field_identifier(decl_name, field) };
+                    }
+                    ctx.i += 1;
+                    return visitor.VisitResult([]const u8){ .CONTINUE = {} };
+                }
+            };
+
+            var ctx: Ctx = .{ .target = idx };
+            return switch (visit_fields(T, []const u8, &ctx, Ctx.visit)) {
+                .OK => |name| name,
+                else => @panic("child field index out of bounds"),
+            };
+        }
+    };
+
+    try std.testing.expectEqual(@as(usize, 2), F.comptime_child_field_count(ElectricPower));
+    try std.testing.expect(std.mem.eql(u8, F.comptime_child_field_name(ElectricPower, 0), "hv"));
+    try std.testing.expect(std.mem.eql(u8, F.comptime_child_field_name(ElectricPower, 1), "lv"));
 }
 
 test "basic fabll" {
@@ -787,6 +787,12 @@ test "basic+4 child attributes" {
     defer g.deinit();
     var tg = faebryk.typegraph.TypeGraph.init(&g);
 
+    const NumberContainer = struct {
+        node: Node,
+
+        n: Number.MakeChild(.{ .number = 3.14 }),
+    };
+
     const bound = Node.bind_typegraph(NumberContainer, &tg);
     const container = bound.create_instance(&g);
     const number = container.n.get();
@@ -807,4 +813,67 @@ test "basic+5 instance attributes" {
 
     const attrs = number.attributes();
     try std.testing.expectApproxEqAbs(@as(f64, 4.2), attrs.number, 1e-9);
+}
+
+test "basic+6 interface connection edge dependant" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const ElectricPowerConnected = struct {
+        node: Node,
+
+        hv: Electrical.MakeChild().add_dependant(
+            is_interface.MakeConnectionEdge(
+                RefPath.owner_child(),
+                RefPath.child_identifier("lv"),
+                false,
+            ),
+        ),
+        lv: Electrical.MakeChild(),
+    };
+
+    const bound = Node.bind_typegraph(ElectricPowerConnected, &tg);
+    const power_instance = bound.create_instance(&g);
+
+    const hv = power_instance.hv.get();
+    const lv = power_instance.lv.get();
+
+    const Ctx = struct {
+        hv: graph.BoundNodeReference,
+        lv: graph.BoundNodeReference,
+        found: bool = false,
+        shallow_is_false: bool = false,
+
+        fn visit(ctx_ptr: *anyopaque, be: graph.BoundEdgeReference) visitor.VisitResult(void) {
+            const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+            if (!faebryk.interface.EdgeInterfaceConnection.is_instance(be.edge)) {
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+
+            const other = faebryk.interface.EdgeInterfaceConnection.get_other_connected_node(be.edge, ctx.hv.node) orelse
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            if (!other.is_same(ctx.lv.node)) {
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+
+            const shallow = be.edge.get(faebryk.interface.EdgeInterfaceConnection.shallow_attribute) orelse
+                @panic("missing shallow attribute");
+            ctx.found = true;
+            ctx.shallow_is_false = !shallow.Bool;
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+    };
+
+    var ctx: Ctx = .{
+        .hv = hv.node.instance,
+        .lv = lv.node.instance,
+    };
+    switch (faebryk.interface.EdgeInterfaceConnection.visit_connected_edges(hv.node.instance, &ctx, Ctx.visit)) {
+        .ERROR => @panic("visit_connected_edges failed"),
+        else => {},
+    }
+
+    try std.testing.expect(ctx.found);
+    try std.testing.expect(ctx.shallow_is_false);
 }
