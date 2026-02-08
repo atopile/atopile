@@ -5,6 +5,10 @@ const visitor = graph_mod.visitor;
 const faebryk = @import("faebryk");
 const str = []const u8;
 
+// =============================================================================
+// Compile-time reflection & utility helpers
+// =============================================================================
+
 fn is_child_field_type(comptime MaybeChildField: type) bool {
     return @typeInfo(MaybeChildField) == .@"struct" and
         @hasDecl(MaybeChildField, "ChildType") and
@@ -35,6 +39,9 @@ fn append_type(comptime items: []const type, comptime item: type) []const type {
 }
 
 fn field_token_from_source(comptime src: std.builtin.SourceLocation) u64 {
+    // Stable-ish compile-time field identity:
+    // two `MakeChild()` callsites in the same file get different tokens due to line/column.
+    // This gives us a handle we can carry through types and later resolve back on the parent.
     const file_hash = std.hash.Wyhash.hash(0, src.file);
     return file_hash ^
         (@as(u64, src.line) << 24) ^
@@ -47,6 +54,10 @@ fn AttributesType(comptime T: type) type {
 
 fn requires_attrs(comptime T: type) bool {
     return @hasDecl(T, "Attributes");
+}
+
+fn field_identifier(decl_name: []const u8, field_type: type) []const u8 {
+    return field_type.Identifier orelse decl_name;
 }
 
 fn visit_fields(
@@ -82,6 +93,10 @@ fn visit_fields(
     }
     return visitor.VisitResult(R){ .EXHAUSTED = {} };
 }
+
+// =============================================================================
+// Node binding / typegraph instantiation
+// =============================================================================
 
 pub const Node = struct {
     instance: graph.BoundNodeReference,
@@ -156,13 +171,13 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
 
         pub fn get_or_create_type(self: @This()) graph.BoundNodeReference {
             const Self = @This();
-            const identifier = @typeName(T);
-            if (self.tg.get_type_by_name(identifier)) |existing| {
+            const type_identifier = @typeName(T);
+            if (self.tg.get_type_by_name(type_identifier)) |existing| {
                 return existing;
             }
 
-            const type_node = self.tg.add_type(identifier) catch |err| switch (err) {
-                error.TypeAlreadyExists => self.tg.get_type_by_name(identifier) orelse unreachable,
+            const type_node = self.tg.add_type(type_identifier) catch |err| switch (err) {
+                error.TypeAlreadyExists => self.tg.get_type_by_name(type_identifier) orelse unreachable,
                 else => @panic("failed to add type"),
             };
 
@@ -201,6 +216,8 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                 }
 
                 fn child_identifier_for_token(comptime token: u64) []const u8 {
+                    // RefPath can reference a sibling/owner child via `child_field_token`.
+                    // Here we resolve that token back to the actual identifier used on the parent type.
                     inline for (std.meta.fields(T)) |field| {
                         if (comptime is_child_field_type(field.type) and field.type.FieldToken == token) {
                             return field_identifier(field.name, field.type);
@@ -220,6 +237,8 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                     owner_identifier: []const u8,
                     comptime path: RefPath,
                 ) [path.segments.len]faebryk.typegraph.TypeGraph.ChildReferenceNode.EdgeTraversal {
+                    // Convert high-level refpath segments into TypeGraph traversal edges.
+                    // `owner_child` is bound at runtime to the child currently being expanded.
                     var out: [path.segments.len]faebryk.typegraph.TypeGraph.ChildReferenceNode.EdgeTraversal = undefined;
                     inline for (path.segments, 0..) |segment, i| {
                         out[i] = switch (segment) {
@@ -233,6 +252,10 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                 }
 
                 fn apply_dependant(ctx: *@This(), owner_child_identifier: []const u8, comptime dependant_type: type) void {
+                    // Dependants are compile-time declarations attached to a child field.
+                    // They can be either:
+                    // 1) additional child fields created before/after the owner child
+                    // 2) edges created via make_link with refpaths relative to the owner child
                     if (comptime is_child_field_type(dependant_type)) {
                         const dependant_identifier = dependant_type.Identifier orelse
                             @panic("dependant child field must set explicit identifier");
@@ -293,40 +316,9 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
     };
 }
 
-fn wrap_instance(comptime T: type, instance: graph.BoundNodeReference) T {
-    comptime if (!@hasField(T, "node")) {
-        @compileError("FabLL Zig node types must have a `node: Node` field");
-    };
-
-    var out: T = undefined;
-
-    inline for (std.meta.fields(T)) |field| {
-        // TODO: make less hacky
-        if (comptime std.mem.eql(u8, field.name, "node")) {
-            @field(out, field.name) = .{ .instance = instance };
-            continue;
-        }
-        if (comptime is_child_field_type(field.type)) {
-            var child: field.type = .{};
-            child.parent_instance = instance;
-            child.locator = field.name;
-            @field(out, field.name) = child;
-            continue;
-        }
-        if (field.default_value_ptr) |ptr| {
-            const typed_ptr: *const field.type = @ptrCast(@alignCast(ptr));
-            @field(out, field.name) = typed_ptr.*;
-            continue;
-        }
-        @compileError("Non-child fields must have default values");
-    }
-
-    return out;
-}
-
-fn field_identifier(decl_name: []const u8, field_type: type) []const u8 {
-    return field_type.Identifier orelse decl_name;
-}
+// =============================================================================
+// Typed attribute encoding/decoding
+// =============================================================================
 
 fn attribute_value_to_literal(comptime V: type, value: V) graph.Literal {
     return switch (@typeInfo(V)) {
@@ -411,6 +403,10 @@ pub fn get_typed_attributes(node: anytype) AttributesType(@TypeOf(node)) {
     return out;
 }
 
+// =============================================================================
+// Child field model & dependant model
+// =============================================================================
+
 pub const ChildAttribute = struct {
     key: str,
     value: graph.Literal,
@@ -444,6 +440,7 @@ pub fn ChildField(
     comptime field_token: u64,
 ) type {
     return struct {
+        // Compile-time metadata of the declared child field (stage-0/type side).
         pub const ChildType = T;
         pub const Identifier = identifier;
         pub const Attributes = attributes;
@@ -495,6 +492,7 @@ pub fn ChildField(
 pub fn MakeDependantEdge(
     comptime lhs_path: RefPath,
     comptime rhs_path: RefPath,
+    // TODO see if we can make builder comptime compatible
     comptime edge_type: graph.Edge.EdgeType,
     comptime directional: ?bool,
     comptime name: ?str,
@@ -522,6 +520,7 @@ pub const EdgeField = struct {
 };
 
 pub const RefPath = struct {
+    // A tiny compile-time path language to address nodes relative to a dependant owner.
     pub const Segment = union(enum) {
         self_node: void,
         owner_child: void,
@@ -553,11 +552,47 @@ pub const RefPath = struct {
         if (comptime !is_child_field_type(field_type)) {
             @compileError("RefPath.child_field expects a ChildField type");
         }
+        // Indirect lookup through field token solves the "child field has no parent locator yet" issue.
         return .{
             .segments = &.{.{ .child_field_token = field_type.FieldToken }},
         };
     }
 };
+
+fn wrap_instance(comptime T: type, instance: graph.BoundNodeReference) T {
+    comptime if (!@hasField(T, "node")) {
+        @compileError("FabLL Zig node types must have a `node: Node` field");
+    };
+
+    var out: T = undefined;
+
+    inline for (std.meta.fields(T)) |field| {
+        // TODO: make less hacky
+        if (comptime std.mem.eql(u8, field.name, "node")) {
+            @field(out, field.name) = .{ .instance = instance };
+            continue;
+        }
+        if (comptime is_child_field_type(field.type)) {
+            var child: field.type = .{};
+            child.parent_instance = instance;
+            child.locator = field.name;
+            @field(out, field.name) = child;
+            continue;
+        }
+        if (field.default_value_ptr) |ptr| {
+            const typed_ptr: *const field.type = @ptrCast(@alignCast(ptr));
+            @field(out, field.name) = typed_ptr.*;
+            continue;
+        }
+        @compileError("Non-child fields must have default values");
+    }
+
+    return out;
+}
+
+// =============================================================================
+// Test fixtures and tests
+// =============================================================================
 
 // TESTING ====================================================================
 
