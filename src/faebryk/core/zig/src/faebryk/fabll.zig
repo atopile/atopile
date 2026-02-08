@@ -11,6 +11,35 @@ fn is_child_field_type(comptime MaybeChildField: type) bool {
         @hasDecl(MaybeChildField, "Options");
 }
 
+fn AttributesType(comptime T: type) type {
+    return if (@hasDecl(T, "Attributes")) T.Attributes else struct {};
+}
+
+fn requires_instance_attrs(comptime T: type) bool {
+    if (@hasDecl(T, "RequireCreateInstanceAttrs")) {
+        return T.RequireCreateInstanceAttrs;
+    }
+    return false;
+}
+
+pub const CreateInstanceMode = enum {
+    generic,
+    requires_attrs,
+};
+
+fn create_instance_mode(comptime T: type) CreateInstanceMode {
+    if (@hasDecl(T, "CreateInstanceMode")) {
+        return T.CreateInstanceMode;
+    }
+    if (@hasDecl(T, "Attributes")) {
+        return .requires_attrs;
+    }
+    if (requires_instance_attrs(T)) {
+        return .requires_attrs;
+    }
+    return .generic;
+}
+
 fn visit_fields(
     comptime T: type,
     comptime R: type,
@@ -73,21 +102,37 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
     return struct {
         tg: *faebryk.typegraph.TypeGraph,
 
-        pub fn create_instance(self: @This(), g: *graph.GraphView) T {
+        fn instantiate_raw(self: @This(), g: *graph.GraphView) graph.BoundNodeReference {
             const type_node = self.get_or_create_type();
             if (type_node.g != g) {
                 @panic("create_instance graph must match the bound typegraph graph");
             }
 
             const result = self.tg.instantiate_node(type_node);
-            const instance = switch (result) {
+            return switch (result) {
                 .ok => |n| n,
                 .err => |err| {
                     std.debug.print("fabll instantiate failed: {s}\n", .{err.message});
                     @panic("fabll instantiate failed");
                 },
             };
+        }
 
+        pub fn create_instance(self: @This(), g: *graph.GraphView) T {
+            if (comptime create_instance_mode(T) == .requires_attrs) {
+                @compileError("Type requires explicit attributes: use create_instance_with_attrs(...)");
+            }
+            const instance = self.instantiate_raw(g);
+            return wrap_instance(T, instance);
+        }
+
+        pub fn create_instance_with_attrs(
+            self: @This(),
+            g: *graph.GraphView,
+            attrs: AttributesType(T),
+        ) T {
+            const instance = self.instantiate_raw(g);
+            apply_typed_attributes(instance, attrs);
             return wrap_instance(T, instance);
         }
 
@@ -174,6 +219,7 @@ fn wrap_instance(comptime T: type, instance: graph.BoundNodeReference) T {
     var out: T = undefined;
 
     inline for (std.meta.fields(T)) |field| {
+        // TODO: make less hacky
         if (comptime std.mem.eql(u8, field.name, "node")) {
             @field(out, field.name) = .{ .instance = instance };
             continue;
@@ -200,6 +246,60 @@ fn field_identifier(decl_name: []const u8, field_type: type) []const u8 {
     return field_type.Options.identifier orelse decl_name;
 }
 
+fn attribute_value_to_literal(comptime V: type, value: V) graph.Literal {
+    return switch (@typeInfo(V)) {
+        .float => .{ .Float = @as(f64, value) },
+        .int => .{ .Int = @as(i64, value) },
+        .comptime_int => .{ .Int = value },
+        .bool => .{ .Bool = value },
+        .pointer => |ptr| blk: {
+            if (ptr.size == .slice and ptr.child == u8) {
+                break :blk .{ .String = value };
+            }
+            @compileError("Unsupported pointer attribute type");
+        },
+        else => @compileError("Unsupported attribute value type"),
+    };
+}
+
+fn literal_to_attribute_value(comptime V: type, lit: graph.Literal) V {
+    return switch (@typeInfo(V)) {
+        .float => @as(V, @floatCast(lit.Float)),
+        .int => @as(V, @intCast(lit.Int)),
+        .comptime_int => @as(V, @intCast(lit.Int)),
+        .bool => lit.Bool,
+        .pointer => |ptr| blk: {
+            if (ptr.size == .slice and ptr.child == u8) {
+                break :blk lit.String;
+            }
+            @compileError("Unsupported pointer attribute type");
+        },
+        else => @compileError("Unsupported attribute value type"),
+    };
+}
+
+fn apply_typed_attributes(instance: graph.BoundNodeReference, attrs: anytype) void {
+    const A = @TypeOf(attrs);
+    inline for (std.meta.fields(A)) |field| {
+        instance.node.put(field.name, attribute_value_to_literal(field.type, @field(attrs, field.name)));
+    }
+}
+
+pub fn get_typed_attributes(node: anytype) AttributesType(@TypeOf(node)) {
+    const T = @TypeOf(node);
+    const A = AttributesType(T);
+    if (comptime std.meta.fields(A).len == 0) {
+        @compileError("Type does not define `Attributes`");
+    }
+    var out: A = undefined;
+    inline for (std.meta.fields(A)) |field| {
+        const lit = node.node.instance.node.get(field.name) orelse
+            @panic("missing typed attribute on node");
+        @field(out, field.name) = literal_to_attribute_value(field.type, lit);
+    }
+    return out;
+}
+
 pub const ChildFieldOptions = struct {
     identifier: ?str = null,
     trait_owner_is_self: bool = false,
@@ -209,6 +309,25 @@ pub const ChildAttribute = struct {
     key: str,
     value: graph.Literal,
 };
+
+fn child_attributes_from_struct(comptime S: type, comptime attrs: S) []const ChildAttribute {
+    const fields = std.meta.fields(S);
+    return comptime blk: {
+        var out: [fields.len]ChildAttribute = undefined;
+        for (fields, 0..) |field, i| {
+            out[i] = .{
+                .key = field.name,
+                .value = attribute_value_to_literal(field.type, @field(attrs, field.name)),
+            };
+        }
+        const finalized = out;
+        break :blk &finalized;
+    };
+}
+
+pub fn MakeChildWithTypedAttrs(comptime T: type, comptime attrs: anytype) type {
+    return Node.MakeChildWithAttrs(T, child_attributes_from_struct(@TypeOf(attrs), attrs));
+}
 
 pub fn ChildField(
     comptime T: type,
@@ -271,6 +390,7 @@ pub const is_trait = struct {
         _ = owner;
         return ChildField(
             traitchildfield.ChildType,
+            // TODO: remove hack with trait_owner_is_self as soon as dependant logic works
             .{
                 .identifier = traitchildfield.Options.identifier,
                 .trait_owner_is_self = true,
@@ -323,18 +443,23 @@ pub const ElectricPower = struct {
 pub const Number = struct {
     node: Node,
 
-    pub fn MakeChild(val: f64) type {
-        return Node.MakeChildWithAttrs(
-            @This(),
-            &.{.{ .key = "number", .value = .{ .Float = val } }},
-        );
+    pub const Attributes = struct {
+        number: f64,
+    };
+
+    pub fn MakeChild(comptime attrs: Attributes) type {
+        return MakeChildWithTypedAttrs(@This(), attrs);
+    }
+
+    pub fn attributes(self: @This()) Attributes {
+        return get_typed_attributes(self);
     }
 };
 
 pub const NumberContainer = struct {
     node: Node,
 
-    n: Number.MakeChild(3.14),
+    n: Number.MakeChild(.{ .number = 3.14 }),
 };
 
 fn comptime_child_field_count(comptime T: type) usize {
@@ -469,7 +594,20 @@ test "basic+4 child attributes" {
     const container = bound.create_instance(&g);
     const number = container.n.get();
 
-    const num_attr = number.node.instance.node.get("number") orelse
-        @panic("missing number attr on Number");
-    try std.testing.expectApproxEqAbs(@as(f64, 3.14), num_attr.Float, 1e-9);
+    const attrs = get_typed_attributes(number);
+    try std.testing.expectApproxEqAbs(@as(f64, 3.14), attrs.number, 1e-9);
+}
+
+test "basic+5 instance attributes" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const bound = Node.bind_typegraph(Number, &tg);
+    const number = bound.create_instance_with_attrs(&g, .{
+        .number = 4.2,
+    });
+
+    const attrs = number.attributes();
+    try std.testing.expectApproxEqAbs(@as(f64, 4.2), attrs.number, 1e-9);
 }
