@@ -168,15 +168,8 @@ pub const Electrical = struct {
 pub const ElectricPower = struct {
     node: Node,
 
-    pub const hv_lowlevel = ChildField{
-        .field = .{
-            .identifier = "vcc",
-            .locator = null,
-        },
-        .T = Electrical,
-    };
-
-    pub const lv_highlevel = Electrical.MakeChild();
+    pub const hv = Electrical.MakeChild();
+    pub const lv = Electrical.MakeChild();
 };
 
 fn comptime_child_field_count(comptime T: type) usize {
@@ -202,6 +195,16 @@ fn comptime_child_field_name(comptime T: type, comptime idx: usize) []const u8 {
     @compileError("child field index out of bounds");
 }
 
+fn print_type_overview(tg: *faebryk.typegraph.TypeGraph, allocator: std.mem.Allocator, label: []const u8) void {
+    var overview = tg.get_type_instance_overview(allocator);
+    defer overview.deinit();
+
+    std.debug.print("\nType overview ({s}):\n", .{label});
+    for (overview.items) |item| {
+        std.debug.print("  {s}: {d} instances\n", .{ item.type_name, item.instance_count });
+    }
+}
+
 test "comptime child field discovery" {
     try std.testing.expectEqual(@as(usize, 2), comptime_child_field_count(ElectricPower));
     try std.testing.expect(std.mem.eql(u8, comptime_child_field_name(ElectricPower, 0), "hv_lowlevel"));
@@ -216,6 +219,8 @@ test "basic fabll" {
     const bound = Node.bind_typegraph(Electrical, &tg);
     const e1 = bound.create_instance(&g);
     _ = e1;
+
+    print_type_overview(&tg, std.testing.allocator, "basic fabll");
 }
 
 test "basic+1 fabll" {
@@ -223,7 +228,11 @@ test "basic+1 fabll" {
     defer g.deinit();
     var tg = faebryk.typegraph.TypeGraph.init(&g);
 
-    const bound = Node.bind_typegraph(ElectricPower, &tg);
-    const ep1 = bound.create_instance(&g);
-    _ = ep1;
+    const electrical_bound = Node.bind_typegraph(Electrical, &tg);
+    _ = electrical_bound.create_instance(&g);
+
+    const power_bound = Node.bind_typegraph(ElectricPower, &tg);
+    _ = power_bound.create_instance(&g);
+
+    print_type_overview(&tg, std.testing.allocator, "basic+1 fabll");
 }
