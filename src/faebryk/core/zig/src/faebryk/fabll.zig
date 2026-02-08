@@ -1,6 +1,7 @@
 const std = @import("std");
 const graph_mod = @import("graph");
 const graph = graph_mod.graph;
+const visitor = graph_mod.visitor;
 const faebryk = @import("faebryk");
 const str = []const u8;
 
@@ -8,6 +9,28 @@ fn is_child_field_type(comptime MaybeChildField: type) bool {
     return @typeInfo(MaybeChildField) == .@"struct" and
         @hasField(MaybeChildField, "field") and
         @hasField(MaybeChildField, "T");
+}
+
+fn visit_fields(
+    comptime T: type,
+    comptime R: type,
+    ctx: *anyopaque,
+    comptime f: fn (*anyopaque, []const u8, ChildField) visitor.VisitResult(R),
+) visitor.VisitResult(R) {
+    const decls = @typeInfo(T).@"struct".decls;
+    inline for (decls) |decl| {
+        const value = @field(T, decl.name);
+        if (comptime is_child_field_type(@TypeOf(value))) {
+            switch (f(ctx, decl.name, value)) {
+                .CONTINUE => {},
+                .STOP => return visitor.VisitResult(R){ .STOP = {} },
+                .OK => |result| return visitor.VisitResult(R){ .OK = result },
+                .EXHAUSTED => return visitor.VisitResult(R){ .EXHAUSTED = {} },
+                .ERROR => |err| return visitor.VisitResult(R){ .ERROR = err },
+            }
+        }
+    }
+    return visitor.VisitResult(R){ .EXHAUSTED = {} };
 }
 
 pub const Node = struct {
@@ -51,6 +74,7 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
         }
 
         pub fn get_or_create_type(self: @This()) graph.BoundNodeReference {
+            const Self = @This();
             const identifier = @typeName(T);
             if (self.tg.get_type_by_name(identifier)) |existing| {
                 return existing;
@@ -61,34 +85,47 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                 else => @panic("failed to add type"),
             };
 
-            const decls = @typeInfo(T).@"struct".decls;
-            inline for (decls) |decl| {
-                const value = @field(T, decl.name);
-                if (comptime is_child_field_type(@TypeOf(value))) {
-                    const child_bound = Node.bind_typegraph(value.T, self.tg);
+            const BuildContext = struct {
+                self: Self,
+                type_node: graph.BoundNodeReference,
+
+                fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, value: ChildField) visitor.VisitResult(void) {
+                    const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                    const child_bound = Node.bind_typegraph(value.T, ctx.self.tg);
                     const child_type = child_bound.get_or_create_type();
-                    const child_identifier = value.field.identifier orelse decl.name;
-                    _ = self.tg.add_make_child(type_node, child_type, child_identifier, null, false) catch
+                    const child_identifier = value.field.identifier orelse decl_name;
+                    _ = ctx.self.tg.add_make_child(ctx.type_node, child_type, child_identifier, null, false) catch
                         @panic("failed to add make child");
 
                     if (value.trait_owner_is_self) {
                         const lhs_ref = faebryk.typegraph.TypeGraph.ChildReferenceNode.create_and_insert(
-                            self.tg,
+                            ctx.self.tg,
                             &.{faebryk.composition.EdgeComposition.traverse("")},
                         ) catch @panic("failed to build trait lhs reference");
                         const rhs_ref = faebryk.typegraph.TypeGraph.ChildReferenceNode.create_and_insert(
-                            self.tg,
+                            ctx.self.tg,
                             &.{faebryk.composition.EdgeComposition.traverse(child_identifier)},
                         ) catch @panic("failed to build trait rhs reference");
 
-                        _ = self.tg.add_make_link(
-                            type_node,
+                        _ = ctx.self.tg.add_make_link(
+                            ctx.type_node,
                             lhs_ref,
                             rhs_ref,
                             faebryk.trait.EdgeTrait.build(),
                         ) catch @panic("failed to add trait make link");
                     }
+
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
+            };
+
+            var build_ctx = BuildContext{
+                .self = self,
+                .type_node = type_node,
+            };
+            switch (visit_fields(T, void, &build_ctx, BuildContext.visit)) {
+                .ERROR => @panic("visit_fields failed"),
+                else => {},
             }
 
             return type_node;
@@ -146,6 +183,8 @@ pub const RefPath = struct {
     path: std.ArrayList(Element),
 };
 
+// TESTING ====================================================================
+
 pub const is_trait = struct {
     node: Node,
 
@@ -194,26 +233,44 @@ pub const ElectricPower = struct {
 };
 
 fn comptime_child_field_count(comptime T: type) usize {
-    comptime var count: usize = 0;
-    const decls = @typeInfo(T).@"struct".decls;
-    inline for (decls) |decl| {
-        if (comptime is_child_field_type(@TypeOf(@field(T, decl.name)))) {
-            count += 1;
+    const Ctx = struct {
+        count: usize = 0,
+
+        fn visit(ctx_ptr: *anyopaque, _: []const u8, _: ChildField) visitor.VisitResult(void) {
+            const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+            ctx.count += 1;
+            return visitor.VisitResult(void){ .CONTINUE = {} };
         }
+    };
+
+    var ctx: Ctx = .{};
+    switch (visit_fields(T, void, &ctx, Ctx.visit)) {
+        .ERROR => @panic("count visit failed"),
+        else => {},
     }
-    return count;
+    return ctx.count;
 }
 
 fn comptime_child_field_name(comptime T: type, comptime idx: usize) []const u8 {
-    comptime var i: usize = 0;
-    const decls = @typeInfo(T).@"struct".decls;
-    inline for (decls) |decl| {
-        if (comptime is_child_field_type(@TypeOf(@field(T, decl.name)))) {
-            if (i == idx) return decl.name;
-            i += 1;
+    const Ctx = struct {
+        i: usize = 0,
+        target: usize,
+
+        fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, _: ChildField) visitor.VisitResult([]const u8) {
+            const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+            if (ctx.i == ctx.target) {
+                return visitor.VisitResult([]const u8){ .OK = decl_name };
+            }
+            ctx.i += 1;
+            return visitor.VisitResult([]const u8){ .CONTINUE = {} };
         }
-    }
-    @compileError("child field index out of bounds");
+    };
+
+    var ctx: Ctx = .{ .target = idx };
+    return switch (visit_fields(T, []const u8, &ctx, Ctx.visit)) {
+        .OK => |name| name,
+        else => @panic("child field index out of bounds"),
+    };
 }
 
 fn print_type_overview(tg: *faebryk.typegraph.TypeGraph, allocator: std.mem.Allocator, label: []const u8) void {
