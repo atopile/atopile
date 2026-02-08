@@ -49,11 +49,19 @@ pub const Node = struct {
     instance: graph.BoundNodeReference,
 
     pub fn MakeChild(comptime T: type) type {
-        return ChildField(T, .{});
+        return ChildField(T, .{}, &.{});
+    }
+
+    pub fn MakeChildWith(comptime T: type, comptime options: ChildFieldOptions) type {
+        return ChildField(T, options, &.{});
+    }
+
+    pub fn MakeChildWithAttrs(comptime T: type, comptime attributes: []const ChildAttribute) type {
+        return ChildField(T, .{}, attributes);
     }
 
     pub fn MakeChildNamed(comptime T: type, comptime identifier: []const u8) type {
-        return ChildField(T, .{ .identifier = identifier });
+        return ChildField(T, .{ .identifier = identifier }, &.{});
     }
 
     pub fn bind_typegraph(comptime T: type, tg: *faebryk.typegraph.TypeGraph) TypeNodeBoundTG(T) {
@@ -104,8 +112,23 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                     const child_bound = Node.bind_typegraph(field_type.ChildType, ctx.self.tg);
                     const child_type = child_bound.get_or_create_type();
                     const child_identifier = field_identifier(decl_name, field_type);
-                    _ = ctx.self.tg.add_make_child(ctx.type_node, child_type, child_identifier, null, false) catch
-                        @panic("failed to add make child");
+                    var node_attrs: faebryk.nodebuilder.NodeCreationAttributes = .{
+                        .dynamic = graph.DynamicAttributes.init_on_stack(),
+                    };
+                    for (field_type.Attributes) |attr| {
+                        node_attrs.dynamic.put(attr.key, attr.value);
+                    }
+                    const node_attrs_ptr: ?*faebryk.nodebuilder.NodeCreationAttributes = if (field_type.Attributes.len > 0)
+                        &node_attrs
+                    else
+                        null;
+                    _ = ctx.self.tg.add_make_child(
+                        ctx.type_node,
+                        child_type,
+                        child_identifier,
+                        node_attrs_ptr,
+                        false,
+                    ) catch @panic("failed to add make child");
 
                     if (field_type.Options.trait_owner_is_self) {
                         const lhs_ref = faebryk.typegraph.TypeGraph.ChildReferenceNode.create_and_insert(
@@ -182,10 +205,20 @@ pub const ChildFieldOptions = struct {
     trait_owner_is_self: bool = false,
 };
 
-pub fn ChildField(comptime T: type, comptime options: ChildFieldOptions) type {
+pub const ChildAttribute = struct {
+    key: str,
+    value: graph.Literal,
+};
+
+pub fn ChildField(
+    comptime T: type,
+    comptime options: ChildFieldOptions,
+    comptime attributes: []const ChildAttribute,
+) type {
     return struct {
         pub const ChildType = T;
         pub const Options = options;
+        pub const Attributes = attributes;
         parent_instance: ?graph.BoundNodeReference = null,
         locator: ?str = null,
 
@@ -242,11 +275,16 @@ pub const is_trait = struct {
                 .identifier = traitchildfield.Options.identifier,
                 .trait_owner_is_self = true,
             },
+            traitchildfield.Attributes,
         );
     }
 
     pub fn MakeChild() type {
         return Node.MakeChild(@This());
+    }
+
+    pub fn MakeChildWith(comptime options: ChildFieldOptions) type {
+        return Node.MakeChildWith(@This(), options);
     }
 };
 
@@ -280,6 +318,23 @@ pub const ElectricPower = struct {
 
     hv: Electrical.MakeChild(),
     lv: Electrical.MakeChild(),
+};
+
+pub const Number = struct {
+    node: Node,
+
+    pub fn MakeChild(val: f64) type {
+        return Node.MakeChildWithAttrs(
+            @This(),
+            &.{.{ .key = "number", .value = .{ .Float = val } }},
+        );
+    }
+};
+
+pub const NumberContainer = struct {
+    node: Node,
+
+    n: Number.MakeChild(3.14),
 };
 
 fn comptime_child_field_count(comptime T: type) usize {
@@ -403,4 +458,18 @@ test "basic+3 field accessor" {
         @panic("missing hv child");
 
     try std.testing.expect(hv_from_accessor.node.is_same(hv_from_graph.node));
+}
+
+test "basic+4 child attributes" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const bound = Node.bind_typegraph(NumberContainer, &tg);
+    const container = bound.create_instance(&g);
+    const number = container.n.get();
+
+    const num_attr = number.node.instance.node.get("number") orelse
+        @panic("missing number attr on Number");
+    try std.testing.expectApproxEqAbs(@as(f64, 3.14), num_attr.Float, 1e-9);
 }
