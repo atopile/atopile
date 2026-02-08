@@ -51,9 +51,7 @@ def _compute_source_hash() -> str:
     """Hash all zig source files + build config to detect changes."""
     h = hashlib.sha256()
     # Hash all .zig source files in sorted order for determinism
-    zig_files = sorted(
-        [*(_thisdir / "src").rglob("*.zig"), _thisdir / "build.zig"]
-    )
+    zig_files = sorted([*(_thisdir / "src").rglob("*.zig"), _thisdir / "build.zig"])
     for path in zig_files:
         h.update(path.relative_to(_thisdir).as_posix().encode())
         h.update(path.read_bytes())
