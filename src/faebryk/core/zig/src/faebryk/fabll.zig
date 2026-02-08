@@ -8,7 +8,29 @@ const str = []const u8;
 fn is_child_field_type(comptime MaybeChildField: type) bool {
     return @typeInfo(MaybeChildField) == .@"struct" and
         @hasDecl(MaybeChildField, "ChildType") and
-        @hasDecl(MaybeChildField, "Options");
+        @hasDecl(MaybeChildField, "Identifier");
+}
+
+fn is_dependant_edge_type(comptime MaybeDependant: type) bool {
+    return @typeInfo(MaybeDependant) == .@"struct" and
+        @hasDecl(MaybeDependant, "DependantKind") and
+        @hasDecl(MaybeDependant, "Lhs") and
+        @hasDecl(MaybeDependant, "Rhs") and
+        @hasDecl(MaybeDependant, "EdgeType") and
+        @hasDecl(MaybeDependant, "Directional") and
+        @hasDecl(MaybeDependant, "Name");
+}
+
+fn append_type(comptime items: []const type, comptime item: type) []const type {
+    return comptime blk: {
+        var out: [items.len + 1]type = undefined;
+        for (items, 0..) |existing, i| {
+            out[i] = existing;
+        }
+        out[items.len] = item;
+        const finalized = out;
+        break :blk &finalized;
+    };
 }
 
 fn AttributesType(comptime T: type) type {
@@ -60,19 +82,11 @@ pub const Node = struct {
         if (comptime requires_attrs(T)) {
             @compileError("Type defines `Attributes`; use `T.MakeChild(...)` to provide attributes");
         }
-        return ChildField(T, .{}, &.{});
-    }
-
-    pub fn MakeChildWith(comptime T: type, comptime options: ChildFieldOptions) type {
-        return ChildField(T, options, &.{});
+        return ChildField(T, null, &.{}, &.{}, &.{});
     }
 
     pub fn MakeChildWithAttrs(comptime T: type, comptime attributes: []const ChildAttribute) type {
-        return ChildField(T, .{}, attributes);
-    }
-
-    pub fn MakeChildNamed(comptime T: type, comptime identifier: []const u8) type {
-        return ChildField(T, .{ .identifier = identifier }, &.{});
+        return ChildField(T, null, attributes, &.{}, &.{});
     }
 
     pub fn bind_typegraph(comptime T: type, tg: *faebryk.typegraph.TypeGraph) TypeNodeBoundTG(T) {
@@ -134,18 +148,20 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                 self: Self,
                 type_node: graph.BoundNodeReference,
 
-                fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, field_type: type) visitor.VisitResult(void) {
-                    const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
-                    const child_bound = Node.bind_typegraph(field_type.ChildType, ctx.self.tg);
+                fn add_child_field(ctx: *@This(), comptime child_field_type: type, child_identifier: []const u8) void {
+                    inline for (child_field_type.PrependDependants) |dependant| {
+                        ctx.apply_dependant(child_identifier, dependant);
+                    }
+
+                    const child_bound = Node.bind_typegraph(child_field_type.ChildType, ctx.self.tg);
                     const child_type = child_bound.get_or_create_type();
-                    const child_identifier = field_identifier(decl_name, field_type);
                     var node_attrs: faebryk.nodebuilder.NodeCreationAttributes = .{
                         .dynamic = graph.DynamicAttributes.init_on_stack(),
                     };
-                    for (field_type.Attributes) |attr| {
+                    for (child_field_type.Attributes) |attr| {
                         node_attrs.dynamic.put(attr.key, attr.value);
                     }
-                    const node_attrs_ptr: ?*faebryk.nodebuilder.NodeCreationAttributes = if (field_type.Attributes.len > 0)
+                    const node_attrs_ptr: ?*faebryk.nodebuilder.NodeCreationAttributes = if (child_field_type.Attributes.len > 0)
                         &node_attrs
                     else
                         null;
@@ -157,24 +173,60 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                         false,
                     ) catch @panic("failed to add make child");
 
-                    if (field_type.Options.trait_owner_is_self) {
+                    inline for (child_field_type.Dependants) |dependant| {
+                        ctx.apply_dependant(child_identifier, dependant);
+                    }
+                }
+
+                fn apply_dependant(ctx: *@This(), owner_child_identifier: []const u8, comptime dependant_type: type) void {
+                    if (comptime is_child_field_type(dependant_type)) {
+                        const dependant_identifier = dependant_type.Identifier orelse
+                            @panic("dependant child field must set explicit identifier");
+                        ctx.add_child_field(dependant_type, dependant_identifier);
+                        return;
+                    }
+
+                    if (comptime is_dependant_edge_type(dependant_type)) {
+                        graph.Edge.register_type(dependant_type.EdgeType) catch {};
+                        const edge_attrs: faebryk.edgebuilder.EdgeCreationAttributes = .{
+                            .edge_type = dependant_type.EdgeType,
+                            .directional = dependant_type.Directional,
+                            .name = dependant_type.Name,
+                            .dynamic = graph.DynamicAttributes.init_on_stack(),
+                        };
+                        const lhs_path = switch (dependant_type.Lhs) {
+                            .self_node => &.{faebryk.composition.EdgeComposition.traverse("")},
+                            .child => &.{faebryk.composition.EdgeComposition.traverse(owner_child_identifier)},
+                        };
+                        const rhs_path = switch (dependant_type.Rhs) {
+                            .self_node => &.{faebryk.composition.EdgeComposition.traverse("")},
+                            .child => &.{faebryk.composition.EdgeComposition.traverse(owner_child_identifier)},
+                        };
                         const lhs_ref = faebryk.typegraph.TypeGraph.ChildReferenceNode.create_and_insert(
                             ctx.self.tg,
-                            &.{faebryk.composition.EdgeComposition.traverse("")},
-                        ) catch @panic("failed to build trait lhs reference");
+                            lhs_path,
+                        ) catch @panic("failed to build dependant lhs reference");
                         const rhs_ref = faebryk.typegraph.TypeGraph.ChildReferenceNode.create_and_insert(
                             ctx.self.tg,
-                            &.{faebryk.composition.EdgeComposition.traverse(child_identifier)},
-                        ) catch @panic("failed to build trait rhs reference");
+                            rhs_path,
+                        ) catch @panic("failed to build dependant rhs reference");
 
                         _ = ctx.self.tg.add_make_link(
                             ctx.type_node,
                             lhs_ref,
                             rhs_ref,
-                            faebryk.trait.EdgeTrait.build(),
-                        ) catch @panic("failed to add trait make link");
+                            edge_attrs,
+                        ) catch @panic("failed to add dependant make link");
+                        return;
                     }
 
+                    @panic("unsupported dependant type");
+                }
+
+                fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, field_type: type) visitor.VisitResult(void) {
+                    const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                    const child_identifier = field_identifier(decl_name, field_type);
+                    ctx.add_child_field(field_type, child_identifier);
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
             };
@@ -225,7 +277,7 @@ fn wrap_instance(comptime T: type, instance: graph.BoundNodeReference) T {
 }
 
 fn field_identifier(decl_name: []const u8, field_type: type) []const u8 {
-    return field_type.Options.identifier orelse decl_name;
+    return field_type.Identifier orelse decl_name;
 }
 
 fn attribute_value_to_literal(comptime V: type, value: V) graph.Literal {
@@ -311,11 +363,6 @@ pub fn get_typed_attributes(node: anytype) AttributesType(@TypeOf(node)) {
     return out;
 }
 
-pub const ChildFieldOptions = struct {
-    identifier: ?str = null,
-    trait_owner_is_self: bool = false,
-};
-
 pub const ChildAttribute = struct {
     key: str,
     value: graph.Literal,
@@ -342,36 +389,76 @@ pub fn MakeChildWithTypedAttrs(comptime T: type, comptime attrs: anytype) type {
 
 pub fn ChildField(
     comptime T: type,
-    comptime options: ChildFieldOptions,
+    comptime identifier: ?str,
     comptime attributes: []const ChildAttribute,
+    comptime prepend_dependants: []const type,
+    comptime dependants: []const type,
 ) type {
     return struct {
         pub const ChildType = T;
-        pub const Options = options;
+        pub const Identifier = identifier;
         pub const Attributes = attributes;
+        pub const PrependDependants = prepend_dependants;
+        pub const Dependants = dependants;
         parent_instance: ?graph.BoundNodeReference = null,
         locator: ?str = null,
 
         pub fn get(self: @This()) T {
             const parent = self.parent_instance orelse @panic("child field is not bound");
-            const identifier = Options.identifier orelse self.locator orelse
+            const child_identifier = Identifier orelse self.locator orelse
                 @panic("child field has no identifier or locator");
             const child = faebryk.composition.EdgeComposition.get_child_by_identifier(
                 parent,
-                identifier,
+                child_identifier,
             ) orelse @panic("child not found");
             return wrap_instance(T, child);
         }
 
-        pub fn add_dependant(self: *@This(), dependant: anytype) void {
-            _ = self;
-            _ = dependant;
+        pub fn add_dependant(comptime dependant: type) type {
+            return ChildField(
+                T,
+                identifier,
+                attributes,
+                prepend_dependants,
+                append_type(dependants, dependant),
+            );
         }
 
-        pub fn add_as_dependant(self: *@This(), to: anytype) void {
-            _ = self;
-            _ = to;
+        pub fn add_dependant_before(comptime dependant: type) type {
+            return ChildField(
+                T,
+                identifier,
+                attributes,
+                append_type(prepend_dependants, dependant),
+                dependants,
+            );
         }
+
+        pub fn add_as_dependant(comptime to: type) type {
+            return to.add_dependant(@This());
+        }
+    };
+}
+
+pub const DependantEndpoint = enum {
+    self_node,
+    child,
+};
+
+pub fn MakeDependantEdge(
+    comptime lhs: DependantEndpoint,
+    comptime rhs: DependantEndpoint,
+    comptime edge_type: graph.Edge.EdgeType,
+    comptime directional: ?bool,
+    comptime name: ?str,
+) type {
+    return struct {
+        pub const DependantKind = .edge;
+        pub const Lhs = lhs;
+        pub const Rhs = rhs;
+        pub const EdgeType = edge_type;
+        pub const Directional = directional;
+        pub const Name = name;
     };
 }
 
@@ -399,23 +486,19 @@ pub const is_trait = struct {
 
     pub fn MakeEdge(comptime traitchildfield: type, owner: ?RefPath) type {
         _ = owner;
-        return ChildField(
-            traitchildfield.ChildType,
-            // TODO: remove hack with trait_owner_is_self as soon as dependant logic works
-            .{
-                .identifier = traitchildfield.Options.identifier,
-                .trait_owner_is_self = true,
-            },
-            traitchildfield.Attributes,
+        return traitchildfield.add_dependant(
+            MakeDependantEdge(
+                .self_node,
+                .child,
+                faebryk.trait.EdgeTrait.get_tid(),
+                true,
+                null,
+            ),
         );
     }
 
     pub fn MakeChild() type {
         return Node.MakeChild(@This());
-    }
-
-    pub fn MakeChildWith(comptime options: ChildFieldOptions) type {
-        return Node.MakeChildWith(@This(), options);
     }
 };
 
