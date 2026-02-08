@@ -1238,18 +1238,18 @@ def test_pin_mux_conflict_detection_post_solve():
 
     # Wire I2C1 mux
     i2c1_config = app.i2c1_mux.get().config_pins.get().as_list()
-    F.Electrical.bind_instance(
-        i2c1_config[0].instance
-    )._is_interface.get().connect_to(app.gpio_b6.get())
-    F.Electrical.bind_instance(
-        i2c1_config[1].instance
-    )._is_interface.get().connect_to(app.gpio_b7.get())
-    F.Electrical.bind_instance(
-        i2c1_config[2].instance
-    )._is_interface.get().connect_to(app.gpio_b8.get())
-    F.Electrical.bind_instance(
-        i2c1_config[3].instance
-    )._is_interface.get().connect_to(app.gpio_b9.get())
+    F.Electrical.bind_instance(i2c1_config[0].instance)._is_interface.get().connect_to(
+        app.gpio_b6.get()
+    )
+    F.Electrical.bind_instance(i2c1_config[1].instance)._is_interface.get().connect_to(
+        app.gpio_b7.get()
+    )
+    F.Electrical.bind_instance(i2c1_config[2].instance)._is_interface.get().connect_to(
+        app.gpio_b8.get()
+    )
+    F.Electrical.bind_instance(i2c1_config[3].instance)._is_interface.get().connect_to(
+        app.gpio_b9.get()
+    )
 
     # Wire USART1 mux
     usart1_config = app.usart1_mux.get().config_pins.get().as_list()
@@ -1267,7 +1267,7 @@ def test_pin_mux_conflict_detection_post_solve():
     )._is_interface.get().connect_to(app.gpio_b7.get())  # CONFLICT with i2c1 config 0
 
     # Constrain BOTH to conflicting configs
-    app.i2c1_mux.get().selection.get().set_superset(g, 0.0)   # B6/B7
+    app.i2c1_mux.get().selection.get().set_superset(g, 0.0)  # B6/B7
     app.usart1_mux.get().selection.get().set_superset(g, 1.0)  # B6/B7 — CONFLICT!
 
     # Run solver + design checks
@@ -1307,18 +1307,18 @@ def test_pin_mux_no_conflict_non_overlapping():
 
     # Wire I2C1 mux — both configs use B6/B7 (doesn't matter, no overlap with USART)
     i2c1_config = app.i2c1_mux.get().config_pins.get().as_list()
-    F.Electrical.bind_instance(
-        i2c1_config[0].instance
-    )._is_interface.get().connect_to(app.gpio_b6.get())
-    F.Electrical.bind_instance(
-        i2c1_config[1].instance
-    )._is_interface.get().connect_to(app.gpio_b7.get())
-    F.Electrical.bind_instance(
-        i2c1_config[2].instance
-    )._is_interface.get().connect_to(app.gpio_b6.get())
-    F.Electrical.bind_instance(
-        i2c1_config[3].instance
-    )._is_interface.get().connect_to(app.gpio_b7.get())
+    F.Electrical.bind_instance(i2c1_config[0].instance)._is_interface.get().connect_to(
+        app.gpio_b6.get()
+    )
+    F.Electrical.bind_instance(i2c1_config[1].instance)._is_interface.get().connect_to(
+        app.gpio_b7.get()
+    )
+    F.Electrical.bind_instance(i2c1_config[2].instance)._is_interface.get().connect_to(
+        app.gpio_b6.get()
+    )
+    F.Electrical.bind_instance(i2c1_config[3].instance)._is_interface.get().connect_to(
+        app.gpio_b7.get()
+    )
 
     # Wire USART1 mux — both configs use A0/A1 (no overlap with I2C)
     usart1_config = app.usart1_mux.get().config_pins.get().as_list()
@@ -1374,12 +1374,12 @@ def test_pin_mux_default_no_conflict():
     app = _DefaultMCU.bind_typegraph(tg=tg).create_instance(g=g)
 
     i2c1_config = app.i2c1_mux.get().config_pins.get().as_list()
-    F.Electrical.bind_instance(
-        i2c1_config[0].instance
-    )._is_interface.get().connect_to(app.gpio_b6.get())
-    F.Electrical.bind_instance(
-        i2c1_config[1].instance
-    )._is_interface.get().connect_to(app.gpio_b7.get())
+    F.Electrical.bind_instance(i2c1_config[0].instance)._is_interface.get().connect_to(
+        app.gpio_b6.get()
+    )
+    F.Electrical.bind_instance(i2c1_config[1].instance)._is_interface.get().connect_to(
+        app.gpio_b7.get()
+    )
 
     usart1_config = app.usart1_mux.get().config_pins.get().as_list()
     F.Electrical.bind_instance(
@@ -1420,9 +1420,12 @@ def test_pin_mux_declare_conflict_detects_contradiction():
 
     # Declare conflict: mux_a config 0 conflicts with mux_b config 1
     PinMuxSelector.declare_pin_conflict(
-        g=g, tg=tg,
-        mux_a=app.mux_a.get(), config_a=0,
-        mux_b=app.mux_b.get(), config_b=1,
+        g=g,
+        tg=tg,
+        mux_a=app.mux_a.get(),
+        config_a=0,
+        mux_b=app.mux_b.get(),
+        config_b=1,
     )
 
     # Constrain both to conflicting configs
@@ -1452,9 +1455,12 @@ def test_pin_mux_declare_conflict_allows_non_conflicting():
 
     # Declare conflict: mux_a config 0 conflicts with mux_b config 1
     PinMuxSelector.declare_pin_conflict(
-        g=g, tg=tg,
-        mux_a=app.mux_a.get(), config_a=0,
-        mux_b=app.mux_b.get(), config_b=1,
+        g=g,
+        tg=tg,
+        mux_a=app.mux_a.get(),
+        config_a=0,
+        mux_b=app.mux_b.get(),
+        config_b=1,
     )
 
     # Constrain to NON-conflicting configs (both config 1 and config 0)
@@ -1491,24 +1497,24 @@ def test_pin_mux_conflict_clear_error_message():
 
     # mux_a config 0 → shared_gpio, config 1 → other_gpio_a
     a_config = app.mux_a.get().config_pins.get().as_list()
-    F.Electrical.bind_instance(
-        a_config[0].instance
-    )._is_interface.get().connect_to(app.shared_gpio.get())
-    F.Electrical.bind_instance(
-        a_config[1].instance
-    )._is_interface.get().connect_to(app.other_gpio_a.get())
+    F.Electrical.bind_instance(a_config[0].instance)._is_interface.get().connect_to(
+        app.shared_gpio.get()
+    )
+    F.Electrical.bind_instance(a_config[1].instance)._is_interface.get().connect_to(
+        app.other_gpio_a.get()
+    )
 
     # mux_b config 0 → other_gpio_b, config 1 → shared_gpio (CONFLICT)
     b_config = app.mux_b.get().config_pins.get().as_list()
-    F.Electrical.bind_instance(
-        b_config[0].instance
-    )._is_interface.get().connect_to(app.other_gpio_b.get())
-    F.Electrical.bind_instance(
-        b_config[1].instance
-    )._is_interface.get().connect_to(app.shared_gpio.get())
+    F.Electrical.bind_instance(b_config[0].instance)._is_interface.get().connect_to(
+        app.other_gpio_b.get()
+    )
+    F.Electrical.bind_instance(b_config[1].instance)._is_interface.get().connect_to(
+        app.shared_gpio.get()
+    )
 
-    app.mux_a.get().selection.get().set_superset(g, 0.0)   # shared_gpio
-    app.mux_b.get().selection.get().set_superset(g, 1.0)   # shared_gpio — CONFLICT
+    app.mux_a.get().selection.get().set_superset(g, 0.0)  # shared_gpio
+    app.mux_b.get().selection.get().set_superset(g, 1.0)  # shared_gpio — CONFLICT
 
     solver = Solver()
     solver.simplify(g, tg)

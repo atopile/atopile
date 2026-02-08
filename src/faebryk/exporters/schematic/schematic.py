@@ -748,16 +748,16 @@ def _build_interface_pins(
                 bx = half_w
 
             entry = {
-                    "id": p["id"],
-                    "name": p["name"],
-                    "side": side,
-                    "category": p["category"],
-                    "interfaceType": p["interfaceType"],
-                    "x": round(px, 2),
-                    "y": round(y, 2),
-                    "bodyX": round(bx, 2),
-                    "bodyY": round(y, 2),
-                }
+                "id": p["id"],
+                "name": p["name"],
+                "side": side,
+                "category": p["category"],
+                "interfaceType": p["interfaceType"],
+                "x": round(px, 2),
+                "y": round(y, 2),
+                "bodyX": round(bx, 2),
+                "bodyY": round(y, 2),
+            }
             if "signals" in p:
                 entry["signals"] = p["signals"]
             final_pins.append(entry)
@@ -856,9 +856,7 @@ def _scope_nets(
                 # Add synthetic port pins for internal pins that map to
                 # module interface pins, so the frontend can draw wires
                 # between ports and internal components.
-                enhanced = _add_port_pins_to_internal_net(
-                    net, owner, module_interfaces
-                )
+                enhanced = _add_port_pins_to_internal_net(net, owner, module_interfaces)
                 scoped[owner].append(enhanced)
             else:
                 scoped[owner].append(net)
@@ -1035,7 +1033,7 @@ def _remap_position_key(
         tgt_segments = []
         for seg in src_segments:
             if seg.startswith(src_prefix):
-                tgt_segments.append(f"{tgt_module_id}_{seg[len(src_prefix):]}")
+                tgt_segments.append(f"{tgt_module_id}_{seg[len(src_prefix) :]}")
             else:
                 tgt_segments.append(seg)
         new_path = tgt_path_prefix + "/" + "/".join(tgt_segments)
@@ -1771,7 +1769,9 @@ def export_schematic_json(
     # Inject schematic positions from sub-PCB packages
     try:
         subpcb_positions = _load_subpcb_schematic_positions(
-            all_modules, interesting_module_ids, existing_positions,
+            all_modules,
+            interesting_module_ids,
+            existing_positions,
         )
         existing_positions.update(subpcb_positions)
     except Exception as e:

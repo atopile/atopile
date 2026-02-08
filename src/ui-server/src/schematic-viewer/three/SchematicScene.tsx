@@ -408,12 +408,11 @@ export function SchematicScene() {
         setSelRect(null);
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
-        // Delay clearing selDragging so the click-phase onPointerMissed handler
-        // (which fires after pointerup) still sees it as true and doesn't
-        // immediately clear the window-select results.
-        if (wasSelecting) {
-          setTimeout(() => { selDragging.current = false; }, 0);
-        } else {
+        // After a window selection, leave selDragging=true so onPointerMissed
+        // (which fires asynchronously via R3F) sees the guard and doesn't clear
+        // the just-set selection. The flag gets reset at the start of the next
+        // handleContainerPointerDown, so click-to-deselect still works.
+        if (!wasSelecting) {
           selDragging.current = false;
         }
       };
@@ -440,19 +439,22 @@ export function SchematicScene() {
 
       const canvasRect = canvas.getBoundingClientRect();
 
-      // Convert screen point → world-space z=0 using direct perspective math.
-      // The visible half-height at z=0 is: camZ * tan(fov/2)
-      const aspect = canvasRect.width / canvasRect.height;
-      const halfH = cam.position.z * Math.tan((cam.fov * Math.PI) / 360);
-      const halfW = halfH * aspect;
+      // Convert screen point → world-space z=0 using raycaster projection.
+      // This matches DraggableComponent.screenToWorld and works correctly
+      // after pan/zoom via OrbitControls + zoom-to-cursor.
+      const raycaster = new THREE.Raycaster();
+      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+      const target = new THREE.Vector3();
+      const ndc = new THREE.Vector2();
 
       const toWorld = (sx: number, sy: number) => {
-        const ndcX = ((sx - canvasRect.left) / canvasRect.width) * 2 - 1;
-        const ndcY = -((sy - canvasRect.top) / canvasRect.height) * 2 + 1;
-        return {
-          x: cam.position.x + ndcX * halfW,
-          y: cam.position.y + ndcY * halfH,
-        };
+        ndc.set(
+          ((sx - canvasRect.left) / canvasRect.width) * 2 - 1,
+          -((sy - canvasRect.top) / canvasRect.height) * 2 + 1,
+        );
+        raycaster.setFromCamera(ndc, cam);
+        const hit = raycaster.ray.intersectPlane(plane, target);
+        return hit ? { x: target.x, y: target.y } : { x: 0, y: 0 };
       };
 
       const w1 = toWorld(x1, y1);
