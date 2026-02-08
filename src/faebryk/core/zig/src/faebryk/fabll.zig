@@ -46,6 +46,16 @@ pub const Node = struct {
         };
     }
 
+    pub fn MakeChildNamed(comptime T: type, comptime identifier: []const u8) ChildField {
+        return ChildField{
+            .field = .{
+                .identifier = identifier,
+                .locator = null,
+            },
+            .T = T,
+        };
+    }
+
     pub fn bind_typegraph(comptime T: type, tg: *faebryk.typegraph.TypeGraph) TypeNodeBoundTG(T) {
         return .{ .tg = tg };
     }
@@ -93,7 +103,7 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                     const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
                     const child_bound = Node.bind_typegraph(value.T, ctx.self.tg);
                     const child_type = child_bound.get_or_create_type();
-                    const child_identifier = value.field.identifier orelse decl_name;
+                    const child_identifier = field_identifier(decl_name, value);
                     _ = ctx.self.tg.add_make_child(ctx.type_node, child_type, child_identifier, null, false) catch
                         @panic("failed to add make child");
 
@@ -138,10 +148,33 @@ fn wrap_instance(comptime T: type, instance: graph.BoundNodeReference) T {
         @compileError("FabLL Zig node types must have a `node: Node` field");
     };
 
+    if (comptime @hasDecl(T, "__fabll_bind")) {
+        return T.__fabll_bind(instance);
+    }
+
     return .{
         .node = .{
             .instance = instance,
         },
+    };
+}
+
+fn field_identifier(decl_name: []const u8, field: ChildField) []const u8 {
+    return field.field.identifier orelse decl_name;
+}
+
+pub fn InstanceChildBoundInstance(comptime T: type) type {
+    return struct {
+        parent_instance: graph.BoundNodeReference,
+        identifier: []const u8,
+
+        pub fn get(self: @This()) T {
+            const child = faebryk.composition.EdgeComposition.get_child_by_identifier(
+                self.parent_instance,
+                self.identifier,
+            ) orelse @panic("child not found");
+            return wrap_instance(T, child);
+        }
     };
 }
 
@@ -228,8 +261,27 @@ pub const Electrical = struct {
 pub const ElectricPower = struct {
     node: Node,
 
-    pub const hv = Electrical.MakeChild();
-    pub const lv = Electrical.MakeChild();
+    hv: InstanceChildBoundInstance(Electrical),
+    lv: InstanceChildBoundInstance(Electrical),
+
+    pub const hv_recipe = Node.MakeChildNamed(Electrical, "hv");
+    pub const lv_recipe = Node.MakeChildNamed(Electrical, "lv");
+
+    pub fn __fabll_bind(instance: graph.BoundNodeReference) @This() {
+        return .{
+            .node = .{
+                .instance = instance,
+            },
+            .hv = .{
+                .parent_instance = instance,
+                .identifier = "hv",
+            },
+            .lv = .{
+                .parent_instance = instance,
+                .identifier = "lv",
+            },
+        };
+    }
 };
 
 fn comptime_child_field_count(comptime T: type) usize {
@@ -256,10 +308,10 @@ fn comptime_child_field_name(comptime T: type, comptime idx: usize) []const u8 {
         i: usize = 0,
         target: usize,
 
-        fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, _: ChildField) visitor.VisitResult([]const u8) {
+        fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, field: ChildField) visitor.VisitResult([]const u8) {
             const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
             if (ctx.i == ctx.target) {
-                return visitor.VisitResult([]const u8){ .OK = decl_name };
+                return visitor.VisitResult([]const u8){ .OK = field_identifier(decl_name, field) };
             }
             ctx.i += 1;
             return visitor.VisitResult([]const u8){ .CONTINUE = {} };
@@ -338,4 +390,19 @@ test "basic+2 fabll trait edges" {
     try std.testing.expect(lv_trait != null);
 
     print_type_overview(&tg, std.testing.allocator, "basic+2 fabll trait edges");
+}
+
+test "basic+3 field accessor" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const power_bound = Node.bind_typegraph(ElectricPower, &tg);
+    const power = power_bound.create_instance(&g);
+
+    const hv_from_accessor = power.hv.get().node.instance;
+    const hv_from_graph = faebryk.composition.EdgeComposition.get_child_by_identifier(power.node.instance, "hv") orelse
+        @panic("missing hv child");
+
+    try std.testing.expect(hv_from_accessor.node.is_same(hv_from_graph.node));
 }
