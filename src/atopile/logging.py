@@ -107,29 +107,26 @@ def _format_value(val: object) -> str:
 
 
 def _get_pretty_repr(value: object, max_len: int = 200) -> str:
-    """Get pretty repr using __pretty_repr__ or __rich_repr__ or fallback to repr."""
+    """Get pretty repr using __pretty_repr__ or __rich_repr__ or fallback to repr.
+
+    Uses object.__repr__ for non-primitive types to avoid calling custom __repr__
+    that may crash (e.g., zig-backed objects accessing invalid memory during error
+    handling).
+    """
     try:
-        # Try __rich_repr__ (Rich library protocol)
-        if hasattr(value, "__rich_repr__"):
-            type_name = type(value).__name__
-            rich_repr_parts = []
-            for item in getattr(value, "__rich_repr__")():
-                if isinstance(item, tuple):
-                    if len(item) == 2:
-                        key, val = item
-                        if key is None:
-                            rich_repr_parts.append(_format_value(val))
-                        else:
-                            rich_repr_parts.append(f"{key}={_format_value(val)}")
-                    elif len(item) == 1:
-                        rich_repr_parts.append(_format_value(item[0]))
-                else:
-                    rich_repr_parts.append(_format_value(item))
-            result = f"{type_name}({', '.join(rich_repr_parts)})"
+        # For primitive types, repr is safe
+        if isinstance(value, (bool, int, float, str, bytes, type(None))):
+            result = repr(value)
             return result[:max_len] + "..." if len(result) > max_len else result
 
-        # Fallback to repr
-        result = repr(value)
+        # For Path-like objects, repr is safe
+        if isinstance(value, os.PathLike):
+            result = repr(value)
+            return result[:max_len] + "..." if len(result) > max_len else result
+
+        # For everything else, use object.__repr__ to avoid calling custom
+        # __repr__ that might crash (e.g., zig-backed objects in invalid state)
+        result = object.__repr__(value)
         return result[:max_len] + "..." if len(result) > max_len else result
     except Exception:
         return "<unable to represent>"
