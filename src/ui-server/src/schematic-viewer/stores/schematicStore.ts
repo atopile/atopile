@@ -22,7 +22,8 @@ import type {
   ComponentPosition,
   SchematicLayout,
 } from '../types/schematic';
-import { getRootSheet, resolveSheet, derivePortsFromModule } from '../types/schematic';
+import { getRootSheet, resolveSheet, derivePortsFromModule, derivePowerPorts } from '../types/schematic';
+import type { SchematicPowerPort } from '../types/schematic';
 import { autoLayoutSheet, mergePositions, snapToGrid } from '../lib/schematicLayout';
 import { postToExtension } from '../lib/vscodeApi';
 
@@ -68,6 +69,8 @@ interface SchematicState {
   // Actions
   loadSchematic: (url: string) => Promise<void>;
   loadSchematicData: (data: SchematicData) => void;
+  /** Update schematic data without resetting navigation or positions. */
+  updateSchematicData: (data: SchematicData) => void;
   commitPosition: (componentId: string, pos: ComponentPosition) => void;
   startDrag: (componentId: string) => void;
   endDrag: () => void;
@@ -128,18 +131,22 @@ function scopedId(path: string[], itemId: string): string {
   return `${pathKey(path)}:${itemId}`;
 }
 
-// ── Layout path (set from schematic JSON or config) ──────────────
+// ── .ato_sch file path (set from config) ────────────────────────
 
-/** The .ato_sch file path from the schematic JSON output */
-let _layoutPath: string | null = null;
+/** The .ato_sch file path — unified schematic data + positions */
+let _atoSchPath: string | null = null;
 
-export function setLayoutPath(path: string | null) {
-  _layoutPath = path;
+export function setAtoSchPath(path: string | null) {
+  _atoSchPath = path;
 }
 
-export function getLayoutPath(): string | null {
-  return _layoutPath;
+export function getAtoSchPath(): string | null {
+  return _atoSchPath;
 }
+
+// Backwards compat aliases
+export const setLayoutPath = setAtoSchPath;
+export const getLayoutPath = getAtoSchPath;
 
 // ── Debounced save ─────────────────────────────────────────────
 
@@ -148,26 +155,25 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 function debouncedSave(positions: Record<string, ComponentPosition>) {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    const layout: SchematicLayout = { version: '2.0', positions };
     try {
-      // Save via VSCode extension (writes to .ato_sch file)
+      // Save positions via VSCode extension (merges into .ato_sch file)
       postToExtension({
         type: 'save-layout',
-        layoutPath: _layoutPath,
-        layout,
+        atoSchPath: _atoSchPath,
+        positions,
       });
       // Always save to localStorage as fallback (dev mode / standalone)
-      localStorage.setItem('schematic-layout', JSON.stringify(layout));
+      localStorage.setItem('schematic-positions', JSON.stringify(positions));
     } catch {
       /* ignore */
     }
   }, 500);
 }
 
-function loadSavedLayout(): SchematicLayout | null {
+function loadSavedPositions(): Record<string, ComponentPosition> | null {
   try {
-    const raw = localStorage.getItem('schematic-layout');
-    if (raw) return JSON.parse(raw) as SchematicLayout;
+    const raw = localStorage.getItem('schematic-positions');
+    if (raw) return JSON.parse(raw) as Record<string, ComponentPosition>;
   } catch {
     /* ignore */
   }
@@ -175,8 +181,8 @@ function loadSavedLayout(): SchematicLayout | null {
 }
 
 /**
- * Load layout from an externally provided layout object
- * (e.g. from .ato_sch file loaded by extension).
+ * Load layout from an externally provided layout object.
+ * @deprecated Use positions from the schematic data directly.
  */
 export function loadExternalLayout(layout: SchematicLayout): void {
   const store = useSchematicStore.getState();
@@ -185,12 +191,6 @@ export function loadExternalLayout(layout: SchematicLayout): void {
     merged[key] = pos;
   }
   useSchematicStore.setState({ positions: merged });
-  // Also cache in localStorage
-  try {
-    localStorage.setItem('schematic-layout', JSON.stringify(layout));
-  } catch {
-    /* ignore */
-  }
 }
 
 // ── Layout a sheet and scope positions to a path ────────────────
@@ -198,16 +198,17 @@ export function loadExternalLayout(layout: SchematicLayout): void {
 function layoutSheet(
   sheet: SchematicSheet,
   path: string[],
-  saved: SchematicLayout | null,
+  savedPositions: Record<string, ComponentPosition> | null,
   ports: SchematicPort[] = [],
 ): Record<string, ComponentPosition> {
-  const autoPos = autoLayoutSheet(sheet, ports);
+  const powerPorts = derivePowerPorts(sheet);
+  const autoPos = autoLayoutSheet(sheet, ports, powerPorts);
   const savedForPath: Record<string, ComponentPosition> = {};
 
   // Extract saved positions for this path
-  if (saved?.positions) {
+  if (savedPositions) {
     const prefix = pathKey(path) + ':';
-    for (const [key, pos] of Object.entries(saved.positions)) {
+    for (const [key, pos] of Object.entries(savedPositions)) {
       if (key.startsWith(prefix)) {
         const itemId = key.slice(prefix.length);
         savedForPath[itemId] = pos;
@@ -267,14 +268,11 @@ export const useSchematicStore = create<SchematicState>()(
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
-        // Extract and store layoutPath from schematic JSON
-        if (data.layoutPath) {
-          setLayoutPath(data.layoutPath);
-        }
         const schematicData: SchematicData = data;
         const rootSheet = getRootSheet(schematicData);
-        const saved = loadSavedLayout();
-        const positions = layoutSheet(rootSheet, [], saved);
+        // Positions come from the .ato_sch file (embedded) or localStorage fallback
+        const savedPositions = data.positions ?? loadSavedPositions() ?? null;
+        const positions = layoutSheet(rootSheet, [], savedPositions);
         set({
           schematic: schematicData,
           positions,
@@ -284,8 +282,6 @@ export const useSchematicStore = create<SchematicState>()(
           selectedComponentId: null,
           selectedNetId: null,
         });
-        // Request layout from extension (will merge if available)
-        postToExtension({ type: 'load-layout' });
       } catch (e) {
         set({
           isLoading: false,
@@ -296,8 +292,8 @@ export const useSchematicStore = create<SchematicState>()(
 
     loadSchematicData: (data: SchematicData) => {
       const rootSheet = getRootSheet(data);
-      const saved = loadSavedLayout();
-      const positions = layoutSheet(rootSheet, [], saved);
+      const savedPositions = (data as any).positions ?? loadSavedPositions() ?? null;
+      const positions = layoutSheet(rootSheet, [], savedPositions);
       set({
         schematic: data,
         positions,
@@ -307,6 +303,32 @@ export const useSchematicStore = create<SchematicState>()(
         selectedComponentIds: [],
         selectedComponentId: null,
         selectedNetId: null,
+      });
+    },
+
+    updateSchematicData: (data: SchematicData) => {
+      // Preserve navigation path and existing positions.
+      // Only re-layout sheets that don't already have positions.
+      const { currentPath, positions: existingPositions } = get();
+      const rootSheet = getRootSheet(data);
+      const savedPositions = (data as any).positions ?? null;
+
+      // Re-layout the root sheet, merging with existing positions
+      const rootPositions = layoutSheet(rootSheet, [], savedPositions);
+      const merged = { ...rootPositions, ...existingPositions };
+
+      // Validate that the current navigation path is still valid
+      let validPath = currentPath;
+      if (currentPath.length > 0 && resolveSheet(rootSheet, currentPath) === null) {
+        validPath = [];
+      }
+
+      set({
+        schematic: data,
+        positions: merged,
+        currentPath: validPath,
+        isLoading: false,
+        loadError: null,
       });
     },
 
@@ -438,7 +460,7 @@ export const useSchematicStore = create<SchematicState>()(
         return { positions: merged };
       });
       try {
-        localStorage.removeItem('schematic-layout');
+        localStorage.removeItem('schematic-positions');
       } catch {
         /* ignore */
       }
@@ -643,7 +665,7 @@ export const useSchematicStore = create<SchematicState>()(
       if (!mod) return;
 
       const newPath = [...currentPath, moduleId];
-      const saved = loadSavedLayout();
+      const saved = loadSavedPositions();
 
       const prefix = pathKey(newPath) + ':';
       const hasPositions = Object.keys(get().positions).some((k) =>
@@ -690,7 +712,7 @@ export const useSchematicStore = create<SchematicState>()(
       const rootSheet = getRootSheet(schematic);
       if (resolveSheet(rootSheet, path) === null) return;
 
-      const saved = loadSavedLayout();
+      const saved = loadSavedPositions();
       const prefix = pathKey(path) + ':';
       const hasPositions = Object.keys(get().positions).some((k) =>
         k.startsWith(prefix),
@@ -806,6 +828,18 @@ export function useCurrentPorts(): SchematicPort[] {
     const mod = parentSheet.modules.find((m) => m.id === moduleId);
     if (!mod) return EMPTY_PORTS;
     return derivePortsFromModule(mod);
+  });
+}
+
+const EMPTY_POWER_PORTS: SchematicPowerPort[] = [];
+
+export function useCurrentPowerPorts(): SchematicPowerPort[] {
+  return useSchematicStore((s) => {
+    if (!s.schematic) return EMPTY_POWER_PORTS;
+    const root = getRootSheet(s.schematic);
+    const sheet = resolveSheet(root, s.currentPath);
+    if (!sheet) return EMPTY_POWER_PORTS;
+    return derivePowerPorts(sheet);
   });
 }
 

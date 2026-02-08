@@ -809,5 +809,4 @@ def _extract_bus_name(interface_name: str) -> str:
     return interface_name
 
 
-
 # _natural_sort_key and _write_json are imported from faebryk.exporters.utils

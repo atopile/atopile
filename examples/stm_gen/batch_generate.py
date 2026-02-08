@@ -3,6 +3,7 @@
 Batch generator for STM32 .ato definitions.
 Generates modules for a curated list across all STM32 families.
 """
+
 import json
 import os
 import re
@@ -23,79 +24,87 @@ GEN_DIR = SCRIPT_DIR / "generated"
 #   - Popular dev-board chips (Blue Pill, Black Pill, Nucleo, etc.)
 MCUS = [
     # ── C-series (Cortex-M0+, entry level) ──
-    ("STM32C011F(4-6)Px.xml",        "STMicroelectronics:STM32C011F6P6",   "C0 entry TSSOP20"),
-    ("STM32C031C(4-6)Tx.xml",        "STMicroelectronics:STM32C031C6T6",   "C0 value LQFP48"),
-
+    ("STM32C011F(4-6)Px.xml", "STMicroelectronics:STM32C011F6P6", "C0 entry TSSOP20"),
+    ("STM32C031C(4-6)Tx.xml", "STMicroelectronics:STM32C031C6T6", "C0 value LQFP48"),
     # ── F0-series (Cortex-M0, value) ──
-    ("STM32F030F4Px.xml",            "STMicroelectronics:STM32F030F4P6",   "F0 tiny TSSOP20"),
-    ("STM32F042F6Px.xml",            "STMicroelectronics:STM32F042F6P6",   "F0 USB TSSOP20"),
-    ("STM32F072CBYx.xml",            "STMicroelectronics:STM32F072CBT6",   "F0 USB+CAN LQFP48"),
-
+    ("STM32F030F4Px.xml", "STMicroelectronics:STM32F030F4P6", "F0 tiny TSSOP20"),
+    ("STM32F042F6Px.xml", "STMicroelectronics:STM32F042F6P6", "F0 USB TSSOP20"),
+    ("STM32F072CBYx.xml", "STMicroelectronics:STM32F072CBT6", "F0 USB+CAN LQFP48"),
     # ── F1-series (Cortex-M3, mainstream) ──
-    ("STM32F103C(8-B)Tx.xml",        "STMicroelectronics:STM32F103C8T6",   "F1 BluePill LQFP48"),
-
+    ("STM32F103C(8-B)Tx.xml", "STMicroelectronics:STM32F103C8T6", "F1 BluePill LQFP48"),
     # ── F3-series (Cortex-M4F, mixed-signal) ──
-    ("STM32F303C(B-C)Tx.xml",        "STMicroelectronics:STM32F303CCT6",   "F3 mixed-signal LQFP48"),
-
+    (
+        "STM32F303C(B-C)Tx.xml",
+        "STMicroelectronics:STM32F303CCT6",
+        "F3 mixed-signal LQFP48",
+    ),
     # ── F4-series (Cortex-M4F, high performance) ──
-    ("STM32F401C(B-C)Ux.xml",        "STMicroelectronics:STM32F401CCU6",   "F4 BlackPill QFN48"),
-    ("STM32F407V(E-G)Tx.xml",        "STMicroelectronics:STM32F407VGT6",   "F4 Discovery LQFP100"),
-    ("STM32F411C(C-E)Ux.xml",        "STMicroelectronics:STM32F411CEU6",   "F4 popular QFN48"),
-    ("STM32F429ZITx.xml",            "STMicroelectronics:STM32F429ZIT6",   "F4 LCD LQFP144"),
-    ("STM32F446R(C-E)Tx.xml",        "STMicroelectronics:STM32F446RET6",   "F4 I2S/SAI LQFP64"),
-
+    ("STM32F401C(B-C)Ux.xml", "STMicroelectronics:STM32F401CCU6", "F4 BlackPill QFN48"),
+    (
+        "STM32F407V(E-G)Tx.xml",
+        "STMicroelectronics:STM32F407VGT6",
+        "F4 Discovery LQFP100",
+    ),
+    ("STM32F411C(C-E)Ux.xml", "STMicroelectronics:STM32F411CEU6", "F4 popular QFN48"),
+    ("STM32F429ZITx.xml", "STMicroelectronics:STM32F429ZIT6", "F4 LCD LQFP144"),
+    ("STM32F446R(C-E)Tx.xml", "STMicroelectronics:STM32F446RET6", "F4 I2S/SAI LQFP64"),
     # ── F7-series (Cortex-M7, performance) ──
-    ("STM32F722R(C-E)Tx.xml",        "STMicroelectronics:STM32F722RET6",   "F7 entry LQFP64"),
-    ("STM32F746ZGTx.xml",            "STMicroelectronics:STM32F746ZGT6",   "F7 reference LQFP144"),
-
+    ("STM32F722R(C-E)Tx.xml", "STMicroelectronics:STM32F722RET6", "F7 entry LQFP64"),
+    ("STM32F746ZGTx.xml", "STMicroelectronics:STM32F746ZGT6", "F7 reference LQFP144"),
     # ── G0-series (Cortex-M0+, mainstream) ──
-    ("STM32G0B1R(B-C-E)Tx.xml",      "STMicroelectronics:STM32G0B1RET6",   "G0 USB LQFP64"),
-
+    ("STM32G0B1R(B-C-E)Tx.xml", "STMicroelectronics:STM32G0B1RET6", "G0 USB LQFP64"),
     # ── G4-series (Cortex-M4F, high-perf mixed) ──
-    ("STM32G431CBTxZ.xml",           "STMicroelectronics:STM32G431CBT6",   "G4 FDCAN LQFP48"),
-    ("STM32G474R(B-C-E)Tx.xml",      "STMicroelectronics:STM32G474RET6",   "G4 HRTIM LQFP64"),
-
+    ("STM32G431CBTxZ.xml", "STMicroelectronics:STM32G431CBT6", "G4 FDCAN LQFP48"),
+    ("STM32G474R(B-C-E)Tx.xml", "STMicroelectronics:STM32G474RET6", "G4 HRTIM LQFP64"),
     # ── H7-series (Cortex-M7, max performance) ──
-    ("STM32H723ZGTx.xml",            "STMicroelectronics:STM32H723ZGT6",   "H7 lite LQFP144"),
-    ("STM32H743ZITx.xml",            "STMicroelectronics:STM32H743ZIT6",   "H7 reference LQFP144"),
-    ("STM32H750VBTx.xml",            "STMicroelectronics:STM32H750VBT6",   "H7 value LQFP100"),
-
+    ("STM32H723ZGTx.xml", "STMicroelectronics:STM32H723ZGT6", "H7 lite LQFP144"),
+    ("STM32H743ZITx.xml", "STMicroelectronics:STM32H743ZIT6", "H7 reference LQFP144"),
+    ("STM32H750VBTx.xml", "STMicroelectronics:STM32H750VBT6", "H7 value LQFP100"),
     # ── L0-series (Cortex-M0+, ultra-low-power) ──
-    ("STM32L073R(B-Z)Tx.xml",        "STMicroelectronics:STM32L073RZT6",   "L0 LCD LQFP64"),
-
+    ("STM32L073R(B-Z)Tx.xml", "STMicroelectronics:STM32L073RZT6", "L0 LCD LQFP64"),
     # ── L1-series (Cortex-M3, ultra-low-power) ──
-    ("STM32L151C(6-8-B)TxA.xml",     "STMicroelectronics:STM32L151CBT6A",  "L1 entry LQFP48"),
-
+    (
+        "STM32L151C(6-8-B)TxA.xml",
+        "STMicroelectronics:STM32L151CBT6A",
+        "L1 entry LQFP48",
+    ),
     # ── L4-series (Cortex-M4F, ultra-low-power) ──
-    ("STM32L432K(B-C)Ux.xml",        "STMicroelectronics:STM32L432KCU6",   "L4 tiny QFN32"),
-    ("STM32L476R(C-E-G)Tx.xml",      "STMicroelectronics:STM32L476RGT6",   "L4 reference LQFP64"),
-
+    ("STM32L432K(B-C)Ux.xml", "STMicroelectronics:STM32L432KCU6", "L4 tiny QFN32"),
+    (
+        "STM32L476R(C-E-G)Tx.xml",
+        "STMicroelectronics:STM32L476RGT6",
+        "L4 reference LQFP64",
+    ),
     # ── L5-series (Cortex-M33, TrustZone) ──
-    ("STM32L552ZETx.xml",            "STMicroelectronics:STM32L552ZET6",   "L5 TrustZone LQFP144"),
-
+    ("STM32L552ZETx.xml", "STMicroelectronics:STM32L552ZET6", "L5 TrustZone LQFP144"),
     # ── U5-series (Cortex-M33, ultra-low-power) ──
-    ("STM32U575ZITx.xml",            "STMicroelectronics:STM32U575ZIT6Q",  "U5 ultra-LP LQFP144"),
-
+    ("STM32U575ZITx.xml", "STMicroelectronics:STM32U575ZIT6Q", "U5 ultra-LP LQFP144"),
     # ── WB-series (Cortex-M4F+M0+, BLE) ──
-    ("STM32WB55RGVx.xml",            "STMicroelectronics:STM32WB55RGV6",   "WB BLE VFQFPN68"),
-
+    ("STM32WB55RGVx.xml", "STMicroelectronics:STM32WB55RGV6", "WB BLE VFQFPN68"),
     # ── WL-series (Cortex-M4+M0+, LoRa) ──
-    ("STM32WLE5JBIx.xml",            "STMicroelectronics:STM32WLE5JBI6",   "WL LoRa QFN48"),
+    ("STM32WLE5JBIx.xml", "STMicroelectronics:STM32WLE5JBI6", "WL LoRa QFN48"),
 ]
 
 
 def run_generator(xml_path: Path, search: str, output_path: Path) -> tuple[bool, str]:
     """Run stm32_gen.py for one MCU. Returns (success, message)."""
     cmd = [
-        sys.executable, str(SCRIPT_DIR / "stm32_gen.py"),
+        sys.executable,
+        str(SCRIPT_DIR / "stm32_gen.py"),
         str(xml_path),
-        "--mfr-search", search,
-        "-o", str(output_path),
-        "-p", str(SCRIPT_DIR),
+        "--mfr-search",
+        search,
+        "-o",
+        str(output_path),
+        "-p",
+        str(SCRIPT_DIR),
     ]
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=180,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=180,
             env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
         )
         if result.returncode == 0:
@@ -142,7 +151,9 @@ module App:
     try:
         result = subprocess.run(
             ["ato", "build"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True,
+            text=True,
+            timeout=120,
             cwd=str(SCRIPT_DIR),
         )
         if result.returncode == 0:
@@ -159,15 +170,25 @@ module App:
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--skip-existing", action="store_true",
-                        help="Skip MCUs that already have a generated .ato file")
-    parser.add_argument("--build-test", action="store_true",
-                        help="Build-test each generated file")
-    parser.add_argument("--family", type=str, default=None,
-                        help="Only generate for a specific family prefix (e.g. 'F4', 'H7')")
-    parser.add_argument("--limit", type=int, default=None,
-                        help="Max number of MCUs to generate")
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Skip MCUs that already have a generated .ato file",
+    )
+    parser.add_argument(
+        "--build-test", action="store_true", help="Build-test each generated file"
+    )
+    parser.add_argument(
+        "--family",
+        type=str,
+        default=None,
+        help="Only generate for a specific family prefix (e.g. 'F4', 'H7')",
+    )
+    parser.add_argument(
+        "--limit", type=int, default=None, help="Max number of MCUs to generate"
+    )
     args = parser.parse_args()
 
     GEN_DIR.mkdir(exist_ok=True)
@@ -175,9 +196,11 @@ def main():
     # Filter MCU list
     targets = MCUS
     if args.family:
-        targets = [(x, s, d) for x, s, d in targets if args.family.upper() in x[:10].upper()]
+        targets = [
+            (x, s, d) for x, s, d in targets if args.family.upper() in x[:10].upper()
+        ]
     if args.limit:
-        targets = targets[:args.limit]
+        targets = targets[: args.limit]
 
     print(f"{'=' * 72}")
     print(f"  STM32 .ato Batch Generator")
@@ -193,7 +216,7 @@ def main():
         output_name = f"{part_name.lower().replace('stm32', 'stm32')}.ato"
         output_path = GEN_DIR / output_name
 
-        print(f"\n[{i+1}/{len(targets)}] {part_name} — {desc}")
+        print(f"\n[{i + 1}/{len(targets)}] {part_name} — {desc}")
 
         if args.skip_existing and output_path.exists():
             print(f"  SKIP (already exists)")

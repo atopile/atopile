@@ -91,6 +91,8 @@ export interface SchematicInterfacePin {
   /** Where the pin stub meets the body edge */
   bodyX: number;
   bodyY: number;
+  /** Per-signal breakdown (e.g., ["scl", "sda"]). Present when >=2 signals. */
+  signals?: string[];
 }
 
 // ── Component: a leaf atomic part ───────────────────────────────
@@ -245,18 +247,104 @@ export interface SchematicPort {
   pinY: number;
   /** Which direction the pin connects from (for net routing) */
   pinSide: PinSide;
+  /** Per-signal breakdown for breakout ports (e.g., ["scl", "sda"]). */
+  signals?: string[];
+  /** Per-signal pin positions relative to port center (for breakout ports). */
+  signalPins?: Record<string, { x: number; y: number }>;
 }
 
-// Port geometry constants — sized to match 2.54mm pin pitch
+// Port geometry constants — sized so two ports fit at 2.54mm pin pitch
 export const PORT_W = 8;
-export const PORT_H = 2.54;
+export const PORT_H = 1.2;
+
+// Breakout port geometry constants
+export const BREAKOUT_PIN_SPACING = 2.54;
+export const BREAKOUT_BOX_W = 12;
+export const BREAKOUT_PADDING = 2;
 
 /**
  * Derive SchematicPort objects from a module's interfacePins.
  * Called when navigating into a module to create sheet-edge port symbols.
+ *
+ * When an interface has >=2 signals, produces a breakout port (component-like box)
+ * instead of the simple pentagon port.
  */
 export function derivePortsFromModule(mod: SchematicModule): SchematicPort[] {
   return mod.interfacePins.map((ipin) => {
+    const signals = ipin.signals;
+    const isBreakout = signals && signals.length >= 2;
+
+    if (isBreakout) {
+      // ── Breakout port: component-like box with per-signal stubs ──
+      const bodyW = BREAKOUT_BOX_W;
+      const bodyH = signals.length * BREAKOUT_PIN_SPACING + BREAKOUT_PADDING;
+      const halfW = bodyW / 2;
+
+      // Pin side is the direction stubs extend (into the sheet)
+      let pinSide: PinSide = 'right';
+      switch (ipin.side) {
+        case 'left':  pinSide = 'right'; break;
+        case 'right': pinSide = 'left';  break;
+        case 'top':   pinSide = 'bottom'; break;
+        case 'bottom': pinSide = 'top';  break;
+      }
+
+      // Compute per-signal pin positions (relative to port center)
+      const signalPins: Record<string, { x: number; y: number }> = {};
+      const totalSpan = (signals.length - 1) * BREAKOUT_PIN_SPACING;
+      const stubLen = 2.54;
+
+      for (let i = 0; i < signals.length; i++) {
+        const sig = signals[i];
+        const sy = totalSpan / 2 - i * BREAKOUT_PIN_SPACING;
+
+        let sx: number;
+        if (ipin.side === 'left') {
+          // Stubs extend right (into sheet)
+          sx = halfW + stubLen;
+        } else if (ipin.side === 'right') {
+          // Stubs extend left
+          sx = -(halfW + stubLen);
+        } else if (ipin.side === 'top') {
+          // Stubs extend down — use y for horizontal spread, sx for vertical
+          sx = totalSpan / 2 - i * BREAKOUT_PIN_SPACING;
+          signalPins[sig] = { x: sx, y: -(halfW + stubLen) };
+          continue;
+        } else {
+          // bottom — stubs extend up
+          sx = totalSpan / 2 - i * BREAKOUT_PIN_SPACING;
+          signalPins[sig] = { x: sx, y: halfW + stubLen };
+          continue;
+        }
+
+        signalPins[sig] = { x: sx, y: sy };
+      }
+
+      // Default pin position (center, for fallback "1" compat)
+      let pinX = 0, pinY = 0;
+      if (ipin.side === 'left') pinX = halfW + stubLen;
+      else if (ipin.side === 'right') pinX = -(halfW + stubLen);
+      else if (ipin.side === 'top') pinY = -(halfW + stubLen);
+      else pinY = halfW + stubLen;
+
+      return {
+        kind: 'port' as const,
+        id: ipin.id,
+        name: ipin.name,
+        side: ipin.side,
+        category: ipin.category,
+        interfaceType: ipin.interfaceType,
+        bodyWidth: bodyW,
+        bodyHeight: bodyH,
+        pinX,
+        pinY,
+        pinSide,
+        signals,
+        signalPins,
+      };
+    }
+
+    // ── Standard pentagon port (single signal) ──
     let pinX = 0, pinY = 0;
     let pinSide: PinSide = 'right';
 
@@ -296,10 +384,78 @@ export function derivePortsFromModule(mod: SchematicModule): SchematicPort[] {
   });
 }
 
+// ── Power / Ground symbols ───────────────────────────────────────
+
+/**
+ * A power or ground symbol placed on the schematic, one per pin on a
+ * power/ground net.  Behaves like a small component — draggable, with
+ * a single connection pin that wires to its associated component pin.
+ */
+export interface SchematicPowerPort {
+  kind: 'powerport';
+  /** Unique id: `__pwr__{netId}__{componentId}__{pinNumber}` */
+  id: string;
+  /** Display label (net name, e.g. "VCC", "GND") */
+  name: string;
+  /** 'power' or 'ground' */
+  type: 'power' | 'ground';
+  /** Net this symbol belongs to */
+  netId: string;
+  /** The component pin this symbol connects to */
+  componentId: string;
+  pinNumber: string;
+  /** Body dimensions (small, to fit at pin pitch) */
+  bodyWidth: number;
+  bodyHeight: number;
+  /** Connection pin offset from symbol center */
+  pinX: number;
+  pinY: number;
+  /** Direction the wire exits toward the component */
+  pinSide: PinSide;
+}
+
+export const POWER_PORT_W = 2.0;
+export const POWER_PORT_H = 1.2;
+
+/**
+ * Derive power/ground port symbols from a sheet's nets.
+ * Each pin on a power or ground net gets its own movable symbol.
+ */
+export function derivePowerPorts(sheet: SchematicSheet): SchematicPowerPort[] {
+  const ports: SchematicPowerPort[] = [];
+
+  for (const net of sheet.nets) {
+    if (net.type !== 'power' && net.type !== 'ground') continue;
+
+    for (const pin of net.pins) {
+      const id = `__pwr__${net.id}__${pin.componentId}__${pin.pinNumber}`;
+      const isGround = net.type === 'ground';
+      ports.push({
+        kind: 'powerport',
+        id,
+        name: net.name,
+        type: net.type,
+        netId: net.id,
+        componentId: pin.componentId,
+        pinNumber: pin.pinNumber,
+        bodyWidth: POWER_PORT_W,
+        bodyHeight: POWER_PORT_H,
+        pinX: 0,
+        // Power: pin at bottom (symbol above, wire down to component)
+        // Ground: pin at top (symbol below, wire up to component)
+        pinY: isGround ? POWER_PORT_H / 2 : -POWER_PORT_H / 2,
+        pinSide: isGround ? 'top' : 'bottom',
+      });
+    }
+  }
+
+  return ports;
+}
+
 // ── Helpers ─────────────────────────────────────────────────────
 
 /** All renderable items at a sheet level */
-export type SchematicItem = SchematicModule | SchematicComponent | SchematicPort;
+export type SchematicItem = SchematicModule | SchematicComponent | SchematicPort | SchematicPowerPort;
 
 /**
  * Normalize a SchematicData (v1 or v2) into a root sheet.

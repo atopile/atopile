@@ -1210,12 +1210,11 @@ def generate_schematic(ctx: BuildStepContext) -> None:
     """Generate schematic visualization as JSON."""
     app = ctx.require_app()
     solver = ctx.require_solver()
-    layout_path = config.build.paths.layout.with_suffix(".ato_sch")
+    ato_sch_path = config.build.paths.layout.with_suffix(".ato_sch")
     export_schematic_json(
         app,
         solver,
-        json_path=config.build.paths.output_base.with_suffix(".schematic.json"),
-        layout_path=layout_path,
+        json_path=ato_sch_path,
     )
 
 

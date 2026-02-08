@@ -74,11 +74,7 @@ def export_power_tree_json(
 
     # Group ElectricPower interfaces by bus connectivity
     buses = fabll.is_interface.group_into_buses(all_power)
-    buses = {
-        root: members
-        for root, members in buses.items()
-        if len(members) > 1
-    }
+    buses = {root: members for root, members in buses.items() if len(members) > 1}
 
     # Cast and filter to shallow members only (skip cap.power etc.)
     bus_typed: dict[int, list[F.ElectricPower]] = {}
@@ -161,13 +157,15 @@ def export_power_tree_json(
         nid = make_node_id()
         node_id_map[id(src)] = nid
         name = _strip_root_hex(src.get_full_name())
-        json_nodes.append({
-            "id": nid,
-            "type": "source",
-            "name": name,
-            "voltage": _param_str(src.voltage.get(), solver),
-            "max_current": _param_str(src.max_current.get(), solver),
-        })
+        json_nodes.append(
+            {
+                "id": nid,
+                "type": "source",
+                "name": name,
+                "voltage": _param_str(src.voltage.get(), solver),
+                "max_current": _param_str(src.max_current.get(), solver),
+            }
+        )
 
     # 2. Converters
     for pid in converter_parents:
@@ -183,16 +181,20 @@ def export_power_tree_json(
         voltage_in = _param_str(input_ep.voltage.get(), solver) if input_ep else "?"
         voltage_out = _param_str(output_ep.voltage.get(), solver) if output_ep else "?"
 
-        max_current_out = _param_str(output_ep.max_current.get(), solver) if output_ep else "?"
+        max_current_out = (
+            _param_str(output_ep.max_current.get(), solver) if output_ep else "?"
+        )
 
-        json_nodes.append({
-            "id": nid,
-            "type": "converter",
-            "name": pid,
-            "voltage_in": voltage_in,
-            "voltage_out": voltage_out,
-            "max_current": max_current_out,
-        })
+        json_nodes.append(
+            {
+                "id": nid,
+                "type": "converter",
+                "name": pid,
+                "voltage_in": voltage_in,
+                "voltage_out": voltage_out,
+                "max_current": max_current_out,
+            }
+        )
 
         # Map all the converter's EPs to this node ID
         for ep in conv_sources + conv_sinks:
@@ -208,17 +210,21 @@ def export_power_tree_json(
         name = _strip_root_hex(snk.get_full_name())
         parent = snk.get_parent()
         parent_module_raw = parent[0].get_full_name() if parent else None
-        parent_module = _strip_root_hex(parent_module_raw) if parent_module_raw else None
+        parent_module = (
+            _strip_root_hex(parent_module_raw) if parent_module_raw else None
+        )
         if parent_module and re.match(r"^0x[0-9A-Fa-f]+$", parent_module):
             parent_module = None
         max_current = _param_str(snk.max_current.get(), solver)
-        json_nodes.append({
-            "id": nid,
-            "type": "sink",
-            "name": name,
-            "parent_module": parent_module,
-            "max_current": max_current,
-        })
+        json_nodes.append(
+            {
+                "id": nid,
+                "type": "sink",
+                "name": name,
+                "parent_module": parent_module,
+                "max_current": max_current,
+            }
+        )
 
     # 4. Unclassified shallow EPs (no source/sink trait, not in converter)
     # These are typically the top-level rail aliases like power_3v3, power_5v
@@ -249,18 +255,22 @@ def export_power_tree_json(
         for src_nid in bus_source_nids:
             for snk_nid in bus_sink_nids:
                 if src_nid != snk_nid:
-                    json_edges.append({
-                        "from": src_nid,
-                        "to": snk_nid,
-                    })
+                    json_edges.append(
+                        {
+                            "from": src_nid,
+                            "to": snk_nid,
+                        }
+                    )
 
-    _write_json({
-        "version": "1.0",
-        "nodes": json_nodes,
-        "edges": json_edges,
-    }, json_path)
+    _write_json(
+        {
+            "version": "1.0",
+            "nodes": json_nodes,
+            "edges": json_edges,
+        },
+        json_path,
+    )
     logger.info("Wrote power tree JSON to %s", json_path)
-
 
 
 # _write_json is imported from faebryk.exporters.utils

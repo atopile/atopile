@@ -101,7 +101,19 @@ interface Props {
   netId: string | null;
 }
 
-export const PortSymbol = memo(function PortSymbol({
+export const PortSymbol = memo(function PortSymbol(props: Props) {
+  const { port } = props;
+  const isBreakout = port.signals && port.signals.length >= 2;
+
+  if (isBreakout) {
+    return <BreakoutPortSymbol {...props} />;
+  }
+  return <PentagonPortSymbol {...props} />;
+});
+
+// ── Pentagon port (original single-signal rendering) ────────────
+
+const PentagonPortSymbol = memo(function PentagonPortSymbol({
   port,
   theme,
   isSelected,
@@ -140,14 +152,11 @@ export const PortSymbol = memo(function PortSymbol({
   }, [port.side, port.pinX, port.pinY]);
 
   // Text positioning: center of the non-arrow part
-  const isHorizontal = port.side === 'left' || port.side === 'right';
   const textX = port.side === 'left' ? -ARROW_DEPTH / 2 :
                 port.side === 'right' ? ARROW_DEPTH / 2 : 0;
   const textY = port.side === 'top' ? ARROW_DEPTH / 2 :
                 port.side === 'bottom' ? -ARROW_DEPTH / 2 : 0;
-  const fontSize = isHorizontal
-    ? Math.min(1.3, PORT_H * 0.32)
-    : Math.min(1.3, PORT_H * 0.32);
+  const fontSize = Math.min(1.1, Math.max(0.7, PORT_H * 0.5));
 
   // Interface type label (small, below the name)
   const showType = port.interfaceType !== 'Electrical';
@@ -184,7 +193,7 @@ export const PortSymbol = memo(function PortSymbol({
 
       {/* ── Name label ──────────────────────────────── */}
       <Text
-        position={[textX, textY + (showType ? 0.3 : 0), 0.001]}
+        position={[textX, textY + (showType ? 0.15 : 0), 0.001]}
         fontSize={fontSize}
         color={theme.textPrimary}
         anchorX="center"
@@ -199,7 +208,7 @@ export const PortSymbol = memo(function PortSymbol({
       {/* ── Interface type (small, muted) ───────────── */}
       {showType && (
         <Text
-          position={[textX, textY - 0.7, 0.001]}
+          position={[textX, textY - 0.4, 0.001]}
           fontSize={fontSize * 0.55}
           color={theme.textMuted}
           anchorX="center"
@@ -226,6 +235,170 @@ export const PortSymbol = memo(function PortSymbol({
         <circleGeometry args={[DOT_RADIUS, 16]} />
         <meshBasicMaterial color={color} />
       </mesh>
+    </group>
+  );
+});
+
+// ── Breakout port (multi-signal component-like box) ─────────────
+//
+// Visual design (left-side port, stubs extend right into sheet):
+//     ┌──────────┐
+//     │          ├── SCL  ●
+//     │   I2C    │
+//     │          ├── SDA  ●
+//     └──────────┘
+
+const BREAKOUT_STUB_LEN = 2.54;
+const BREAKOUT_DOT_RADIUS = 0.4;
+
+const BreakoutPortSymbol = memo(function BreakoutPortSymbol({
+  port,
+  theme,
+  isSelected,
+  isHovered,
+  isDragging,
+}: Props) {
+  const signals = port.signals!;
+  const signalPins = port.signalPins!;
+  const color = getPinColor(port.category, theme);
+  const fillOpacity = isSelected ? 0.5 : isHovered ? 0.42 : 0.35;
+  const borderOpacity = isSelected ? 0.9 : 0.6;
+  const zOffset = isDragging ? 0.5 : 0;
+
+  const hw = port.bodyWidth / 2;
+  const hh = port.bodyHeight / 2;
+
+  // Rectangular body shape
+  const bodyShape = useMemo(() => {
+    const s = new THREE.Shape();
+    s.moveTo(-hw, hh);
+    s.lineTo(hw, hh);
+    s.lineTo(hw, -hh);
+    s.lineTo(-hw, -hh);
+    s.closePath();
+    return s;
+  }, [hw, hh]);
+
+  const bodyGeo = useMemo(() => new THREE.ShapeGeometry(bodyShape), [bodyShape]);
+  const edgesGeo = useMemo(() => new THREE.EdgesGeometry(bodyGeo), [bodyGeo]);
+
+  // Hit target covers body + stubs
+  const hitW = port.bodyWidth + BREAKOUT_STUB_LEN * 2 + 2;
+  const hitH = port.bodyHeight + 2;
+
+  // Determine stub direction
+  const isHorizontal = port.side === 'left' || port.side === 'right';
+  const stubDir = port.side === 'left' ? 1 : port.side === 'right' ? -1 : 0;
+  const stubDirY = port.side === 'top' ? -1 : port.side === 'bottom' ? 1 : 0;
+
+  return (
+    <group position={[0, 0, zOffset]}>
+      {/* ── Invisible hit target ── */}
+      <mesh position={[0, 0, -0.005]}>
+        <planeGeometry args={[hitW, hitH]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+
+      {/* ── Selection highlight ── */}
+      {isSelected && (
+        <mesh position={[0, 0, -0.003]} raycast={NO_RAYCAST}>
+          <planeGeometry args={[port.bodyWidth + 1, port.bodyHeight + 1]} />
+          <meshBasicMaterial color={color} transparent opacity={0.2} />
+        </mesh>
+      )}
+
+      {/* ── Border ── */}
+      <lineSegments geometry={edgesGeo} position={[0, 0, -0.002]} raycast={NO_RAYCAST}>
+        <lineBasicMaterial
+          color={isSelected ? color : theme.bodyBorder}
+          transparent
+          opacity={borderOpacity}
+          linewidth={1}
+        />
+      </lineSegments>
+
+      {/* ── Body fill ── */}
+      <mesh geometry={bodyGeo} position={[0, 0, -0.001]} raycast={NO_RAYCAST}>
+        <meshBasicMaterial color={color} transparent opacity={fillOpacity} />
+      </mesh>
+
+      {/* ── Interface name label (centered in body) ── */}
+      <Text
+        position={[0, 0, 0.001]}
+        fontSize={1.2}
+        color={theme.textPrimary}
+        anchorX="center"
+        anchorY="middle"
+        letterSpacing={0.03}
+        font={undefined}
+        raycast={NO_RAYCAST}
+      >
+        {port.name}
+      </Text>
+
+      {/* ── Signal stubs + dots + labels ── */}
+      {signals.map((sig) => {
+        const sp = signalPins[sig];
+        if (!sp) return null;
+
+        // Body edge point (where stub exits)
+        let edgeX: number, edgeY: number;
+        if (isHorizontal) {
+          edgeX = stubDir > 0 ? hw : -hw;
+          edgeY = sp.y;
+        } else {
+          edgeX = sp.x;
+          edgeY = stubDirY > 0 ? -hh : hh;
+        }
+
+        // Signal label position (inside the body, near the edge)
+        let labelX: number, labelY: number;
+        let anchor: 'left' | 'right' | 'center' = 'center';
+        if (isHorizontal) {
+          labelX = stubDir > 0 ? hw - 0.6 : -hw + 0.6;
+          labelY = sp.y;
+          anchor = stubDir > 0 ? 'right' : 'left';
+        } else {
+          labelX = sp.x;
+          labelY = stubDirY > 0 ? -hh + 0.6 : hh - 0.6;
+        }
+
+        return (
+          <group key={sig}>
+            {/* Stub line from body edge to connection dot */}
+            <Line
+              points={[
+                [edgeX, edgeY, 0.002],
+                [sp.x, sp.y, 0.002],
+              ]}
+              color={color}
+              lineWidth={1.5}
+              transparent
+              opacity={0.6}
+              raycast={NO_RAYCAST}
+            />
+
+            {/* Connection dot */}
+            <mesh position={[sp.x, sp.y, 0.001]} raycast={NO_RAYCAST}>
+              <circleGeometry args={[BREAKOUT_DOT_RADIUS, 16]} />
+              <meshBasicMaterial color={color} />
+            </mesh>
+
+            {/* Signal label inside body */}
+            <Text
+              position={[labelX, labelY, 0.001]}
+              fontSize={0.8}
+              color={theme.textMuted}
+              anchorX={anchor}
+              anchorY="middle"
+              font={undefined}
+              raycast={NO_RAYCAST}
+            >
+              {sig.toUpperCase()}
+            </Text>
+          </group>
+        );
+      })}
     </group>
   );
 });

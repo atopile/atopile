@@ -17,7 +17,8 @@ class SchematicWatcher extends FileResourceWatcher<Schematic> {
             return undefined;
         }
 
-        const jsonPath = path.join(build.root, 'build', 'builds', build.name, build.name + '.schematic.json');
+        // Derive .ato_sch path from pcb_path (respects ato.yaml layout config)
+        const jsonPath = build.pcb_path.replace(/\.kicad_pcb$/, '.ato_sch');
         return { path: jsonPath, exists: fs.existsSync(jsonPath) };
     }
 }

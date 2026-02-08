@@ -17,6 +17,7 @@ import * as THREE from 'three';
 import type {
   SchematicNet,
   SchematicPort,
+  SchematicPowerPort,
   SchematicSheet,
 } from '../types/schematic';
 import {
@@ -25,7 +26,7 @@ import {
   transformPinOffset,
   transformPinSide,
 } from '../types/schematic';
-import { useCurrentPorts } from '../stores/schematicStore';
+import { useCurrentPorts, useCurrentPowerPorts } from '../stores/schematicStore';
 import type { ThemeColors } from '../lib/theme';
 import { useSchematicStore, liveDrag } from '../stores/schematicStore';
 import {
@@ -47,7 +48,6 @@ import {
 } from '../lib/busDetector';
 
 const STUB_LENGTH = 4;
-const CLOSE_DISTANCE = 80;
 const NO_RAYCAST = () => {};
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -69,10 +69,6 @@ function netColor(net: SchematicNet, theme: ThemeColors): string {
   }
 }
 
-function dist2d(ax: number, ay: number, bx: number, by: number): number {
-  return Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2);
-}
-
 // ── Unified pin lookup ─────────────────────────────────────────
 
 interface PinInfo {
@@ -85,7 +81,11 @@ interface ItemLookup {
   pinMap: Map<string, Map<string, PinInfo>>;
 }
 
-function buildLookup(sheet: SchematicSheet, ports: SchematicPort[] = []): ItemLookup {
+function buildLookup(
+  sheet: SchematicSheet,
+  ports: SchematicPort[] = [],
+  powerPorts: SchematicPowerPort[] = [],
+): ItemLookup {
   const pinMap = new Map<string, Map<string, PinInfo>>();
 
   for (const comp of sheet.components) {
@@ -100,8 +100,24 @@ function buildLookup(sheet: SchematicSheet, ports: SchematicPort[] = []): ItemLo
   }
   for (const port of ports) {
     const pm = new Map<string, PinInfo>();
-    pm.set('1', { x: port.pinX, y: port.pinY, side: port.pinSide });
+    if (port.signals && port.signalPins) {
+      // Breakout port: register each signal as a separate pin
+      for (const sig of port.signals) {
+        const sp = port.signalPins[sig];
+        if (sp) pm.set(sig, { x: sp.x, y: sp.y, side: port.pinSide });
+      }
+      // Fallback "1" at center for backward compat
+      pm.set('1', { x: port.pinX, y: port.pinY, side: port.pinSide });
+    } else {
+      pm.set('1', { x: port.pinX, y: port.pinY, side: port.pinSide });
+    }
     pinMap.set(port.id, pm);
+  }
+  // Register power/ground port symbols — each has a single connection pin
+  for (const pp of powerPorts) {
+    const pm = new Map<string, PinInfo>();
+    pm.set('1', { x: pp.pinX, y: pp.pinY, side: pp.pinSide });
+    pinMap.set(pp.id, pm);
   }
 
   return { pinMap };
@@ -118,6 +134,7 @@ interface WorldPin {
 }
 
 interface DirectNetData {
+  routeId: string;
   net: SchematicNet;
   worldPins: WorldPin[];
   route: [number, number, number][];
@@ -142,6 +159,7 @@ export const NetLines = memo(function NetLines({
   const positions = useSchematicStore((s) => s.positions);
   const selectedNetId = useSchematicStore((s) => s.selectedNetId);
   const ports = useCurrentPorts();
+  const powerPorts = useCurrentPowerPorts();
 
   const sheet = useMemo(() => {
     if (!schematic) return null;
@@ -150,8 +168,8 @@ export const NetLines = memo(function NetLines({
 
   const lookup = useMemo<ItemLookup | null>(() => {
     if (!sheet) return null;
-    return buildLookup(sheet, ports);
-  }, [sheet, ports]);
+    return buildLookup(sheet, ports, powerPorts);
+  }, [sheet, ports, powerPorts]);
 
   const pk = useMemo(
     () => (currentPath.length === 0 ? '__root__' : currentPath.join('/')) + ':',
@@ -188,6 +206,53 @@ export const NetLines = memo(function NetLines({
     for (const net of sheet.nets) {
       const color = netColorMap.get(net.id) || theme.pinSignal;
 
+      // ── Power/ground nets: draw individual wires from each
+      //    power port symbol to its connected component pin ──
+      if (net.type === 'power' || net.type === 'ground') {
+        for (const np of net.pins) {
+          const ppId = `__pwr__${net.id}__${np.componentId}__${np.pinNumber}`;
+          const ppPinMap = lookup.pinMap.get(ppId);
+          const compPinMap = lookup.pinMap.get(np.componentId);
+          if (!ppPinMap || !compPinMap) continue;
+
+          const ppPin = ppPinMap.get('1');
+          const compPin = compPinMap.get(np.pinNumber);
+          if (!ppPin || !compPin) continue;
+
+          const ppPos = positions[pk + ppId] || { x: 0, y: 0 };
+          const compPos = positions[pk + np.componentId] || { x: 0, y: 0 };
+
+          const ppTp = transformPinOffset(ppPin.x, ppPin.y, ppPos.rotation, ppPos.mirrorX, ppPos.mirrorY);
+          const ppTs = transformPinSide(ppPin.side, ppPos.rotation, ppPos.mirrorX, ppPos.mirrorY);
+          const compTp = transformPinOffset(compPin.x, compPin.y, compPos.rotation, compPos.mirrorX, compPos.mirrorY);
+          const compTs = transformPinSide(compPin.side, compPos.rotation, compPos.mirrorX, compPos.mirrorY);
+
+          const wp0: WorldPin = {
+            x: ppPos.x + ppTp.x, y: ppPos.y + ppTp.y,
+            side: ppTs, compId: ppId, pinNumber: '1',
+          };
+          const wp1: WorldPin = {
+            x: compPos.x + compTp.x, y: compPos.y + compTp.y,
+            side: compTs, compId: np.componentId, pinNumber: np.pinNumber,
+          };
+
+          // Skip wire if power port pin is on (or very near) the component pin
+          const dx = wp0.x - wp1.x;
+          const dy = wp0.y - wp1.y;
+          if (dx * dx + dy * dy < 0.5) continue;
+
+          const rawRoute = computeOrthogonalRoute(
+            wp0.x, wp0.y, wp0.side,
+            wp1.x, wp1.y, wp1.side,
+          );
+          const route = padRoute(rawRoute);
+          directs.push({ routeId: ppId, net, worldPins: [wp0, wp1], route, color });
+          allRoutes.set(ppId, route);
+        }
+        continue; // power/ground nets fully handled above
+      }
+
+      // ── Normal nets (signal / bus) ──
       const worldPins: WorldPin[] = [];
       const uniqueItems = new Set<string>();
 
@@ -210,11 +275,9 @@ export const NetLines = memo(function NetLines({
 
       if (worldPins.length < 2) continue;
 
-      const isDirect =
-        uniqueItems.size === 2 &&
-        worldPins.length === 2 &&
-        dist2d(worldPins[0].x, worldPins[0].y, worldPins[1].x, worldPins[1].y) <
-          CLOSE_DISTANCE;
+      // 2-pin nets between exactly 2 items always get direct connections.
+      // No distance limit — if two things are connected, draw the wire.
+      const isDirect = uniqueItems.size === 2 && worldPins.length === 2;
 
       if (isDirect) {
         const rawRoute = computeOrthogonalRoute(
@@ -222,7 +285,7 @@ export const NetLines = memo(function NetLines({
           worldPins[1].x, worldPins[1].y, worldPins[1].side,
         );
         const route = padRoute(rawRoute);
-        directs.push({ net, worldPins, route, color });
+        directs.push({ routeId: net.id, net, worldPins, route, color });
         allRoutes.set(net.id, route);
 
         // Also register as bus candidate
@@ -284,12 +347,12 @@ export const NetLines = memo(function NetLines({
       ))}
 
       {/* Individual orthogonal connections */}
-      {directNets.map(({ net, worldPins, route, color }) => {
+      {directNets.map(({ routeId, net, worldPins, route, color }) => {
         const isSelected = selectedNetId === net.id;
         const opacity = isSelected ? 1 : selectedNetId ? 0.25 : 0.8;
         return (
           <OrthogonalConnection
-            key={net.id}
+            key={routeId}
             net={net}
             worldPins={worldPins}
             initialRoute={route}
@@ -604,7 +667,11 @@ const OrthogonalConnection = memo(function OrthogonalConnection({
     if (liveDrag.version === lastVersion.current) return;
     lastVersion.current = liveDrag.version;
 
-    if (!worldPins.some((wp) => wp.compId === dragging)) return;
+    // Check if any endpoint is being dragged (primary or group member)
+    const isAffected = worldPins.some(
+      (wp) => wp.compId === dragging || liveDrag.groupOffsets[wp.compId] !== undefined,
+    );
+    if (!isAffected) return;
 
     wasModified.current = true;
     const storePositions = useSchematicStore.getState().positions;
@@ -616,6 +683,10 @@ const OrthogonalConnection = memo(function OrthogonalConnection({
       const ts = transformPinSide(pin.side, pos.rotation, pos.mirrorX, pos.mirrorY);
       if (wp.compId === dragging) {
         return { ...wp, x: liveDrag.x + tp.x, y: liveDrag.y + tp.y, side: ts };
+      }
+      const groupOff = liveDrag.groupOffsets[wp.compId];
+      if (groupOff) {
+        return { ...wp, x: liveDrag.x + groupOff.x + tp.x, y: liveDrag.y + groupOff.y + tp.y, side: ts };
       }
       return { ...wp, x: pos.x + tp.x, y: pos.y + tp.y, side: ts };
     });

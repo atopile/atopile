@@ -1,19 +1,18 @@
-requires-atopile: ^0.10.12
-
+requires-atopile: ^0.12.4
 paths:
   src: .
   layout: ./layouts
-
 builds:
   default:
     entry: raspberry-rp2040.ato:Raspberry_Pi_RP2040
     hide_designators: true
-    exclude_checks: [PCB.requires_drc_check]
+    exclude_checks:
+    - PCB.requires_drc_check
   usage:
     entry: usage.ato:Usage
     hide_designators: true
-    exclude_checks: [PCB.requires_drc_check]
-
+    exclude_checks:
+    - PCB.requires_drc_check
 package:
   identifier: atopile/raspberry-rp2040
   repository: https://github.com/atopile/packages
@@ -26,4 +25,4 @@ package:
 dependencies:
 - type: registry
   identifier: atopile/st-ldk220
-  release: 0.2.1
+  release: 0.2.3

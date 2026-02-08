@@ -102,7 +102,6 @@ from faebryk.library.RS232 import RS232
 from faebryk.library.SPI import SPI
 from faebryk.library.SWD import SWD
 from faebryk.library.SinglePinAddressor import SinglePinAddressor
-from faebryk.library.PinMuxSelector import PinMuxSelector
 from faebryk.library.UART_Base import UART_Base
 from faebryk.library.requires_pulls import requires_pulls
 from faebryk.library.CAN import CAN
@@ -117,6 +116,7 @@ from faebryk.library.USB2_0 import USB2_0
 from faebryk.library.USB3_IF import USB3_IF
 from faebryk.library.Addressor import Addressor
 from faebryk.library.HDMI import HDMI
+from faebryk.library.PinMuxSelector import PinMuxSelector
 from faebryk.library.USB3 import USB3
 from faebryk.library.USB_C import USB_C
 
@@ -208,7 +208,6 @@ __all__ = [
     "SPI",
     "SWD",
     "SinglePinAddressor",
-    "PinMuxSelector",
     "UART_Base",
     "requires_pulls",
     "CAN",
@@ -223,6 +222,7 @@ __all__ = [
     "USB3_IF",
     "Addressor",
     "HDMI",
+    "PinMuxSelector",
     "USB3",
     "USB_C",
 ]

@@ -43,6 +43,23 @@ function getSchematicViewerDistPath(): string | null {
 }
 
 class SchematicWebview extends BaseWebview {
+    /**
+     * Timestamp of the last position save initiated by the webview.
+     * Used to suppress file-watcher reloads triggered by our own writes.
+     */
+    private _lastSaveTime = 0;
+    private static readonly SAVE_SUPPRESS_MS = 2000;
+
+    /** Check if a recent self-save should suppress a file-watcher event. */
+    public shouldSuppressReload(): boolean {
+        return Date.now() - this._lastSaveTime < SchematicWebview.SAVE_SUPPRESS_MS;
+    }
+
+    /** Mark that we just saved positions (so we can suppress the echo). */
+    public markSave(): void {
+        this._lastSaveTime = Date.now();
+    }
+
     constructor() {
         super({
             id: 'schematic_preview',
@@ -98,23 +115,12 @@ class SchematicWebview extends BaseWebview {
         // Also handle the entry JS in dev mode
         html = html.replace(/src="\.\/src\/schematic\.tsx"/g, `src="${distUri}/schematic.js"`);
 
-        // Resolve the .ato_sch layout path from the schematic JSON
-        let layoutPathStr = '';
-        try {
-            const raw = fs.readFileSync(dataPath, 'utf-8');
-            const data = JSON.parse(raw);
-            if (data.layoutPath) {
-                layoutPathStr = data.layoutPath;
-            }
-        } catch {
-            // Silently fail
-        }
-
-        // Inject config
+        // Inject config — .ato_sch contains both schematic data and positions
         const configScript = `
             <script>
                 window.__SCHEMATIC_VIEWER_CONFIG__ = {
-                    dataUrl: "${dataUri.toString()}"${layoutPathStr ? `,\n                    layoutPath: "${layoutPathStr}"` : ''}
+                    dataUrl: "${dataUri.toString()}",
+                    atoSchPath: "${dataPath.replace(/\\/g, '\\\\')}"
                 };
             </script>
         `;
@@ -186,59 +192,31 @@ class SchematicWebview extends BaseWebview {
                     break;
                 }
                 case 'save-layout': {
-                    // Write positions to .ato_sch file on disk
-                    const layoutPath = message.layoutPath as string | undefined;
-                    const layout = message.layout;
-                    if (layoutPath && layout) {
+                    // Merge positions back into the .ato_sch file
+                    const atoSchPath = message.atoSchPath as string | undefined;
+                    const positions = message.positions;
+                    if (atoSchPath && positions) {
                         try {
-                            const dir = path.dirname(layoutPath);
+                            let data: Record<string, unknown> = {};
+                            if (fs.existsSync(atoSchPath)) {
+                                data = JSON.parse(fs.readFileSync(atoSchPath, 'utf-8'));
+                            }
+                            data.positions = positions;
+                            const dir = path.dirname(atoSchPath);
                             if (!fs.existsSync(dir)) {
                                 fs.mkdirSync(dir, { recursive: true });
                             }
-                            fs.writeFileSync(layoutPath, JSON.stringify(layout, null, 2), 'utf-8');
+                            // Mark self-save so the file watcher doesn't trigger a reload
+                            this.markSave();
+                            fs.writeFileSync(atoSchPath, JSON.stringify(data, null, 2), 'utf-8');
                         } catch (e) {
-                            console.error('Failed to save schematic layout:', e);
-                        }
-                    }
-                    break;
-                }
-                case 'load-layout': {
-                    // Read .ato_sch file and send positions back to webview
-                    const layoutFilePath = this.resolveLayoutPath();
-                    if (layoutFilePath && fs.existsSync(layoutFilePath)) {
-                        try {
-                            const raw = fs.readFileSync(layoutFilePath, 'utf-8');
-                            const layout = JSON.parse(raw);
-                            this.panel?.webview.postMessage({
-                                type: 'layout-loaded',
-                                layout,
-                            });
-                        } catch (e) {
-                            console.error('Failed to load schematic layout:', e);
+                            console.error('Failed to save positions to .ato_sch:', e);
                         }
                     }
                     break;
                 }
             }
         });
-    }
-
-    /**
-     * Resolve the .ato_sch layout file path from the schematic JSON.
-     */
-    private resolveLayoutPath(): string | null {
-        const resource = getCurrentSchematic();
-        if (!resource?.path) return null;
-        try {
-            const raw = fs.readFileSync(resource.path, 'utf-8');
-            const data = JSON.parse(raw);
-            if (data.layoutPath) {
-                return data.layoutPath;
-            }
-        } catch {
-            // Silently fail
-        }
-        return null;
     }
 
     private openSourceFile(filePath: string, line?: number, column?: number): void {
@@ -275,6 +253,23 @@ export async function openSchematicPreview() {
     await schematicViewer.open();
 }
 
+/**
+ * Send updated schematic data to an already-open webview without
+ * replacing the HTML (preserves navigation state, selection, etc.).
+ */
+function sendSchematicUpdate() {
+    if (!schematicViewer?.isOpen()) return;
+    const resource = getCurrentSchematic();
+    if (!resource?.exists) return;
+    try {
+        const raw = fs.readFileSync(resource.path, 'utf-8');
+        const data = JSON.parse(raw);
+        schematicViewer.postMessage({ type: 'update-schematic', data });
+    } catch {
+        // File may be mid-write or corrupt — silently skip
+    }
+}
+
 export function closeSchematicPreview() {
     schematicViewer?.dispose();
     schematicViewer = undefined;
@@ -292,7 +287,13 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         onSchematicChanged((_) => {
             if (schematicViewer?.isOpen()) {
-                openSchematicPreview();
+                // Skip reload when the change was triggered by our own position save
+                if (schematicViewer.shouldSuppressReload()) {
+                    return;
+                }
+                // For external changes (rebuild), send data via message
+                // to preserve navigation state instead of replacing HTML
+                sendSchematicUpdate();
             }
         }),
         // Track active editor for bidirectional navigation

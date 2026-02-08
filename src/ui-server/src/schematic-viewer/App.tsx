@@ -3,8 +3,7 @@ import { SchematicScene } from './three/SchematicScene';
 import { Toolbar } from './components/Toolbar';
 import { StructureTree } from './components/StructureTree';
 import { SelectionDetails } from './components/SelectionDetails';
-import { useSchematicStore, useCurrentSheet, loadExternalLayout, setLayoutPath } from './stores/schematicStore';
-import type { SchematicLayout } from './types/schematic';
+import { useSchematicStore, useCurrentSheet, setAtoSchPath } from './stores/schematicStore';
 import { useTheme } from './lib/theme';
 import { requestOpenSource, onExtensionMessage } from './lib/vscodeApi';
 
@@ -16,8 +15,9 @@ const SIDEBAR_DEFAULT_W = 260;
 const SPLIT_MIN_H = 60;
 
 function SchematicApp() {
-  const { loadSchematic, isLoading, loadError } =
-    useSchematicStore();
+  const loadSchematic = useSchematicStore((s) => s.loadSchematic);
+  const isLoading = useSchematicStore((s) => s.isLoading);
+  const loadError = useSchematicStore((s) => s.loadError);
   const sheet = useCurrentSheet();
   const theme = useTheme();
 
@@ -91,8 +91,8 @@ function SchematicApp() {
   useEffect(() => {
     // VSCode webview: check for injected config
     const cfg = (window as any).__SCHEMATIC_VIEWER_CONFIG__;
-    if (cfg?.layoutPath) {
-      setLayoutPath(cfg.layoutPath);
+    if (cfg?.atoSchPath) {
+      setAtoSchPath(cfg.atoSchPath);
     }
     if (cfg?.dataUrl) {
       loadSchematic(cfg.dataUrl);
@@ -113,12 +113,9 @@ function SchematicApp() {
       if (msg.type === 'activeFile') {
         // The extension notifies us which file is active.
         // Future: match file to module/component and highlight it.
-      } else if (msg.type === 'layout-loaded') {
-        // Extension loaded the .ato_sch file — merge positions
-        const layout = msg.layout as SchematicLayout | undefined;
-        if (layout?.positions) {
-          loadExternalLayout(layout);
-        }
+      } else if (msg.type === 'update-schematic' && msg.data) {
+        // External rebuild: update data without resetting navigation
+        useSchematicStore.getState().updateSchematicData(msg.data as any);
       }
     });
 
@@ -293,35 +290,80 @@ function SchematicApp() {
           {sheet && !isLoading && <SchematicScene />}
         </div>
 
-        {/* Right sidebar */}
-        {!sidebarCollapsed && (
-          <>
-            {/* Horizontal resize handle */}
-            <div
-              onMouseDown={handleWidthResize}
-              style={{
-                width: 4,
-                flexShrink: 0,
-                cursor: 'ew-resize',
-                background: 'transparent',
-                zIndex: 5,
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = theme.accent + '60'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-            />
+        {/* Right sidebar — always rendered, collapses to narrow strip */}
 
+        {/* Horizontal resize handle (only when expanded) */}
+        {!sidebarCollapsed && (
+          <div
+            onMouseDown={handleWidthResize}
+            style={{
+              width: 4,
+              flexShrink: 0,
+              cursor: 'ew-resize',
+              background: 'transparent',
+              zIndex: 5,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = theme.accent + '60'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          />
+        )}
+
+        <div
+          ref={sidebarRef}
+          onClick={sidebarCollapsed ? () => setSidebarCollapsed(false) : undefined}
+          style={{
+            width: sidebarCollapsed ? 28 : sidebarWidth,
+            flexShrink: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            background: theme.bgSecondary,
+            borderLeft: `1px solid ${theme.borderColor}`,
+            overflow: 'hidden',
+            cursor: sidebarCollapsed ? 'pointer' : undefined,
+          }}
+        >
+          {/* Sidebar header with collapse/expand toggle */}
+          <div
+            style={{
+              height: 28,
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: sidebarCollapsed ? 'center' : 'flex-end',
+              borderBottom: sidebarCollapsed ? 'none' : `1px solid ${theme.borderColor}`,
+              padding: sidebarCollapsed ? 0 : '0 4px',
+            }}
+          >
             <div
-              ref={sidebarRef}
+              onClick={(e) => { e.stopPropagation(); setSidebarCollapsed((c) => !c); }}
               style={{
-                width: sidebarWidth,
-                flexShrink: 0,
+                width: 22,
+                height: 22,
                 display: 'flex',
-                flexDirection: 'column',
-                background: theme.bgSecondary,
-                borderLeft: `1px solid ${theme.borderColor}`,
-                overflow: 'hidden',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                borderRadius: 3,
+                fontSize: 10,
+                color: theme.textMuted,
               }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = theme.textPrimary;
+                e.currentTarget.style.background = theme.borderColor;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = theme.textMuted;
+                e.currentTarget.style.background = 'transparent';
+              }}
+              title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
             >
+              {sidebarCollapsed ? '\u25C0' : '\u25B6'}
+            </div>
+          </div>
+
+          {/* Sidebar content (hidden when collapsed) */}
+          {!sidebarCollapsed && (
+            <>
               {/* Structure tree section */}
               <div
                 style={{
@@ -358,36 +400,8 @@ function SchematicApp() {
               >
                 <SelectionDetails />
               </div>
-            </div>
-          </>
-        )}
-
-        {/* Collapse/expand toggle tab */}
-        <div
-          onClick={() => setSidebarCollapsed((c) => !c)}
-          style={{
-            position: 'absolute',
-            right: sidebarCollapsed ? 0 : sidebarWidth + 5,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            width: 16,
-            height: 48,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: theme.bgSecondary,
-            border: `1px solid ${theme.borderColor}`,
-            borderRadius: sidebarCollapsed ? '4px 0 0 4px' : '4px 0 0 4px',
-            cursor: 'pointer',
-            zIndex: 20,
-            fontSize: 10,
-            color: theme.textMuted,
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = theme.textPrimary; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = theme.textMuted; }}
-          title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
-        >
-          {sidebarCollapsed ? '\u25C0' : '\u25B6'}
+            </>
+          )}
         </div>
       </div>
     </div>

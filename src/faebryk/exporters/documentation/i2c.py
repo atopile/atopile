@@ -34,9 +34,7 @@ def _is_standalone_bus_var(member: F.I2C) -> bool:
     return False
 
 
-def _resolve_address(
-    member: F.I2C, solver: Solver
-) -> tuple[str | None, bool]:
+def _resolve_address(member: F.I2C, solver: Solver) -> tuple[str | None, bool]:
     """
     Try to resolve the I2C address parameter.
     Returns (address_string, is_resolved).
@@ -65,7 +63,11 @@ def _resolve_address(
             direct_lit = member.address.get().try_extract_superset()
             if direct_lit is not None:
                 direct_pretty = direct_lit.pretty_str()
-                if direct_pretty and "\u211d" not in direct_pretty and direct_pretty != "?":
+                if (
+                    direct_pretty
+                    and "\u211d" not in direct_pretty
+                    and direct_pretty != "?"
+                ):
                     if direct_lit.is_singleton():
                         cleaned = direct_pretty.strip("{}")
                         try:
@@ -187,9 +189,7 @@ def export_i2c_tree_json(
     """
     Export the I2C bus tree as a JSON file for the tree visualizer.
     """
-    i2c_instances = list(
-        F.I2C.bind_typegraph(tg=app.tg).get_instances()
-    )
+    i2c_instances = list(F.I2C.bind_typegraph(tg=app.tg).get_instances())
 
     if not i2c_instances:
         logger.info("No I2C interfaces found, skipping I2C tree export")
@@ -198,11 +198,7 @@ def export_i2c_tree_json(
 
     # Group into buses by connectivity
     buses = fabll.is_interface.group_into_buses(i2c_instances)
-    buses = {
-        root: members
-        for root, members in buses.items()
-        if len(members) > 1
-    }
+    buses = {root: members for root, members in buses.items() if len(members) > 1}
 
     json_buses = []
     bus_counter = 0
@@ -236,7 +232,9 @@ def export_i2c_tree_json(
             parent_module_raw = parent[0].get_full_name() if parent else None
 
             member_name = clean_name
-            parent_module = _strip_root_hex(parent_module_raw) if parent_module_raw else None
+            parent_module = (
+                _strip_root_hex(parent_module_raw) if parent_module_raw else None
+            )
             # If parent module is still a bare hex ID (top-level app), use None
             if parent_module and re.match(r"^0x[0-9A-Fa-f]+$", parent_module):
                 parent_module = None
@@ -267,32 +265,37 @@ def export_i2c_tree_json(
             role = _determine_role(member, address_str, address_resolved)
 
             if role == "controller":
-                controllers.append({
-                    "id": f"{bus_id}_ctrl_{ctrl_counter}",
-                    "name": member_name,
-                    "parent_module": parent_module,
-                })
+                controllers.append(
+                    {
+                        "id": f"{bus_id}_ctrl_{ctrl_counter}",
+                        "name": member_name,
+                        "parent_module": parent_module,
+                    }
+                )
                 ctrl_counter += 1
             else:
-                targets.append({
-                    "id": f"{bus_id}_tgt_{tgt_counter}",
-                    "name": member_name,
-                    "parent_module": parent_module,
-                    "address": address_str,
-                    "address_resolved": address_resolved,
-                })
+                targets.append(
+                    {
+                        "id": f"{bus_id}_tgt_{tgt_counter}",
+                        "name": member_name,
+                        "parent_module": parent_module,
+                        "address": address_str,
+                        "address_resolved": address_resolved,
+                    }
+                )
                 tgt_counter += 1
 
-        json_buses.append({
-            "id": bus_id,
-            "controllers": controllers,
-            "targets": targets,
-            "frequency": frequency_str,
-        })
+        json_buses.append(
+            {
+                "id": bus_id,
+                "controllers": controllers,
+                "targets": targets,
+                "frequency": frequency_str,
+            }
+        )
 
     _write_json({"version": "1.0", "buses": json_buses}, json_path)
     logger.info("Wrote I2C tree JSON to %s", json_path)
-
 
 
 # _write_json is imported from faebryk.exporters.utils

@@ -21,10 +21,12 @@ import {
   useSchematicStore,
   useCurrentSheet,
   useCurrentPorts,
+  useCurrentPowerPorts,
 } from '../stores/schematicStore';
 import { DraggableComponent } from './DraggableComponent';
 import { DraggableModule } from './DraggableModule';
 import { DraggablePort } from './DraggablePort';
+import { DraggablePowerPort } from './DraggablePowerPort';
 import { NetLines } from './NetLines';
 import { GridBackground } from './GridBackground';
 import { ContextMenu } from './ContextMenu';
@@ -37,6 +39,7 @@ const EMPTY_NET_MAP = new Map<string, string>();
 function SceneContent({ theme }: { theme: ThemeColors }) {
   const sheet = useCurrentSheet();
   const ports = useCurrentPorts();
+  const powerPorts = useCurrentPowerPorts();
   const currentPath = useSchematicStore((s) => s.currentPath);
   const dragComponentId = useSchematicStore((s) => s.dragComponentId);
   const selectedNetId = useSchematicStore((s) => s.selectedNetId);
@@ -67,6 +70,11 @@ function SceneContent({ theme }: { theme: ThemeColors }) {
         h: m.bodyHeight,
       })),
       ...ports.map((p) => ({
+        id: p.id,
+        w: p.bodyWidth,
+        h: p.bodyHeight,
+      })),
+      ...powerPorts.map((p) => ({
         id: p.id,
         w: p.bodyWidth,
         h: p.bodyHeight,
@@ -109,7 +117,7 @@ function SceneContent({ theme }: { theme: ThemeColors }) {
       controlsRef.current.target.set(cx, cy, 0);
       controlsRef.current.update();
     }
-  }, [sheet, ports, currentPath, camera]);
+  }, [sheet, ports, powerPorts, currentPath, camera]);
 
   // Subscribe to positions to detect first layout completion
   useEffect(() => {
@@ -138,10 +146,10 @@ function SceneContent({ theme }: { theme: ThemeColors }) {
     }
   }, [dragComponentId]);
 
-  // ── Zoom-to-cursor (replaces OrbitControls zoom) ─────────────
-  // Projects a ray from the mouse to the z=0 plane before and after
-  // changing the camera distance, then pans to compensate so the
-  // world point under the cursor stays fixed.
+  // ── Zoom-to-cursor (KiCad-style) ────────────────────────────
+  // Smooth zoom using continuous delta normalization. The world point
+  // under the cursor stays fixed by reprojecting before/after the
+  // camera distance change and panning to compensate.
 
   const zoomRaycaster = useRef(new THREE.Raycaster());
   const zoomPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0));
@@ -172,18 +180,18 @@ function SceneContent({ theme }: { theme: ThemeColors }) {
         zoomWorldA.current,
       );
 
-      // Apply zoom (dolly camera along z)
-      const zoomSpeed = 1.08;
-      const factor = e.deltaY > 0 ? zoomSpeed : 1 / zoomSpeed;
+      // KiCad-style zoom: normalize deltaY to a continuous scale factor.
+      // Typical deltaY values: ±100 (pixel mode), ±3 (line mode).
+      // Normalize to a small step then exponentiate for proportional feel.
+      const rawDelta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+      const step = rawDelta * 0.002; // ~0.2 per 100px scroll
+      const factor = Math.exp(step);
       const newZ = THREE.MathUtils.clamp(
         camera.position.z * factor,
-        5,
-        800,
+        2,
+        1500,
       );
       camera.position.z = newZ;
-      // Must update the world matrix so the raycaster below sees the
-      // new camera position (updateProjectionMatrix only updates the
-      // projection, not the world-space transform).
       camera.updateMatrixWorld(true);
 
       // World point under cursor AFTER zoom
@@ -229,6 +237,10 @@ function SceneContent({ theme }: { theme: ThemeColors }) {
     for (const port of ports) {
       maps.set(port.id, new Map());
     }
+    // Power ports
+    for (const pp of powerPorts) {
+      maps.set(pp.id, new Map());
+    }
     // Nets reference all item types
     for (const net of sheet.nets) {
       for (const pin of net.pins) {
@@ -236,7 +248,7 @@ function SceneContent({ theme }: { theme: ThemeColors }) {
       }
     }
     return maps;
-  }, [sheet, ports]);
+  }, [sheet, ports, powerPorts]);
 
   if (!sheet) return null;
 
@@ -304,6 +316,16 @@ function SceneContent({ theme }: { theme: ThemeColors }) {
           />
         );
       })}
+
+      {/* Power/ground symbols (movable) */}
+      {powerPorts.map((pp) => (
+        <DraggablePowerPort
+          key={pp.id}
+          powerPort={pp}
+          theme={theme}
+          selectedNetId={selectedNetId}
+        />
+      ))}
     </>
   );
 }
@@ -378,14 +400,22 @@ export function SchematicScene() {
       };
 
       const onUp = (me: PointerEvent) => {
-        if (selDragging.current && !useSchematicStore.getState().dragComponentId) {
+        const wasSelecting = selDragging.current;
+        if (wasSelecting && !useSchematicStore.getState().dragComponentId) {
           // Compute world-space bounding box from screen rect
           selectItemsInRect(startX, startY, me.clientX, me.clientY, me.shiftKey);
         }
-        selDragging.current = false;
         setSelRect(null);
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
+        // Delay clearing selDragging so the click-phase onPointerMissed handler
+        // (which fires after pointerup) still sees it as true and doesn't
+        // immediately clear the window-select results.
+        if (wasSelecting) {
+          setTimeout(() => { selDragging.current = false; }, 0);
+        } else {
+          selDragging.current = false;
+        }
       };
 
       window.addEventListener('pointermove', onMove);
@@ -400,40 +430,33 @@ export function SchematicScene() {
       const container = containerRef.current;
       if (!container) return;
 
-      // Find the canvas element
       const canvas = container.querySelector('canvas');
       if (!canvas) return;
 
-      const rect = canvas.getBoundingClientRect();
-
-      // Convert screen corners to NDC
-      const toNDC = (sx: number, sy: number) => ({
-        x: ((sx - rect.left) / rect.width) * 2 - 1,
-        y: -((sy - rect.top) / rect.height) * 2 + 1,
-      });
-
-      const ndc1 = toNDC(x1, y1);
-      const ndc2 = toNDC(x2, y2);
-
-      // We need the camera — read it from the Three.js state
-      // The camera is stored on the canvas's __r3f state
       const r3f = (canvas as any).__r3f;
       if (!r3f?.store) return;
-      const camera = r3f.store.getState().camera as THREE.PerspectiveCamera;
+      const cam = r3f.store.getState().camera as THREE.PerspectiveCamera;
+      cam.updateMatrixWorld(true);
 
-      // Project NDC corners to world-space z=0 plane
-      const raycaster = new THREE.Raycaster();
-      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
-      const target = new THREE.Vector3();
+      const canvasRect = canvas.getBoundingClientRect();
 
-      const toWorld = (ndcX: number, ndcY: number) => {
-        raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
-        raycaster.ray.intersectPlane(plane, target);
-        return { x: target.x, y: target.y };
+      // Convert screen point → world-space z=0 using direct perspective math.
+      // The visible half-height at z=0 is: camZ * tan(fov/2)
+      const aspect = canvasRect.width / canvasRect.height;
+      const halfH = cam.position.z * Math.tan((cam.fov * Math.PI) / 360);
+      const halfW = halfH * aspect;
+
+      const toWorld = (sx: number, sy: number) => {
+        const ndcX = ((sx - canvasRect.left) / canvasRect.width) * 2 - 1;
+        const ndcY = -((sy - canvasRect.top) / canvasRect.height) * 2 + 1;
+        return {
+          x: cam.position.x + ndcX * halfW,
+          y: cam.position.y + ndcY * halfH,
+        };
       };
 
-      const w1 = toWorld(ndc1.x, ndc1.y);
-      const w2 = toWorld(ndc2.x, ndc2.y);
+      const w1 = toWorld(x1, y1);
+      const w2 = toWorld(x2, y2);
 
       const minX = Math.min(w1.x, w2.x);
       const maxX = Math.max(w1.x, w2.x);

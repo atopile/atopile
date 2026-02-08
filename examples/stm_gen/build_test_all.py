@@ -3,6 +3,7 @@
 Build-test all generated .ato files.
 Writes main.ato for each, runs `ato build` in the project dir, reports results.
 """
+
 import re
 import subprocess
 import sys
@@ -46,7 +47,9 @@ module App:
     try:
         result = subprocess.run(
             ["ato", "build"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True,
+            text=True,
+            timeout=120,
             cwd=str(SCRIPT_DIR),
         )
         duration = time.time() - t0
@@ -86,7 +89,9 @@ def main():
     for i, f in enumerate(ato_files):
         name, ok, msg, dur = build_test_one(f)
         status = "PASS" if ok else "FAIL"
-        print(f"  [{i+1:2d}/{len(ato_files)}] [{status}] {name:30s} ({dur:.1f}s) {'' if ok else msg}")
+        print(
+            f"  [{i + 1:2d}/{len(ato_files)}] [{status}] {name:30s} ({dur:.1f}s) {'' if ok else msg}"
+        )
         results.append({"name": name, "ok": ok, "msg": msg, "duration": round(dur, 1)})
 
     elapsed = time.time() - start

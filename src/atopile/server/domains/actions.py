@@ -53,6 +53,14 @@ def _handle_build_sync(payload: dict) -> dict:
     exclude_targets = payload.get("excludeTargets") or payload.get(
         "exclude_targets", []
     )
+
+    # Always exclude datasheets from GUI builds — they are slow and rarely needed
+    # during iterative development. Users can still opt in via ato.yaml or CLI.
+    _GUI_DEFAULT_EXCLUDE = ["datasheets"]
+    for t in _GUI_DEFAULT_EXCLUDE:
+        if t not in exclude_targets:
+            exclude_targets.append(t)
+
     log.info(
         "Build request targets: include=%s exclude=%s",
         include_targets,

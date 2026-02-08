@@ -46,9 +46,7 @@ _LEFT_CATEGORIES = {"power", "ground", "input", "reset", "crystal", "control", "
 # ── Pin classification (reuses pinout exporter primitives) ──────
 
 
-def _classify_pin(
-    name: str, lead_functions: list[dict]
-) -> tuple[str, str]:
+def _classify_pin(name: str, lead_functions: list[dict]) -> tuple[str, str]:
     """Return (category, preferred_side) for a pin.
 
     When a pin has both signal and power function traces (e.g., because a
@@ -116,13 +114,24 @@ def _net_type(net_name: str) -> str:
         return "ground"
     if any(kw in lower for kw in ["vcc", "vdd", "3v3", "5v", "power", "vbus", "hv"]):
         return "power"
-    if any(kw in lower for kw in [
-        "scl", "sda", "i2c", "spi", "mosi", "miso",
-        "uart", "tx", "rx", "jtag", "usb",
-    ]):
+    if any(
+        kw in lower
+        for kw in [
+            "scl",
+            "sda",
+            "i2c",
+            "spi",
+            "mosi",
+            "miso",
+            "uart",
+            "tx",
+            "rx",
+            "jtag",
+            "usb",
+        ]
+    ):
         return "bus"
     return "signal"
-
 
 
 # ── Body layout ─────────────────────────────────────────────────
@@ -146,15 +155,16 @@ def _layout_pins(
     if component_node is not None:
         kicad_geo = _get_kicad_pad_geometry(component_node)
         if kicad_geo:
-            kicad_positions = {
-                name: (g["x"], g["y"]) for name, g in kicad_geo.items()
-            }
+            kicad_positions = {name: (g["x"], g["y"]) for name, g in kicad_geo.items()}
             side_map = _assign_sides_from_positions(pad_names, kicad_positions)
 
     # ── Bucket pins by side ──────────────────────────────────────
     # side -> [(pad_name, display_name, category, position_index)]
     side_buckets: dict[str, list[tuple[str, str, str, int]]] = {
-        "left": [], "right": [], "top": [], "bottom": [],
+        "left": [],
+        "right": [],
+        "top": [],
+        "bottom": [],
     }
 
     for pn in pad_names:
@@ -212,17 +222,19 @@ def _layout_pins(
                 px = half_w + _PIN_STUB_LEN
                 bx = half_w
 
-            pins.append({
-                "number": pn,
-                "name": display,
-                "side": side,
-                "electricalType": "passive",
-                "category": cat,
-                "x": round(px, 2),
-                "y": round(y, 2),
-                "bodyX": round(bx, 2),
-                "bodyY": round(y, 2),
-            })
+            pins.append(
+                {
+                    "number": pn,
+                    "name": display,
+                    "side": side,
+                    "electricalType": "passive",
+                    "category": cat,
+                    "x": round(px, 2),
+                    "y": round(y, 2),
+                    "bodyX": round(bx, 2),
+                    "bodyY": round(y, 2),
+                }
+            )
 
     _add_pins(left_pins, "left")
     _add_pins(right_pins, "right")
@@ -303,9 +315,7 @@ def _discover_modules(app: fabll.Node) -> dict[str, _ModInfo]:
             # Get type name
             type_name = full_name.split(".")[-1] if "." in full_name else full_name
             try:
-                locator = module_node.get_trait(
-                    fabll.is_module
-                ).get_module_locator()
+                locator = module_node.get_trait(fabll.is_module).get_module_locator()
                 if "::" in locator:
                     type_name = locator.split("::")[-1]
                 type_name = strip_root_hex(type_name)
@@ -471,7 +481,8 @@ def _extract_signal_names(
         # direct interface children of the component
         signal_children: dict[str, fabll.Node] = {}
         children = component_node.get_children(
-            direct_only=True, types=fabll.Node,
+            direct_only=True,
+            types=fabll.Node,
         )
         for child in children:
             child_name = child.get_full_name().rsplit(".", 1)[-1]
@@ -495,7 +506,8 @@ def _extract_signal_names(
             required_trait=F.Lead.is_lead,
         )
         leads_with_pads = [
-            l for l in lead_nodes
+            l
+            for l in lead_nodes
             if l.get_trait(F.Lead.is_lead).has_trait(F.Lead.has_associated_pads)
         ]
 
@@ -535,9 +547,7 @@ def _extract_signal_names(
                         continue
 
             if best_signal is not None:
-                assoc_pads = lead_trait.get_trait(
-                    F.Lead.has_associated_pads
-                ).get_pads()
+                assoc_pads = lead_trait.get_trait(F.Lead.has_associated_pads).get_pads()
                 for pad in assoc_pads:
                     try:
                         if pad.pad_name not in pad_to_signal:
@@ -639,7 +649,7 @@ def _extract_pin_interfaces(
                             iface_name = seg
                             # Signal is whatever comes after this segment
                             seg_idx = parts.index(seg)
-                            remaining = parts[seg_idx + 1:]
+                            remaining = parts[seg_idx + 1 :]
                             signal = ".".join(remaining) if remaining else ""
                             break
 
@@ -697,6 +707,12 @@ def _build_interface_pins(
             "category": category,
             "interfaceType": iface_type.replace("Power", "ElectricPower"),
         }
+
+        # Include per-signal breakdown when >=2 real signals exist
+        real_signals = sorted(s for s in iface_info.get("signals", set()) if s)
+        if len(real_signals) >= 2:
+            pin_data["signals"] = real_signals
+
         if side == "left":
             left_pins.append(pin_data)
         else:
@@ -731,17 +747,20 @@ def _build_interface_pins(
                 px = half_w + _PIN_STUB_LEN
                 bx = half_w
 
-            final_pins.append({
-                "id": p["id"],
-                "name": p["name"],
-                "side": side,
-                "category": p["category"],
-                "interfaceType": p["interfaceType"],
-                "x": round(px, 2),
-                "y": round(y, 2),
-                "bodyX": round(bx, 2),
-                "bodyY": round(y, 2),
-            })
+            entry = {
+                    "id": p["id"],
+                    "name": p["name"],
+                    "side": side,
+                    "category": p["category"],
+                    "interfaceType": p["interfaceType"],
+                    "x": round(px, 2),
+                    "y": round(y, 2),
+                    "bodyX": round(bx, 2),
+                    "bodyY": round(y, 2),
+                }
+            if "signals" in p:
+                entry["signals"] = p["signals"]
+            final_pins.append(entry)
 
     _place(left_pins, "left")
     _place(right_pins, "right")
@@ -750,6 +769,54 @@ def _build_interface_pins(
 
 
 # ── Net scoping ─────────────────────────────────────────────────
+
+
+def _add_port_pins_to_internal_net(
+    net: dict,
+    module_id: str,
+    module_interfaces: dict[str, dict[str, dict]],
+) -> dict:
+    """Add synthetic port pin references to a module-internal net.
+
+    For each component pin in the net that maps to a module interface via
+    the pin_map, add a corresponding port pin so the frontend can draw
+    wires from the port to the internal component.
+    """
+    ifaces = module_interfaces.get(module_id, {})
+    if not ifaces:
+        return net
+
+    seen_refs: set[tuple[str, str]] = set()
+
+    for pin in net["pins"]:
+        comp_id = pin.get("componentId", "")
+        pad_name = pin.get("pinNumber", "")
+
+        for _iface_name, iface_data in ifaces.items():
+            pin_map = iface_data.get("pin_map", {})
+            comp_map = pin_map.get(comp_id, {})
+            if pad_name in comp_map:
+                iface_id, signal_suffix = comp_map[pad_name]
+                pin_number = signal_suffix if signal_suffix else "1"
+                seen_refs.add((iface_id, pin_number))
+                break
+
+    if not seen_refs:
+        return net
+
+    enhanced_pins = list(net["pins"])
+    for iface_id, pin_number in seen_refs:
+        enhanced_pins.append(
+            {
+                "componentId": iface_id,
+                "pinNumber": pin_number,
+            }
+        )
+
+    return {
+        **net,
+        "pins": _dedup_pins(enhanced_pins),
+    }
 
 
 def _scope_nets(
@@ -785,7 +852,16 @@ def _scope_nets(
         if len(unique_owners) == 1:
             # All pins in the same module (or all at root)
             owner = next(iter(unique_owners))
-            scoped[owner].append(net)
+            if owner is not None:
+                # Add synthetic port pins for internal pins that map to
+                # module interface pins, so the frontend can draw wires
+                # between ports and internal components.
+                enhanced = _add_port_pins_to_internal_net(
+                    net, owner, module_interfaces
+                )
+                scoped[owner].append(enhanced)
+            else:
+                scoped[owner].append(net)
         else:
             # Net crosses module boundaries
             # Create a root-level net with interface pin references
@@ -799,22 +875,35 @@ def _scope_nets(
                     # For pins inside a module, map to the module's interface pin
                     # The module ID becomes the componentId, and we need to find
                     # which interface pin this net goes through
-                    iface_pin_id = _find_interface_pin_for_net(
+                    result = _find_interface_pin_for_net(
                         owner, owner_pins, module_interfaces
                     )
-                    if iface_pin_id:
-                        root_pins.append({
-                            "componentId": owner,
-                            "pinNumber": iface_pin_id,
-                        })
+                    if result:
+                        iface_id, signal_name = result
+                        # Parent level — consolidated single pin on module block
+                        root_pins.append(
+                            {
+                                "componentId": owner,
+                                "pinNumber": iface_id,
+                            }
+                        )
+                        # Internal level — per-signal pin number
+                        # Use signal name so nets route to individual breakout
+                        # port dots; fall back to "1" for single-signal interfaces
+                        internal_pin_number = signal_name if signal_name else "1"
+                    else:
+                        iface_id = None
+                        internal_pin_number = "1"
 
                     # Also create an internal net for the module connecting
                     # the port to the internal component pins
                     internal_pins = list(owner_pins)
-                    internal_pins.append({
-                        "componentId": iface_pin_id or f"port_{owner}",
-                        "pinNumber": "1",
-                    })
+                    internal_pins.append(
+                        {
+                            "componentId": iface_id or f"port_{owner}",
+                            "pinNumber": internal_pin_number,
+                        }
+                    )
                     if len(internal_pins) >= 2:
                         internal_net = {
                             "id": f"{net['id']}__{owner}",
@@ -840,11 +929,13 @@ def _find_interface_pin_for_net(
     module_id: str,
     pins_inside: list[dict],
     module_interfaces: dict[str, dict[str, dict]],
-) -> str | None:
+) -> tuple[str, str] | None:
     """
     For a net that enters a module, find which interface pin it maps to.
 
     Uses the interface pin map that was built from lead_functions data.
+
+    Returns (iface_id, signal_suffix) or None.
     """
     ifaces = module_interfaces.get(module_id, {})
     if not ifaces:
@@ -858,7 +949,7 @@ def _find_interface_pin_for_net(
         # Look through all interface pins for a match
         for _iface_name, iface_data in ifaces.items():
             pin_map = iface_data.get("pin_map", {})
-            # pin_map: {comp_json_id: {pad_name: iface_pin_id}}
+            # pin_map: {comp_json_id: {pad_name: (iface_id, signal_suffix)}}
             comp_map = pin_map.get(comp_id, {})
             if pin_number in comp_map:
                 return comp_map[pin_number]
@@ -878,6 +969,207 @@ def _dedup_pins(pins: list[dict]) -> list[dict]:
     return result
 
 
+# ── Sub-PCB schematic position reuse ────────────────────────────
+
+
+def _remap_position_key(
+    key: str,
+    src_root_id: str,
+    tgt_module_id: str,
+    tgt_path_prefix: str,
+) -> str | None:
+    """Remap a position key from a source .ato_sch to the target hierarchy.
+
+    In the source ``.ato_sch``, positions are keyed as ``path:item_id``:
+
+    - ``__root__:src_root_id`` — the module block on the source root sheet.
+      Skipped because the user positions this block themselves in the target.
+    - ``src_root_id:src_root_id_comp`` — items on the source module's internal
+      sheet.  The item_id has the source module's json_id as prefix.
+      Remapped to ``tgt_path_prefix:tgt_module_id_comp``.
+    - ``src_root_id/child:child_comp`` — items inside a child sub-sheet.
+      Remapped to ``tgt_path_prefix/tgt_module_id_child:tgt_module_id_comp``.
+
+    Returns the remapped key, or ``None`` if the key cannot be mapped.
+    """
+    if ":" not in key:
+        return None
+
+    path_part, item_id = key.split(":", 1)
+
+    # Skip __root__ positions — these are placements of modules on the
+    # source's root sheet, not internal layout we want to reuse.
+    if path_part == "__root__":
+        return None
+
+    # Remap item ID: strip the source module's json_id prefix and replace
+    # with the target module's json_id.
+    # e.g. "i2c_mux_decoupling_caps_0" → strip "i2c_mux_" → "decoupling_caps_0"
+    #      → prepend "my_mux_" → "my_mux_decoupling_caps_0"
+    # For interface port IDs (e.g. "power", "i2c") that don't have the
+    # source prefix, just prepend the target prefix.
+    src_prefix = src_root_id + "_"
+    if item_id.startswith(src_prefix):
+        item_suffix = item_id[len(src_prefix) :]
+        new_item_id = f"{tgt_module_id}_{item_suffix}"
+    else:
+        # Interface port or item without source prefix — just use as-is
+        # (ports like "power", "i2c" don't get module prefixes in json)
+        new_item_id = item_id
+
+    # Remap path: the source module's own path becomes the target path prefix,
+    # and any child sub-paths get the target module id prepended.
+    if path_part == src_root_id:
+        # Source module's internal sheet → target module's internal sheet
+        new_path = tgt_path_prefix
+    else:
+        # Nested sub-sheet under the source module.
+        # Strip the source root prefix if present, then remap segments.
+        if path_part.startswith(src_root_id + "/"):
+            child_path = path_part[len(src_root_id) + 1 :]
+        else:
+            child_path = path_part
+
+        # Remap child path segments similarly: strip source prefix, add target
+        src_segments = child_path.split("/")
+        tgt_segments = []
+        for seg in src_segments:
+            if seg.startswith(src_prefix):
+                tgt_segments.append(f"{tgt_module_id}_{seg[len(src_prefix):]}")
+            else:
+                tgt_segments.append(seg)
+        new_path = tgt_path_prefix + "/" + "/".join(tgt_segments)
+
+    return f"{new_path}:{new_item_id}"
+
+
+def _build_module_path(
+    mod_id: str,
+    all_modules: dict[str, _ModInfo],
+    interesting_module_ids: set[str],
+) -> str:
+    """Build the pathKey for a module's internal sheet.
+
+    Walks from the module up through *interesting* ancestor modules,
+    collecting json_ids.  Only interesting modules (those with their own
+    sheets) participate in the navigation path.
+
+    Result: ``grandparent/parent/module`` or just ``module`` for root-level.
+    """
+    parts: list[str] = []
+    current: str | None = mod_id
+    while current and current in interesting_module_ids:
+        mod = all_modules.get(current)
+        if not mod:
+            break
+        parts.append(mod.json_id)
+        current = mod.parent_id
+    parts.reverse()
+    return "/".join(parts) if parts else mod_id
+
+
+def _load_subpcb_schematic_positions(
+    all_modules: dict[str, _ModInfo],
+    interesting_module_ids: set[str],
+    existing_positions: dict[str, dict],
+) -> dict[str, dict]:
+    """Load schematic positions from source .ato_sch files for sub-PCB modules.
+
+    For each interesting module that has a ``has_subpcb`` trait, looks for
+    a ``.ato_sch`` file next to the ``.kicad_pcb``, loads its positions,
+    remaps the keys to the target hierarchy, and returns the merged dict.
+
+    Existing (user-saved) positions take priority — only missing keys are
+    filled from the source.
+    """
+    import json as _json
+
+    try:
+        from atopile.layout import has_subpcb
+    except ImportError:
+        return {}
+
+    merged: dict[str, dict] = {}
+
+    for mod_id in interesting_module_ids:
+        mod = all_modules.get(mod_id)
+        if not mod or not mod.node:
+            continue
+
+        # Check for has_subpcb trait
+        if not mod.node.has_trait(has_subpcb):
+            continue
+
+        try:
+            subpcbs = mod.node.get_trait(has_subpcb).subpcb
+        except Exception:
+            continue
+
+        # Try each SubPCB path for a matching .ato_sch
+        for subpcb in subpcbs:
+            try:
+                pcb_path = subpcb.get_path()
+                ato_sch_path = pcb_path.with_suffix(".ato_sch")
+                if not ato_sch_path.exists():
+                    continue
+
+                src_data = _json.loads(ato_sch_path.read_text(encoding="utf-8"))
+
+                # Only process v2 format
+                if src_data.get("version") != "2.0":
+                    continue
+
+                src_positions = src_data.get("positions", {})
+                if not src_positions:
+                    continue
+
+                # Find the source root module ID — the first module listed
+                # in the source's root sheet (the entry point module)
+                src_root = src_data.get("root", {})
+                src_root_modules = src_root.get("modules", [])
+                if not src_root_modules:
+                    continue
+                src_root_id = src_root_modules[0].get("id", "")
+                if not src_root_id:
+                    continue
+
+                # Build the target path prefix for this module
+                tgt_path_prefix = _build_module_path(
+                    mod_id, all_modules, interesting_module_ids
+                )
+
+                # Remap each source position key
+                for src_key, pos_data in src_positions.items():
+                    new_key = _remap_position_key(
+                        src_key, src_root_id, mod.json_id, tgt_path_prefix
+                    )
+                    if new_key is None:
+                        continue
+                    # User's existing positions take priority
+                    if new_key in existing_positions:
+                        continue
+                    if new_key not in merged:
+                        merged[new_key] = pos_data
+
+                # Found a valid .ato_sch — stop trying other SubPCB paths
+                break
+
+            except Exception as e:
+                logger.debug(
+                    "Could not load sub-PCB schematic from %s: %s",
+                    subpcb,
+                    e,
+                )
+                continue
+
+    if merged:
+        logger.info(
+            "Injected %d schematic positions from sub-PCB packages", len(merged)
+        )
+
+    return merged
+
+
 # ── Main export function ────────────────────────────────────────
 
 
@@ -886,7 +1178,6 @@ def export_schematic_json(
     solver: Solver,
     *,
     json_path: Path,
-    layout_path: Path | None = None,
 ) -> None:
     """
     Export hierarchical schematic data (v2 format).
@@ -925,10 +1216,13 @@ def export_schematic_json(
 
     if not fp_nodes:
         logger.info("No components found, writing empty schematic JSON")
-        write_json({
-            "version": "2.0",
-            "root": {"modules": [], "components": [], "nets": []},
-        }, json_path)
+        write_json(
+            {
+                "version": "2.0",
+                "root": {"modules": [], "components": [], "nets": []},
+            },
+            json_path,
+        )
         return
 
     comp_infos: list[_CompInfo] = []
@@ -971,7 +1265,10 @@ def export_schematic_json(
 
             logger.info(
                 "  Component: full=%s parent=%s id=%s pads=%d",
-                comp_full, parent_name, comp_json_id, len(pads),
+                comp_full,
+                parent_name,
+                comp_json_id,
+                len(pads),
             )
 
             # Designator
@@ -983,9 +1280,7 @@ def export_schematic_json(
                     des_node = parent[0]
             if des_node.has_trait(F.has_designator):
                 try:
-                    designator = des_node.get_trait(
-                        F.has_designator
-                    ).get_designator()
+                    designator = des_node.get_trait(F.has_designator).get_designator()
                 except Exception:
                     pass
 
@@ -1020,7 +1315,8 @@ def export_schematic_json(
 
             # Check if leads actually have associated pads
             leads_with_pads = [
-                l for l in lead_nodes
+                l
+                for l in lead_nodes
                 if l.get_trait(F.Lead.is_lead).has_trait(F.Lead.has_associated_pads)
             ]
 
@@ -1032,7 +1328,8 @@ def export_schematic_json(
                     required_trait=F.Lead.is_lead,
                 )
                 parent_leads_with_pads = [
-                    l for l in parent_leads
+                    l
+                    for l in parent_leads
                     if l.get_trait(F.Lead.is_lead).has_trait(F.Lead.has_associated_pads)
                 ]
                 if parent_leads_with_pads:
@@ -1051,9 +1348,7 @@ def export_schematic_json(
                 lead_name = lead_trait.get_lead_name()
                 functions = _trace_lead_interfaces(lead_node, trace_context)
 
-                assoc_pads = lead_trait.get_trait(
-                    F.Lead.has_associated_pads
-                ).get_pads()
+                assoc_pads = lead_trait.get_trait(F.Lead.has_associated_pads).get_pads()
                 for pad in assoc_pads:
                     try:
                         pad_name_to_display[pad.pad_name] = lead_name
@@ -1108,7 +1403,8 @@ def export_schematic_json(
                     logger.warning(
                         "    DEDUP: pad %s (pad_name=%s) skipped — "
                         "pad_name already seen",
-                        pad.pad_number, pad.pad_name,
+                        pad.pad_number,
+                        pad.pad_name,
                     )
                     continue
                 seen_pad_names.add(pad.pad_name)
@@ -1150,14 +1446,16 @@ def export_schematic_json(
             # Extract interface mapping for this component's pins
             pin_to_iface = _extract_pin_interfaces(pad_name_to_functions)
 
-            comp_infos.append(_CompInfo(
-                json_id=comp_json_id,
-                full_name=comp_full,
-                json_component=json_component,
-                module_path=[],
-                owner_module_id=None,
-                pin_to_iface=pin_to_iface,
-            ))
+            comp_infos.append(
+                _CompInfo(
+                    json_id=comp_json_id,
+                    full_name=comp_full,
+                    json_component=json_component,
+                    module_path=[],
+                    owner_module_id=None,
+                    pin_to_iface=pin_to_iface,
+                )
+            )
 
             comp_fullname_to_id[comp_full] = comp_json_id
 
@@ -1219,7 +1517,8 @@ def export_schematic_json(
 
         logger.info(
             "  Component %s (full=%s) -> owner=%s",
-            comp.json_id, comp.full_name,
+            comp.json_id,
+            comp.full_name,
             all_modules[owner].full_name if owner else "ROOT",
         )
 
@@ -1257,7 +1556,7 @@ def export_schematic_json(
                 continue
             # Relative name: strip the module prefix
             if comp.full_name.startswith(mod.full_name + "."):
-                rel = comp.full_name[len(mod.full_name) + 1:]
+                rel = comp.full_name[len(mod.full_name) + 1 :]
                 # The immediate child name (before any further dots)
                 child = rel.split(".")[0]
                 _internal_names.add(child)
@@ -1309,11 +1608,12 @@ def export_schematic_json(
 
                     iface_map[iface_name]["signals"].add(signal_suffix)
 
-                    # Build pin_map: comp_id -> {pad -> interface port id}
-                    # All signals within an interface map to the same
-                    # interface-level port (e.g., both scl and sda map
-                    # to the "i2c" port, not "i2c_scl"/"i2c_sda").
-                    pin_map[iface_name][comp.json_id][pad_name] = iface_name
+                    # Build pin_map: comp_id -> {pad -> (iface_id, signal_suffix)}
+                    # Tracks which specific signal within an interface each pad maps to.
+                    pin_map[iface_name][comp.json_id][pad_name] = (
+                        iface_name,
+                        signal_suffix,
+                    )
 
         mod.interfaces = iface_map
         module_interfaces[mid] = iface_map
@@ -1348,10 +1648,12 @@ def export_schematic_json(
                 connected_pads = fbrk_net.get_connected_pads()
                 for pad in connected_pads:
                     if pad in pad_to_comp:
-                        net_pins.append({
-                            "componentId": pad_to_comp[pad],
-                            "pinNumber": pad_to_number.get(pad, "?"),
-                        })
+                        net_pins.append(
+                            {
+                                "componentId": pad_to_comp[pad],
+                                "pinNumber": pad_to_number.get(pad, "?"),
+                            }
+                        )
             except Exception:
                 continue
 
@@ -1361,12 +1663,14 @@ def export_schematic_json(
             unique_pins = _dedup_pins(net_pins)
             net_id = re.sub(r"[^a-zA-Z0-9_]", "_", net_name)
 
-            raw_nets.append({
-                "id": net_id,
-                "name": net_name,
-                "type": _net_type(net_name),
-                "pins": unique_pins,
-            })
+            raw_nets.append(
+                {
+                    "id": net_id,
+                    "name": net_name,
+                    "type": _net_type(net_name),
+                    "pins": unique_pins,
+                }
+            )
 
         except Exception as e:
             logger.debug("Error processing net: %s", e, exc_info=True)
@@ -1437,9 +1741,7 @@ def export_schematic_json(
 
     # Root-level components (not owned by any interesting module)
     root_components = [
-        ci.json_component
-        for ci in comp_infos
-        if ci.owner_module_id is None
+        ci.json_component for ci in comp_infos if ci.owner_module_id is None
     ]
 
     # Root-level nets
@@ -1455,20 +1757,39 @@ def export_schematic_json(
     # Phase 8: Write output
     # ═══════════════════════════════════════════════════════════════
 
+    # Preserve existing positions from the output file (if any)
+    existing_positions: dict = {}
+    if json_path.exists():
+        try:
+            import json as _json
+
+            existing_data = _json.loads(json_path.read_text(encoding="utf-8"))
+            existing_positions = existing_data.get("positions", {})
+        except Exception:
+            pass  # file corrupt or not JSON — start fresh
+
+    # Inject schematic positions from sub-PCB packages
+    try:
+        subpcb_positions = _load_subpcb_schematic_positions(
+            all_modules, interesting_module_ids, existing_positions,
+        )
+        existing_positions.update(subpcb_positions)
+    except Exception as e:
+        logger.debug("Could not load sub-PCB schematic positions: %s", e)
+
     result: dict = {
         "version": "2.0",
         "root": root_sheet,
+        "positions": existing_positions,
     }
-
-    if layout_path is not None:
-        result["layoutPath"] = str(layout_path)
 
     write_json(result, json_path)
     logger.info(
-        "Wrote v2 schematic JSON with %d root modules, %d root components, "
-        "%d root nets to %s",
+        "Wrote v2 schematic to %s (%d root modules, %d root components, "
+        "%d root nets, %d saved positions)",
+        json_path,
         len(root_modules),
         len(root_components),
         len(root_nets),
-        json_path,
+        len(existing_positions),
     )
