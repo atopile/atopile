@@ -16,6 +16,7 @@ import { traceInfo, traceError } from '../common/log/logging';
 import { getWorkspaceSettings } from '../common/settings';
 import { getProjectRoot } from '../common/utilities';
 import { openPcb } from '../common/kicad';
+import { openPcbnewVnc } from '../ui/pcbnew-vnc';
 import { setCurrentPCB } from '../common/pcb';
 import { setCurrentThreeDModel, startThreeDModelBuild } from '../common/3dmodel';
 import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/target';
@@ -46,6 +47,15 @@ interface AtopileSettingsMessage {
     source?: string;
     localPath?: string | null;
   };
+}
+
+interface FetchProxyRequest {
+  type: 'fetchProxy';
+  id: number;
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body: string | null;
 }
 
 interface SelectionChangedMessage {
@@ -185,7 +195,8 @@ type WebviewMessage =
   | OpenInTerminalMessage
   | ListFilesMessage
   | LoadDirectoryMessage
-  | GetAtopileSettingsMessage;
+  | GetAtopileSettingsMessage
+  | FetchProxyRequest;
 
 /**
  * Check if we're running in development mode.
@@ -407,6 +418,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           vscode.Uri.file(path.join(extensionPath, 'resources', 'model-viewer')),
           vscode.Uri.file(path.join(extensionPath, 'webviews', 'dist')),
         ],
+      portMapping: [
+        { webviewPort: backendServer.port, extensionHostPort: backendServer.port },
+      ],
     };
     webviewView.webview.options = webviewOptions;
 
@@ -747,9 +761,52 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         // Load contents of a lazy-loaded directory
         this._handleLoadDirectory(message.projectRoot, message.directoryPath);
         break;
+      case 'fetchProxy':
+        // Proxy HTTP requests from the webview through the extension host.
+        // In OpenVSCode Server, webviews are served from HTTPS CDN which blocks
+        // HTTP fetch() to the local backend (Mixed Content).
+        this._handleFetchProxy(message);
+        break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
     }
+  }
+
+  private _handleFetchProxy(req: FetchProxyRequest): void {
+    const url = req.url;
+    const init: Record<string, unknown> = {
+      method: req.method,
+      headers: req.headers,
+    };
+    if (req.body && req.method !== 'GET' && req.method !== 'HEAD') {
+      init.body = req.body;
+    }
+
+    // Use Node.js native fetch (available since Node 18)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch(url, init)
+      .then(async (response: { text: () => Promise<string>; status: number; statusText: string; headers: { forEach: (cb: (v: string, k: string) => void) => void } }) => {
+        const body = await response.text();
+        const headers: Record<string, string> = {};
+        response.headers.forEach((value: string, key: string) => {
+          headers[key] = value;
+        });
+        this._view?.webview.postMessage({
+          type: 'fetchProxyResult',
+          id: req.id,
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+          body,
+        });
+      })
+      .catch((err: Error) => {
+        this._view?.webview.postMessage({
+          type: 'fetchProxyResult',
+          id: req.id,
+          error: String(err),
+        });
+      });
   }
 
   private async _handleSelectionChanged(message: SelectionChangedMessage): Promise<void> {
@@ -862,10 +919,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       vscode.window.showErrorMessage('KiCad layout file not found. Run a build to generate it.');
       return;
     }
-    void openPcb(pcbPath).catch((error) => {
-      traceError(`[SidebarProvider] Failed to open KiCad: ${error}`);
-      vscode.window.showErrorMessage(`Failed to open KiCad: ${error instanceof Error ? error.message : error}`);
-    });
+
+    if (vscode.env.uiKind === vscode.UIKind.Web) {
+      // In web IDE (OpenVSCode Server), use VNC viewer since we can't spawn pcbnew with a display
+      void openPcbnewVnc(pcbPath).catch((error) => {
+        traceError(`[SidebarProvider] Failed to open PCBnew VNC: ${error}`);
+        vscode.window.showErrorMessage(`Failed to open PCBnew: ${error instanceof Error ? error.message : error}`);
+      });
+    } else {
+      // Desktop VS Code: spawn pcbnew directly
+      void openPcb(pcbPath).catch((error) => {
+        traceError(`[SidebarProvider] Failed to open KiCad: ${error}`);
+        vscode.window.showErrorMessage(`Failed to open KiCad: ${error instanceof Error ? error.message : error}`);
+      });
+    }
   }
 
   private async _open3dPreview(filePath: string): Promise<void> {
@@ -1420,6 +1487,80 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     window.__ATOPILE_MODEL_VIEWER_URL__ = '${modelViewerUri}';
     // Inject workspace root for the React app
     window.__ATOPILE_WORKSPACE_ROOT__ = ${JSON.stringify(workspaceRoot || '')};
+
+    // Fetch proxy: route backend HTTP requests through the extension host.
+    // In OpenVSCode Server, webviews run at https://vscode-cdn.net which blocks
+    // HTTP fetch() to localhost (Mixed Content). The extension host runs server-side
+    // and can make HTTP requests without restrictions.
+    //
+    // IMPORTANT: acquireVsCodeApi() can only be called ONCE per webview. We wrap it
+    // so both our proxy and the React app share the same instance.
+    (function() {
+      var originalAcquire = window.acquireVsCodeApi;
+      var vsCodeApi = null;
+      window.acquireVsCodeApi = function() {
+        if (!vsCodeApi) vsCodeApi = originalAcquire();
+        return vsCodeApi;
+      };
+
+      var backendBase = '${apiUrl}';
+      var originalFetch = window.fetch;
+      var proxyId = 0;
+      var pending = new Map();
+
+      window.addEventListener('message', function(event) {
+        var msg = event.data;
+        if (msg && msg.type === 'fetchProxyResult' && pending.has(msg.id)) {
+          var handler = pending.get(msg.id);
+          pending.delete(msg.id);
+          handler(msg);
+        }
+      });
+
+      window.fetch = function(input, init) {
+        var url = typeof input === 'string' ? input : (input instanceof Request ? input.url : String(input));
+        if (!url.startsWith(backendBase)) {
+          return originalFetch.apply(this, arguments);
+        }
+
+        var id = ++proxyId;
+        return new Promise(function(resolve, reject) {
+          var timeout = setTimeout(function() {
+            pending.delete(id);
+            reject(new TypeError('Fetch proxy timeout'));
+          }, 30000);
+
+          pending.set(id, function(msg) {
+            clearTimeout(timeout);
+            if (msg.error) {
+              reject(new TypeError(msg.error));
+            } else {
+              resolve(new Response(msg.body, {
+                status: msg.status || 200,
+                statusText: msg.statusText || 'OK',
+                headers: msg.headers || {},
+              }));
+            }
+          });
+
+          var api = vsCodeApi || (window.acquireVsCodeApi ? window.acquireVsCodeApi() : null);
+          if (api) {
+            api.postMessage({
+              type: 'fetchProxy',
+              id: id,
+              url: url,
+              method: (init && init.method) || 'GET',
+              headers: (init && init.headers) || {},
+              body: (init && init.body) || null,
+            });
+          } else {
+            clearTimeout(timeout);
+            pending.delete(id);
+            originalFetch.apply(window, [input, init]).then(resolve, reject);
+          }
+        });
+      };
+    })();
   </script>
 </head>
 <body>
