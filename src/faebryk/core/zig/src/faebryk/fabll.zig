@@ -286,16 +286,45 @@ fn apply_typed_attributes(instance: graph.BoundNodeReference, attrs: anytype) vo
 }
 
 pub fn get_typed_attributes(node: anytype) AttributesType(@TypeOf(node)) {
+    // TODO: benchmark with real types whether attrvisitor is faster than inline loop with get
     const T = @TypeOf(node);
     const A = AttributesType(T);
     if (comptime std.meta.fields(A).len == 0) {
         @compileError("Type does not define `Attributes`");
     }
+    const fields = std.meta.fields(A);
+    const field_count = fields.len;
+
     var out: A = undefined;
-    inline for (std.meta.fields(A)) |field| {
-        const lit = node.node.instance.node.get(field.name) orelse
+    var seen: [field_count]bool = [_]bool{false} ** field_count;
+
+    const AttrVisitor = struct {
+        out: *A,
+        seen: *[field_count]bool,
+
+        pub fn visit(ctx: *anyopaque, key: str, lit: graph.Literal, dynamic: bool) void {
+            if (!dynamic) return;
+            const self: *@This() = @ptrCast(@alignCast(ctx));
+            inline for (fields, 0..) |field, i| {
+                if (std.mem.eql(u8, key, field.name)) {
+                    @field(self.out.*, field.name) = literal_to_attribute_value(field.type, lit);
+                    self.seen[i] = true;
+                    return;
+                }
+            }
+        }
+    };
+    var visitor_ctx = AttrVisitor{
+        .out = &out,
+        .seen = &seen,
+    };
+    node.node.instance.node.visit_attributes(&visitor_ctx, AttrVisitor.visit);
+
+    inline for (fields, 0..) |field, i| {
+        if (!seen[i]) {
+            std.debug.print("missing typed attribute on node: {s}\n", .{field.name});
             @panic("missing typed attribute on node");
-        @field(out, field.name) = literal_to_attribute_value(field.type, lit);
+        }
     }
     return out;
 }
