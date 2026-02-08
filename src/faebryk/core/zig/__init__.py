@@ -43,6 +43,30 @@ RELEASEMODE = ConfigFlagEnum(
 )
 NORECOMPILE = ConfigFlag("ZIG_NORECOMPILE", default=False)
 
+_source_hash_file = _build_dir / ".zig-source-hash"
+
+
+def _compute_source_hash() -> str:
+    """Hash all zig source files + build config to detect changes."""
+    from .compute_hash import compute_source_hash
+
+    return compute_source_hash(zig_dir=_thisdir, release_mode=RELEASEMODE.value)
+
+
+def _zig_sources_changed() -> bool:
+    """Check if zig sources changed since last successful build."""
+    if not (_build_dir / "pyzig.so").exists():
+        return True
+    if not (_build_dir / "pyzig_sexp.so").exists():
+        return True
+    if not _source_hash_file.exists():
+        return True
+    return _source_hash_file.read_text().strip() != _compute_source_hash()
+
+
+def _save_source_hash() -> None:
+    _source_hash_file.write_text(_compute_source_hash())
+
 
 @debug_perf
 def compile_zig():
@@ -143,8 +167,9 @@ def load_sexp():
 
 # Fallback to editable build-on-import
 if is_editable_install():
-    if not NORECOMPILE.get():
+    if not NORECOMPILE.get() and _zig_sources_changed():
         compile_zig()
+        _save_source_hash()
     pyzig = load()
 
     # load sexp

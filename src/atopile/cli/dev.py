@@ -178,6 +178,58 @@ def install(
     print("Remember to reload your extension!")
 
 
+@dev_app.command()
+@capture("cli:dev_worktree_start", "cli:dev_worktree_end")
+def worktree(
+    name: str = typer.Argument(..., help="Branch/worktree name to create."),
+    path: Path | None = typer.Option(
+        None,
+        "--path",
+        help="Explicit worktree path. Defaults to <parent-of-main-worktree>/<name>.",
+    ),
+    start_point: str = typer.Option(
+        "HEAD",
+        "--start-point",
+        help="Git ref to branch from when creating a new branch.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Base directory used when --path is not provided.",
+    ),
+    source_root: Path | None = typer.Option(
+        None,
+        "--source-root",
+        help="Main worktree to clone caches/venv from (auto-detected by default).",
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite existing cloned cache targets if needed."
+    ),
+    skip_editable_install: bool = typer.Option(
+        False,
+        "--skip-editable-install",
+        help="Skip editable install step in the cloned worktree venv.",
+    ),
+):
+    """
+    Create a fast development worktree with cloned `.venv` and Zig artifacts.
+    """
+    from atopile.worktree import create_worktree
+
+    try:
+        create_worktree(
+            name,
+            path=path,
+            start_point=start_point,
+            base_dir=base_dir,
+            source_root=source_root,
+            force=force,
+            skip_editable_install=skip_editable_install,
+        )
+    except (RuntimeError, FileExistsError, FileNotFoundError) as e:
+        raise typer.BadParameter(str(e))
+
+
 def _env_truthy(name: str) -> bool | None:
     val = os.getenv(name)
     if val is None:

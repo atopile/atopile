@@ -38,6 +38,7 @@ jobs:
 
       # disable for self-hosted runner
       - name: "Set up Python"
+        id: setup-python
         uses: actions/setup-python@v5
         with:
           # self-hosted runner struggles with this one
@@ -51,9 +52,23 @@ jobs:
         #env:
         #  UV_CACHE_DIR: /var/cache/uv
 
+      - name: Compute zig source hash
+        id: zig-hash
+        run: |
+          echo "hash=$(python src/faebryk/core/zig/compute_hash.py)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache zig build
+        id: zig-cache
+        uses: actions/cache@v4
+        with:
+          path: src/faebryk/core/zig/zig-out
+          key: zig-${{ runner.os }}-${{ runner.arch }}-py${{ steps.setup-python.outputs.python-version }}-${{ steps.zig-hash.outputs.hash }}
+
       - name: "Compile & build package"
         run: |
           uv pip install --no-deps .
+        env:
+          ATOPILE_ZIG_OUT_DIR: ${{ github.workspace }}/src/faebryk/core/zig/zig-out
 
       - name: Run pytest
         id: pytest
