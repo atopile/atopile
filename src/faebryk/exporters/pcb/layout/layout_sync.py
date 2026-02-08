@@ -149,6 +149,11 @@ class LayoutSync:
                 group, "members", group.members, sorted(current_members)
             )
 
+        # Clean up groups that no longer have footprints assigned to them
+        removed_groups = set(self._old_groups.keys()) - set(self.groups.keys())
+        for group_name in removed_groups:
+            self._clean_group(group_name)
+
     def _generate_net_map(
         self, source_pcb: PCB, target_pcb: PCB, addr_map: dict[str, str]
     ) -> dict[str, str]:
