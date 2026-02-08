@@ -9,7 +9,6 @@ const str = []const u8;
 // Still missing (vs Python FabLL)
 // =============================================================================
 // - Full RefPath parity beyond self/owner_child/child_identifier
-// - First-class EdgeField declaration + execution parity
 // - Rich dependant child ergonomics
 // - ListField equivalent
 // - Type-field / put_on_type semantics
@@ -20,14 +19,14 @@ const str = []const u8;
 // - Better non-panic error surface
 
 // =============================================================================
-// Next milestone: edge declaration parity TODO
+// Next milestone: dependant parity TODO
 // =============================================================================
-// 1) Define first-class edge declaration field type
-// 2) Define typed refpath spec usable by edge declarations
-// 3) Execute declared edges during type creation
-// 4) Add tests: direct sibling edge
-// 5) Add tests: multi-segment nested edge
-// 6) Add tests: interaction with dependant-created edges
+// 1) Add first-class dependant declaration field type
+// 2) Execute declared dependants during type creation
+// 3) Keep child-first / edge-after ordering deterministic
+// 4) Add tests: dependant child + edge combinations
+// 5) Add tests: prepend vs append dependant ordering
+// 6) Add tests: interaction with declared edges
 
 // =============================================================================
 // Compile-time reflection & utility helpers
@@ -45,6 +44,14 @@ fn is_dependant_edge_type(comptime MaybeDependant: type) bool {
         @hasDecl(MaybeDependant, "LhsPath") and
         @hasDecl(MaybeDependant, "RhsPath") and
         @hasDecl(MaybeDependant, "EdgeFactory");
+}
+
+fn is_edge_declaration_type(comptime MaybeEdgeDecl: type) bool {
+    return @typeInfo(MaybeEdgeDecl) == .@"struct" and
+        @hasDecl(MaybeEdgeDecl, "EdgeDeclKind") and
+        @hasDecl(MaybeEdgeDecl, "LhsPath") and
+        @hasDecl(MaybeEdgeDecl, "RhsPath") and
+        @hasDecl(MaybeEdgeDecl, "EdgeFactory");
 }
 
 fn append_type(comptime items: []const type, comptime item: type) []const type {
@@ -94,6 +101,41 @@ fn visit_fields(
         const value = @field(T, decl.name);
         if (comptime is_child_field_type(@TypeOf(value))) {
             switch (f(ctx, decl.name, value)) {
+                .CONTINUE => {},
+                .STOP => return visitor.VisitResult(R){ .STOP = {} },
+                .OK => |result| return visitor.VisitResult(R){ .OK = result },
+                .EXHAUSTED => return visitor.VisitResult(R){ .EXHAUSTED = {} },
+                .ERROR => |err| return visitor.VisitResult(R){ .ERROR = err },
+            }
+        }
+    }
+    return visitor.VisitResult(R){ .EXHAUSTED = {} };
+}
+
+fn visit_edge_declarations(
+    comptime T: type,
+    comptime R: type,
+    ctx: *anyopaque,
+    comptime f: anytype,
+) visitor.VisitResult(R) {
+    inline for (std.meta.fields(T)) |field| {
+        if (comptime is_edge_declaration_type(field.type)) {
+            switch (f(ctx, field.name, field.type)) {
+                .CONTINUE => {},
+                .STOP => return visitor.VisitResult(R){ .STOP = {} },
+                .OK => |result| return visitor.VisitResult(R){ .OK = result },
+                .EXHAUSTED => return visitor.VisitResult(R){ .EXHAUSTED = {} },
+                .ERROR => |err| return visitor.VisitResult(R){ .ERROR = err },
+            }
+        }
+    }
+
+    const decls = @typeInfo(T).@"struct".decls;
+    inline for (decls) |decl| {
+        const value = @field(T, decl.name);
+        const edge_decl_type = if (@TypeOf(value) == type) value else @TypeOf(value);
+        if (comptime is_edge_declaration_type(edge_decl_type)) {
+            switch (f(ctx, decl.name, edge_decl_type)) {
                 .CONTINUE => {},
                 .STOP => return visitor.VisitResult(R){ .STOP = {} },
                 .OK => |result| return visitor.VisitResult(R){ .OK = result },
@@ -278,6 +320,27 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                     @panic("unsupported dependant type");
                 }
 
+                fn apply_edge_spec(ctx: *@This(), comptime edge_spec_type: type) void {
+                    const edge_attrs = edge_spec_type.EdgeFactory.build();
+                    const lhs_path = build_path("", edge_spec_type.LhsPath);
+                    const rhs_path = build_path("", edge_spec_type.RhsPath);
+                    const lhs_ref = faebryk.typegraph.TypeGraph.ChildReferenceNode.create_and_insert(
+                        ctx.self.tg,
+                        &lhs_path,
+                    ) catch @panic("failed to build edge lhs reference");
+                    const rhs_ref = faebryk.typegraph.TypeGraph.ChildReferenceNode.create_and_insert(
+                        ctx.self.tg,
+                        &rhs_path,
+                    ) catch @panic("failed to build edge rhs reference");
+
+                    _ = ctx.self.tg.add_make_link(
+                        ctx.type_node,
+                        lhs_ref,
+                        rhs_ref,
+                        edge_attrs,
+                    ) catch @panic("failed to add declared make link");
+                }
+
                 fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, field_type: type) visitor.VisitResult(void) {
                     const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
                     const child_identifier = field_identifier(decl_name, field_type);
@@ -292,6 +355,22 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
             };
             switch (visit_fields(T, void, &build_ctx, BuildContext.visit)) {
                 .ERROR => @panic("visit_fields failed"),
+                else => {},
+            }
+            const EdgeDeclContext = struct {
+                build_ctx: *BuildContext,
+
+                fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, edge_decl: anytype) visitor.VisitResult(void) {
+                    const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                    _ = decl_name;
+                    const edge_decl_type = if (@TypeOf(edge_decl) == type) edge_decl else @TypeOf(edge_decl);
+                    ctx.build_ctx.apply_edge_spec(edge_decl_type);
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                }
+            };
+            var edge_decl_ctx: EdgeDeclContext = .{ .build_ctx = &build_ctx };
+            switch (visit_edge_declarations(T, void, &edge_decl_ctx, EdgeDeclContext.visit)) {
+                .ERROR => @panic("visit_edge_declarations failed"),
                 else => {},
             }
 
@@ -485,6 +564,22 @@ pub fn MakeDependantEdge(
     };
 }
 
+pub fn MakeEdgeDeclaration(
+    comptime lhs_path: RefPath,
+    comptime rhs_path: RefPath,
+    comptime edge_factory: type,
+) type {
+    if (comptime !@hasDecl(edge_factory, "build")) {
+        @compileError("MakeEdgeDeclaration edge_factory must provide build()");
+    }
+    return struct {
+        pub const EdgeDeclKind = .edge;
+        pub const LhsPath = lhs_path;
+        pub const RhsPath = rhs_path;
+        pub const EdgeFactory = edge_factory;
+    };
+}
+
 pub const Field = struct {
     identifier: ?str,
     locator: ?str,
@@ -635,6 +730,81 @@ const Number = struct {
     }
 };
 
+const NumberContainer = struct {
+    node: Node,
+
+    n: Number.MakeChild(.{ .number = 3.14 }),
+};
+
+const InterfaceConnectionEdgeFactoryFalse = struct {
+    pub fn build() faebryk.edgebuilder.EdgeCreationAttributes {
+        return faebryk.interface.EdgeInterfaceConnection.build(false) catch
+            @panic("failed to build interface connection edge attributes");
+    }
+};
+
+const ElectricPowerDeclaredConnected = struct {
+    node: Node,
+    hv: Electrical.MakeChild(),
+    lv: Electrical.MakeChild(),
+
+    _hv_lv: MakeEdgeDeclaration(
+        RefPath.child_identifier("hv"),
+        RefPath.child_identifier("lv"),
+        InterfaceConnectionEdgeFactoryFalse,
+    ) = .{},
+};
+
+const ElectricPowerDeclaredNestedConnected = struct {
+    node: Node,
+    hv: Electrical.MakeChild(),
+    lv: Electrical.MakeChild(),
+
+    _hv_iface_to_lv_iface: MakeEdgeDeclaration(
+        .{
+            .segments = &.{
+                .{ .child_identifier = "hv" },
+                .{ .child_identifier = "_is_interface" },
+            },
+        },
+        .{
+            .segments = &.{
+                .{ .child_identifier = "lv" },
+                .{ .child_identifier = "_is_interface" },
+            },
+        },
+        InterfaceConnectionEdgeFactoryFalse,
+    ) = .{},
+};
+
+const ElectricPowerMixedEdges = struct {
+    node: Node,
+    hv: Electrical.MakeChild().add_dependant(
+        is_interface.MakeConnectionEdge(
+            RefPath.owner_child(),
+            RefPath.child_identifier("lv"),
+            false,
+        ),
+    ),
+    lv: Electrical.MakeChild(),
+
+    _hv_iface_to_lv_iface: MakeEdgeDeclaration(
+        .{
+            .segments = &.{
+                .{ .child_identifier = "hv" },
+                .{ .child_identifier = "_is_interface" },
+            },
+        },
+        .{
+            .segments = &.{
+                .{ .child_identifier = "lv" },
+                .{ .child_identifier = "_is_interface" },
+            },
+        },
+        InterfaceConnectionEdgeFactoryFalse,
+    ) = .{},
+};
+
 fn print_type_overview(tg: *faebryk.typegraph.TypeGraph, allocator: std.mem.Allocator, label: []const u8) void {
     var overview = tg.get_type_instance_overview(allocator);
     defer overview.deinit();
@@ -764,12 +934,6 @@ test "basic+4 child attributes" {
     var g = graph.GraphView.init(std.testing.allocator);
     defer g.deinit();
     var tg = faebryk.typegraph.TypeGraph.init(&g);
-
-    const NumberContainer = struct {
-        node: Node,
-
-        n: Number.MakeChild(.{ .number = 3.14 }),
-    };
 
     const bound = Node.bind_typegraph(NumberContainer, &tg);
     const container = bound.create_instance(&g);
@@ -919,4 +1083,124 @@ test "basic+7 two-segment refpath dependant edge" {
     }
 
     try std.testing.expect(ctx.found);
+}
+
+test "basic+8 declared edge sibling path" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const bound = Node.bind_typegraph(ElectricPowerDeclaredConnected, &tg);
+    const power = bound.create_instance(&g);
+    const hv = power.hv.get().node.instance;
+    const lv = power.lv.get().node.instance;
+
+    const Ctx = struct {
+        hv: graph.BoundNodeReference,
+        lv: graph.BoundNodeReference,
+        found: bool = false,
+
+        fn visit(ctx_ptr: *anyopaque, be: graph.BoundEdgeReference) visitor.VisitResult(void) {
+            const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+            if (!faebryk.interface.EdgeInterfaceConnection.is_instance(be.edge)) return visitor.VisitResult(void){ .CONTINUE = {} };
+            const other = faebryk.interface.EdgeInterfaceConnection.get_other_connected_node(be.edge, ctx.hv.node) orelse
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            if (other.is_same(ctx.lv.node)) ctx.found = true;
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+    };
+
+    var ctx: Ctx = .{ .hv = hv, .lv = lv };
+    switch (faebryk.interface.EdgeInterfaceConnection.visit_connected_edges(hv, &ctx, Ctx.visit)) {
+        .ERROR => @panic("visit_connected_edges failed"),
+        else => {},
+    }
+    try std.testing.expect(ctx.found);
+}
+
+test "basic+9 declared edge two-segment path" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const bound = Node.bind_typegraph(ElectricPowerDeclaredNestedConnected, &tg);
+    const power = bound.create_instance(&g);
+    const hv_iface = power.hv.get()._is_interface.get().node.instance;
+    const lv_iface = power.lv.get()._is_interface.get().node.instance;
+
+    const Ctx = struct {
+        hv_iface: graph.BoundNodeReference,
+        lv_iface: graph.BoundNodeReference,
+        found: bool = false,
+
+        fn visit(ctx_ptr: *anyopaque, be: graph.BoundEdgeReference) visitor.VisitResult(void) {
+            const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+            if (!faebryk.interface.EdgeInterfaceConnection.is_instance(be.edge)) return visitor.VisitResult(void){ .CONTINUE = {} };
+            const other = faebryk.interface.EdgeInterfaceConnection.get_other_connected_node(be.edge, ctx.hv_iface.node) orelse
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            if (other.is_same(ctx.lv_iface.node)) ctx.found = true;
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+    };
+
+    var ctx: Ctx = .{ .hv_iface = hv_iface, .lv_iface = lv_iface };
+    switch (faebryk.interface.EdgeInterfaceConnection.visit_connected_edges(hv_iface, &ctx, Ctx.visit)) {
+        .ERROR => @panic("visit_connected_edges failed"),
+        else => {},
+    }
+    try std.testing.expect(ctx.found);
+}
+
+test "basic+10 declared and dependant edge interaction" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const bound = Node.bind_typegraph(ElectricPowerMixedEdges, &tg);
+    const power = bound.create_instance(&g);
+
+    const hv = power.hv.get().node.instance;
+    const lv = power.lv.get().node.instance;
+    const hv_iface = power.hv.get()._is_interface.get().node.instance;
+    const lv_iface = power.lv.get()._is_interface.get().node.instance;
+
+    const Ctx = struct {
+        hv: graph.BoundNodeReference,
+        lv: graph.BoundNodeReference,
+        hv_iface: graph.BoundNodeReference,
+        lv_iface: graph.BoundNodeReference,
+        found_hv_lv: bool = false,
+        found_iface_iface: bool = false,
+
+        fn visit(ctx_ptr: *anyopaque, be: graph.BoundEdgeReference) visitor.VisitResult(void) {
+            const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+            if (!faebryk.interface.EdgeInterfaceConnection.is_instance(be.edge)) return visitor.VisitResult(void){ .CONTINUE = {} };
+
+            if (faebryk.interface.EdgeInterfaceConnection.get_other_connected_node(be.edge, ctx.hv.node)) |other| {
+                if (other.is_same(ctx.lv.node)) ctx.found_hv_lv = true;
+            }
+            if (faebryk.interface.EdgeInterfaceConnection.get_other_connected_node(be.edge, ctx.hv_iface.node)) |other| {
+                if (other.is_same(ctx.lv_iface.node)) ctx.found_iface_iface = true;
+            }
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+    };
+
+    var ctx: Ctx = .{
+        .hv = hv,
+        .lv = lv,
+        .hv_iface = hv_iface,
+        .lv_iface = lv_iface,
+    };
+    switch (faebryk.interface.EdgeInterfaceConnection.visit_connected_edges(hv, &ctx, Ctx.visit)) {
+        .ERROR => @panic("visit_connected_edges failed"),
+        else => {},
+    }
+    switch (faebryk.interface.EdgeInterfaceConnection.visit_connected_edges(hv_iface, &ctx, Ctx.visit)) {
+        .ERROR => @panic("visit_connected_edges failed"),
+        else => {},
+    }
+
+    try std.testing.expect(ctx.found_hv_lv);
+    try std.testing.expect(ctx.found_iface_iface);
 }
