@@ -125,6 +125,9 @@ if(NOT _use_prebuilt AND DEFINED ENV{ATOPILE_ZIG_OUT_DIR})
     COMMAND ${CMAKE_COMMAND} -E make_directory "$ENV{ATOPILE_ZIG_OUT_DIR}/lib"
     COMMAND ${CMAKE_COMMAND} -E copy "${ZIG_OUT_LIB}" "$ENV{ATOPILE_ZIG_OUT_DIR}/lib/"
     COMMAND ${CMAKE_COMMAND} -E copy "${ZIG_OUT_LIB_SEXP}" "$ENV{ATOPILE_ZIG_OUT_DIR}/lib/"
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/compute_hash.py
+            -o "$ENV{ATOPILE_ZIG_OUT_DIR}/lib/.zig-source-hash"
+            --zig-dir ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Caching zig artifacts to $ENV{ATOPILE_ZIG_OUT_DIR}"
     VERBATIM)
 endif()

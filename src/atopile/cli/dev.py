@@ -212,28 +212,22 @@ def worktree(
     ),
 ):
     """
-    Create a fast development worktree with CoW-cloned `.venv` and Zig artifacts.
+    Create a fast development worktree with cloned `.venv` and Zig artifacts.
     """
-    repo_root = Path(__file__).resolve().parents[3]
-    script = repo_root / "scripts" / "worktree_fast.sh"
-    if not script.exists():
-        raise typer.BadParameter(f"worktree helper script not found: {script}")
+    from atopile.worktree import create_worktree
 
-    cmd = [str(script), name, "--start-point", start_point]
-    if path is not None:
-        cmd.extend(["--path", str(path)])
-    if base_dir is not None:
-        cmd.extend(["--base-dir", str(base_dir)])
-    if source_root is not None:
-        cmd.extend(["--source-root", str(source_root)])
-    if force:
-        cmd.append("--force")
-    if skip_editable_install:
-        cmd.append("--skip-editable-install")
-
-    result = subprocess.run(cmd, cwd=repo_root)
-    if result.returncode != 0:
-        raise typer.Exit(result.returncode)
+    try:
+        create_worktree(
+            name,
+            path=path,
+            start_point=start_point,
+            base_dir=base_dir,
+            source_root=source_root,
+            force=force,
+            skip_editable_install=skip_editable_install,
+        )
+    except (RuntimeError, FileExistsError, FileNotFoundError) as e:
+        raise typer.BadParameter(str(e))
 
 
 def _env_truthy(name: str) -> bool | None:

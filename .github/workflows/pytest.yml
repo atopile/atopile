@@ -55,11 +55,7 @@ jobs:
       - name: Compute zig source hash
         id: zig-hash
         run: |
-          echo "hash=$( \
-            find src/faebryk/core/zig/src src/faebryk/core/zig/build.zig \
-              -name '*.zig' -print0 | sort -z | xargs -0 sha256sum \
-            | sha256sum | cut -d' ' -f1 \
-          )" >> "$GITHUB_OUTPUT"
+          echo "hash=$(python src/faebryk/core/zig/compute_hash.py)" >> "$GITHUB_OUTPUT"
 
       - name: Cache zig build
         id: zig-cache
