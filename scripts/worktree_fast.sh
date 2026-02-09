@@ -95,6 +95,30 @@ rewrite_venv_paths() {
     local source_root="$1"
     local worktree_path="$2"
     local venv="$worktree_path/.venv"
+    local py="${venv}/bin/python"
+
+    if [[ ! -x "$py" ]]; then
+        py="$(command -v python3 || true)"
+    fi
+    [[ -n "$py" ]] || die "python interpreter not found for venv path rewrite"
+
+    replace_literal_in_file() {
+        local target="$1"
+        "$py" - "$target" "$source_root" "$worktree_path" <<'PY'
+import pathlib
+import sys
+
+target = pathlib.Path(sys.argv[1])
+old = sys.argv[2].encode()
+new = sys.argv[3].encode()
+data = target.read_bytes()
+updated = data.replace(old, new)
+if updated != data:
+    target.write_bytes(updated)
+    raise SystemExit(0)
+raise SystemExit(3)
+PY
+    }
 
     # 1. Rewrite .pth files (editable install source paths)
     local site_packages
@@ -102,15 +126,21 @@ rewrite_venv_paths() {
     if [[ -n "$site_packages" ]]; then
         for pth in "$site_packages"/_atopile*.pth; do
             [[ -f "$pth" ]] || continue
-            sed -i "s|$source_root|$worktree_path|g" "$pth"
-            log "rewrote: $pth"
+            if replace_literal_in_file "$pth"; then
+                log "rewrote: $pth"
+            elif [[ "$?" -ne 3 ]]; then
+                die "failed to rewrite: $pth"
+            fi
         done
 
         # 2. Rewrite direct_url.json (PEP 660 editable metadata)
         for durl in "$site_packages"/atopile*.dist-info/direct_url.json; do
             [[ -f "$durl" ]] || continue
-            sed -i "s|$source_root|$worktree_path|g" "$durl"
-            log "rewrote: $durl"
+            if replace_literal_in_file "$durl"; then
+                log "rewrote: $durl"
+            elif [[ "$?" -ne 3 ]]; then
+                die "failed to rewrite: $durl"
+            fi
         done
     fi
 
@@ -120,18 +150,24 @@ rewrite_venv_paths() {
         [[ -f "$script" ]] || continue
         # Only process text files (skip binaries)
         if file -b --mime-type "$script" 2>/dev/null | grep -q text; then
-            if grep -q "$source_root" "$script" 2>/dev/null; then
-                sed -i "s|$source_root|$worktree_path|g" "$script"
-                count=$((count + 1))
+            if grep -Fq -- "$source_root" "$script" 2>/dev/null; then
+                if replace_literal_in_file "$script"; then
+                    count=$((count + 1))
+                elif [[ "$?" -ne 3 ]]; then
+                    die "failed to rewrite: $script"
+                fi
             fi
         fi
     done
     log "rewrote shebangs/paths in $count scripts under .venv/bin/"
 
     # 4. Rewrite pyvenv.cfg if it references the source root
-    if [[ -f "$venv/pyvenv.cfg" ]] && grep -q "$source_root" "$venv/pyvenv.cfg" 2>/dev/null; then
-        sed -i "s|$source_root|$worktree_path|g" "$venv/pyvenv.cfg"
-        log "rewrote: $venv/pyvenv.cfg"
+    if [[ -f "$venv/pyvenv.cfg" ]] && grep -Fq -- "$source_root" "$venv/pyvenv.cfg" 2>/dev/null; then
+        if replace_literal_in_file "$venv/pyvenv.cfg"; then
+            log "rewrote: $venv/pyvenv.cfg"
+        elif [[ "$?" -ne 3 ]]; then
+            die "failed to rewrite: $venv/pyvenv.cfg"
+        fi
     fi
 }
 
