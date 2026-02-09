@@ -8,6 +8,7 @@ const str = []const u8;
 pub const Error = error{
     UnitsNotCommensurable,
     UnitExpressionWithOffset,
+    UnitNotFound,
 };
 
 pub const BasisVector = struct {
@@ -333,6 +334,20 @@ pub fn op_power(unit: ?is_unit, g: *graph.GraphView, tg: *faebryk.typegraph.Type
     return new(g, tg, out.basis_vector, out.multiplier, out.offset, "");
 }
 
+pub fn decode_symbol(symbol: str, g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) Error!?is_unit {
+    if (std.mem.eql(u8, symbol, "")) return null;
+    if (std.mem.eql(u8, symbol, "m")) return to_is_unit(Meter.create_instance(g, tg));
+    if (std.mem.eql(u8, symbol, "s")) return to_is_unit(Second.create_instance(g, tg));
+    if (std.mem.eql(u8, symbol, "h")) return to_is_unit(Hour.create_instance(g, tg));
+    if (std.mem.eql(u8, symbol, "A")) return to_is_unit(Ampere.create_instance(g, tg));
+    if (std.mem.eql(u8, symbol, "K")) return to_is_unit(Kelvin.create_instance(g, tg));
+    if (std.mem.eql(u8, symbol, "°C")) return to_is_unit(DegreeCelsius.create_instance(g, tg));
+    if (std.mem.eql(u8, symbol, "V")) return to_is_unit(Volt.create_instance(g, tg));
+    if (std.mem.eql(u8, symbol, "mV")) return to_is_unit(MilliVolt.create_instance(g, tg));
+    if (std.mem.eql(u8, symbol, "Ω")) return to_is_unit(Ohm.create_instance(g, tg));
+    return Error.UnitNotFound;
+}
+
 fn create_concrete_unit_instance(comptime T: type, comptime symbol: str, g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) T {
     const out = fabll.Node.bind_typegraph(T, tg).create_instance(g);
     out.node.instance.node.put("unit_symbol", .{ .String = symbol });
@@ -474,4 +489,16 @@ test "units expression multiply divide power" {
     const squared = op_power(v, &g, &tg, 2);
     try std.testing.expect(squared != null);
     try std.testing.expectEqual(@as(i64, -2), info_of(squared).basis_vector.ampere);
+}
+
+test "units decode symbol" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const v = try decode_symbol("V", &g, &tg);
+    try std.testing.expect(v != null);
+    try std.testing.expect(std.mem.eql(u8, "V", v.?.get_symbol()));
+    try std.testing.expect((try decode_symbol("", &g, &tg)) == null);
+    try std.testing.expectError(Error.UnitNotFound, decode_symbol("not-a-unit", &g, &tg));
 }
