@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   derivePortsFromModule,
+  getNormalizedComponentPinGeometry,
   getPortPinNumbers,
   getRootSheet,
   type SchematicModule,
@@ -64,5 +65,47 @@ describe('schematic model contracts', () => {
     expect(() => getRootSheet({ version: '2.0' } as any)).toThrow(
       'missing root sheet',
     );
+  });
+
+  it('normalizes mixed-phase component pins onto a unified pin grid', () => {
+    const component = {
+      kind: 'component' as const,
+      id: 'u1',
+      name: 'u1',
+      designator: 'U1',
+      reference: 'U',
+      bodyWidth: 20,
+      bodyHeight: 10,
+      pins: [
+        {
+          number: '1',
+          name: 'L',
+          side: 'left' as const,
+          electricalType: 'passive' as const,
+          category: 'signal' as const,
+          x: -9.54,
+          y: 34.29,
+          bodyX: -8.54,
+          bodyY: 34.29,
+        },
+        {
+          number: '2',
+          name: 'R',
+          side: 'right' as const,
+          electricalType: 'passive' as const,
+          category: 'signal' as const,
+          x: 9.54,
+          y: 35.56,
+          bodyX: 8.54,
+          bodyY: 35.56,
+        },
+      ],
+    };
+
+    const left = getNormalizedComponentPinGeometry(component, component.pins[0]);
+    const right = getNormalizedComponentPinGeometry(component, component.pins[1]);
+    const phase = (v: number) => ((v % 2.54) + 2.54) % 2.54;
+
+    expect(phase(left.y)).toBeCloseTo(phase(right.y), 6);
   });
 });

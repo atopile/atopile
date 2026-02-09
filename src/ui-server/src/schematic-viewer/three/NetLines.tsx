@@ -22,6 +22,7 @@ import type {
 } from '../types/schematic';
 import {
   getComponentGridAlignmentOffset,
+  getNormalizedComponentPinGeometry,
   getModuleGridAlignmentOffset,
   getPortGridAlignmentOffset,
   getPowerPortGridAlignmentOffset,
@@ -52,6 +53,7 @@ import {
   type BusEndpoint,
   type NetForBus,
 } from '../lib/busDetector';
+import { routeHitsObstacle, type RouteObstacle } from './routeObstacles';
 
 const STUB_LENGTH = 2.54;
 const DIRECT_LABEL_DISTANCE = 72;
@@ -62,6 +64,7 @@ const COMPLEX_ROUTE_PARALLEL = 3;
 const MAX_MULTI_ROUTE_PINS = 5;
 const MULTI_ROUTE_MAX_SPAN = 48;
 const NO_RAYCAST = () => {};
+const ROUTE_OBSTACLE_CLEARANCE = 0.5;
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -132,9 +135,10 @@ function buildLookup(
     const pm = new Map<string, PinInfo>();
     const offset = getComponentGridAlignmentOffset(comp);
     for (const pin of comp.pins) {
+      const norm = getNormalizedComponentPinGeometry(comp, pin);
       pm.set(pin.number, {
-        x: pin.x + offset.x,
-        y: pin.y + offset.y,
+        x: norm.x + offset.x,
+        y: norm.y + offset.y,
         side: pin.side,
       });
     }
@@ -300,6 +304,39 @@ function routePriority(net: SchematicNet): number {
   return 3;
 }
 
+function buildRouteObstacles(
+  sheet: SchematicSheet,
+  positions: Record<string, { x: number; y: number; rotation?: number }>,
+  pk: string,
+): RouteObstacle[] {
+  const obstacles: RouteObstacle[] = [];
+
+  const pushItem = (id: string, bodyWidth: number, bodyHeight: number) => {
+    const pos = positions[pk + id];
+    if (!pos) return;
+    const rot = ((pos.rotation ?? 0) % 360 + 360) % 360;
+    const rotated = rot === 90 || rot === 270;
+    const w = rotated ? bodyHeight : bodyWidth;
+    const h = rotated ? bodyWidth : bodyHeight;
+    obstacles.push({
+      id,
+      minX: pos.x - w / 2 - ROUTE_OBSTACLE_CLEARANCE,
+      maxX: pos.x + w / 2 + ROUTE_OBSTACLE_CLEARANCE,
+      minY: pos.y - h / 2 - ROUTE_OBSTACLE_CLEARANCE,
+      maxY: pos.y + h / 2 + ROUTE_OBSTACLE_CLEARANCE,
+    });
+  };
+
+  for (const comp of sheet.components) {
+    pushItem(comp.id, comp.bodyWidth, comp.bodyHeight);
+  }
+  for (const mod of sheet.modules) {
+    pushItem(mod.id, mod.bodyWidth, mod.bodyHeight);
+  }
+
+  return obstacles;
+}
+
 // ── Main component ─────────────────────────────────────────────
 
 export const NetLines = memo(function NetLines({
@@ -354,6 +391,7 @@ export const NetLines = memo(function NetLines({
     const pendingDirects: PendingDirectNetData[] = [];
     const pendingMultiNets: PendingMultiNetData[] = [];
     const allSegments: RouteSegment[] = [];
+    const routeObstacles = buildRouteObstacles(sheet, positions, pk);
     const breakoutPortIds = new Set(
       ports
         .filter((p) => !!p.signals && p.signals.length >= 2)
@@ -555,6 +593,16 @@ export const NetLines = memo(function NetLines({
       }
 
       const route = padRoute(routedResult.route);
+      if (
+        routeHitsObstacle(
+          route,
+          routeObstacles,
+          new Set([a.compId, b.compId]),
+        )
+      ) {
+        stubs.push({ net: pd.net, worldPins: pd.worldPins, color: pd.color });
+        continue;
+      }
       directs.push({
         routeId: pd.routeId,
         net: pd.net,
@@ -614,6 +662,16 @@ export const NetLines = memo(function NetLines({
         }
 
         const route = padRoute(routedResult.route);
+        if (
+          routeHitsObstacle(
+            route,
+            routeObstacles,
+            new Set([edge.a.compId, edge.b.compId]),
+          )
+        ) {
+          failed = true;
+          break;
+        }
         const routeId = `${pm.net.id}::${i}`;
         edgeRoutes.push({
           routeId,

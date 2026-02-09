@@ -160,6 +160,39 @@ export function snapToPinGrid(v: number, grid = PIN_GRID_MM): number {
 }
 
 /**
+ * Snap to pin grid with deterministic tie-breaking.
+ * On exact half-pitch ties, chooses the lower grid coordinate.
+ */
+export function snapToPinGridLowerTie(v: number, grid = PIN_GRID_MM): number {
+  const scaled = v / grid;
+  // Bias exact half-steps very slightly downward so both +0.5 and -0.5
+  // cases resolve to the lower grid coordinate deterministically.
+  const snappedSteps = Math.floor(scaled + 0.5 - 1e-6);
+  return snappedSteps * grid;
+}
+
+/**
+ * Normalize a component pin (and its body-edge anchor) onto the canonical
+ * pin grid while preserving the pin→body vector.
+ */
+export function getNormalizedComponentPinGeometry(
+  component: SchematicComponent,
+  pin: Pick<SchematicPin, 'x' | 'y' | 'bodyX' | 'bodyY'>,
+): { x: number; y: number; bodyX: number; bodyY: number } {
+  const offset = getComponentGridAlignmentOffset(component);
+  const x = snapToPinGridLowerTie(pin.x + offset.x) - offset.x;
+  const y = snapToPinGridLowerTie(pin.y + offset.y) - offset.y;
+  const dx = x - pin.x;
+  const dy = y - pin.y;
+  return {
+    x,
+    y,
+    bodyX: pin.bodyX + dx,
+    bodyY: pin.bodyY + dy,
+  };
+}
+
+/**
  * Transform a local pin offset (relative to component center) according to
  * the component's rotation and mirror state.
  *

@@ -1360,7 +1360,9 @@ def _add_missing_interface_nets(
                 net_type = _coerce_net_type_for_line_level(base_type, True)
 
                 suffix = (
-                    f".{port_pin_number}" if port_pin_number and port_pin_number != "1" else ""
+                    f".{port_pin_number}"
+                    if port_pin_number and port_pin_number != "1"
+                    else ""
                 )
                 net_name = f"{iface_name}{suffix}"
                 net_id = re.sub(
@@ -2101,8 +2103,7 @@ def export_schematic_json(
             mod.json_id,
             {
                 iface_name: sum(
-                    len(comp_map)
-                    for comp_map in iface_data.get("pin_map", {}).values()
+                    len(comp_map) for comp_map in iface_data.get("pin_map", {}).values()
                 )
                 for iface_name, iface_data in iface_map.items()
             },

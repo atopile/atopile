@@ -3,7 +3,9 @@ from pathlib import Path
 from faebryk.exporters.schematic import schematic as sch
 
 
-def test_extract_declared_signals_from_source_locator_name_variants(tmp_path: Path) -> None:
+def test_extract_declared_signals_from_source_locator_name_variants(
+    tmp_path: Path,
+) -> None:
     src = tmp_path / "part.ato"
     src.write_text(
         "\n".join(

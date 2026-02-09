@@ -12,7 +12,10 @@
 import { useMemo, memo } from 'react';
 import { Text, RoundedBox, Line } from '@react-three/drei';
 import type { SchematicComponent, SchematicPin } from '../types/schematic';
-import { getComponentGridAlignmentOffset } from '../types/schematic';
+import {
+  getComponentGridAlignmentOffset,
+  getNormalizedComponentPinGeometry,
+} from '../types/schematic';
 import type { ThemeColors } from '../lib/theme';
 import { getPinColor } from '../lib/theme';
 import {
@@ -240,6 +243,7 @@ export const ComponentRenderer = memo(function ComponentRenderer({
       {component.pins.map((pin) => (
         <SchematicPinElement
           key={pin.number}
+          component={component}
           pin={pin}
           theme={theme}
           isSmall={isSmall}
@@ -260,6 +264,7 @@ export const ComponentRenderer = memo(function ComponentRenderer({
 // ── Individual pin (also memoized) ─────────────────────────────
 
 const SchematicPinElement = memo(function SchematicPinElement({
+  component,
   pin,
   theme,
   isSmall,
@@ -272,6 +277,7 @@ const SchematicPinElement = memo(function SchematicPinElement({
   mirrorX = false,
   mirrorY = false,
 }: {
+  component: SchematicComponent;
   pin: SchematicPin;
   theme: ThemeColors;
   isSmall: boolean;
@@ -290,10 +296,14 @@ const SchematicPinElement = memo(function SchematicPinElement({
   const showName = pin.name !== pin.number;
   const DOT_RADIUS = 0.3;
   const pinOpacity = isNetHighlighted ? 1 : isDimmed ? 0.25 : 0.8;
-  const pinX = pin.x;
-  const pinY = pin.y;
-  const bodyX = pin.bodyX;
-  const bodyY = pin.bodyY;
+  const pinGeom = useMemo(
+    () => getNormalizedComponentPinGeometry(component, pin),
+    [component, pin],
+  );
+  const pinX = pinGeom.x;
+  const pinY = pinGeom.y;
+  const bodyX = pinGeom.bodyX;
+  const bodyY = pinGeom.bodyY;
 
   // Text placement
   let nameX: number, nameY: number;
