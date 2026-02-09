@@ -171,6 +171,8 @@ class PcbnewVncWebview extends BaseWebview {
             });
             rfb.scaleViewport = true;
             rfb.resizeSession = true;
+            rfb.qualityLevel = 6;
+            rfb.compressionLevel = 2;
 
             rfb.addEventListener('connect', () => {
                 hideStatus();

@@ -36,7 +36,13 @@ openbox &
 OPENBOX_PID=$!
 
 # Start x11vnc — localhost only, no password, shared access
-x11vnc -display ":${DISPLAY_NUM}" -nopw -listen localhost -forever -shared -rfbport "${VNC_PORT}" &
+x11vnc -display ":${DISPLAY_NUM}" -nopw -listen localhost -forever -shared -rfbport "${VNC_PORT}" \
+  -threads \
+  -noxdamage \
+  -allinput \
+  -defer 0 \
+  -wait 5 \
+  -nonap &
 X11VNC_PID=$!
 sleep 1
 
