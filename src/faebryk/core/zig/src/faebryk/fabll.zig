@@ -46,12 +46,54 @@ fn is_dependant_edge_type(comptime MaybeDependant: type) bool {
         @hasDecl(MaybeDependant, "EdgeFactory");
 }
 
+fn is_dependant_declaration_type(comptime MaybeDependantDecl: type) bool {
+    return @typeInfo(MaybeDependantDecl) == .@"struct" and
+        @hasDecl(MaybeDependantDecl, "DependantDeclKind") and
+        @hasDecl(MaybeDependantDecl, "OwnerChildIdentifier") and
+        @hasDecl(MaybeDependantDecl, "Dependant");
+}
+
 fn is_edge_declaration_type(comptime MaybeEdgeDecl: type) bool {
     return @typeInfo(MaybeEdgeDecl) == .@"struct" and
         @hasDecl(MaybeEdgeDecl, "EdgeDeclKind") and
         @hasDecl(MaybeEdgeDecl, "LhsPath") and
         @hasDecl(MaybeEdgeDecl, "RhsPath") and
         @hasDecl(MaybeEdgeDecl, "EdgeFactory");
+}
+
+fn visit_dependant_declarations(
+    comptime T: type,
+    comptime R: type,
+    ctx: *anyopaque,
+    comptime f: anytype,
+) visitor.VisitResult(R) {
+    inline for (std.meta.fields(T)) |field| {
+        if (comptime is_dependant_declaration_type(field.type)) {
+            switch (f(ctx, field.name, field.type)) {
+                .CONTINUE => {},
+                .STOP => return visitor.VisitResult(R){ .STOP = {} },
+                .OK => |result| return visitor.VisitResult(R){ .OK = result },
+                .EXHAUSTED => return visitor.VisitResult(R){ .EXHAUSTED = {} },
+                .ERROR => |err| return visitor.VisitResult(R){ .ERROR = err },
+            }
+        }
+    }
+
+    const decls = @typeInfo(T).@"struct".decls;
+    inline for (decls) |decl| {
+        const value = @field(T, decl.name);
+        const dep_decl_type = if (@TypeOf(value) == type) value else @TypeOf(value);
+        if (comptime is_dependant_declaration_type(dep_decl_type)) {
+            switch (f(ctx, decl.name, dep_decl_type)) {
+                .CONTINUE => {},
+                .STOP => return visitor.VisitResult(R){ .STOP = {} },
+                .OK => |result| return visitor.VisitResult(R){ .OK = result },
+                .EXHAUSTED => return visitor.VisitResult(R){ .EXHAUSTED = {} },
+                .ERROR => |err| return visitor.VisitResult(R){ .ERROR = err },
+            }
+        }
+    }
+    return visitor.VisitResult(R){ .EXHAUSTED = {} };
 }
 
 fn append_type(comptime items: []const type, comptime item: type) []const type {
@@ -238,7 +280,7 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
 
                 fn add_child_field(ctx: *@This(), comptime child_field_type: type, child_identifier: []const u8) void {
                     inline for (child_field_type.PrependDependants) |dependant| {
-                        ctx.apply_dependant(child_identifier, dependant);
+                        ctx.apply_dependant_children_only(child_identifier, dependant);
                     }
 
                     const child_bound = Node.bind_typegraph(child_field_type.ChildType, ctx.self.tg);
@@ -262,7 +304,7 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                     ) catch @panic("failed to add make child");
 
                     inline for (child_field_type.Dependants) |dependant| {
-                        ctx.apply_dependant(child_identifier, dependant);
+                        ctx.apply_dependant_children_only(child_identifier, dependant);
                     }
                 }
 
@@ -283,7 +325,11 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                     return out;
                 }
 
-                fn apply_dependant(ctx: *@This(), owner_child_identifier: []const u8, comptime dependant_type: type) void {
+                fn apply_dependant_children_only(
+                    ctx: *@This(),
+                    owner_child_identifier: []const u8,
+                    comptime dependant_type: type,
+                ) void {
                     // Dependants are compile-time declarations attached to a child field.
                     // They can be either:
                     // 1) additional child fields created before/after the owner child
@@ -292,6 +338,31 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                         const dependant_identifier = dependant_type.Identifier orelse
                             @panic("dependant child field must set explicit identifier");
                         ctx.add_child_field(dependant_type, dependant_identifier);
+                        return;
+                    }
+
+                    if (comptime is_dependant_edge_type(dependant_type)) {
+                        _ = owner_child_identifier;
+                        return;
+                    }
+
+                    @panic("unsupported dependant type");
+                }
+
+                fn apply_dependant_edges_only(
+                    ctx: *@This(),
+                    owner_child_identifier: []const u8,
+                    comptime dependant_type: type,
+                ) void {
+                    if (comptime is_child_field_type(dependant_type)) {
+                        const dependant_identifier = dependant_type.Identifier orelse
+                            @panic("dependant child field must set explicit identifier");
+                        inline for (dependant_type.PrependDependants) |nested_dependant| {
+                            ctx.apply_dependant_edges_only(dependant_identifier, nested_dependant);
+                        }
+                        inline for (dependant_type.Dependants) |nested_dependant| {
+                            ctx.apply_dependant_edges_only(dependant_identifier, nested_dependant);
+                        }
                         return;
                     }
 
@@ -318,6 +389,15 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                     }
 
                     @panic("unsupported dependant type");
+                }
+
+                fn add_child_dependant_edges(ctx: *@This(), comptime child_field_type: type, child_identifier: []const u8) void {
+                    inline for (child_field_type.PrependDependants) |dependant| {
+                        ctx.apply_dependant_edges_only(child_identifier, dependant);
+                    }
+                    inline for (child_field_type.Dependants) |dependant| {
+                        ctx.apply_dependant_edges_only(child_identifier, dependant);
+                    }
                 }
 
                 fn apply_edge_spec(ctx: *@This(), comptime edge_spec_type: type) void {
@@ -357,6 +437,63 @@ pub fn TypeNodeBoundTG(comptime T: type) type {
                 .ERROR => @panic("visit_fields failed"),
                 else => {},
             }
+
+            const ChildDependantDeclContext = struct {
+                build_ctx: *BuildContext,
+
+                fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, dependant_decl: anytype) visitor.VisitResult(void) {
+                    const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                    _ = decl_name;
+                    const dependant_decl_type = if (@TypeOf(dependant_decl) == type) dependant_decl else @TypeOf(dependant_decl);
+                    ctx.build_ctx.apply_dependant_children_only(
+                        dependant_decl_type.OwnerChildIdentifier,
+                        dependant_decl_type.Dependant,
+                    );
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                }
+            };
+            var child_dependant_decl_ctx: ChildDependantDeclContext = .{ .build_ctx = &build_ctx };
+            switch (visit_dependant_declarations(T, void, &child_dependant_decl_ctx, ChildDependantDeclContext.visit)) {
+                .ERROR => @panic("visit_dependant_declarations (children pass) failed"),
+                else => {},
+            }
+
+            const DependantEdgeContext = struct {
+                build_ctx: *BuildContext,
+
+                fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, field_type: type) visitor.VisitResult(void) {
+                    const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                    const child_identifier = field_identifier(decl_name, field_type);
+                    ctx.build_ctx.add_child_dependant_edges(field_type, child_identifier);
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                }
+            };
+            var dependant_edge_ctx: DependantEdgeContext = .{ .build_ctx = &build_ctx };
+            switch (visit_fields(T, void, &dependant_edge_ctx, DependantEdgeContext.visit)) {
+                .ERROR => @panic("visit_fields dependant-edge pass failed"),
+                else => {},
+            }
+
+            const EdgeDependantDeclContext = struct {
+                build_ctx: *BuildContext,
+
+                fn visit(ctx_ptr: *anyopaque, decl_name: []const u8, dependant_decl: anytype) visitor.VisitResult(void) {
+                    const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                    _ = decl_name;
+                    const dependant_decl_type = if (@TypeOf(dependant_decl) == type) dependant_decl else @TypeOf(dependant_decl);
+                    ctx.build_ctx.apply_dependant_edges_only(
+                        dependant_decl_type.OwnerChildIdentifier,
+                        dependant_decl_type.Dependant,
+                    );
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                }
+            };
+            var edge_dependant_decl_ctx: EdgeDependantDeclContext = .{ .build_ctx = &build_ctx };
+            switch (visit_dependant_declarations(T, void, &edge_dependant_decl_ctx, EdgeDependantDeclContext.visit)) {
+                .ERROR => @panic("visit_dependant_declarations (edges pass) failed"),
+                else => {},
+            }
+
             const EdgeDeclContext = struct {
                 build_ctx: *BuildContext,
 
@@ -561,6 +698,21 @@ pub fn MakeDependantEdge(
         pub const LhsPath = lhs_path;
         pub const RhsPath = rhs_path;
         pub const EdgeFactory = edge_factory;
+    };
+}
+
+pub fn MakeDependantDeclaration(
+    comptime owner_child_identifier: str,
+    comptime dependant: type,
+) type {
+    if (comptime !(is_child_field_type(dependant) or is_dependant_edge_type(dependant))) {
+        @compileError("MakeDependantDeclaration dependant must be ChildField(...) or MakeDependantEdge(...)");
+    }
+
+    return struct {
+        pub const DependantDeclKind = .dependant;
+        pub const OwnerChildIdentifier = owner_child_identifier;
+        pub const Dependant = dependant;
     };
 }
 
@@ -801,6 +953,38 @@ const ElectricPowerMixedEdges = struct {
                 .{ .child_identifier = "_is_interface" },
             },
         },
+        InterfaceConnectionEdgeFactoryFalse,
+    ) = .{},
+};
+
+const ElectricPowerDeclaredDependantEdge = struct {
+    node: Node,
+    hv: Electrical.MakeChild(),
+    lv: Electrical.MakeChild(),
+
+    _dep_hv_to_lv: MakeDependantDeclaration(
+        "hv",
+        is_interface.MakeConnectionEdge(
+            RefPath.owner_child(),
+            RefPath.child_identifier("lv"),
+            false,
+        ),
+    ) = .{},
+};
+
+const ElectricPowerDeclaredDependantChildThenEdge = struct {
+    node: Node,
+    hv: Electrical.MakeChild(),
+    lv: Electrical.MakeChild(),
+
+    _dep_add_sense: MakeDependantDeclaration(
+        "hv",
+        ChildField(Electrical, "sense", &.{}, &.{}, &.{}),
+    ) = .{},
+
+    _sense_to_lv: MakeEdgeDeclaration(
+        RefPath.child_identifier("sense"),
+        RefPath.child_identifier("lv"),
         InterfaceConnectionEdgeFactoryFalse,
     ) = .{},
 };
@@ -1203,4 +1387,72 @@ test "basic+10 declared and dependant edge interaction" {
 
     try std.testing.expect(ctx.found_hv_lv);
     try std.testing.expect(ctx.found_iface_iface);
+}
+
+test "basic+11 declared dependant edge" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const bound = Node.bind_typegraph(ElectricPowerDeclaredDependantEdge, &tg);
+    const power = bound.create_instance(&g);
+    const hv = power.hv.get().node.instance;
+    const lv = power.lv.get().node.instance;
+
+    const Ctx = struct {
+        hv: graph.BoundNodeReference,
+        lv: graph.BoundNodeReference,
+        found: bool = false,
+
+        fn visit(ctx_ptr: *anyopaque, be: graph.BoundEdgeReference) visitor.VisitResult(void) {
+            const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+            if (!faebryk.interface.EdgeInterfaceConnection.is_instance(be.edge)) return visitor.VisitResult(void){ .CONTINUE = {} };
+            const other = faebryk.interface.EdgeInterfaceConnection.get_other_connected_node(be.edge, ctx.hv.node) orelse
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            if (other.is_same(ctx.lv.node)) ctx.found = true;
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+    };
+
+    var ctx: Ctx = .{ .hv = hv, .lv = lv };
+    switch (faebryk.interface.EdgeInterfaceConnection.visit_connected_edges(hv, &ctx, Ctx.visit)) {
+        .ERROR => @panic("visit_connected_edges failed"),
+        else => {},
+    }
+    try std.testing.expect(ctx.found);
+}
+
+test "basic+12 declared dependant child then declared edge" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const bound = Node.bind_typegraph(ElectricPowerDeclaredDependantChildThenEdge, &tg);
+    const power = bound.create_instance(&g);
+
+    const lv = power.lv.get().node.instance;
+    const sense = faebryk.composition.EdgeComposition.get_child_by_identifier(power.node.instance, "sense") orelse
+        @panic("missing sense child");
+
+    const Ctx = struct {
+        sense: graph.BoundNodeReference,
+        lv: graph.BoundNodeReference,
+        found: bool = false,
+
+        fn visit(ctx_ptr: *anyopaque, be: graph.BoundEdgeReference) visitor.VisitResult(void) {
+            const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+            if (!faebryk.interface.EdgeInterfaceConnection.is_instance(be.edge)) return visitor.VisitResult(void){ .CONTINUE = {} };
+            const other = faebryk.interface.EdgeInterfaceConnection.get_other_connected_node(be.edge, ctx.sense.node) orelse
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            if (other.is_same(ctx.lv.node)) ctx.found = true;
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+    };
+
+    var ctx: Ctx = .{ .sense = sense, .lv = lv };
+    switch (faebryk.interface.EdgeInterfaceConnection.visit_connected_edges(sense, &ctx, Ctx.visit)) {
+        .ERROR => @panic("visit_connected_edges failed"),
+        else => {},
+    }
+    try std.testing.expect(ctx.found);
 }
