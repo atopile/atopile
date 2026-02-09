@@ -122,6 +122,7 @@ export const DraggableComponent = memo(function DraggableComponent({
       const startY = (e.nativeEvent?.clientY ?? e.clientY) as number;
 
       const state = useSchematicStore.getState();
+      if (state.portEditMode) return;
       const pk = state.currentPath.length === 0
         ? '__root__'
         : state.currentPath.join('/');
@@ -206,6 +207,12 @@ export const DraggableComponent = memo(function DraggableComponent({
       ref={groupRef}
       onPointerDown={handlePointerDown}
       onPointerEnter={() => {
+        if (useSchematicStore.getState().portEditMode) {
+          if (!useSchematicStore.getState().dragComponentId) {
+            gl.domElement.style.cursor = 'not-allowed';
+          }
+          return;
+        }
         hoverComponent(component.id);
         if (!useSchematicStore.getState().dragComponentId)
           gl.domElement.style.cursor = 'grab';

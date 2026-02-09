@@ -147,7 +147,7 @@ def _trace_lead_interfaces(
     all the functions this pin can serve.
 
     Returns a list of dicts:
-    [{"name": "gpio[0]", "type": "GPIO", "external": False}, ...]
+    [{"name": "gpio[0]", "raw_name": "gpio[0].line", "type": "GPIO", "external": False, "is_line_level": True}, ...]
 
     The "external" flag indicates whether this interface is connected
     to something outside the component's parent module (i.e. actually
@@ -222,8 +222,13 @@ def _trace_lead_interfaces(
                 if len(parts) > 4:
                     continue
 
+                # Preserve raw path for downstream exporters that need to
+                # distinguish line-level continuity from logical signal names.
+                raw_name = iface_path
+                is_line_level = raw_name.endswith(".line") or ".line." in raw_name
+
                 # Strip trailing ".line" for cleaner display
-                display_name = iface_path
+                display_name = raw_name
                 if display_name.endswith(".line"):
                     display_name = display_name[:-5]
 
@@ -240,8 +245,10 @@ def _trace_lead_interfaces(
                 functions.append(
                     {
                         "name": display_name,
+                        "raw_name": raw_name,
                         "type": bus_type,
                         "external": external,
+                        "is_line_level": is_line_level,
                     }
                 )
 

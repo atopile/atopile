@@ -49,6 +49,8 @@ export function netTypeColor(type: string, theme: ThemeColors): string {
       return theme.pinPower;
     case 'ground':
       return theme.pinGround;
+    case 'electrical':
+      return theme.netElectrical;
     case 'bus':
       return theme.busI2C;
     case 'signal':

@@ -18,6 +18,13 @@ import * as THREE from 'three';
 import type { ThemeColors } from '../lib/theme';
 import { useTheme } from '../lib/theme';
 import {
+  getRootSheet,
+  resolveSheet,
+  derivePortsFromModule,
+  derivePowerPorts,
+  getPortPinNumbers,
+} from '../types/schematic';
+import {
   useSchematicStore,
   useCurrentSheet,
   useCurrentPorts,
@@ -36,7 +43,13 @@ const EMPTY_NET_MAP = new Map<string, string>();
 
 // ── Inner scene (has access to useThree) ───────────────────────
 
-function SceneContent({ theme }: { theme: ThemeColors }) {
+function SceneContent({
+  theme,
+  onSceneReady,
+}: {
+  theme: ThemeColors;
+  onSceneReady?: (scene: THREE.Scene, camera: THREE.Camera, canvas: HTMLCanvasElement) => void;
+}) {
   const sheet = useCurrentSheet();
   const ports = useCurrentPorts();
   const powerPorts = useCurrentPowerPorts();
@@ -45,8 +58,12 @@ function SceneContent({ theme }: { theme: ThemeColors }) {
   const selectedNetId = useSchematicStore((s) => s.selectedNetId);
 
   const controlsRef = useRef<any>(null);
-  const { camera, gl } = useThree();
+  const { camera, gl, scene } = useThree();
   const lastFitPath = useRef<string | null>(null);
+
+  useEffect(() => {
+    onSceneReady?.(scene, camera, gl.domElement);
+  }, [onSceneReady, scene, camera, gl]);
 
   // ── Auto-fit camera when sheet changes ───────────────────────
 
@@ -304,8 +321,10 @@ function SceneContent({ theme }: { theme: ThemeColors }) {
       {/* Ports (external interface entries — only when inside a module) */}
       {ports.map((port) => {
         const portNets = itemNetMaps.get(port.id);
-        // A port has a single pin "1" — get its net ID
-        const netId = portNets?.get('1') ?? null;
+        const netId =
+          (portNets
+            ? getPortPinNumbers(port).map((pin) => portNets.get(pin)).find((id) => !!id) ?? null
+            : null);
         return (
           <DraggablePort
             key={port.id}
@@ -343,9 +362,34 @@ interface SelectionRect {
 
 export function SchematicScene() {
   const theme = useTheme();
+  const portEditMode = useSchematicStore((s) => s.portEditMode);
+  const portEditTargetId = useSchematicStore((s) => s.portEditTargetId);
+  const setPortEditMode = useSchematicStore((s) => s.setPortEditMode);
+  const ports = useCurrentPorts();
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cameraRef = useRef<THREE.Camera | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const selectRaycasterRef = useRef(new THREE.Raycaster());
+  const selectNdcRef = useRef(new THREE.Vector2());
+  const projectVecRef = useRef(new THREE.Vector3());
+  const projectCornerMinRef = useRef(new THREE.Vector3());
+  const projectCornerMaxRef = useRef(new THREE.Vector3());
   const [selRect, setSelRect] = useState<SelectionRect | null>(null);
   const selDragging = useRef(false);
+  const portEditTargetName = useMemo(
+    () => ports.find((p) => p.id === portEditTargetId)?.name ?? portEditTargetId ?? 'port',
+    [ports, portEditTargetId],
+  );
+
+  const handleSceneReady = useCallback(
+    (scene: THREE.Scene, camera: THREE.Camera, canvas: HTMLCanvasElement) => {
+      sceneRef.current = scene;
+      cameraRef.current = camera;
+      canvasRef.current = canvas;
+    },
+    [],
+  );
 
   // Window select: pointer down on empty space starts marquee.
   // We check if a Three.js object is under the cursor first —
@@ -354,29 +398,27 @@ export function SchematicScene() {
     (e: React.PointerEvent) => {
       // Only left button
       if (e.button !== 0) return;
+      if (useSchematicStore.getState().portEditMode) return;
 
       // Check if a Three.js object is under the cursor via R3F's raycaster
       const container = containerRef.current;
       if (container) {
-        const canvas = container.querySelector('canvas');
-        if (canvas) {
-          const r3f = (canvas as any).__r3f;
-          if (r3f?.store) {
-            const state = r3f.store.getState();
-            const rect = canvas.getBoundingClientRect();
-            const pointer = new THREE.Vector2(
-              ((e.clientX - rect.left) / rect.width) * 2 - 1,
-              -((e.clientY - rect.top) / rect.height) * 2 + 1,
-            );
-            const raycaster = new THREE.Raycaster();
-            raycaster.setFromCamera(pointer, state.camera);
-            const hits = raycaster.intersectObjects(state.scene.children, true);
-            // Filter out non-interactive meshes (grids, lines, etc.)
-            const interactiveHit = hits.some(
-              (h) => h.object.type === 'Mesh' && !(h.object as any).__nonInteractive,
-            );
-            if (interactiveHit) return; // Let the R3F event system handle it
-          }
+        const canvas = canvasRef.current ?? container.querySelector('canvas');
+        const camera = cameraRef.current;
+        const scene = sceneRef.current;
+        if (canvas && camera && scene) {
+          const rect = canvas.getBoundingClientRect();
+          selectNdcRef.current.set(
+            ((e.clientX - rect.left) / rect.width) * 2 - 1,
+            -((e.clientY - rect.top) / rect.height) * 2 + 1,
+          );
+          selectRaycasterRef.current.setFromCamera(selectNdcRef.current, camera);
+          const hits = selectRaycasterRef.current.intersectObjects(scene.children, true);
+          // Filter out non-interactive meshes (grids, lines, etc.)
+          const interactiveHit = hits.some(
+            (h) => h.object.type === 'Mesh' && !(h.object as any).__nonInteractive,
+          );
+          if (interactiveHit) return; // Let the R3F event system handle it
         }
       }
 
@@ -429,41 +471,18 @@ export function SchematicScene() {
       const container = containerRef.current;
       if (!container) return;
 
-      const canvas = container.querySelector('canvas');
+      const canvas = canvasRef.current ?? container.querySelector('canvas');
       if (!canvas) return;
 
-      const r3f = (canvas as any).__r3f;
-      if (!r3f?.store) return;
-      const cam = r3f.store.getState().camera as THREE.PerspectiveCamera;
+      const cam = cameraRef.current;
+      if (!cam) return;
       cam.updateMatrixWorld(true);
 
       const canvasRect = canvas.getBoundingClientRect();
-
-      // Convert screen point → world-space z=0 using raycaster projection.
-      // This matches DraggableComponent.screenToWorld and works correctly
-      // after pan/zoom via OrbitControls + zoom-to-cursor.
-      const raycaster = new THREE.Raycaster();
-      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
-      const target = new THREE.Vector3();
-      const ndc = new THREE.Vector2();
-
-      const toWorld = (sx: number, sy: number) => {
-        ndc.set(
-          ((sx - canvasRect.left) / canvasRect.width) * 2 - 1,
-          -((sy - canvasRect.top) / canvasRect.height) * 2 + 1,
-        );
-        raycaster.setFromCamera(ndc, cam);
-        const hit = raycaster.ray.intersectPlane(plane, target);
-        return hit ? { x: target.x, y: target.y } : { x: 0, y: 0 };
-      };
-
-      const w1 = toWorld(x1, y1);
-      const w2 = toWorld(x2, y2);
-
-      const minX = Math.min(w1.x, w2.x);
-      const maxX = Math.max(w1.x, w2.x);
-      const minY = Math.min(w1.y, w2.y);
-      const maxY = Math.max(w1.y, w2.y);
+      const minSelX = Math.min(x1, x2);
+      const maxSelX = Math.max(x1, x2);
+      const minSelY = Math.min(y1, y2);
+      const maxSelY = Math.max(y1, y2);
 
       // Find all items within the box
       const store = useSchematicStore.getState();
@@ -472,13 +491,89 @@ export function SchematicScene() {
           ? '__root__'
           : store.currentPath.join('/');
       const prefix = pk + ':';
+      const itemDims = new Map<string, { w: number; h: number }>();
+      if (store.schematic) {
+        const root = getRootSheet(store.schematic);
+        const sheet = resolveSheet(root, store.currentPath);
+        if (sheet) {
+          for (const comp of sheet.components) {
+            itemDims.set(comp.id, { w: comp.bodyWidth, h: comp.bodyHeight });
+          }
+          for (const mod of sheet.modules) {
+            itemDims.set(mod.id, { w: mod.bodyWidth, h: mod.bodyHeight });
+          }
+          const pports = derivePowerPorts(sheet);
+          for (const pp of pports) {
+            itemDims.set(pp.id, { w: pp.bodyWidth, h: pp.bodyHeight });
+          }
+          if (store.currentPath.length > 0) {
+            const parentPath = store.currentPath.slice(0, -1);
+            const parentSheet = resolveSheet(root, parentPath);
+            const modId = store.currentPath[store.currentPath.length - 1];
+            const mod = parentSheet?.modules.find((m) => m.id === modId);
+            if (mod) {
+              const scopedSignalOrders: Record<string, string[]> = {};
+              const prefix = (store.currentPath.length === 0
+                ? '__root__'
+                : store.currentPath.join('/')) + ':';
+              for (const [k, order] of Object.entries(store.portSignalOrders)) {
+                if (!k.startsWith(prefix)) continue;
+                scopedSignalOrders[k.slice(prefix.length)] = order;
+              }
+              const ports = derivePortsFromModule(mod, scopedSignalOrders);
+              for (const port of ports) {
+                itemDims.set(port.id, { w: port.bodyWidth, h: port.bodyHeight });
+              }
+            }
+          }
+        }
+      }
 
       const matchIds: string[] = [];
       for (const [key, pos] of Object.entries(store.positions)) {
         if (!key.startsWith(prefix)) continue;
-        if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
-          matchIds.push(key.slice(prefix.length));
+        const id = key.slice(prefix.length);
+        const dim = itemDims.get(id);
+
+        const px = projectVecRef.current.set(pos.x, pos.y, 0).project(cam);
+        if (!Number.isFinite(px.x) || !Number.isFinite(px.y) || px.z < -1 || px.z > 1) continue;
+        const centerX = canvasRect.left + ((px.x + 1) * 0.5) * canvasRect.width;
+        const centerY = canvasRect.top + ((-px.y + 1) * 0.5) * canvasRect.height;
+
+        if (!dim || dim.w <= 0 || dim.h <= 0) {
+          if (
+            centerX >= minSelX &&
+            centerX <= maxSelX &&
+            centerY >= minSelY &&
+            centerY <= maxSelY
+          ) {
+            matchIds.push(id);
+          }
+          continue;
         }
+
+        const rot = ((pos.rotation || 0) % 360 + 360) % 360;
+        const swapped = rot === 90 || rot === 270;
+        const w = swapped ? dim.h : dim.w;
+        const h = swapped ? dim.w : dim.h;
+
+        const pMin = projectCornerMinRef.current
+          .set(pos.x - w / 2, pos.y - h / 2, 0)
+          .project(cam);
+        const pMax = projectCornerMaxRef.current
+          .set(pos.x + w / 2, pos.y + h / 2, 0)
+          .project(cam);
+        const minX = canvasRect.left + ((Math.min(pMin.x, pMax.x) + 1) * 0.5) * canvasRect.width;
+        const maxX = canvasRect.left + ((Math.max(pMin.x, pMax.x) + 1) * 0.5) * canvasRect.width;
+        const minY = canvasRect.top + ((-Math.max(pMin.y, pMax.y) + 1) * 0.5) * canvasRect.height;
+        const maxY = canvasRect.top + ((-Math.min(pMin.y, pMax.y) + 1) * 0.5) * canvasRect.height;
+
+        const overlap =
+          maxX >= minSelX &&
+          minX <= maxSelX &&
+          maxY >= minSelY &&
+          minY <= maxSelY;
+        if (overlap) matchIds.push(id);
       }
 
       if (additive) {
@@ -496,8 +591,13 @@ export function SchematicScene() {
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const store = useSchematicStore.getState();
+    if (store.portEditMode) {
+      store.openContextMenu(e.clientX, e.clientY, 'port');
+      return;
+    }
     if (store.selectedComponentIds.length >= 2) {
-      store.openContextMenu(e.clientX, e.clientY);
+      store.openContextMenu(e.clientX, e.clientY, 'align');
+      return;
     }
   }, []);
 
@@ -523,6 +623,10 @@ export function SchematicScene() {
         style={{ background: theme.bgPrimary }}
         gl={{ antialias: true, powerPreference: 'high-performance' }}
         onPointerMissed={() => {
+          if (useSchematicStore.getState().portEditMode) {
+            useSchematicStore.getState().closeContextMenu();
+            return;
+          }
           // Don't clear selection during window-select drag
           if (selDragging.current) return;
           useSchematicStore.getState().selectComponent(null);
@@ -530,8 +634,21 @@ export function SchematicScene() {
           useSchematicStore.getState().closeContextMenu();
         }}
       >
-        <SceneContent theme={theme} />
+        <SceneContent theme={theme} onSceneReady={handleSceneReady} />
       </Canvas>
+
+      {/* Port edit mode dimmer */}
+      {portEditMode && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(6, 8, 14, 0.34)',
+            pointerEvents: 'none',
+            zIndex: 110,
+          }}
+        />
+      )}
 
       {/* Selection marquee overlay */}
       {marqueeStyle && (
@@ -552,6 +669,66 @@ export function SchematicScene() {
 
       {/* Context menu */}
       <ContextMenu theme={theme} />
+
+      {/* Port edit controls */}
+      {portEditMode && (
+        <>
+          <div
+            style={{
+              position: 'absolute',
+              left: 12,
+              top: 12,
+              zIndex: 220,
+              background: theme.bgSecondary,
+              border: `1px solid ${theme.borderColor}`,
+              borderRadius: 8,
+              padding: '8px 12px',
+              color: theme.textPrimary,
+              fontSize: 12,
+              fontFamily: 'system-ui, -apple-system, sans-serif',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.28)',
+              pointerEvents: 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <span>
+              Editing port <strong>{portEditTargetName}</strong>
+            </span>
+            <button
+              type="button"
+              onClick={() => setPortEditMode(false)}
+              style={{
+                border: `1px solid ${theme.borderColor}`,
+                background: theme.bgTertiary,
+                color: theme.textPrimary,
+                borderRadius: 6,
+                fontSize: 12,
+                padding: '3px 10px',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              Exit
+            </button>
+          </div>
+          <div
+            style={{
+              position: 'absolute',
+              left: 12,
+              top: 54,
+              zIndex: 220,
+              color: theme.textMuted,
+              fontSize: 11,
+              fontFamily: 'system-ui, -apple-system, sans-serif',
+              pointerEvents: 'none',
+            }}
+          >
+            Drag pin handles to reorder breakout signals.
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -21,6 +21,10 @@ import type {
   SchematicSheet,
 } from '../types/schematic';
 import {
+  getComponentGridAlignmentOffset,
+  getModuleGridAlignmentOffset,
+  getPortGridAlignmentOffset,
+  getPowerPortGridAlignmentOffset,
   getRootSheet,
   resolveSheet,
   transformPinOffset,
@@ -31,12 +35,14 @@ import type { ThemeColors } from '../lib/theme';
 import { useSchematicStore, liveDrag } from '../stores/schematicStore';
 import {
   computeOrthogonalRoute,
+  routeOrthogonalWithHeuristics,
   padRoute,
-  extractSegments,
+  segmentsFromRoute,
   findCrossings,
   generateJumpArc,
   writeRouteToLine2,
   JUMP_RADIUS,
+  type RouteSegment,
   type Crossing,
 } from '../lib/orthoRouter';
 import {
@@ -47,7 +53,14 @@ import {
   type NetForBus,
 } from '../lib/busDetector';
 
-const STUB_LENGTH = 4;
+const STUB_LENGTH = 2.54;
+const DIRECT_LABEL_DISTANCE = 72;
+const ROUTE_SPACING = 2.54;
+const COMPLEX_ROUTE_SCORE = 210;
+const COMPLEX_ROUTE_CROSSINGS = 2;
+const COMPLEX_ROUTE_PARALLEL = 3;
+const MAX_MULTI_ROUTE_PINS = 5;
+const MULTI_ROUTE_MAX_SPAN = 48;
 const NO_RAYCAST = () => {};
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -58,6 +71,8 @@ function netColor(net: SchematicNet, theme: ThemeColors): string {
       return theme.pinPower;
     case 'ground':
       return theme.pinGround;
+    case 'electrical':
+      return theme.netElectrical;
     case 'bus':
       if (/scl|sda|i2c/i.test(net.name)) return theme.busI2C;
       if (/spi|mosi|miso|sclk|cs/i.test(net.name)) return theme.busSPI;
@@ -66,6 +81,21 @@ function netColor(net: SchematicNet, theme: ThemeColors): string {
     case 'signal':
     default:
       return theme.pinSignal;
+  }
+}
+
+function oppositeSide(side: string): string {
+  switch (side) {
+    case 'left':
+      return 'right';
+    case 'right':
+      return 'left';
+    case 'top':
+      return 'bottom';
+    case 'bottom':
+      return 'top';
+    default:
+      return side;
   }
 }
 
@@ -81,6 +111,16 @@ interface ItemLookup {
   pinMap: Map<string, Map<string, PinInfo>>;
 }
 
+function resolvePinFromMap(
+  pinMap: Map<string, PinInfo> | undefined,
+  pinNumber: string,
+): { pin: PinInfo; key: string } | null {
+  if (!pinMap) return null;
+  const pin = pinMap.get(pinNumber);
+  if (!pin) return null;
+  return { pin, key: pinNumber };
+}
+
 function buildLookup(
   sheet: SchematicSheet,
   ports: SchematicPort[] = [],
@@ -90,33 +130,69 @@ function buildLookup(
 
   for (const comp of sheet.components) {
     const pm = new Map<string, PinInfo>();
-    for (const pin of comp.pins) pm.set(pin.number, { x: pin.x, y: pin.y, side: pin.side });
+    const offset = getComponentGridAlignmentOffset(comp);
+    for (const pin of comp.pins) {
+      pm.set(pin.number, {
+        x: pin.x + offset.x,
+        y: pin.y + offset.y,
+        side: pin.side,
+      });
+    }
     pinMap.set(comp.id, pm);
   }
   for (const mod of sheet.modules) {
     const pm = new Map<string, PinInfo>();
-    for (const pin of mod.interfacePins) pm.set(pin.id, { x: pin.x, y: pin.y, side: pin.side });
+    const offset = getModuleGridAlignmentOffset(mod);
+    for (const pin of mod.interfacePins) {
+      pm.set(pin.id, {
+        x: pin.x + offset.x,
+        y: pin.y + offset.y,
+        side: pin.side,
+      });
+    }
     pinMap.set(mod.id, pm);
   }
   for (const port of ports) {
     const pm = new Map<string, PinInfo>();
+    const offset = getPortGridAlignmentOffset(port);
     if (port.signals && port.signalPins) {
-      // Breakout port: register each signal as a separate pin
+      // Breakout port: register each signal pin.
       for (const sig of port.signals) {
         const sp = port.signalPins[sig];
-        if (sp) pm.set(sig, { x: sp.x, y: sp.y, side: port.pinSide });
+        if (sp) {
+          pm.set(sig, {
+            x: sp.x + offset.x,
+            y: sp.y + offset.y,
+            side: port.pinSide,
+          });
+        }
       }
-      // Fallback "1" at center for backward compat
-      pm.set('1', { x: port.pinX, y: port.pinY, side: port.pinSide });
+      // Line-level pin for nets that target the interface as a whole.
+      // For breakout ports this sits on the opposite side from the
+      // per-signal pins (explicit bus<->signal translation boundary).
+      pm.set('1', {
+        x: port.pinX + offset.x,
+        y: port.pinY + offset.y,
+        side: oppositeSide(port.pinSide),
+      });
     } else {
-      pm.set('1', { x: port.pinX, y: port.pinY, side: port.pinSide });
+      pm.set('1', {
+        x: port.pinX + offset.x,
+        y: port.pinY + offset.y,
+        side: port.pinSide,
+      });
     }
     pinMap.set(port.id, pm);
   }
   // Register power/ground port symbols — each has a single connection pin
   for (const pp of powerPorts) {
     const pm = new Map<string, PinInfo>();
-    pm.set('1', { x: pp.pinX, y: pp.pinY, side: pp.pinSide });
+    const offset = getPowerPortGridAlignmentOffset(pp);
+    pm.set('1', {
+      x: pp.pinX + offset.x,
+      y: pp.pinY + offset.y,
+      side: pp.pinSide,
+    });
     pinMap.set(pp.id, pm);
   }
 
@@ -145,6 +221,83 @@ interface StubNetData {
   net: SchematicNet;
   worldPins: WorldPin[];
   color: string;
+}
+
+interface PendingDirectNetData {
+  routeId: string;
+  net: SchematicNet;
+  worldPins: WorldPin[];
+  color: string;
+  distance: number;
+  forceDirect: boolean;
+}
+
+interface PendingMultiNetData {
+  net: SchematicNet;
+  worldPins: WorldPin[];
+  edges: Array<{ a: WorldPin; b: WorldPin }>;
+  color: string;
+  span: number;
+}
+
+function manhattanDistance(a: WorldPin, b: WorldPin): number {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+function computePinSpan(worldPins: WorldPin[]): number {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const p of worldPins) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return 0;
+  return Math.sqrt((maxX - minX) ** 2 + (maxY - minY) ** 2);
+}
+
+function buildMstEdges(
+  worldPins: WorldPin[],
+): Array<{ a: WorldPin; b: WorldPin }> {
+  if (worldPins.length < 2) return [];
+
+  const visited = new Set<number>([0]);
+  const edges: Array<{ a: WorldPin; b: WorldPin }> = [];
+
+  while (visited.size < worldPins.length) {
+    let bestFrom = -1;
+    let bestTo = -1;
+    let bestDist = Number.POSITIVE_INFINITY;
+
+    for (const from of visited) {
+      for (let to = 0; to < worldPins.length; to++) {
+        if (visited.has(to)) continue;
+        const d = manhattanDistance(worldPins[from], worldPins[to]);
+        if (d < bestDist) {
+          bestDist = d;
+          bestFrom = from;
+          bestTo = to;
+        }
+      }
+    }
+
+    if (bestFrom < 0 || bestTo < 0) break;
+    visited.add(bestTo);
+    edges.push({ a: worldPins[bestFrom], b: worldPins[bestTo] });
+  }
+
+  return edges;
+}
+
+function routePriority(net: SchematicNet): number {
+  if (net.type === 'power') return 0;
+  if (net.type === 'ground') return 1;
+  if (net.type === 'bus') return 2;
+  if (net.type === 'electrical') return 3;
+  return 3;
 }
 
 // ── Main component ─────────────────────────────────────────────
@@ -198,7 +351,14 @@ export const NetLines = memo(function NetLines({
 
     const directs: DirectNetData[] = [];
     const stubs: StubNetData[] = [];
-    const allRoutes = new Map<string, [number, number, number][]>();
+    const pendingDirects: PendingDirectNetData[] = [];
+    const pendingMultiNets: PendingMultiNetData[] = [];
+    const allSegments: RouteSegment[] = [];
+    const breakoutPortIds = new Set(
+      ports
+        .filter((p) => !!p.signals && p.signals.length >= 2)
+        .map((p) => p.id),
+    );
 
     // Collect bus candidates alongside direct/stub classification
     const busInputs: NetForBus[] = [];
@@ -215,9 +375,11 @@ export const NetLines = memo(function NetLines({
           const compPinMap = lookup.pinMap.get(np.componentId);
           if (!ppPinMap || !compPinMap) continue;
 
-          const ppPin = ppPinMap.get('1');
-          const compPin = compPinMap.get(np.pinNumber);
-          if (!ppPin || !compPin) continue;
+          const ppResolved = resolvePinFromMap(ppPinMap, '1');
+          const compResolved = resolvePinFromMap(compPinMap, np.pinNumber);
+          if (!ppResolved || !compResolved) continue;
+          const ppPin = ppResolved.pin;
+          const compPin = compResolved.pin;
 
           const ppPos = positions[pk + ppId] || { x: 0, y: 0 };
           const compPos = positions[pk + np.componentId] || { x: 0, y: 0 };
@@ -241,13 +403,14 @@ export const NetLines = memo(function NetLines({
           const dy = wp0.y - wp1.y;
           if (dx * dx + dy * dy < 0.5) continue;
 
-          const rawRoute = computeOrthogonalRoute(
-            wp0.x, wp0.y, wp0.side,
-            wp1.x, wp1.y, wp1.side,
-          );
-          const route = padRoute(rawRoute);
-          directs.push({ routeId: ppId, net, worldPins: [wp0, wp1], route, color });
-          allRoutes.set(ppId, route);
+          pendingDirects.push({
+            routeId: ppId,
+            net,
+            worldPins: [wp0, wp1],
+            color,
+            distance: Math.sqrt(dx * dx + dy * dy),
+            forceDirect: true,
+          });
         }
         continue; // power/ground nets fully handled above
       }
@@ -255,11 +418,13 @@ export const NetLines = memo(function NetLines({
       // ── Normal nets (signal / bus) ──
       const worldPins: WorldPin[] = [];
       const uniqueItems = new Set<string>();
+      let hasBreakoutSignalEndpoint = false;
 
       for (const np of net.pins) {
         const pm = lookup.pinMap.get(np.componentId);
-        const pin = pm?.get(np.pinNumber);
-        if (!pin) continue;
+        const resolved = resolvePinFromMap(pm, np.pinNumber);
+        if (!resolved) continue;
+        const pin = resolved.pin;
         const pos = positions[pk + np.componentId] || { x: 0, y: 0 };
         const tp = transformPinOffset(pin.x, pin.y, pos.rotation, pos.mirrorX, pos.mirrorY);
         const ts = transformPinSide(pin.side, pos.rotation, pos.mirrorX, pos.mirrorY);
@@ -268,31 +433,44 @@ export const NetLines = memo(function NetLines({
           y: pos.y + tp.y,
           side: ts,
           compId: np.componentId,
-          pinNumber: np.pinNumber,
+          pinNumber: resolved.key,
         });
+        if (breakoutPortIds.has(np.componentId) && resolved.key !== '1') {
+          hasBreakoutSignalEndpoint = true;
+        }
         uniqueItems.add(np.componentId);
       }
 
       if (worldPins.length < 2) continue;
 
-      // 2-pin nets between exactly 2 items always get direct connections.
-      // No distance limit — if two things are connected, draw the wire.
-      const isDirect = uniqueItems.size === 2 && worldPins.length === 2;
+      // 2-pin nets between exactly 2 items can be direct wires.
+      const isTwoPinDirect = uniqueItems.size === 2 && worldPins.length === 2;
 
-      if (isDirect) {
-        const rawRoute = computeOrthogonalRoute(
-          worldPins[0].x, worldPins[0].y, worldPins[0].side,
-          worldPins[1].x, worldPins[1].y, worldPins[1].side,
-        );
-        const route = padRoute(rawRoute);
-        directs.push({ routeId: net.id, net, worldPins, route, color });
-        allRoutes.set(net.id, route);
+      if (isTwoPinDirect) {
+        const dx = worldPins[0].x - worldPins[1].x;
+        const dy = worldPins[0].y - worldPins[1].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (net.type === 'signal' && dist > DIRECT_LABEL_DISTANCE) {
+          stubs.push({ net, worldPins, color });
+          continue;
+        }
+
+        pendingDirects.push({
+          routeId: net.id,
+          net,
+          worldPins,
+          color,
+          distance: dist,
+          forceDirect: net.type !== 'signal',
+        });
 
         // Also register as bus candidate
         busInputs.push({
           netId: net.id,
           netName: net.name,
           netType: net.type,
+          allowBundle: !hasBreakoutSignalEndpoint,
           worldPins: worldPins.map((wp) => ({
             x: wp.x,
             y: wp.y,
@@ -300,6 +478,24 @@ export const NetLines = memo(function NetLines({
             compId: wp.compId,
           })),
         });
+      } else if (
+        net.type !== 'bus' &&
+        worldPins.length >= 3 &&
+        worldPins.length <= MAX_MULTI_ROUTE_PINS
+      ) {
+        const span = computePinSpan(worldPins);
+        const edges = buildMstEdges(worldPins);
+        if (edges.length > 0 && span <= MULTI_ROUTE_MAX_SPAN) {
+          pendingMultiNets.push({
+            net,
+            worldPins,
+            edges,
+            color,
+            span,
+          });
+        } else {
+          stubs.push({ net, worldPins, color });
+        }
       } else {
         stubs.push({ net, worldPins, color });
       }
@@ -308,29 +504,153 @@ export const NetLines = memo(function NetLines({
     // ── Bus detection ───────────────────────────────────────
     const buses = detectBuses(busInputs, theme);
 
-    // Nets consumed by buses → remove from directs, add trunk to routes
+    // Nets consumed by buses → suppress individual routes and add bus trunk.
     const busNetIds = new Set<string>();
     for (const bg of buses) {
       for (const nid of bg.memberNetIds) {
         busNetIds.add(nid);
-        allRoutes.delete(nid); // remove individual routes
       }
-      allRoutes.set(bg.id, bg.trunkRoute); // add trunk for crossing detection
+      allSegments.push(...segmentsFromRoute(bg.trunkRoute, bg.id));
     }
 
-    const filteredDirects = directs.filter((d) => !busNetIds.has(d.net.id));
+    const existingSegments: RouteSegment[] = [];
+    for (const bg of buses) {
+      existingSegments.push(...segmentsFromRoute(bg.trunkRoute, bg.id));
+    }
+
+    const routed = [...pendingDirects].sort((a, b) => {
+      if (a.forceDirect !== b.forceDirect) return a.forceDirect ? -1 : 1;
+      const pr = routePriority(a.net) - routePriority(b.net);
+      if (pr !== 0) return pr;
+      if (Math.abs(a.distance - b.distance) > 0.01) return a.distance - b.distance;
+      return a.routeId.localeCompare(b.routeId);
+    });
+
+    for (const pd of routed) {
+      if (busNetIds.has(pd.net.id)) continue;
+      const a = pd.worldPins[0];
+      const b = pd.worldPins[1];
+      const routedResult = routeOrthogonalWithHeuristics(
+        a.x, a.y, a.side,
+        b.x, b.y, b.side,
+        { existingSegments, preferredSpacing: ROUTE_SPACING },
+      );
+
+      const q = routedResult.quality;
+      const shortSignalForcesDirect = pd.net.type === 'signal' && pd.distance <= 24;
+      const shouldFallbackToLabels = !pd.forceDirect &&
+        !shortSignalForcesDirect &&
+        pd.net.type === 'signal' &&
+        (
+          pd.distance > DIRECT_LABEL_DISTANCE ||
+          q.overlaps > 0 ||
+          q.crossings >= COMPLEX_ROUTE_CROSSINGS ||
+          q.closeParallel > COMPLEX_ROUTE_PARALLEL ||
+          q.score > COMPLEX_ROUTE_SCORE
+        );
+
+      if (shouldFallbackToLabels) {
+        stubs.push({ net: pd.net, worldPins: pd.worldPins, color: pd.color });
+        continue;
+      }
+
+      const route = padRoute(routedResult.route);
+      directs.push({
+        routeId: pd.routeId,
+        net: pd.net,
+        worldPins: pd.worldPins,
+        route,
+        color: pd.color,
+      });
+      allSegments.push(...segmentsFromRoute(route, pd.net.id));
+      existingSegments.push(...segmentsFromRoute(route, pd.routeId));
+    }
+
+    const routedMulti = [...pendingMultiNets].sort((a, b) => {
+      const pr = routePriority(a.net) - routePriority(b.net);
+      if (pr !== 0) return pr;
+      if (Math.abs(a.span - b.span) > 0.01) return a.span - b.span;
+      return a.net.id.localeCompare(b.net.id);
+    });
+
+    for (const pm of routedMulti) {
+      if (busNetIds.has(pm.net.id)) continue;
+
+      const edgeRoutes: Array<{
+        routeId: string;
+        worldPins: [WorldPin, WorldPin];
+        route: [number, number, number][];
+      }> = [];
+      const stagedSegments: RouteSegment[] = [];
+      let failed = false;
+
+      for (let i = 0; i < pm.edges.length; i++) {
+        const edge = pm.edges[i];
+        const routedResult = routeOrthogonalWithHeuristics(
+          edge.a.x, edge.a.y, edge.a.side,
+          edge.b.x, edge.b.y, edge.b.side,
+          {
+            existingSegments: existingSegments.concat(stagedSegments),
+            preferredSpacing: ROUTE_SPACING,
+          },
+        );
+
+        const q = routedResult.quality;
+        const edgeDist = manhattanDistance(edge.a, edge.b);
+        const shortSignalForcesDirect = pm.net.type === 'signal' && edgeDist <= 24;
+        const shouldFallbackToLabels =
+          pm.net.type === 'signal' &&
+          !shortSignalForcesDirect &&
+          (
+            q.overlaps > 0 ||
+            q.crossings >= COMPLEX_ROUTE_CROSSINGS ||
+            q.closeParallel > COMPLEX_ROUTE_PARALLEL ||
+            q.score > COMPLEX_ROUTE_SCORE
+          );
+
+        if (shouldFallbackToLabels) {
+          failed = true;
+          break;
+        }
+
+        const route = padRoute(routedResult.route);
+        const routeId = `${pm.net.id}::${i}`;
+        edgeRoutes.push({
+          routeId,
+          worldPins: [edge.a, edge.b],
+          route,
+        });
+        stagedSegments.push(...segmentsFromRoute(route, routeId));
+      }
+
+      if (failed || edgeRoutes.length === 0) {
+        stubs.push({ net: pm.net, worldPins: pm.worldPins, color: pm.color });
+        continue;
+      }
+
+      for (const er of edgeRoutes) {
+        directs.push({
+          routeId: er.routeId,
+          net: pm.net,
+          worldPins: er.worldPins,
+          route: er.route,
+          color: pm.color,
+        });
+        allSegments.push(...segmentsFromRoute(er.route, pm.net.id));
+      }
+      existingSegments.push(...stagedSegments);
+    }
 
     // ── Crossing detection ──────────────────────────────────
-    const segments = extractSegments(allRoutes);
-    const cx = findCrossings(segments);
+    const cx = findCrossings(allSegments);
 
     return {
-      directNets: filteredDirects,
+      directNets: directs,
       stubNets: stubs,
       busGroups: buses,
       crossings: cx,
     };
-  }, [sheet, lookup, positions, pk, netColorMap, theme]);
+  }, [sheet, lookup, positions, pk, netColorMap, theme, ports]);
 
   if (!sheet || !lookup) return null;
 

@@ -1,8 +1,11 @@
 /**
  * Tree visualizer webview for Power Tree and I2C Tree views.
  *
- * Serves the bundled Three.js React app from the tree-viewer dist directory,
- * passing the JSON data file URI via query params.
+ * Loads the React-based tree viewer from the ui-server build output.
+ * Data is passed via window.__TREE_VIEWER_CONFIG__ with a webview URI to the JSON file.
+ *
+ * Production: loads from resources/webviews/tree-viewer.html
+ * Development: loads from ui-server/dist/tree-viewer.html
  */
 
 import * as vscode from 'vscode';
@@ -11,32 +14,28 @@ import * as fs from 'fs';
 import { getCurrentPowerTree, onPowerTreeChanged } from '../common/power-tree';
 import { getCurrentI2CTree, onI2CTreeChanged } from '../common/i2c-tree';
 import { BaseWebview } from './webview-base';
-import { buildHtml } from './html-builder';
 
 /**
  * Locate the tree-viewer dist directory.
  * Checks two places:
- *   1. resources/tree-viewer/ (production / packaged extension)
- *   2. ../../atopile/visualizer/tree-viewer/web/dist/ (development)
+ *   1. resources/webviews/ (production / packaged extension)
+ *   2. ui-server/dist/ (development)
  */
 function getTreeViewerDistPath(): string | null {
     const extensionPath = vscode.extensions.getExtension('atopile.atopile')?.extensionUri?.fsPath;
 
     if (extensionPath) {
-        // Production: bundled into extension resources
-        const prodPath = path.join(extensionPath, 'resources', 'tree-viewer');
-        if (fs.existsSync(path.join(prodPath, 'index.html'))) {
+        // Production: webviews are built into resources/webviews/
+        const prodPath = path.join(extensionPath, 'resources', 'webviews');
+        if (fs.existsSync(path.join(prodPath, 'tree-viewer.html'))) {
             return prodPath;
         }
     }
 
-    // Development: use source tree directly
+    // Development: use ui-server dist directly
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
-        const devPath = path.join(
-            folder.uri.fsPath,
-            'src', 'atopile', 'visualizer', 'tree-viewer', 'web', 'dist'
-        );
-        if (fs.existsSync(path.join(devPath, 'index.html'))) {
+        const devPath = path.join(folder.uri.fsPath, 'src', 'ui-server', 'dist');
+        if (fs.existsSync(path.join(devPath, 'tree-viewer.html'))) {
             return devPath;
         }
     }
@@ -75,7 +74,7 @@ class TreeVisualizerWebview extends BaseWebview {
             );
         }
 
-        const indexHtmlPath = path.join(distPath, 'index.html');
+        const indexHtmlPath = path.join(distPath, 'tree-viewer.html');
         let html = fs.readFileSync(indexHtmlPath, 'utf-8');
 
         // Rewrite asset paths to webview URIs
@@ -85,6 +84,11 @@ class TreeVisualizerWebview extends BaseWebview {
         // Replace relative asset paths with webview URIs
         html = html.replace(/(href|src)="\.\/assets\//g, `$1="${distUri}/assets/`);
         html = html.replace(/(href|src)="\/assets\//g, `$1="${distUri}/assets/`);
+        html = html.replace(/(href|src)="\.\/treeViewer\./g, `$1="${distUri}/treeViewer.`);
+        html = html.replace(/(href|src)="\/treeViewer\./g, `$1="${distUri}/treeViewer.`);
+
+        // Also handle the entry JS in dev mode
+        html = html.replace(/src="\.\/src\/treeViewer\.tsx"/g, `src="${distUri}/treeViewer.js"`);
 
         // Inject data URL and type as a script before the closing </head>
         const configScript = `

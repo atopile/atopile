@@ -28,6 +28,9 @@ export function ContextMenu({ theme }: Props) {
   const contextMenu = useSchematicStore((s) => s.contextMenu);
   const closeContextMenu = useSchematicStore((s) => s.closeContextMenu);
   const alignSelected = useSchematicStore((s) => s.alignSelected);
+  const setPortEditMode = useSchematicStore((s) => s.setPortEditMode);
+  const portEditMode = useSchematicStore((s) => s.portEditMode);
+  const portEditTargetId = useSchematicStore((s) => s.portEditTargetId);
   const selectedCount = useSchematicStore((s) => s.selectedComponentIds.length);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -38,6 +41,20 @@ export function ContextMenu({ theme }: Props) {
     },
     [alignSelected, closeContextMenu],
   );
+
+  const handlePortEditToggle = useCallback(() => {
+    const targetId = contextMenu?.portId ?? null;
+    if (!targetId && !portEditMode) {
+      closeContextMenu();
+      return;
+    }
+    if (portEditMode && (!targetId || targetId === portEditTargetId)) {
+      setPortEditMode(false);
+    } else {
+      setPortEditMode(true, targetId);
+    }
+    closeContextMenu();
+  }, [setPortEditMode, portEditMode, portEditTargetId, contextMenu, closeContextMenu]);
 
   // Close on click outside
   useEffect(() => {
@@ -57,7 +74,9 @@ export function ContextMenu({ theme }: Props) {
     };
   }, [contextMenu, closeContextMenu]);
 
-  if (!contextMenu || selectedCount < 2) return null;
+  if (!contextMenu) return null;
+  if (contextMenu.kind === 'align' && selectedCount < 2) return null;
+  if (contextMenu.kind === 'port' && !contextMenu.portId && !portEditMode) return null;
 
   return (
     <div
@@ -77,44 +96,90 @@ export function ContextMenu({ theme }: Props) {
         fontSize: 12,
       }}
     >
-      <div
-        style={{
-          padding: '4px 12px 6px',
-          color: theme.textMuted,
-          fontSize: 10,
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.05em',
-        }}
-      >
-        Align ({selectedCount} items)
-      </div>
-      {MENU_ITEMS.map((item) => (
-        <button
-          key={item.mode}
-          onClick={() => handleClick(item.mode)}
-          style={{
-            display: 'block',
-            width: '100%',
-            padding: '6px 12px',
-            background: 'none',
-            border: 'none',
-            color: theme.textPrimary,
-            fontSize: 12,
-            textAlign: 'left',
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-          }}
-          onMouseEnter={(e) => {
-            (e.target as HTMLButtonElement).style.background = theme.bgTertiary;
-          }}
-          onMouseLeave={(e) => {
-            (e.target as HTMLButtonElement).style.background = 'none';
-          }}
-        >
-          {item.label}
-        </button>
-      ))}
+      {contextMenu.kind === 'align' ? (
+        <>
+          <div
+            style={{
+              padding: '4px 12px 6px',
+              color: theme.textMuted,
+              fontSize: 10,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}
+          >
+            Align ({selectedCount} items)
+          </div>
+          {MENU_ITEMS.map((item) => (
+            <button
+              key={item.mode}
+              onClick={() => handleClick(item.mode)}
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: '6px 12px',
+                background: 'none',
+                border: 'none',
+                color: theme.textPrimary,
+                fontSize: 12,
+                textAlign: 'left',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+              onMouseEnter={(e) => {
+                (e.target as HTMLButtonElement).style.background = theme.bgTertiary;
+              }}
+              onMouseLeave={(e) => {
+                (e.target as HTMLButtonElement).style.background = 'none';
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </>
+      ) : (
+        <>
+          <div
+            style={{
+              padding: '4px 12px 6px',
+              color: theme.textMuted,
+              fontSize: 10,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}
+          >
+            Ports
+          </div>
+          <button
+            onClick={handlePortEditToggle}
+            style={{
+              display: 'block',
+              width: '100%',
+              padding: '6px 12px',
+              background: 'none',
+              border: 'none',
+              color: theme.textPrimary,
+              fontSize: 12,
+              textAlign: 'left',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+            onMouseEnter={(e) => {
+              (e.target as HTMLButtonElement).style.background = theme.bgTertiary;
+            }}
+            onMouseLeave={(e) => {
+              (e.target as HTMLButtonElement).style.background = 'none';
+            }}
+          >
+            {portEditMode && (!contextMenu.portId || contextMenu.portId === portEditTargetId)
+              ? 'Done Editing Port'
+              : portEditMode
+                ? 'Edit This Port'
+                : 'Edit Port'}
+          </button>
+        </>
+      )}
     </div>
   );
 }

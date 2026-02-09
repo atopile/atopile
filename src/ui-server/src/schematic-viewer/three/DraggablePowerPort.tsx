@@ -101,6 +101,7 @@ export const DraggablePowerPort = memo(function DraggablePowerPort({
       const startY = (e.nativeEvent?.clientY ?? e.clientY) as number;
 
       const state = useSchematicStore.getState();
+      if (state.portEditMode) return;
       const pk =
         state.currentPath.length === 0
           ? '__root__'
@@ -184,6 +185,12 @@ export const DraggablePowerPort = memo(function DraggablePowerPort({
       ref={groupRef}
       onPointerDown={handlePointerDown}
       onPointerEnter={() => {
+        if (useSchematicStore.getState().portEditMode) {
+          if (!useSchematicStore.getState().dragComponentId) {
+            gl.domElement.style.cursor = 'not-allowed';
+          }
+          return;
+        }
         hoverComponent(powerPort.id);
         if (!useSchematicStore.getState().dragComponentId)
           gl.domElement.style.cursor = 'grab';
@@ -201,6 +208,9 @@ export const DraggablePowerPort = memo(function DraggablePowerPort({
         isHovered={isHovered}
         isDragging={isDraggingSelf}
         selectedNetId={selectedNetId}
+        rotation={committedPos.rotation}
+        mirrorX={committedPos.mirrorX}
+        mirrorY={committedPos.mirrorY}
       />
     </group>
   );

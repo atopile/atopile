@@ -195,6 +195,7 @@ class SchematicWebview extends BaseWebview {
                     // Merge positions back into the .ato_sch file
                     const atoSchPath = message.atoSchPath as string | undefined;
                     const positions = message.positions;
+                    const portSignalOrders = message.portSignalOrders;
                     if (atoSchPath && positions) {
                         try {
                             let data: Record<string, unknown> = {};
@@ -202,6 +203,9 @@ class SchematicWebview extends BaseWebview {
                                 data = JSON.parse(fs.readFileSync(atoSchPath, 'utf-8'));
                             }
                             data.positions = positions;
+                            if (portSignalOrders && typeof portSignalOrders === 'object') {
+                                data.portSignalOrders = portSignalOrders;
+                            }
                             const dir = path.dirname(atoSchPath);
                             if (!fs.existsSync(dir)) {
                                 fs.mkdirSync(dir, { recursive: true });

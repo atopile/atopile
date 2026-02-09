@@ -48,9 +48,8 @@
     ],
     "main": "./dist/extension.js",
     "scripts": {
-        "vscode:prepublish": "npm run build:webviews && npm run build:tree-viewer && npm run package",
+        "vscode:prepublish": "npm run build:webviews && npm run package",
         "build:webviews": "cd ../ui-server && npm install && npm run build -- --outDir ../vscode-atopile/resources/webviews",
-        "build:tree-viewer": "cd ../atopile/visualizer/tree-viewer/web && npm install && npm run build && mkdir -p ../../../../vscode-atopile/resources/tree-viewer && cp -r dist/ ../../../../vscode-atopile/resources/tree-viewer/",
         "compile": "webpack",
         "watch": "webpack --watch",
         "package": "webpack --mode production --devtool source-map --config ./webpack.config.js",

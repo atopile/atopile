@@ -20,7 +20,6 @@ import type {
   SchematicSheet,
   SchematicPort,
   ComponentPosition,
-  SchematicLayout,
 } from '../types/schematic';
 import { getRootSheet, resolveSheet, derivePortsFromModule, derivePowerPorts } from '../types/schematic';
 import type { SchematicPowerPort } from '../types/schematic';
@@ -46,6 +45,8 @@ interface SchematicState {
   schematic: SchematicData | null;
   /** Positions keyed by "pathKey:itemId" for per-sheet scoping */
   positions: Record<string, ComponentPosition>;
+  /** Per-port signal order overrides keyed by "pathKey:portId". */
+  portSignalOrders: Record<string, string[]>;
   isLoading: boolean;
   loadError: string | null;
 
@@ -64,7 +65,18 @@ interface SchematicState {
   dragComponentId: string | null;
 
   // Context menu
-  contextMenu: { x: number; y: number } | null;
+  contextMenu: {
+    x: number;
+    y: number;
+    kind: 'align' | 'port';
+    portId?: string;
+  } | null;
+
+  // Port edit mode (reorder + snap)
+  portEditMode: boolean;
+  /** Only this port is editable while port edit mode is active. */
+  portEditTargetId: string | null;
+  portEditSnapshot: Record<string, { x: number; y: number }[]> | null;
 
   // Actions
   loadSchematic: (url: string) => Promise<void>;
@@ -97,8 +109,12 @@ interface SchematicState {
   alignSelected: (mode: AlignMode) => void;
 
   // Context menu
-  openContextMenu: (x: number, y: number) => void;
+  openContextMenu: (x: number, y: number, kind?: 'align' | 'port', portId?: string) => void;
   closeContextMenu: () => void;
+
+  // Port edit mode
+  setPortEditMode: (enabled: boolean, portId?: string | null) => void;
+  reorderPortSignals: (portId: string, orderedSignals: string[]) => void;
 
   // Undo / Redo
   undo: () => void;
@@ -131,6 +147,154 @@ function scopedId(path: string[], itemId: string): string {
   return `${pathKey(path)}:${itemId}`;
 }
 
+function clonePortSignalOrders(
+  orders: Record<string, string[]>,
+): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const [key, arr] of Object.entries(orders)) out[key] = [...arr];
+  return out;
+}
+
+function normalizePositionsMap(
+  positions: Record<string, ComponentPosition>,
+): Record<string, ComponentPosition> {
+  const out: Record<string, ComponentPosition> = {};
+  for (const [key, pos] of Object.entries(positions)) {
+    out[key] = {
+      ...pos,
+      x: snapToGrid(pos.x),
+      y: snapToGrid(pos.y),
+    };
+  }
+  return out;
+}
+
+function getSignalOrderOverridesForPath(
+  orders: Record<string, string[]>,
+  path: string[],
+): Record<string, string[]> {
+  const prefix = pathKey(path) + ':';
+  const out: Record<string, string[]> = {};
+  for (const [key, value] of Object.entries(orders)) {
+    if (!key.startsWith(prefix)) continue;
+    out[key.slice(prefix.length)] = value;
+  }
+  return out;
+}
+
+function normalizeSignalOrder(
+  baseSignals: string[],
+  orderedSignals: string[],
+): string[] | null {
+  if (baseSignals.length !== orderedSignals.length) return null;
+  const baseSet = new Set(baseSignals);
+  const orderedSet = new Set(orderedSignals);
+  if (baseSet.size !== baseSignals.length || orderedSet.size !== orderedSignals.length) return null;
+  for (const sig of orderedSignals) {
+    if (!baseSet.has(sig)) return null;
+  }
+  return orderedSignals;
+}
+
+function getCurrentPortsForState(state: {
+  schematic: SchematicData | null;
+  currentPath: string[];
+  portSignalOrders: Record<string, string[]>;
+}): SchematicPort[] {
+  if (!state.schematic || state.currentPath.length === 0) return [];
+  const root = getRootSheet(state.schematic);
+  const parentPath = state.currentPath.slice(0, -1);
+  const parentSheet = resolveSheet(root, parentPath);
+  if (!parentSheet) return [];
+  const moduleId = state.currentPath[state.currentPath.length - 1];
+  const mod = parentSheet.modules.find((m) => m.id === moduleId);
+  if (!mod) return [];
+  return derivePortsFromModule(
+    mod,
+    getSignalOrderOverridesForPath(state.portSignalOrders, state.currentPath),
+  );
+}
+
+function comparePortAxis(
+  side: string,
+  a: number,
+  b: number,
+): number {
+  if (side === 'left' || side === 'right') return b - a; // top -> bottom
+  return a - b; // left -> right
+}
+
+function buildPortEditSnapshot(
+  ports: SchematicPort[],
+  path: string[],
+  positions: Record<string, ComponentPosition>,
+): Record<string, { x: number; y: number }[]> {
+  const grouped = new Map<string, Array<{ id: string; x: number; y: number; axis: number }>>();
+
+  for (const port of ports) {
+    const key = scopedId(path, port.id);
+    const pos = positions[key] || { x: 0, y: 0 };
+    const axis = (port.side === 'left' || port.side === 'right') ? pos.y : pos.x;
+    const list = grouped.get(port.side) || [];
+    list.push({ id: port.id, x: pos.x, y: pos.y, axis });
+    grouped.set(port.side, list);
+  }
+
+  const snapshot: Record<string, { x: number; y: number }[]> = {};
+  for (const [side, list] of grouped) {
+    list.sort((a, b) => comparePortAxis(side, a.axis, b.axis));
+    snapshot[side] = list.map((item) => ({
+      x: snapToGrid(item.x),
+      y: snapToGrid(item.y),
+    }));
+  }
+  return snapshot;
+}
+
+function reorderPortsToSnapshot(
+  draggedPortId: string,
+  ports: SchematicPort[],
+  path: string[],
+  positions: Record<string, ComponentPosition>,
+  snapshot: Record<string, { x: number; y: number }[]>,
+): Record<string, ComponentPosition> | null {
+  const dragged = ports.find((p) => p.id === draggedPortId);
+  if (!dragged) return null;
+  const side = dragged.side;
+  const sidePorts = ports.filter((p) => p.side === side);
+  if (sidePorts.length < 2) return null;
+
+  const slots = snapshot[side];
+  if (!slots || slots.length !== sidePorts.length) return null;
+
+  const orderedPortIds = [...sidePorts]
+    .map((port) => {
+      const pos = positions[scopedId(path, port.id)] || { x: 0, y: 0 };
+      const axis = (side === 'left' || side === 'right') ? pos.y : pos.x;
+      return { id: port.id, axis };
+    })
+    .sort((a, b) => comparePortAxis(side, a.axis, b.axis))
+    .map((item) => item.id);
+
+  const out = { ...positions };
+  let changed = false;
+  for (let i = 0; i < orderedPortIds.length; i++) {
+    const id = orderedPortIds[i];
+    const slot = slots[i];
+    const key = scopedId(path, id);
+    const cur = out[key] || { x: 0, y: 0 };
+    const nx = snapToGrid(slot.x);
+    const ny = snapToGrid(slot.y);
+    if (cur.x !== nx || cur.y !== ny) changed = true;
+    out[key] = {
+      ...cur,
+      x: nx,
+      y: ny,
+    };
+  }
+  return changed ? out : null;
+}
+
 // ── .ato_sch file path (set from config) ────────────────────────
 
 /** The .ato_sch file path — unified schematic data + positions */
@@ -144,15 +308,14 @@ export function getAtoSchPath(): string | null {
   return _atoSchPath;
 }
 
-// Backwards compat aliases
-export const setLayoutPath = setAtoSchPath;
-export const getLayoutPath = getAtoSchPath;
-
 // ── Debounced save ─────────────────────────────────────────────
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-function debouncedSave(positions: Record<string, ComponentPosition>) {
+function debouncedSave(
+  positions: Record<string, ComponentPosition>,
+  portSignalOrders: Record<string, string[]> = {},
+) {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     try {
@@ -161,36 +324,12 @@ function debouncedSave(positions: Record<string, ComponentPosition>) {
         type: 'save-layout',
         atoSchPath: _atoSchPath,
         positions,
+        portSignalOrders,
       });
-      // Always save to localStorage as fallback (dev mode / standalone)
-      localStorage.setItem('schematic-positions', JSON.stringify(positions));
     } catch {
       /* ignore */
     }
   }, 500);
-}
-
-function loadSavedPositions(): Record<string, ComponentPosition> | null {
-  try {
-    const raw = localStorage.getItem('schematic-positions');
-    if (raw) return JSON.parse(raw) as Record<string, ComponentPosition>;
-  } catch {
-    /* ignore */
-  }
-  return null;
-}
-
-/**
- * Load layout from an externally provided layout object.
- * @deprecated Use positions from the schematic data directly.
- */
-export function loadExternalLayout(layout: SchematicLayout): void {
-  const store = useSchematicStore.getState();
-  const merged = { ...store.positions };
-  for (const [key, pos] of Object.entries(layout.positions)) {
-    merged[key] = pos;
-  }
-  useSchematicStore.setState({ positions: merged });
 }
 
 // ── Layout a sheet and scope positions to a path ────────────────
@@ -229,11 +368,22 @@ function layoutSheet(
 // ── Undo / Redo stacks (module-level, not in store state) ───────
 
 const MAX_UNDO = 100;
-const undoStack: Record<string, ComponentPosition>[] = [];
-const redoStack: Record<string, ComponentPosition>[] = [];
+interface HistorySnapshot {
+  positions: Record<string, ComponentPosition>;
+  portSignalOrders: Record<string, string[]>;
+}
 
-function pushUndo(positions: Record<string, ComponentPosition>) {
-  undoStack.push({ ...positions });
+const undoStack: HistorySnapshot[] = [];
+const redoStack: HistorySnapshot[] = [];
+
+function pushUndo(
+  positions: Record<string, ComponentPosition>,
+  portSignalOrders: Record<string, string[]>,
+) {
+  undoStack.push({
+    positions: { ...positions },
+    portSignalOrders: clonePortSignalOrders(portSignalOrders),
+  });
   if (undoStack.length > MAX_UNDO) undoStack.shift();
   // Any new action clears the redo stack
   redoStack.length = 0;
@@ -251,6 +401,7 @@ export const useSchematicStore = create<SchematicState>()(
   subscribeWithSelector((set, get) => ({
     schematic: null,
     positions: {},
+    portSignalOrders: {},
     isLoading: false,
     loadError: null,
     currentPath: [],
@@ -261,6 +412,9 @@ export const useSchematicStore = create<SchematicState>()(
     hoveredNetId: null,
     dragComponentId: null,
     contextMenu: null,
+    portEditMode: false,
+    portEditTargetId: null,
+    portEditSnapshot: null,
 
     loadSchematic: async (url: string) => {
       set({ isLoading: true, loadError: null });
@@ -270,17 +424,26 @@ export const useSchematicStore = create<SchematicState>()(
         const data = await resp.json();
         const schematicData: SchematicData = data;
         const rootSheet = getRootSheet(schematicData);
-        // Positions come from the .ato_sch file (embedded) or localStorage fallback
-        const savedPositions = data.positions ?? loadSavedPositions() ?? null;
-        const positions = layoutSheet(rootSheet, [], savedPositions);
+        const embeddedPositions = data.positions ?? null;
+        const savedSignalOrders = data.portSignalOrders ?? {};
+        const rootPositions = layoutSheet(rootSheet, [], embeddedPositions);
+        const positions = normalizePositionsMap({
+          ...(embeddedPositions ?? {}),
+          ...rootPositions,
+        });
         set({
           schematic: schematicData,
           positions,
+          portSignalOrders: savedSignalOrders,
           currentPath: [],
           isLoading: false,
           selectedComponentIds: [],
           selectedComponentId: null,
           selectedNetId: null,
+          portEditMode: false,
+          portEditTargetId: null,
+          portEditSnapshot: null,
+          contextMenu: null,
         });
       } catch (e) {
         set({
@@ -292,30 +455,45 @@ export const useSchematicStore = create<SchematicState>()(
 
     loadSchematicData: (data: SchematicData) => {
       const rootSheet = getRootSheet(data);
-      const savedPositions = (data as any).positions ?? loadSavedPositions() ?? null;
-      const positions = layoutSheet(rootSheet, [], savedPositions);
+      const embeddedPositions = data.positions ?? null;
+      const savedSignalOrders = data.portSignalOrders ?? {};
+      const rootPositions = layoutSheet(rootSheet, [], embeddedPositions);
+      const positions = normalizePositionsMap({
+        ...(embeddedPositions ?? {}),
+        ...rootPositions,
+      });
       set({
         schematic: data,
         positions,
+        portSignalOrders: savedSignalOrders,
         currentPath: [],
         isLoading: false,
         loadError: null,
         selectedComponentIds: [],
         selectedComponentId: null,
         selectedNetId: null,
+        portEditMode: false,
+        portEditTargetId: null,
+        portEditSnapshot: null,
+        contextMenu: null,
       });
     },
 
     updateSchematicData: (data: SchematicData) => {
       // Preserve navigation path and existing positions.
       // Only re-layout sheets that don't already have positions.
-      const { currentPath, positions: existingPositions } = get();
+      const { currentPath, positions: existingPositions, portSignalOrders } = get();
       const rootSheet = getRootSheet(data);
-      const savedPositions = (data as any).positions ?? null;
+      const embeddedPositions = data.positions ?? null;
+      const incomingSignalOrders = data.portSignalOrders ?? portSignalOrders;
 
       // Re-layout the root sheet, merging with existing positions
-      const rootPositions = layoutSheet(rootSheet, [], savedPositions);
-      const merged = { ...rootPositions, ...existingPositions };
+      const rootPositions = layoutSheet(rootSheet, [], embeddedPositions);
+      const merged = normalizePositionsMap({
+        ...(embeddedPositions ?? {}),
+        ...rootPositions,
+        ...existingPositions,
+      });
 
       // Validate that the current navigation path is still valid
       let validPath = currentPath;
@@ -326,9 +504,14 @@ export const useSchematicStore = create<SchematicState>()(
       set({
         schematic: data,
         positions: merged,
+        portSignalOrders: incomingSignalOrders,
         currentPath: validPath,
         isLoading: false,
         loadError: null,
+        portEditMode: false,
+        portEditTargetId: null,
+        portEditSnapshot: null,
+        contextMenu: null,
       });
     },
 
@@ -345,7 +528,7 @@ export const useSchematicStore = create<SchematicState>()(
       };
       set((s) => {
         const newPositions = { ...s.positions, [key]: snapped };
-        debouncedSave(newPositions);
+        debouncedSave(newPositions, s.portSignalOrders);
         return { positions: newPositions };
       });
     },
@@ -355,7 +538,7 @@ export const useSchematicStore = create<SchematicState>()(
     endDrag: () => {
       const commitPos = get().commitPosition;
       if (liveDrag.componentId) {
-        pushUndo(get().positions);
+        pushUndo(get().positions, get().portSignalOrders);
         const id = liveDrag.componentId;
         // Commit primary drag item
         commitPos(id, { x: liveDrag.x, y: liveDrag.y });
@@ -365,6 +548,27 @@ export const useSchematicStore = create<SchematicState>()(
             x: liveDrag.x + offset.x,
             y: liveDrag.y + offset.y,
           });
+        }
+        const st = get();
+        if (
+          st.portEditMode &&
+          st.portEditSnapshot &&
+          (!st.portEditTargetId || st.portEditTargetId === id)
+        ) {
+          const ports = getCurrentPortsForState(st);
+          if (ports.some((p) => p.id === id)) {
+            const reordered = reorderPortsToSnapshot(
+              id,
+              ports,
+              st.currentPath,
+              st.positions,
+              st.portEditSnapshot,
+            );
+            if (reordered) {
+              set({ positions: reordered });
+              debouncedSave(reordered, st.portSignalOrders);
+            }
+          }
         }
         liveDrag.componentId = null;
         liveDrag.groupOffsets = {};
@@ -436,7 +640,7 @@ export const useSchematicStore = create<SchematicState>()(
     resetLayout: () => {
       const { schematic, currentPath } = get();
       if (!schematic) return;
-      pushUndo(get().positions);
+      pushUndo(get().positions, get().portSignalOrders);
       const rootSheet = getRootSheet(schematic);
       const sheet = resolveSheet(rootSheet, currentPath);
       if (!sheet) return;
@@ -446,7 +650,12 @@ export const useSchematicStore = create<SchematicState>()(
         const parentSheet = resolveSheet(rootSheet, parentPath);
         const modId = currentPath[currentPath.length - 1];
         const mod = parentSheet?.modules.find((m) => m.id === modId);
-        if (mod) ports = derivePortsFromModule(mod);
+        if (mod) {
+          ports = derivePortsFromModule(
+            mod,
+            getSignalOrderOverridesForPath(get().portSignalOrders, currentPath),
+          );
+        }
       }
       const positions = layoutSheet(sheet, currentPath, null, ports);
       set((s) => {
@@ -456,14 +665,9 @@ export const useSchematicStore = create<SchematicState>()(
           if (!k.startsWith(prefix)) kept[k] = v;
         }
         const merged = { ...kept, ...positions };
-        debouncedSave(merged);
+        debouncedSave(merged, s.portSignalOrders);
         return { positions: merged };
       });
-      try {
-        localStorage.removeItem('schematic-positions');
-      } catch {
-        /* ignore */
-      }
     },
 
     // ── Transform (operate on ALL selected items) ───────────────
@@ -471,7 +675,7 @@ export const useSchematicStore = create<SchematicState>()(
     rotateSelected: () => {
       const { selectedComponentIds, currentPath, positions } = get();
       if (selectedComponentIds.length === 0) return;
-      pushUndo(positions);
+      pushUndo(positions, get().portSignalOrders);
       set((s) => {
         const newPositions = { ...s.positions };
         for (const id of selectedComponentIds) {
@@ -479,7 +683,7 @@ export const useSchematicStore = create<SchematicState>()(
           const pos = newPositions[key] || { x: 0, y: 0 };
           newPositions[key] = { ...pos, rotation: ((pos.rotation || 0) + 90) % 360 };
         }
-        debouncedSave(newPositions);
+        debouncedSave(newPositions, s.portSignalOrders);
         return { positions: newPositions };
       });
     },
@@ -487,7 +691,7 @@ export const useSchematicStore = create<SchematicState>()(
     mirrorSelectedX: () => {
       const { selectedComponentIds, currentPath, positions } = get();
       if (selectedComponentIds.length === 0) return;
-      pushUndo(positions);
+      pushUndo(positions, get().portSignalOrders);
       set((s) => {
         const newPositions = { ...s.positions };
         for (const id of selectedComponentIds) {
@@ -495,7 +699,7 @@ export const useSchematicStore = create<SchematicState>()(
           const pos = newPositions[key] || { x: 0, y: 0 };
           newPositions[key] = { ...pos, mirrorX: !pos.mirrorX };
         }
-        debouncedSave(newPositions);
+        debouncedSave(newPositions, s.portSignalOrders);
         return { positions: newPositions };
       });
     },
@@ -503,7 +707,7 @@ export const useSchematicStore = create<SchematicState>()(
     mirrorSelectedY: () => {
       const { selectedComponentIds, currentPath, positions } = get();
       if (selectedComponentIds.length === 0) return;
-      pushUndo(positions);
+      pushUndo(positions, get().portSignalOrders);
       set((s) => {
         const newPositions = { ...s.positions };
         for (const id of selectedComponentIds) {
@@ -511,7 +715,7 @@ export const useSchematicStore = create<SchematicState>()(
           const pos = newPositions[key] || { x: 0, y: 0 };
           newPositions[key] = { ...pos, mirrorY: !pos.mirrorY };
         }
-        debouncedSave(newPositions);
+        debouncedSave(newPositions, s.portSignalOrders);
         return { positions: newPositions };
       });
     },
@@ -519,7 +723,7 @@ export const useSchematicStore = create<SchematicState>()(
     nudgeSelected: (dx, dy) => {
       const { selectedComponentIds, currentPath, positions } = get();
       if (selectedComponentIds.length === 0) return;
-      pushUndo(positions);
+      pushUndo(positions, get().portSignalOrders);
       set((s) => {
         const newPositions = { ...s.positions };
         for (const id of selectedComponentIds) {
@@ -531,7 +735,7 @@ export const useSchematicStore = create<SchematicState>()(
             y: snapToGrid(pos.y + dy),
           };
         }
-        debouncedSave(newPositions);
+        debouncedSave(newPositions, s.portSignalOrders);
         return { positions: newPositions };
       });
     },
@@ -539,7 +743,7 @@ export const useSchematicStore = create<SchematicState>()(
     alignSelected: (mode) => {
       const { selectedComponentIds, currentPath, positions } = get();
       if (selectedComponentIds.length < 2) return;
-      pushUndo(positions);
+      pushUndo(positions, get().portSignalOrders);
       set((s) => {
         const newPositions = { ...s.positions };
         const items = selectedComponentIds.map((id) => {
@@ -624,7 +828,7 @@ export const useSchematicStore = create<SchematicState>()(
           }
         }
 
-        debouncedSave(newPositions);
+        debouncedSave(newPositions, s.portSignalOrders);
         return { positions: newPositions };
       });
     },
@@ -634,23 +838,121 @@ export const useSchematicStore = create<SchematicState>()(
     undo: () => {
       const prev = undoStack.pop();
       if (!prev) return;
-      redoStack.push({ ...get().positions });
-      set({ positions: prev });
-      debouncedSave(prev);
+      redoStack.push({
+        positions: { ...get().positions },
+        portSignalOrders: clonePortSignalOrders(get().portSignalOrders),
+      });
+      set({
+        positions: prev.positions,
+        portSignalOrders: clonePortSignalOrders(prev.portSignalOrders),
+      });
+      debouncedSave(prev.positions, prev.portSignalOrders);
     },
 
     redo: () => {
       const next = redoStack.pop();
       if (!next) return;
-      undoStack.push({ ...get().positions });
-      set({ positions: next });
-      debouncedSave(next);
+      undoStack.push({
+        positions: { ...get().positions },
+        portSignalOrders: clonePortSignalOrders(get().portSignalOrders),
+      });
+      set({
+        positions: next.positions,
+        portSignalOrders: clonePortSignalOrders(next.portSignalOrders),
+      });
+      debouncedSave(next.positions, next.portSignalOrders);
     },
 
     // ── Context menu ────────────────────────────────────────────
 
-    openContextMenu: (x, y) => set({ contextMenu: { x, y } }),
+    openContextMenu: (x, y, kind = 'align', portId) =>
+      set({ contextMenu: { x, y, kind, portId } }),
     closeContextMenu: () => set({ contextMenu: null }),
+
+    setPortEditMode: (enabled, portId) => {
+      if (!enabled) {
+        set({
+          portEditMode: false,
+          portEditTargetId: null,
+          portEditSnapshot: null,
+          contextMenu: null,
+        });
+        return;
+      }
+      const st = get();
+      const targetId = portId ?? st.contextMenu?.portId ?? null;
+      if (!targetId) {
+        set({
+          portEditMode: false,
+          portEditTargetId: null,
+          portEditSnapshot: null,
+          contextMenu: null,
+        });
+        return;
+      }
+      const ports = getCurrentPortsForState(st);
+      if (ports.length === 0 || !ports.some((p) => p.id === targetId)) {
+        set({
+          portEditMode: false,
+          portEditTargetId: null,
+          portEditSnapshot: null,
+          contextMenu: null,
+        });
+        return;
+      }
+      const snapshot = buildPortEditSnapshot(ports, st.currentPath, st.positions);
+      set({
+        portEditMode: true,
+        portEditTargetId: targetId,
+        selectedComponentIds: [targetId],
+        selectedComponentId: targetId,
+        selectedNetId: null,
+        portEditSnapshot: snapshot,
+        contextMenu: null,
+      });
+    },
+
+    reorderPortSignals: (portId, orderedSignals) => {
+      const st = get();
+      if (!st.schematic || st.currentPath.length === 0) return;
+
+      const root = getRootSheet(st.schematic);
+      const parentPath = st.currentPath.slice(0, -1);
+      const parentSheet = resolveSheet(root, parentPath);
+      if (!parentSheet) return;
+      const moduleId = st.currentPath[st.currentPath.length - 1];
+      const mod = parentSheet.modules.find((m) => m.id === moduleId);
+      if (!mod) return;
+
+      const ipin = mod.interfacePins.find((p) => p.id === portId);
+      const baseSignals = ipin?.signals;
+      if (!baseSignals || baseSignals.length < 2) return;
+
+      const normalized = normalizeSignalOrder(baseSignals, orderedSignals);
+      if (!normalized) return;
+
+      const key = scopedId(st.currentPath, portId);
+      const currentOverride = st.portSignalOrders[key];
+      const matchesCurrentOverride = !!currentOverride &&
+        currentOverride.length === normalized.length &&
+        currentOverride.every((sig, i) => sig === normalized[i]);
+      if (matchesCurrentOverride) return;
+
+      const isDefaultOrder = normalized.every((sig, i) => sig === baseSignals[i]);
+      if (!currentOverride && isDefaultOrder) return;
+
+      pushUndo(st.positions, st.portSignalOrders);
+      set((s) => {
+        const next = clonePortSignalOrders(s.portSignalOrders);
+        if (isDefaultOrder) {
+          delete next[key];
+        } else {
+          next[key] = [...normalized];
+        }
+        debouncedSave(s.positions, next);
+        return { portSignalOrders: next };
+      });
+    },
 
     // ── Navigation ──────────────────────────────────────────────
 
@@ -665,7 +967,7 @@ export const useSchematicStore = create<SchematicState>()(
       if (!mod) return;
 
       const newPath = [...currentPath, moduleId];
-      const saved = loadSavedPositions();
+      const saved = get().positions;
 
       const prefix = pathKey(newPath) + ':';
       const hasPositions = Object.keys(get().positions).some((k) =>
@@ -673,7 +975,10 @@ export const useSchematicStore = create<SchematicState>()(
       );
 
       if (!hasPositions) {
-        const ports = derivePortsFromModule(mod);
+        const ports = derivePortsFromModule(
+          mod,
+          getSignalOrderOverridesForPath(get().portSignalOrders, newPath),
+        );
         const childPositions = layoutSheet(mod.sheet, newPath, saved, ports);
         set((s) => ({
           currentPath: newPath,
@@ -682,6 +987,10 @@ export const useSchematicStore = create<SchematicState>()(
           selectedComponentId: null,
           selectedNetId: null,
           hoveredComponentId: null,
+          portEditMode: false,
+          portEditTargetId: null,
+          portEditSnapshot: null,
+          contextMenu: null,
         }));
       } else {
         set({
@@ -690,6 +999,10 @@ export const useSchematicStore = create<SchematicState>()(
           selectedComponentId: null,
           selectedNetId: null,
           hoveredComponentId: null,
+          portEditMode: false,
+          portEditTargetId: null,
+          portEditSnapshot: null,
+          contextMenu: null,
         });
       }
     },
@@ -703,6 +1016,10 @@ export const useSchematicStore = create<SchematicState>()(
         selectedComponentId: null,
         selectedNetId: null,
         hoveredComponentId: null,
+        portEditMode: false,
+        portEditTargetId: null,
+        portEditSnapshot: null,
+        contextMenu: null,
       });
     },
 
@@ -712,7 +1029,7 @@ export const useSchematicStore = create<SchematicState>()(
       const rootSheet = getRootSheet(schematic);
       if (resolveSheet(rootSheet, path) === null) return;
 
-      const saved = loadSavedPositions();
+      const saved = get().positions;
       const prefix = pathKey(path) + ':';
       const hasPositions = Object.keys(get().positions).some((k) =>
         k.startsWith(prefix),
@@ -725,7 +1042,12 @@ export const useSchematicStore = create<SchematicState>()(
           const parentSheet = resolveSheet(rootSheet, parentPath);
           const modId = path[path.length - 1];
           const mod = parentSheet?.modules.find((m) => m.id === modId);
-          const ports = mod ? derivePortsFromModule(mod) : [];
+          const ports = mod
+            ? derivePortsFromModule(
+                mod,
+                getSignalOrderOverridesForPath(get().portSignalOrders, path),
+              )
+            : [];
           const childPositions = layoutSheet(sheet, path, saved, ports);
           set((s) => ({
             currentPath: path,
@@ -734,6 +1056,10 @@ export const useSchematicStore = create<SchematicState>()(
             selectedComponentId: null,
             selectedNetId: null,
             hoveredComponentId: null,
+            portEditMode: false,
+            portEditTargetId: null,
+            portEditSnapshot: null,
+            contextMenu: null,
           }));
           return;
         }
@@ -745,12 +1071,16 @@ export const useSchematicStore = create<SchematicState>()(
         selectedComponentId: null,
         selectedNetId: null,
         hoveredComponentId: null,
+        portEditMode: false,
+        portEditTargetId: null,
+        portEditSnapshot: null,
+        contextMenu: null,
       });
     },
   })),
 );
 
-// ── Stable fallback ────────────────────────────────────────────
+// ── Stable defaults ────────────────────────────────────────────
 
 const ZERO_POS: ComponentPosition = { x: 0, y: 0 };
 
@@ -827,7 +1157,10 @@ export function useCurrentPorts(): SchematicPort[] {
     const moduleId = s.currentPath[s.currentPath.length - 1];
     const mod = parentSheet.modules.find((m) => m.id === moduleId);
     if (!mod) return EMPTY_PORTS;
-    return derivePortsFromModule(mod);
+    return derivePortsFromModule(
+      mod,
+      getSignalOrderOverridesForPath(s.portSignalOrders, s.currentPath),
+    );
   });
 }
 

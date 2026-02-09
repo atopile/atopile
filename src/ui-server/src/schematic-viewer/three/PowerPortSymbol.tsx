@@ -13,8 +13,9 @@
 import { memo } from 'react';
 import { Text, Line } from '@react-three/drei';
 import type { SchematicPowerPort } from '../types/schematic';
-import { POWER_PORT_W } from '../types/schematic';
+import { POWER_PORT_W, getPowerPortGridAlignmentOffset } from '../types/schematic';
 import type { ThemeColors } from '../lib/theme';
+import { getUprightTextTransform } from '../lib/itemTransform';
 
 const NO_RAYCAST = () => {};
 const BAR_HALF = POWER_PORT_W / 2;
@@ -26,6 +27,9 @@ interface Props {
   isHovered: boolean;
   isDragging: boolean;
   selectedNetId: string | null;
+  rotation?: number;
+  mirrorX?: boolean;
+  mirrorY?: boolean;
 }
 
 export const PowerPortSymbol = memo(function PowerPortSymbol({
@@ -35,19 +39,26 @@ export const PowerPortSymbol = memo(function PowerPortSymbol({
   isHovered,
   isDragging,
   selectedNetId,
+  rotation = 0,
+  mirrorX = false,
+  mirrorY = false,
 }: Props) {
   const zOffset = isDragging ? 0.5 : 0;
   const isPower = powerPort.type === 'power';
   const isNetSelected = selectedNetId === powerPort.netId;
   const color = isPower ? theme.pinPower : theme.pinGround;
   const fillOpacity = isSelected || isNetSelected ? 0.4 : isHovered ? 0.3 : 0;
+  const pinX = powerPort.pinX;
+  const pinY = powerPort.pinY;
+  const gridOffset = getPowerPortGridAlignmentOffset(powerPort);
+  const textTf = getUprightTextTransform(rotation, mirrorX, mirrorY);
 
   // Hit target for pointer events
   const hitW = POWER_PORT_W + 2;
   const hitH = 3;
 
   return (
-    <group position={[0, 0, zOffset]}>
+    <group position={[gridOffset.x, gridOffset.y, zOffset]}>
       {/* ── Invisible hit target ── */}
       <mesh position={[0, 0, -0.005]}>
         <planeGeometry args={[hitW, hitH]} />
@@ -62,14 +73,16 @@ export const PowerPortSymbol = memo(function PowerPortSymbol({
         </mesh>
       )}
 
-      {isPower ? (
-        <PowerBarGlyph color={color} name={powerPort.name} theme={theme} />
-      ) : (
-        <GroundGlyph color={color} />
-      )}
+      <group raycast={NO_RAYCAST}>
+        {isPower ? (
+          <PowerBarGlyph color={color} name={powerPort.name} theme={theme} textTf={textTf} />
+        ) : (
+          <GroundGlyph color={color} />
+        )}
+      </group>
 
       {/* ── Connection dot at pin point ── */}
-      <mesh position={[powerPort.pinX, powerPort.pinY, 0.01]} raycast={NO_RAYCAST}>
+      <mesh position={[pinX, pinY, 0.01]} raycast={NO_RAYCAST}>
         <circleGeometry args={[0.25, 10]} />
         <meshBasicMaterial color={color} />
       </mesh>
@@ -87,10 +100,12 @@ function PowerBarGlyph({
   color,
   name,
   theme,
+  textTf,
 }: {
   color: string;
   name: string;
   theme: ThemeColors;
+  textTf: { rotationZ: number; scaleX: number; scaleY: number };
 }) {
   return (
     <group raycast={NO_RAYCAST}>
@@ -109,17 +124,22 @@ function PowerBarGlyph({
         raycast={NO_RAYCAST}
       />
       {/* Net name above bar */}
-      <Text
+      <group
         position={[0, 1.1, 0.01]}
-        fontSize={0.7}
-        color={theme.textPrimary}
-        anchorX="center"
-        anchorY="bottom"
-        font={undefined}
-        raycast={NO_RAYCAST}
+        rotation={[0, 0, textTf.rotationZ]}
+        scale={[textTf.scaleX, textTf.scaleY, 1]}
       >
-        {name}
-      </Text>
+        <Text
+          fontSize={0.7}
+          color={theme.textPrimary}
+          anchorX="center"
+          anchorY="bottom"
+          font={undefined}
+          raycast={NO_RAYCAST}
+        >
+          {name}
+        </Text>
+      </group>
     </group>
   );
 }

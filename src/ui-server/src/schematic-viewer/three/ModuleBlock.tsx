@@ -12,8 +12,13 @@
 import { useMemo, memo } from 'react';
 import { Text, RoundedBox, Line } from '@react-three/drei';
 import type { SchematicModule, SchematicInterfacePin } from '../types/schematic';
+import { getModuleGridAlignmentOffset } from '../types/schematic';
 import type { ThemeColors } from '../lib/theme';
 import { getPinColor } from '../lib/theme';
+import {
+  getUprightTextTransform,
+  anchorFromVisualSide,
+} from '../lib/itemTransform';
 
 const NO_RAYCAST = () => { };
 
@@ -68,14 +73,18 @@ export const ModuleBlock = memo(function ModuleBlock({
   const nameFontSize = typeFontSize * 0.65;
   const maxTextWidth = W * 0.65;
   const zOffset = isDragging ? 0.5 : 0;
+  const gridOffset = useMemo(
+    () => getModuleGridAlignmentOffset(module),
+    [module],
+  );
 
-  // Counter-transform for text readability when module is rotated/mirrored
-  const counterRot = -(rotation * Math.PI) / 180;
-  const counterScaleX = mirrorX ? -1 : 1;
-  const counterScaleY = mirrorY ? -1 : 1;
+  const textTf = useMemo(
+    () => getUprightTextTransform(rotation, mirrorX, mirrorY),
+    [rotation, mirrorX, mirrorY],
+  );
 
   return (
-    <group position={[0, 0, zOffset]} raycast={NO_RAYCAST}>
+    <group position={[gridOffset.x, gridOffset.y, zOffset]} raycast={NO_RAYCAST}>
       {/* ── Selection highlight ─────────────────────── */}
       {isSelected && (
         <RoundedBox
@@ -129,7 +138,7 @@ export const ModuleBlock = memo(function ModuleBlock({
       </mesh>
 
       {/* ── Labels (counter-rotated for readability) ── */}
-      <group position={[0, 0, 0.001]} rotation={[0, 0, counterRot]} scale={[counterScaleX, counterScaleY, 1]}>
+      <group position={[0, 0, 0.001]} rotation={[0, 0, textTf.rotationZ]} scale={[textTf.scaleX, textTf.scaleY, 1]}>
         {/* Type name (bold, colored) */}
         <Text
           position={[0, typeFontSize * 0.5, 0]}
@@ -161,7 +170,7 @@ export const ModuleBlock = memo(function ModuleBlock({
       </group>
 
       {/* ── Component count badge (counter-rotated) ── */}
-      <group position={[W / 2 - 2, -H / 2 + 1.2, 0.001]} rotation={[0, 0, counterRot]} scale={[counterScaleX, counterScaleY, 1]}>
+      <group position={[W / 2 - 2, -H / 2 + 1.2, 0.001]} rotation={[0, 0, textTf.rotationZ]} scale={[textTf.scaleX, textTf.scaleY, 1]}>
         <mesh raycast={NO_RAYCAST}>
           <planeGeometry args={[3.5, 1.4]} />
           <meshBasicMaterial color={accent} transparent opacity={0.15} />
@@ -180,7 +189,7 @@ export const ModuleBlock = memo(function ModuleBlock({
       </group>
 
       {/* ── Expand hint icon (counter-rotated) ───────── */}
-      <group position={[-W / 2 + 1.5, -H / 2 + 1.2, 0.001]} rotation={[0, 0, counterRot]} scale={[counterScaleX, counterScaleY, 1]}>
+      <group position={[-W / 2 + 1.5, -H / 2 + 1.2, 0.001]} rotation={[0, 0, textTf.rotationZ]} scale={[textTf.scaleX, textTf.scaleY, 1]}>
         <Text
           fontSize={0.9}
           color={theme.textMuted}
@@ -201,9 +210,12 @@ export const ModuleBlock = memo(function ModuleBlock({
           theme={theme}
           netId={netsForModule.get(pin.id) ?? null}
           selectedNetId={selectedNetId}
-          counterRot={counterRot}
-          counterScaleX={counterScaleX}
-          counterScaleY={counterScaleY}
+          textRotationZ={textTf.rotationZ}
+          textScaleX={textTf.scaleX}
+          textScaleY={textTf.scaleY}
+          rotationDeg={rotation}
+          mirrorX={mirrorX}
+          mirrorY={mirrorY}
         />
       ))}
     </group>
@@ -217,44 +229,57 @@ const InterfacePinElement = memo(function InterfacePinElement({
   theme,
   netId,
   selectedNetId,
-  counterRot = 0,
-  counterScaleX = 1,
-  counterScaleY = 1,
+  textRotationZ = 0,
+  textScaleX = 1,
+  textScaleY = 1,
+  rotationDeg = 0,
+  mirrorX = false,
+  mirrorY = false,
 }: {
   pin: SchematicInterfacePin;
   theme: ThemeColors;
   netId: string | null;
   selectedNetId: string | null;
-  counterRot?: number;
-  counterScaleX?: number;
-  counterScaleY?: number;
+  textRotationZ?: number;
+  textScaleX?: number;
+  textScaleY?: number;
+  rotationDeg?: number;
+  mirrorX?: boolean;
+  mirrorY?: boolean;
 }) {
   const color = getPinColor(pin.category, theme);
   const isHighlighted = netId !== null && netId === selectedNetId;
   const DOT_RADIUS = 0.35;
+  const pinX = pin.x;
+  const pinY = pin.y;
+  const bodyX = pin.bodyX;
+  const bodyY = pin.bodyY;
 
   // Text placement
   let nameX: number, nameY: number;
-  let nameAnchorX: 'left' | 'right' | 'center' = 'left';
   const NAME_INSET = 0.8;
 
   if (pin.side === 'left') {
-    nameX = pin.bodyX + NAME_INSET;
-    nameY = pin.y;
-    nameAnchorX = 'left';
+    nameX = bodyX + NAME_INSET;
+    nameY = pinY;
   } else if (pin.side === 'right') {
-    nameX = pin.bodyX - NAME_INSET;
-    nameY = pin.y;
-    nameAnchorX = 'right';
+    nameX = bodyX - NAME_INSET;
+    nameY = pinY;
   } else if (pin.side === 'top') {
-    nameX = pin.x;
-    nameY = pin.bodyY - NAME_INSET;
-    nameAnchorX = 'center';
+    nameX = pinX;
+    nameY = bodyY - NAME_INSET;
   } else {
-    nameX = pin.x;
-    nameY = pin.bodyY + NAME_INSET;
-    nameAnchorX = 'center';
+    nameX = pinX;
+    nameY = bodyY + NAME_INSET;
   }
+  const effectiveNameAnchorX = anchorFromVisualSide(pin.side, {
+    rotationDeg,
+    mirrorX,
+    mirrorY,
+    left: 'left',
+    right: 'right',
+    vertical: 'center',
+  });
 
   const lineColor = isHighlighted ? theme.accent : color;
 
@@ -263,8 +288,8 @@ const InterfacePinElement = memo(function InterfacePinElement({
       {/* Stub line */}
       <Line
         points={[
-          [pin.x, pin.y, 0],
-          [pin.bodyX, pin.bodyY, 0],
+          [pinX, pinY, 0],
+          [bodyX, bodyY, 0],
         ]}
         color={lineColor}
         lineWidth={isHighlighted ? 2.5 : 1.8}
@@ -272,17 +297,17 @@ const InterfacePinElement = memo(function InterfacePinElement({
       />
 
       {/* Connection dot */}
-      <mesh position={[pin.x, pin.y, 0.001]} raycast={NO_RAYCAST}>
+      <mesh position={[pinX, pinY, 0.001]} raycast={NO_RAYCAST}>
         <circleGeometry args={[DOT_RADIUS, 16]} />
         <meshBasicMaterial color={lineColor} />
       </mesh>
 
       {/* Pin name (counter-rotated for readability) */}
-      <group position={[nameX, nameY, 0.002]} rotation={[0, 0, counterRot]} scale={[counterScaleX, counterScaleY, 1]}>
+      <group position={[nameX, nameY, 0.002]} rotation={[0, 0, textRotationZ]} scale={[textScaleX, textScaleY, 1]}>
         <Text
           fontSize={1.0}
           color={theme.textSecondary}
-          anchorX={nameAnchorX}
+          anchorX={effectiveNameAnchorX}
           anchorY="middle"
           font={undefined}
           raycast={NO_RAYCAST}

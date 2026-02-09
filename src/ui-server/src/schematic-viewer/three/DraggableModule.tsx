@@ -107,6 +107,7 @@ export const DraggableModule = memo(function DraggableModule({
       const startY = (e.nativeEvent?.clientY ?? e.clientY) as number;
 
       const state = useSchematicStore.getState();
+      if (state.portEditMode) return;
       const pk = state.currentPath.length === 0
         ? '__root__'
         : state.currentPath.join('/');
@@ -185,6 +186,7 @@ export const DraggableModule = memo(function DraggableModule({
 
   const handleDoubleClick = useCallback(
     (e: any) => {
+      if (useSchematicStore.getState().portEditMode) return;
       e.stopPropagation();
       navigateInto(module.id);
     },
@@ -197,6 +199,12 @@ export const DraggableModule = memo(function DraggableModule({
       onPointerDown={handlePointerDown}
       onDoubleClick={handleDoubleClick}
       onPointerEnter={() => {
+        if (useSchematicStore.getState().portEditMode) {
+          if (!useSchematicStore.getState().dragComponentId) {
+            gl.domElement.style.cursor = 'not-allowed';
+          }
+          return;
+        }
         hoverComponent(module.id);
         if (!useSchematicStore.getState().dragComponentId)
           gl.domElement.style.cursor = 'grab';

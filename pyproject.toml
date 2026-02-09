@@ -119,7 +119,7 @@ allow-direct-references = true
 
 # Add the built viewer and dashboard to the python package
 [tool.hatch.build.targets.wheel]
-artifacts = ["**/viewer/dist", "**/visualizer/web/dist", "**/dashboard/web/dist"]
+artifacts = ["**/viewer/dist", "**/dashboard/web/dist"]
 packages = ["src/faebryk", "src/atopile"]
 exclude = ["**/.zig-cache", "**/.zig-cache/**", "**/zig-out", "**/zig-out/**"]
 
@@ -128,7 +128,7 @@ experimental = true
 cmake.source-dir = "src/faebryk/core"
 
 [tool.hatch.build.targets.sdist]
-artifacts = ["**/viewer/dist", "**/visualizer/web/dist", "**/dashboard/web/dist"]
+artifacts = ["**/viewer/dist", "**/dashboard/web/dist"]
 
 [tool.hatch.version]
 source = "vcs"

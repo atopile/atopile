@@ -354,6 +354,7 @@ export default defineConfig(({ mode }) => {
               testExplorer: resolve(__dirname, 'test-explorer.html'),
               pinout: resolve(__dirname, 'pinout.html'),
               schematic: resolve(__dirname, 'schematic.html'),
+              treeViewer: resolve(__dirname, 'tree-viewer.html'),
             },
         output: {
           entryFileNames: '[name].js',

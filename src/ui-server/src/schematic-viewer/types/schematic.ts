@@ -7,8 +7,7 @@
  * - SchematicComponent: a leaf atomic part with pins
  * - The root of the JSON is a SchematicSheet; each module contains its own sheet
  *
- * Backwards compatible: if the JSON has flat `components`/`nets` arrays (v1),
- * we treat it as a single root sheet with no sub-modules.
+ * Runtime contract is v2-only: a hierarchical root sheet is required.
  */
 
 import type { PinCategory, PinElectricalType, PinSide } from './symbol';
@@ -17,16 +16,12 @@ import type { PinCategory, PinElectricalType, PinSide } from './symbol';
 
 export interface SchematicData {
   version: string;
-
-  // ── V2 hierarchical format ────────────────────────────────────
+  /** Persisted item positions keyed by "path:itemId" from .ato_sch. */
+  positions?: Record<string, ComponentPosition>;
+  /** Optional per-port breakout signal ordering (scoped key: "path:portId"). */
+  portSignalOrders?: Record<string, string[]>;
   /** Root sheet with modules, components, and nets */
-  root?: SchematicSheet;
-
-  // ── V1 flat format (backwards compat) ─────────────────────────
-  /** Flat component list (v1 only — ignored if root is present) */
-  components?: SchematicComponent[];
-  /** Flat net list (v1 only — ignored if root is present) */
-  nets?: SchematicNet[];
+  root: SchematicSheet;
 }
 
 // ── Sheet: one level of hierarchy ───────────────────────────────
@@ -98,7 +93,7 @@ export interface SchematicInterfacePin {
 // ── Component: a leaf atomic part ───────────────────────────────
 
 export interface SchematicComponent {
-  kind?: 'component';            // optional for v1 compat
+  kind: 'component';
   id: string;                    // stable address e.g. "ldo" or "mcu.i2c_pullup"
   name: string;                  // display name e.g. "TLV75901"
   designator: string;            // "U1", "R3"
@@ -131,7 +126,7 @@ export interface SchematicNet {
   type: NetType;
 }
 
-export type NetType = 'power' | 'ground' | 'signal' | 'bus';
+export type NetType = 'power' | 'ground' | 'signal' | 'bus' | 'electrical';
 
 export interface NetPin {
   componentId: string;           // can reference a component OR module id
@@ -155,6 +150,13 @@ export interface ComponentPosition {
   mirrorX?: boolean;
   /** Mirror vertically (flip around X axis) — KiCad "Y" key */
   mirrorY?: boolean;
+}
+
+/** Canonical pin grid used for schematic handles and ortho routing anchors. */
+export const PIN_GRID_MM = 2.54;
+
+export function snapToPinGrid(v: number, grid = PIN_GRID_MM): number {
+  return Math.round(v / grid) * grid;
 }
 
 /**
@@ -218,14 +220,14 @@ export function transformPinSide(
   return s;
 }
 
-// ── Port: external interface entry (Altium-style sheet port) ────
+// ── Port: external interface entry ──────────────────────────────
 
 /**
  * A port represents an external interface connection when viewing a module's
  * internal sheet. Derived at render time from the parent module's interfacePins.
  *
- * Visually rendered as an Altium-style arrow/pentagon shape at the sheet edge.
- * Each port has a single connection pin at the arrow tip that participates in nets.
+ * Ports are rendered with a unified rounded-box visual language.
+ * Each port exposes one or more connection pins that participate in nets.
  */
 export interface SchematicPort {
   kind: 'port';
@@ -253,31 +255,63 @@ export interface SchematicPort {
   signalPins?: Record<string, { x: number; y: number }>;
 }
 
-// Port geometry constants — sized so two ports fit at 2.54mm pin pitch
+// Port geometry constants
 export const PORT_W = 8;
 export const PORT_H = 1.2;
+export const PORT_STUB_LEN = 2.54;
 
 // Breakout port geometry constants
 export const BREAKOUT_PIN_SPACING = 2.54;
 export const BREAKOUT_BOX_W = 12;
-export const BREAKOUT_PADDING = 2;
+// Per-side top/bottom inset so stacked breakout ports keep a clean pin-pitch rhythm.
+export const BREAKOUT_VERTICAL_PADDING = 0.6;
+
+function reorderSignals(
+  baseSignals: string[],
+  override: string[] | undefined,
+): string[] {
+  if (!override || override.length !== baseSignals.length) return baseSignals;
+  const baseSet = new Set(baseSignals);
+  if (baseSet.size !== baseSignals.length) return baseSignals;
+  const overrideSet = new Set(override);
+  if (overrideSet.size !== override.length) return baseSignals;
+  for (const sig of override) {
+    if (!baseSet.has(sig)) return baseSignals;
+  }
+  return override;
+}
 
 /**
  * Derive SchematicPort objects from a module's interfacePins.
  * Called when navigating into a module to create sheet-edge port symbols.
  *
- * When an interface has >=2 signals, produces a breakout port (component-like box)
- * instead of the simple pentagon port.
+ * When an interface has >=2 signals, produces a breakout port with
+ * per-signal pins plus one line-level interface pin ("1").
+ *
+ * Breakout translator contract:
+ * - per-signal pins live on the sheet-facing side (where internal wiring lands),
+ * - line-level pin "1" lives on the opposite side (bus-level access boundary).
  */
-export function derivePortsFromModule(mod: SchematicModule): SchematicPort[] {
+export function derivePortsFromModule(
+  mod: SchematicModule,
+  signalOrderOverrides?: Record<string, string[]>,
+): SchematicPort[] {
   return mod.interfacePins.map((ipin) => {
-    const signals = ipin.signals;
+    const signals = ipin.signals
+      ? reorderSignals(ipin.signals, signalOrderOverrides?.[ipin.id])
+      : undefined;
     const isBreakout = signals && signals.length >= 2;
 
     if (isBreakout) {
       // ── Breakout port: component-like box with per-signal stubs ──
       const bodyW = BREAKOUT_BOX_W;
-      const bodyH = signals.length * BREAKOUT_PIN_SPACING + BREAKOUT_PADDING;
+      const totalSpan = (signals.length - 1) * BREAKOUT_PIN_SPACING;
+      const linePinIndex = Math.floor((signals.length - 1) / 2);
+      const linePinAxis = totalSpan / 2 - linePinIndex * BREAKOUT_PIN_SPACING;
+      const bodyH = Math.max(
+        PORT_H,
+        totalSpan + BREAKOUT_VERTICAL_PADDING * 2,
+      );
       const halfW = bodyW / 2;
 
       // Pin side is the direction stubs extend (into the sheet)
@@ -291,8 +325,8 @@ export function derivePortsFromModule(mod: SchematicModule): SchematicPort[] {
 
       // Compute per-signal pin positions (relative to port center)
       const signalPins: Record<string, { x: number; y: number }> = {};
-      const totalSpan = (signals.length - 1) * BREAKOUT_PIN_SPACING;
-      const stubLen = 2.54;
+      const stubLen = PORT_STUB_LEN;
+      const breakoutPinReach = snapToPinGrid(halfW + stubLen);
 
       for (let i = 0; i < signals.length; i++) {
         const sig = signals[i];
@@ -301,31 +335,41 @@ export function derivePortsFromModule(mod: SchematicModule): SchematicPort[] {
         let sx: number;
         if (ipin.side === 'left') {
           // Stubs extend right (into sheet)
-          sx = halfW + stubLen;
+          sx = breakoutPinReach;
         } else if (ipin.side === 'right') {
           // Stubs extend left
-          sx = -(halfW + stubLen);
+          sx = -breakoutPinReach;
         } else if (ipin.side === 'top') {
           // Stubs extend down — use y for horizontal spread, sx for vertical
           sx = totalSpan / 2 - i * BREAKOUT_PIN_SPACING;
-          signalPins[sig] = { x: sx, y: -(halfW + stubLen) };
+          signalPins[sig] = { x: sx, y: -breakoutPinReach };
           continue;
         } else {
           // bottom — stubs extend up
           sx = totalSpan / 2 - i * BREAKOUT_PIN_SPACING;
-          signalPins[sig] = { x: sx, y: halfW + stubLen };
+          signalPins[sig] = { x: sx, y: breakoutPinReach };
           continue;
         }
 
         signalPins[sig] = { x: sx, y: sy };
       }
 
-      // Default pin position (center, for fallback "1" compat)
+      // Primary line-level pin lives on the opposite side of the
+      // per-signal breakout pins (translator boundary).
       let pinX = 0, pinY = 0;
-      if (ipin.side === 'left') pinX = halfW + stubLen;
-      else if (ipin.side === 'right') pinX = -(halfW + stubLen);
-      else if (ipin.side === 'top') pinY = -(halfW + stubLen);
-      else pinY = halfW + stubLen;
+      if (ipin.side === 'left') {
+        pinX = -breakoutPinReach;
+        pinY = linePinAxis;
+      } else if (ipin.side === 'right') {
+        pinX = breakoutPinReach;
+        pinY = linePinAxis;
+      } else if (ipin.side === 'top') {
+        pinY = breakoutPinReach;
+        pinX = linePinAxis;
+      } else {
+        pinY = -breakoutPinReach;
+        pinX = linePinAxis;
+      }
 
       return {
         kind: 'port' as const,
@@ -344,26 +388,26 @@ export function derivePortsFromModule(mod: SchematicModule): SchematicPort[] {
       };
     }
 
-    // ── Standard pentagon port (single signal) ──
+    // ── Single-signal port (same stub model as breakout ports) ──
     let pinX = 0, pinY = 0;
     let pinSide: PinSide = 'right';
 
-    // Port arrow points INTO the sheet — pin is at the tip
+    // Pin sits at body edge + stub length (consistent with breakout ports).
     switch (ipin.side) {
       case 'left':
-        pinX = PORT_W / 2;
+        pinX = PORT_W / 2 + PORT_STUB_LEN;
         pinSide = 'right';
         break;
       case 'right':
-        pinX = -PORT_W / 2;
+        pinX = -(PORT_W / 2 + PORT_STUB_LEN);
         pinSide = 'left';
         break;
       case 'top':
-        pinY = -PORT_H / 2;
+        pinY = -(PORT_H / 2 + PORT_STUB_LEN);
         pinSide = 'bottom';
         break;
       case 'bottom':
-        pinY = PORT_H / 2;
+        pinY = PORT_H / 2 + PORT_STUB_LEN;
         pinSide = 'top';
         break;
     }
@@ -454,23 +498,83 @@ export function derivePowerPorts(sheet: SchematicSheet): SchematicPowerPort[] {
 
 // ── Helpers ─────────────────────────────────────────────────────
 
+export interface GridAlignmentOffset {
+  x: number;
+  y: number;
+}
+
+/**
+ * Translate an item so a chosen anchor lands exactly on the pin grid.
+ * Apply this offset to the whole symbol, not individual pins.
+ */
+export function getGridAlignmentOffset(
+  anchorX: number | null | undefined,
+  anchorY: number | null | undefined,
+): GridAlignmentOffset {
+  if (anchorX == null || anchorY == null) return { x: 0, y: 0 };
+  return {
+    x: snapToPinGrid(anchorX) - anchorX,
+    y: snapToPinGrid(anchorY) - anchorY,
+  };
+}
+
+export function getComponentGridAlignmentOffset(
+  component: SchematicComponent,
+): GridAlignmentOffset {
+  const anchor = component.pins[0];
+  return getGridAlignmentOffset(anchor?.x, anchor?.y);
+}
+
+export function getModuleGridAlignmentOffset(
+  module: SchematicModule,
+): GridAlignmentOffset {
+  const anchor = module.interfacePins[0];
+  return getGridAlignmentOffset(anchor?.x, anchor?.y);
+}
+
+export function getPortGridAlignmentOffset(
+  port: SchematicPort,
+): GridAlignmentOffset {
+  if (port.signals && port.signalPins) {
+    for (const signalName of port.signals) {
+      const sp = port.signalPins[signalName];
+      if (sp) {
+        return getGridAlignmentOffset(sp.x, sp.y);
+      }
+    }
+  }
+  return getGridAlignmentOffset(port.pinX, port.pinY);
+}
+
+export function getPowerPortGridAlignmentOffset(
+  powerPort: SchematicPowerPort,
+): GridAlignmentOffset {
+  return getGridAlignmentOffset(powerPort.pinX, powerPort.pinY);
+}
+
+/**
+ * Canonical pin-number contract for ports.
+ * - Single-signal ports expose only "1".
+ * - Breakout ports expose per-signal pins and line-level pin "1".
+ */
+export function getPortPinNumbers(port: SchematicPort): string[] {
+  if (port.signals && port.signals.length > 0) {
+    return [...port.signals, '1'];
+  }
+  return ['1'];
+}
+
 /** All renderable items at a sheet level */
 export type SchematicItem = SchematicModule | SchematicComponent | SchematicPort | SchematicPowerPort;
 
 /**
- * Normalize a SchematicData (v1 or v2) into a root sheet.
- * V1 flat format gets wrapped as a single sheet with no sub-modules.
+ * Return the root sheet (v2-only contract).
  */
 export function getRootSheet(data: SchematicData): SchematicSheet {
-  if (data.root) {
-    return data.root;
+  if (!data.root) {
+    throw new Error('Invalid schematic payload: missing root sheet');
   }
-  // V1 backwards compat: wrap flat arrays in a sheet
-  return {
-    modules: [],
-    components: data.components ?? [],
-    nets: data.nets ?? [],
-  };
+  return data.root;
 }
 
 /**

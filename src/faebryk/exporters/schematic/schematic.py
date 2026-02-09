@@ -10,7 +10,7 @@ modules (expandable blocks), components (leaf parts), and scoped nets.
 Leverages the pinout exporter's ``_trace_lead_interfaces`` for rich per-pin
 bus-type classification and module-interface mapping.
 
-Output: ``<build>.schematic.json``
+Output: ``layout/<build>.ato_sch``
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ from faebryk.core.solver.solver import Solver
 from faebryk.exporters.pinout.pinout import (
     _assign_sides_from_positions,
     _determine_pin_type,
-    _get_kicad_pad_geometry,
     _trace_lead_interfaces,
 )
 from faebryk.exporters.utils import natural_sort_key, strip_root_hex, write_json
@@ -41,6 +40,18 @@ _MIN_BODY = 5.08
 
 # Categories that go on the left side of a module block
 _LEFT_CATEGORIES = {"power", "ground", "input", "reset", "crystal", "control", "analog"}
+
+
+# Interface binding tuple used in per-module pin maps:
+# (iface_id, signal_suffix, is_line_level)
+_PinBinding = tuple[str, str, bool]
+
+
+@dataclass(frozen=True)
+class _ResolvedInterfacePin:
+    iface_id: str
+    signal_suffix: str
+    is_line_level: bool
 
 
 # ── Pin classification (reuses pinout exporter primitives) ──────
@@ -137,10 +148,39 @@ def _net_type(net_name: str) -> str:
 # ── Body layout ─────────────────────────────────────────────────
 
 
+def _get_kicad_positions_by_pin_number(
+    component_node: fabll.Node,
+) -> dict[str, tuple[float, float]]:
+    """Return pin-number keyed KiCad pad positions in footprint-local mm."""
+    positions: dict[str, tuple[float, float]] = {}
+    try:
+        fp_trait = component_node.get_trait(F.Footprints.has_associated_footprint)
+        fp = fp_trait.get_footprint()
+
+        for fpad in fp.get_pads():
+            pad_number = str(fpad.pad_number)
+            if not fpad.has_trait(F.KiCadFootprints.has_associated_kicad_pcb_pad):
+                continue
+
+            kicad_trait = fpad.get_trait(F.KiCadFootprints.has_associated_kicad_pcb_pad)
+            pcb_fp, pcb_pads = kicad_trait.get_pads()
+            if not pcb_pads:
+                continue
+
+            pcb_pad = pcb_pads[0]
+            positions[pad_number] = (
+                round(pcb_pad.at.x - pcb_fp.at.x, 3),
+                round(pcb_pad.at.y - pcb_fp.at.y, 3),
+            )
+    except Exception as e:
+        logger.debug("Could not extract KiCad pad positions by pin number: %s", e)
+    return positions
+
+
 def _layout_pins(
-    pad_names: list[str],
-    pad_name_to_display: dict[str, str],
-    pad_name_to_functions: dict[str, list[dict]],
+    pin_numbers: list[str],
+    pin_number_to_display: dict[str, str],
+    pin_number_to_functions: dict[str, list[dict]],
     component_node: fabll.Node | None = None,
 ) -> tuple[list[dict], float, float]:
     """Assign pins to sides using KiCad footprint positions, compute geometry.
@@ -153,13 +193,12 @@ def _layout_pins(
     # ── Get real pad positions from KiCad footprint ──────────────
     side_map: dict[str, tuple[str, int]] = {}
     if component_node is not None:
-        kicad_geo = _get_kicad_pad_geometry(component_node)
-        if kicad_geo:
-            kicad_positions = {name: (g["x"], g["y"]) for name, g in kicad_geo.items()}
-            side_map = _assign_sides_from_positions(pad_names, kicad_positions)
+        kicad_positions = _get_kicad_positions_by_pin_number(component_node)
+        if kicad_positions:
+            side_map = _assign_sides_from_positions(pin_numbers, kicad_positions)
 
     # ── Bucket pins by side ──────────────────────────────────────
-    # side -> [(pad_name, display_name, category, position_index)]
+    # side -> [(pin_number, display_name, category, position_index)]
     side_buckets: dict[str, list[tuple[str, str, str, int]]] = {
         "left": [],
         "right": [],
@@ -167,9 +206,9 @@ def _layout_pins(
         "bottom": [],
     }
 
-    for pn in pad_names:
-        display = pad_name_to_display.get(pn, pn)
-        functions = pad_name_to_functions.get(pn, [])
+    for pn in pin_numbers:
+        display = pin_number_to_display.get(pn, pn)
+        functions = pin_number_to_functions.get(pn, [])
         category, _heuristic_side = _classify_pin(display, functions)
 
         if pn in side_map:
@@ -195,7 +234,7 @@ def _layout_pins(
     body_height = max(max_pins * pin_spacing + 2, _MIN_BODY)
     body_width = max(14, _MIN_BODY)
 
-    if len(pad_names) <= 2:
+    if len(pin_numbers) <= 2:
         body_width = 5.08
         body_height = 2.04
 
@@ -256,8 +295,9 @@ class _CompInfo:
     module_path: list[str]
     # Which "owner module" json_id this component belongs to
     owner_module_id: str | None
-    # Per-pin interface mapping: pad_name -> [(iface_name, signal_suffix, iface_type)]
-    pin_to_iface: dict[str, list[tuple[str, str, str]]]
+    # Per-pin interface mapping:
+    # pin_number -> [(iface_name, signal_suffix, iface_type, is_line_level)]
+    pin_to_iface: dict[str, list[tuple[str, str, str, bool]]]
 
 
 @dataclass
@@ -403,6 +443,194 @@ def _filter_lead_functions(functions: list[dict]) -> list[dict]:
     return filtered
 
 
+def _pin_label_key(label: str) -> str:
+    """Normalize pin labels for robust matching across naming styles."""
+    cleaned = label.strip().replace("{", "").replace("}", "")
+    cleaned = cleaned.replace("~", "N")
+    cleaned = re.sub(r"[^A-Za-z0-9]", "", cleaned).upper()
+
+    if cleaned in {"NRESET", "RESETN", "NRST", "RSTN"}:
+        return "NRESET"
+    if cleaned in {"RESET", "RST"}:
+        return "RESET"
+    return cleaned
+
+
+def _infer_function_pin_label(fn: dict) -> str:
+    """Infer the concise pin label represented by a traced function path."""
+    path = fn.get("name", "")
+    lower = path.lower()
+
+    if (
+        lower in {"hv", "vcc", "power.hv", "power.vcc"}
+        or lower.endswith(".hv")
+        or lower.endswith(".vcc")
+    ):
+        return "VCC"
+    if (
+        lower in {"lv", "gnd", "power.lv", "power.gnd"}
+        or lower.endswith(".lv")
+        or lower.endswith(".gnd")
+    ):
+        return "GND"
+
+    return _shorten_pin_name(path)
+
+
+def _filter_pin_functions_by_signal_map(
+    pin_number_to_functions: dict[str, list[dict]],
+    signal_names: dict[str, str],
+) -> dict[str, list[dict]]:
+    """Keep only function traces consistent with declared per-pin signal names.
+
+    This removes bridged/reference artifacts where a pin picks up unrelated
+    line-level paths (e.g. address lines leaking onto VCC/GND pins).
+    """
+    filtered: dict[str, list[dict]] = {}
+
+    for pin_number, functions in pin_number_to_functions.items():
+        target_signal = signal_names.get(pin_number)
+        if not target_signal:
+            filtered[pin_number] = functions
+            continue
+
+        target_key = _pin_label_key(target_signal)
+        matches = [
+            fn
+            for fn in functions
+            if _pin_label_key(_infer_function_pin_label(fn)) == target_key
+        ]
+        if matches:
+            filtered[pin_number] = matches
+            continue
+
+        # No direct match: drop mismatched line-level continuity traces and keep
+        # only non-line-level entries (if any).
+        non_line = [fn for fn in functions if not fn.get("is_line_level")]
+        filtered[pin_number] = non_line
+
+    return filtered
+
+
+def _resolve_locator_path(candidate: str) -> Path | None:
+    p = Path(candidate)
+    if p.is_file():
+        return p
+    if not p.is_absolute():
+        rel = Path.cwd() / p
+        if rel.is_file():
+            return rel
+    return None
+
+
+def _extract_locator_source_and_component(locator: str) -> tuple[Path | None, str]:
+    """Extract the most specific ``(source_path, component_name)`` from locator."""
+    if not locator:
+        return None, ""
+
+    # Locator format can be chained with "|" segments, e.g.
+    # root.ato::App.mod|parts/foo.ato::PartType.
+    for segment in reversed(locator.split("|")):
+        seg = segment.strip()
+        if ".ato" not in seg:
+            continue
+        if "::" in seg:
+            path_text, comp_name = seg.rsplit("::", 1)
+        else:
+            path_text, comp_name = seg, ""
+
+        source_path = _resolve_locator_path(path_text)
+        if source_path:
+            return source_path, comp_name
+
+    # Fallback: use rightmost .ato-like token if present.
+    matches = re.findall(r"([^\s|:]+\.ato)", locator)
+    for match in reversed(matches):
+        source_path = _resolve_locator_path(match)
+        if source_path:
+            return source_path, ""
+
+    return None, ""
+
+
+def _candidate_component_names(raw_name: str) -> list[str]:
+    """Generate likely component declaration names from locator tail text."""
+    names: list[str] = []
+
+    def _add(value: str) -> None:
+        value = value.strip()
+        if value and value not in names:
+            names.append(value)
+
+    _add(raw_name)
+    for seg in raw_name.split("|"):
+        _add(seg)
+        if "::" in seg:
+            _add(seg.rsplit("::", 1)[-1])
+
+    snapshot = list(names)
+    for name in snapshot:
+        if "." in name:
+            _add(name.rsplit(".", 1)[-1])
+
+    return names
+
+
+def _extract_declared_signals_from_source(
+    source_path: Path,
+    locator_component_name: str,
+) -> dict[str, str]:
+    """Parse ``signal NAME ~ pin N`` lines from a component declaration."""
+    try:
+        lines = source_path.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        return {}
+
+    signal_re = re.compile(
+        r"^\s*signal\s+([A-Za-z_~][A-Za-z0-9_~\[\]]*)\s*~\s*pin\s+([A-Za-z0-9_]+)\s*$"
+    )
+
+    for candidate_name in _candidate_component_names(locator_component_name):
+        comp_re = re.compile(
+            rf"^(?P<indent>\s*)component\s+{re.escape(candidate_name)}(?:\s*<[^>]*>)?\s*:\s*$"
+        )
+        start_idx: int | None = None
+        base_indent = 0
+
+        for idx, line in enumerate(lines):
+            m = comp_re.match(line)
+            if m:
+                start_idx = idx + 1
+                base_indent = len(m.group("indent"))
+                break
+
+        if start_idx is None:
+            continue
+
+        pin_to_signal: dict[str, str] = {}
+        for line in lines[start_idx:]:
+            stripped = line.strip()
+            if not stripped:
+                continue
+
+            indent = len(line) - len(line.lstrip())
+            if indent <= base_indent and not stripped.startswith("#"):
+                break
+
+            m = signal_re.match(line)
+            if not m:
+                continue
+
+            signal_name, pin_number = m.groups()
+            if pin_number not in pin_to_signal:
+                pin_to_signal[pin_number] = signal_name
+
+        if pin_to_signal:
+            return pin_to_signal
+
+    return {}
+
+
 def _derive_display_name(
     pad_name: str, lead_name: str, filtered_functions: list[dict]
 ) -> str:
@@ -463,19 +691,37 @@ def _derive_display_name(
 def _extract_signal_names(
     component_node: fabll.Node,
 ) -> dict[str, str]:
-    """Extract pad-name → signal-name mappings from a component's .ato definition.
+    """Extract pin-number → signal-name mappings from a component definition.
 
-    Components define signals like ``signal A0 ~ pin 1``.  This creates an
-    interface child named "A0" connected to a lead associated with pad "1".
+    Preferred path:
+    - parse authoritative declarations from source locator text:
+      ``signal NAME ~ pin N``.
 
-    Uses a **lead→signal** approach: for each lead with pads, find which signal
-    child it connects to with the shortest path.  This avoids bridge traversal
-    issues where the signal→lead direction can follow bridged electrical nets
-    (e.g., through Addressor modules) and produce incorrect mappings.
+    Fallback path:
+    - infer from strict lead→signal direct-neighbor graph matches:
+      signal interface child of the same component with path length == 1.
 
-    Returns: {pad_name: signal_name}
+    Ambiguous fallback matches are ignored rather than guessed.
+
+    Returns: {pin_number: signal_name}
     """
-    pad_to_signal: dict[str, str] = {}
+    try:
+        if component_node.has_trait(fabll.is_module):
+            locator = component_node.get_trait(fabll.is_module).get_module_locator()
+            source_path, locator_component = _extract_locator_source_and_component(
+                locator
+            )
+            if source_path:
+                declared = _extract_declared_signals_from_source(
+                    source_path,
+                    locator_component,
+                )
+                if declared:
+                    return declared
+    except Exception:
+        pass
+
+    pin_to_signal: dict[str, str] = {}
     try:
         # Collect signal children: non-lead, non-private, non-numeric
         # direct interface children of the component
@@ -490,14 +736,12 @@ def _extract_signal_names(
                 continue
             if child_name.isdigit():
                 continue
-            if child.has_trait(F.Lead.is_lead):
-                continue
             if not child.has_trait(fabll.is_interface):
                 continue
             signal_children[child_name] = child
 
         if not signal_children:
-            return pad_to_signal
+            return pin_to_signal
 
         # Collect leads with associated pads
         lead_nodes = component_node.get_children(
@@ -511,7 +755,7 @@ def _extract_signal_names(
             if l.get_trait(F.Lead.is_lead).has_trait(F.Lead.has_associated_pads)
         ]
 
-        # For each lead, find which signal child connects with shortest path
+        # For each lead, find directly-connected same-level signal children.
         for lead_node in leads_with_pads:
             lead_trait = lead_node.get_trait(F.Lead.is_lead)
             if not lead_trait.has_trait(fabll.is_interface):
@@ -522,42 +766,57 @@ def _extract_signal_names(
             except Exception:
                 continue
 
-            # Find the signal child with the shortest path to this lead
-            best_signal: str | None = None
-            best_length = 999
-
+            matches: set[str] = set()
             for connected_node, path in connected.items():
-                # Determine path length; if it throws, treat as long (999)
+                # Require a direct connection to avoid traversing bridged nets.
                 try:
-                    path_len = path.length
+                    if path.length != 1:
+                        continue
                 except Exception:
-                    path_len = 999
-
-                if path_len >= best_length:
                     continue
 
-                # Check if this connected node IS one of our signal children
+                # Connected node must be a direct child of this component.
+                try:
+                    parent = connected_node.get_parent()
+                    if not parent or not parent[0].is_same(component_node):
+                        continue
+                except Exception:
+                    continue
+
+                # Check if this connected node IS one of our signal children.
                 for sig_name, sig_node in signal_children.items():
                     try:
                         if connected_node.is_same(sig_node):
-                            best_signal = sig_name
-                            best_length = path_len
+                            matches.add(sig_name)
                             break
                     except Exception:
                         continue
 
-            if best_signal is not None:
-                assoc_pads = lead_trait.get_trait(F.Lead.has_associated_pads).get_pads()
-                for pad in assoc_pads:
-                    try:
-                        if pad.pad_name not in pad_to_signal:
-                            pad_to_signal[pad.pad_name] = best_signal
-                    except Exception:
-                        continue
+            best_signal: str | None = None
+            if len(matches) == 1:
+                best_signal = next(iter(matches))
+            elif matches:
+                # Only accept ambiguous sets when one exactly matches the lead
+                # instance name; otherwise skip to avoid accidental mislabeling.
+                lead_name = lead_trait.get_lead_name()
+                if lead_name in matches:
+                    best_signal = lead_name
+
+            if not best_signal:
+                continue
+
+            assoc_pads = lead_trait.get_trait(F.Lead.has_associated_pads).get_pads()
+            for pad in assoc_pads:
+                try:
+                    pin_number = str(pad.pad_number)
+                    if pin_number not in pin_to_signal:
+                        pin_to_signal[pin_number] = best_signal
+                except Exception:
+                    continue
 
     except Exception:
         pass
-    return pad_to_signal
+    return pin_to_signal
 
 
 def _shorten_pin_name(name: str) -> str:
@@ -614,25 +873,32 @@ def _shorten_pin_name(name: str) -> str:
 
 
 def _extract_pin_interfaces(
-    pad_name_to_functions: dict[str, list[dict]],
-) -> dict[str, list[tuple[str, str, str]]]:
+    pin_number_to_functions: dict[str, list[dict]],
+) -> dict[str, list[tuple[str, str, str, bool]]]:
     """
     From lead_functions, extract which module interfaces each pin connects to.
 
-    Returns: {pad_name: [(interface_name, signal_suffix, interface_type), ...]}
+    Returns:
+      {pin_number: [(interface_name, signal_suffix, interface_type, is_line_level), ...]}
 
     Expects pre-filtered functions (reference noise already removed).
     """
-    result: dict[str, list[tuple[str, str, str]]] = {}
+    result: dict[str, list[tuple[str, str, str, bool]]] = {}
 
-    for pad_name, functions in pad_name_to_functions.items():
-        mappings: list[tuple[str, str, str]] = []
-        seen: set[tuple[str, str, str]] = set()
+    for pin_number, functions in pin_number_to_functions.items():
+        mappings: list[tuple[str, str, str, bool]] = []
+        seen: set[tuple[str, str, str, bool]] = set()
 
         for fn in functions:
+            # `name` is display-friendly (often strips trailing `.line`),
+            # while `raw_name` preserves full continuity semantics.
             path = fn.get("name", "")
+            raw_path = fn.get("raw_name", path)
             fn_type = fn.get("type", "Signal")
             parts = path.split(".")
+            is_line_level = bool(fn.get("is_line_level", False)) or any(
+                seg == "line" for seg in raw_path.split(".")
+            )
 
             if len(parts) >= 2:
                 iface_name = parts[0]
@@ -655,19 +921,20 @@ def _extract_pin_interfaces(
 
                 if signal in ("line",):
                     signal = ""
-                key = (iface_name, signal, fn_type)
+                    is_line_level = True
+                key = (iface_name, signal, fn_type, is_line_level)
                 if key not in seen:
                     seen.add(key)
                     mappings.append(key)
             elif len(parts) == 1 and path:
                 # Single-name interface (e.g. "reset")
-                key = (path, "", fn_type)
+                key = (path, "", fn_type, False)
                 if key not in seen:
                     seen.add(key)
                     mappings.append(key)
 
         if mappings:
-            result[pad_name] = mappings
+            result[pin_number] = mappings
 
     return result
 
@@ -771,11 +1038,48 @@ def _build_interface_pins(
 # ── Net scoping ─────────────────────────────────────────────────
 
 
+def _coerce_net_type_for_line_level(net_type: str, is_line_level: bool) -> str:
+    """Line-level links represent electrical continuity, not logical signal identity."""
+    if not is_line_level:
+        return net_type
+    if net_type in ("power", "ground"):
+        return net_type
+    return "electrical"
+
+
+def _resolve_interface_binding(
+    module_id: str,
+    comp_id: str,
+    pin_number: str,
+    module_interfaces: dict[str, dict[str, dict]],
+) -> _ResolvedInterfacePin | None:
+    """Resolve a component pin to a module interface binding, if one exists."""
+    ifaces = module_interfaces.get(module_id, {})
+    if not ifaces:
+        return None
+
+    for _iface_name, iface_data in ifaces.items():
+        pin_map = iface_data.get("pin_map", {})
+        comp_map = pin_map.get(comp_id, {})
+        binding = comp_map.get(pin_number)
+        if not binding:
+            continue
+
+        iface_id, signal_suffix, is_line_level = binding
+        return _ResolvedInterfacePin(
+            iface_id=iface_id,
+            signal_suffix=signal_suffix,
+            is_line_level=is_line_level,
+        )
+
+    return None
+
+
 def _add_port_pins_to_internal_net(
     net: dict,
     module_id: str,
     module_interfaces: dict[str, dict[str, dict]],
-) -> dict:
+) -> tuple[dict, bool]:
     """Add synthetic port pin references to a module-internal net.
 
     For each component pin in the net that maps to a module interface via
@@ -784,25 +1088,32 @@ def _add_port_pins_to_internal_net(
     """
     ifaces = module_interfaces.get(module_id, {})
     if not ifaces:
-        return net
+        return net, False
 
     seen_refs: set[tuple[str, str]] = set()
+    has_interface_binding = False
+    has_line_level_binding = False
+    raw_pin_count = len(net.get("pins", []))
 
     for pin in net["pins"]:
         comp_id = pin.get("componentId", "")
         pad_name = pin.get("pinNumber", "")
+        binding = _resolve_interface_binding(
+            module_id=module_id,
+            comp_id=comp_id,
+            pin_number=pad_name,
+            module_interfaces=module_interfaces,
+        )
+        if not binding:
+            continue
 
-        for _iface_name, iface_data in ifaces.items():
-            pin_map = iface_data.get("pin_map", {})
-            comp_map = pin_map.get(comp_id, {})
-            if pad_name in comp_map:
-                iface_id, signal_suffix = comp_map[pad_name]
-                pin_number = signal_suffix if signal_suffix else "1"
-                seen_refs.add((iface_id, pin_number))
-                break
+        has_interface_binding = True
+        pin_number = binding.signal_suffix if binding.signal_suffix else "1"
+        seen_refs.add((binding.iface_id, pin_number))
+        has_line_level_binding = has_line_level_binding or binding.is_line_level
 
     if not seen_refs:
-        return net
+        return net, False
 
     enhanced_pins = list(net["pins"])
     for iface_id, pin_number in seen_refs:
@@ -813,10 +1124,17 @@ def _add_port_pins_to_internal_net(
             }
         )
 
-    return {
-        **net,
-        "pins": _dedup_pins(enhanced_pins),
-    }
+    return (
+        {
+            **net,
+            "type": _coerce_net_type_for_line_level(
+                net.get("type", "signal"),
+                has_line_level_binding or (has_interface_binding and raw_pin_count < 2),
+            ),
+            "pins": _dedup_pins(enhanced_pins),
+        },
+        has_interface_binding,
+    )
 
 
 def _scope_nets(
@@ -838,7 +1156,7 @@ def _scope_nets(
 
     for net in all_nets:
         pins = net["pins"]
-        if len(pins) < 2:
+        if len(pins) < 1:
             continue
 
         # Group pins by their owner module
@@ -856,14 +1174,19 @@ def _scope_nets(
                 # Add synthetic port pins for internal pins that map to
                 # module interface pins, so the frontend can draw wires
                 # between ports and internal components.
-                enhanced = _add_port_pins_to_internal_net(net, owner, module_interfaces)
-                scoped[owner].append(enhanced)
+                enhanced, _ = _add_port_pins_to_internal_net(
+                    net, owner, module_interfaces
+                )
+                if len(enhanced["pins"]) >= 2:
+                    scoped[owner].append(enhanced)
             else:
-                scoped[owner].append(net)
+                if len(net["pins"]) >= 2:
+                    scoped[owner].append(net)
         else:
             # Net crosses module boundaries
             # Create a root-level net with interface pin references
             root_pins: list[dict] = []
+            root_has_line_level = False
 
             for owner, owner_pins in pins_by_module.items():
                 if owner is None:
@@ -877,7 +1200,11 @@ def _scope_nets(
                         owner, owner_pins, module_interfaces
                     )
                     if result:
-                        iface_id, signal_name = result
+                        iface_id = result.iface_id
+                        signal_name = result.signal_suffix
+                        root_has_line_level = (
+                            root_has_line_level or result.is_line_level
+                        )
                         # Parent level — consolidated single pin on module block
                         root_pins.append(
                             {
@@ -906,7 +1233,10 @@ def _scope_nets(
                         internal_net = {
                             "id": f"{net['id']}__{owner}",
                             "name": net["name"],
-                            "type": net["type"],
+                            "type": _coerce_net_type_for_line_level(
+                                net.get("type", "signal"),
+                                result.is_line_level if result else False,
+                            ),
                             "pins": internal_pins,
                         }
                         scoped[owner].append(internal_net)
@@ -915,10 +1245,14 @@ def _scope_nets(
                 root_net = {
                     "id": net["id"],
                     "name": net["name"],
-                    "type": net["type"],
+                    "type": _coerce_net_type_for_line_level(
+                        net.get("type", "signal"), root_has_line_level
+                    ),
                     "pins": _dedup_pins(root_pins),
                 }
                 scoped[None].append(root_net)
+
+    _add_missing_interface_nets(scoped, module_interfaces)
 
     return dict(scoped)
 
@@ -927,32 +1261,129 @@ def _find_interface_pin_for_net(
     module_id: str,
     pins_inside: list[dict],
     module_interfaces: dict[str, dict[str, dict]],
-) -> tuple[str, str] | None:
+) -> _ResolvedInterfacePin | None:
     """
     For a net that enters a module, find which interface pin it maps to.
 
     Uses the interface pin map that was built from lead_functions data.
-
-    Returns (iface_id, signal_suffix) or None.
     """
-    ifaces = module_interfaces.get(module_id, {})
-    if not ifaces:
-        return None
-
-    # Try to match based on pin categories and names
     for pin in pins_inside:
         pin_number = pin.get("pinNumber", "")
         comp_id = pin.get("componentId", "")
-
-        # Look through all interface pins for a match
-        for _iface_name, iface_data in ifaces.items():
-            pin_map = iface_data.get("pin_map", {})
-            # pin_map: {comp_json_id: {pad_name: (iface_id, signal_suffix)}}
-            comp_map = pin_map.get(comp_id, {})
-            if pin_number in comp_map:
-                return comp_map[pin_number]
+        binding = _resolve_interface_binding(
+            module_id=module_id,
+            comp_id=comp_id,
+            pin_number=pin_number,
+            module_interfaces=module_interfaces,
+        )
+        if binding:
+            return binding
 
     return None
+
+
+def _interface_net_type(iface_data: dict) -> str:
+    """Infer net type from interface metadata when no graph net is available."""
+    category = str(iface_data.get("category", "signal")).lower()
+    iface_type = str(iface_data.get("type", "Signal")).lower()
+
+    if category == "ground":
+        return "ground"
+    if category == "power" or iface_type in ("power", "electricpower"):
+        return "power"
+    if category in ("i2c", "spi", "uart") or iface_type in ("i2c", "spi", "uart"):
+        return "bus"
+    return "signal"
+
+
+def _net_has_all_refs(net: dict, refs: set[tuple[str, str]]) -> bool:
+    net_refs = {(p.get("componentId", ""), p.get("pinNumber", "")) for p in net["pins"]}
+    return refs.issubset(net_refs)
+
+
+def _add_missing_interface_nets(
+    scoped: dict[str | None, list[dict]],
+    module_interfaces: dict[str, dict[str, dict]],
+) -> None:
+    """Synthesize internal port↔component nets absent from pad-derived netlist.
+
+    Some `.line` connections do not materialize as `F.Net` pad nets. Recover those
+    links from interface pin maps so the viewer can still draw explicit tracks
+    between module ports and component pins.
+    """
+    for module_id, iface_map in module_interfaces.items():
+        module_nets = scoped.setdefault(module_id, [])
+
+        for iface_name, iface_data in iface_map.items():
+            pin_map = iface_data.get("pin_map", {})
+            members_by_pin: dict[str, list[tuple[str, str, bool]]] = defaultdict(list)
+
+            for comp_id, comp_map in pin_map.items():
+                for pin_number, binding in comp_map.items():
+                    _iface_id, signal_suffix, is_line_level = binding
+                    port_pin_number = signal_suffix if signal_suffix else "1"
+                    members_by_pin[port_pin_number].append(
+                        (comp_id, pin_number, is_line_level)
+                    )
+
+            for port_pin_number, members in members_by_pin.items():
+                if not members:
+                    continue
+
+                # Synthesize only true line-level continuity links.
+                line_members = [
+                    (comp_id, pin_number)
+                    for comp_id, pin_number, is_line_level in members
+                    if is_line_level
+                ]
+                if not line_members:
+                    continue
+
+                port_ref = (iface_name, port_pin_number)
+                comp_refs = set(line_members)
+                expected_refs = set(comp_refs)
+                expected_refs.add(port_ref)
+
+                if any(_net_has_all_refs(net, expected_refs) for net in module_nets):
+                    continue
+
+                pins = [
+                    {"componentId": comp_id, "pinNumber": pin_number}
+                    for comp_id, pin_number in sorted(comp_refs)
+                ]
+                pins.append({"componentId": iface_name, "pinNumber": port_pin_number})
+                pins = _dedup_pins(pins)
+                if len(pins) < 2:
+                    continue
+
+                base_type = _interface_net_type(iface_data)
+                net_type = _coerce_net_type_for_line_level(base_type, True)
+
+                suffix = (
+                    f".{port_pin_number}" if port_pin_number and port_pin_number != "1" else ""
+                )
+                net_name = f"{iface_name}{suffix}"
+                net_id = re.sub(
+                    r"[^a-zA-Z0-9_]",
+                    "_",
+                    f"__iface__{module_id}__{iface_name}__{port_pin_number}",
+                )
+
+                module_nets.append(
+                    {
+                        "id": net_id,
+                        "name": net_name,
+                        "type": net_type,
+                        "pins": pins,
+                    }
+                )
+                logger.debug(
+                    "Synthesized interface net in %s: %s (%s) pins=%s",
+                    module_id,
+                    net_name,
+                    net_type,
+                    [f"{p['componentId']}:{p['pinNumber']}" for p in pins],
+                )
 
 
 def _dedup_pins(pins: list[dict]) -> list[dict]:
@@ -1199,18 +1630,62 @@ def export_schematic_json(
     )
 
     # ═══════════════════════════════════════════════════════════════
-    # Phase 2: Collect components (anything with a footprint)
+    # Phase 2: Collect components (picked/atomic parts with footprints)
     # ═══════════════════════════════════════════════════════════════
 
-    # Find all nodes with footprints: includes both explicit .ato parts
-    # (is_atomic_part) AND picker-selected parts (Pickable.has_part_picked)
-    fp_nodes = app.get_children(
-        direct_only=False,
-        types=fabll.Node,
-        required_trait=F.Footprints.has_associated_footprint,
-    )
+    # Collect from both:
+    # - picked parts (includes auto-picked parts)
+    # - explicit atomic parts
+    # and deduplicate by full name.
+    trait_nodes = []
+    try:
+        trait_nodes.extend(
+            fabll.Traits.get_implementors(
+                F.Pickable.has_part_picked.bind_typegraph(app.tg),
+                g=app.g,
+            )
+        )
+    except Exception:
+        pass
+    try:
+        trait_nodes.extend(
+            fabll.Traits.get_implementors(
+                F.is_atomic_part.bind_typegraph(app.tg),
+                g=app.g,
+            )
+        )
+    except Exception:
+        pass
 
-    logger.info("Found %d nodes with footprints", len(fp_nodes))
+    fp_nodes_by_name: dict[str, fabll.Node] = {}
+    for trait_node in trait_nodes:
+        try:
+            component_node = fabll.Traits.bind(trait_node).get_obj_raw()
+            if not component_node.has_trait(F.Footprints.has_associated_footprint):
+                continue
+            comp_full = strip_root_hex(component_node.get_full_name())
+            if comp_full not in fp_nodes_by_name:
+                fp_nodes_by_name[comp_full] = component_node
+        except Exception:
+            continue
+
+    # Fallback for unexpected graphs: keep previous broad behavior.
+    if not fp_nodes_by_name:
+        for node in app.get_children(
+            direct_only=False,
+            types=fabll.Node,
+            required_trait=F.Footprints.has_associated_footprint,
+        ):
+            try:
+                comp_full = strip_root_hex(node.get_full_name())
+                if comp_full not in fp_nodes_by_name:
+                    fp_nodes_by_name[comp_full] = node
+            except Exception:
+                continue
+
+    fp_nodes = list(fp_nodes_by_name.values())
+
+    logger.info("Found %d components with footprints", len(fp_nodes))
 
     if not fp_nodes:
         logger.info("No components found, writing empty schematic JSON")
@@ -1335,8 +1810,10 @@ def export_schematic_json(
                     lead_nodes = parent_leads
                     leads_with_pads = parent_leads_with_pads
 
-            pad_name_to_display: dict[str, str] = {}
-            pad_name_to_functions: dict[str, list[dict]] = {}
+            # Canonical pin identity in schematic export is pad_number.
+            # This avoids collisions when multiple pads share a pad_name.
+            pin_number_to_display: dict[str, str] = {}
+            pin_number_to_functions: dict[str, list[dict]] = {}
 
             # Context node for interface tracing: the highest ato module ancestor
             trace_context = lead_source_node
@@ -1349,15 +1826,16 @@ def export_schematic_json(
                 assoc_pads = lead_trait.get_trait(F.Lead.has_associated_pads).get_pads()
                 for pad in assoc_pads:
                     try:
-                        pad_name_to_display[pad.pad_name] = lead_name
-                        pad_name_to_functions[pad.pad_name] = functions
+                        pin_number = str(pad.pad_number)
+                        pin_number_to_display[pin_number] = lead_name
+                        pin_number_to_functions[pin_number] = functions
                     except Exception:
                         continue
 
             # Filter out reference-network noise from functions
-            for pn in pad_name_to_functions:
-                pad_name_to_functions[pn] = _filter_lead_functions(
-                    pad_name_to_functions[pn]
+            for pin_number in pin_number_to_functions:
+                pin_number_to_functions[pin_number] = _filter_lead_functions(
+                    pin_number_to_functions[pin_number]
                 )
 
             # ── Use .ato signal names when available ──────────────
@@ -1365,60 +1843,62 @@ def export_schematic_json(
             # (e.g., "signal A0 ~ pin 1", "signal GND ~ pin 12") that are
             # unaffected by bridged-net function traces.
             signal_names = _extract_signal_names(component_node)
+            if not signal_names and not component_node.is_same(lead_source_node):
+                signal_names = _extract_signal_names(lead_source_node)
             if signal_names:
-                for pn, sig_name in signal_names.items():
-                    if pn in pad_name_to_display:
-                        pad_name_to_display[pn] = sig_name
+                pin_number_to_functions = _filter_pin_functions_by_signal_map(
+                    pin_number_to_functions,
+                    signal_names,
+                )
+                for pin_number, sig_name in signal_names.items():
+                    pin_number_to_display[pin_number] = sig_name
 
-            # Derive better display names when lead names are just numbers
-            for pn in list(pad_name_to_display.keys()):
-                pad_name_to_display[pn] = _derive_display_name(
-                    pn,
-                    pad_name_to_display[pn],
-                    pad_name_to_functions.get(pn, []),
+            # Build the physical pin-number list from all available sources:
+            # footprint pads, lead mappings, and .ato signal mappings.
+            # This keeps pin identity stable even when one source is incomplete.
+            pad_number_fallbacks: dict[str, str] = {}
+            for pad in sorted(pads, key=lambda p: natural_sort_key(p.pad_number)):
+                pin_number = str(pad.pad_number)
+                if pin_number not in pad_number_fallbacks:
+                    fallback = str(pad.pad_name) if str(pad.pad_name) else pin_number
+                    pad_number_fallbacks[pin_number] = fallback
+
+            pin_number_set = (
+                set(pad_number_fallbacks.keys())
+                | set(pin_number_to_display.keys())
+                | set(pin_number_to_functions.keys())
+                | set(signal_names.keys())
+            )
+            pin_numbers = sorted(pin_number_set, key=natural_sort_key)
+
+            for pin_number in pin_numbers:
+                if pin_number not in pin_number_to_display:
+                    pin_number_to_display[pin_number] = pad_number_fallbacks.get(
+                        pin_number, pin_number
+                    )
+                if pin_number not in pin_number_to_functions:
+                    pin_number_to_functions[pin_number] = []
+
+            # Derive better display names when lead names are generic numbers.
+            for pin_number in pin_numbers:
+                pin_number_to_display[pin_number] = _derive_display_name(
+                    pin_number,
+                    pin_number_to_display[pin_number],
+                    pin_number_to_functions.get(pin_number, []),
                 )
 
             logger.info(
                 "    Leads: %d with pads (from %s), display_map=%s",
                 len(leads_with_pads),
                 strip_root_hex(lead_source_node.get_full_name()),
-                dict(list(pad_name_to_display.items())[:8]),
+                dict(list(pin_number_to_display.items())[:8]),
             )
-
-            # Deduplicate pads by pad_name (not display name) — keep all
-            # physical pads even if multiple share a display name (e.g. VCC, GND).
-            # When duplicates exist, disambiguate with pad number suffix.
-            seen_pad_names: set[str] = set()
-            unique_pad_names: list[str] = []
-            display_name_counts: dict[str, int] = {}
-            for pad in sorted(pads, key=lambda p: natural_sort_key(p.pad_number)):
-                lead = pad_name_to_display.get(pad.pad_name, pad.pad_name)
-                display_name_counts[lead] = display_name_counts.get(lead, 0) + 1
-            # Second pass: keep all pads, disambiguate duplicate display names
-            display_name_seen: dict[str, int] = {}
-            for pad in sorted(pads, key=lambda p: natural_sort_key(p.pad_number)):
-                if pad.pad_name in seen_pad_names:
-                    logger.warning(
-                        "    DEDUP: pad %s (pad_name=%s) skipped — "
-                        "pad_name already seen",
-                        pad.pad_number,
-                        pad.pad_name,
-                    )
-                    continue
-                seen_pad_names.add(pad.pad_name)
-                unique_pad_names.append(pad.pad_name)
-                # Disambiguate display names that appear on multiple pads
-                lead = pad_name_to_display.get(pad.pad_name, pad.pad_name)
-                if display_name_counts.get(lead, 1) > 1:
-                    idx = display_name_seen.get(lead, 0)
-                    display_name_seen[lead] = idx + 1
-                    pad_name_to_display[pad.pad_name] = lead
 
             # Layout pins using real KiCad footprint pad positions
             pins_data, body_w, body_h = _layout_pins(
-                unique_pad_names,
-                pad_name_to_display,
-                pad_name_to_functions,
+                pin_numbers,
+                pin_number_to_display,
+                pin_number_to_functions,
                 component_node=component_node,
             )
 
@@ -1442,7 +1922,7 @@ def export_schematic_json(
             }
 
             # Extract interface mapping for this component's pins
-            pin_to_iface = _extract_pin_interfaces(pad_name_to_functions)
+            pin_to_iface = _extract_pin_interfaces(pin_number_to_functions)
 
             comp_infos.append(
                 _CompInfo(
@@ -1541,7 +2021,7 @@ def export_schematic_json(
     for mid in interesting_module_ids:
         mod = all_modules[mid]
         iface_map: dict[str, dict] = {}
-        pin_map: dict[str, dict[str, dict[str, str]]] = defaultdict(
+        pin_map: dict[str, dict[str, dict[str, _PinBinding]]] = defaultdict(
             lambda: defaultdict(dict)
         )
 
@@ -1572,7 +2052,7 @@ def export_schematic_json(
             if comp.owner_module_id != mid:
                 continue
             for pad_name, iface_list in comp.pin_to_iface.items():
-                for iface_name, signal_suffix, iface_type in iface_list:
+                for iface_name, signal_suffix, iface_type, is_line_level in iface_list:
                     # Skip private interfaces (atopile convention: _ prefix)
                     if iface_name.startswith("_"):
                         continue
@@ -1606,15 +2086,27 @@ def export_schematic_json(
 
                     iface_map[iface_name]["signals"].add(signal_suffix)
 
-                    # Build pin_map: comp_id -> {pad -> (iface_id, signal_suffix)}
-                    # Tracks which specific signal within an interface each pad maps to.
+                    # Build pin_map: comp_id -> {pad -> (iface_id, signal_suffix, is_line_level)}
+                    # Tracks which specific signal (if any) and connection mode each pad maps to.
                     pin_map[iface_name][comp.json_id][pad_name] = (
                         iface_name,
                         signal_suffix,
+                        is_line_level,
                     )
 
         mod.interfaces = iface_map
         module_interfaces[mid] = iface_map
+        logger.debug(
+            "Module %s interface map sizes: %s",
+            mod.json_id,
+            {
+                iface_name: sum(
+                    len(comp_map)
+                    for comp_map in iface_data.get("pin_map", {}).values()
+                )
+                for iface_name, iface_data in iface_map.items()
+            },
+        )
 
     # ═══════════════════════════════════════════════════════════════
     # Phase 5: Collect all nets
@@ -1655,10 +2147,12 @@ def export_schematic_json(
             except Exception:
                 continue
 
-            if len(net_pins) < 2:
+            if len(net_pins) < 1:
                 continue
 
             unique_pins = _dedup_pins(net_pins)
+            if len(unique_pins) < 1:
+                continue
             net_id = re.sub(r"[^a-zA-Z0-9_]", "_", net_name)
 
             raw_nets.append(

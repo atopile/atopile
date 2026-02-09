@@ -1,0 +1,89 @@
+/* ============================================
+   VS Code Theme Integration
+   Uses the same variable system as the sidebar panels.
+   VS Code injects --vscode-* CSS variables into webviews.
+   ============================================ */
+
+:root {
+  /* Atopile brand */
+  --ato-orange: #f95015;
+  --ato-orange-light: #ff6b35;
+
+  /* Semantic colors - VS Code vars with Catppuccin Mocha fallbacks */
+  --bg-primary: var(--vscode-editor-background, #1e1e2e);
+  --bg-secondary: var(--vscode-sideBar-background, #181825);
+  --bg-tertiary: var(--vscode-input-background, #313244);
+  --bg-hover: var(--vscode-list-hoverBackground, #45475a);
+
+  --text-primary: var(--vscode-foreground, #cdd6f4);
+  --text-secondary: var(--vscode-descriptionForeground, #bac2de);
+  --text-muted: var(--vscode-disabledForeground, #7f849c);
+
+  --border-color: var(--vscode-panel-border, #45475a);
+  --border-subtle: var(--vscode-widget-border, #313244);
+
+  --accent: var(--ato-orange);
+
+  /* Status / semantic */
+  --success: var(--vscode-testing-iconPassed, #a6e3a1);
+  --warning: var(--vscode-notificationsWarningIcon-foreground, #f9e2af);
+  --error: var(--vscode-notificationsErrorIcon-foreground, #f38ba8);
+  --info: var(--vscode-editorInfo-foreground, #89b4fa);
+
+  /* Node type colors - same as sidebar accent palette */
+  --node-source: #a6e3a1;       /* green - power source */
+  --node-source-bg: rgba(166, 227, 161, 0.12);
+  --node-sink: #fab387;          /* peach - power sink */
+  --node-sink-bg: rgba(250, 179, 135, 0.12);
+  --node-controller: #89b4fa;   /* blue - I2C controller */
+  --node-controller-bg: rgba(137, 180, 250, 0.12);
+  --node-target: #94e2d5;       /* teal - I2C target */
+  --node-target-bg: rgba(148, 226, 213, 0.12);
+  --node-bus: #cba6f7;           /* mauve - bus hub */
+  --node-bus-bg: rgba(203, 166, 247, 0.12);
+
+  /* Font */
+  --font-sans: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  --font-mono: var(--vscode-editor-font-family, 'JetBrains Mono', 'Fira Code', monospace);
+  --font-size-sm: 12px;
+  --font-size-xs: 11px;
+  --font-size-xxs: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--bg-hover);
+}

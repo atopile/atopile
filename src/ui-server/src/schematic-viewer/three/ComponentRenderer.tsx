@@ -12,8 +12,13 @@
 import { useMemo, memo } from 'react';
 import { Text, RoundedBox, Line } from '@react-three/drei';
 import type { SchematicComponent, SchematicPin } from '../types/schematic';
+import { getComponentGridAlignmentOffset } from '../types/schematic';
 import type { ThemeColors } from '../lib/theme';
 import { getPinColor } from '../lib/theme';
+import {
+  getUprightTextTransform,
+  anchorFromVisualSide,
+} from '../lib/itemTransform';
 
 const SMALL_AREA = 40;
 const NO_RAYCAST = () => {};
@@ -67,31 +72,44 @@ export const ComponentRenderer = memo(function ComponentRenderer({
     [component.reference],
   );
 
-  // Counter-transform for text readability when component is rotated/mirrored
-  const counterRot = -(rotation * Math.PI) / 180;
-  const counterScaleX = mirrorX ? -1 : 1;
-  const counterScaleY = mirrorY ? -1 : 1;
+  // Shared label policy: keep text upright for any rotate/mirror combination.
+  const textTf = useMemo(
+    () => getUprightTextTransform(rotation, mirrorX, mirrorY),
+    [rotation, mirrorX, mirrorY],
+  );
 
   const RADIUS = Math.min(W, H) * 0.08;
   const maxDim = Math.min(W, H);
-  const nameFontSize = Math.min(2.0, Math.max(0.7, maxDim * 0.14));
-  const refFontSize = nameFontSize * 0.5;
-  const maxTextWidth = W * 0.85;
+  const refFontSize = isSmall
+    ? Math.min(1.35, Math.max(0.62, maxDim * 0.34))
+    : Math.min(1.35, Math.max(0.78, maxDim * 0.18));
+  const bodyRefMaxWidth = W * 0.84;
 
-  // Truncate long component names to fit inside the body
+  const showNameBadge = (isHovered || isSelected) && component.name.trim().length > 0;
+  const nameBadgeWidth = Math.min(Math.max(W * 0.95, 10), 28);
+  const nameBadgeHeight = 1.9;
+  const nameBadgeRadius = 0.34;
+  const nameBadgeFontSize = 0.72;
   const displayName = useMemo(() => {
-    const name = component.name;
-    // Approximate chars that fit: body width / (font size * avg char width ratio)
-    const maxChars = Math.floor(maxTextWidth / (nameFontSize * 0.52));
-    if (name.length <= maxChars) return name;
-    return name.slice(0, maxChars - 1) + '\u2026'; // ellipsis
-  }, [component.name, maxTextWidth, nameFontSize]);
+    const raw = component.name.trim();
+    if (!raw) return '';
+    const maxChars = Math.max(
+      10,
+      Math.floor(nameBadgeWidth / (nameBadgeFontSize * 0.55)),
+    );
+    if (raw.length <= maxChars) return raw;
+    return raw.slice(0, Math.max(1, maxChars - 1)) + '\u2026';
+  }, [component.name, nameBadgeWidth, nameBadgeFontSize]);
 
   // Slight visual lift when dragging
   const zOffset = isDragging ? 0.5 : 0;
+  const gridOffset = useMemo(
+    () => getComponentGridAlignmentOffset(component),
+    [component],
+  );
 
   return (
-    <group position={[0, 0, zOffset]} raycast={NO_RAYCAST}>
+    <group position={[gridOffset.x, gridOffset.y, zOffset]} raycast={NO_RAYCAST}>
       {/* ── Selection highlight ─────────────────────── */}
       {isSelected && (
         <RoundedBox
@@ -138,45 +156,65 @@ export const ComponentRenderer = memo(function ComponentRenderer({
       </RoundedBox>
 
       {/* ── Center label (counter-rotated for readability) ── */}
-      {isSmall ? (
-        <group position={[0, 0, 0.001]} rotation={[0, 0, counterRot]} scale={[counterScaleX, counterScaleY, 1]}>
-          <Text
-            fontSize={Math.min(1.4, Math.max(0.6, maxDim * 0.35))}
-            color={accent}
-            anchorX="center"
-            anchorY="middle"
-            letterSpacing={0.04}
-            clipRect={[-W / 2, -H / 2, W / 2, H / 2]}
-            font={undefined}
+      <group position={[0, 0, 0.001]} rotation={[0, 0, textTf.rotationZ]} scale={[textTf.scaleX, textTf.scaleY, 1]}>
+        <Text
+          fontSize={refFontSize}
+          color={accent}
+          anchorX="center"
+          anchorY="middle"
+          letterSpacing={0.04}
+          maxWidth={bodyRefMaxWidth}
+          clipRect={[-W / 2, -H / 2, W / 2, H / 2]}
+          font={undefined}
+          raycast={NO_RAYCAST}
+        >
+          {component.designator}
+        </Text>
+      </group>
+
+      {/* ── Part name badge (hover/selected) ────────── */}
+      {showNameBadge && (
+        <group
+          position={[0, H / 2 + nameBadgeHeight / 2 + 0.7, 0.01]}
+          rotation={[0, 0, textTf.rotationZ]}
+          scale={[textTf.scaleX, textTf.scaleY, 1]}
+          raycast={NO_RAYCAST}
+        >
+          <RoundedBox
+            args={[nameBadgeWidth + 0.12, nameBadgeHeight + 0.12, 0.001]}
+            radius={nameBadgeRadius + 0.03}
+            smoothness={4}
+            position={[0, 0, -0.001]}
             raycast={NO_RAYCAST}
           >
-            {component.reference}
-          </Text>
-        </group>
-      ) : (
-        <group position={[0, 0, 0.001]} rotation={[0, 0, counterRot]} scale={[counterScaleX, counterScaleY, 1]}>
-          <Text
-            position={[0, nameFontSize * 0.7, 0]}
-            fontSize={refFontSize}
-            color={accent}
-            anchorX="center"
-            anchorY="middle"
-            letterSpacing={0.08}
-            maxWidth={maxTextWidth}
-            clipRect={[-W / 2, -H / 2, W / 2, H / 2]}
-            font={undefined}
+            <meshBasicMaterial
+              color={isSelected ? accent : theme.bodyBorder}
+              transparent
+              opacity={0.82}
+              depthWrite={false}
+            />
+          </RoundedBox>
+          <RoundedBox
+            args={[nameBadgeWidth, nameBadgeHeight, 0.001]}
+            radius={nameBadgeRadius}
+            smoothness={4}
             raycast={NO_RAYCAST}
           >
-            {component.designator}
-          </Text>
+            <meshBasicMaterial
+              color={theme.bgSecondary}
+              transparent
+              opacity={0.94}
+              depthWrite={false}
+            />
+          </RoundedBox>
           <Text
-            position={[0, -nameFontSize * 0.2, 0]}
-            fontSize={nameFontSize}
+            position={[0, 0, 0.002]}
+            fontSize={nameBadgeFontSize}
             color={theme.textPrimary}
             anchorX="center"
             anchorY="middle"
-            maxWidth={maxTextWidth}
-            clipRect={[-W / 2, -H / 2, W / 2, H / 2]}
+            maxWidth={nameBadgeWidth - 1.2}
+            letterSpacing={0.015}
             font={undefined}
             raycast={NO_RAYCAST}
           >
@@ -207,9 +245,12 @@ export const ComponentRenderer = memo(function ComponentRenderer({
           isSmall={isSmall}
           netId={netsForComponent.get(pin.number) ?? null}
           selectedNetId={selectedNetId}
-          counterRot={counterRot}
-          counterScaleX={counterScaleX}
-          counterScaleY={counterScaleY}
+          textRotationZ={textTf.rotationZ}
+          textScaleX={textTf.scaleX}
+          textScaleY={textTf.scaleY}
+          rotationDeg={rotation}
+          mirrorX={mirrorX}
+          mirrorY={mirrorY}
         />
       ))}
     </group>
@@ -224,18 +265,24 @@ const SchematicPinElement = memo(function SchematicPinElement({
   isSmall,
   netId,
   selectedNetId,
-  counterRot = 0,
-  counterScaleX = 1,
-  counterScaleY = 1,
+  textRotationZ = 0,
+  textScaleX = 1,
+  textScaleY = 1,
+  rotationDeg = 0,
+  mirrorX = false,
+  mirrorY = false,
 }: {
   pin: SchematicPin;
   theme: ThemeColors;
   isSmall: boolean;
   netId: string | null;
   selectedNetId: string | null;
-  counterRot?: number;
-  counterScaleX?: number;
-  counterScaleY?: number;
+  textRotationZ?: number;
+  textScaleX?: number;
+  textScaleY?: number;
+  rotationDeg?: number;
+  mirrorX?: boolean;
+  mirrorY?: boolean;
 }) {
   const color = getPinColor(pin.category, theme);
   const isNetHighlighted = netId !== null && netId === selectedNetId;
@@ -243,47 +290,54 @@ const SchematicPinElement = memo(function SchematicPinElement({
   const showName = pin.name !== pin.number;
   const DOT_RADIUS = 0.3;
   const pinOpacity = isNetHighlighted ? 1 : isDimmed ? 0.25 : 0.8;
+  const pinX = pin.x;
+  const pinY = pin.y;
+  const bodyX = pin.bodyX;
+  const bodyY = pin.bodyY;
 
   // Text placement
   let nameX: number, nameY: number;
   let numX: number, numY: number;
-  let nameAnchorX: 'left' | 'right' | 'center' = 'left';
   const NAME_INSET = 0.8;
   const NUM_OFFSET = 0.6;
 
   if (pin.side === 'left') {
-    nameX = pin.bodyX + NAME_INSET;
-    nameY = pin.y;
-    nameAnchorX = 'left';
-    numX = pin.x;
-    numY = pin.y + NUM_OFFSET;
+    nameX = bodyX + NAME_INSET;
+    nameY = pinY;
+    numX = pinX;
+    numY = pinY + NUM_OFFSET;
   } else if (pin.side === 'right') {
-    nameX = pin.bodyX - NAME_INSET;
-    nameY = pin.y;
-    nameAnchorX = 'right';
-    numX = pin.x;
-    numY = pin.y + NUM_OFFSET;
+    nameX = bodyX - NAME_INSET;
+    nameY = pinY;
+    numX = pinX;
+    numY = pinY + NUM_OFFSET;
   } else if (pin.side === 'top') {
-    nameX = pin.x;
-    nameY = pin.bodyY - NAME_INSET;
-    nameAnchorX = 'center';
-    numX = pin.x + NUM_OFFSET;
-    numY = pin.y;
+    nameX = pinX;
+    nameY = bodyY - NAME_INSET;
+    numX = pinX + NUM_OFFSET;
+    numY = pinY;
   } else {
-    nameX = pin.x;
-    nameY = pin.bodyY + NAME_INSET;
-    nameAnchorX = 'center';
-    numX = pin.x + NUM_OFFSET;
-    numY = pin.y;
+    nameX = pinX;
+    nameY = bodyY + NAME_INSET;
+    numX = pinX + NUM_OFFSET;
+    numY = pinY;
   }
+  const effectiveNameAnchorX = anchorFromVisualSide(pin.side, {
+    rotationDeg,
+    mirrorX,
+    mirrorY,
+    left: 'left',
+    right: 'right',
+    vertical: 'center',
+  });
 
   return (
     <group raycast={NO_RAYCAST}>
       {/* Stub line */}
       <Line
         points={[
-          [pin.x, pin.y, 0],
-          [pin.bodyX, pin.bodyY, 0],
+          [pinX, pinY, 0],
+          [bodyX, bodyY, 0],
         ]}
         color={color}
         lineWidth={isNetHighlighted ? 2.5 : 1.8}
@@ -293,18 +347,18 @@ const SchematicPinElement = memo(function SchematicPinElement({
       />
 
       {/* Connection dot */}
-      <mesh position={[pin.x, pin.y, 0.001]} raycast={NO_RAYCAST}>
+      <mesh position={[pinX, pinY, 0.001]} raycast={NO_RAYCAST}>
         <circleGeometry args={[DOT_RADIUS, 16]} />
         <meshBasicMaterial color={color} transparent opacity={pinOpacity} />
       </mesh>
 
       {/* Pin name (inside body edge) — counter-rotated for readability */}
       {showName && !isSmall && (
-        <group position={[nameX, nameY, 0.002]} rotation={[0, 0, counterRot]} scale={[counterScaleX, counterScaleY, 1]}>
+        <group position={[nameX, nameY, 0.002]} rotation={[0, 0, textRotationZ]} scale={[textScaleX, textScaleY, 1]}>
           <Text
             fontSize={1.05}
             color={theme.textSecondary}
-            anchorX={nameAnchorX}
+            anchorX={effectiveNameAnchorX}
             anchorY="middle"
             font={undefined}
             raycast={NO_RAYCAST}
@@ -316,7 +370,7 @@ const SchematicPinElement = memo(function SchematicPinElement({
 
       {/* Pin number (near endpoint) — counter-rotated for readability */}
       {!isSmall && (
-        <group position={[numX, numY, 0.002]} rotation={[0, 0, counterRot]} scale={[counterScaleX, counterScaleY, 1]}>
+        <group position={[numX, numY, 0.002]} rotation={[0, 0, textRotationZ]} scale={[textScaleX, textScaleY, 1]}>
           <Text
             fontSize={0.65}
             color={theme.textMuted}
