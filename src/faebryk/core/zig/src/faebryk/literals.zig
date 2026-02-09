@@ -6,6 +6,7 @@ const faebryk = @import("faebryk");
 const fabll = @import("fabll.zig");
 const collections = @import("collections.zig");
 const units = @import("units.zig");
+const parameters = @import("parameters.zig");
 const str = []const u8;
 
 pub const REL_DIGITS: usize = 7;
@@ -713,6 +714,7 @@ pub const NumbersSerialized = struct {
 
 pub const Numbers = struct {
     node: fabll.Node,
+    can_be_operand: parameters.can_be_operand.MakeChild(),
     numeric_set_ptr: collections.PointerOf(NumericSet).MakeChild(),
     unit_ptr: collections.PointerOf(units.is_unit).MakeChild(),
     const ScaleFactor = struct {

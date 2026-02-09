@@ -3,6 +3,7 @@ const graph_mod = @import("graph");
 const graph = graph_mod.graph;
 const faebryk = @import("faebryk");
 const fabll = @import("fabll.zig");
+const collections = @import("collections.zig");
 const str = []const u8;
 
 pub const Error = error{
@@ -255,6 +256,50 @@ pub const IsUnit = struct {
 };
 
 pub const is_unit = IsUnit;
+
+pub const has_unit = struct {
+    node: fabll.Node,
+    unit_ptr: collections.PointerOf(is_unit).MakeChild(),
+
+    pub fn MakeChild() type {
+        return fabll.Node.MakeChild(@This());
+    }
+
+    pub fn setup(self: @This(), unit: is_unit) @This() {
+        self.unit_ptr.get().point(unit);
+        return self;
+    }
+
+    pub fn try_get_is_unit(self: @This()) ?is_unit {
+        return self.unit_ptr.get().try_deref();
+    }
+
+    pub fn get_is_unit(self: @This()) is_unit {
+        return self.unit_ptr.get().deref();
+    }
+};
+
+pub const has_display_unit = struct {
+    node: fabll.Node,
+    unit_ptr: collections.PointerOf(is_unit).MakeChild(),
+
+    pub fn MakeChild() type {
+        return fabll.Node.MakeChild(@This());
+    }
+
+    pub fn setup(self: @This(), unit: is_unit) @This() {
+        self.unit_ptr.get().point(unit);
+        return self;
+    }
+
+    pub fn try_get_is_unit(self: @This()) ?is_unit {
+        return self.unit_ptr.get().try_deref();
+    }
+
+    pub fn get_is_unit(self: @This()) is_unit {
+        return self.unit_ptr.get().deref();
+    }
+};
 
 pub fn to_is_unit(unit_node: anytype) is_unit {
     const T = @TypeOf(unit_node);
