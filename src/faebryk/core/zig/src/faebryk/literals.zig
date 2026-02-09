@@ -158,7 +158,7 @@ pub const StringsSerialized = struct {
 
 pub const Strings = struct {
     node: fabll.Node,
-    values: collections.PointerSet.MakeChild(),
+    values: collections.PointerSetOf(String).MakeChild(),
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
@@ -170,24 +170,18 @@ pub const Strings = struct {
 
         for (values) |value| {
             const lit = String.create_instance(g, &tg, value);
-            self.values.get().append(&.{lit.node.instance});
+            self.values.get().append(&.{lit});
         }
         return self;
-    }
-
-    fn get_child_value(child: graph.BoundNodeReference, _: std.mem.Allocator) !str {
-        const as_string = (fabll.Node{ .instance = child }).cast(String);
-        return as_string.get_value();
     }
 
     pub fn get_values(self: @This(), allocator: std.mem.Allocator) ![]str {
         const nodes = try self.values.get().as_list(allocator);
         defer allocator.free(nodes);
-
         var raw = std.ArrayList(str).init(allocator);
         defer raw.deinit();
         for (nodes) |node| {
-            try raw.append(try get_child_value(node, allocator));
+            try raw.append(node.get_value());
         }
         return dedup_sort_strings(raw.items, allocator);
     }
@@ -716,7 +710,7 @@ pub const NumbersSerialized = struct {
 
 pub const Numbers = struct {
     node: fabll.Node,
-    numeric_set_ptr: collections.Pointer.MakeChild(),
+    numeric_set_ptr: collections.PointerOf(NumericSet).MakeChild(),
 
     pub fn MakeChild(comptime min: f64, comptime max: f64) type {
         const numeric_set_child = fabll.ChildField(NumericSet, "numeric_set", &.{}, &.{}, &.{}).add_dependant_before(
@@ -747,7 +741,7 @@ pub const Numbers = struct {
         var numeric_set = NumericSet.create_instance(self.node.instance.g, &tg);
         const intervals = [_]Interval{.{ .min = min, .max = max }};
         numeric_set = try numeric_set.setup_from_values(&intervals, allocator);
-        self.numeric_set_ptr.get().point(numeric_set.node.instance);
+        self.numeric_set_ptr.get().point(numeric_set);
         return self;
     }
 
@@ -765,13 +759,12 @@ pub const Numbers = struct {
         var tg = self.node.typegraph();
         var numeric_set = NumericSet.create_instance(self.node.instance.g, &tg);
         numeric_set = try numeric_set.setup_from_values(intervals.items, allocator);
-        self.numeric_set_ptr.get().point(numeric_set.node.instance);
+        self.numeric_set_ptr.get().point(numeric_set);
         return self;
     }
 
     pub fn get_numeric_set(self: @This()) NumericSet {
-        const target = self.numeric_set_ptr.get().deref();
-        return .{ .node = .{ .instance = target } };
+        return self.numeric_set_ptr.get().deref();
     }
 
     pub fn is_empty(self: @This(), allocator: std.mem.Allocator) !bool {
@@ -812,7 +805,7 @@ pub const Numbers = struct {
         const g = self.node.instance.g;
         var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
-        out.numeric_set_ptr.get().point(out_set.node.instance);
+        out.numeric_set_ptr.get().point(out_set);
         return out;
     }
 
@@ -821,7 +814,7 @@ pub const Numbers = struct {
         const g = self.node.instance.g;
         var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
-        out.numeric_set_ptr.get().point(out_set.node.instance);
+        out.numeric_set_ptr.get().point(out_set);
         return out;
     }
 
@@ -830,7 +823,7 @@ pub const Numbers = struct {
         const g = self.node.instance.g;
         var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
-        out.numeric_set_ptr.get().point(out_set.node.instance);
+        out.numeric_set_ptr.get().point(out_set);
         return out;
     }
 
@@ -844,7 +837,7 @@ pub const Numbers = struct {
         const out = create_instance(g, &tg);
         var set = NumericSet.create_instance(g, &tg);
         set = try set.setup_from_values(intervals, allocator);
-        out.numeric_set_ptr.get().point(set.node.instance);
+        out.numeric_set_ptr.get().point(set);
         return out;
     }
 
@@ -1103,7 +1096,7 @@ pub const Numbers = struct {
         const out = create_instance(g, tg);
         var set = NumericSet.create_instance(g, tg);
         set = try set.setup_from_values(data.data.intervals, allocator);
-        out.numeric_set_ptr.get().point(set.node.instance);
+        out.numeric_set_ptr.get().point(set);
         return out;
     }
 };
@@ -1135,7 +1128,7 @@ pub const CountsSerialized = struct {
 
 pub const Counts = struct {
     node: fabll.Node,
-    values: collections.PointerSet.MakeChild(),
+    values: collections.PointerSetOf(Count).MakeChild(),
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
@@ -1147,14 +1140,9 @@ pub const Counts = struct {
 
         for (values) |value| {
             const lit = Count.create_instance(g, &tg, value);
-            self.values.get().append(&.{lit.node.instance});
+            self.values.get().append(&.{lit});
         }
         return self;
-    }
-
-    fn get_child_value(child: graph.BoundNodeReference, _: std.mem.Allocator) !i64 {
-        const as_count = (fabll.Node{ .instance = child }).cast(Count);
-        return as_count.get_value();
     }
 
     pub fn get_values(self: @This(), allocator: std.mem.Allocator) ![]i64 {
@@ -1163,7 +1151,7 @@ pub const Counts = struct {
         var raw = std.ArrayList(i64).init(allocator);
         defer raw.deinit();
         for (nodes) |node| {
-            try raw.append(try get_child_value(node, allocator));
+            try raw.append(node.get_value());
         }
         return dedup_sort_ints(raw.items, allocator);
     }
@@ -1349,7 +1337,7 @@ pub const BooleansSerialized = struct {
 
 pub const Booleans = struct {
     node: fabll.Node,
-    values: collections.PointerSet.MakeChild(),
+    values: collections.PointerSetOf(Boolean).MakeChild(),
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
@@ -1365,14 +1353,9 @@ pub const Booleans = struct {
 
         for (values) |value| {
             const lit = Boolean.create_instance(g, &tg, value);
-            self.values.get().append(&.{lit.node.instance});
+            self.values.get().append(&.{lit});
         }
         return self;
-    }
-
-    fn get_child_value(child: graph.BoundNodeReference, _: std.mem.Allocator) !bool {
-        const as_boolean = (fabll.Node{ .instance = child }).cast(Boolean);
-        return as_boolean.get_value();
     }
 
     pub fn get_values(self: @This(), allocator: std.mem.Allocator) ![]bool {
@@ -1381,7 +1364,7 @@ pub const Booleans = struct {
         var raw = std.ArrayList(bool).init(allocator);
         defer raw.deinit();
         for (nodes) |node| {
-            try raw.append(try get_child_value(node, allocator));
+            try raw.append(node.get_value());
         }
         return dedup_sort_bools(raw.items, allocator);
     }
@@ -1590,7 +1573,7 @@ pub const AbstractEnumsSerialized = struct {
 
 pub const AbstractEnums = struct {
     node: fabll.Node,
-    values: collections.PointerSet.MakeChild(),
+    values: collections.PointerSetOf(EnumValue).MakeChild(),
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
@@ -1602,14 +1585,9 @@ pub const AbstractEnums = struct {
 
         for (values) |value| {
             const lit = EnumValue.create_instance(g, &tg, value.name, value.value);
-            self.values.get().append(&.{lit.node.instance});
+            self.values.get().append(&.{lit});
         }
         return self;
-    }
-
-    fn get_child_value(child: graph.BoundNodeReference, _: std.mem.Allocator) !str {
-        const as_enum = (fabll.Node{ .instance = child }).cast(EnumValue);
-        return as_enum.get_value();
     }
 
     pub fn get_values(self: @This(), allocator: std.mem.Allocator) ![]str {
@@ -1618,7 +1596,7 @@ pub const AbstractEnums = struct {
         var raw = std.ArrayList(str).init(allocator);
         defer raw.deinit();
         for (nodes) |node| {
-            try raw.append(try get_child_value(node, allocator));
+            try raw.append(node.get_value());
         }
         return dedup_sort_strings(raw.items, allocator);
     }

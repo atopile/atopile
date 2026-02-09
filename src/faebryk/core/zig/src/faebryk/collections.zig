@@ -58,6 +58,44 @@ pub const Pointer = struct {
     }
 };
 
+pub fn PointerOf(comptime T: type) type {
+    return struct {
+        node: fabll.Node,
+
+        pub fn MakeChild() type {
+            return fabll.Node.MakeChild(@This());
+        }
+
+        pub fn MakeEdge(comptime pointer_ref: fabll.RefPath, comptime elem_ref: fabll.RefPath) type {
+            return Pointer.MakeEdge(pointer_ref, elem_ref);
+        }
+
+        pub fn try_deref(self: @This()) ?T {
+            if ((Pointer{ .node = self.node }).try_deref()) |node| {
+                return fabll.Node.bind_instance(T, node);
+            }
+            return null;
+        }
+
+        pub fn deref(self: @This()) T {
+            return self.try_deref() orelse @panic("Pointer is not pointing to a node");
+        }
+
+        pub fn point(self: @This(), target: T) void {
+            (Pointer{ .node = self.node }).point(target.node.instance);
+        }
+
+        pub fn as_list(self: @This(), allocator: std.mem.Allocator) ![]T {
+            if (self.try_deref()) |n| {
+                var out = try allocator.alloc(T, 1);
+                out[0] = n;
+                return out;
+            }
+            return allocator.alloc(T, 0);
+        }
+    };
+}
+
 pub const PointerSequence = struct {
     node: fabll.Node,
 
@@ -141,6 +179,43 @@ pub const PointerSequence = struct {
     }
 };
 
+pub fn PointerSequenceOf(comptime T: type) type {
+    return struct {
+        node: fabll.Node,
+
+        pub fn MakeChild() type {
+            return fabll.Node.MakeChild(@This());
+        }
+
+        pub fn MakeEdge(comptime seq_ref: fabll.RefPath, comptime elem_ref: fabll.RefPath, comptime index: u15) type {
+            return PointerSequence.MakeEdge(seq_ref, elem_ref, index);
+        }
+
+        pub fn MakeEdges(comptime seq_ref: fabll.RefPath, comptime elem_refs: []const fabll.RefPath) []const type {
+            return PointerSequence.MakeEdges(seq_ref, elem_refs);
+        }
+
+        pub fn append(self: @This(), elems: []const T) void {
+            var raw = std.ArrayList(graph.BoundNodeReference).init(std.heap.page_allocator);
+            defer raw.deinit();
+            for (elems) |elem| {
+                raw.append(elem.node.instance) catch @panic("OOM");
+            }
+            (PointerSequence{ .node = self.node }).append(raw.items);
+        }
+
+        pub fn as_list(self: @This(), allocator: std.mem.Allocator) ![]T {
+            const raw = try (PointerSequence{ .node = self.node }).as_list(allocator);
+            defer allocator.free(raw);
+            var out = try allocator.alloc(T, raw.len);
+            for (raw, 0..) |node, i| {
+                out[i] = fabll.Node.bind_instance(T, node);
+            }
+            return out;
+        }
+    };
+}
+
 pub const PointerSet = struct {
     node: fabll.Node,
 
@@ -204,6 +279,43 @@ pub const PointerSet = struct {
     }
 };
 
+pub fn PointerSetOf(comptime T: type) type {
+    return struct {
+        node: fabll.Node,
+
+        pub fn MakeChild() type {
+            return fabll.Node.MakeChild(@This());
+        }
+
+        pub fn MakeEdge(comptime set_ref: fabll.RefPath, comptime elem_ref: fabll.RefPath) type {
+            return PointerSet.MakeEdge(set_ref, elem_ref);
+        }
+
+        pub fn MakeEdges(comptime set_ref: fabll.RefPath, comptime elem_refs: []const fabll.RefPath) []const type {
+            return PointerSet.MakeEdges(set_ref, elem_refs);
+        }
+
+        pub fn append(self: @This(), elems: []const T) void {
+            var raw = std.ArrayList(graph.BoundNodeReference).init(std.heap.page_allocator);
+            defer raw.deinit();
+            for (elems) |elem| {
+                raw.append(elem.node.instance) catch @panic("OOM");
+            }
+            (PointerSet{ .node = self.node }).append(raw.items);
+        }
+
+        pub fn as_list(self: @This(), allocator: std.mem.Allocator) ![]T {
+            const raw = try (PointerSet{ .node = self.node }).as_list(allocator);
+            defer allocator.free(raw);
+            var out = try allocator.alloc(T, raw.len);
+            for (raw, 0..) |node, i| {
+                out[i] = fabll.Node.bind_instance(T, node);
+            }
+            return out;
+        }
+    };
+}
+
 test "collections pointer basics" {
     var g = graph.GraphView.init(std.testing.allocator);
     defer g.deinit();
@@ -244,4 +356,39 @@ test "collections pointer set append dedup" {
     const vals = try holder.set.get().as_list(std.testing.allocator);
     defer std.testing.allocator.free(vals);
     try std.testing.expectEqual(@as(usize, 2), vals.len);
+}
+
+test "collections typed pointer set auto cast" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const Leaf = struct {
+        node: fabll.Node,
+        pub const Attributes = struct { v: i64 };
+        pub fn MakeChild(comptime v: i64) type {
+            return fabll.MakeChildWithTypedAttrs(@This(), .{ .v = v });
+        }
+        pub fn get(self: @This()) i64 {
+            return fabll.get_typed_attributes(self).v;
+        }
+    };
+
+    const LeafSet = PointerSetOf(Leaf);
+
+    const Holder = struct {
+        node: fabll.Node,
+        set: LeafSet.MakeChild(),
+        a: Leaf.MakeChild(1),
+        b: Leaf.MakeChild(2),
+    };
+
+    const holder = fabll.Node.bind_typegraph(Holder, &tg).create_instance(&g);
+    holder.set.get().append(&.{ holder.a.get(), holder.b.get(), holder.a.get() });
+    const values = try holder.set.get().as_list(std.testing.allocator);
+    defer std.testing.allocator.free(values);
+
+    try std.testing.expectEqual(@as(usize, 2), values.len);
+    try std.testing.expectEqual(@as(i64, 1), values[0].get());
+    try std.testing.expectEqual(@as(i64, 2), values[1].get());
 }
