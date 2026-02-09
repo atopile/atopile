@@ -14,6 +14,7 @@ import {
   PORT_H,
   PORT_STUB_LEN,
   PORT_W,
+  transformPinOffset,
 } from '../schematic-viewer/types/schematic';
 
 function makePin(
@@ -204,6 +205,24 @@ describe('schematicLayout decoupling placement', () => {
 describe('schematicLayout single-port anchoring', () => {
   const ANCHOR_OFFSET = PIN_GRID_MM * 5;
 
+  function resolvePortPinWorld(
+    port: SchematicPort,
+    pos: { x: number; y: number; rotation?: number; mirrorX?: boolean; mirrorY?: boolean },
+  ): { x: number; y: number } {
+    const align = getPortGridAlignmentOffset(port);
+    const rotated = transformPinOffset(
+      port.pinX + align.x,
+      port.pinY + align.y,
+      pos.rotation,
+      pos.mirrorX,
+      pos.mirrorY,
+    );
+    return {
+      x: pos.x + rotated.x,
+      y: pos.y + rotated.y,
+    };
+  }
+
   it('aligns a one-connection port to its target pin with a short straight link', () => {
     const target = makeComponent(
       'u1',
@@ -235,14 +254,12 @@ describe('schematicLayout single-port anchoring', () => {
     const compPinWorldX = compPos.x + target.pins[0].x + compAlign.x;
     const compPinWorldY = compPos.y + target.pins[0].y + compAlign.y;
 
-    const portAlign = getPortGridAlignmentOffset(port);
-    const portPinWorldX = portPos.x + port.pinX + portAlign.x;
-    const portPinWorldY = portPos.y + port.pinY + portAlign.y;
+    const portPinWorld = resolvePortPinWorld(port, portPos);
 
     // Port should line up exactly for a straight horizontal route.
-    expect(Math.abs(compPinWorldY - portPinWorldY)).toBeLessThan(1e-6);
+    expect(Math.abs(compPinWorldY - portPinWorld.y)).toBeLessThan(1e-6);
     // Port pin should sit five pin-pitches away from the target pin.
-    expect(Math.abs(compPinWorldX - portPinWorldX - ANCHOR_OFFSET)).toBeLessThan(1e-6);
+    expect(Math.abs(compPinWorldX - portPinWorld.x - ANCHOR_OFFSET)).toBeLessThan(1e-6);
   });
 
   it('anchors to the primary item pin even when the net also includes passives', () => {
@@ -313,14 +330,13 @@ describe('schematicLayout single-port anchoring', () => {
     const compPinWorldX = compPos.x + target.pins[0].x + compAlign.x;
     const compPinWorldY = compPos.y + target.pins[0].y + compAlign.y;
 
-    const portAlign = getPortGridAlignmentOffset(port);
-    const portPinWorldX = portPos.x + port.pinX + portAlign.x;
-    const portPinWorldY = portPos.y + port.pinY + portAlign.y;
+    const portPinWorld = resolvePortPinWorld(port, portPos);
 
     // Keep the route straight.
-    expect(Math.abs(compPinWorldY - portPinWorldY)).toBeLessThan(1e-6);
-    // Right-side port should anchor to the right of the target by the same fixed offset.
-    expect(portPinWorldX).toBeGreaterThan(compPinWorldX);
-    expect(Math.abs(portPinWorldX - compPinWorldX - ANCHOR_OFFSET)).toBeLessThan(1e-6);
+    expect(Math.abs(compPinWorldY - portPinWorld.y)).toBeLessThan(1e-6);
+    // Port should orient to face the target pin side, independent of its original side metadata.
+    expect(portPinWorld.x).toBeLessThan(compPinWorldX);
+    expect(Math.abs(compPinWorldX - portPinWorld.x - ANCHOR_OFFSET)).toBeLessThan(1e-6);
+    expect((portPos.rotation || 0) % 360).toBe(180);
   });
 });

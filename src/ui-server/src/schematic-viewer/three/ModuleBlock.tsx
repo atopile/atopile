@@ -1,14 +1,3 @@
-/**
- * ModuleBlock — renders a SchematicModule as a styled expandable box.
- *
- * Visually distinct from components:
- * - Dashed border + subtle gradient background
- * - Shows module type name, instance name, and component count badge
- * - Interface pins shown as color-coded stubs
- * - Double-click to "enter" the module (navigate into its sheet)
- * - Shares the same drag architecture as DraggableComponent
- */
-
 import { useMemo, memo } from 'react';
 import { Text, RoundedBox, Line } from '@react-three/drei';
 import type { SchematicModule, SchematicInterfacePin } from '../types/schematic';
@@ -19,8 +8,16 @@ import {
   getUprightTextTransform,
   anchorFromVisualSide,
 } from '../lib/itemTransform';
+import {
+  isBusInterface,
+  getInterfaceDotRadius,
+  getInterfaceNameInset,
+  getInterfaceParallelOffset,
+  getInterfaceStrokeStyle,
+} from './interfaceVisuals';
 
-const NO_RAYCAST = () => { };
+const NO_RAYCAST = () => {};
+const MODULE_INSET = 0.72;
 
 function moduleAccentColor(typeName: string): string {
   const t = typeName.toLowerCase();
@@ -67,11 +64,12 @@ export const ModuleBlock = memo(function ModuleBlock({
     [module.typeName],
   );
 
-  const RADIUS = Math.min(W, H) * 0.06;
+  const RADIUS = Math.min(0.78, Math.max(0.34, Math.min(W, H) * 0.055));
   const maxDim = Math.min(W, H);
-  const typeFontSize = Math.min(1.8, Math.max(0.8, maxDim * 0.12));
-  const nameFontSize = typeFontSize * 0.65;
-  const maxTextWidth = W * 0.65;
+  const titleFontSize = Math.min(1.48, Math.max(0.88, maxDim * 0.085));
+  const subtitleFontSize = Math.min(0.92, Math.max(0.62, titleFontSize * 0.56));
+  const maxTextWidth = W * 0.74;
+  const showType = module.typeName.trim() !== module.name.trim();
   const zOffset = isDragging ? 0.5 : 0;
   const gridOffset = useMemo(
     () => getModuleGridAlignmentOffset(module),
@@ -85,102 +83,129 @@ export const ModuleBlock = memo(function ModuleBlock({
 
   return (
     <group position={[gridOffset.x, gridOffset.y, zOffset]} raycast={NO_RAYCAST}>
-      {/* ── Selection highlight ─────────────────────── */}
+      {/* Interactive hit target for select/drag/double-click to enter. */}
+      <mesh position={[0, 0, -0.07]}>
+        <planeGeometry args={[W + 0.6, H + 0.6]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+
       {isSelected && (
         <RoundedBox
-          args={[W + 1.2, H + 1.2, 0.001]}
-          radius={RADIUS + 0.2}
+          args={[W + 1.26, H + 1.26, 0.001]}
+          radius={RADIUS + 0.22}
           smoothness={4}
-          position={[0, 0, -0.004]}
+          position={[0, 0, -0.06]}
           raycast={NO_RAYCAST}
         >
-          <meshBasicMaterial color={accent} transparent opacity={0.2} />
+          <meshBasicMaterial color={accent} transparent opacity={0.2} depthWrite={false} />
         </RoundedBox>
       )}
 
-      {/* ── Hover highlight ─────────────────────────── */}
       {isHovered && !isSelected && (
         <RoundedBox
-          args={[W + 0.6, H + 0.6, 0.001]}
-          radius={RADIUS + 0.08}
+          args={[W + 0.62, H + 0.62, 0.001]}
+          radius={RADIUS + 0.1}
           smoothness={4}
-          position={[0, 0, -0.004]}
+          position={[0, 0, -0.06]}
           raycast={NO_RAYCAST}
         >
-          <meshBasicMaterial color={accent} transparent opacity={0.1} />
+          <meshBasicMaterial color={accent} transparent opacity={0.09} depthWrite={false} />
         </RoundedBox>
       )}
 
-      {/* ── Border ──────────────────────────────────── */}
       <RoundedBox
-        args={[W + 0.2, H + 0.2, 0.001]}
+        args={[W + 0.14, H + 0.14, 0.001]}
         radius={RADIUS + 0.03}
         smoothness={4}
-        position={[0, 0, -0.003]}
+        position={[0, 0, -0.04]}
         raycast={NO_RAYCAST}
       >
         <meshBasicMaterial
-          color={isSelected ? accent : theme.borderColor}
+          color={isSelected ? accent : theme.bodyBorder}
           transparent
-          opacity={0.6}
+          opacity={isSelected ? 0.96 : 0.86}
+          depthWrite={false}
         />
       </RoundedBox>
 
-      {/* ── Module body — subtle fill distinct from components ─ */}
-      <RoundedBox args={[W, H, 0.001]} radius={RADIUS} smoothness={4} position={[0, 0, -0.002]}>
-        <meshBasicMaterial color={theme.bgTertiary} />
+      <RoundedBox
+        args={[W, H, 0.001]}
+        radius={RADIUS}
+        smoothness={4}
+        position={[0, 0, -0.03]}
+        raycast={NO_RAYCAST}
+      >
+        <meshBasicMaterial color={theme.bodyFill} transparent opacity={0.97} depthWrite={false} />
       </RoundedBox>
 
-      {/* ── Accent stripe at top ────────────────────── */}
-      <mesh position={[0, H / 2 - 0.4, -0.001]} raycast={NO_RAYCAST}>
-        <planeGeometry args={[W - 1, 0.8]} />
-        <meshBasicMaterial color={accent} transparent opacity={0.35} />
+      <RoundedBox
+        args={[Math.max(2, W - MODULE_INSET), Math.max(2, H - MODULE_INSET), 0.001]}
+        radius={Math.max(0.22, RADIUS * 0.76)}
+        smoothness={4}
+        position={[0, 0, -0.02]}
+        raycast={NO_RAYCAST}
+      >
+        <meshBasicMaterial color={theme.bgPrimary} transparent opacity={0.2} depthWrite={false} />
+      </RoundedBox>
+
+      <RoundedBox
+        args={[Math.max(2, W - MODULE_INSET), Math.max(2, H - MODULE_INSET), 0.001]}
+        radius={Math.max(0.22, RADIUS * 0.76)}
+        smoothness={4}
+        position={[0, 0, -0.01]}
+        raycast={NO_RAYCAST}
+      >
+        <meshBasicMaterial color={accent} transparent opacity={0.1} depthWrite={false} />
+      </RoundedBox>
+
+      <mesh position={[0, H / 2 - 0.52, -0.008]} raycast={NO_RAYCAST}>
+        <planeGeometry args={[Math.max(1.6, W - 1.12), 0.3]} />
+        <meshBasicMaterial color={accent} transparent opacity={0.48} depthWrite={false} />
       </mesh>
 
-      {/* ── Labels (counter-rotated for readability) ── */}
       <group position={[0, 0, 0.001]} rotation={[0, 0, textTf.rotationZ]} scale={[textTf.scaleX, textTf.scaleY, 1]}>
-        {/* Type name (bold, colored) */}
         <Text
-          position={[0, typeFontSize * 0.5, 0]}
-          fontSize={typeFontSize}
+          position={[0, showType ? 0.68 : 0.2, 0]}
+          fontSize={titleFontSize}
           color={accent}
           anchorX="center"
           anchorY="middle"
-          letterSpacing={0.02}
-          maxWidth={maxTextWidth}
-          font={undefined}
-          raycast={NO_RAYCAST}
-        >
-          {module.typeName}
-        </Text>
-
-        {/* Instance name */}
-        <Text
-          position={[0, -nameFontSize * 0.6, 0]}
-          fontSize={nameFontSize}
-          color={theme.textSecondary}
-          anchorX="center"
-          anchorY="middle"
+          letterSpacing={0.028}
           maxWidth={maxTextWidth}
           font={undefined}
           raycast={NO_RAYCAST}
         >
           {module.name}
         </Text>
+
+        {showType && (
+          <Text
+            position={[0, -0.55, 0]}
+            fontSize={subtitleFontSize}
+            color={theme.textMuted}
+            anchorX="center"
+            anchorY="middle"
+            maxWidth={W * 0.72}
+            letterSpacing={0.014}
+            font={undefined}
+            raycast={NO_RAYCAST}
+          >
+            {module.typeName}
+          </Text>
+        )}
       </group>
 
-      {/* ── Component count badge (counter-rotated) ── */}
-      <group position={[W / 2 - 2, -H / 2 + 1.2, 0.001]} rotation={[0, 0, textTf.rotationZ]} scale={[textTf.scaleX, textTf.scaleY, 1]}>
-        <mesh raycast={NO_RAYCAST}>
-          <planeGeometry args={[3.5, 1.4]} />
-          <meshBasicMaterial color={accent} transparent opacity={0.15} />
-        </mesh>
+      <group position={[W / 2 - 2.3, H / 2 - 1.2, 0.001]} rotation={[0, 0, textTf.rotationZ]} scale={[textTf.scaleX, textTf.scaleY, 1]}>
+        <RoundedBox args={[3.8, 1.2, 0.001]} radius={0.28} smoothness={4} raycast={NO_RAYCAST}>
+          <meshBasicMaterial color={accent} transparent opacity={0.17} depthWrite={false} />
+        </RoundedBox>
         <Text
           position={[0, 0, 0.001]}
-          fontSize={0.7}
-          color={theme.textMuted}
+          fontSize={0.6}
+          color={theme.textSecondary}
           anchorX="center"
           anchorY="middle"
+          letterSpacing={0.02}
           font={undefined}
           raycast={NO_RAYCAST}
         >
@@ -188,21 +213,20 @@ export const ModuleBlock = memo(function ModuleBlock({
         </Text>
       </group>
 
-      {/* ── Expand hint icon (counter-rotated) ───────── */}
-      <group position={[-W / 2 + 1.5, -H / 2 + 1.2, 0.001]} rotation={[0, 0, textTf.rotationZ]} scale={[textTf.scaleX, textTf.scaleY, 1]}>
+      <group position={[-W / 2 + 1.6, H / 2 - 1.2, 0.001]} rotation={[0, 0, textTf.rotationZ]} scale={[textTf.scaleX, textTf.scaleY, 1]}>
         <Text
-          fontSize={0.9}
+          fontSize={0.62}
           color={theme.textMuted}
-          anchorX="center"
+          anchorX="left"
           anchorY="middle"
+          letterSpacing={0.04}
           font={undefined}
           raycast={NO_RAYCAST}
         >
-          {'>>'}
+          {'MODULE'}
         </Text>
       </group>
 
-      {/* ── Interface pins ───────────────────────────── */}
       {module.interfacePins.map((pin) => (
         <InterfacePinElement
           key={pin.id}
@@ -249,16 +273,32 @@ const InterfacePinElement = memo(function InterfacePinElement({
 }) {
   const color = getPinColor(pin.category, theme);
   const isHighlighted = netId !== null && netId === selectedNetId;
-  const DOT_RADIUS = 0.35;
+  const isBus = isBusInterface(pin.signals);
+  const dotRadius = getInterfaceDotRadius(pin.signals);
   const pinX = pin.x;
   const pinY = pin.y;
   const bodyX = pin.bodyX;
   const bodyY = pin.bodyY;
 
-  // Text placement
-  let nameX: number, nameY: number;
-  const NAME_INSET = 0.8;
+  const offset = getInterfaceParallelOffset(pinX, pinY, bodyX, bodyY);
+  const perpX = offset.x;
+  const perpY = offset.y;
+  const lineColor = isHighlighted ? theme.accent : color;
+  const stroke = getInterfaceStrokeStyle(pin.signals, isHighlighted);
+  const edgeMarkerW = pin.side === 'left' || pin.side === 'right'
+    ? 0.22
+    : isBus
+      ? 1.16
+      : 0.86;
+  const edgeMarkerH = pin.side === 'left' || pin.side === 'right'
+    ? isBus
+      ? 1.28
+      : 0.9
+    : 0.22;
 
+  let nameX: number;
+  let nameY: number;
+  const NAME_INSET = getInterfaceNameInset(pin.signals);
   if (pin.side === 'left') {
     nameX = bodyX + NAME_INSET;
     nameY = pinY;
@@ -281,34 +321,92 @@ const InterfacePinElement = memo(function InterfacePinElement({
     vertical: 'center',
   });
 
-  const lineColor = isHighlighted ? theme.accent : color;
-
   return (
     <group raycast={NO_RAYCAST}>
-      {/* Stub line */}
-      <Line
-        points={[
-          [pinX, pinY, 0],
-          [bodyX, bodyY, 0],
-        ]}
-        color={lineColor}
-        lineWidth={isHighlighted ? 2.5 : 1.8}
-        raycast={NO_RAYCAST}
-      />
-
-      {/* Connection dot */}
-      <mesh position={[pinX, pinY, 0.001]} raycast={NO_RAYCAST}>
-        <circleGeometry args={[DOT_RADIUS, 16]} />
-        <meshBasicMaterial color={lineColor} />
+      <mesh position={[bodyX, bodyY, 0.001]} raycast={NO_RAYCAST}>
+        <planeGeometry args={[edgeMarkerW, edgeMarkerH]} />
+        <meshBasicMaterial color={lineColor} transparent opacity={isBus ? 0.52 : 0.32} depthWrite={false} />
       </mesh>
 
-      {/* Pin name (counter-rotated for readability) */}
+      {isBus ? (
+        <>
+          <Line
+            points={[
+              [pinX + perpX, pinY + perpY, 0.001],
+              [bodyX + perpX, bodyY + perpY, 0.001],
+            ]}
+            color={lineColor}
+            lineWidth={stroke.primaryWidth}
+            transparent
+            opacity={stroke.primaryOpacity}
+            raycast={NO_RAYCAST}
+          />
+          <Line
+            points={[
+              [pinX - perpX, pinY - perpY, 0.001],
+              [bodyX - perpX, bodyY - perpY, 0.001],
+            ]}
+            color={lineColor}
+            lineWidth={stroke.secondaryWidth ?? stroke.primaryWidth}
+            transparent
+            opacity={stroke.secondaryOpacity ?? stroke.primaryOpacity}
+            raycast={NO_RAYCAST}
+          />
+        </>
+      ) : (
+        <Line
+          points={[
+            [pinX, pinY, 0.001],
+            [bodyX, bodyY, 0.001],
+          ]}
+          color={lineColor}
+          lineWidth={stroke.primaryWidth}
+          transparent
+          opacity={stroke.primaryOpacity}
+          raycast={NO_RAYCAST}
+        />
+      )}
+
+      <mesh position={[pinX, pinY, 0.001]} raycast={NO_RAYCAST}>
+        <circleGeometry args={[dotRadius * 1.86, 16]} />
+        <meshBasicMaterial
+          color={lineColor}
+          transparent
+          opacity={isHighlighted ? 0.27 : 0.16}
+          depthWrite={false}
+        />
+      </mesh>
+
+      {isBus ? (
+        <>
+          <mesh position={[pinX, pinY, 0.002]} raycast={NO_RAYCAST}>
+            <circleGeometry args={[dotRadius, 16]} />
+            <meshBasicMaterial color={lineColor} />
+          </mesh>
+          <mesh position={[pinX, pinY, 0.003]} raycast={NO_RAYCAST}>
+            <circleGeometry args={[dotRadius * 0.56, 16]} />
+            <meshBasicMaterial color={theme.bgPrimary} />
+          </mesh>
+          <mesh position={[pinX, pinY, 0.004]} raycast={NO_RAYCAST}>
+            <circleGeometry args={[dotRadius * 0.2, 12]} />
+            <meshBasicMaterial color={lineColor} />
+          </mesh>
+        </>
+      ) : (
+        <mesh position={[pinX, pinY, 0.002]} raycast={NO_RAYCAST}>
+          <circleGeometry args={[dotRadius, 16]} />
+          <meshBasicMaterial color={lineColor} />
+        </mesh>
+      )}
+
       <group position={[nameX, nameY, 0.002]} rotation={[0, 0, textRotationZ]} scale={[textScaleX, textScaleY, 1]}>
         <Text
-          fontSize={1.0}
-          color={theme.textSecondary}
+          fontSize={isBus ? 0.93 : 0.88}
+          color={isHighlighted ? theme.textPrimary : theme.textSecondary}
           anchorX={effectiveNameAnchorX}
           anchorY="middle"
+          letterSpacing={isBus ? 0.02 : 0.015}
+          maxWidth={10}
           font={undefined}
           raycast={NO_RAYCAST}
         >

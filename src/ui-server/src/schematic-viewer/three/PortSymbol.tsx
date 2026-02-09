@@ -21,6 +21,12 @@ import {
   anchorFromVisualSide,
   getVisualSide,
 } from '../lib/itemTransform';
+import {
+  isBusInterface,
+  getInterfaceDotRadius,
+  getInterfaceNameInset,
+  getInterfaceStrokeStyle,
+} from './interfaceVisuals';
 
 const BREAKOUT_RADIUS = 0.32;
 const NO_RAYCAST = () => {};
@@ -44,9 +50,107 @@ interface SymbolProps extends Props {
   gridOffset: GridAlignmentOffset;
 }
 
+const PortFrame = memo(function PortFrame({
+  width,
+  height,
+  radius,
+  color,
+  theme,
+  isActive,
+  isSelected,
+  isNetHighlighted,
+  isHorizontal,
+  stubDir,
+  stubDirY,
+}: {
+  width: number;
+  height: number;
+  radius: number;
+  color: string;
+  theme: ThemeColors;
+  isActive: boolean;
+  isSelected: boolean;
+  isNetHighlighted: boolean;
+  isHorizontal: boolean;
+  stubDir: number;
+  stubDirY: number;
+}) {
+  const fillOpacity = 0.96;
+  const tintOpacity = isSelected ? 0.26 : isActive ? 0.18 : 0.11;
+  const borderOpacity = isSelected || isNetHighlighted ? 0.95 : isActive ? 0.82 : 0.68;
+  const borderColor = isSelected || isNetHighlighted ? color : theme.bodyBorder;
+  const hw = width / 2;
+  const hh = height / 2;
+
+  return (
+    <>
+      {isActive && (
+        <RoundedBox
+          args={[width + 0.9, height + 0.9, 0.001]}
+          radius={radius + 0.18}
+          smoothness={4}
+          position={[0, 0, -0.003]}
+          raycast={NO_RAYCAST}
+        >
+          <meshBasicMaterial
+            color={color}
+            transparent
+            opacity={isSelected ? 0.16 : 0.09}
+            depthWrite={false}
+          />
+        </RoundedBox>
+      )}
+
+      <RoundedBox
+        args={[width + 0.12, height + 0.12, 0.001]}
+        radius={radius + 0.04}
+        smoothness={4}
+        position={[0, 0, -0.002]}
+        raycast={NO_RAYCAST}
+      >
+        <meshBasicMaterial color={borderColor} transparent opacity={borderOpacity} depthWrite={false} />
+      </RoundedBox>
+
+      <RoundedBox
+        args={[width, height, 0.001]}
+        radius={radius}
+        smoothness={4}
+        position={[0, 0, -0.001]}
+        raycast={NO_RAYCAST}
+      >
+        <meshBasicMaterial color={theme.bodyFill} transparent opacity={fillOpacity} depthWrite={false} />
+      </RoundedBox>
+
+      <RoundedBox
+        args={[width, height, 0.001]}
+        radius={radius}
+        smoothness={4}
+        position={[0, 0, 0]}
+        raycast={NO_RAYCAST}
+      >
+        <meshBasicMaterial color={color} transparent opacity={tintOpacity} depthWrite={false} />
+      </RoundedBox>
+
+      <mesh
+        position={[
+          isHorizontal ? (stubDir > 0 ? hw - 0.2 : -hw + 0.2) : 0,
+          isHorizontal ? 0 : (stubDirY > 0 ? -hh + 0.2 : hh - 0.2),
+          0.001,
+        ]}
+        raycast={NO_RAYCAST}
+      >
+        <planeGeometry
+          args={isHorizontal ? [0.24, Math.max(0.8, height - 0.8)] : [Math.max(0.8, width - 0.8), 0.24]}
+        />
+        <meshBasicMaterial color={color} transparent opacity={isActive ? 0.5 : 0.36} depthWrite={false} />
+      </mesh>
+    </>
+  );
+});
+
 export const PortSymbol = memo(function PortSymbol(props: Props) {
   const { port } = props;
-  const isBreakout = port.signals && port.signals.length >= 2;
+  const isBreakout = isBusInterface(port.signals);
   const gridOffset = useMemo(() => getPortGridAlignmentOffset(port), [port]);
 
   if (isBreakout) {
@@ -73,10 +177,8 @@ const SinglePortSymbol = memo(function SinglePortSymbol({
   const color = getPinColor(port.category, theme);
   const isNetHighlighted = netId !== null && netId === selectedNetId;
   const isActive = isSelected || isHovered || isNetHighlighted;
-  const fillOpacity = 0.96;
-  const tintOpacity = isSelected ? 0.28 : isActive ? 0.2 : 0.12;
-  const borderOpacity = isSelected || isNetHighlighted ? 0.95 : isHovered ? 0.82 : 0.68;
-  const borderColor = isSelected || isNetHighlighted ? color : theme.bodyBorder;
+  const stroke = getInterfaceStrokeStyle(undefined, isActive);
+  const dotRadius = getInterfaceDotRadius(undefined);
   const zOffset = isDragging ? 0.5 : 0;
   const pinX = port.pinX;
   const pinY = port.pinY;
@@ -110,12 +212,13 @@ const SinglePortSymbol = memo(function SinglePortSymbol({
 
   let labelX: number;
   let labelY: number;
+  const nameInset = getInterfaceNameInset(undefined);
   if (isHorizontal) {
-    labelX = stubDir > 0 ? hw - 0.7 : -hw + 0.7;
+    labelX = stubDir > 0 ? hw - nameInset : -hw + nameInset;
     labelY = pinY;
   } else {
     labelX = pinX;
-    labelY = stubDirY > 0 ? -hh + 0.66 : hh - 0.66;
+    labelY = stubDirY > 0 ? -hh + nameInset * 0.8 : hh - nameInset * 0.8;
   }
   const effectiveAnchor = anchorFromVisualSide(port.side, {
     rotationDeg: rotation,
@@ -135,71 +238,19 @@ const SinglePortSymbol = memo(function SinglePortSymbol({
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
-      {/* ── Active halo ─────────────────────────────── */}
-      {isActive && (
-        <RoundedBox
-          args={[port.bodyWidth + 0.9, port.bodyHeight + 0.9, 0.001]}
-          radius={BREAKOUT_RADIUS + 0.18}
-          smoothness={4}
-          position={[0, 0, -0.003]}
-          raycast={NO_RAYCAST}
-        >
-          <meshBasicMaterial
-            color={color}
-            transparent
-            opacity={isSelected ? 0.16 : 0.09}
-            depthWrite={false}
-          />
-        </RoundedBox>
-      )}
-
-      {/* ── Border ──────────────────────────────────── */}
-      <RoundedBox
-        args={[port.bodyWidth + 0.12, port.bodyHeight + 0.12, 0.001]}
-        radius={BREAKOUT_RADIUS + 0.04}
-        smoothness={4}
-        position={[0, 0, -0.002]}
-        raycast={NO_RAYCAST}
-      >
-        <meshBasicMaterial color={borderColor} transparent opacity={borderOpacity} depthWrite={false} />
-      </RoundedBox>
-
-      {/* ── Body fill ── */}
-      <RoundedBox
-        args={[port.bodyWidth, port.bodyHeight, 0.001]}
+      <PortFrame
+        width={port.bodyWidth}
+        height={port.bodyHeight}
         radius={BREAKOUT_RADIUS}
-        smoothness={4}
-        position={[0, 0, -0.001]}
-        raycast={NO_RAYCAST}
-      >
-        <meshBasicMaterial color={theme.bodyFill} transparent opacity={fillOpacity} depthWrite={false} />
-      </RoundedBox>
-
-      {/* ── Accent tint overlay ─────────────────────── */}
-      <RoundedBox
-        args={[port.bodyWidth, port.bodyHeight, 0.001]}
-        radius={BREAKOUT_RADIUS}
-        smoothness={4}
-        position={[0, 0, 0]}
-        raycast={NO_RAYCAST}
-      >
-        <meshBasicMaterial color={color} transparent opacity={tintOpacity} depthWrite={false} />
-      </RoundedBox>
-
-      {/* ── Accent rail near stub side ──────────────── */}
-      <mesh
-        position={[
-          isHorizontal ? (stubDir > 0 ? hw - 0.2 : -hw + 0.2) : 0,
-          isHorizontal ? 0 : (stubDirY > 0 ? -hh + 0.2 : hh - 0.2),
-          0.001,
-        ]}
-        raycast={NO_RAYCAST}
-      >
-        <planeGeometry
-          args={isHorizontal ? [0.24, Math.max(0.8, port.bodyHeight - 0.8)] : [Math.max(0.8, port.bodyWidth - 0.8), 0.24]}
-        />
-        <meshBasicMaterial color={color} transparent opacity={isActive ? 0.5 : 0.36} depthWrite={false} />
-      </mesh>
+        color={color}
+        theme={theme}
+        isActive={isActive}
+        isSelected={isSelected}
+        isNetHighlighted={isNetHighlighted}
+        isHorizontal={isHorizontal}
+        stubDir={stubDir}
+        stubDirY={stubDirY}
+      />
 
       {/* ── Name label (single signal row style) ───── */}
       <group
@@ -228,15 +279,15 @@ const SinglePortSymbol = memo(function SinglePortSymbol({
           [pinX, pinY, 0.002],
         ]}
         color={color}
-        lineWidth={isActive ? 1.9 : 1.5}
+        lineWidth={stroke.primaryWidth}
         transparent
-        opacity={isActive ? 0.78 : 0.58}
+        opacity={stroke.primaryOpacity}
         raycast={NO_RAYCAST}
       />
 
       {/* ── Connection dot + glow ───────────────────── */}
       <mesh position={[pinX, pinY, 0.001]} raycast={NO_RAYCAST}>
-        <circleGeometry args={[BREAKOUT_DOT_RADIUS * 1.85, 16]} />
+        <circleGeometry args={[dotRadius * 1.85, 16]} />
         <meshBasicMaterial
           color={color}
           transparent
@@ -245,7 +296,7 @@ const SinglePortSymbol = memo(function SinglePortSymbol({
         />
       </mesh>
       <mesh position={[pinX, pinY, 0.002]} raycast={NO_RAYCAST}>
-        <circleGeometry args={[BREAKOUT_DOT_RADIUS, 16]} />
+        <circleGeometry args={[dotRadius, 16]} />
         <meshBasicMaterial color={color} />
       </mesh>
     </group>
@@ -262,7 +313,6 @@ const SinglePortSymbol = memo(function SinglePortSymbol({
 //     └──────────┘
 
 const BREAKOUT_STUB_LEN = PORT_STUB_LEN;
-const BREAKOUT_DOT_RADIUS = 0.4;
 
 const BreakoutPortSymbol = memo(function BreakoutPortSymbol({
   port,
@@ -282,10 +332,9 @@ const BreakoutPortSymbol = memo(function BreakoutPortSymbol({
   const color = getPinColor(port.category, theme);
   const isNetHighlighted = netId !== null && netId === selectedNetId;
   const isActive = isSelected || isHovered || isNetHighlighted;
-  const fillOpacity = 0.96;
-  const tintOpacity = isSelected ? 0.24 : isActive ? 0.17 : 0.1;
-  const borderOpacity = isSelected || isNetHighlighted ? 0.95 : isHovered ? 0.84 : 0.68;
-  const borderColor = isSelected || isNetHighlighted ? color : theme.bodyBorder;
+  const stroke = getInterfaceStrokeStyle(signals, isActive);
+  const dotRadius = getInterfaceDotRadius(signals);
+  const nameInset = getInterfaceNameInset(signals);
   const zOffset = isDragging ? 0.5 : 0;
   const textTf = useMemo(
     () => getUprightTextTransform(rotation, mirrorX, mirrorY),
@@ -331,9 +380,9 @@ const BreakoutPortSymbol = memo(function BreakoutPortSymbol({
   let nameX = 0;
   let nameY = 0;
   if (isHorizontal) {
-    nameX = stubDir > 0 ? -hw + 0.9 : hw - 0.9;
+    nameX = stubDir > 0 ? -hw + nameInset * 0.9 : hw - nameInset * 0.9;
   } else {
-    nameY = stubDirY > 0 ? hh - 0.8 : -hh + 0.8;
+    nameY = stubDirY > 0 ? hh - nameInset * 0.8 : -hh + nameInset * 0.8;
   }
 
   return (
@@ -344,71 +393,19 @@ const BreakoutPortSymbol = memo(function BreakoutPortSymbol({
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
-      {/* ── Active halo ─────────────────────────────── */}
-      {isActive && (
-        <RoundedBox
-          args={[port.bodyWidth + 0.9, port.bodyHeight + 0.9, 0.001]}
-          radius={BREAKOUT_RADIUS + 0.18}
-          smoothness={4}
-          position={[0, 0, -0.003]}
-          raycast={NO_RAYCAST}
-        >
-          <meshBasicMaterial
-            color={color}
-            transparent
-            opacity={isSelected ? 0.16 : 0.09}
-            depthWrite={false}
-          />
-        </RoundedBox>
-      )}
-
-      {/* ── Border ──────────────────────────────────── */}
-      <RoundedBox
-        args={[port.bodyWidth + 0.12, port.bodyHeight + 0.12, 0.001]}
-        radius={BREAKOUT_RADIUS + 0.04}
-        smoothness={4}
-        position={[0, 0, -0.002]}
-        raycast={NO_RAYCAST}
-      >
-        <meshBasicMaterial color={borderColor} transparent opacity={borderOpacity} depthWrite={false} />
-      </RoundedBox>
-
-      {/* ── Body fill ── */}
-      <RoundedBox
-        args={[port.bodyWidth, port.bodyHeight, 0.001]}
+      <PortFrame
+        width={port.bodyWidth}
+        height={port.bodyHeight}
         radius={BREAKOUT_RADIUS}
-        smoothness={4}
-        position={[0, 0, -0.001]}
-        raycast={NO_RAYCAST}
-      >
-        <meshBasicMaterial color={theme.bodyFill} transparent opacity={fillOpacity} depthWrite={false} />
-      </RoundedBox>
-
-      {/* ── Accent tint ─────────────────────────────── */}
-      <RoundedBox
-        args={[port.bodyWidth, port.bodyHeight, 0.001]}
-        radius={BREAKOUT_RADIUS}
-        smoothness={4}
-        position={[0, 0, 0]}
-        raycast={NO_RAYCAST}
-      >
-        <meshBasicMaterial color={color} transparent opacity={tintOpacity} depthWrite={false} />
-      </RoundedBox>
-
-      {/* ── Accent rail near stub side ──────────────── */}
-      <mesh
-        position={[
-          isHorizontal ? (stubDir > 0 ? hw - 0.2 : -hw + 0.2) : 0,
-          isHorizontal ? 0 : (stubDirY > 0 ? -hh + 0.2 : hh - 0.2),
-          0.001,
-        ]}
-        raycast={NO_RAYCAST}
-      >
-        <planeGeometry
-          args={isHorizontal ? [0.24, Math.max(0.8, port.bodyHeight - 0.8)] : [Math.max(0.8, port.bodyWidth - 0.8), 0.24]}
-        />
-        <meshBasicMaterial color={color} transparent opacity={isActive ? 0.5 : 0.36} depthWrite={false} />
-      </mesh>
+        color={color}
+        theme={theme}
+        isActive={isActive}
+        isSelected={isSelected}
+        isNetHighlighted={isNetHighlighted}
+        isHorizontal={isHorizontal}
+        stubDir={stubDir}
+        stubDirY={stubDirY}
+      />
 
       {/* ── Interface name label ────────────────────── */}
       <group
@@ -450,9 +447,9 @@ const BreakoutPortSymbol = memo(function BreakoutPortSymbol({
                 [port.pinX, port.pinY, 0.002],
               ]}
               color={color}
-              lineWidth={isActive ? 1.5 : 1.2}
+              lineWidth={stroke.primaryWidth - 0.4}
               transparent
-              opacity={isActive ? 0.5 : 0.34}
+              opacity={Math.max(0.34, stroke.primaryOpacity - 0.32)}
               raycast={NO_RAYCAST}
             />
             <mesh position={[port.pinX, port.pinY, 0.001]} raycast={NO_RAYCAST}>
@@ -512,15 +509,15 @@ const BreakoutPortSymbol = memo(function BreakoutPortSymbol({
                 [sp.x, sp.y, 0.002],
               ]}
               color={color}
-              lineWidth={isActive ? 1.9 : 1.5}
+              lineWidth={stroke.primaryWidth}
               transparent
-              opacity={isActive ? 0.78 : 0.58}
+              opacity={stroke.primaryOpacity}
               raycast={NO_RAYCAST}
             />
 
             {/* Connection dot + glow */}
             <mesh position={[sp.x, sp.y, 0.001]} raycast={NO_RAYCAST}>
-              <circleGeometry args={[BREAKOUT_DOT_RADIUS * 1.85, 16]} />
+              <circleGeometry args={[dotRadius * 1.85, 16]} />
               <meshBasicMaterial
                 color={color}
                 transparent
@@ -529,7 +526,7 @@ const BreakoutPortSymbol = memo(function BreakoutPortSymbol({
               />
             </mesh>
             <mesh position={[sp.x, sp.y, 0.002]} raycast={NO_RAYCAST}>
-              <circleGeometry args={[BREAKOUT_DOT_RADIUS, 16]} />
+              <circleGeometry args={[dotRadius, 16]} />
               <meshBasicMaterial color={color} />
             </mesh>
 
