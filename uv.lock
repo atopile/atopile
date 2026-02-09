@@ -99,6 +99,7 @@ dependencies = [
     { name = "psutil" },
     { name = "pydantic-settings" },
     { name = "pygls" },
+    { name = "pynng" },
     { name = "pytest" },
     { name = "questionary" },
     { name = "rich" },
@@ -156,7 +157,7 @@ requires-dist = [
     { name = "gitpython", specifier = ">=3.1.41" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jinja2", specifier = ">=3.1.6" },
-    { name = "kicad-python" },
+    { name = "kicad-python", url = "https://github.com/atopile/kicad-python/releases/download/v0.5.1/kicad_python-0.5.1-py3-none-any.whl" },
     { name = "kicadcliwrapper", specifier = ">=1.1.1" },
     { name = "matplotlib", specifier = ">=3.7.1" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.10.1" },
@@ -172,6 +173,7 @@ requires-dist = [
     { name = "psutil", specifier = ">=6.0.0" },
     { name = "pydantic-settings", specifier = ">=2.7.1" },
     { name = "pygls", specifier = ">=2.0.0,<3.0.0" },
+    { name = "pynng", specifier = ">=0.9.0" },
     { name = "pytest", specifier = ">=9.0.0,<10.0.0" },
     { name = "questionary", specifier = ">=2.0.1" },
     { name = "rich", specifier = ">=13.7.1" },
@@ -1086,15 +1088,21 @@ wheels = [
 
 [[package]]
 name = "kicad-python"
-version = "0.5.0"
-source = { registry = "https://pypi.org/simple" }
+version = "0.5.1"
+source = { url = "https://github.com/atopile/kicad-python/releases/download/v0.5.1/kicad_python-0.5.1-py3-none-any.whl" }
 dependencies = [
     { name = "protobuf" },
     { name = "pynng" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/55/ad/b33939d2e0c099f04875c250564dde79baec09927c5c70a7a101cd612d94/kicad_python-0.5.0.tar.gz", hash = "sha256:9abb6ad87b822b6c63c80543e485e674bddc46080f9706ae3dff7f05d8dc63f9", size = 198708, upload-time = "2025-10-13T15:10:03.665Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ad/ab/b9edb6088ba8263a7f2446f1f3ae088c50bde149d7dc149abca32c4d21d2/kicad_python-0.5.0-py3-none-any.whl", hash = "sha256:fe7adeff9f1c23a76f2ace9468faadcbeef915ce026b187ca35db1cf4faa4451", size = 130154, upload-time = "2025-10-13T15:10:02.695Z" },
+    { url = "https://github.com/atopile/kicad-python/releases/download/v0.5.1/kicad_python-0.5.1-py3-none-any.whl", hash = "sha256:a8f4ea546f6dd14c86fe952fb5d921488ad43c31fcfcd75fbb5799bd3bed7a24" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "protobuf", specifier = ">=5.29,<6" },
+    { name = "pynng", specifier = ">=0.8.0" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'", specifier = ">=4.13.2" },
 ]
 
 [[package]]
@@ -1877,13 +1885,28 @@ wheels = [
 
 [[package]]
 name = "pynng"
-version = "0.8.1"
+version = "0.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cffi" },
     { name = "sniffio" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d4/8c/23141a4b94fdb69c72fe54734a5da192ecbaf5c4965ba6d3a753e6a8ac34/pynng-0.8.1.tar.gz", hash = "sha256:60165f34bdf501885e0acceaeed79bc35a57f3ca3c913cb38c14919b9bd3656f", size = 6364925, upload-time = "2025-01-16T03:42:32.848Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4a/58/ec352db5f82a3fe56856fa9510dd051cdfba03c490dd58c0bbca0bdf7771/pynng-0.9.0.tar.gz", hash = "sha256:fcd839abf82a2934fa8c27ff57b574b41810458e35895bac6288814defa8fb4e", size = 7211228, upload-time = "2026-02-04T17:13:23.758Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a0/c1/91f81d20aafd2e10f529368a066416ba2337960d47d9b0a9d152daa958ef/pynng-0.9.0-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:f14ad58d663ac65aab637ec5a248e75668e8b1051c634df5fa69b53f34ab2e63", size = 1209722, upload-time = "2026-02-04T17:12:40.813Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/7e/b05ffc3a6a38a2006c5674ed18abde4f6bc773ac487cd890d00dbc40b6f8/pynng-0.9.0-cp314-cp314-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:1eeb60a484ac1f8f148d8340d7c120e075b205fda008860c0c53b19c72e23285", size = 995122, upload-time = "2026-02-04T17:12:42.253Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/a3/713c16a496c3d6cff74857c815a358939a43448985a63105500a38fc56b9/pynng-0.9.0-cp314-cp314-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:4efd1ecb821248b7843f343564da056c0dec20a1474d260e94aab09f5fcb1567", size = 1028717, upload-time = "2026-02-04T17:12:43.555Z" },
+    { url = "https://files.pythonhosted.org/packages/34/48/9b3271e2c5ebf7c7197121f1578255276e1c416b848696f4c296803af896/pynng-0.9.0-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:bc7c572cf9e511483f25bd026eed83b23d897fea01fe0998a13f19e9589943b8", size = 1012349, upload-time = "2026-02-04T17:12:44.767Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/46/447ba91701b5960d13e5ef211842d9dd3d7256d8def69265c1da53234696/pynng-0.9.0-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:7872e1538a6bac233fa7529b0b4819e6d15366f31e902bc2169aa4b182915c6d", size = 1032710, upload-time = "2026-02-04T17:12:46.094Z" },
+    { url = "https://files.pythonhosted.org/packages/91/8a/4831da593c9f3375c593770bcc49da0bc864520b134c541da531f809186d/pynng-0.9.0-cp314-cp314-win32.whl", hash = "sha256:8cb552d57898745c105ff3f0764d3a9bda31077126425fd6937ca4d5d910aa69", size = 454072, upload-time = "2026-02-04T17:12:55.306Z" },
+    { url = "https://files.pythonhosted.org/packages/48/5c/7c60dc6298147c571b1cc0796c3a5610a08a5cf1b519dcb71611352a1817/pynng-0.9.0-cp314-cp314-win_amd64.whl", hash = "sha256:bb867ed8c6f646ce06441547fdfd912789ecd6651906977a666628bb3540e979", size = 559551, upload-time = "2026-02-04T17:12:56.538Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/d1/9095acfd3d1d3addeab33a914a59df0e66e26eb31eed5de341f166296068/pynng-0.9.0-cp314-cp314-win_arm64.whl", hash = "sha256:160c73208363849d019ef0b9a21d2a58c4bc94085e0a519af10a02de14f60a1d", size = 496372, upload-time = "2026-02-04T17:12:57.729Z" },
+    { url = "https://files.pythonhosted.org/packages/3e/d3/01a6783030f4c9eefb67c0aa98d0f522b4374e1973a6adc5eb4d06233366/pynng-0.9.0-cp314-cp314t-macosx_10_15_universal2.whl", hash = "sha256:ce65dc749a71d7c850e9310cc28836cd140769a37cba69069dc13bc2c3a9f3e9", size = 1211592, upload-time = "2026-02-04T17:12:47.918Z" },
+    { url = "https://files.pythonhosted.org/packages/07/b7/dc03b816d96d2492617fa5b94df163aee437db24ead15d2294c51f088183/pynng-0.9.0-cp314-cp314t-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:d0a2810c035c39e29c690afbbe58ce433255d817bb267323d90dff7d3c31f3fc", size = 1010817, upload-time = "2026-02-04T17:12:49.416Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/a2/57dcb2b25d29457cc89c323b00e651db60e3ea61eb597c7dcd8132b7b519/pynng-0.9.0-cp314-cp314t-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:6f2d14dff98750f19f8552cb25fe5c988852cdfe2da5bc29aa224d306ba01ac4", size = 1040274, upload-time = "2026-02-04T17:12:51.002Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/73/b5d8870f2ed58113b44682c92323985a8234b3ec0813a33800bea8fc9c00/pynng-0.9.0-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:c7e8b0d5c2102e3f393525c991f2424e601406f4d25ebc45fded952a5e64cfbd", size = 1027454, upload-time = "2026-02-04T17:12:52.52Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/55/983791f771c21e6501142392521c07d2ac10cf58ef1114cb10d79b87873f/pynng-0.9.0-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:e60dc91e58727597e722b228c3031ebba530c3a92bf76f40e55764053c52512d", size = 1046397, upload-time = "2026-02-04T17:12:53.935Z" },
+]
 
 [[package]]
 name = "pyparsing"
