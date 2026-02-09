@@ -306,6 +306,7 @@ function routePriority(net: SchematicNet): number {
 
 function buildRouteObstacles(
   sheet: SchematicSheet,
+  ports: SchematicPort[],
   positions: Record<string, { x: number; y: number; rotation?: number }>,
   pk: string,
 ): RouteObstacle[] {
@@ -332,6 +333,9 @@ function buildRouteObstacles(
   }
   for (const mod of sheet.modules) {
     pushItem(mod.id, mod.bodyWidth, mod.bodyHeight);
+  }
+  for (const port of ports) {
+    pushItem(port.id, port.bodyWidth, port.bodyHeight);
   }
 
   return obstacles;
@@ -391,7 +395,7 @@ export const NetLines = memo(function NetLines({
     const pendingDirects: PendingDirectNetData[] = [];
     const pendingMultiNets: PendingMultiNetData[] = [];
     const allSegments: RouteSegment[] = [];
-    const routeObstacles = buildRouteObstacles(sheet, positions, pk);
+    const routeObstacles = buildRouteObstacles(sheet, ports, positions, pk);
     const breakoutPortIds = new Set(
       ports
         .filter((p) => !!p.signals && p.signals.length >= 2)
