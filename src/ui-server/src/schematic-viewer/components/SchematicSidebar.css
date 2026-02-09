@@ -1,0 +1,214 @@
+.schematic-sidebar {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-width: 0;
+  background: var(--sv-bg);
+  background: linear-gradient(180deg, var(--sv-bg) 0%, color-mix(in srgb, var(--sv-bg) 88%, #000 12%) 100%);
+  border-left: 1px solid var(--sv-border);
+  overflow: hidden;
+}
+
+.schematic-sidebar-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 14px 8px;
+  border-bottom: 1px solid var(--sv-border);
+  background: var(--sv-bg);
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--sv-accent) 14%, transparent) 0%, transparent 58%);
+}
+
+.schematic-sidebar-kicker {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sv-muted);
+}
+
+.schematic-sidebar-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.schematic-sidebar-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--sv-text);
+}
+
+.schematic-sidebar-subtitle {
+  margin: 0;
+  line-height: 1.35;
+  font-size: 11px;
+  color: var(--sv-secondary);
+}
+
+.schematic-sidebar-collapse-btn {
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--sv-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.schematic-sidebar-collapse-btn:hover {
+  color: var(--sv-text);
+  border-color: var(--sv-border);
+  background: var(--sv-hover);
+  background: color-mix(in srgb, var(--sv-hover) 72%, transparent);
+}
+
+.schematic-sidebar-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--sv-border);
+}
+
+.sidebar-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--sv-border);
+  border: 1px solid color-mix(in srgb, var(--sv-border) 80%, transparent);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--sv-bg-elev);
+  background: color-mix(in srgb, var(--sv-bg-elev) 66%, transparent);
+}
+
+.sidebar-stat-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--sv-text);
+  line-height: 1;
+}
+
+.sidebar-stat-label {
+  font-size: 10px;
+  color: var(--sv-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.schematic-sidebar-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--sv-border);
+}
+
+.schematic-sidebar-tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 28px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sv-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.schematic-sidebar-tab:hover {
+  color: var(--sv-text);
+  background: var(--sv-hover);
+  background: color-mix(in srgb, var(--sv-hover) 76%, transparent);
+}
+
+.schematic-sidebar-tab.active {
+  color: var(--sv-text);
+  background: var(--sv-bg-elev);
+  background: color-mix(in srgb, var(--sv-accent) 14%, transparent);
+  border-color: var(--sv-accent);
+  border-color: color-mix(in srgb, var(--sv-accent) 38%, transparent);
+}
+
+.schematic-sidebar-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 6px;
+}
+
+.schematic-sidebar-empty {
+  margin: 12px;
+  border: 1px dashed var(--sv-border);
+  border: 1px dashed color-mix(in srgb, var(--sv-border) 90%, transparent);
+  border-radius: 10px;
+  padding: 14px 12px;
+  background: var(--sv-bg-elev);
+  background: color-mix(in srgb, var(--sv-bg-elev) 48%, transparent);
+}
+
+.schematic-sidebar-empty-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sv-text);
+  margin-bottom: 4px;
+}
+
+.schematic-sidebar-empty-copy {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--sv-secondary);
+}
+
+.schematic-sidebar-rail {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 6px;
+}
+
+.schematic-sidebar-rail-top {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-rail-btn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--sv-muted);
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.sidebar-rail-btn:hover {
+  color: var(--sv-text);
+  background: var(--sv-hover);
+  background: color-mix(in srgb, var(--sv-hover) 76%, transparent);
+}
+
+.sidebar-rail-btn.active {
+  color: var(--sv-text);
+  border-color: var(--sv-accent);
+  border-color: color-mix(in srgb, var(--sv-accent) 30%, transparent);
+  background: var(--sv-bg-elev);
+  background: color-mix(in srgb, var(--sv-accent) 14%, transparent);
+}

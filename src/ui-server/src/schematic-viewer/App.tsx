@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { SchematicScene } from './three/SchematicScene';
 import { Toolbar } from './components/Toolbar';
-import { StructureTree } from './components/StructureTree';
-import { SelectionDetails } from './components/SelectionDetails';
+import { SchematicSidebar } from './components/SchematicSidebar';
 import { useSchematicStore, useCurrentSheet, setAtoSchPath } from './stores/schematicStore';
 import { useTheme } from './lib/theme';
 import { requestOpenSource, onExtensionMessage } from './lib/vscodeApi';
@@ -11,8 +10,22 @@ import { requestOpenSource, onExtensionMessage } from './lib/vscodeApi';
 
 const SIDEBAR_MIN_W = 180;
 const SIDEBAR_MAX_W = 500;
-const SIDEBAR_DEFAULT_W = 260;
-const SPLIT_MIN_H = 60;
+const SIDEBAR_DEFAULT_W = 320;
+
+const SIDEBAR_WIDTH_STORAGE_KEY = 'schematic.viewer.sidebar.width';
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'schematic.viewer.sidebar.collapsed';
+
+function readInitialSidebarWidth() {
+  if (typeof window === 'undefined') return SIDEBAR_DEFAULT_W;
+  const rawValue = Number(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
+  if (Number.isNaN(rawValue)) return SIDEBAR_DEFAULT_W;
+  return Math.min(SIDEBAR_MAX_W, Math.max(SIDEBAR_MIN_W, rawValue));
+}
+
+function readInitialSidebarCollapsed() {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === '1';
+}
 
 function SchematicApp() {
   const loadSchematic = useSchematicStore((s) => s.loadSchematic);
@@ -23,11 +36,8 @@ function SchematicApp() {
 
   // ── Sidebar state ─────────────────────────────────────────────
 
-  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_W);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  /** Height of the structure tree section (null = auto-fill) */
-  const [treeHeight, setTreeHeight] = useState<number | null>(null);
-  const sidebarRef = useRef<HTMLDivElement>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(readInitialSidebarWidth);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readInitialSidebarCollapsed);
 
   // ── Horizontal resize (sidebar width) ─────────────────────────
 
@@ -56,35 +66,15 @@ function SchematicApp() {
     window.addEventListener('mouseup', onUp);
   }, [sidebarWidth]);
 
-  // ── Vertical resize (tree / details split) ────────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth));
+  }, [sidebarWidth]);
 
-  const handleSplitResize = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const startY = e.clientY;
-    const sidebar = sidebarRef.current;
-    if (!sidebar) return;
-    const sidebarRect = sidebar.getBoundingClientRect();
-    const startH = treeHeight ?? (sidebarRect.height * 0.6);
-
-    const onMove = (me: MouseEvent) => {
-      const delta = me.clientY - startY;
-      const maxH = sidebarRect.height - SPLIT_MIN_H;
-      const newH = Math.min(maxH, Math.max(SPLIT_MIN_H, startH + delta));
-      setTreeHeight(newH);
-    };
-
-    const onUp = () => {
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-
-    document.body.style.cursor = 'ns-resize';
-    document.body.style.userSelect = 'none';
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }, [treeHeight]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, sidebarCollapsed ? '1' : '0');
+  }, [sidebarCollapsed]);
 
   // ── Load schematic data on mount ─────────────────────────────
 
@@ -297,112 +287,22 @@ function SchematicApp() {
           <div
             onMouseDown={handleWidthResize}
             style={{
-              width: 4,
+              width: 6,
               flexShrink: 0,
               cursor: 'ew-resize',
               background: 'transparent',
               zIndex: 5,
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = theme.accent + '60'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = `${theme.accent}55`; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           />
         )}
 
-        <div
-          ref={sidebarRef}
-          onClick={sidebarCollapsed ? () => setSidebarCollapsed(false) : undefined}
-          style={{
-            width: sidebarCollapsed ? 28 : sidebarWidth,
-            flexShrink: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            background: theme.bgSecondary,
-            borderLeft: `1px solid ${theme.borderColor}`,
-            overflow: 'hidden',
-            cursor: sidebarCollapsed ? 'pointer' : undefined,
-          }}
-        >
-          {/* Sidebar header with collapse/expand toggle */}
-          <div
-            style={{
-              height: 28,
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: sidebarCollapsed ? 'center' : 'flex-end',
-              borderBottom: sidebarCollapsed ? 'none' : `1px solid ${theme.borderColor}`,
-              padding: sidebarCollapsed ? 0 : '0 4px',
-            }}
-          >
-            <div
-              onClick={(e) => { e.stopPropagation(); setSidebarCollapsed((c) => !c); }}
-              style={{
-                width: 22,
-                height: 22,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                borderRadius: 3,
-                fontSize: 10,
-                color: theme.textMuted,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = theme.textPrimary;
-                e.currentTarget.style.background = theme.borderColor;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = theme.textMuted;
-                e.currentTarget.style.background = 'transparent';
-              }}
-              title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
-            >
-              {sidebarCollapsed ? '\u25C0' : '\u25B6'}
-            </div>
-          </div>
-
-          {/* Sidebar content (hidden when collapsed) */}
-          {!sidebarCollapsed && (
-            <>
-              {/* Structure tree section */}
-              <div
-                style={{
-                  flex: treeHeight ? `0 0 ${treeHeight}px` : '1 1 0',
-                  minHeight: SPLIT_MIN_H,
-                  overflowY: 'auto',
-                  overflowX: 'hidden',
-                }}
-              >
-                <StructureTree />
-              </div>
-
-              {/* Vertical split handle */}
-              <div
-                onMouseDown={handleSplitResize}
-                style={{
-                  height: 4,
-                  flexShrink: 0,
-                  cursor: 'ns-resize',
-                  background: theme.borderColor,
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = theme.accent + '60'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = theme.borderColor; }}
-              />
-
-              {/* Selection details section */}
-              <div
-                style={{
-                  flex: 1,
-                  minHeight: SPLIT_MIN_H,
-                  overflowY: 'auto',
-                  overflowX: 'hidden',
-                }}
-              >
-                <SelectionDetails />
-              </div>
-            </>
-          )}
-        </div>
+        <SchematicSidebar
+          width={sidebarWidth}
+          collapsed={sidebarCollapsed}
+          onSetCollapsed={setSidebarCollapsed}
+        />
       </div>
     </div>
   );

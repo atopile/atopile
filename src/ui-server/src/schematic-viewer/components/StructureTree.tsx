@@ -123,20 +123,26 @@ function TreeRow({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 4,
-        paddingLeft: 8 + depth * 14,
-        paddingRight: 6,
-        paddingTop: 2,
-        paddingBottom: 2,
+        gap: 6,
+        margin: '1px 6px',
+        borderRadius: 8,
+        paddingLeft: 10 + depth * 14,
+        paddingRight: 8,
+        paddingTop: 4,
+        paddingBottom: 4,
         cursor: 'pointer',
-        fontSize: 11,
+        fontSize: 12,
         background: isSelected
-          ? `${color}20`
+          ? `${color}26`
           : isOnCurrentPath
             ? `${theme.textMuted}10`
             : 'transparent',
+        border: isSelected
+          ? `1px solid ${color}55`
+          : `1px solid ${theme.borderColor}00`,
         fontWeight: isOnCurrentPath ? 600 : 400,
         userSelect: 'none',
+        transition: 'background 120ms ease, border-color 120ms ease',
       }}
       onClick={(e) => {
         e.stopPropagation();
@@ -384,13 +390,13 @@ export function StructureTree() {
   const currentPathSet = new Set(currentPath);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', paddingBottom: 8 }}>
       <div
         style={{
           fontSize: 10,
           textTransform: 'uppercase',
-          letterSpacing: '0.05em',
-          padding: '10px 12px 6px',
+          letterSpacing: '0.08em',
+          padding: '12px 14px 8px',
           color: theme.textMuted,
         }}
       >

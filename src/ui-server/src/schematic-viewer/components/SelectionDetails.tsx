@@ -24,7 +24,11 @@ import {
   ListButton,
 } from './SymbolInspector';
 
-export function SelectionDetails() {
+interface SelectionDetailsProps {
+  showTopBorder?: boolean;
+}
+
+export function SelectionDetails({ showTopBorder = true }: SelectionDetailsProps) {
   const sheet = useCurrentSheet();
   const ports = useCurrentPorts();
   const selectedComponentId = useSchematicStore(
@@ -55,7 +59,7 @@ export function SelectionDetails() {
   if (!hasSelection) return null;
 
   return (
-    <div style={{ borderTop: `1px solid ${theme.borderColor}` }}>
+    <div style={showTopBorder ? { borderTop: `1px solid ${theme.borderColor}` } : undefined}>
       {/* Selected component details */}
       {selectedComp && (
         <Section theme={theme}>
