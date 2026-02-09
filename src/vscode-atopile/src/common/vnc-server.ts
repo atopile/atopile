@@ -113,6 +113,14 @@ class VncServerManager implements vscode.Disposable {
     }
 
     /**
+     * Restart the VNC stack with a (possibly updated) PCB file.
+     */
+    async restart(pcbFile?: string): Promise<string> {
+        await this.stop();
+        return this.start(pcbFile);
+    }
+
+    /**
      * Get the noVNC web UI URL with auto-connect parameters.
      */
     getNoVncUrl(): string {

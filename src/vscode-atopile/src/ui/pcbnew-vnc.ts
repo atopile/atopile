@@ -9,6 +9,7 @@
 import * as vscode from 'vscode';
 import { vncServer } from '../common/vnc-server';
 import { getAndCheckResource } from '../common/resources';
+import { onPcbChanged, getCurrentPcb } from '../common/pcb';
 import { BaseWebview } from './webview-base';
 import { getNonce } from './webview-utils';
 import { traceInfo, traceError } from '../common/log/logging';
@@ -225,15 +226,21 @@ export async function openPcbnewVnc(pcbFile?: string): Promise<void> {
     traceInfo(`PcbnewVnc: openPcbnewVnc called (pcbFile=${pcbFile ?? 'none'})`);
 
     try {
-        // Show a progress notification while starting the VNC stack
+        const isRestart = vncServer.isRunning;
+
+        // Show a progress notification while starting/restarting the VNC stack
         await vscode.window.withProgress(
             {
                 location: vscode.ProgressLocation.Notification,
-                title: 'Starting PCBnew...',
+                title: isRestart ? 'Reloading PCBnew...' : 'Starting PCBnew...',
                 cancellable: false,
             },
             async () => {
-                await vncServer.start(pcbFile);
+                if (isRestart) {
+                    await vncServer.restart(pcbFile);
+                } else {
+                    await vncServer.start(pcbFile);
+                }
             },
         );
 
@@ -255,8 +262,17 @@ export function closePcbnewVnc(): void {
     vncServer.stop();
 }
 
-export async function activate(_context: vscode.ExtensionContext): Promise<void> {
-    // VNC starts on demand — nothing to set up
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
+    // When the PCB file changes and the VNC viewer is open, restart PCBnew
+    context.subscriptions.push(
+        onPcbChanged((_) => {
+            if (pcbnewVnc?.isOpen() && vncServer.isRunning) {
+                const pcb = getCurrentPcb();
+                traceInfo(`PcbnewVnc: PCB changed, restarting PCBnew`);
+                openPcbnewVnc(pcb?.path);
+            }
+        }),
+    );
 }
 
 export function deactivate(): void {
