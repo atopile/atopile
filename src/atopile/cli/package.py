@@ -497,7 +497,9 @@ class _PackageValidators:
         for ato_file in ato_files:
             import_statements: list[re.Match[str]] = []
             content = ato_file.read_text(encoding="utf-8")
-            for import_name in re.finditer(_import_name_regex, content):
+            # Strip comments before processing imports
+            content_no_comments = re.sub(r"#.*", "", content)
+            for import_name in re.finditer(_import_name_regex, content_no_comments):
                 import_statements.append(import_name)
 
             # check if the name is at least twice in the file
