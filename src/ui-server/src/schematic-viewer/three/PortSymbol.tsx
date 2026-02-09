@@ -210,25 +210,24 @@ const SinglePortSymbol = memo(function SinglePortSymbol({
     edgeY = stubDirY > 0 ? -hh : hh;
   }
 
-  let labelX: number;
-  let labelY: number;
+  let labelX = 0;
+  let labelY = 0;
   const nameInset = getInterfaceNameInset(undefined);
   if (isHorizontal) {
-    labelX = stubDir > 0 ? hw - nameInset : -hw + nameInset;
-    labelY = pinY;
+    // Match breakout ports: interface name sits opposite the signal stubs.
+    labelX = stubDir > 0 ? -hw + nameInset * 0.9 : hw - nameInset * 0.9;
   } else {
-    labelX = pinX;
-    labelY = stubDirY > 0 ? -hh + nameInset * 0.8 : hh - nameInset * 0.8;
+    labelY = stubDirY > 0 ? hh - nameInset * 0.8 : -hh + nameInset * 0.8;
   }
   const effectiveAnchor = anchorFromVisualSide(port.side, {
     rotationDeg: rotation,
     mirrorX,
     mirrorY,
-    left: 'right',
-    right: 'left',
+    left: 'left',
+    right: 'right',
     vertical: 'center',
   });
-  const labelFontSize = Math.min(0.86, Math.max(0.7, port.bodyHeight * 0.7));
+  const labelFontSize = Math.min(0.98, Math.max(0.62, port.bodyHeight * 0.17));
 
   return (
     <group position={[gridOffset.x, gridOffset.y, zOffset]}>
@@ -260,10 +259,10 @@ const SinglePortSymbol = memo(function SinglePortSymbol({
       >
         <Text
           fontSize={labelFontSize}
-          color={isNetHighlighted ? theme.textPrimary : theme.textSecondary}
+          color={theme.textPrimary}
           anchorX={effectiveAnchor}
           anchorY="middle"
-          maxWidth={visualHorizontal ? port.bodyWidth * 0.72 : port.bodyWidth * 0.82}
+          maxWidth={visualHorizontal ? port.bodyWidth * 0.55 : port.bodyWidth * 0.72}
           letterSpacing={0.02}
           font={undefined}
           raycast={NO_RAYCAST}

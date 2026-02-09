@@ -1,5 +1,13 @@
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, GitBranch, Target } from 'lucide-react';
+import {
+  Cable,
+  ChevronLeft,
+  ChevronRight,
+  Cpu,
+  GitBranch,
+  Layout,
+  Target,
+} from 'lucide-react';
 import { useTheme } from '../lib/theme';
 import { useCurrentSheet, useSchematicStore } from '../stores/schematicStore';
 import { SelectionDetails } from './SelectionDetails';
@@ -29,25 +37,18 @@ export function SchematicSidebar({
 }: SchematicSidebarProps) {
   const theme = useTheme();
   const sheet = useCurrentSheet();
-  const currentPath = useSchematicStore((s) => s.currentPath);
   const selectedComponentId = useSchematicStore((s) => s.selectedComponentId);
   const selectedNetId = useSchematicStore((s) => s.selectedNetId);
 
   const [activeTab, setActiveTab] = useState<SidebarTab>(readInitialTab);
   const hasSelection = !!selectedComponentId || !!selectedNetId;
 
-  const pathLabel = useMemo(() => {
-    if (currentPath.length === 0) return 'Root sheet';
-    const levelLabel = currentPath.length === 1 ? 'level' : 'levels';
-    return `${currentPath.length} ${levelLabel} deep`;
-  }, [currentPath.length]);
-
   const statItems = useMemo(() => {
     if (!sheet) return [];
     return [
-      { label: 'Modules', value: sheet.modules.length },
-      { label: 'Components', value: sheet.components.length },
-      { label: 'Nets', value: sheet.nets.length },
+      { label: 'Modules', value: sheet.modules.length, icon: Layout },
+      { label: 'Components', value: sheet.components.length, icon: Cpu },
+      { label: 'Nets', value: sheet.nets.length, icon: Cable },
     ];
   }, [sheet]);
 
@@ -121,21 +122,16 @@ export function SchematicSidebar({
                 <ChevronRight size={16} />
               </button>
             </div>
-            <p className="schematic-sidebar-subtitle">
-              {activeTab === 'structure'
-                ? `${pathLabel}. Click to select, double-click modules to drill down.`
-                : hasSelection
-                  ? 'Inspect nets, interfaces, and connected pins for the current selection.'
-                  : 'Select any component, module, port, or net to inspect it here.'}
-            </p>
           </header>
 
           {statItems.length > 0 && (
-            <div className="schematic-sidebar-stats">
+            <div className="schematic-sidebar-summary">
+              <div className="schematic-sidebar-summary-title">Sheet Summary</div>
               {statItems.map((item) => (
-                <div className="sidebar-stat" key={item.label}>
-                  <span className="sidebar-stat-value">{item.value}</span>
-                  <span className="sidebar-stat-label">{item.label}</span>
+                <div className="schematic-summary-row" key={item.label}>
+                  <item.icon size={14} className="schematic-summary-row-icon" />
+                  <span className="schematic-summary-row-label">{item.label}</span>
+                  <span className="schematic-summary-row-count">{item.value}</span>
                 </div>
               ))}
             </div>

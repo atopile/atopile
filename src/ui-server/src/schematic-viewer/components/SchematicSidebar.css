@@ -13,7 +13,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 14px 14px 8px;
+  padding: 14px 14px 10px;
   border-bottom: 1px solid var(--sv-border);
   background: var(--sv-bg);
   background:
@@ -41,13 +41,6 @@
   color: var(--sv-text);
 }
 
-.schematic-sidebar-subtitle {
-  margin: 0;
-  line-height: 1.35;
-  font-size: 11px;
-  color: var(--sv-secondary);
-}
-
 .schematic-sidebar-collapse-btn {
   width: 24px;
   height: 24px;
@@ -68,38 +61,63 @@
   background: color-mix(in srgb, var(--sv-hover) 72%, transparent);
 }
 
-.schematic-sidebar-stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--sv-border);
-}
-
-.sidebar-stat {
+.schematic-sidebar-summary {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  border: 1px solid var(--sv-border);
-  border: 1px solid color-mix(in srgb, var(--sv-border) 80%, transparent);
-  border-radius: 8px;
-  padding: 8px;
-  background: var(--sv-bg-elev);
-  background: color-mix(in srgb, var(--sv-bg-elev) 66%, transparent);
+  padding: 8px 8px 10px;
+  border-bottom: 1px solid var(--sv-border);
 }
 
-.sidebar-stat-value {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--sv-text);
-  line-height: 1;
-}
-
-.sidebar-stat-label {
+.schematic-sidebar-summary-title {
   font-size: 10px;
-  color: var(--sv-muted);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  color: var(--sv-muted);
+  padding: 2px 6px 4px;
+}
+
+.schematic-summary-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 6px;
+  border-radius: 6px;
+  color: var(--sv-secondary);
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.schematic-summary-row:hover {
+  background: var(--sv-hover);
+  color: var(--sv-text);
+}
+
+.schematic-summary-row-icon {
+  flex-shrink: 0;
+  color: var(--sv-muted);
+}
+
+.schematic-summary-row-label {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.schematic-summary-row-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--sv-text);
+  background: var(--sv-bg-elev);
+  background: color-mix(in srgb, var(--sv-border) 78%, transparent);
 }
 
 .schematic-sidebar-tabs {

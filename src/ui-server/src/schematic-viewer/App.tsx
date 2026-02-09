@@ -207,18 +207,19 @@ function SchematicApp() {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        height: '100vh',
-        width: '100vw',
+        height: '100%',
+        width: '100%',
         overflow: 'hidden',
+        overscrollBehavior: 'none',
         background: theme.bgPrimary,
         color: theme.textPrimary,
       }}
     >
       <Toolbar />
 
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
         {/* Main canvas */}
-        <div style={{ flex: 1, position: 'relative' }}>
+        <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
           {isLoading && (
             <div
               style={{

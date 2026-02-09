@@ -10,6 +10,7 @@ import ReactDOM from 'react-dom/client';
 import SchematicApp from './schematic-viewer/App';
 import { initializeTheme } from './hooks/useTheme';
 import './index.css';
+import './schematic-viewer/page.css';
 
 // Initialize theme before React renders
 initializeTheme();

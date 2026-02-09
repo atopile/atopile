@@ -10,8 +10,8 @@
  * Crossing detection produces jump arcs between different nets' routes.
  */
 
-import { useMemo, useRef, memo } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useMemo, useRef, memo, useEffect, useCallback } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 import { Text, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import type {
@@ -22,8 +22,8 @@ import type {
 } from '../types/schematic';
 import {
   getComponentGridAlignmentOffset,
+  getGridAlignmentOffset,
   getNormalizedComponentPinGeometry,
-  getModuleGridAlignmentOffset,
   getPortGridAlignmentOffset,
   getPowerPortGridAlignmentOffset,
   getRootSheet,
@@ -37,7 +37,6 @@ import { useSchematicStore, liveDrag } from '../stores/schematicStore';
 import {
   computeOrthogonalRoute,
   routeOrthogonalWithHeuristics,
-  padRoute,
   segmentsFromRoute,
   findCrossings,
   generateJumpArc,
@@ -54,10 +53,16 @@ import {
   type NetForBus,
 } from '../lib/busDetector';
 import { routeHitsObstacle, type RouteObstacle } from './routeObstacles';
+import {
+  getModulePinOrderForPath,
+  getModuleRenderSize,
+  getOrderedModuleInterfacePins,
+} from '../lib/moduleInterfaces';
 
 const STUB_LENGTH = 2.54;
-const DIRECT_LABEL_DISTANCE = 72;
 const ROUTE_SPACING = 2.54;
+const ROUTE_DRAG_HIT_THICKNESS = 2.2;
+const ROUTE_PICK_HIT_THICKNESS = ROUTE_SPACING * 0.5;
 const COMPLEX_ROUTE_SCORE = 210;
 const COMPLEX_ROUTE_CROSSINGS = 2;
 const COMPLEX_ROUTE_PARALLEL = 3;
@@ -128,6 +133,8 @@ function buildLookup(
   sheet: SchematicSheet,
   ports: SchematicPort[] = [],
   powerPorts: SchematicPowerPort[] = [],
+  portSignalOrders: Record<string, string[]> = {},
+  currentPath: string[] = [],
 ): ItemLookup {
   const pinMap = new Map<string, Map<string, PinInfo>>();
 
@@ -146,8 +153,13 @@ function buildLookup(
   }
   for (const mod of sheet.modules) {
     const pm = new Map<string, PinInfo>();
-    const offset = getModuleGridAlignmentOffset(mod);
-    for (const pin of mod.interfacePins) {
+    const orderedPins = getOrderedModuleInterfacePins(
+      mod,
+      getModulePinOrderForPath(portSignalOrders, currentPath, mod.id),
+    );
+    const anchor = orderedPins[0];
+    const offset = getGridAlignmentOffset(anchor?.x, anchor?.y);
+    for (const pin of orderedPins) {
       pm.set(pin.id, {
         x: pin.x + offset.x,
         y: pin.y + offset.y,
@@ -244,6 +256,44 @@ interface PendingMultiNetData {
   span: number;
 }
 
+interface RouteSegmentHandle {
+  pointIndex: number;
+  a: [number, number, number];
+  b: [number, number, number];
+  horizontal: boolean;
+  length: number;
+  cx: number;
+  cy: number;
+}
+
+interface RouteHitSegment {
+  pointIndex: number;
+  horizontal: boolean;
+  length: number;
+  cx: number;
+  cy: number;
+}
+
+function isPowerPortEndpoint(compId: string): boolean {
+  return compId.startsWith('__pwr__');
+}
+
+function sideToward(from: { x: number; y: number }, to: { x: number; y: number }): string {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0 ? 'right' : 'left';
+  }
+  return dy >= 0 ? 'top' : 'bottom';
+}
+
+function routeSideForEndpoint(pin: WorldPin, other: WorldPin): string {
+  if (!isPowerPortEndpoint(pin.compId)) return pin.side;
+  // Power/ground symbols are single-dot endpoints; route toward the counterpart
+  // to avoid artificial down-then-up detours from a fixed pin-side constraint.
+  return sideToward(pin, other);
+}
+
 function manhattanDistance(a: WorldPin, b: WorldPin): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
@@ -304,6 +354,144 @@ function routePriority(net: SchematicNet): number {
   return 3;
 }
 
+function cloneRoute(route: [number, number, number][]): [number, number, number][] {
+  return route.map((pt) => [pt[0], pt[1], pt[2] ?? 0]);
+}
+
+function dedupeRoute(route: [number, number, number][]): [number, number, number][] {
+  if (route.length <= 1) return cloneRoute(route);
+  const out: [number, number, number][] = [route[0]];
+  for (let i = 1; i < route.length; i++) {
+    const prev = out[out.length - 1];
+    const cur = route[i];
+    if (Math.abs(prev[0] - cur[0]) < 1e-6 && Math.abs(prev[1] - cur[1]) < 1e-6) continue;
+    out.push([cur[0], cur[1], cur[2] ?? 0]);
+  }
+  return out;
+}
+
+function simplifyOrthRoute(route: [number, number, number][]): [number, number, number][] {
+  const deduped = dedupeRoute(route);
+  if (deduped.length <= 2) return deduped;
+  const out: [number, number, number][] = [deduped[0]];
+  for (let i = 1; i < deduped.length - 1; i++) {
+    const a = out[out.length - 1];
+    const b = deduped[i];
+    const c = deduped[i + 1];
+    const colinear =
+      (Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(b[0] - c[0]) < 1e-6) ||
+      (Math.abs(a[1] - b[1]) < 1e-6 && Math.abs(b[1] - c[1]) < 1e-6);
+    if (!colinear) out.push(b);
+  }
+  out.push(deduped[deduped.length - 1]);
+  return out.length >= 2 ? out : deduped;
+}
+
+function anchorManualRoute(
+  route: [number, number, number][],
+  start: WorldPin,
+  end: WorldPin,
+): [number, number, number][] | null {
+  if (!Array.isArray(route) || route.length < 2) return null;
+  const next = simplifyOrthRoute(route);
+  if (next.length < 2) return null;
+
+  const firstSegDx = next[1][0] - next[0][0];
+  const firstSegDy = next[1][1] - next[0][1];
+  const lastIdx = next.length - 1;
+  const lastSegDx = next[lastIdx][0] - next[lastIdx - 1][0];
+  const lastSegDy = next[lastIdx][1] - next[lastIdx - 1][1];
+
+  next[0] = [start.x, start.y, 0];
+  next[lastIdx] = [end.x, end.y, 0];
+
+  if (Math.abs(firstSegDx) >= Math.abs(firstSegDy)) {
+    next[1] = [next[1][0], start.y, 0];
+  } else {
+    next[1] = [start.x, next[1][1], 0];
+  }
+  if (Math.abs(lastSegDx) >= Math.abs(lastSegDy)) {
+    next[lastIdx - 1] = [next[lastIdx - 1][0], end.y, 0];
+  } else {
+    next[lastIdx - 1] = [end.x, next[lastIdx - 1][1], 0];
+  }
+
+  const anchored = simplifyOrthRoute(next);
+  return anchored.length >= 2 ? anchored : null;
+}
+
+function getInteriorSegmentHandles(route: [number, number, number][]): RouteSegmentHandle[] {
+  const simplified = simplifyOrthRoute(route);
+  const handles: RouteSegmentHandle[] = [];
+  for (let i = 0; i < simplified.length - 1; i++) {
+    if (i === 0 || i + 1 === simplified.length - 1) continue;
+    const a = simplified[i];
+    const b = simplified[i + 1];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const horizontal = Math.abs(dy) < 1e-6;
+    const vertical = Math.abs(dx) < 1e-6;
+    if (!horizontal && !vertical) continue;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    if (length < 0.8) continue;
+    handles.push({
+      pointIndex: i,
+      a,
+      b,
+      horizontal,
+      length,
+      cx: (a[0] + b[0]) / 2,
+      cy: (a[1] + b[1]) / 2,
+    });
+  }
+  return handles;
+}
+
+function getRouteHitSegments(route: [number, number, number][]): RouteHitSegment[] {
+  const simplified = simplifyOrthRoute(route);
+  const hits: RouteHitSegment[] = [];
+  for (let i = 0; i < simplified.length - 1; i++) {
+    const a = simplified[i];
+    const b = simplified[i + 1];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const horizontal = Math.abs(dy) < 1e-6;
+    const vertical = Math.abs(dx) < 1e-6;
+    if (!horizontal && !vertical) continue;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    if (length < 0.2) continue;
+    hits.push({
+      pointIndex: i,
+      horizontal,
+      length,
+      cx: (a[0] + b[0]) / 2,
+      cy: (a[1] + b[1]) / 2,
+    });
+  }
+  return hits;
+}
+
+function snapRouteCoord(v: number): number {
+  return Math.round(v / ROUTE_SPACING) * ROUTE_SPACING;
+}
+
+function routesEqual(
+  a: [number, number, number][],
+  b: [number, number, number][],
+): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (
+      Math.abs(a[i][0] - b[i][0]) > 1e-6 ||
+      Math.abs(a[i][1] - b[i][1]) > 1e-6 ||
+      Math.abs((a[i][2] ?? 0) - (b[i][2] ?? 0)) > 1e-6
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function buildRouteObstacles(
   sheet: SchematicSheet,
   ports: SchematicPort[],
@@ -332,7 +520,8 @@ function buildRouteObstacles(
     pushItem(comp.id, comp.bodyWidth, comp.bodyHeight);
   }
   for (const mod of sheet.modules) {
-    pushItem(mod.id, mod.bodyWidth, mod.bodyHeight);
+    const size = getModuleRenderSize(mod);
+    pushItem(mod.id, size.width, size.height);
   }
   for (const port of ports) {
     pushItem(port.id, port.bodyWidth, port.bodyHeight);
@@ -351,6 +540,8 @@ export const NetLines = memo(function NetLines({
   const schematic = useSchematicStore((s) => s.schematic);
   const currentPath = useSchematicStore((s) => s.currentPath);
   const positions = useSchematicStore((s) => s.positions);
+  const portSignalOrders = useSchematicStore((s) => s.portSignalOrders);
+  const routeOverrides = useSchematicStore((s) => s.routeOverrides);
   const selectedNetId = useSchematicStore((s) => s.selectedNetId);
   const ports = useCurrentPorts();
   const powerPorts = useCurrentPowerPorts();
@@ -362,8 +553,8 @@ export const NetLines = memo(function NetLines({
 
   const lookup = useMemo<ItemLookup | null>(() => {
     if (!sheet) return null;
-    return buildLookup(sheet, ports, powerPorts);
-  }, [sheet, ports, powerPorts]);
+    return buildLookup(sheet, ports, powerPorts, portSignalOrders, currentPath);
+  }, [sheet, ports, powerPorts, portSignalOrders, currentPath]);
 
   const pk = useMemo(
     () => (currentPath.length === 0 ? '__root__' : currentPath.join('/')) + ':',
@@ -493,11 +684,6 @@ export const NetLines = memo(function NetLines({
         const dy = worldPins[0].y - worldPins[1].y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (net.type === 'signal' && dist > DIRECT_LABEL_DISTANCE) {
-          stubs.push({ net, worldPins, color });
-          continue;
-        }
-
         pendingDirects.push({
           routeId: net.id,
           net,
@@ -572,9 +758,28 @@ export const NetLines = memo(function NetLines({
       if (busNetIds.has(pd.net.id)) continue;
       const a = pd.worldPins[0];
       const b = pd.worldPins[1];
+      const manualRoute = anchorManualRoute(
+        routeOverrides[pk + pd.routeId] ?? [],
+        a,
+        b,
+      );
+
+      if (manualRoute) {
+        directs.push({
+          routeId: pd.routeId,
+          net: pd.net,
+          worldPins: pd.worldPins,
+          route: manualRoute,
+          color: pd.color,
+        });
+        allSegments.push(...segmentsFromRoute(manualRoute, pd.net.id));
+        existingSegments.push(...segmentsFromRoute(manualRoute, pd.routeId));
+        continue;
+      }
+
       const routedResult = routeOrthogonalWithHeuristics(
-        a.x, a.y, a.side,
-        b.x, b.y, b.side,
+        a.x, a.y, routeSideForEndpoint(a, b),
+        b.x, b.y, routeSideForEndpoint(b, a),
         {
           existingSegments,
           preferredSpacing: ROUTE_SPACING,
@@ -589,7 +794,6 @@ export const NetLines = memo(function NetLines({
         !shortSignalForcesDirect &&
         pd.net.type === 'signal' &&
         (
-          pd.distance > DIRECT_LABEL_DISTANCE ||
           q.overlaps > 0 ||
           q.crossings >= COMPLEX_ROUTE_CROSSINGS ||
           q.closeParallel > COMPLEX_ROUTE_PARALLEL ||
@@ -601,7 +805,7 @@ export const NetLines = memo(function NetLines({
         continue;
       }
 
-      const route = padRoute(routedResult.route);
+      const route = simplifyOrthRoute(routedResult.route);
       if (
         routeHitsObstacle(
           route,
@@ -643,9 +847,25 @@ export const NetLines = memo(function NetLines({
 
       for (let i = 0; i < pm.edges.length; i++) {
         const edge = pm.edges[i];
+        const routeId = `${pm.net.id}::${i}`;
+        const manualRoute = anchorManualRoute(
+          routeOverrides[pk + routeId] ?? [],
+          edge.a,
+          edge.b,
+        );
+        if (manualRoute) {
+          edgeRoutes.push({
+            routeId,
+            worldPins: [edge.a, edge.b],
+            route: manualRoute,
+          });
+          stagedSegments.push(...segmentsFromRoute(manualRoute, routeId));
+          continue;
+        }
+
         const routedResult = routeOrthogonalWithHeuristics(
-          edge.a.x, edge.a.y, edge.a.side,
-          edge.b.x, edge.b.y, edge.b.side,
+          edge.a.x, edge.a.y, routeSideForEndpoint(edge.a, edge.b),
+          edge.b.x, edge.b.y, routeSideForEndpoint(edge.b, edge.a),
           {
             existingSegments: existingSegments.concat(stagedSegments),
             preferredSpacing: ROUTE_SPACING,
@@ -672,7 +892,7 @@ export const NetLines = memo(function NetLines({
           break;
         }
 
-        const route = padRoute(routedResult.route);
+        const route = simplifyOrthRoute(routedResult.route);
         if (
           routeHitsObstacle(
             route,
@@ -683,7 +903,6 @@ export const NetLines = memo(function NetLines({
           failed = true;
           break;
         }
-        const routeId = `${pm.net.id}::${i}`;
         edgeRoutes.push({
           routeId,
           worldPins: [edge.a, edge.b],
@@ -719,7 +938,7 @@ export const NetLines = memo(function NetLines({
       busGroups: buses,
       crossings: cx,
     };
-  }, [sheet, lookup, positions, pk, netColorMap, theme, ports]);
+  }, [sheet, lookup, positions, pk, netColorMap, theme, ports, routeOverrides]);
 
   if (!sheet || !lookup) return null;
 
@@ -742,6 +961,7 @@ export const NetLines = memo(function NetLines({
         return (
           <OrthogonalConnection
             key={routeId}
+            routeId={routeId}
             net={net}
             worldPins={worldPins}
             initialRoute={route}
@@ -1017,6 +1237,7 @@ function BusBadge({
 // ════════════════════════════════════════════════════════════════
 
 const OrthogonalConnection = memo(function OrthogonalConnection({
+  routeId,
   net,
   worldPins,
   initialRoute,
@@ -1026,6 +1247,7 @@ const OrthogonalConnection = memo(function OrthogonalConnection({
   opacity,
   isActive,
 }: {
+  routeId: string;
   net: SchematicNet;
   worldPins: WorldPin[];
   initialRoute: [number, number, number][];
@@ -1037,12 +1259,51 @@ const OrthogonalConnection = memo(function OrthogonalConnection({
 }) {
   const selectNet = useSchematicStore((s) => s.selectNet);
   const hoverNet = useSchematicStore((s) => s.hoverNet);
+  const setRouteOverride = useSchematicStore((s) => s.setRouteOverride);
+  const { camera, gl } = useThree();
   const lineRef = useRef<any>(null);
   const wasModified = useRef(false);
   const lastVersion = useRef(-1);
+  const segmentDragActive = useRef(false);
+
+  const raycaster = useRef(new THREE.Raycaster());
+  const zPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0));
+  const worldTarget = useRef(new THREE.Vector3());
+  const ndc = useRef(new THREE.Vector2());
+
+  const editableSegments = useMemo(
+    () => getInteriorSegmentHandles(initialRoute),
+    [initialRoute],
+  );
+  const routeHitSegments = useMemo(
+    () => getRouteHitSegments(initialRoute),
+    [initialRoute],
+  );
+  const editableSegmentByIndex = useMemo(
+    () => new Map(editableSegments.map((seg) => [seg.pointIndex, seg] as const)),
+    [editableSegments],
+  );
+
+  const screenToWorld = useCallback((clientX: number, clientY: number) => {
+    const rect = gl.domElement.getBoundingClientRect();
+    ndc.current.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    raycaster.current.setFromCamera(ndc.current, camera);
+    const hit = raycaster.current.ray.intersectPlane(zPlane.current, worldTarget.current);
+    if (!hit) return null;
+    return { x: worldTarget.current.x, y: worldTarget.current.y };
+  }, [camera, gl]);
+
+  useEffect(() => {
+    if (!lineRef.current) return;
+    writeRouteToLine2(lineRef.current, initialRoute);
+  }, [initialRoute]);
 
   useFrame(() => {
     if (!lineRef.current) return;
+    if (segmentDragActive.current) return;
     const dragging = liveDrag.componentId;
 
     if (!dragging) {
@@ -1080,14 +1341,84 @@ const OrthogonalConnection = memo(function OrthogonalConnection({
       return { ...wp, x: pos.x + tp.x, y: pos.y + tp.y, side: ts };
     });
 
-    const liveRoute = padRoute(
+    const liveRoute = simplifyOrthRoute(
       computeOrthogonalRoute(
-        liveWP[0].x, liveWP[0].y, liveWP[0].side,
-        liveWP[1].x, liveWP[1].y, liveWP[1].side,
+        liveWP[0].x, liveWP[0].y, routeSideForEndpoint(liveWP[0], liveWP[1]),
+        liveWP[1].x, liveWP[1].y, routeSideForEndpoint(liveWP[1], liveWP[0]),
       ),
     );
     writeRouteToLine2(lineRef.current, liveRoute);
   });
+
+  const beginSegmentDrag = useCallback((e: any, segment: RouteSegmentHandle) => {
+    if (e.button !== 0) return;
+    if (liveDrag.componentId) return;
+    e.stopPropagation();
+
+    const baseRoute = simplifyOrthRoute(initialRoute);
+    const idx = segment.pointIndex;
+    if (idx <= 0 || idx + 1 >= baseRoute.length - 1) return;
+    const startWorld = screenToWorld(
+      (e.nativeEvent?.clientX ?? e.clientX) as number,
+      (e.nativeEvent?.clientY ?? e.clientY) as number,
+    );
+    if (!startWorld) return;
+
+    selectNet(net.id);
+    segmentDragActive.current = true;
+
+    const axis: 'x' | 'y' = segment.horizontal ? 'y' : 'x';
+    const startCoord = axis === 'y' ? baseRoute[idx][1] : baseRoute[idx][0];
+    const pointerStart = axis === 'y' ? startWorld.y : startWorld.x;
+    let changed = false;
+    let draggedRoute = baseRoute;
+
+    const onMove = (me: PointerEvent) => {
+      const world = screenToWorld(me.clientX, me.clientY);
+      if (!world) return;
+      const pointerNow = axis === 'y' ? world.y : world.x;
+      const snapped = snapRouteCoord(startCoord + (pointerNow - pointerStart));
+      const prevCoord = axis === 'y'
+        ? draggedRoute[idx][1]
+        : draggedRoute[idx][0];
+      if (Math.abs(snapped - prevCoord) < 1e-6) return;
+
+      const next = cloneRoute(baseRoute);
+      if (axis === 'y') {
+        next[idx][1] = snapped;
+        next[idx + 1][1] = snapped;
+      } else {
+        next[idx][0] = snapped;
+        next[idx + 1][0] = snapped;
+      }
+      draggedRoute = simplifyOrthRoute(next);
+      changed = true;
+      writeRouteToLine2(lineRef.current, draggedRoute);
+      gl.domElement.style.cursor = axis === 'y' ? 'ns-resize' : 'ew-resize';
+    };
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      segmentDragActive.current = false;
+      gl.domElement.style.cursor = 'auto';
+
+      if (!changed) {
+        writeRouteToLine2(lineRef.current, initialRoute);
+        return;
+      }
+
+      if (routesEqual(draggedRoute, simplifyOrthRoute(initialRoute))) {
+        writeRouteToLine2(lineRef.current, initialRoute);
+        return;
+      }
+
+      setRouteOverride(pk + routeId, draggedRoute);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }, [pk, routeId, initialRoute, screenToWorld, selectNet, net.id, setRouteOverride, gl]);
 
   return (
     <group
@@ -1103,6 +1434,49 @@ const OrthogonalConnection = memo(function OrthogonalConnection({
         transparent
         opacity={opacity}
       />
+
+      {routeHitSegments.map((seg) => {
+        const editable = editableSegmentByIndex.get(seg.pointIndex);
+        const isEditableSegment = isActive && !!editable;
+        const hitThickness = isEditableSegment
+          ? ROUTE_DRAG_HIT_THICKNESS
+          : ROUTE_PICK_HIT_THICKNESS;
+        return (
+        <mesh
+          key={`${routeId}:hit:${seg.pointIndex}`}
+          position={[seg.cx, seg.cy, 0.02]}
+          onPointerDown={(e) => {
+            if (!isEditableSegment || !editable) return;
+            beginSegmentDrag(e, editable);
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isEditableSegment) return;
+            selectNet(net.id);
+          }}
+          onPointerEnter={(e) => {
+            e.stopPropagation();
+            gl.domElement.style.cursor = isEditableSegment
+              ? (seg.horizontal ? 'ns-resize' : 'ew-resize')
+              : 'pointer';
+          }}
+          onPointerLeave={(e) => {
+            e.stopPropagation();
+            if (!segmentDragActive.current) {
+              gl.domElement.style.cursor = 'auto';
+            }
+          }}
+        >
+          <planeGeometry
+            args={seg.horizontal
+              ? [seg.length, hitThickness]
+              : [hitThickness, seg.length]}
+          />
+          <meshBasicMaterial transparent opacity={0.001} depthWrite={false} />
+        </mesh>
+        );
+      })}
+
       {isActive && <FlowDot points={initialRoute} color={color} />}
     </group>
   );

@@ -20,6 +20,8 @@ export interface SchematicData {
   positions?: Record<string, ComponentPosition>;
   /** Optional per-port breakout signal ordering (scoped key: "path:portId"). */
   portSignalOrders?: Record<string, string[]>;
+  /** Optional manually adjusted net routes (scoped key: "path:routeId"). */
+  routeOverrides?: Record<string, [number, number, number][]>;
   /** Root sheet with modules, components, and nets */
   root: SchematicSheet;
 }
@@ -435,26 +437,31 @@ export function derivePortsFromModule(
       };
     }
 
-    // ── Single-signal port (same stub model as breakout ports) ──
+    // ── Single-signal port (match breakout framing + stub model) ──
+    const singleBodyW = BREAKOUT_BOX_W;
+    // Keep single ports compact so stacked ports remain on pin-pitch rhythm.
+    const singleBodyH = PORT_H;
+    const singlePinReach = snapToPinGrid(singleBodyW / 2 + PORT_STUB_LEN);
+
     let pinX = 0, pinY = 0;
     let pinSide: PinSide = 'right';
 
     // Pin sits at body edge + stub length (consistent with breakout ports).
     switch (ipin.side) {
       case 'left':
-        pinX = PORT_W / 2 + PORT_STUB_LEN;
+        pinX = singlePinReach;
         pinSide = 'right';
         break;
       case 'right':
-        pinX = -(PORT_W / 2 + PORT_STUB_LEN);
+        pinX = -singlePinReach;
         pinSide = 'left';
         break;
       case 'top':
-        pinY = -(PORT_H / 2 + PORT_STUB_LEN);
+        pinY = -singlePinReach;
         pinSide = 'bottom';
         break;
       case 'bottom':
-        pinY = PORT_H / 2 + PORT_STUB_LEN;
+        pinY = singlePinReach;
         pinSide = 'top';
         break;
     }
@@ -466,8 +473,8 @@ export function derivePortsFromModule(
       side: ipin.side,
       category: ipin.category,
       interfaceType: ipin.interfaceType,
-      bodyWidth: PORT_W,
-      bodyHeight: PORT_H,
+      bodyWidth: singleBodyW,
+      bodyHeight: singleBodyH,
       pinX,
       pinY,
       pinSide,

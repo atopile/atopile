@@ -19,6 +19,7 @@ import { getUprightTextTransform } from '../lib/itemTransform';
 
 const NO_RAYCAST = () => {};
 const BAR_HALF = POWER_PORT_W / 2;
+const POWER_LABEL_MAX_CHARS = 14;
 
 interface Props {
   powerPort: SchematicPowerPort;
@@ -75,7 +76,12 @@ export const PowerPortSymbol = memo(function PowerPortSymbol({
 
       <group raycast={NO_RAYCAST}>
         {isPower ? (
-          <PowerBarGlyph color={color} name={powerPort.name} theme={theme} textTf={textTf} />
+          <PowerBarGlyph
+            color={color}
+            name={powerPort.name}
+            showFullName={isSelected || isNetSelected}
+            textTf={textTf}
+          />
         ) : (
           <GroundGlyph color={color} />
         )}
@@ -99,14 +105,16 @@ export const PowerPortSymbol = memo(function PowerPortSymbol({
 function PowerBarGlyph({
   color,
   name,
-  theme,
+  showFullName,
   textTf,
 }: {
   color: string;
   name: string;
-  theme: ThemeColors;
+  showFullName: boolean;
   textTf: { rotationZ: number; scaleX: number; scaleY: number };
 }) {
+  const compactName = truncateLabel(name, POWER_LABEL_MAX_CHARS);
+  const displayName = showFullName ? name : compactName;
   return (
     <group raycast={NO_RAYCAST}>
       {/* Horizontal bar at top */}
@@ -125,23 +133,31 @@ function PowerBarGlyph({
       />
       {/* Net name above bar */}
       <group
-        position={[0, 1.1, 0.01]}
+        position={[0, 0.5, 0.01]}
         rotation={[0, 0, textTf.rotationZ]}
         scale={[textTf.scaleX, textTf.scaleY, 1]}
       >
         <Text
-          fontSize={0.7}
-          color={theme.textPrimary}
+          fontSize={showFullName ? 0.54 : 0.5}
+          color={color}
           anchorX="center"
           anchorY="bottom"
+          maxWidth={showFullName ? 12 : 8}
+          overflowWrap="normal"
+          textAlign="center"
           font={undefined}
           raycast={NO_RAYCAST}
         >
-          {name}
+          {displayName}
         </Text>
       </group>
     </group>
   );
+}
+
+function truncateLabel(label: string, maxChars: number): string {
+  if (label.length <= maxChars) return label;
+  return `${label.slice(0, Math.max(1, maxChars - 1))}…`;
 }
 
 // ── Ground glyph ────────────────────────────────────────────────

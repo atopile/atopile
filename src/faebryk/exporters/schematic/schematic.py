@@ -512,12 +512,27 @@ def _filter_pin_functions_by_signal_map(
     return filtered
 
 
-def _resolve_locator_path(candidate: str) -> Path | None:
+def _resolve_locator_path(
+    candidate: str,
+    base_dirs: list[Path] | None = None,
+) -> Path | None:
     p = Path(candidate)
     if p.is_file():
-        return p
-    if not p.is_absolute():
-        rel = Path.cwd() / p
+        return p.resolve()
+    if p.is_absolute():
+        return None
+
+    search_dirs: list[Path] = [Path.cwd()]
+    if base_dirs:
+        search_dirs.extend(base_dirs)
+
+    seen: set[Path] = set()
+    for base in search_dirs:
+        b = base.resolve()
+        if b in seen:
+            continue
+        seen.add(b)
+        rel = (b / p).resolve()
         if rel.is_file():
             return rel
     return None
@@ -529,8 +544,14 @@ def _extract_locator_source_and_component(locator: str) -> tuple[Path | None, st
         return None, ""
 
     # Locator format can be chained with "|" segments, e.g.
-    # root.ato::App.mod|parts/foo.ato::PartType.
-    for segment in reversed(locator.split("|")):
+    # root.ato::App.mod|subdir/mod.ato::Wrapper.pkg|parts/foo.ato::PartType.
+    # The rightmost leaf is most specific, but its path can be relative to an
+    # earlier segment's directory; resolve segments left→right and return the
+    # deepest successfully resolved one.
+    resolved_segments: list[tuple[Path, str]] = []
+    search_bases: list[Path] = []
+
+    for segment in locator.split("|"):
         seg = segment.strip()
         if ".ato" not in seg:
             continue
@@ -539,14 +560,19 @@ def _extract_locator_source_and_component(locator: str) -> tuple[Path | None, st
         else:
             path_text, comp_name = seg, ""
 
-        source_path = _resolve_locator_path(path_text)
+        source_path = _resolve_locator_path(path_text, base_dirs=search_bases)
         if source_path:
-            return source_path, comp_name
+            clean_name = comp_name.strip().rstrip(".:")
+            resolved_segments.append((source_path, clean_name))
+            search_bases.insert(0, source_path.parent)
+
+    if resolved_segments:
+        return resolved_segments[-1]
 
     # Fallback: use rightmost .ato-like token if present.
     matches = re.findall(r"([^\s|:]+\.ato)", locator)
     for match in reversed(matches):
-        source_path = _resolve_locator_path(match)
+        source_path = _resolve_locator_path(match, base_dirs=search_bases)
         if source_path:
             return source_path, ""
 
@@ -559,6 +585,9 @@ def _candidate_component_names(raw_name: str) -> list[str]:
 
     def _add(value: str) -> None:
         value = value.strip()
+        if "::" in value:
+            value = value.rsplit("::", 1)[-1]
+        value = value.rstrip(".:")
         if value and value not in names:
             names.append(value)
 
@@ -580,17 +609,22 @@ def _extract_declared_signals_from_source(
     source_path: Path,
     locator_component_name: str,
 ) -> dict[str, str]:
-    """Parse ``signal NAME ~ pin N`` lines from a component declaration."""
+    """Parse ``[signal] NAME ~ pin N`` lines from a component declaration."""
     try:
         lines = source_path.read_text(encoding="utf-8").splitlines()
     except Exception:
         return {}
 
     signal_re = re.compile(
-        r"^\s*signal\s+([A-Za-z_~][A-Za-z0-9_~\[\]]*)\s*~\s*pin\s+([A-Za-z0-9_]+)\s*$"
+        r"^\s*(?:signal\s+)?([A-Za-z_~][A-Za-z0-9_~\[\]\.\-/]*)\s*~\s*pin\s+([A-Za-z0-9_]+)\s*$"
     )
 
-    for candidate_name in _candidate_component_names(locator_component_name):
+    comp_decl_re = re.compile(
+        r"^(?P<indent>\s*)component\s+(?P<name>[A-Za-z_~][A-Za-z0-9_~\[\]\.]*)"
+        r"(?:\s*<[^>]*>)?\s*:\s*$"
+    )
+
+    def _extract_for_component(candidate_name: str) -> dict[str, str]:
         comp_re = re.compile(
             rf"^(?P<indent>\s*)component\s+{re.escape(candidate_name)}(?:\s*<[^>]*>)?\s*:\s*$"
         )
@@ -605,7 +639,7 @@ def _extract_declared_signals_from_source(
                 break
 
         if start_idx is None:
-            continue
+            return {}
 
         pin_to_signal: dict[str, str] = {}
         for line in lines[start_idx:]:
@@ -625,6 +659,25 @@ def _extract_declared_signals_from_source(
             if pin_number not in pin_to_signal:
                 pin_to_signal[pin_number] = signal_name
 
+        return pin_to_signal
+
+    for candidate_name in _candidate_component_names(locator_component_name):
+        pin_to_signal = _extract_for_component(candidate_name)
+        if pin_to_signal:
+            return pin_to_signal
+
+    # Fallback: when locator component names are unreliable, use the single
+    # component declaration in the file (common for generated part files).
+    declared_components: list[str] = []
+    for line in lines:
+        m = comp_decl_re.match(line)
+        if not m:
+            continue
+        name = m.group("name").strip().rstrip(".:")
+        if name and name not in declared_components:
+            declared_components.append(name)
+    if len(declared_components) == 1:
+        pin_to_signal = _extract_for_component(declared_components[0])
         if pin_to_signal:
             return pin_to_signal
 
@@ -1839,6 +1892,14 @@ def export_schematic_json(
                 pin_number_to_functions[pin_number] = _filter_lead_functions(
                     pin_number_to_functions[pin_number]
                 )
+            # Preserve the post-noise-filter trace set for module-interface
+            # extraction; signal-name remapping below is intentionally stricter
+            # and can hide bus/interface paths that should still surface as
+            # module ports (SPI/I2C/UART/etc.).
+            pin_number_to_functions_for_interfaces = {
+                pin_number: list(functions)
+                for pin_number, functions in pin_number_to_functions.items()
+            }
 
             # ── Use .ato signal names when available ──────────────
             # The component's .ato definition has authoritative signal names
@@ -1924,7 +1985,7 @@ def export_schematic_json(
             }
 
             # Extract interface mapping for this component's pins
-            pin_to_iface = _extract_pin_interfaces(pin_number_to_functions)
+            pin_to_iface = _extract_pin_interfaces(pin_number_to_functions_for_interfaces)
 
             comp_infos.append(
                 _CompInfo(

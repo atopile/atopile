@@ -47,6 +47,8 @@ interface SchematicState {
   positions: Record<string, ComponentPosition>;
   /** Per-port signal order overrides keyed by "pathKey:portId". */
   portSignalOrders: Record<string, string[]>;
+  /** Manually adjusted routes keyed by "pathKey:routeId". */
+  routeOverrides: Record<string, [number, number, number][]>;
   isLoading: boolean;
   loadError: string | null;
 
@@ -115,6 +117,9 @@ interface SchematicState {
   // Port edit mode
   setPortEditMode: (enabled: boolean, portId?: string | null) => void;
   reorderPortSignals: (portId: string, orderedSignals: string[]) => void;
+  reorderModulePins: (moduleId: string, orderedPinIds: string[]) => void;
+  setRouteOverride: (scopedRouteId: string, route: [number, number, number][]) => void;
+  clearRouteOverride: (scopedRouteId: string) => void;
 
   // Undo / Redo
   undo: () => void;
@@ -147,11 +152,48 @@ function scopedId(path: string[], itemId: string): string {
   return `${pathKey(path)}:${itemId}`;
 }
 
+function scopedModulePinOrderId(path: string[], moduleId: string): string {
+  return `${pathKey(path)}:__modulePins__:${moduleId}`;
+}
+
 function clonePortSignalOrders(
   orders: Record<string, string[]>,
 ): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   for (const [key, arr] of Object.entries(orders)) out[key] = [...arr];
+  return out;
+}
+
+function cloneRouteOverrides(
+  overrides: Record<string, [number, number, number][]>,
+): Record<string, [number, number, number][]> {
+  const out: Record<string, [number, number, number][]> = {};
+  for (const [key, route] of Object.entries(overrides)) {
+    out[key] = route.map((pt) => [pt[0], pt[1], pt[2] ?? 0]);
+  }
+  return out;
+}
+
+function normalizeRouteOverridesMap(
+  overrides: Record<string, [number, number, number][]> | null | undefined,
+): Record<string, [number, number, number][]> {
+  if (!overrides) return {};
+  const out: Record<string, [number, number, number][]> = {};
+  for (const [key, route] of Object.entries(overrides)) {
+    if (!Array.isArray(route) || route.length < 2) continue;
+    const normalized: [number, number, number][] = [];
+    for (const pt of route) {
+      if (!Array.isArray(pt) || pt.length < 2) continue;
+      const x = Number(pt[0]);
+      const y = Number(pt[1]);
+      const z = Number(pt[2] ?? 0);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      normalized.push([x, y, z]);
+    }
+    if (normalized.length >= 2) {
+      out[key] = normalized;
+    }
+  }
   return out;
 }
 
@@ -194,6 +236,11 @@ function normalizeSignalOrder(
     if (!baseSet.has(sig)) return null;
   }
   return orderedSignals;
+}
+
+function arraysEqual(a: string[] | undefined, b: string[]): boolean {
+  if (!a || a.length !== b.length) return false;
+  return a.every((v, i) => v === b[i]);
 }
 
 function getCurrentPortsForState(state: {
@@ -315,6 +362,7 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 function debouncedSave(
   positions: Record<string, ComponentPosition>,
   portSignalOrders: Record<string, string[]> = {},
+  routeOverrides: Record<string, [number, number, number][]> = {},
 ) {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
@@ -325,6 +373,7 @@ function debouncedSave(
         atoSchPath: _atoSchPath,
         positions,
         portSignalOrders,
+        routeOverrides,
       });
     } catch {
       /* ignore */
@@ -402,6 +451,7 @@ const MAX_UNDO = 100;
 interface HistorySnapshot {
   positions: Record<string, ComponentPosition>;
   portSignalOrders: Record<string, string[]>;
+  routeOverrides: Record<string, [number, number, number][]>;
 }
 
 const undoStack: HistorySnapshot[] = [];
@@ -410,10 +460,12 @@ const redoStack: HistorySnapshot[] = [];
 function pushUndo(
   positions: Record<string, ComponentPosition>,
   portSignalOrders: Record<string, string[]>,
+  routeOverrides: Record<string, [number, number, number][]>,
 ) {
   undoStack.push({
     positions: { ...positions },
     portSignalOrders: clonePortSignalOrders(portSignalOrders),
+    routeOverrides: cloneRouteOverrides(routeOverrides),
   });
   if (undoStack.length > MAX_UNDO) undoStack.shift();
   // Any new action clears the redo stack
@@ -433,6 +485,7 @@ export const useSchematicStore = create<SchematicState>()(
     schematic: null,
     positions: {},
     portSignalOrders: {},
+    routeOverrides: {},
     isLoading: false,
     loadError: null,
     currentPath: [],
@@ -457,6 +510,7 @@ export const useSchematicStore = create<SchematicState>()(
         const rootSheet = getRootSheet(schematicData);
         const embeddedPositions = data.positions ?? null;
         const savedSignalOrders = data.portSignalOrders ?? {};
+        const routeOverrides = normalizeRouteOverridesMap(data.routeOverrides);
         const { positions: rootPositions, suggestedPortSignalOrders } =
           layoutSheet(rootSheet, [], embeddedPositions);
         const mergedSignalOrders = mergeAutoPortSignalOrders(
@@ -471,6 +525,7 @@ export const useSchematicStore = create<SchematicState>()(
           schematic: schematicData,
           positions,
           portSignalOrders: mergedSignalOrders,
+          routeOverrides,
           currentPath: [],
           isLoading: false,
           selectedComponentIds: [],
@@ -493,6 +548,7 @@ export const useSchematicStore = create<SchematicState>()(
       const rootSheet = getRootSheet(data);
       const embeddedPositions = data.positions ?? null;
       const savedSignalOrders = data.portSignalOrders ?? {};
+      const routeOverrides = normalizeRouteOverridesMap(data.routeOverrides);
       const { positions: rootPositions, suggestedPortSignalOrders } =
         layoutSheet(rootSheet, [], embeddedPositions);
       const mergedSignalOrders = mergeAutoPortSignalOrders(
@@ -507,6 +563,7 @@ export const useSchematicStore = create<SchematicState>()(
         schematic: data,
         positions,
         portSignalOrders: mergedSignalOrders,
+        routeOverrides,
         currentPath: [],
         isLoading: false,
         loadError: null,
@@ -523,10 +580,16 @@ export const useSchematicStore = create<SchematicState>()(
     updateSchematicData: (data: SchematicData) => {
       // Preserve navigation path and existing positions.
       // Only re-layout sheets that don't already have positions.
-      const { currentPath, positions: existingPositions, portSignalOrders } = get();
+      const {
+        currentPath,
+        positions: existingPositions,
+        portSignalOrders,
+        routeOverrides: existingRouteOverrides,
+      } = get();
       const rootSheet = getRootSheet(data);
       const embeddedPositions = data.positions ?? null;
       const incomingSignalOrders = data.portSignalOrders ?? portSignalOrders;
+      const incomingRouteOverrides = normalizeRouteOverridesMap(data.routeOverrides);
 
       // Re-layout the root sheet, merging with existing positions
       const { positions: rootPositions, suggestedPortSignalOrders } =
@@ -551,6 +614,9 @@ export const useSchematicStore = create<SchematicState>()(
         schematic: data,
         positions: merged,
         portSignalOrders: mergedSignalOrders,
+        routeOverrides: data.routeOverrides !== undefined
+          ? incomingRouteOverrides
+          : existingRouteOverrides,
         currentPath: validPath,
         isLoading: false,
         loadError: null,
@@ -574,7 +640,7 @@ export const useSchematicStore = create<SchematicState>()(
       };
       set((s) => {
         const newPositions = { ...s.positions, [key]: snapped };
-        debouncedSave(newPositions, s.portSignalOrders);
+        debouncedSave(newPositions, s.portSignalOrders, s.routeOverrides);
         return { positions: newPositions };
       });
     },
@@ -584,7 +650,7 @@ export const useSchematicStore = create<SchematicState>()(
     endDrag: () => {
       const commitPos = get().commitPosition;
       if (liveDrag.componentId) {
-        pushUndo(get().positions, get().portSignalOrders);
+        pushUndo(get().positions, get().portSignalOrders, get().routeOverrides);
         const id = liveDrag.componentId;
         // Commit primary drag item
         commitPos(id, { x: liveDrag.x, y: liveDrag.y });
@@ -612,7 +678,7 @@ export const useSchematicStore = create<SchematicState>()(
             );
             if (reordered) {
               set({ positions: reordered });
-              debouncedSave(reordered, st.portSignalOrders);
+              debouncedSave(reordered, st.portSignalOrders, st.routeOverrides);
             }
           }
         }
@@ -686,7 +752,7 @@ export const useSchematicStore = create<SchematicState>()(
     resetLayout: () => {
       const { schematic, currentPath } = get();
       if (!schematic) return;
-      pushUndo(get().positions, get().portSignalOrders);
+      pushUndo(get().positions, get().portSignalOrders, get().routeOverrides);
       const rootSheet = getRootSheet(schematic);
       const sheet = resolveSheet(rootSheet, currentPath);
       if (!sheet) return;
@@ -720,7 +786,7 @@ export const useSchematicStore = create<SchematicState>()(
           s.portSignalOrders,
           suggestedPortSignalOrders,
         );
-        debouncedSave(merged, mergedOrders);
+        debouncedSave(merged, mergedOrders, s.routeOverrides);
         return {
           positions: merged,
           portSignalOrders: mergedOrders,
@@ -733,7 +799,7 @@ export const useSchematicStore = create<SchematicState>()(
     rotateSelected: () => {
       const { selectedComponentIds, currentPath, positions } = get();
       if (selectedComponentIds.length === 0) return;
-      pushUndo(positions, get().portSignalOrders);
+      pushUndo(positions, get().portSignalOrders, get().routeOverrides);
       set((s) => {
         const newPositions = { ...s.positions };
         for (const id of selectedComponentIds) {
@@ -741,7 +807,7 @@ export const useSchematicStore = create<SchematicState>()(
           const pos = newPositions[key] || { x: 0, y: 0 };
           newPositions[key] = { ...pos, rotation: ((pos.rotation || 0) + 90) % 360 };
         }
-        debouncedSave(newPositions, s.portSignalOrders);
+        debouncedSave(newPositions, s.portSignalOrders, s.routeOverrides);
         return { positions: newPositions };
       });
     },
@@ -749,7 +815,7 @@ export const useSchematicStore = create<SchematicState>()(
     mirrorSelectedX: () => {
       const { selectedComponentIds, currentPath, positions } = get();
       if (selectedComponentIds.length === 0) return;
-      pushUndo(positions, get().portSignalOrders);
+      pushUndo(positions, get().portSignalOrders, get().routeOverrides);
       set((s) => {
         const newPositions = { ...s.positions };
         for (const id of selectedComponentIds) {
@@ -757,7 +823,7 @@ export const useSchematicStore = create<SchematicState>()(
           const pos = newPositions[key] || { x: 0, y: 0 };
           newPositions[key] = { ...pos, mirrorX: !pos.mirrorX };
         }
-        debouncedSave(newPositions, s.portSignalOrders);
+        debouncedSave(newPositions, s.portSignalOrders, s.routeOverrides);
         return { positions: newPositions };
       });
     },
@@ -765,7 +831,7 @@ export const useSchematicStore = create<SchematicState>()(
     mirrorSelectedY: () => {
       const { selectedComponentIds, currentPath, positions } = get();
       if (selectedComponentIds.length === 0) return;
-      pushUndo(positions, get().portSignalOrders);
+      pushUndo(positions, get().portSignalOrders, get().routeOverrides);
       set((s) => {
         const newPositions = { ...s.positions };
         for (const id of selectedComponentIds) {
@@ -773,7 +839,7 @@ export const useSchematicStore = create<SchematicState>()(
           const pos = newPositions[key] || { x: 0, y: 0 };
           newPositions[key] = { ...pos, mirrorY: !pos.mirrorY };
         }
-        debouncedSave(newPositions, s.portSignalOrders);
+        debouncedSave(newPositions, s.portSignalOrders, s.routeOverrides);
         return { positions: newPositions };
       });
     },
@@ -781,7 +847,7 @@ export const useSchematicStore = create<SchematicState>()(
     nudgeSelected: (dx, dy) => {
       const { selectedComponentIds, currentPath, positions } = get();
       if (selectedComponentIds.length === 0) return;
-      pushUndo(positions, get().portSignalOrders);
+      pushUndo(positions, get().portSignalOrders, get().routeOverrides);
       set((s) => {
         const newPositions = { ...s.positions };
         for (const id of selectedComponentIds) {
@@ -793,7 +859,7 @@ export const useSchematicStore = create<SchematicState>()(
             y: snapToGrid(pos.y + dy),
           };
         }
-        debouncedSave(newPositions, s.portSignalOrders);
+        debouncedSave(newPositions, s.portSignalOrders, s.routeOverrides);
         return { positions: newPositions };
       });
     },
@@ -801,7 +867,7 @@ export const useSchematicStore = create<SchematicState>()(
     alignSelected: (mode) => {
       const { selectedComponentIds, currentPath, positions } = get();
       if (selectedComponentIds.length < 2) return;
-      pushUndo(positions, get().portSignalOrders);
+      pushUndo(positions, get().portSignalOrders, get().routeOverrides);
       set((s) => {
         const newPositions = { ...s.positions };
         const items = selectedComponentIds.map((id) => {
@@ -886,7 +952,7 @@ export const useSchematicStore = create<SchematicState>()(
           }
         }
 
-        debouncedSave(newPositions, s.portSignalOrders);
+        debouncedSave(newPositions, s.portSignalOrders, s.routeOverrides);
         return { positions: newPositions };
       });
     },
@@ -899,12 +965,14 @@ export const useSchematicStore = create<SchematicState>()(
       redoStack.push({
         positions: { ...get().positions },
         portSignalOrders: clonePortSignalOrders(get().portSignalOrders),
+        routeOverrides: cloneRouteOverrides(get().routeOverrides),
       });
       set({
         positions: prev.positions,
         portSignalOrders: clonePortSignalOrders(prev.portSignalOrders),
+        routeOverrides: cloneRouteOverrides(prev.routeOverrides),
       });
-      debouncedSave(prev.positions, prev.portSignalOrders);
+      debouncedSave(prev.positions, prev.portSignalOrders, prev.routeOverrides);
     },
 
     redo: () => {
@@ -913,12 +981,14 @@ export const useSchematicStore = create<SchematicState>()(
       undoStack.push({
         positions: { ...get().positions },
         portSignalOrders: clonePortSignalOrders(get().portSignalOrders),
+        routeOverrides: cloneRouteOverrides(get().routeOverrides),
       });
       set({
         positions: next.positions,
         portSignalOrders: clonePortSignalOrders(next.portSignalOrders),
+        routeOverrides: cloneRouteOverrides(next.routeOverrides),
       });
-      debouncedSave(next.positions, next.portSignalOrders);
+      debouncedSave(next.positions, next.portSignalOrders, next.routeOverrides);
     },
 
     // ── Context menu ────────────────────────────────────────────
@@ -948,6 +1018,32 @@ export const useSchematicStore = create<SchematicState>()(
         });
         return;
       }
+      if (!st.schematic) {
+        set({
+          portEditMode: false,
+          portEditTargetId: null,
+          portEditSnapshot: null,
+          contextMenu: null,
+        });
+        return;
+      }
+
+      const rootSheet = getRootSheet(st.schematic);
+      const currentSheet = resolveSheet(rootSheet, st.currentPath);
+      const targetModule = currentSheet?.modules.find((m) => m.id === targetId) ?? null;
+      if (targetModule) {
+        set({
+          portEditMode: true,
+          portEditTargetId: targetId,
+          selectedComponentIds: [targetId],
+          selectedComponentId: targetId,
+          selectedNetId: null,
+          portEditSnapshot: null,
+          contextMenu: null,
+        });
+        return;
+      }
+
       const ports = getCurrentPortsForState(st);
       if (ports.length === 0 || !ports.some((p) => p.id === targetId)) {
         set({
@@ -999,7 +1095,7 @@ export const useSchematicStore = create<SchematicState>()(
       const isDefaultOrder = normalized.every((sig, i) => sig === baseSignals[i]);
       if (!currentOverride && isDefaultOrder) return;
 
-      pushUndo(st.positions, st.portSignalOrders);
+      pushUndo(st.positions, st.portSignalOrders, st.routeOverrides);
       set((s) => {
         const next = clonePortSignalOrders(s.portSignalOrders);
         if (isDefaultOrder) {
@@ -1007,8 +1103,95 @@ export const useSchematicStore = create<SchematicState>()(
         } else {
           next[key] = [...normalized];
         }
-        debouncedSave(s.positions, next);
+        debouncedSave(s.positions, next, s.routeOverrides);
         return { portSignalOrders: next };
+      });
+    },
+
+    reorderModulePins: (moduleId, orderedPinIds) => {
+      const st = get();
+      if (!st.schematic) return;
+
+      const root = getRootSheet(st.schematic);
+      const sheet = resolveSheet(root, st.currentPath);
+      if (!sheet) return;
+      const mod = sheet.modules.find((m) => m.id === moduleId);
+      if (!mod || mod.interfacePins.length < 2) return;
+
+      const baseIds = mod.interfacePins.map((p) => p.id);
+      if (orderedPinIds.length !== baseIds.length) return;
+
+      const baseSet = new Set(baseIds);
+      const orderedSet = new Set(orderedPinIds);
+      if (baseSet.size !== baseIds.length || orderedSet.size !== orderedPinIds.length) return;
+      for (const id of orderedPinIds) {
+        if (!baseSet.has(id)) return;
+      }
+
+      // Keep ordering constrained per-side to avoid invalid pin-side transfers.
+      const sideById = new Map(mod.interfacePins.map((p) => [p.id, p.side]));
+      for (const side of ['left', 'right', 'top', 'bottom']) {
+        const baseSide = baseIds.filter((id) => sideById.get(id) === side);
+        const nextSide = orderedPinIds.filter((id) => sideById.get(id) === side);
+        if (baseSide.length !== nextSide.length) return;
+        const sideSet = new Set(baseSide);
+        for (const id of nextSide) {
+          if (!sideSet.has(id)) return;
+        }
+      }
+
+      const key = scopedModulePinOrderId(st.currentPath, moduleId);
+      const current = st.portSignalOrders[key];
+      if (arraysEqual(current, orderedPinIds)) return;
+
+      const isDefaultOrder = orderedPinIds.every((id, i) => id === baseIds[i]);
+      if (!current && isDefaultOrder) return;
+
+      pushUndo(st.positions, st.portSignalOrders, st.routeOverrides);
+      set((s) => {
+        const next = clonePortSignalOrders(s.portSignalOrders);
+        if (isDefaultOrder) {
+          delete next[key];
+        } else {
+          next[key] = [...orderedPinIds];
+        }
+        debouncedSave(s.positions, next, s.routeOverrides);
+        return { portSignalOrders: next };
+      });
+    },
+
+    setRouteOverride: (scopedRouteId, route) => {
+      if (!route || route.length < 2) return;
+      const st = get();
+      const prev = st.routeOverrides[scopedRouteId];
+      const nextRoute = route.map((pt) => [pt[0], pt[1], pt[2] ?? 0] as [number, number, number]);
+      const unchanged = !!prev &&
+        prev.length === nextRoute.length &&
+        prev.every((pt, i) =>
+          Math.abs(pt[0] - nextRoute[i][0]) < 1e-6 &&
+          Math.abs(pt[1] - nextRoute[i][1]) < 1e-6 &&
+          Math.abs(pt[2] - nextRoute[i][2]) < 1e-6,
+        );
+      if (unchanged) return;
+
+      pushUndo(st.positions, st.portSignalOrders, st.routeOverrides);
+      set((s) => {
+        const next = cloneRouteOverrides(s.routeOverrides);
+        next[scopedRouteId] = nextRoute;
+        debouncedSave(s.positions, s.portSignalOrders, next);
+        return { routeOverrides: next };
+      });
+    },
+
+    clearRouteOverride: (scopedRouteId) => {
+      const st = get();
+      if (!st.routeOverrides[scopedRouteId]) return;
+      pushUndo(st.positions, st.portSignalOrders, st.routeOverrides);
+      set((s) => {
+        const next = cloneRouteOverrides(s.routeOverrides);
+        delete next[scopedRouteId];
+        debouncedSave(s.positions, s.portSignalOrders, next);
+        return { routeOverrides: next };
       });
     },
 

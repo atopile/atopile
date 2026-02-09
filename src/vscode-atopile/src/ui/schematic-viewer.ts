@@ -196,6 +196,7 @@ class SchematicWebview extends BaseWebview {
                     const atoSchPath = message.atoSchPath as string | undefined;
                     const positions = message.positions;
                     const portSignalOrders = message.portSignalOrders;
+                    const routeOverrides = message.routeOverrides;
                     if (atoSchPath && positions) {
                         try {
                             let data: Record<string, unknown> = {};
@@ -205,6 +206,9 @@ class SchematicWebview extends BaseWebview {
                             data.positions = positions;
                             if (portSignalOrders && typeof portSignalOrders === 'object') {
                                 data.portSignalOrders = portSignalOrders;
+                            }
+                            if (routeOverrides && typeof routeOverrides === 'object') {
+                                data.routeOverrides = routeOverrides;
                             }
                             const dir = path.dirname(atoSchPath);
                             if (!fs.existsSync(dir)) {

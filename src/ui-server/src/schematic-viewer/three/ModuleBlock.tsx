@@ -1,7 +1,6 @@
 import { useMemo, memo } from 'react';
 import { Text, RoundedBox, Line } from '@react-three/drei';
 import type { SchematicModule, SchematicInterfacePin } from '../types/schematic';
-import { getModuleGridAlignmentOffset } from '../types/schematic';
 import type { ThemeColors } from '../lib/theme';
 import { getPinColor, isThemeLight } from '../lib/theme';
 import {
@@ -15,6 +14,12 @@ import {
   getInterfaceParallelOffset,
   getInterfaceStrokeStyle,
 } from './interfaceVisuals';
+import {
+  getModuleBodyAnchor,
+  getModuleGridOffsetFromPins,
+  getModuleRenderSize,
+  getOrderedModuleInterfacePins,
+} from '../lib/moduleInterfaces';
 
 const NO_RAYCAST = () => {};
 const MODULE_INSET = 0.72;
@@ -49,6 +54,7 @@ interface Props {
   isDragging: boolean;
   selectedNetId: string | null;
   netsForModule: Map<string, string>;
+  pinOrderOverride?: string[] | null;
   rotation?: number;
   mirrorX?: boolean;
   mirrorY?: boolean;
@@ -62,12 +68,19 @@ export const ModuleBlock = memo(function ModuleBlock({
   isDragging,
   selectedNetId,
   netsForModule,
+  pinOrderOverride = null,
   rotation = 0,
   mirrorX = false,
   mirrorY = false,
 }: Props) {
-  const W = module.bodyWidth;
-  const H = module.bodyHeight;
+  const interfacePins = useMemo(
+    () => getOrderedModuleInterfacePins(module, pinOrderOverride ?? undefined),
+    [module, pinOrderOverride],
+  );
+  const { width: W, height: H } = useMemo(
+    () => getModuleRenderSize({ interfacePins }),
+    [interfacePins],
+  );
   const lightTheme = isThemeLight(theme);
   const accent = useMemo(
     () => moduleAccentColor(module.typeName, lightTheme),
@@ -82,8 +95,8 @@ export const ModuleBlock = memo(function ModuleBlock({
   const showType = module.typeName.trim() !== module.name.trim();
   const zOffset = isDragging ? 0.5 : 0;
   const gridOffset = useMemo(
-    () => getModuleGridAlignmentOffset(module),
-    [module],
+    () => getModuleGridOffsetFromPins(interfacePins),
+    [interfacePins],
   );
 
   const textTf = useMemo(
@@ -237,10 +250,12 @@ export const ModuleBlock = memo(function ModuleBlock({
         </Text>
       </group>
 
-      {module.interfacePins.map((pin) => (
+      {interfacePins.map((pin) => (
         <InterfacePinElement
           key={pin.id}
           pin={pin}
+          moduleWidth={W}
+          moduleHeight={H}
           theme={theme}
           netId={netsForModule.get(pin.id) ?? null}
           selectedNetId={selectedNetId}
@@ -260,6 +275,8 @@ export const ModuleBlock = memo(function ModuleBlock({
 
 const InterfacePinElement = memo(function InterfacePinElement({
   pin,
+  moduleWidth,
+  moduleHeight,
   theme,
   netId,
   selectedNetId,
@@ -271,6 +288,8 @@ const InterfacePinElement = memo(function InterfacePinElement({
   mirrorY = false,
 }: {
   pin: SchematicInterfacePin;
+  moduleWidth: number;
+  moduleHeight: number;
   theme: ThemeColors;
   netId: string | null;
   selectedNetId: string | null;
@@ -287,8 +306,9 @@ const InterfacePinElement = memo(function InterfacePinElement({
   const dotRadius = getInterfaceDotRadius(pin.signals);
   const pinX = pin.x;
   const pinY = pin.y;
-  const bodyX = pin.bodyX;
-  const bodyY = pin.bodyY;
+  const bodyAnchor = getModuleBodyAnchor(pin, moduleWidth, moduleHeight);
+  const bodyX = bodyAnchor.x;
+  const bodyY = bodyAnchor.y;
 
   const offset = getInterfaceParallelOffset(pinX, pinY, bodyX, bodyY);
   const perpX = offset.x;

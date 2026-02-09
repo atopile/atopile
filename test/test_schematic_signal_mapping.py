@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from faebryk.exporters.schematic import schematic as sch
@@ -19,12 +20,20 @@ def test_extract_declared_signals_from_source_locator_name_variants(
                 "    signal A2 ~ pin 21",
                 "    signal GND ~ pin 12",
                 "    signal VCC ~ pin 24",
+                "    DVDD ~ pin 23",
             ]
         ),
         encoding="utf-8",
     )
 
-    expected = {"1": "A0", "2": "A1", "21": "A2", "12": "GND", "24": "VCC"}
+    expected = {
+        "1": "A0",
+        "2": "A1",
+        "21": "A2",
+        "12": "GND",
+        "23": "DVDD",
+        "24": "VCC",
+    }
 
     by_exact = sch._extract_declared_signals_from_source(
         src, "Texas_Instruments_TCA9548APWR_package"
@@ -35,6 +44,11 @@ def test_extract_declared_signals_from_source_locator_name_variants(
         src, "i2c_mux.package|Texas_Instruments_TCA9548APWR_package"
     )
     assert by_locator_tail == expected
+
+    by_locator_tail_with_trailing_dot = sch._extract_declared_signals_from_source(
+        src, "i2c_mux.package|Texas_Instruments_TCA9548APWR_package."
+    )
+    assert by_locator_tail_with_trailing_dot == expected
 
 
 def test_extract_locator_source_and_component_prefers_leaf_segment(
@@ -50,6 +64,73 @@ def test_extract_locator_source_and_component_prefers_leaf_segment(
 
     assert source_path == part
     assert component_name == "Leaf"
+
+
+def test_extract_locator_source_and_component_strips_trailing_punctuation(
+    tmp_path: Path,
+) -> None:
+    app = tmp_path / "app.ato"
+    part = tmp_path / "part.ato"
+    app.write_text("component App:\n    pass\n", encoding="utf-8")
+    part.write_text("component Leaf:\n    pass\n", encoding="utf-8")
+
+    locator = f"{app}::App.mod|{part}::Leaf."
+    source_path, component_name = sch._extract_locator_source_and_component(locator)
+
+    assert source_path == part
+    assert component_name == "Leaf"
+
+
+def test_extract_locator_source_and_component_resolves_leaf_relative_to_parent_segment(
+    tmp_path: Path,
+) -> None:
+    app = tmp_path / "pinout_test.ato"
+    module_dir = tmp_path / "raspberry-rp2040"
+    module_dir.mkdir(parents=True, exist_ok=True)
+    module_file = module_dir / "raspberry-rp2040.ato"
+    part_dir = module_dir / "parts" / "Raspberry_Pi_RP2040"
+    part_dir.mkdir(parents=True, exist_ok=True)
+    part_file = part_dir / "Raspberry_Pi_RP2040.ato"
+
+    app.write_text("component App:\n    pass\n", encoding="utf-8")
+    module_file.write_text("component Wrapper:\n    pass\n", encoding="utf-8")
+    part_file.write_text("component Raspberry_Pi_RP2040_package:\n    pass\n", encoding="utf-8")
+
+    locator = (
+        f"{app.name}::PinoutTest.rp2040|"
+        f"{module_file.relative_to(tmp_path)}::Raspberry_Pi_RP2040.package|"
+        "parts/Raspberry_Pi_RP2040/Raspberry_Pi_RP2040.ato::Raspberry_Pi_RP2040_package"
+    )
+    cwd_before = Path.cwd()
+    try:
+        # Mirror real build behavior: resolver starts from project root cwd.
+        os.chdir(tmp_path)
+        source_path, component_name = sch._extract_locator_source_and_component(locator)
+    finally:
+        os.chdir(cwd_before)
+
+    assert source_path == part_file
+    assert component_name == "Raspberry_Pi_RP2040_package"
+
+
+def test_extract_declared_signals_from_source_single_component_fallback(
+    tmp_path: Path,
+) -> None:
+    src = tmp_path / "single_part.ato"
+    src.write_text(
+        "\n".join(
+            [
+                "component Raspberry_Pi_RP2040_package:",
+                "    signal GPIO0 ~ pin 2",
+                "    IOVDD ~ pin 1",
+                "    signal GND ~ pin 57",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    extracted = sch._extract_declared_signals_from_source(src, "")
+    assert extracted == {"1": "IOVDD", "2": "GPIO0", "57": "GND"}
 
 
 def test_filter_pin_functions_by_signal_map_prefers_matching_signals() -> None:

@@ -37,6 +37,7 @@ import { DraggablePowerPort } from './DraggablePowerPort';
 import { NetLines } from './NetLines';
 import { GridBackground } from './GridBackground';
 import { ContextMenu } from './ContextMenu';
+import { getModuleRenderSize } from '../lib/moduleInterfaces';
 
 /** Stable singleton for items with no net connections. */
 const EMPTY_NET_MAP = new Map<string, string>();
@@ -83,8 +84,8 @@ function SceneContent({
       })),
       ...sheet.modules.map((m) => ({
         id: m.id,
-        w: m.bodyWidth,
-        h: m.bodyHeight,
+        w: getModuleRenderSize(m).width,
+        h: getModuleRenderSize(m).height,
       })),
       ...ports.map((p) => ({
         id: p.id,
@@ -365,6 +366,7 @@ export function SchematicScene() {
   const portEditMode = useSchematicStore((s) => s.portEditMode);
   const portEditTargetId = useSchematicStore((s) => s.portEditTargetId);
   const setPortEditMode = useSchematicStore((s) => s.setPortEditMode);
+  const currentSheet = useCurrentSheet();
   const ports = useCurrentPorts();
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -377,10 +379,19 @@ export function SchematicScene() {
   const projectCornerMaxRef = useRef(new THREE.Vector3());
   const [selRect, setSelRect] = useState<SelectionRect | null>(null);
   const selDragging = useRef(false);
-  const portEditTargetName = useMemo(
-    () => ports.find((p) => p.id === portEditTargetId)?.name ?? portEditTargetId ?? 'port',
+  const portEditTargetPortName = useMemo(
+    () => ports.find((p) => p.id === portEditTargetId)?.name ?? null,
     [ports, portEditTargetId],
   );
+  const portEditTargetModuleName = useMemo(
+    () => currentSheet?.modules.find((m) => m.id === portEditTargetId)?.name ?? null,
+    [currentSheet, portEditTargetId],
+  );
+  const isEditingModulePorts = !!portEditTargetModuleName;
+  const portEditTargetName = portEditTargetPortName
+    ?? portEditTargetModuleName
+    ?? portEditTargetId
+    ?? 'port';
 
   const handleSceneReady = useCallback(
     (scene: THREE.Scene, camera: THREE.Camera, canvas: HTMLCanvasElement) => {
@@ -500,7 +511,8 @@ export function SchematicScene() {
             itemDims.set(comp.id, { w: comp.bodyWidth, h: comp.bodyHeight });
           }
           for (const mod of sheet.modules) {
-            itemDims.set(mod.id, { w: mod.bodyWidth, h: mod.bodyHeight });
+            const size = getModuleRenderSize(mod);
+            itemDims.set(mod.id, { w: size.width, h: size.height });
           }
           const pports = derivePowerPorts(sheet);
           for (const pp of pports) {
@@ -694,7 +706,8 @@ export function SchematicScene() {
             }}
           >
             <span>
-              Editing port <strong>{portEditTargetName}</strong>
+              {isEditingModulePorts ? 'Editing module ports' : 'Editing port'}{' '}
+              <strong>{portEditTargetName}</strong>
             </span>
             <button
               type="button"
@@ -725,7 +738,9 @@ export function SchematicScene() {
               pointerEvents: 'none',
             }}
           >
-            Drag pin handles to reorder breakout signals.
+            {isEditingModulePorts
+              ? 'Drag pin handles to reorder module ports.'
+              : 'Drag pin handles to reorder breakout signals.'}
           </div>
         </>
       )}

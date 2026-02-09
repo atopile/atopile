@@ -173,10 +173,10 @@ export function ContextMenu({ theme }: Props) {
             }}
           >
             {portEditMode && (!contextMenu.portId || contextMenu.portId === portEditTargetId)
-              ? 'Done Editing Port'
+              ? 'Done Editing Ports'
               : portEditMode
-                ? 'Edit This Port'
-                : 'Edit Port'}
+                ? 'Edit These Ports'
+                : 'Edit Ports'}
           </button>
         </>
       )}
