@@ -1,6 +1,7 @@
 import logging
 import math
 import os
+import sys
 from dataclasses import dataclass
 from enum import Enum, auto
 from itertools import permutations
@@ -3273,7 +3274,7 @@ def test_compact_repr():
 
 @pytest.mark.slow
 @pytest.mark.skipif(
-    os.uname().sysname == "Darwin", reason="Memory leak test not supported on macOS"
+    sys.platform == "darwin", reason="Memory leak test not supported on macOS"
 )
 def test_compact_repr_memory_leak():
     import ctypes
