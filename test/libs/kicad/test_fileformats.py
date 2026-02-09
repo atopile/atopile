@@ -514,6 +514,93 @@ def test_mutable_list():
     assert len(fp_lib_table.fp_lib_table.libs) == 0
 
 
+def test_zone_connect_pads_mode_roundtrip():
+    """Test that zone connect_pads mode (e.g. thru_hole_only) survives round-trip."""
+    sexp = """
+    (kicad_pcb
+        (generator "test_atopile")
+        (generator_version "latest")
+        (zone
+            (net 1)
+            (net_name "GND")
+            (layer "F.Cu")
+            (uuid "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+            (hatch edge 0.5)
+            (connect_pads thru_hole_only
+                (clearance 0.2)
+            )
+            (min_thickness 0.2)
+            (fill yes
+                (thermal_gap 0.2)
+                (thermal_bridge_width 0.2)
+            )
+            (polygon
+                (pts
+                    (xy 0 0) (xy 10 0) (xy 10 10) (xy 0 10)
+                )
+            )
+        )
+    )
+    """
+    from faebryk.libs.kicad.fileformats import kicad
+
+    pcb = kicad.loads(kicad.pcb.PcbFile, sexp)
+    zone = pcb.kicad_pcb.zones[0]
+    assert zone.connect_pads is not None
+    assert zone.connect_pads.mode == kicad.pcb.E_zone_connect_pads_mode.THRU_HOLE_ONLY
+
+    # Round-trip: dump and reload
+    dumped = kicad.dumps(pcb)
+    assert "thru_hole_only" in dumped
+
+    pcb2 = kicad.loads(kicad.pcb.PcbFile, dumped)
+    zone2 = pcb2.kicad_pcb.zones[0]
+    assert zone2.connect_pads is not None
+    assert zone2.connect_pads.mode == kicad.pcb.E_zone_connect_pads_mode.THRU_HOLE_ONLY
+
+
+def test_zone_connect_pads_default_mode_roundtrip():
+    """Test that zone with default connect_pads (thermal reliefs) round-trips."""
+    sexp = """
+    (kicad_pcb
+        (generator "test_atopile")
+        (generator_version "latest")
+        (zone
+            (net 1)
+            (net_name "GND")
+            (layer "F.Cu")
+            (uuid "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+            (hatch edge 0.5)
+            (connect_pads
+                (clearance 0.2)
+            )
+            (min_thickness 0.2)
+            (fill yes
+                (thermal_gap 0.2)
+                (thermal_bridge_width 0.2)
+            )
+            (polygon
+                (pts
+                    (xy 0 0) (xy 10 0) (xy 10 10) (xy 0 10)
+                )
+            )
+        )
+    )
+    """
+    from faebryk.libs.kicad.fileformats import kicad
+
+    pcb = kicad.loads(kicad.pcb.PcbFile, sexp)
+    zone = pcb.kicad_pcb.zones[0]
+    assert zone.connect_pads is not None
+    # Default mode (thermal reliefs) → no mode token → parsed as None
+    assert zone.connect_pads.mode is None
+
+    # Round-trip should NOT insert a mode token
+    dumped = kicad.dumps(pcb)
+    assert "thru_hole_only" not in dumped
+    assert "thermal_reliefs" not in dumped
+
+
 def test_malformed_sexp_empty_list():
     """Test that parsing empty nested lists doesn't crash (segfault fix)."""
     sexp = """

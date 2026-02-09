@@ -738,6 +738,10 @@ pub const Hatch = struct {
 pub const ConnectPads = struct {
     mode: ?E_zone_connect_pads_mode = null,
     clearance: ?f64 = null,
+
+    pub const fields_meta = .{
+        .mode = structure.SexpField{ .positional = true },
+    };
 };
 
 pub const E_zone_fill_enable = enum {
