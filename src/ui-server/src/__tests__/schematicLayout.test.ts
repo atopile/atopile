@@ -15,7 +15,7 @@ import {
   PIN_GRID_MM,
   PORT_H,
   PORT_STUB_LEN,
-  PORT_W,
+  snapToPinGrid,
   transformPinOffset,
 } from '../schematic-viewer/types/schematic';
 
@@ -97,25 +97,27 @@ function makeSinglePort(
   id: string,
   side: 'left' | 'right' | 'top' | 'bottom',
 ): SchematicPort {
+  const singleBodyW = 12;
+  const singlePinReach = snapToPinGrid(singleBodyW / 2 + PORT_STUB_LEN);
   let pinX = 0;
   let pinY = 0;
   let pinSide: 'left' | 'right' | 'top' | 'bottom' = 'right';
 
   switch (side) {
     case 'left':
-      pinX = PORT_W / 2 + PORT_STUB_LEN;
+      pinX = singlePinReach;
       pinSide = 'right';
       break;
     case 'right':
-      pinX = -(PORT_W / 2 + PORT_STUB_LEN);
+      pinX = -singlePinReach;
       pinSide = 'left';
       break;
     case 'top':
-      pinY = -(PORT_H / 2 + PORT_STUB_LEN);
+      pinY = -singlePinReach;
       pinSide = 'bottom';
       break;
     case 'bottom':
-      pinY = PORT_H / 2 + PORT_STUB_LEN;
+      pinY = singlePinReach;
       pinSide = 'top';
       break;
   }
@@ -127,7 +129,7 @@ function makeSinglePort(
     side,
     category: 'signal',
     interfaceType: 'Signal',
-    bodyWidth: PORT_W,
+    bodyWidth: singleBodyW,
     bodyHeight: PORT_H,
     pinX,
     pinY,
@@ -369,11 +371,35 @@ describe('schematicLayout single-port anchoring', () => {
   function resolvePortPinWorld(
     port: SchematicPort,
     pos: { x: number; y: number; rotation?: number; mirrorX?: boolean; mirrorY?: boolean },
-  ): { x: number; y: number } {
+    pinNumber: string = '1',
+  ): { x: number; y: number } | null {
     const align = getPortGridAlignmentOffset(port);
+
+    let localX: number;
+    let localY: number;
+    if (port.signals && port.signalPins) {
+      if (pinNumber === '1') {
+        localX = port.pinX;
+        localY = port.pinY;
+      } else {
+        const signalPin = port.signalPins[pinNumber];
+        if (!signalPin) return null;
+        localX = signalPin.x;
+        localY = signalPin.y;
+      }
+    } else if (pinNumber === '1') {
+      localX = port.pinX;
+      localY = port.pinY;
+    } else if (port.passThrough && pinNumber === '2') {
+      localX = -port.pinX;
+      localY = -port.pinY;
+    } else {
+      return null;
+    }
+
     const rotated = transformPinOffset(
-      port.pinX + align.x,
-      port.pinY + align.y,
+      localX + align.x,
+      localY + align.y,
       pos.rotation,
       pos.mirrorX,
       pos.mirrorY,
@@ -416,11 +442,12 @@ describe('schematicLayout single-port anchoring', () => {
     const compPinWorldY = compPos.y + target.pins[0].y + compAlign.y;
 
     const portPinWorld = resolvePortPinWorld(port, portPos);
+    expect(portPinWorld).toBeTruthy();
 
     // Port should line up exactly for a straight horizontal route.
-    expect(Math.abs(compPinWorldY - portPinWorld.y)).toBeLessThan(1e-6);
+    expect(Math.abs(compPinWorldY - (portPinWorld?.y ?? 0))).toBeLessThan(1e-6);
     // Port pin should sit five pin-pitches away from the target pin.
-    expect(Math.abs(compPinWorldX - portPinWorld.x - ANCHOR_OFFSET)).toBeLessThan(1e-6);
+    expect(Math.abs(compPinWorldX - (portPinWorld?.x ?? 0) - ANCHOR_OFFSET)).toBeLessThan(1e-6);
   });
 
   it('anchors to the primary item pin even when the net also includes passives', () => {
@@ -492,13 +519,181 @@ describe('schematicLayout single-port anchoring', () => {
     const compPinWorldY = compPos.y + target.pins[0].y + compAlign.y;
 
     const portPinWorld = resolvePortPinWorld(port, portPos);
+    expect(portPinWorld).toBeTruthy();
 
     // Keep the route straight.
-    expect(Math.abs(compPinWorldY - portPinWorld.y)).toBeLessThan(1e-6);
+    expect(Math.abs(compPinWorldY - (portPinWorld?.y ?? 0))).toBeLessThan(1e-6);
     // Port should orient to face the target pin side, independent of its original side metadata.
-    expect(portPinWorld.x).toBeLessThan(compPinWorldX);
-    expect(Math.abs(compPinWorldX - portPinWorld.x - ANCHOR_OFFSET)).toBeLessThan(1e-6);
+    expect((portPinWorld?.x ?? 0)).toBeLessThan(compPinWorldX);
+    expect(Math.abs(compPinWorldX - (portPinWorld?.x ?? 0) - ANCHOR_OFFSET)).toBeLessThan(1e-6);
     expect((portPos.rotation || 0) % 360).toBe(180);
+  });
+
+  it('anchors pass-through ports when the connected net uses back pin 2', () => {
+    const target = makeComponent(
+      'u1',
+      'U',
+      20,
+      10,
+      [makePin('1', 'GPIO', 'left', 'signal', { x: -5.08, y: 0, bodyX: -5, bodyY: 0 })],
+    );
+    const port: SchematicPort = {
+      ...makeSinglePort('gpio[1]', 'left'),
+      passThrough: true,
+    };
+
+    const sheet: SchematicSheet = {
+      modules: [],
+      components: [target],
+      nets: [
+        net('n_gpio_bridge', 'signal', [
+          { componentId: 'u1', pinNumber: '1' },
+          { componentId: 'gpio[1]', pinNumber: '2' },
+        ]),
+      ],
+    };
+
+    const positions = autoLayoutSheet(sheet, [port], []);
+    const compPos = positions.u1;
+    const portPos = positions['gpio[1]'];
+    expect(compPos).toBeDefined();
+    expect(portPos).toBeDefined();
+
+    const compAlign = getComponentGridAlignmentOffset(target);
+    const compPinWorldX = compPos.x + target.pins[0].x + compAlign.x;
+    const compPinWorldY = compPos.y + target.pins[0].y + compAlign.y;
+    const portBackPinWorld = resolvePortPinWorld(port, portPos, '2');
+    expect(portBackPinWorld).toBeTruthy();
+
+    expect(Math.abs(compPinWorldY - (portBackPinWorld?.y ?? 0))).toBeLessThan(1e-6);
+    const deltaX = (portBackPinWorld?.x ?? 0) - compPinWorldX;
+    expect(deltaX).toBeLessThan(0);
+    expect(Math.abs(Math.abs(deltaX) - ANCHOR_OFFSET)).toBeLessThan(1e-6);
+  });
+});
+
+describe('schematicLayout port-to-port staging', () => {
+  const ANCHOR_OFFSET = PIN_GRID_MM * 5;
+
+  function resolvePortPinWorld(
+    port: SchematicPort,
+    pos: { x: number; y: number; rotation?: number; mirrorX?: boolean; mirrorY?: boolean },
+    pinNumber: string = '1',
+  ): { x: number; y: number } | null {
+    const align = getPortGridAlignmentOffset(port);
+
+    let localX: number;
+    let localY: number;
+    if (port.signals && port.signalPins) {
+      if (pinNumber === '1') {
+        localX = port.pinX;
+        localY = port.pinY;
+      } else {
+        const signalPin = port.signalPins[pinNumber];
+        if (!signalPin) return null;
+        localX = signalPin.x;
+        localY = signalPin.y;
+      }
+    } else if (pinNumber === '1') {
+      localX = port.pinX;
+      localY = port.pinY;
+    } else if (port.passThrough && pinNumber === '2') {
+      localX = -port.pinX;
+      localY = -port.pinY;
+    } else {
+      return null;
+    }
+
+    const rotated = transformPinOffset(
+      localX + align.x,
+      localY + align.y,
+      pos.rotation,
+      pos.mirrorX,
+      pos.mirrorY,
+    );
+    return {
+      x: pos.x + rotated.x,
+      y: pos.y + rotated.y,
+    };
+  }
+
+  it('places pass-through ports one row in and breakout interfaces one row further out', () => {
+    const target = makeComponent(
+      'u1',
+      'U',
+      20,
+      12,
+      [
+        makePin('11', 'GPIO0', 'left', 'signal', { x: -5.08, y: 2.54, bodyX: -5, bodyY: 2.54 }),
+        makePin('12', 'GPIO1', 'left', 'signal', { x: -5.08, y: 0, bodyX: -5, bodyY: 0 }),
+      ],
+    );
+    const gpio0: SchematicPort = {
+      ...makeSinglePort('gpio[0]', 'left'),
+      passThrough: true,
+    };
+    const gpio1: SchematicPort = {
+      ...makeSinglePort('gpio[1]', 'left'),
+      passThrough: true,
+    };
+    const i2c = makeBreakoutPort('i2c', ['scl', 'sda']);
+
+    const sheet: SchematicSheet = {
+      modules: [],
+      components: [target],
+      nets: [
+        net('n_scl', 'signal', [
+          { componentId: 'u1', pinNumber: '11' },
+          { componentId: 'gpio[0]', pinNumber: '1' },
+          { componentId: 'gpio[0]', pinNumber: '2' },
+          { componentId: 'i2c', pinNumber: 'scl' },
+        ]),
+        net('n_sda', 'signal', [
+          { componentId: 'u1', pinNumber: '12' },
+          { componentId: 'gpio[1]', pinNumber: '1' },
+          { componentId: 'gpio[1]', pinNumber: '2' },
+          { componentId: 'i2c', pinNumber: 'sda' },
+        ]),
+      ],
+    };
+
+    const positions = autoLayoutSheet(sheet, [gpio0, gpio1, i2c], []);
+    const compPos = positions.u1;
+    const gpio0Pos = positions['gpio[0]'];
+    const gpio1Pos = positions['gpio[1]'];
+    const i2cPos = positions.i2c;
+    expect(compPos).toBeDefined();
+    expect(gpio0Pos).toBeDefined();
+    expect(gpio1Pos).toBeDefined();
+    expect(i2cPos).toBeDefined();
+
+    const compAlign = getComponentGridAlignmentOffset(target);
+    const gpio0CompPinX = compPos.x + target.pins[0].x + compAlign.x;
+    const gpio0CompPinY = compPos.y + target.pins[0].y + compAlign.y;
+    const gpio1CompPinX = compPos.x + target.pins[1].x + compAlign.x;
+    const gpio1CompPinY = compPos.y + target.pins[1].y + compAlign.y;
+
+    const gpio0InnerPin = resolvePortPinWorld(gpio0, gpio0Pos, '1');
+    const gpio1InnerPin = resolvePortPinWorld(gpio1, gpio1Pos, '1');
+    expect(gpio0InnerPin).toBeTruthy();
+    expect(gpio1InnerPin).toBeTruthy();
+    expect(Math.abs((gpio0InnerPin?.y ?? 0) - gpio0CompPinY)).toBeLessThan(1e-6);
+    expect(Math.abs((gpio1InnerPin?.y ?? 0) - gpio1CompPinY)).toBeLessThan(1e-6);
+    expect(Math.abs(gpio0CompPinX - (gpio0InnerPin?.x ?? 0) - ANCHOR_OFFSET)).toBeLessThan(1e-6);
+    expect(Math.abs(gpio1CompPinX - (gpio1InnerPin?.x ?? 0) - ANCHOR_OFFSET)).toBeLessThan(1e-6);
+
+    const gpio0OuterPin = resolvePortPinWorld(gpio0, gpio0Pos, '2');
+    const gpio1OuterPin = resolvePortPinWorld(gpio1, gpio1Pos, '2');
+    const i2cSclPin = resolvePortPinWorld(i2c, i2cPos, 'scl');
+    const i2cSdaPin = resolvePortPinWorld(i2c, i2cPos, 'sda');
+    expect(gpio0OuterPin).toBeTruthy();
+    expect(gpio1OuterPin).toBeTruthy();
+    expect(i2cSclPin).toBeTruthy();
+    expect(i2cSdaPin).toBeTruthy();
+    expect(Math.abs((i2cSclPin?.y ?? 0) - (gpio0OuterPin?.y ?? 0))).toBeLessThan(1e-6);
+    expect(Math.abs((i2cSdaPin?.y ?? 0) - (gpio1OuterPin?.y ?? 0))).toBeLessThan(1e-6);
+    expect(Math.abs((gpio0OuterPin?.x ?? 0) - (i2cSclPin?.x ?? 0) - ANCHOR_OFFSET)).toBeLessThan(1e-6);
+    expect(Math.abs((gpio1OuterPin?.x ?? 0) - (i2cSdaPin?.x ?? 0) - ANCHOR_OFFSET)).toBeLessThan(1e-6);
   });
 });
 

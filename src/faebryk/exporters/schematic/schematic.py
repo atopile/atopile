@@ -52,6 +52,15 @@ class _ResolvedInterfacePin:
     iface_id: str
     signal_suffix: str
     is_line_level: bool
+    category: str
+    iface_type: str
+
+
+def _is_passthrough_binding(binding: _ResolvedInterfacePin) -> bool:
+    """GPIO/control interfaces act as pass-through bridges for shared pins."""
+    category = binding.category.lower()
+    iface_type = binding.iface_type.lower()
+    return category == "control" or iface_type in {"gpio", "control"}
 
 
 # ── Pin classification (reuses pinout exporter primitives) ──────
@@ -992,6 +1001,41 @@ def _extract_pin_interfaces(
     return result
 
 
+def _mark_passthrough_interfaces(iface_map: dict[str, dict]) -> None:
+    """Mark GPIO/control interfaces that bridge shared physical pins."""
+    bindings_by_comp_pin: dict[tuple[str, str], list[_ResolvedInterfacePin]] = defaultdict(
+        list
+    )
+
+    for iface_name, iface_data in iface_map.items():
+        pin_map = iface_data.get("pin_map", {})
+        category = str(iface_data.get("category", "signal"))
+        iface_type = str(iface_data.get("type", "Signal"))
+        for comp_id, comp_map in pin_map.items():
+            for pin_number, binding in comp_map.items():
+                iface_id, signal_suffix, is_line_level = binding
+                bindings_by_comp_pin[(comp_id, pin_number)].append(
+                    _ResolvedInterfacePin(
+                        iface_id=iface_id or iface_name,
+                        signal_suffix=signal_suffix,
+                        is_line_level=is_line_level,
+                        category=category,
+                        iface_type=iface_type,
+                    )
+                )
+
+    for bindings in bindings_by_comp_pin.values():
+        if len(bindings) < 2:
+            continue
+        bridge = next((b for b in bindings if _is_passthrough_binding(b)), None)
+        if not bridge:
+            continue
+        iface_data = iface_map.get(bridge.iface_id)
+        if iface_data is None:
+            continue
+        iface_data["pass_through"] = True
+
+
 # ── Interface pin layout for modules ────────────────────────────
 
 
@@ -1027,6 +1071,8 @@ def _build_interface_pins(
             "category": category,
             "interfaceType": iface_type.replace("Power", "ElectricPower"),
         }
+        if iface_info.get("pass_through"):
+            pin_data["passThrough"] = True
 
         # Include per-signal breakdown when >=2 real signals exist
         real_signals = sorted(s for s in iface_info.get("signals", set()) if s)
@@ -1080,6 +1126,8 @@ def _build_interface_pins(
             }
             if "signals" in p:
                 entry["signals"] = p["signals"]
+            if p.get("passThrough"):
+                entry["passThrough"] = True
             final_pins.append(entry)
 
     _place(left_pins, "left")
@@ -1100,16 +1148,18 @@ def _coerce_net_type_for_line_level(net_type: str, is_line_level: bool) -> str:
     return "electrical"
 
 
-def _resolve_interface_binding(
+def _resolve_interface_bindings(
     module_id: str,
     comp_id: str,
     pin_number: str,
     module_interfaces: dict[str, dict[str, dict]],
-) -> _ResolvedInterfacePin | None:
-    """Resolve a component pin to a module interface binding, if one exists."""
+) -> list[_ResolvedInterfacePin]:
+    """Resolve all module interface bindings for a component pin."""
     ifaces = module_interfaces.get(module_id, {})
     if not ifaces:
-        return None
+        return []
+
+    resolved: list[_ResolvedInterfacePin] = []
 
     for _iface_name, iface_data in ifaces.items():
         pin_map = iface_data.get("pin_map", {})
@@ -1119,13 +1169,35 @@ def _resolve_interface_binding(
             continue
 
         iface_id, signal_suffix, is_line_level = binding
-        return _ResolvedInterfacePin(
-            iface_id=iface_id,
-            signal_suffix=signal_suffix,
-            is_line_level=is_line_level,
+        resolved.append(
+            _ResolvedInterfacePin(
+                iface_id=iface_id,
+                signal_suffix=signal_suffix,
+                is_line_level=is_line_level,
+                category=str(iface_data.get("category", "signal")),
+                iface_type=str(iface_data.get("type", "Signal")),
+            )
         )
 
-    return None
+    return resolved
+
+
+def _resolve_interface_binding(
+    module_id: str,
+    comp_id: str,
+    pin_number: str,
+    module_interfaces: dict[str, dict[str, dict]],
+) -> _ResolvedInterfacePin | None:
+    """Resolve one interface binding for parent-level pin collapsing."""
+    bindings = _resolve_interface_bindings(
+        module_id=module_id,
+        comp_id=comp_id,
+        pin_number=pin_number,
+        module_interfaces=module_interfaces,
+    )
+    if not bindings:
+        return None
+    return bindings[0]
 
 
 def _add_port_pins_to_internal_net(
@@ -1151,19 +1223,42 @@ def _add_port_pins_to_internal_net(
     for pin in net["pins"]:
         comp_id = pin.get("componentId", "")
         pad_name = pin.get("pinNumber", "")
-        binding = _resolve_interface_binding(
+        bindings = _resolve_interface_bindings(
             module_id=module_id,
             comp_id=comp_id,
             pin_number=pad_name,
             module_interfaces=module_interfaces,
         )
-        if not binding:
+        if not bindings:
             continue
 
         has_interface_binding = True
-        pin_number = binding.signal_suffix if binding.signal_suffix else "1"
-        seen_refs.add((binding.iface_id, pin_number))
-        has_line_level_binding = has_line_level_binding or binding.is_line_level
+        has_line_level_binding = has_line_level_binding or any(
+            b.is_line_level for b in bindings
+        )
+
+        bridge = None
+        if len(bindings) >= 2:
+            bridge = next((b for b in bindings if _is_passthrough_binding(b)), None)
+
+        if bridge:
+            added_non_bridge = False
+            for binding in bindings:
+                if binding == bridge:
+                    continue
+                pin_number = binding.signal_suffix if binding.signal_suffix else "1"
+                seen_refs.add((binding.iface_id, pin_number))
+                added_non_bridge = True
+
+            if added_non_bridge:
+                # Front/back pins for pass-through bridges.
+                seen_refs.add((bridge.iface_id, "1"))
+                seen_refs.add((bridge.iface_id, "2"))
+                continue
+
+        for binding in bindings:
+            pin_number = binding.signal_suffix if binding.signal_suffix else "1"
+            seen_refs.add((binding.iface_id, pin_number))
 
     if not seen_refs:
         return net, False
@@ -1985,7 +2080,9 @@ def export_schematic_json(
             }
 
             # Extract interface mapping for this component's pins
-            pin_to_iface = _extract_pin_interfaces(pin_number_to_functions_for_interfaces)
+            pin_to_iface = _extract_pin_interfaces(
+                pin_number_to_functions_for_interfaces
+            )
 
             comp_infos.append(
                 _CompInfo(
@@ -2157,6 +2254,7 @@ def export_schematic_json(
                         is_line_level,
                     )
 
+        _mark_passthrough_interfaces(iface_map)
         mod.interfaces = iface_map
         module_interfaces[mid] = iface_map
         logger.debug(

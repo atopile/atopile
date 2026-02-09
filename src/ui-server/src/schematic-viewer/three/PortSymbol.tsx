@@ -177,6 +177,7 @@ const SinglePortSymbol = memo(function SinglePortSymbol({
   const color = getPinColor(port.category, theme);
   const isNetHighlighted = netId !== null && netId === selectedNetId;
   const isActive = isSelected || isHovered || isNetHighlighted;
+  const isPassThrough = !!port.passThrough;
   const stroke = getInterfaceStrokeStyle(undefined, isActive);
   const dotRadius = getInterfaceDotRadius(undefined);
   const zOffset = isDragging ? 0.5 : 0;
@@ -209,17 +210,24 @@ const SinglePortSymbol = memo(function SinglePortSymbol({
     edgeX = pinX;
     edgeY = stubDirY > 0 ? -hh : hh;
   }
+  const backPinX = -pinX;
+  const backPinY = -pinY;
+  const backEdgeX = -edgeX;
+  const backEdgeY = -edgeY;
 
   let labelX = 0;
   let labelY = 0;
   const nameInset = getInterfaceNameInset(undefined);
-  if (isHorizontal) {
+  if (isPassThrough) {
+    labelX = 0;
+    labelY = 0;
+  } else if (isHorizontal) {
     // Match breakout ports: interface name sits opposite the signal stubs.
     labelX = stubDir > 0 ? -hw + nameInset * 0.9 : hw - nameInset * 0.9;
   } else {
     labelY = stubDirY > 0 ? hh - nameInset * 0.8 : -hh + nameInset * 0.8;
   }
-  const effectiveAnchor = anchorFromVisualSide(port.side, {
+  const effectiveAnchor = isPassThrough ? 'center' : anchorFromVisualSide(port.side, {
     rotationDeg: rotation,
     mirrorX,
     mirrorY,
@@ -262,7 +270,13 @@ const SinglePortSymbol = memo(function SinglePortSymbol({
           color={theme.textPrimary}
           anchorX={effectiveAnchor}
           anchorY="middle"
-          maxWidth={visualHorizontal ? port.bodyWidth * 0.55 : port.bodyWidth * 0.72}
+          maxWidth={
+            isPassThrough
+              ? port.bodyWidth * 0.76
+              : visualHorizontal
+                ? port.bodyWidth * 0.55
+                : port.bodyWidth * 0.72
+          }
           letterSpacing={0.02}
           font={undefined}
           raycast={NO_RAYCAST}
@@ -283,6 +297,19 @@ const SinglePortSymbol = memo(function SinglePortSymbol({
         opacity={stroke.primaryOpacity}
         raycast={NO_RAYCAST}
       />
+      {isPassThrough && (
+        <Line
+          points={[
+            [backEdgeX, backEdgeY, 0.002],
+            [backPinX, backPinY, 0.002],
+          ]}
+          color={color}
+          lineWidth={stroke.primaryWidth}
+          transparent
+          opacity={stroke.primaryOpacity}
+          raycast={NO_RAYCAST}
+        />
+      )}
 
       {/* ── Connection dot + glow ───────────────────── */}
       <mesh position={[pinX, pinY, 0.001]} raycast={NO_RAYCAST}>
@@ -298,6 +325,23 @@ const SinglePortSymbol = memo(function SinglePortSymbol({
         <circleGeometry args={[dotRadius, 16]} />
         <meshBasicMaterial color={color} />
       </mesh>
+      {isPassThrough && (
+        <>
+          <mesh position={[backPinX, backPinY, 0.001]} raycast={NO_RAYCAST}>
+            <circleGeometry args={[dotRadius * 1.85, 16]} />
+            <meshBasicMaterial
+              color={color}
+              transparent
+              opacity={isActive ? 0.22 : 0.12}
+              depthWrite={false}
+            />
+          </mesh>
+          <mesh position={[backPinX, backPinY, 0.002]} raycast={NO_RAYCAST}>
+            <circleGeometry args={[dotRadius, 16]} />
+            <meshBasicMaterial color={color} />
+          </mesh>
+        </>
+      )}
     </group>
   );
 });

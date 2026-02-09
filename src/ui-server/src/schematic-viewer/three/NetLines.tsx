@@ -63,6 +63,9 @@ const STUB_LENGTH = 2.54;
 const ROUTE_SPACING = 2.54;
 const ROUTE_DRAG_HIT_THICKNESS = 2.2;
 const ROUTE_PICK_HIT_THICKNESS = ROUTE_SPACING * 0.5;
+const JUMP_MASK_OVERDRAW = 0.06;
+const JUMP_MASK_SEGMENTS = 32;
+const JUMP_VERTICAL_REPAINT_MARGIN = 0.12;
 const COMPLEX_ROUTE_SCORE = 210;
 const COMPLEX_ROUTE_CROSSINGS = 2;
 const COMPLEX_ROUTE_PARALLEL = 3;
@@ -197,6 +200,13 @@ function buildLookup(
         y: port.pinY + offset.y,
         side: port.pinSide,
       });
+      if (port.passThrough) {
+        pm.set('2', {
+          x: -port.pinX + offset.x,
+          y: -port.pinY + offset.y,
+          side: oppositeSide(port.pinSide),
+        });
+      }
     }
     pinMap.set(port.id, pm);
   }
@@ -1701,15 +1711,17 @@ const CrossingJump = memo(function CrossingJump({
   );
 
   const r = JUMP_RADIUS;
+  const maskRadius = r + JUMP_MASK_OVERDRAW;
+  const verticalHalfSpan = maskRadius + JUMP_VERTICAL_REPAINT_MARGIN;
 
   return (
     <group>
       <mesh position={[x, y, 0.001]} raycast={NO_RAYCAST}>
-        <circleGeometry args={[r + 0.2, 16]} />
-        <meshBasicMaterial color={theme.bgPrimary} />
+        <circleGeometry args={[maskRadius, JUMP_MASK_SEGMENTS]} />
+        <meshBasicMaterial color={theme.bgPrimary} toneMapped={false} />
       </mesh>
       <Line
-        points={[[x, y - r - 0.3, 0.002], [x, y + r + 0.3, 0.002]]}
+        points={[[x, y - verticalHalfSpan, 0.002], [x, y + verticalHalfSpan, 0.002]]}
         color={vColor}
         lineWidth={1.5}
         transparent

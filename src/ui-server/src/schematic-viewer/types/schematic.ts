@@ -90,6 +90,8 @@ export interface SchematicInterfacePin {
   bodyY: number;
   /** Per-signal breakdown (e.g., ["scl", "sda"]). Present when >=2 signals. */
   signals?: string[];
+  /** Single-signal GPIO/control bridge with explicit front/back anchors. */
+  passThrough?: boolean;
 }
 
 // ── Component: a leaf atomic part ───────────────────────────────
@@ -302,6 +304,8 @@ export interface SchematicPort {
   signals?: string[];
   /** Per-signal pin positions relative to port center (for breakout ports). */
   signalPins?: Record<string, { x: number; y: number }>;
+  /** Single-signal GPIO/control bridge with explicit front/back anchors. */
+  passThrough?: boolean;
 }
 
 // Port geometry constants
@@ -478,6 +482,7 @@ export function derivePortsFromModule(
       pinX,
       pinY,
       pinSide,
+      passThrough: !!ipin.passThrough,
     };
   });
 }
@@ -614,6 +619,9 @@ export function getPowerPortGridAlignmentOffset(
 export function getPortPinNumbers(port: SchematicPort): string[] {
   if (port.signals && port.signals.length > 0) {
     return [...port.signals, '1'];
+  }
+  if (port.passThrough) {
+    return ['1', '2'];
   }
   return ['1'];
 }

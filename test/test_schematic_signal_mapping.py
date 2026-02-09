@@ -94,7 +94,9 @@ def test_extract_locator_source_and_component_resolves_leaf_relative_to_parent_s
 
     app.write_text("component App:\n    pass\n", encoding="utf-8")
     module_file.write_text("component Wrapper:\n    pass\n", encoding="utf-8")
-    part_file.write_text("component Raspberry_Pi_RP2040_package:\n    pass\n", encoding="utf-8")
+    part_file.write_text(
+        "component Raspberry_Pi_RP2040_package:\n    pass\n", encoding="utf-8"
+    )
 
     locator = (
         f"{app.name}::PinoutTest.rp2040|"
@@ -183,3 +185,87 @@ def test_filter_pin_functions_by_signal_map_prefers_matching_signals() -> None:
     assert [fn["name"] for fn in filtered["1"]] == ["addressor.address_lines[0]"]
     assert [fn["name"] for fn in filtered["12"]] == ["power.lv"]
     assert [fn["name"] for fn in filtered["21"]] == ["addressor.address_lines[2]"]
+
+
+def test_mark_passthrough_interfaces_for_shared_gpio_pin() -> None:
+    iface_map = {
+        "gpio[0]": {
+            "type": "GPIO",
+            "category": "control",
+            "signals": set(),
+            "pin_map": {
+                "rp2040_package": {
+                    "2": ("gpio[0]", "", True),
+                }
+            },
+        },
+        "uart": {
+            "type": "UART",
+            "category": "uart",
+            "signals": {"tx"},
+            "pin_map": {
+                "rp2040_package": {
+                    "2": ("uart", "tx", False),
+                }
+            },
+        },
+    }
+
+    sch._mark_passthrough_interfaces(iface_map)
+
+    assert iface_map["gpio[0]"].get("pass_through") is True
+    assert "pass_through" not in iface_map["uart"]
+
+
+def test_add_port_pins_to_internal_net_uses_back_pin_for_shared_gpio_bridge() -> None:
+    module_interfaces = {
+        "rp2040": {
+            "gpio[0]": {
+                "type": "GPIO",
+                "category": "control",
+                "signals": set(),
+                "pin_map": {
+                    "rp2040_package": {
+                        "2": ("gpio[0]", "", True),
+                    }
+                },
+            },
+            "uart": {
+                "type": "UART",
+                "category": "uart",
+                "signals": {"tx"},
+                "pin_map": {
+                    "rp2040_package": {
+                        "2": ("uart", "tx", False),
+                    }
+                },
+            },
+        }
+    }
+    net = {
+        "id": "uart_TX",
+        "name": "uart-TX",
+        "type": "signal",
+        "pins": [
+            {
+                "componentId": "rp2040_package",
+                "pinNumber": "2",
+            }
+        ],
+    }
+
+    enhanced, has_binding = sch._add_port_pins_to_internal_net(
+        net=net,
+        module_id="rp2040",
+        module_interfaces=module_interfaces,
+    )
+    refs = {
+        (p.get("componentId", ""), str(p.get("pinNumber", "")))
+        for p in enhanced.get("pins", [])
+    }
+
+    assert has_binding is True
+    assert ("rp2040_package", "2") in refs
+    assert ("uart", "tx") in refs
+    assert ("gpio[0]", "1") in refs
+    assert ("gpio[0]", "2") in refs
