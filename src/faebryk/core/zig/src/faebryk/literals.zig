@@ -719,7 +719,7 @@ pub const Numbers = struct {
         return fabll.Node.MakeChild(@This())
             .add_dependant_before(numeric_set_child)
             .add_dependant(
-                collections.Pointer.MakeEdge(
+                collections.PointerOf(NumericSet).MakeEdge(
                     .{ .segments = &.{
                         .{ .owner_child = {} },
                         .{ .child_identifier = "numeric_set_ptr" },
