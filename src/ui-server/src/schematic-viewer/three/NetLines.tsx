@@ -571,7 +571,12 @@ export const NetLines = memo(function NetLines({
       const routedResult = routeOrthogonalWithHeuristics(
         a.x, a.y, a.side,
         b.x, b.y, b.side,
-        { existingSegments, preferredSpacing: ROUTE_SPACING },
+        {
+          existingSegments,
+          preferredSpacing: ROUTE_SPACING,
+          obstacles: routeObstacles,
+          ignoredObstacleIds: new Set([a.compId, b.compId]),
+        },
       );
 
       const q = routedResult.quality;
@@ -640,6 +645,8 @@ export const NetLines = memo(function NetLines({
           {
             existingSegments: existingSegments.concat(stagedSegments),
             preferredSpacing: ROUTE_SPACING,
+            obstacles: routeObstacles,
+            ignoredObstacleIds: new Set([edge.a.compId, edge.b.compId]),
           },
         );
 

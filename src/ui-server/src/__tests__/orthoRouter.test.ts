@@ -58,4 +58,37 @@ describe('routeOrthogonalWithHeuristics', () => {
     expect(result.route[1][1]).toBeCloseTo(0, 6);
     expect(result.route[2][1]).toBeCloseTo(0, 6);
   });
+
+  it('routes around blocked obstacle boxes when searching the shortest free path', () => {
+    const result = routeOrthogonalWithHeuristics(
+      0, 0, 'right',
+      20, 0, 'left',
+      {
+        obstacles: [
+          { id: 'u1', minX: 8, minY: -2, maxX: 12, maxY: 2 },
+        ],
+      },
+    );
+
+    // Should detour off the direct y=0 corridor.
+    const interior = result.route.slice(2, -2);
+    expect(interior.some((p) => Math.abs(p[1]) > 0.1)).toBe(true);
+  });
+
+  it('respects ignored obstacles so endpoint components do not block exit routing', () => {
+    const result = routeOrthogonalWithHeuristics(
+      0, 0, 'right',
+      20, 0, 'left',
+      {
+        obstacles: [
+          { id: 'u1', minX: 8, minY: -2, maxX: 12, maxY: 2 },
+        ],
+        ignoredObstacleIds: new Set(['u1']),
+      },
+    );
+
+    // With the only obstacle ignored, route should remain straight.
+    expect(result.route[1][1]).toBeCloseTo(0, 6);
+    expect(result.route[result.route.length - 2][1]).toBeCloseTo(0, 6);
+  });
 });

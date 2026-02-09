@@ -3,6 +3,7 @@ import { autoLayoutSheet } from '../schematic-viewer/lib/schematicLayout';
 import type {
   NetType,
   SchematicComponent,
+  SchematicModule,
   SchematicPin,
   SchematicPort,
   SchematicSheet,
@@ -59,6 +60,28 @@ function makeComponent(
     pins,
     bodyWidth: width,
     bodyHeight: height,
+  };
+}
+
+function makeModule(
+  id: string,
+  width: number,
+  height: number,
+): SchematicModule {
+  return {
+    kind: 'module',
+    id,
+    name: id,
+    typeName: id,
+    componentCount: 0,
+    interfacePins: [],
+    bodyWidth: width,
+    bodyHeight: height,
+    sheet: {
+      modules: [],
+      components: [],
+      nets: [],
+    },
   };
 }
 
@@ -226,9 +249,117 @@ describe('schematicLayout decoupling placement', () => {
     const c2Top = c2.y + 10.16 / 2;
     expect(Math.abs(c1Top - c2Top)).toBeLessThan(0.001);
 
-    // Different decoupling groups should stack vertically.
+    // Different decoupling groups should stack vertically (upward, away from main body).
     const c3Top = c3.y + 5.08 / 2;
-    expect(c3Top).toBeLessThan(c1Top);
+    expect(c3Top).toBeGreaterThan(c1Top);
+  });
+});
+
+describe('schematicLayout main-item collision handling', () => {
+  function rotatedSize(
+    width: number,
+    height: number,
+    rotation?: number,
+  ): { w: number; h: number } {
+    const r = ((Math.round((rotation ?? 0) / 90) * 90) % 360 + 360) % 360;
+    return r === 90 || r === 270 ? { w: height, h: width } : { w: width, h: height };
+  }
+
+  function overlaps(
+    a: { x: number; y: number; w: number; h: number },
+    b: { x: number; y: number; w: number; h: number },
+  ): boolean {
+    const minAx = a.x - a.w / 2;
+    const maxAx = a.x + a.w / 2;
+    const minAy = a.y - a.h / 2;
+    const maxAy = a.y + a.h / 2;
+    const minBx = b.x - b.w / 2;
+    const maxBx = b.x + b.w / 2;
+    const minBy = b.y - b.h / 2;
+    const maxBy = b.y + b.h / 2;
+    return Math.min(maxAx, maxBx) > Math.max(minAx, minBx) &&
+      Math.min(maxAy, maxBy) > Math.max(minAy, minBy);
+  }
+
+  it('keeps unmatched modules/components non-overlapping after post-layout rotations', () => {
+    const u1 = makeComponent(
+      'u1',
+      'U',
+      24,
+      18,
+      [
+        makePin('1', 'VCC', 'left', 'power', { x: -7.62, y: 2.54, bodyX: -7, bodyY: 2.54 }),
+        makePin('2', 'GND', 'left', 'ground', { x: -7.62, y: -2.54, bodyX: -7, bodyY: -2.54 }),
+      ],
+    );
+    const r1 = makeComponent(
+      'r1',
+      'R',
+      20,
+      6,
+      [
+        makePin('1', 'A', 'left', 'power', { x: -5.08, y: 0, bodyX: -5, bodyY: 0 }),
+        makePin('2', 'B', 'right', 'ground', { x: 5.08, y: 0, bodyX: 5, bodyY: 0 }),
+      ],
+    );
+    const r2 = makeComponent(
+      'r2',
+      'R',
+      20,
+      6,
+      [
+        makePin('1', 'A', 'left', 'power', { x: -5.08, y: 0, bodyX: -5, bodyY: 0 }),
+        makePin('2', 'B', 'right', 'ground', { x: 5.08, y: 0, bodyX: 5, bodyY: 0 }),
+      ],
+    );
+    const m1 = makeModule('m1', 42, 24);
+    const m2 = makeModule('m2', 40, 26);
+
+    const sheet: SchematicSheet = {
+      modules: [m1, m2],
+      components: [u1, r1, r2],
+      nets: [
+        net('pwr', 'power', [
+          { componentId: 'u1', pinNumber: '1' },
+          { componentId: 'r1', pinNumber: '1' },
+          { componentId: 'r2', pinNumber: '1' },
+        ]),
+        net('gnd', 'ground', [
+          { componentId: 'u1', pinNumber: '2' },
+          { componentId: 'r1', pinNumber: '2' },
+          { componentId: 'r2', pinNumber: '2' },
+        ]),
+      ],
+    };
+
+    const positions = autoLayoutSheet(sheet, [], []);
+
+    const items = [
+      { id: 'u1', width: u1.bodyWidth, height: u1.bodyHeight },
+      { id: 'r1', width: r1.bodyWidth, height: r1.bodyHeight },
+      { id: 'r2', width: r2.bodyWidth, height: r2.bodyHeight },
+      { id: 'm1', width: m1.bodyWidth, height: m1.bodyHeight },
+      { id: 'm2', width: m2.bodyWidth, height: m2.bodyHeight },
+    ].map((item) => {
+      const pos = positions[item.id];
+      const size = rotatedSize(item.width, item.height, pos?.rotation);
+      return {
+        id: item.id,
+        x: pos.x,
+        y: pos.y,
+        w: size.w,
+        h: size.h,
+      };
+    });
+
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        expect(
+          overlaps(items[i], items[j]),
+          `${items[i].id} overlaps ${items[j].id}`,
+        ).toBe(false);
+      }
+    }
   });
 });
 
