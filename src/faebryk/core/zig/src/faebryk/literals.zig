@@ -904,14 +904,24 @@ pub const Numbers = struct {
         return self.get_numeric_set().uncertainty_equals(other.get_numeric_set(), allocator);
     }
 
-    fn from_intervals_like(self: @This(), intervals: []const Interval, allocator: std.mem.Allocator) !@This() {
+    fn from_intervals_like_with_unit(
+        self: @This(),
+        intervals: []const Interval,
+        unit: ?units.is_unit,
+        allocator: std.mem.Allocator,
+    ) !@This() {
         const g = self.node.instance.g;
         var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
         var set = NumericSet.create_instance(g, &tg);
         set = try set.setup_from_values(intervals, allocator);
         out.numeric_set_ptr.get().point(set);
+        if (unit) |u| out.unit_ptr.get().point(u);
         return out;
+    }
+
+    fn from_intervals_like(self: @This(), intervals: []const Interval, allocator: std.mem.Allocator) !@This() {
+        return self.from_intervals_like_with_unit(intervals, self.get_is_unit(), allocator);
     }
 
     pub fn setup_from_center_rel(self: @This(), center: f64, rel: f64, allocator: std.mem.Allocator) !@This() {
@@ -933,7 +943,9 @@ pub const Numbers = struct {
     }
 
     pub fn contains(self: @This(), other: @This(), allocator: std.mem.Allocator) !bool {
-        const single = try other.get_single(allocator);
+        if (!units.is_commensurable_with(self.get_is_unit(), other.get_is_unit())) return false;
+        const other_converted = try other.convert_to_unit(self.get_is_unit(), allocator);
+        const single = try other_converted.get_single(allocator);
         return self.contains_value(single, allocator);
     }
 
@@ -1091,20 +1103,25 @@ pub const Numbers = struct {
     }
 
     pub fn op_add_intervals(a: @This(), b: @This(), allocator: std.mem.Allocator) !@This() {
-        return a.from_intervals_like(&.{.{
-            .min = (try a.get_min_value(allocator)) + (try b.get_min_value(allocator)),
-            .max = (try a.get_max_value(allocator)) + (try b.get_max_value(allocator)),
-        }}, allocator);
+        if (!units.is_commensurable_with(a.get_is_unit(), b.get_is_unit())) return Error.UnitsNotCommensurable;
+        const b_converted = try b.convert_to_unit(a.get_is_unit(), allocator);
+        return a.from_intervals_like_with_unit(&.{.{
+            .min = (try a.get_min_value(allocator)) + (try b_converted.get_min_value(allocator)),
+            .max = (try a.get_max_value(allocator)) + (try b_converted.get_max_value(allocator)),
+        }}, a.get_is_unit(), allocator);
     }
 
     pub fn op_sub_intervals(a: @This(), b: @This(), allocator: std.mem.Allocator) !@This() {
-        return a.from_intervals_like(&.{.{
-            .min = (try a.get_min_value(allocator)) - (try b.get_max_value(allocator)),
-            .max = (try a.get_max_value(allocator)) - (try b.get_min_value(allocator)),
-        }}, allocator);
+        if (!units.is_commensurable_with(a.get_is_unit(), b.get_is_unit())) return Error.UnitsNotCommensurable;
+        const b_converted = try b.convert_to_unit(a.get_is_unit(), allocator);
+        return a.from_intervals_like_with_unit(&.{.{
+            .min = (try a.get_min_value(allocator)) - (try b_converted.get_max_value(allocator)),
+            .max = (try a.get_max_value(allocator)) - (try b_converted.get_min_value(allocator)),
+        }}, a.get_is_unit(), allocator);
     }
 
     pub fn op_mul_intervals(a: @This(), b: @This(), allocator: std.mem.Allocator) !@This() {
+        var tg = a.node.typegraph();
         const a0 = try a.get_min_value(allocator);
         const a1 = try a.get_max_value(allocator);
         const b0 = try b.get_min_value(allocator);
@@ -1116,16 +1133,20 @@ pub const Numbers = struct {
             min = @min(min, v);
             max = @max(max, v);
         }
-        return a.from_intervals_like(&.{.{ .min = min, .max = max }}, allocator);
+        const out_unit = try units.op_multiply(a.get_is_unit(), b.get_is_unit(), a.node.instance.g, &tg);
+        return a.from_intervals_like_with_unit(&.{.{ .min = min, .max = max }}, out_unit, allocator);
     }
 
     pub fn op_div_intervals(a: @This(), b: @This(), allocator: std.mem.Allocator) !@This() {
+        var tg = a.node.typegraph();
         const b0 = try b.get_min_value(allocator);
         const b1 = try b.get_max_value(allocator);
+        const out_unit = try units.op_divide(a.get_is_unit(), b.get_is_unit(), a.node.instance.g, &tg);
         if (b0 <= 0 and b1 >= 0) {
-            return a.from_intervals_like(&.{.{ .min = -std.math.inf(f64), .max = std.math.inf(f64) }}, allocator);
+            return a.from_intervals_like_with_unit(&.{.{ .min = -std.math.inf(f64), .max = std.math.inf(f64) }}, out_unit, allocator);
         }
-        const inv = try b.from_intervals_like(&.{.{ .min = 1.0 / b1, .max = 1.0 / b0 }}, allocator);
+        const inv_unit = try units.op_invert(b.get_is_unit(), a.node.instance.g, &tg);
+        const inv = try b.from_intervals_like_with_unit(&.{.{ .min = 1.0 / b1, .max = 1.0 / b0 }}, inv_unit, allocator);
         return op_mul_intervals(a, inv, allocator);
     }
 
@@ -2007,6 +2028,49 @@ test "literals numbers units commensurability guard" {
     rhs = try rhs.setup_from_singleton_with_unit(1.0, second, std.testing.allocator);
 
     try std.testing.expectError(Error.UnitsNotCommensurable, lhs.op_intersect_intervals(rhs, std.testing.allocator));
+}
+
+test "literals numbers units add with conversion" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const mv = units.to_is_unit(units.MilliVolt.create_instance(&g, &tg));
+    const v = units.to_is_unit(units.Volt.create_instance(&g, &tg));
+
+    var lhs = Numbers.create_instance(&g, &tg);
+    lhs = try lhs.setup_from_singleton_with_unit(1.0, v, std.testing.allocator);
+    var rhs = Numbers.create_instance(&g, &tg);
+    rhs = try rhs.setup_from_singleton_with_unit(500.0, mv, std.testing.allocator);
+
+    const out = try Numbers.op_add_intervals(lhs, rhs, std.testing.allocator);
+    try std.testing.expectApproxEqAbs(@as(f64, 1.5), try out.get_single(std.testing.allocator), 1e-9);
+    try std.testing.expect(units.is_commensurable_with(out.get_is_unit(), v));
+}
+
+test "literals numbers units mul divide output units" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const v = units.to_is_unit(units.Volt.create_instance(&g, &tg));
+    const a = units.to_is_unit(units.Ampere.create_instance(&g, &tg));
+
+    var lhs = Numbers.create_instance(&g, &tg);
+    lhs = try lhs.setup_from_singleton_with_unit(2.0, v, std.testing.allocator);
+    var rhs = Numbers.create_instance(&g, &tg);
+    rhs = try rhs.setup_from_singleton_with_unit(3.0, a, std.testing.allocator);
+
+    const mul = try Numbers.op_mul_intervals(lhs, rhs, std.testing.allocator);
+    try std.testing.expectApproxEqAbs(@as(f64, 6.0), try mul.get_single(std.testing.allocator), 1e-9);
+    const mul_info = units.info_of(mul.get_is_unit());
+    try std.testing.expectEqual(@as(i64, 1), mul_info.basis_vector.kilogram);
+    try std.testing.expectEqual(@as(i64, -3), mul_info.basis_vector.second);
+    try std.testing.expectEqual(@as(i64, 0), mul_info.basis_vector.ampere);
+
+    const div = try Numbers.op_div_intervals(lhs, rhs, std.testing.allocator);
+    const div_info = units.info_of(div.get_is_unit());
+    try std.testing.expectEqual(@as(i64, -2), div_info.basis_vector.ampere);
 }
 
 test "literals counts api" {
