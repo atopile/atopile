@@ -345,6 +345,11 @@ pub fn decode_symbol(symbol: str, g: *graph.GraphView, tg: *faebryk.typegraph.Ty
     if (std.mem.eql(u8, symbol, "V")) return to_is_unit(Volt.create_instance(g, tg));
     if (std.mem.eql(u8, symbol, "mV")) return to_is_unit(MilliVolt.create_instance(g, tg));
     if (std.mem.eql(u8, symbol, "Ω")) return to_is_unit(Ohm.create_instance(g, tg));
+    if (std.mem.eql(u8, symbol, "rad")) return to_is_unit(Radian.create_instance(g, tg));
+    if (std.mem.eql(u8, symbol, "sr")) return to_is_unit(Steradian.create_instance(g, tg));
+    if (std.mem.eql(u8, symbol, "bit")) return to_is_unit(Bit.create_instance(g, tg));
+    if (std.mem.eql(u8, symbol, "%")) return to_is_unit(Percent.create_instance(g, tg));
+    if (std.mem.eql(u8, symbol, "ppm")) return to_is_unit(Ppm.create_instance(g, tg));
     return Error.UnitNotFound;
 }
 
@@ -408,6 +413,36 @@ pub const Ohm = struct {
     is_unit: IsUnit.MakeChild(.{ .basis_vector = .{ .kilogram = 1, .meter = 2, .second = -3, .ampere = -2 }, .multiplier = 1.0, .offset = 0.0 }),
     pub fn MakeChild() type { return fabll.Node.MakeChild(@This()); }
     pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() { return create_concrete_unit_instance(@This(), "Ω", g, tg); }
+};
+pub const Radian = struct {
+    node: fabll.Node,
+    is_unit: IsUnit.MakeChild(.{ .basis_vector = .{ .radian = 1 }, .multiplier = 1.0, .offset = 0.0 }),
+    pub fn MakeChild() type { return fabll.Node.MakeChild(@This()); }
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() { return create_concrete_unit_instance(@This(), "rad", g, tg); }
+};
+pub const Steradian = struct {
+    node: fabll.Node,
+    is_unit: IsUnit.MakeChild(.{ .basis_vector = .{ .steradian = 1 }, .multiplier = 1.0, .offset = 0.0 }),
+    pub fn MakeChild() type { return fabll.Node.MakeChild(@This()); }
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() { return create_concrete_unit_instance(@This(), "sr", g, tg); }
+};
+pub const Bit = struct {
+    node: fabll.Node,
+    is_unit: IsUnit.MakeChild(.{ .basis_vector = .{ .bit = 1 }, .multiplier = 1.0, .offset = 0.0 }),
+    pub fn MakeChild() type { return fabll.Node.MakeChild(@This()); }
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() { return create_concrete_unit_instance(@This(), "bit", g, tg); }
+};
+pub const Percent = struct {
+    node: fabll.Node,
+    is_unit: IsUnit.MakeChild(.{ .basis_vector = ORIGIN, .multiplier = 1e-2, .offset = 0.0 }),
+    pub fn MakeChild() type { return fabll.Node.MakeChild(@This()); }
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() { return create_concrete_unit_instance(@This(), "%", g, tg); }
+};
+pub const Ppm = struct {
+    node: fabll.Node,
+    is_unit: IsUnit.MakeChild(.{ .basis_vector = ORIGIN, .multiplier = 1e-6, .offset = 0.0 }),
+    pub fn MakeChild() type { return fabll.Node.MakeChild(@This()); }
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() { return create_concrete_unit_instance(@This(), "ppm", g, tg); }
 };
 pub const Dimensionless = struct {
     node: fabll.Node,
@@ -499,6 +534,21 @@ test "units decode symbol" {
     const v = try decode_symbol("V", &g, &tg);
     try std.testing.expect(v != null);
     try std.testing.expect(std.mem.eql(u8, "V", v.?.get_symbol()));
+    const ppm = try decode_symbol("ppm", &g, &tg);
+    try std.testing.expect(ppm != null);
+    try std.testing.expect(std.mem.eql(u8, "ppm", ppm.?.get_symbol()));
     try std.testing.expect((try decode_symbol("", &g, &tg)) == null);
     try std.testing.expectError(Error.UnitNotFound, decode_symbol("not-a-unit", &g, &tg));
+}
+
+test "units dimensionless scaled compatibility" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const percent = to_is_unit(Percent.create_instance(&g, &tg));
+    const ppm = to_is_unit(Ppm.create_instance(&g, &tg));
+    try std.testing.expect(is_commensurable_with(percent, ppm));
+    const v = try convert_value(1.0, percent, ppm);
+    try std.testing.expectApproxEqAbs(@as(f64, 10000.0), v, 1e-9);
 }
