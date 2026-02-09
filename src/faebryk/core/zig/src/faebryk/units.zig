@@ -333,50 +333,73 @@ pub fn op_power(unit: ?is_unit, g: *graph.GraphView, tg: *faebryk.typegraph.Type
     return new(g, tg, out.basis_vector, out.multiplier, out.offset, "");
 }
 
-fn UnitType(comptime symbol: str, comptime info: UnitInfo) type {
-    return struct {
-        node: fabll.Node,
-        is_unit: IsUnit.MakeChild(info),
-
-        pub fn unit_symbol() str {
-            return symbol;
-        }
-
-        pub fn MakeChild() type {
-            return fabll.Node.MakeChild(@This());
-        }
-
-        pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() {
-            const out = fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
-            out.node.instance.node.put("unit_symbol", .{ .String = symbol });
-            out.is_unit.get().node.instance.node.put("unit_symbol", .{ .String = symbol });
-            return out;
-        }
-    };
+fn create_concrete_unit_instance(comptime T: type, comptime symbol: str, g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) T {
+    const out = fabll.Node.bind_typegraph(T, tg).create_instance(g);
+    out.node.instance.node.put("unit_symbol", .{ .String = symbol });
+    out.is_unit.get().node.instance.node.put("unit_symbol", .{ .String = symbol });
+    return out;
 }
 
-pub const Meter = UnitType("m", .{ .basis_vector = .{ .meter = 1 }, .multiplier = 1.0, .offset = 0.0 });
-pub const Second = UnitType("s", .{ .basis_vector = .{ .second = 1 }, .multiplier = 1.0, .offset = 0.0 });
-pub const Hour = UnitType("h", .{ .basis_vector = .{ .second = 1 }, .multiplier = 3600.0, .offset = 0.0 });
-pub const Ampere = UnitType("A", .{ .basis_vector = .{ .ampere = 1 }, .multiplier = 1.0, .offset = 0.0 });
-pub const Kelvin = UnitType("K", .{ .basis_vector = .{ .kelvin = 1 }, .multiplier = 1.0, .offset = 0.0 });
-pub const DegreeCelsius = UnitType("°C", .{ .basis_vector = .{ .kelvin = 1 }, .multiplier = 1.0, .offset = 273.15 });
-pub const Volt = UnitType("V", .{
-    .basis_vector = .{ .kilogram = 1, .meter = 2, .second = -3, .ampere = -1 },
-    .multiplier = 1.0,
-    .offset = 0.0,
-});
-pub const MilliVolt = UnitType("mV", .{
-    .basis_vector = .{ .kilogram = 1, .meter = 2, .second = -3, .ampere = -1 },
-    .multiplier = 1e-3,
-    .offset = 0.0,
-});
-pub const Ohm = UnitType("Ω", .{
-    .basis_vector = .{ .kilogram = 1, .meter = 2, .second = -3, .ampere = -2 },
-    .multiplier = 1.0,
-    .offset = 0.0,
-});
-pub const Dimensionless = UnitType("", .{ .basis_vector = ORIGIN, .multiplier = 1.0, .offset = 0.0 });
+pub const Meter = struct {
+    node: fabll.Node,
+    is_unit: IsUnit.MakeChild(.{ .basis_vector = .{ .meter = 1 }, .multiplier = 1.0, .offset = 0.0 }),
+    pub fn MakeChild() type { return fabll.Node.MakeChild(@This()); }
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() { return create_concrete_unit_instance(@This(), "m", g, tg); }
+};
+pub const Second = struct {
+    node: fabll.Node,
+    is_unit: IsUnit.MakeChild(.{ .basis_vector = .{ .second = 1 }, .multiplier = 1.0, .offset = 0.0 }),
+    pub fn MakeChild() type { return fabll.Node.MakeChild(@This()); }
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() { return create_concrete_unit_instance(@This(), "s", g, tg); }
+};
+pub const Hour = struct {
+    node: fabll.Node,
+    is_unit: IsUnit.MakeChild(.{ .basis_vector = .{ .second = 1 }, .multiplier = 3600.0, .offset = 0.0 }),
+    pub fn MakeChild() type { return fabll.Node.MakeChild(@This()); }
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() { return create_concrete_unit_instance(@This(), "h", g, tg); }
+};
+pub const Ampere = struct {
+    node: fabll.Node,
+    is_unit: IsUnit.MakeChild(.{ .basis_vector = .{ .ampere = 1 }, .multiplier = 1.0, .offset = 0.0 }),
+    pub fn MakeChild() type { return fabll.Node.MakeChild(@This()); }
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() { return create_concrete_unit_instance(@This(), "A", g, tg); }
+};
+pub const Kelvin = struct {
+    node: fabll.Node,
+    is_unit: IsUnit.MakeChild(.{ .basis_vector = .{ .kelvin = 1 }, .multiplier = 1.0, .offset = 0.0 }),
+    pub fn MakeChild() type { return fabll.Node.MakeChild(@This()); }
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() { return create_concrete_unit_instance(@This(), "K", g, tg); }
+};
+pub const DegreeCelsius = struct {
+    node: fabll.Node,
+    is_unit: IsUnit.MakeChild(.{ .basis_vector = .{ .kelvin = 1 }, .multiplier = 1.0, .offset = 273.15 }),
+    pub fn MakeChild() type { return fabll.Node.MakeChild(@This()); }
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() { return create_concrete_unit_instance(@This(), "°C", g, tg); }
+};
+pub const Volt = struct {
+    node: fabll.Node,
+    is_unit: IsUnit.MakeChild(.{ .basis_vector = .{ .kilogram = 1, .meter = 2, .second = -3, .ampere = -1 }, .multiplier = 1.0, .offset = 0.0 }),
+    pub fn MakeChild() type { return fabll.Node.MakeChild(@This()); }
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() { return create_concrete_unit_instance(@This(), "V", g, tg); }
+};
+pub const MilliVolt = struct {
+    node: fabll.Node,
+    is_unit: IsUnit.MakeChild(.{ .basis_vector = .{ .kilogram = 1, .meter = 2, .second = -3, .ampere = -1 }, .multiplier = 1e-3, .offset = 0.0 }),
+    pub fn MakeChild() type { return fabll.Node.MakeChild(@This()); }
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() { return create_concrete_unit_instance(@This(), "mV", g, tg); }
+};
+pub const Ohm = struct {
+    node: fabll.Node,
+    is_unit: IsUnit.MakeChild(.{ .basis_vector = .{ .kilogram = 1, .meter = 2, .second = -3, .ampere = -2 }, .multiplier = 1.0, .offset = 0.0 }),
+    pub fn MakeChild() type { return fabll.Node.MakeChild(@This()); }
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() { return create_concrete_unit_instance(@This(), "Ω", g, tg); }
+};
+pub const Dimensionless = struct {
+    node: fabll.Node,
+    is_unit: IsUnit.MakeChild(.{ .basis_vector = ORIGIN, .multiplier = 1.0, .offset = 0.0 }),
+    pub fn MakeChild() type { return fabll.Node.MakeChild(@This()); }
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() { return create_concrete_unit_instance(@This(), "", g, tg); }
+};
 
 test "units basis vector arithmetic" {
     const a = BasisVector{ .meter = 1, .second = -2 };
