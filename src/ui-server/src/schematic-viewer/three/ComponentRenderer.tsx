@@ -17,7 +17,7 @@ import {
   getNormalizedComponentPinGeometry,
 } from '../types/schematic';
 import type { ThemeColors } from '../lib/theme';
-import { getPinColor } from '../lib/theme';
+import { getPinColor, isThemeLight } from '../lib/theme';
 import {
   getUprightTextTransform,
   anchorFromVisualSide,
@@ -26,8 +26,18 @@ import {
 const SMALL_AREA = 40;
 const NO_RAYCAST = () => {};
 
-function accentColorFor(reference: string): string {
+function accentColorFor(reference: string, lightMode: boolean): string {
   const r = reference.toUpperCase();
+  if (lightMode) {
+    if (r.startsWith('U')) return '#1d4ed8';
+    if (r.startsWith('R')) return '#7c3aed';
+    if (r.startsWith('C')) return '#b45309';
+    if (r.startsWith('L')) return '#0f766e';
+    if (r.startsWith('D')) return '#be123c';
+    if (r.startsWith('Q')) return '#c2410c';
+    if (r.startsWith('J') || r.startsWith('P')) return '#15803d';
+    return '#475569';
+  }
   if (r.startsWith('U')) return '#89b4fa';
   if (r.startsWith('R')) return '#cba6f7';
   if (r.startsWith('C')) return '#f9e2af';
@@ -70,9 +80,10 @@ export const ComponentRenderer = memo(function ComponentRenderer({
   const W = component.bodyWidth;
   const H = component.bodyHeight;
   const isSmall = W * H < SMALL_AREA;
+  const lightTheme = isThemeLight(theme);
   const accent = useMemo(
-    () => accentColorFor(component.reference),
-    [component.reference],
+    () => accentColorFor(component.reference, lightTheme),
+    [component.reference, lightTheme],
   );
 
   // Shared label policy: keep text upright for any rotate/mirror combination.

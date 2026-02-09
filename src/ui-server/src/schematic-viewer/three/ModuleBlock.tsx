@@ -3,7 +3,7 @@ import { Text, RoundedBox, Line } from '@react-three/drei';
 import type { SchematicModule, SchematicInterfacePin } from '../types/schematic';
 import { getModuleGridAlignmentOffset } from '../types/schematic';
 import type { ThemeColors } from '../lib/theme';
-import { getPinColor } from '../lib/theme';
+import { getPinColor, isThemeLight } from '../lib/theme';
 import {
   getUprightTextTransform,
   anchorFromVisualSide,
@@ -19,8 +19,17 @@ import {
 const NO_RAYCAST = () => {};
 const MODULE_INSET = 0.72;
 
-function moduleAccentColor(typeName: string): string {
+function moduleAccentColor(typeName: string, lightMode: boolean): string {
   const t = typeName.toLowerCase();
+  if (lightMode) {
+    if (/power|ldo|buck|boost|regulator/i.test(t)) return '#be123c';
+    if (/mcu|esp|stm|rp2|cortex|cpu/i.test(t)) return '#1d4ed8';
+    if (/sensor|bme|bmp|lis|mpu|accel/i.test(t)) return '#15803d';
+    if (/led|light|display/i.test(t)) return '#a16207';
+    if (/usb|conn|jack/i.test(t)) return '#0f766e';
+    if (/i2c|spi|uart|bus/i.test(t)) return '#7c3aed';
+    return '#1d4ed8';
+  }
   if (/power|ldo|buck|boost|regulator/i.test(t)) return '#f38ba8';
   if (/mcu|esp|stm|rp2|cortex|cpu/i.test(t)) return '#89b4fa';
   if (/sensor|bme|bmp|lis|mpu|accel/i.test(t)) return '#a6e3a1';
@@ -59,9 +68,10 @@ export const ModuleBlock = memo(function ModuleBlock({
 }: Props) {
   const W = module.bodyWidth;
   const H = module.bodyHeight;
+  const lightTheme = isThemeLight(theme);
   const accent = useMemo(
-    () => moduleAccentColor(module.typeName),
-    [module.typeName],
+    () => moduleAccentColor(module.typeName, lightTheme),
+    [module.typeName, lightTheme],
   );
 
   const RADIUS = Math.min(0.78, Math.max(0.34, Math.min(W, H) * 0.055));
