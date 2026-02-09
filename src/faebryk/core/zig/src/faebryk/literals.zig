@@ -4,6 +4,7 @@ const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
 const faebryk = @import("faebryk");
 const fabll = @import("fabll.zig");
+const collections = @import("collections.zig");
 const str = []const u8;
 
 pub const REL_DIGITS: usize = 7;
@@ -18,11 +19,6 @@ pub const Error = error{
     InvalidInterval,
     InvalidSerializedType,
 };
-
-fn typegraph_of(instance: graph.BoundNodeReference) faebryk.typegraph.TypeGraph {
-    return faebryk.typegraph.TypeGraph.of_instance(instance) orelse
-        @panic("instance is not attached to a typegraph");
-}
 
 fn collect_child_values(
     parent: graph.BoundNodeReference,
@@ -162,32 +158,38 @@ pub const StringsSerialized = struct {
 
 pub const Strings = struct {
     node: fabll.Node,
+    values: collections.PointerSet.MakeChild(),
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
     }
 
     pub fn setup_from_values(self: @This(), values: []const str) @This() {
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const g = self.node.instance.g;
 
         for (values) |value| {
             const lit = String.create_instance(g, &tg, value);
-            _ = faebryk.composition.EdgeComposition.add_child(self.node.instance, lit.node.instance.node, null) catch
-                @panic("failed to add String literal child");
+            self.values.get().append(&.{lit.node.instance});
         }
         return self;
     }
 
     fn get_child_value(child: graph.BoundNodeReference, _: std.mem.Allocator) !str {
-        const lit = child.node.get("value") orelse return error.InvalidArgument;
-        return lit.String;
+        const as_string = (fabll.Node{ .instance = child }).cast(String);
+        return as_string.get_value();
     }
 
     pub fn get_values(self: @This(), allocator: std.mem.Allocator) ![]str {
-        const raw = try collect_child_values(self.node.instance, str, allocator, get_child_value);
-        defer allocator.free(raw);
-        return dedup_sort_strings(raw, allocator);
+        const nodes = try self.values.get().as_list(allocator);
+        defer allocator.free(nodes);
+
+        var raw = std.ArrayList(str).init(allocator);
+        defer raw.deinit();
+        for (nodes) |node| {
+            try raw.append(try get_child_value(node, allocator));
+        }
+        return dedup_sort_strings(raw.items, allocator);
     }
 
     pub fn is_singleton(self: @This(), allocator: std.mem.Allocator) !bool {
@@ -247,7 +249,7 @@ pub const Strings = struct {
         defer allocator.free(b);
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         var out = Booleans.create_instance(g, &tg);
 
         var a_set = std.StringHashMap(void).init(allocator);
@@ -287,7 +289,7 @@ pub const Strings = struct {
         }
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         var out = fabll.Node.bind_typegraph(@This(), &tg).create_instance(g);
         return out.setup_from_values(inter.items);
     }
@@ -307,7 +309,7 @@ pub const Strings = struct {
         defer allocator.free(merged);
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         var out = fabll.Node.bind_typegraph(@This(), &tg).create_instance(g);
         return out.setup_from_values(merged);
     }
@@ -332,7 +334,7 @@ pub const Strings = struct {
         }
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         var out = fabll.Node.bind_typegraph(@This(), &tg).create_instance(g);
         return out.setup_from_values(outvals.items);
     }
@@ -486,7 +488,7 @@ pub const NumericSet = struct {
     }
 
     pub fn setup_from_values(self: @This(), values: []const Interval, allocator: std.mem.Allocator) !@This() {
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const g = self.node.instance.g;
 
         const normalized = try normalize_intervals(values, allocator);
@@ -501,9 +503,11 @@ pub const NumericSet = struct {
     }
 
     fn get_child_interval(child: graph.BoundNodeReference, _: std.mem.Allocator) !Interval {
-        const min_l = child.node.get("min") orelse return error.InvalidArgument;
-        const max_l = child.node.get("max") orelse return error.InvalidArgument;
-        return .{ .min = min_l.Float, .max = max_l.Float };
+        const as_interval = (fabll.Node{ .instance = child }).cast(NumericInterval);
+        return .{
+            .min = as_interval.get_min_value(),
+            .max = as_interval.get_max_value(),
+        };
     }
 
     pub fn get_intervals(self: @This(), allocator: std.mem.Allocator) ![]Interval {
@@ -601,7 +605,7 @@ pub const NumericSet = struct {
         }
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
         return out.setup_from_values(outvals.items, allocator);
     }
@@ -618,7 +622,7 @@ pub const NumericSet = struct {
         try all.appendSlice(b);
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
         return out.setup_from_values(all.items, allocator);
     }
@@ -667,14 +671,14 @@ pub const NumericSet = struct {
         }
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
         return out.setup_from_values(outvals.items, allocator);
     }
 
     pub fn uncertainty_equals(self: @This(), other: @This(), allocator: std.mem.Allocator) !Booleans {
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         var out = Booleans.create_instance(g, &tg);
 
         const inter = try self.op_intersect_intervals(other, allocator);
@@ -712,12 +716,26 @@ pub const NumbersSerialized = struct {
 
 pub const Numbers = struct {
     node: fabll.Node,
+    numeric_set_ptr: collections.Pointer.MakeChild(),
 
     pub fn MakeChild(comptime min: f64, comptime max: f64) type {
-        const numeric_set_child = NumericSet.MakeChild().add_dependant_before(
+        const numeric_set_child = fabll.ChildField(NumericSet, "numeric_set", &.{}, &.{}, &.{}).add_dependant_before(
             NumericInterval.MakeChild(min, max),
         );
-        return fabll.ChildField(@This(), null, &.{}, &.{numeric_set_child}, &.{});
+        return fabll.Node.MakeChild(@This())
+            .add_dependant_before(numeric_set_child)
+            .add_dependant(
+                collections.Pointer.MakeEdge(
+                    .{ .segments = &.{
+                        .{ .owner_child = {} },
+                        .{ .child_identifier = "numeric_set_ptr" },
+                    } },
+                    .{ .segments = &.{
+                        .{ .owner_child = {} },
+                        .{ .child_identifier = "numeric_set" },
+                    } },
+                ),
+            );
     }
 
     pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() {
@@ -725,12 +743,11 @@ pub const Numbers = struct {
     }
 
     pub fn setup_from_min_max(self: @This(), min: f64, max: f64, allocator: std.mem.Allocator) !@This() {
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         var numeric_set = NumericSet.create_instance(self.node.instance.g, &tg);
         const intervals = [_]Interval{.{ .min = min, .max = max }};
         numeric_set = try numeric_set.setup_from_values(&intervals, allocator);
-        _ = faebryk.composition.EdgeComposition.add_child(self.node.instance, numeric_set.node.instance.node, "numeric_set") catch
-            @panic("failed to add numeric_set child");
+        self.numeric_set_ptr.get().point(numeric_set.node.instance);
         return self;
     }
 
@@ -745,18 +762,16 @@ pub const Numbers = struct {
             try intervals.append(.{ .min = v, .max = v });
         }
 
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         var numeric_set = NumericSet.create_instance(self.node.instance.g, &tg);
         numeric_set = try numeric_set.setup_from_values(intervals.items, allocator);
-        _ = faebryk.composition.EdgeComposition.add_child(self.node.instance, numeric_set.node.instance.node, "numeric_set") catch
-            @panic("failed to add numeric_set child");
+        self.numeric_set_ptr.get().point(numeric_set.node.instance);
         return self;
     }
 
     pub fn get_numeric_set(self: @This()) NumericSet {
-        const child = faebryk.composition.EdgeComposition.get_child_by_identifier(self.node.instance, "numeric_set") orelse
-            @panic("missing numeric_set child");
-        return .{ .node = .{ .instance = child } };
+        const target = self.numeric_set_ptr.get().deref();
+        return .{ .node = .{ .instance = target } };
     }
 
     pub fn is_empty(self: @This(), allocator: std.mem.Allocator) !bool {
@@ -795,30 +810,27 @@ pub const Numbers = struct {
     pub fn op_intersect_intervals(self: @This(), other: @This(), allocator: std.mem.Allocator) !@This() {
         const out_set = try self.get_numeric_set().op_intersect_intervals(other.get_numeric_set(), allocator);
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
-        _ = faebryk.composition.EdgeComposition.add_child(out.node.instance, out_set.node.instance.node, "numeric_set") catch
-            @panic("failed to add numeric_set child");
+        out.numeric_set_ptr.get().point(out_set.node.instance);
         return out;
     }
 
     pub fn op_union_intervals(self: @This(), other: @This(), allocator: std.mem.Allocator) !@This() {
         const out_set = try self.get_numeric_set().op_union(other.get_numeric_set(), allocator);
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
-        _ = faebryk.composition.EdgeComposition.add_child(out.node.instance, out_set.node.instance.node, "numeric_set") catch
-            @panic("failed to add numeric_set child");
+        out.numeric_set_ptr.get().point(out_set.node.instance);
         return out;
     }
 
     pub fn op_symmetric_difference_intervals(self: @This(), other: @This(), allocator: std.mem.Allocator) !@This() {
         const out_set = try self.get_numeric_set().op_symmetric_difference_intervals(other.get_numeric_set(), allocator);
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
-        _ = faebryk.composition.EdgeComposition.add_child(out.node.instance, out_set.node.instance.node, "numeric_set") catch
-            @panic("failed to add numeric_set child");
+        out.numeric_set_ptr.get().point(out_set.node.instance);
         return out;
     }
 
@@ -828,12 +840,11 @@ pub const Numbers = struct {
 
     fn from_intervals_like(self: @This(), intervals: []const Interval, allocator: std.mem.Allocator) !@This() {
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
         var set = NumericSet.create_instance(g, &tg);
         set = try set.setup_from_values(intervals, allocator);
-        _ = faebryk.composition.EdgeComposition.add_child(out.node.instance, set.node.instance.node, "numeric_set") catch
-            @panic("failed to add numeric_set child");
+        out.numeric_set_ptr.get().point(set.node.instance);
         return out;
     }
 
@@ -925,7 +936,7 @@ pub const Numbers = struct {
         const other_min = try other.get_min_value(allocator);
         const other_max = try other.get_max_value(allocator);
 
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const b = Booleans.create_instance(self.node.instance.g, &tg);
         const definitely_true = self_min >= other_max;
         const definitely_false = self_max < other_min;
@@ -940,7 +951,7 @@ pub const Numbers = struct {
         const other_min = try other.get_min_value(allocator);
         const other_max = try other.get_max_value(allocator);
 
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const b = Booleans.create_instance(self.node.instance.g, &tg);
         const definitely_true = self_min > other_max;
         const definitely_false = self_max <= other_min;
@@ -1092,8 +1103,7 @@ pub const Numbers = struct {
         const out = create_instance(g, tg);
         var set = NumericSet.create_instance(g, tg);
         set = try set.setup_from_values(data.data.intervals, allocator);
-        _ = faebryk.composition.EdgeComposition.add_child(out.node.instance, set.node.instance.node, "numeric_set") catch
-            @panic("failed to add numeric_set child");
+        out.numeric_set_ptr.get().point(set.node.instance);
         return out;
     }
 };
@@ -1125,32 +1135,37 @@ pub const CountsSerialized = struct {
 
 pub const Counts = struct {
     node: fabll.Node,
+    values: collections.PointerSet.MakeChild(),
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
     }
 
     pub fn setup_from_values(self: @This(), values: []const i64) @This() {
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const g = self.node.instance.g;
 
         for (values) |value| {
             const lit = Count.create_instance(g, &tg, value);
-            _ = faebryk.composition.EdgeComposition.add_child(self.node.instance, lit.node.instance.node, null) catch
-                @panic("failed to add Count literal child");
+            self.values.get().append(&.{lit.node.instance});
         }
         return self;
     }
 
     fn get_child_value(child: graph.BoundNodeReference, _: std.mem.Allocator) !i64 {
-        const lit = child.node.get("value") orelse return error.InvalidArgument;
-        return lit.Int;
+        const as_count = (fabll.Node{ .instance = child }).cast(Count);
+        return as_count.get_value();
     }
 
     pub fn get_values(self: @This(), allocator: std.mem.Allocator) ![]i64 {
-        const raw = try collect_child_values(self.node.instance, i64, allocator, get_child_value);
-        defer allocator.free(raw);
-        return dedup_sort_ints(raw, allocator);
+        const nodes = try self.values.get().as_list(allocator);
+        defer allocator.free(nodes);
+        var raw = std.ArrayList(i64).init(allocator);
+        defer raw.deinit();
+        for (nodes) |node| {
+            try raw.append(try get_child_value(node, allocator));
+        }
+        return dedup_sort_ints(raw.items, allocator);
     }
 
     pub fn is_singleton(self: @This(), allocator: std.mem.Allocator) !bool {
@@ -1210,7 +1225,7 @@ pub const Counts = struct {
         defer allocator.free(b);
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         var out = Booleans.create_instance(g, &tg);
 
         var aset = std.AutoHashMap(i64, void).init(allocator);
@@ -1247,7 +1262,7 @@ pub const Counts = struct {
         for (a) |v| if (bset.contains(v)) try outvals.append(v);
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         var out = fabll.Node.bind_typegraph(@This(), &tg).create_instance(g);
         return out.setup_from_values(outvals.items);
     }
@@ -1267,7 +1282,7 @@ pub const Counts = struct {
         defer allocator.free(merged);
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         var out = fabll.Node.bind_typegraph(@This(), &tg).create_instance(g);
         return out.setup_from_values(merged);
     }
@@ -1290,7 +1305,7 @@ pub const Counts = struct {
         for (u) |v| if (!iset.contains(v)) try outvals.append(v);
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         var out = fabll.Node.bind_typegraph(@This(), &tg).create_instance(g);
         return out.setup_from_values(outvals.items);
     }
@@ -1334,6 +1349,7 @@ pub const BooleansSerialized = struct {
 
 pub const Booleans = struct {
     node: fabll.Node,
+    values: collections.PointerSet.MakeChild(),
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
@@ -1344,26 +1360,30 @@ pub const Booleans = struct {
     }
 
     pub fn setup_from_values(self: @This(), values: []const bool) @This() {
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const g = self.node.instance.g;
 
         for (values) |value| {
             const lit = Boolean.create_instance(g, &tg, value);
-            _ = faebryk.composition.EdgeComposition.add_child(self.node.instance, lit.node.instance.node, null) catch
-                @panic("failed to add Boolean literal child");
+            self.values.get().append(&.{lit.node.instance});
         }
         return self;
     }
 
     fn get_child_value(child: graph.BoundNodeReference, _: std.mem.Allocator) !bool {
-        const lit = child.node.get("value") orelse return error.InvalidArgument;
-        return lit.Bool;
+        const as_boolean = (fabll.Node{ .instance = child }).cast(Boolean);
+        return as_boolean.get_value();
     }
 
     pub fn get_values(self: @This(), allocator: std.mem.Allocator) ![]bool {
-        const raw = try collect_child_values(self.node.instance, bool, allocator, get_child_value);
-        defer allocator.free(raw);
-        return dedup_sort_bools(raw, allocator);
+        const nodes = try self.values.get().as_list(allocator);
+        defer allocator.free(nodes);
+        var raw = std.ArrayList(bool).init(allocator);
+        defer raw.deinit();
+        for (nodes) |node| {
+            try raw.append(try get_child_value(node, allocator));
+        }
+        return dedup_sort_bools(raw.items, allocator);
     }
 
     pub fn is_singleton(self: @This(), allocator: std.mem.Allocator) !bool {
@@ -1442,7 +1462,7 @@ pub const Booleans = struct {
         if (overlap) try vals.append(true);
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
         return out.setup_from_values(vals.items);
     }
@@ -1468,7 +1488,7 @@ pub const Booleans = struct {
         defer allocator.free(dedup);
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
         return out.setup_from_values(dedup);
     }
@@ -1488,7 +1508,7 @@ pub const Booleans = struct {
         defer allocator.free(dedup);
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
         return out.setup_from_values(dedup);
     }
@@ -1516,7 +1536,7 @@ pub const Booleans = struct {
         }
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
         return out.setup_from_values(outvals.items);
     }
@@ -1548,6 +1568,14 @@ pub const EnumValue = struct {
     pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph, name: str, value: str) @This() {
         return fabll.Node.bind_typegraph(@This(), tg).create_instance_with_attrs(g, .{ .name = name, .value = value });
     }
+
+    pub fn get_name(self: @This()) str {
+        return fabll.get_typed_attributes(self).name;
+    }
+
+    pub fn get_value(self: @This()) str {
+        return fabll.get_typed_attributes(self).value;
+    }
 };
 
 pub const EnumEntry = struct {
@@ -1562,32 +1590,37 @@ pub const AbstractEnumsSerialized = struct {
 
 pub const AbstractEnums = struct {
     node: fabll.Node,
+    values: collections.PointerSet.MakeChild(),
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
     }
 
     pub fn setup_from_values(self: @This(), values: []const EnumEntry) @This() {
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         const g = self.node.instance.g;
 
         for (values) |value| {
             const lit = EnumValue.create_instance(g, &tg, value.name, value.value);
-            _ = faebryk.composition.EdgeComposition.add_child(self.node.instance, lit.node.instance.node, null) catch
-                @panic("failed to add EnumValue child");
+            self.values.get().append(&.{lit.node.instance});
         }
         return self;
     }
 
     fn get_child_value(child: graph.BoundNodeReference, _: std.mem.Allocator) !str {
-        const lit = child.node.get("value") orelse return error.InvalidArgument;
-        return lit.String;
+        const as_enum = (fabll.Node{ .instance = child }).cast(EnumValue);
+        return as_enum.get_value();
     }
 
     pub fn get_values(self: @This(), allocator: std.mem.Allocator) ![]str {
-        const raw = try collect_child_values(self.node.instance, str, allocator, get_child_value);
-        defer allocator.free(raw);
-        return dedup_sort_strings(raw, allocator);
+        const nodes = try self.values.get().as_list(allocator);
+        defer allocator.free(nodes);
+        var raw = std.ArrayList(str).init(allocator);
+        defer raw.deinit();
+        for (nodes) |node| {
+            try raw.append(try get_child_value(node, allocator));
+        }
+        return dedup_sort_strings(raw.items, allocator);
     }
 
     pub fn is_singleton(self: @This(), allocator: std.mem.Allocator) !bool {
@@ -1647,7 +1680,7 @@ pub const AbstractEnums = struct {
         defer allocator.free(b);
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         var out = Booleans.create_instance(g, &tg);
 
         var aset = std.StringHashMap(void).init(allocator);
@@ -1684,7 +1717,7 @@ pub const AbstractEnums = struct {
         for (a) |v| if (bset.contains(v)) try outvals.append(v);
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         var out = fabll.Node.bind_typegraph(@This(), &tg).create_instance(g);
 
         var entries = std.ArrayList(EnumEntry).init(allocator);
@@ -1708,7 +1741,7 @@ pub const AbstractEnums = struct {
         defer allocator.free(dedup);
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         var out = fabll.Node.bind_typegraph(@This(), &tg).create_instance(g);
 
         var entries = std.ArrayList(EnumEntry).init(allocator);
@@ -1737,7 +1770,7 @@ pub const AbstractEnums = struct {
         }
 
         const g = self.node.instance.g;
-        var tg = typegraph_of(self.node.instance);
+        var tg = self.node.typegraph();
         var out = fabll.Node.bind_typegraph(@This(), &tg).create_instance(g);
         return out.setup_from_values(entries.items);
     }

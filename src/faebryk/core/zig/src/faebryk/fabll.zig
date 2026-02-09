@@ -196,6 +196,28 @@ fn visit_edge_declarations(
 pub const Node = struct {
     instance: graph.BoundNodeReference,
 
+    pub fn typegraph(self: @This()) faebryk.typegraph.TypeGraph {
+        return faebryk.typegraph.TypeGraph.of_instance(self.instance) orelse
+            @panic("instance is not attached to a typegraph");
+    }
+
+    pub fn bind_instance(comptime T: type, instance: graph.BoundNodeReference) T {
+        return wrap_instance(T, instance);
+    }
+
+    pub fn try_cast(self: @This(), comptime T: type) ?T {
+        var tg = self.typegraph();
+        const type_node = tg.get_type_by_name(@typeName(T)) orelse return null;
+        if (!faebryk.node_type.EdgeType.is_node_instance_of(self.instance, type_node.node)) {
+            return null;
+        }
+        return wrap_instance(T, self.instance);
+    }
+
+    pub fn cast(self: @This(), comptime T: type) T {
+        return self.try_cast(T) orelse @panic("fabll cast failed: node is not instance of requested type");
+    }
+
     pub fn MakeChild(comptime T: type) type {
         if (comptime requires_attrs(T)) {
             @compileError("Type defines `Attributes`; use `T.MakeChild(...)` to provide attributes");
