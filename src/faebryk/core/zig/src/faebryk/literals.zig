@@ -5,6 +5,7 @@ const visitor = graph_mod.visitor;
 const faebryk = @import("faebryk");
 const fabll = @import("fabll.zig");
 const collections = @import("collections.zig");
+const units = @import("units.zig");
 const str = []const u8;
 
 pub const REL_DIGITS: usize = 7;
@@ -18,6 +19,7 @@ pub const Error = error{
     IncompatibleTypes,
     InvalidInterval,
     InvalidSerializedType,
+    UnitsNotCommensurable,
 };
 
 fn collect_child_values(
@@ -705,12 +707,14 @@ pub const NumbersSerialized = struct {
     @"type": str,
     data: struct {
         intervals: []Interval,
+        unit: ?units.UnitSerialized = null,
     },
 };
 
 pub const Numbers = struct {
     node: fabll.Node,
     numeric_set_ptr: collections.PointerOf(NumericSet).MakeChild(),
+    unit_ptr: collections.PointerOf(units.is_unit).MakeChild(),
 
     pub fn MakeChild(comptime min: f64, comptime max: f64) type {
         const numeric_set_child = fabll.ChildField(NumericSet, "numeric_set", &.{}, &.{}, &.{}).add_dependant_before(
@@ -737,19 +741,32 @@ pub const Numbers = struct {
     }
 
     pub fn setup_from_min_max(self: @This(), min: f64, max: f64, allocator: std.mem.Allocator) !@This() {
+        return self.setup_from_min_max_with_unit(min, max, null, allocator);
+    }
+
+    pub fn setup_from_min_max_with_unit(self: @This(), min: f64, max: f64, unit: ?units.is_unit, allocator: std.mem.Allocator) !@This() {
         var tg = self.node.typegraph();
         var numeric_set = NumericSet.create_instance(self.node.instance.g, &tg);
         const intervals = [_]Interval{.{ .min = min, .max = max }};
         numeric_set = try numeric_set.setup_from_values(&intervals, allocator);
         self.numeric_set_ptr.get().point(numeric_set);
+        if (unit) |u| self.unit_ptr.get().point(u);
         return self;
     }
 
     pub fn setup_from_singleton(self: @This(), value: f64, allocator: std.mem.Allocator) !@This() {
-        return self.setup_from_min_max(value, value, allocator);
+        return self.setup_from_min_max_with_unit(value, value, null, allocator);
+    }
+
+    pub fn setup_from_singleton_with_unit(self: @This(), value: f64, unit: ?units.is_unit, allocator: std.mem.Allocator) !@This() {
+        return self.setup_from_min_max_with_unit(value, value, unit, allocator);
     }
 
     pub fn setup_from_singletons(self: @This(), values: []const f64, allocator: std.mem.Allocator) !@This() {
+        return self.setup_from_singletons_with_unit(values, null, allocator);
+    }
+
+    pub fn setup_from_singletons_with_unit(self: @This(), values: []const f64, unit: ?units.is_unit, allocator: std.mem.Allocator) !@This() {
         var intervals = std.ArrayList(Interval).init(allocator);
         defer intervals.deinit();
         for (values) |v| {
@@ -760,11 +777,52 @@ pub const Numbers = struct {
         var numeric_set = NumericSet.create_instance(self.node.instance.g, &tg);
         numeric_set = try numeric_set.setup_from_values(intervals.items, allocator);
         self.numeric_set_ptr.get().point(numeric_set);
+        if (unit) |u| self.unit_ptr.get().point(u);
         return self;
     }
 
     pub fn get_numeric_set(self: @This()) NumericSet {
         return self.numeric_set_ptr.get().deref();
+    }
+
+    pub fn get_is_unit(self: @This()) ?units.is_unit {
+        return self.unit_ptr.get().try_deref();
+    }
+
+    fn convert_intervals_to(
+        self: @This(),
+        target: ?units.is_unit,
+        allocator: std.mem.Allocator,
+    ) ![]Interval {
+        if (!units.is_commensurable_with(self.get_is_unit(), target)) return Error.UnitsNotCommensurable;
+        const in = try self.get_numeric_set().get_intervals(allocator);
+        defer allocator.free(in);
+
+        var out = std.ArrayList(Interval).init(allocator);
+        errdefer out.deinit();
+        for (in) |interval| {
+            const a = try units.convert_value(interval.min, self.get_is_unit(), target);
+            const b = try units.convert_value(interval.max, self.get_is_unit(), target);
+            try out.append(.{
+                .min = @min(a, b),
+                .max = @max(a, b),
+            });
+        }
+        return out.toOwnedSlice();
+    }
+
+    pub fn convert_to_unit(self: @This(), target: ?units.is_unit, allocator: std.mem.Allocator) !@This() {
+        const converted = try self.convert_intervals_to(target, allocator);
+        defer allocator.free(converted);
+
+        const g = self.node.instance.g;
+        var tg = self.node.typegraph();
+        const out = create_instance(g, &tg);
+        var set = NumericSet.create_instance(g, &tg);
+        set = try set.setup_from_values(converted, allocator);
+        out.numeric_set_ptr.get().point(set);
+        if (target) |t| out.unit_ptr.get().point(t);
+        return out;
     }
 
     pub fn is_empty(self: @This(), allocator: std.mem.Allocator) !bool {
@@ -789,41 +847,56 @@ pub const Numbers = struct {
     }
 
     pub fn op_setic_equals(self: @This(), other: @This(), allocator: std.mem.Allocator) !bool {
-        return self.get_numeric_set().op_setic_equals(other.get_numeric_set(), allocator);
+        if (!units.is_commensurable_with(self.get_is_unit(), other.get_is_unit())) return false;
+        const other_converted = try other.convert_to_unit(self.get_is_unit(), allocator);
+        return self.get_numeric_set().op_setic_equals(other_converted.get_numeric_set(), allocator);
     }
 
     pub fn op_setic_is_subset_of(self: @This(), other: @This(), allocator: std.mem.Allocator) !bool {
-        return self.get_numeric_set().is_subset_of(other.get_numeric_set(), allocator);
+        if (!units.is_commensurable_with(self.get_is_unit(), other.get_is_unit())) return false;
+        const other_converted = try other.convert_to_unit(self.get_is_unit(), allocator);
+        return self.get_numeric_set().is_subset_of(other_converted.get_numeric_set(), allocator);
     }
 
     pub fn op_setic_is_superset_of(self: @This(), other: @This(), allocator: std.mem.Allocator) !bool {
-        return self.get_numeric_set().is_superset_of(other.get_numeric_set(), allocator);
+        if (!units.is_commensurable_with(self.get_is_unit(), other.get_is_unit())) return false;
+        const other_converted = try other.convert_to_unit(self.get_is_unit(), allocator);
+        return self.get_numeric_set().is_superset_of(other_converted.get_numeric_set(), allocator);
     }
 
     pub fn op_intersect_intervals(self: @This(), other: @This(), allocator: std.mem.Allocator) !@This() {
-        const out_set = try self.get_numeric_set().op_intersect_intervals(other.get_numeric_set(), allocator);
+        if (!units.is_commensurable_with(self.get_is_unit(), other.get_is_unit())) return Error.UnitsNotCommensurable;
+        const other_converted = try other.convert_to_unit(self.get_is_unit(), allocator);
+        const out_set = try self.get_numeric_set().op_intersect_intervals(other_converted.get_numeric_set(), allocator);
         const g = self.node.instance.g;
         var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
         out.numeric_set_ptr.get().point(out_set);
+        if (self.get_is_unit()) |u| out.unit_ptr.get().point(u);
         return out;
     }
 
     pub fn op_union_intervals(self: @This(), other: @This(), allocator: std.mem.Allocator) !@This() {
-        const out_set = try self.get_numeric_set().op_union(other.get_numeric_set(), allocator);
+        if (!units.is_commensurable_with(self.get_is_unit(), other.get_is_unit())) return Error.UnitsNotCommensurable;
+        const other_converted = try other.convert_to_unit(self.get_is_unit(), allocator);
+        const out_set = try self.get_numeric_set().op_union(other_converted.get_numeric_set(), allocator);
         const g = self.node.instance.g;
         var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
         out.numeric_set_ptr.get().point(out_set);
+        if (self.get_is_unit()) |u| out.unit_ptr.get().point(u);
         return out;
     }
 
     pub fn op_symmetric_difference_intervals(self: @This(), other: @This(), allocator: std.mem.Allocator) !@This() {
-        const out_set = try self.get_numeric_set().op_symmetric_difference_intervals(other.get_numeric_set(), allocator);
+        if (!units.is_commensurable_with(self.get_is_unit(), other.get_is_unit())) return Error.UnitsNotCommensurable;
+        const other_converted = try other.convert_to_unit(self.get_is_unit(), allocator);
+        const out_set = try self.get_numeric_set().op_symmetric_difference_intervals(other_converted.get_numeric_set(), allocator);
         const g = self.node.instance.g;
         var tg = self.node.typegraph();
         const out = create_instance(g, &tg);
         out.numeric_set_ptr.get().point(out_set);
+        if (self.get_is_unit()) |u| out.unit_ptr.get().point(u);
         return out;
     }
 
@@ -924,10 +997,12 @@ pub const Numbers = struct {
     }
 
     pub fn op_ge(self: @This(), other: @This(), allocator: std.mem.Allocator) !Booleans {
+        if (!units.is_commensurable_with(self.get_is_unit(), other.get_is_unit())) return Error.UnitsNotCommensurable;
+        const other_converted = try other.convert_to_unit(self.get_is_unit(), allocator);
         const self_min = try self.get_min_value(allocator);
         const self_max = try self.get_max_value(allocator);
-        const other_min = try other.get_min_value(allocator);
-        const other_max = try other.get_max_value(allocator);
+        const other_min = try other_converted.get_min_value(allocator);
+        const other_max = try other_converted.get_max_value(allocator);
 
         var tg = self.node.typegraph();
         const b = Booleans.create_instance(self.node.instance.g, &tg);
@@ -939,10 +1014,12 @@ pub const Numbers = struct {
     }
 
     pub fn op_gt(self: @This(), other: @This(), allocator: std.mem.Allocator) !Booleans {
+        if (!units.is_commensurable_with(self.get_is_unit(), other.get_is_unit())) return Error.UnitsNotCommensurable;
+        const other_converted = try other.convert_to_unit(self.get_is_unit(), allocator);
         const self_min = try self.get_min_value(allocator);
         const self_max = try self.get_max_value(allocator);
-        const other_min = try other.get_min_value(allocator);
-        const other_max = try other.get_max_value(allocator);
+        const other_min = try other_converted.get_min_value(allocator);
+        const other_max = try other_converted.get_max_value(allocator);
 
         var tg = self.node.typegraph();
         const b = Booleans.create_instance(self.node.instance.g, &tg);
@@ -1084,7 +1161,10 @@ pub const Numbers = struct {
 
         return .{
             .@"type" = if (discrete) "Quantity_Set_Discrete" else "Quantity_Interval_Disjoint",
-            .data = .{ .intervals = intervals },
+            .data = .{
+                .intervals = intervals,
+                .unit = if (self.get_is_unit()) |u| u.serialize() else null,
+            },
         };
     }
 
@@ -1097,6 +1177,9 @@ pub const Numbers = struct {
         var set = NumericSet.create_instance(g, tg);
         set = try set.setup_from_values(data.data.intervals, allocator);
         out.numeric_set_ptr.get().point(set);
+        if (data.data.unit) |serialized| {
+            out.unit_ptr.get().point(units.is_unit.deserialize(serialized, g, tg));
+        }
         return out;
     }
 };
@@ -1893,6 +1976,37 @@ test "literals numbers extended api (non-unit)" {
     defer std.testing.allocator.free(ge_vals);
     try std.testing.expectEqual(@as(usize, 1), ge_vals.len);
     try std.testing.expect(ge_vals[0]);
+}
+
+test "literals numbers units conversion" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const mv = units.to_is_unit(units.MilliVolt.create_instance(&g, &tg));
+    const v = units.to_is_unit(units.Volt.create_instance(&g, &tg));
+
+    var n = Numbers.create_instance(&g, &tg);
+    n = try n.setup_from_singleton_with_unit(1000.0, mv, std.testing.allocator);
+    const converted = try n.convert_to_unit(v, std.testing.allocator);
+    try std.testing.expectApproxEqAbs(@as(f64, 1.0), try converted.get_single(std.testing.allocator), 1e-9);
+}
+
+test "literals numbers units commensurability guard" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const volt = units.to_is_unit(units.Volt.create_instance(&g, &tg));
+    const second = units.to_is_unit(units.Second.create_instance(&g, &tg));
+
+    var lhs = Numbers.create_instance(&g, &tg);
+    lhs = try lhs.setup_from_singleton_with_unit(1.0, volt, std.testing.allocator);
+
+    var rhs = Numbers.create_instance(&g, &tg);
+    rhs = try rhs.setup_from_singleton_with_unit(1.0, second, std.testing.allocator);
+
+    try std.testing.expectError(Error.UnitsNotCommensurable, lhs.op_intersect_intervals(rhs, std.testing.allocator));
 }
 
 test "literals counts api" {
