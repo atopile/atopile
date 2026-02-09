@@ -203,8 +203,10 @@ pub const IsUnit = struct {
         return fabll.MakeChildWithTypedAttrs(@This(), attrs_from_info(info));
     }
 
-    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph, info: UnitInfo) @This() {
-        return fabll.Node.bind_typegraph(@This(), tg).create_instance_with_attrs(g, attrs_from_info(info));
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph, symbol: str, info: UnitInfo) @This() {
+        const out = fabll.Node.bind_typegraph(@This(), tg).create_instance_with_attrs(g, attrs_from_info(info));
+        out.node.instance.node.put("unit_symbol", .{ .String = symbol });
+        return out;
     }
 
     pub fn get_info(self: @This()) UnitInfo {
@@ -221,7 +223,14 @@ pub const IsUnit = struct {
     }
 
     pub fn get_symbol(self: @This()) str {
-        _ = self;
+        if (self.node.instance.node.get("unit_symbol")) |lit| {
+            return lit.String;
+        }
+        if (faebryk.composition.EdgeComposition.get_parent_node_of(self.node.instance)) |owner| {
+            if (owner.node.get("unit_symbol")) |lit| {
+                return lit.String;
+            }
+        }
         return "";
     }
 
@@ -236,7 +245,7 @@ pub const IsUnit = struct {
     }
 
     pub fn deserialize(data: UnitSerialized, g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() {
-        return create_instance(g, tg, .{
+        return create_instance(g, tg, data.symbol, .{
             .basis_vector = data.basis_vector,
             .multiplier = data.multiplier,
             .offset = data.offset,
@@ -294,9 +303,8 @@ pub fn convert_value(value: f64, from: ?is_unit, to: ?is_unit) Error!f64 {
 }
 
 pub fn new(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph, vector: BasisVector, multiplier: f64, offset: f64, symbol: str) ?is_unit {
-    _ = symbol;
     if (std.meta.eql(vector, ORIGIN) and multiplier == 1.0 and offset == 0.0) return null;
-    return is_unit.create_instance(g, tg, .{
+    return is_unit.create_instance(g, tg, symbol, .{
         .basis_vector = vector,
         .multiplier = multiplier,
         .offset = offset,
@@ -339,7 +347,10 @@ fn UnitType(comptime symbol: str, comptime info: UnitInfo) type {
         }
 
         pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() {
-            return fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
+            const out = fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
+            out.node.instance.node.put("unit_symbol", .{ .String = symbol });
+            out.is_unit.get().node.instance.node.put("unit_symbol", .{ .String = symbol });
+            return out;
         }
     };
 }
@@ -401,6 +412,15 @@ test "units conversion and commensurability" {
     try std.testing.expect(is_commensurable_with(v, mv));
     const converted = try convert_value(1000.0, mv, v);
     try std.testing.expectApproxEqAbs(@as(f64, 1.0), converted, 1e-9);
+}
+
+test "units symbol fidelity on trait node" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const v = to_is_unit(Volt.create_instance(&g, &tg));
+    try std.testing.expect(std.mem.eql(u8, "V", v.get_symbol()));
 }
 
 test "units affine conversion" {
