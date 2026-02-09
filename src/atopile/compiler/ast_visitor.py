@@ -48,11 +48,22 @@ from atopile.errors import DeprecatedException, downgrade
 from atopile.logging import get_logger
 from faebryk.core.faebrykpy import EdgeTraversal
 from faebryk.library.Units import UnitsNotCommensurableError
-from faebryk.libs.util import cast_assert, groupby, import_from_path, not_none
+from faebryk.libs.util import (
+    ConfigFlag,
+    cast_assert,
+    groupby,
+    import_from_path,
+    not_none,
+)
 
 _Quantity = tuple[float, fabll._ChildField]
 
 logger = get_logger(__name__)
+
+
+COMPILER_LOG = ConfigFlag(
+    "COMPILER_LOG", default=False, descr="Log compiler operations"
+)
 
 
 # FIXME: needs expanding
@@ -222,7 +233,8 @@ class _ScopeStack:
 
         current_state.symbols[symbol.name] = symbol
 
-        logger.info(f"Added symbol {symbol} to scope")
+        if COMPILER_LOG:
+            logger.info(f"Added symbol {symbol} to scope")
 
     def try_resolve_symbol(self, name: str) -> Symbol | None:
         for state in reversed(self.stack):
@@ -713,7 +725,8 @@ class ASTVisitor:
         module = "atopile.compiler.ast_types"
         mod_suffix = "." + ".".join(reversed(module.split(".")))
         node_type = cast_assert(str, node.get_type_name()).removesuffix(mod_suffix)
-        logger.info(f"Visiting node of type {node_type}")
+        if COMPILER_LOG:
+            logger.info(f"Visiting node of type {node_type}")
 
         try:
             handler = getattr(self, f"visit_{node_type}")
@@ -805,9 +818,10 @@ class ASTVisitor:
 
         type_identifier = self._make_type_identifier(module_name)
         if existing_type := fabll.Node._seen_types.get(type_identifier):
-            logger.debug(
-                f"Type {type_identifier} already processed, skipping reprocessing"
-            )
+            if COMPILER_LOG:
+                logger.debug(
+                    f"Type {type_identifier} already processed, skipping reprocessing"
+                )
             type_node_bound_tg = fabll.TypeNodeBoundTG(tg=self._tg, t=existing_type)
             type_node = type_node_bound_tg.get_or_create_type()
 
