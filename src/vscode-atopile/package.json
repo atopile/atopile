@@ -48,7 +48,8 @@
     ],
     "main": "./dist/extension.js",
     "scripts": {
-        "vscode:prepublish": "npm run build:webviews && npm run package",
+        "vscode:prepublish": "npm run build:novnc && npm run build:webviews && npm run package",
+        "build:novnc": "node -e \"require('fs').mkdirSync('resources/novnc',{recursive:true})\" && esbuild node_modules/@novnc/novnc/lib/rfb.js --bundle --format=esm --outfile=resources/novnc/novnc.bundle.js --minify",
         "build:webviews": "cd ../ui-server && npm install && npm run build -- --outDir ../vscode-atopile/resources/webviews",
         "compile": "webpack",
         "watch": "webpack --watch",
@@ -283,6 +284,7 @@
         "yaml": "^2.8.0"
     },
     "devDependencies": {
+        "@novnc/novnc": "~1.5.0",
         "@types/fs-extra": "^11.0.4",
         "@types/glob": "^8.1.0",
         "@types/js-yaml": "^4.0.9",
@@ -294,6 +296,7 @@
         "@typescript-eslint/parser": "^8.19.0",
         "@vscode/test-electron": "^2.4.0",
         "@vscode/vsce": "^3.2.1",
+        "esbuild": "^0.24.0",
         "eslint": "^9.17.0",
         "glob": "^10.4.5",
         "prettier": "^3.4.2",
