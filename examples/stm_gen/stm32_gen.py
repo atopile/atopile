@@ -8,7 +8,8 @@ generated component .ato file to discover the *actual* signal names
 (which vary per chip in unpredictable ways for power pins).
 
 Usage:
-    python stm32_gen.py /path/to/STM32F103C8Tx.xml --mfr-search STMicroelectronics:STM32F103C8T6
+    python stm32_gen.py /path/to/STM32F103C8Tx.xml \
+        --mfr-search STMicroelectronics:STM32F103C8T6
     python stm32_gen.py /path/to/STM32H743ZITx.xml --lcsc C114408
 """
 
@@ -23,7 +24,6 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
-
 
 # ── Data Model ──────────────────────────────────────────────────────────
 
@@ -354,7 +354,8 @@ def discover_interfaces(mcu: McuInfo) -> list[InterfaceMapping]:
                 pin_map = {}
                 conflict = False
                 for role in required:
-                    # Pick first candidate pin not already used by a higher-priority interface
+                    # Pick first candidate pin not already used by a higher-priority
+                    # interface.
                     chosen = None
                     for candidate in roles[role]:
                         if candidate not in used_pins:
@@ -699,18 +700,19 @@ def generate_ato(
         lines.append(f"import {imp}")
     lines.append("")
 
-    lines.append(
-        f'from "parts/{part.import_name}/{part.import_name}.ato" import {part.component_name}'
+    import_line = (
+        f'from "parts/{part.import_name}/{part.import_name}.ato" '
+        f"import {part.component_name}"
     )
+    lines.append(import_line)
     lines.append("")
 
     # ── Module ──
     flash_str = "/".join(str(f) for f in mcu.flash)
     lines.append(f"module {module_name}:")
     lines.append(f'{indent}"""')
-    lines.append(
-        f"{indent}STMicroelectronics {mcu.ref_name} ({mcu.core} up to {mcu.frequency} MHz)."
-    )
+    lines.append(f"{indent}STMicroelectronics {mcu.ref_name}")
+    lines.append(f"{indent}({mcu.core} up to {mcu.frequency} MHz).")
     lines.append(
         f"{indent}{flash_str} KB Flash, {mcu.ram} KB SRAM, {mcu.package_type}."
     )
@@ -743,12 +745,13 @@ def generate_ato(
 
     if main:
         lines.append(f"{indent}power_3v3 = new ElectricPower")
-        lines.append(
-            f'{indent}"""Primary supply domain ({main.voltage_min}V to {main.voltage_max}V)."""'
-        )
+        lines.append(f'{indent}"""Primary supply domain')
+        lines.append(f"{indent}({main.voltage_min}V to {main.voltage_max}V).")
+        lines.append(f'{indent}"""')
         lines.append(f"{indent}power_3v3.required = True")
         lines.append(
-            f"{indent}assert power_3v3.voltage within {main.voltage_min}V to {main.voltage_max}V"
+            f"{indent}assert power_3v3.voltage within "
+            f"{main.voltage_min}V to {main.voltage_max}V"
         )
         lines.append("")
 
@@ -1038,13 +1041,9 @@ def generate_ato(
 
     # ── Crystal connections ──
     if crystals:
-        lines.append(
-            f"{indent}# ==================================================================="
-        )
+        lines.append(f"{indent}# " + "=" * 67)
         lines.append(f"{indent}# Crystal connections")
-        lines.append(
-            f"{indent}# ==================================================================="
-        )
+        lines.append(f"{indent}# " + "=" * 67)
         lines.append("")
         for crystal in crystals:
             lines.append(f"{indent}{crystal.name}.xin ~ package.{crystal.xin_signal}")
@@ -1068,7 +1067,8 @@ def generate_ato(
             sig_name = part.find_gpio_signal(letter, pin_num)
             if sig_name:
                 lines.append(
-                    f"{indent}package.{sig_name} ~ gpio_{letter.lower()}[{pin_num}].line"
+                    f"{indent}package.{sig_name} ~ "
+                    f"gpio_{letter.lower()}[{pin_num}].line"
                 )
             else:
                 lines.append(
@@ -1200,7 +1200,10 @@ def main():
 
     if not part:
         print(
-            "  ERROR: No installed part found. Run with --lcsc or --mfr-search to install.",
+            (
+                "  ERROR: No installed part found. "
+                "Run with --lcsc or --mfr-search to install."
+            ),
             file=sys.stderr,
         )
         sys.exit(1)

@@ -10,6 +10,8 @@ import faebryk.library._F as F
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.utils import (
     strip_root_hex as _strip_root_hex,
+)
+from faebryk.exporters.utils import (
     write_json as _write_json,
 )
 

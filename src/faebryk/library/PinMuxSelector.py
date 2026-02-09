@@ -833,7 +833,9 @@ def _check_connected(
         target_node = target.node()
     else:
         target_node = target
-    path = fbrk.EdgeInterfaceConnection.is_connected_to(source=source, target=target)
+    path = fbrk.EdgeInterfaceConnection.is_connected_to(
+        source=source_node, target=target_node
+    )
     return path.get_end_node().node().is_same(other=target_node)
 
 

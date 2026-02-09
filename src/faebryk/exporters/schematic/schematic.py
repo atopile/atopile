@@ -377,11 +377,6 @@ def _discover_modules(app: fabll.Node) -> dict[str, _ModInfo]:
             # JSON ID: dots replaced, lowered
             json_id = full_name.replace(".", "_").lower()
 
-            # Find parent module name
-            parent_fullname = None
-            if "." in full_name:
-                parent_fullname = full_name.rsplit(".", 1)[0]
-
             info = _ModInfo(
                 node=module_node,
                 json_id=json_id,
@@ -812,9 +807,9 @@ def _extract_signal_names(
             required_trait=F.Lead.is_lead,
         )
         leads_with_pads = [
-            l
-            for l in lead_nodes
-            if l.get_trait(F.Lead.is_lead).has_trait(F.Lead.has_associated_pads)
+            lead
+            for lead in lead_nodes
+            if lead.get_trait(F.Lead.is_lead).has_trait(F.Lead.has_associated_pads)
         ]
 
         # For each lead, find directly-connected same-level signal children.
@@ -941,7 +936,10 @@ def _extract_pin_interfaces(
     From lead_functions, extract which module interfaces each pin connects to.
 
     Returns:
-      {pin_number: [(interface_name, signal_suffix, interface_type, is_line_level), ...]}
+      {pin_number: [
+          (interface_name, signal_suffix, interface_type, is_line_level),
+          ...
+      ]}
 
     Expects pre-filtered functions (reference noise already removed).
     """
@@ -1003,8 +1001,8 @@ def _extract_pin_interfaces(
 
 def _mark_passthrough_interfaces(iface_map: dict[str, dict]) -> None:
     """Mark GPIO/control interfaces that bridge shared physical pins."""
-    bindings_by_comp_pin: dict[tuple[str, str], list[_ResolvedInterfacePin]] = defaultdict(
-        list
+    bindings_by_comp_pin: dict[tuple[str, str], list[_ResolvedInterfacePin]] = (
+        defaultdict(list)
     )
 
     for iface_name, iface_data in iface_map.items():
@@ -1771,7 +1769,6 @@ def export_schematic_json(
     # ═══════════════════════════════════════════════════════════════
 
     all_modules = _discover_modules(app)
-    module_by_fullname = {m.full_name: m for m in all_modules.values()}
 
     logger.info(
         "Discovered %d modules: %s",
@@ -1938,9 +1935,9 @@ def export_schematic_json(
 
             # Check if leads actually have associated pads
             leads_with_pads = [
-                l
-                for l in lead_nodes
-                if l.get_trait(F.Lead.is_lead).has_trait(F.Lead.has_associated_pads)
+                lead
+                for lead in lead_nodes
+                if lead.get_trait(F.Lead.is_lead).has_trait(F.Lead.has_associated_pads)
             ]
 
             # If no leads with pads on component, try parent
@@ -1951,9 +1948,11 @@ def export_schematic_json(
                     required_trait=F.Lead.is_lead,
                 )
                 parent_leads_with_pads = [
-                    l
-                    for l in parent_leads
-                    if l.get_trait(F.Lead.is_lead).has_trait(F.Lead.has_associated_pads)
+                    lead
+                    for lead in parent_leads
+                    if lead.get_trait(F.Lead.is_lead).has_trait(
+                        F.Lead.has_associated_pads
+                    )
                 ]
                 if parent_leads_with_pads:
                     lead_source_node = parent[0]
@@ -2246,8 +2245,9 @@ def export_schematic_json(
 
                     iface_map[iface_name]["signals"].add(signal_suffix)
 
-                    # Build pin_map: comp_id -> {pad -> (iface_id, signal_suffix, is_line_level)}
-                    # Tracks which specific signal (if any) and connection mode each pad maps to.
+                    # Build pin_map:
+                    # comp_id -> {pad -> (iface_id, signal_suffix, is_line_level)}
+                    # Tracks signal and connection mode each pad maps to.
                     pin_map[iface_name][comp.json_id][pad_name] = (
                         iface_name,
                         signal_suffix,

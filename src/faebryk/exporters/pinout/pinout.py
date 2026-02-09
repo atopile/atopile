@@ -23,7 +23,11 @@ import faebryk.library._F as F
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.utils import (
     natural_sort_key as _natural_sort_key,
+)
+from faebryk.exporters.utils import (
     strip_root_hex as _strip_root_hex,
+)
+from faebryk.exporters.utils import (
     write_json as _write_json,
 )
 
@@ -147,7 +151,16 @@ def _trace_lead_interfaces(
     all the functions this pin can serve.
 
     Returns a list of dicts:
-    [{"name": "gpio[0]", "raw_name": "gpio[0].line", "type": "GPIO", "external": False, "is_line_level": True}, ...]
+    [
+      {
+        "name": "gpio[0]",
+        "raw_name": "gpio[0].line",
+        "type": "GPIO",
+        "external": False,
+        "is_line_level": True,
+      },
+      ...
+    ]
 
     The "external" flag indicates whether this interface is connected
     to something outside the component's parent module (i.e. actually

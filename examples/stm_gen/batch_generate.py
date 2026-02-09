@@ -112,7 +112,7 @@ def run_generator(xml_path: Path, search: str, output_path: Path) -> tuple[bool,
         else:
             # Get last meaningful error line
             err = result.stderr.strip() or result.stdout.strip()
-            last_lines = [l for l in err.split("\n") if l.strip()][-3:]
+            last_lines = [line for line in err.split("\n") if line.strip()][-3:]
             return False, "\n    ".join(last_lines)
     except subprocess.TimeoutExpired:
         return False, "TIMEOUT"
@@ -160,7 +160,7 @@ module App:
             return True, "BUILD OK"
         else:
             err = result.stderr.strip() or result.stdout.strip()
-            last_lines = [l for l in err.split("\n") if l.strip()][-3:]
+            last_lines = [line for line in err.split("\n") if line.strip()][-3:]
             return False, "\n    ".join(last_lines)
     except subprocess.TimeoutExpired:
         return False, "BUILD TIMEOUT"
@@ -203,7 +203,7 @@ def main():
         targets = targets[: args.limit]
 
     print(f"{'=' * 72}")
-    print(f"  STM32 .ato Batch Generator")
+    print("  STM32 .ato Batch Generator")
     print(f"  Targets: {len(targets)} MCUs")
     print(f"{'=' * 72}")
 
@@ -219,7 +219,7 @@ def main():
         print(f"\n[{i + 1}/{len(targets)}] {part_name} — {desc}")
 
         if args.skip_existing and output_path.exists():
-            print(f"  SKIP (already exists)")
+            print("  SKIP (already exists)")
             results["skipped"].append(part_name)
             continue
 

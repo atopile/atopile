@@ -356,6 +356,68 @@ function buildMstEdges(
   return edges;
 }
 
+function buildPassThroughBridgeEdges(
+  worldPins: WorldPin[],
+  passThroughPortIds: Set<string>,
+): Array<{ a: WorldPin; b: WorldPin }> | null {
+  if (worldPins.length < 3 || passThroughPortIds.size === 0) return null;
+
+  const byPort = new Map<string, { pin1?: WorldPin; pin2?: WorldPin }>();
+  for (const wp of worldPins) {
+    if (!passThroughPortIds.has(wp.compId)) continue;
+    if (wp.pinNumber !== '1' && wp.pinNumber !== '2') continue;
+    const entry = byPort.get(wp.compId) || {};
+    if (wp.pinNumber === '1') entry.pin1 = wp;
+    if (wp.pinNumber === '2') entry.pin2 = wp;
+    byPort.set(wp.compId, entry);
+  }
+
+  // Keep this conservative: one bridge port per net for now.
+  const completePorts = [...byPort.entries()].filter(
+    ([, pins]) => !!pins.pin1 && !!pins.pin2,
+  );
+  if (completePorts.length !== 1) return null;
+
+  const [bridgePortId, pins] = completePorts[0];
+  const pin1 = pins.pin1!;
+  const pin2 = pins.pin2!;
+  const others = worldPins.filter((wp) => wp.compId !== bridgePortId);
+  if (others.length < 2) return null;
+
+  const midX = (pin1.x + pin2.x) / 2;
+  const midY = (pin1.y + pin2.y) / 2;
+  const mostlyHorizontal = Math.abs(pin1.x - pin2.x) >= Math.abs(pin1.y - pin2.y);
+  const leftLike = pin1.x <= pin2.x ? pin1 : pin2;
+  const rightLike = pin1.x <= pin2.x ? pin2 : pin1;
+  const bottomLike = pin1.y <= pin2.y ? pin1 : pin2;
+  const topLike = pin1.y <= pin2.y ? pin2 : pin1;
+
+  const edges: Array<{ a: WorldPin; b: WorldPin }> = [];
+  const seen = new Set<string>();
+
+  for (const other of others) {
+    const d1 = manhattanDistance(other, pin1);
+    const d2 = manhattanDistance(other, pin2);
+    let target = d1 <= d2 ? pin1 : pin2;
+
+    // Tie-break using relative side around bridge midpoint.
+    if (Math.abs(d1 - d2) <= ROUTE_SPACING * 0.1) {
+      if (mostlyHorizontal) {
+        target = other.x <= midX ? leftLike : rightLike;
+      } else {
+        target = other.y <= midY ? bottomLike : topLike;
+      }
+    }
+
+    const key = `${other.compId}:${other.pinNumber}->${target.compId}:${target.pinNumber}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    edges.push({ a: other, b: target });
+  }
+
+  return edges.length >= 2 ? edges : null;
+}
+
 function routePriority(net: SchematicNet): number {
   if (net.type === 'power') return 0;
   if (net.type === 'ground') return 1;
@@ -602,6 +664,11 @@ export const NetLines = memo(function NetLines({
         .filter((p) => !!p.signals && p.signals.length >= 2)
         .map((p) => p.id),
     );
+    const passThroughPortIds = new Set(
+      ports
+        .filter((p) => !!p.passThrough)
+        .map((p) => p.id),
+    );
 
     // Collect bus candidates alongside direct/stub classification
     const busInputs: NetForBus[] = [];
@@ -722,7 +789,8 @@ export const NetLines = memo(function NetLines({
         worldPins.length <= MAX_MULTI_ROUTE_PINS
       ) {
         const span = computePinSpan(worldPins);
-        const edges = buildMstEdges(worldPins);
+        const bridgeEdges = buildPassThroughBridgeEdges(worldPins, passThroughPortIds);
+        const edges = bridgeEdges ?? buildMstEdges(worldPins);
         if (edges.length > 0 && span <= MULTI_ROUTE_MAX_SPAN) {
           pendingMultiNets.push({
             net,

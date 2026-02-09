@@ -13,7 +13,7 @@ build-backend = "hatchling.build"
 name = "atopile"
 description = "A toolchain bringing the best of software development to the real-world!"
 readme = "README.md"
-requires-python = "==3.13"
+requires-python = ">=3.14,<3.15"
 dynamic = ["version"]
 license = { file = "LICENSE" }
 authors = [
@@ -99,7 +99,7 @@ dev = [
     "ziglang==0.14.1",
     "graphviz>=0.21",
     "py-spy>=0.4.1",
-    "pydantic-to-typescript>=2.0.0",  # Generate TypeScript types from Pydantic models
+    "pydantic-to-typescript>=2.0.0", # Generate TypeScript types from Pydantic models
     #"austin-dist>=4.0.0",
     #"austin-python>=2.1.2",
 ]
@@ -119,7 +119,11 @@ allow-direct-references = true
 
 # Add the built viewer and dashboard to the python package
 [tool.hatch.build.targets.wheel]
-artifacts = ["**/viewer/dist", "**/dashboard/web/dist"]
+artifacts = [
+    "**/viewer/dist",
+    "**/visualizer/web/dist",
+    "**/dashboard/web/dist",
+]
 packages = ["src/faebryk", "src/atopile"]
 exclude = ["**/.zig-cache", "**/.zig-cache/**", "**/zig-out", "**/zig-out/**"]
 
@@ -128,7 +132,11 @@ experimental = true
 cmake.source-dir = "src/faebryk/core"
 
 [tool.hatch.build.targets.sdist]
-artifacts = ["**/viewer/dist", "**/dashboard/web/dist"]
+artifacts = [
+    "**/viewer/dist",
+    "**/visualizer/web/dist",
+    "**/dashboard/web/dist",
+]
 
 [tool.hatch.version]
 source = "vcs"
@@ -313,3 +321,4 @@ atopile-mkdocs-plugin = { path = "tools/atopile_mkdocs_plugin", editable = true 
 
 [tool.uv]
 cache-keys = [{ git = { commit = false, tags = true } }]
+override-dependencies = ["pynng>=0.9.0"]                 # for python 3.14 compatibility

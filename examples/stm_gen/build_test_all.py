@@ -4,11 +4,11 @@ Build-test all generated .ato files.
 Writes main.ato for each, runs `ato build` in the project dir, reports results.
 """
 
+import json
 import re
 import subprocess
 import sys
 import time
-import json
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
@@ -57,7 +57,7 @@ module App:
             return name, True, "OK", duration
         else:
             err = result.stderr.strip() or result.stdout.strip()
-            lines = [l.strip() for l in err.split("\n") if l.strip()]
+            lines = [line.strip() for line in err.split("\n") if line.strip()]
             error_msg = "Unknown error"
             for line in lines:
                 if "error" in line.lower() or "Error" in line:
@@ -89,8 +89,10 @@ def main():
     for i, f in enumerate(ato_files):
         name, ok, msg, dur = build_test_one(f)
         status = "PASS" if ok else "FAIL"
+        details = "" if ok else f" {msg}"
         print(
-            f"  [{i + 1:2d}/{len(ato_files)}] [{status}] {name:30s} ({dur:.1f}s) {'' if ok else msg}"
+            f"  [{i + 1:2d}/{len(ato_files)}] [{status}] "
+            f"{name:30s} ({dur:.1f}s){details}"
         )
         results.append({"name": name, "ok": ok, "msg": msg, "duration": round(dur, 1)})
 

@@ -53,11 +53,11 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.exporters.pinout.pinout import export_pinout_json
-from faebryk.exporters.schematic.schematic import export_schematic_json
 from faebryk.exporters.power_tree.power_tree import (
     export_power_tree,
     export_power_tree_json,
 )
+from faebryk.exporters.schematic.schematic import export_schematic_json
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.app.designators import (
     attach_random_designators,
