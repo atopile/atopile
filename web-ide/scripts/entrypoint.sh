@@ -54,6 +54,11 @@ common["do_not_show_again"]["update_check_prompt"] = True
 common["do_not_show_again"]["env_var_overwrite_warning"] = True
 common["do_not_show_again"]["scaled_3d_models_warning"] = True
 common["do_not_show_again"]["zone_fill_warning"] = True
+
+# Enable KiCad IPC API server so `reload_pcb()` can tell PCBnew to reload via socket
+common.setdefault("api", {})
+common["api"]["enable_server"] = True
+
 common_path.write_text(json.dumps(common, indent=2))
 
 # Create pcbnew.json if missing — marks PCBnew as already-configured

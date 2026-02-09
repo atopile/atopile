@@ -9,7 +9,6 @@
 import * as vscode from 'vscode';
 import { vncServer } from '../common/vnc-server';
 import { getAndCheckResource } from '../common/resources';
-import { onPcbChanged, getCurrentPcb } from '../common/pcb';
 import { BaseWebview } from './webview-base';
 import { getNonce } from './webview-utils';
 import { traceInfo, traceError } from '../common/log/logging';
@@ -221,28 +220,27 @@ let pcbnewVnc: PcbnewVncWebview | undefined;
 /**
  * Open PCBnew in an embedded VNC viewer.
  * Starts the VNC stack if not already running, then opens the webview panel.
+ *
+ * PCB reload on changes is handled by the existing KiCad IPC mechanism:
+ * `ato build` calls `reload_pcb()` which tells running PCBnew to reload
+ * via the KiCad socket API (`/tmp/kicad/api*.sock`).
  */
 export async function openPcbnewVnc(pcbFile?: string): Promise<void> {
     traceInfo(`PcbnewVnc: openPcbnewVnc called (pcbFile=${pcbFile ?? 'none'})`);
 
     try {
-        const isRestart = vncServer.isRunning;
-
-        // Show a progress notification while starting/restarting the VNC stack
-        await vscode.window.withProgress(
-            {
-                location: vscode.ProgressLocation.Notification,
-                title: isRestart ? 'Reloading PCBnew...' : 'Starting PCBnew...',
-                cancellable: false,
-            },
-            async () => {
-                if (isRestart) {
-                    await vncServer.restart(pcbFile);
-                } else {
+        if (!vncServer.isRunning) {
+            await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: 'Starting PCBnew...',
+                    cancellable: false,
+                },
+                async () => {
                     await vncServer.start(pcbFile);
-                }
-            },
-        );
+                },
+            );
+        }
 
         if (!pcbnewVnc) {
             pcbnewVnc = new PcbnewVncWebview();
@@ -262,17 +260,10 @@ export function closePcbnewVnc(): void {
     vncServer.stop();
 }
 
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
-    // When the PCB file changes and the VNC viewer is open, restart PCBnew
-    context.subscriptions.push(
-        onPcbChanged((_) => {
-            if (pcbnewVnc?.isOpen() && vncServer.isRunning) {
-                const pcb = getCurrentPcb();
-                traceInfo(`PcbnewVnc: PCB changed, restarting PCBnew`);
-                openPcbnewVnc(pcb?.path);
-            }
-        }),
-    );
+export async function activate(_context: vscode.ExtensionContext): Promise<void> {
+    // PCB reload on changes is handled by the KiCad IPC mechanism:
+    // `ato build` → `reload_pcb()` → KiCad socket API → PCBnew reloads from disk.
+    // No extension-side handling needed.
 }
 
 export function deactivate(): void {
