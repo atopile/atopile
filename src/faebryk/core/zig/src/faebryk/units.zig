@@ -353,6 +353,192 @@ pub fn decode_symbol(symbol: str, g: *graph.GraphView, tg: *faebryk.typegraph.Ty
     return Error.UnitNotFound;
 }
 
+fn symbol_for_basis_vector(vector: BasisVector, multiplier: f64) ?str {
+    const info = UnitInfo{ .basis_vector = vector, .multiplier = multiplier, .offset = 0.0 };
+    if (std.meta.eql(info, UnitInfo{ .basis_vector = .{ .meter = 1 }, .multiplier = 1.0, .offset = 0.0 })) return "m";
+    if (std.meta.eql(info, UnitInfo{ .basis_vector = .{ .second = 1 }, .multiplier = 1.0, .offset = 0.0 })) return "s";
+    if (std.meta.eql(info, UnitInfo{ .basis_vector = .{ .second = -1 }, .multiplier = 1.0, .offset = 0.0 })) return "Hz";
+    if (std.meta.eql(info, UnitInfo{ .basis_vector = .{ .ampere = 1 }, .multiplier = 1.0, .offset = 0.0 })) return "A";
+    if (std.meta.eql(info, UnitInfo{ .basis_vector = .{ .kelvin = 1 }, .multiplier = 1.0, .offset = 0.0 })) return "K";
+    if (std.meta.eql(info, UnitInfo{
+        .basis_vector = .{ .kilogram = 1, .meter = 2, .second = -3, .ampere = -1 },
+        .multiplier = 1.0,
+        .offset = 0.0,
+    })) return "V";
+    if (std.meta.eql(info, UnitInfo{
+        .basis_vector = .{ .kilogram = 1, .meter = 2, .second = -3, .ampere = -2 },
+        .multiplier = 1.0,
+        .offset = 0.0,
+    })) return "Ω";
+    if (std.meta.eql(info, UnitInfo{
+        .basis_vector = .{ .kilogram = 1, .meter = 2, .second = -3 },
+        .multiplier = 1.0,
+        .offset = 0.0,
+    })) return "W";
+    if (std.meta.eql(info, UnitInfo{
+        .basis_vector = .{ .kilogram = -1, .meter = -2, .second = 4, .ampere = 2 },
+        .multiplier = 1.0,
+        .offset = 0.0,
+    })) return "F";
+    if (std.meta.eql(info, UnitInfo{
+        .basis_vector = .{ .kilogram = 1, .meter = 1, .second = -2 },
+        .multiplier = 1.0,
+        .offset = 0.0,
+    })) return "N";
+    if (std.meta.eql(info, UnitInfo{
+        .basis_vector = .{ .kilogram = 1, .meter = -1, .second = -2 },
+        .multiplier = 1.0,
+        .offset = 0.0,
+    })) return "Pa";
+    if (std.meta.eql(info, UnitInfo{
+        .basis_vector = .{ .kilogram = 1, .meter = 2, .second = -2 },
+        .multiplier = 1.0,
+        .offset = 0.0,
+    })) return "J";
+    if (std.meta.eql(info, UnitInfo{
+        .basis_vector = .{ .ampere = 1, .second = 1 },
+        .multiplier = 1.0,
+        .offset = 0.0,
+    })) return "C";
+    if (std.meta.eql(info, UnitInfo{
+        .basis_vector = .{ .kilogram = -1, .meter = -2, .second = 3, .ampere = 2 },
+        .multiplier = 1.0,
+        .offset = 0.0,
+    })) return "S";
+    if (std.meta.eql(info, UnitInfo{
+        .basis_vector = .{ .kilogram = 1, .meter = 2, .second = -2, .ampere = -1 },
+        .multiplier = 1.0,
+        .offset = 0.0,
+    })) return "Wb";
+    if (std.meta.eql(info, UnitInfo{
+        .basis_vector = .{ .kilogram = 1, .second = -2, .ampere = -1 },
+        .multiplier = 1.0,
+        .offset = 0.0,
+    })) return "T";
+    if (std.meta.eql(info, UnitInfo{
+        .basis_vector = .{ .kilogram = 1, .meter = 2, .second = -2, .ampere = -2 },
+        .multiplier = 1.0,
+        .offset = 0.0,
+    })) return "H";
+    if (std.meta.eql(info, UnitInfo{ .basis_vector = .{ .radian = 1 }, .multiplier = 1.0, .offset = 0.0 })) return "rad";
+    if (std.meta.eql(info, UnitInfo{ .basis_vector = .{ .steradian = 1 }, .multiplier = 1.0, .offset = 0.0 })) return "sr";
+    if (std.meta.eql(info, UnitInfo{ .basis_vector = .{ .bit = 1 }, .multiplier = 1.0, .offset = 0.0 })) return "bit";
+    return null;
+}
+
+fn to_superscript_alloc(allocator: std.mem.Allocator, n: i64) ![]u8 {
+    var buf: [32]u8 = undefined;
+    const plain = try std.fmt.bufPrint(&buf, "{d}", .{n});
+    var out = std.ArrayList(u8).init(allocator);
+    errdefer out.deinit();
+    for (plain) |ch| {
+        const mapped: str = switch (ch) {
+            '-' => "⁻",
+            '0' => "⁰",
+            '1' => "¹",
+            '2' => "²",
+            '3' => "³",
+            '4' => "⁴",
+            '5' => "⁵",
+            '6' => "⁶",
+            '7' => "⁷",
+            '8' => "⁸",
+            '9' => "⁹",
+            else => "",
+        };
+        try out.appendSlice(mapped);
+    }
+    return out.toOwnedSlice();
+}
+
+fn format_number_alloc(allocator: std.mem.Allocator, value: f64) ![]u8 {
+    if (value == @trunc(value)) {
+        var int_buf: [64]u8 = undefined;
+        const int_s = try std.fmt.bufPrint(&int_buf, "{d}", .{@as(i64, @intFromFloat(value))});
+        return allocator.dupe(u8, int_s);
+    }
+    var float_buf: [64]u8 = undefined;
+    const float_s = try std.fmt.bufPrint(&float_buf, "{d}", .{value});
+    return allocator.dupe(u8, float_s);
+}
+
+fn append_vector_term(out: *std.ArrayList(u8), allocator: std.mem.Allocator, symbol: str, exp: i64) !void {
+    if (exp == 0) return;
+    if (out.items.len > 0) try out.appendSlice("·");
+    try out.appendSlice(symbol);
+    if (exp != 1) {
+        const sup = try to_superscript_alloc(allocator, exp);
+        defer allocator.free(sup);
+        try out.appendSlice(sup);
+    }
+}
+
+pub fn compact_repr(unit: ?is_unit, allocator: std.mem.Allocator) ![]u8 {
+    if (unit == null) return allocator.dupe(u8, "");
+
+    const u = unit.?;
+    const symbol = u.get_symbol();
+    if (symbol.len > 0) return allocator.dupe(u8, symbol);
+
+    const info = info_of(unit);
+    const vector = info.basis_vector;
+    const multiplier = info.multiplier;
+    const offset = info.offset;
+
+    if (offset == 0.0 and multiplier > 0.0) {
+        const log_mult = if (multiplier == 0.0) 0.0 else std.math.log10(multiplier);
+        if (std.math.approxEqAbs(f64, log_mult, @round(log_mult), 1e-9)) {
+            const exp_mult: i64 = @intFromFloat(@round(log_mult));
+            if (symbol_for_basis_vector(vector, 1.0)) |base| {
+                if (exp_mult == -12) return std.fmt.allocPrint(allocator, "p{s}", .{base});
+                if (exp_mult == -9) return std.fmt.allocPrint(allocator, "n{s}", .{base});
+                if (exp_mult == -6) return std.fmt.allocPrint(allocator, "µ{s}", .{base});
+                if (exp_mult == -3) return std.fmt.allocPrint(allocator, "m{s}", .{base});
+                if (exp_mult == 0) return allocator.dupe(u8, base);
+                if (exp_mult == 3) return std.fmt.allocPrint(allocator, "k{s}", .{base});
+                if (exp_mult == 6) return std.fmt.allocPrint(allocator, "M{s}", .{base});
+                if (exp_mult == 9) return std.fmt.allocPrint(allocator, "G{s}", .{base});
+                if (exp_mult == 12) return std.fmt.allocPrint(allocator, "T{s}", .{base});
+                return std.fmt.allocPrint(allocator, "{d}{s}", .{ multiplier, base });
+            }
+        }
+        if (symbol_for_basis_vector(vector, multiplier)) |exact| {
+            return allocator.dupe(u8, exact);
+        }
+    }
+
+    var out = std.ArrayList(u8).init(allocator);
+    errdefer out.deinit();
+    try append_vector_term(&out, allocator, "A", vector.ampere);
+    try append_vector_term(&out, allocator, "s", vector.second);
+    try append_vector_term(&out, allocator, "m", vector.meter);
+    try append_vector_term(&out, allocator, "kg", vector.kilogram);
+    try append_vector_term(&out, allocator, "K", vector.kelvin);
+    try append_vector_term(&out, allocator, "mol", vector.mole);
+    try append_vector_term(&out, allocator, "cd", vector.candela);
+    try append_vector_term(&out, allocator, "rad", vector.radian);
+    try append_vector_term(&out, allocator, "sr", vector.steradian);
+    try append_vector_term(&out, allocator, "bit", vector.bit);
+
+    var result = if (out.items.len > 0) try out.toOwnedSlice() else try allocator.dupe(u8, "");
+    if (multiplier != 1.0) {
+        const m = try format_number_alloc(allocator, multiplier);
+        defer allocator.free(m);
+        defer allocator.free(result);
+        result = if (result.len > 0)
+            try std.fmt.allocPrint(allocator, "{s}×{s}", .{ m, result })
+        else
+            try allocator.dupe(u8, m);
+    }
+    if (offset != 0.0) {
+        const o = try format_number_alloc(allocator, offset);
+        defer allocator.free(o);
+        defer allocator.free(result);
+        return std.fmt.allocPrint(allocator, "({s}+{s})", .{ result, o });
+    }
+    return result;
+}
+
 fn create_concrete_unit_instance(comptime T: type, comptime symbol: str, g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) T {
     const out = fabll.Node.bind_typegraph(T, tg).create_instance(g);
     out.node.instance.node.put("unit_symbol", .{ .String = symbol });
@@ -539,6 +725,28 @@ test "units decode symbol" {
     try std.testing.expect(std.mem.eql(u8, "ppm", ppm.?.get_symbol()));
     try std.testing.expect((try decode_symbol("", &g, &tg)) == null);
     try std.testing.expectError(Error.UnitNotFound, decode_symbol("not-a-unit", &g, &tg));
+}
+
+test "units compact repr" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const v = to_is_unit(Volt.create_instance(&g, &tg));
+    const v_repr = try compact_repr(v, std.testing.allocator);
+    defer std.testing.allocator.free(v_repr);
+    try std.testing.expect(std.mem.eql(u8, "V", v_repr));
+
+    const a = to_is_unit(Ampere.create_instance(&g, &tg));
+    const div = try op_divide(v, a, &g, &tg);
+    const div_repr = try compact_repr(div, std.testing.allocator);
+    defer std.testing.allocator.free(div_repr);
+    try std.testing.expect(std.mem.eql(u8, "Ω", div_repr));
+
+    const mul = try op_multiply(v, a, &g, &tg);
+    const mul_repr = try compact_repr(mul, std.testing.allocator);
+    defer std.testing.allocator.free(mul_repr);
+    try std.testing.expect(std.mem.eql(u8, "W", mul_repr));
 }
 
 test "units dimensionless scaled compatibility" {

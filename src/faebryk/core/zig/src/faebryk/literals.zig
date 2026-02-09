@@ -715,6 +715,10 @@ pub const Numbers = struct {
     node: fabll.Node,
     numeric_set_ptr: collections.PointerOf(NumericSet).MakeChild(),
     unit_ptr: collections.PointerOf(units.is_unit).MakeChild(),
+    const ScaleFactor = struct {
+        scale: f64,
+        prefix: str,
+    };
 
     pub fn MakeChild(comptime min: f64, comptime max: f64) type {
         const numeric_set_child = fabll.ChildField(NumericSet, "numeric_set", &.{}, &.{}, &.{}).add_dependant_before(
@@ -1156,6 +1160,224 @@ pub const Numbers = struct {
         const p0 = std.math.pow(f64, min, exponent);
         const p1 = std.math.pow(f64, max, exponent);
         return a.from_intervals_like(&.{.{ .min = @min(p0, p1), .max = @max(p0, p1) }}, allocator);
+    }
+
+    fn value_is_int(value: f64) bool {
+        return std.math.approxEqAbs(f64, value, @round(value), 1e-9);
+    }
+
+    fn format_number(value: f64, scale: f64, allocator: std.mem.Allocator) ![]u8 {
+        if (std.math.isInf(value)) {
+            return allocator.dupe(u8, if (value > 0.0) "∞" else "-∞");
+        }
+        const scaled = value / scale;
+        const rounded = @round(scaled * 1000.0) / 1000.0;
+        if (value_is_int(rounded)) {
+            return std.fmt.allocPrint(allocator, "{d}", .{@as(i64, @intFromFloat(@round(rounded)))});
+        }
+        const raw = try std.fmt.allocPrint(allocator, "{d:.3}", .{rounded});
+        defer allocator.free(raw);
+        const no_zero = std.mem.trimRight(u8, raw, "0");
+        const trimmed = if (no_zero.len > 0 and no_zero[no_zero.len - 1] == '.') no_zero[0 .. no_zero.len - 1] else no_zero;
+        return allocator.dupe(u8, trimmed);
+    }
+
+    fn get_scale_factor(value: f64) ScaleFactor {
+        if (value == 0.0 or std.math.isInf(value)) return .{ .scale = 1.0, .prefix = "" };
+        const abs_value = @abs(value);
+        const table = [_]ScaleFactor{
+            .{ .scale = 1e12, .prefix = "T" },
+            .{ .scale = 1e9, .prefix = "G" },
+            .{ .scale = 1e6, .prefix = "M" },
+            .{ .scale = 1e3, .prefix = "k" },
+            .{ .scale = 1.0, .prefix = "" },
+            .{ .scale = 1e-3, .prefix = "m" },
+            .{ .scale = 1e-6, .prefix = "µ" },
+            .{ .scale = 1e-9, .prefix = "n" },
+            .{ .scale = 1e-12, .prefix = "p" },
+        };
+        for (table) |entry| {
+            if (abs_value >= entry.scale * 0.999) return entry;
+        }
+        return .{ .scale = 1e-12, .prefix = "p" };
+    }
+
+    fn format_interval(
+        interval: Interval,
+        show_tolerance: bool,
+        force_center: bool,
+        scale: f64,
+        allocator: std.mem.Allocator,
+    ) ![]u8 {
+        const min_value = interval.min;
+        const max_value = interval.max;
+        const center = (min_value + max_value) / 2.0;
+
+        if (max_value == std.math.inf(f64)) {
+            if (min_value == -std.math.inf(f64)) return allocator.dupe(u8, "ℝ");
+            if (min_value == 0.0) return allocator.dupe(u8, "ℝ+");
+            const min_s = try format_number(min_value, scale, allocator);
+            defer allocator.free(min_s);
+            return std.fmt.allocPrint(allocator, "≥{s}", .{min_s});
+        }
+        if (min_value == -std.math.inf(f64)) {
+            if (max_value == 0.0) return allocator.dupe(u8, "ℝ⁻");
+            const max_s = try format_number(max_value, scale, allocator);
+            defer allocator.free(max_s);
+            return std.fmt.allocPrint(allocator, "≤{s}", .{max_s});
+        }
+
+        if (!show_tolerance) {
+            return format_number(center, scale, allocator);
+        }
+
+        const min_s = try format_number(min_value, scale, allocator);
+        defer allocator.free(min_s);
+        const max_s = try format_number(max_value, scale, allocator);
+        defer allocator.free(max_s);
+        const range_fmt = try std.fmt.allocPrint(allocator, "{s}..{s}", .{ min_s, max_s });
+
+        if (center != 0.0) {
+            const tolerance_rel = @abs((max_value - min_value) / 2.0 / center) * 100.0;
+            if (tolerance_rel < 25.0) {
+                const center_s = try format_number(center, scale, allocator);
+                defer allocator.free(center_s);
+                const center_fmt = try std.fmt.allocPrint(allocator, "{s}±{d:.1}%", .{ center_s, tolerance_rel });
+
+                if (force_center) {
+                    allocator.free(range_fmt);
+                    return center_fmt;
+                }
+
+                const scaled_min = min_value / scale;
+                const scaled_max = max_value / scale;
+                const scaled_center = center / scale;
+                const min_is_int = value_is_int(scaled_min);
+                const max_is_int = value_is_int(scaled_max);
+                const center_is_int = value_is_int(scaled_center);
+
+                if (min_is_int and max_is_int and !center_is_int) {
+                    allocator.free(center_fmt);
+                    return range_fmt;
+                }
+                if (range_fmt.len <= center_fmt.len) {
+                    allocator.free(center_fmt);
+                    return range_fmt;
+                }
+                allocator.free(range_fmt);
+                return center_fmt;
+            }
+        }
+
+        return range_fmt;
+    }
+
+    pub fn pretty_str(self: @This(), allocator: std.mem.Allocator) ![]u8 {
+        return self.pretty_str_with_options(true, false, allocator);
+    }
+
+    pub fn pretty_str_with_options(
+        self: @This(),
+        show_tolerance: bool,
+        force_center: bool,
+        allocator: std.mem.Allocator,
+    ) ![]u8 {
+        const intervals = try self.get_numeric_set().get_intervals(allocator);
+        defer allocator.free(intervals);
+        if (intervals.len == 0) return allocator.dupe(u8, "<empty>");
+
+        const base_unit_symbol = try units.compact_repr(self.get_is_unit(), allocator);
+        defer allocator.free(base_unit_symbol);
+
+        var scale: f64 = 1.0;
+        var prefix: str = "";
+        if (base_unit_symbol.len > 0 and !std.mem.eql(u8, base_unit_symbol, "dimensionless")) {
+            var representative: ?f64 = null;
+            if (intervals.len == 1 and intervals[0].min == intervals[0].max) {
+                representative = intervals[0].min;
+            } else {
+                for (intervals) |iv| {
+                    if (!std.math.isInf(iv.min) and !std.math.isInf(iv.max)) {
+                        representative = (iv.min + iv.max) / 2.0;
+                        break;
+                    } else if (!std.math.isInf(iv.min)) {
+                        representative = iv.min;
+                        break;
+                    } else if (!std.math.isInf(iv.max)) {
+                        representative = iv.max;
+                        break;
+                    }
+                }
+            }
+            if (representative) |rep| {
+                if (rep != 0.0) {
+                    const sf = get_scale_factor(rep);
+                    scale = sf.scale;
+                    prefix = sf.prefix;
+                }
+            }
+        }
+
+        const unit_symbol = try std.fmt.allocPrint(allocator, "{s}{s}", .{ prefix, base_unit_symbol });
+        defer allocator.free(unit_symbol);
+
+        const singleton_interval = intervals.len == 1 and intervals[0].min == intervals[0].max;
+        if (singleton_interval) {
+            const value_s = try format_number(intervals[0].min, scale, allocator);
+            defer allocator.free(value_s);
+            return std.fmt.allocPrint(allocator, "{s}{s}", .{ value_s, unit_symbol });
+        }
+
+        var is_discrete = true;
+        for (intervals) |iv| {
+            if (iv.min != iv.max) {
+                is_discrete = false;
+                break;
+            }
+        }
+        if (is_discrete) {
+            var out = std.ArrayList(u8).init(allocator);
+            errdefer out.deinit();
+            try out.append('{');
+            for (intervals, 0..) |iv, i| {
+                if (i > 0) try out.appendSlice(", ");
+                const value_s = try format_number(iv.min, scale, allocator);
+                defer allocator.free(value_s);
+                try out.appendSlice(value_s);
+            }
+            try out.append('}');
+            try out.appendSlice(unit_symbol);
+            return out.toOwnedSlice();
+        }
+
+        var interval_strings = std.ArrayList([]u8).init(allocator);
+        defer {
+            for (interval_strings.items) |s| allocator.free(s);
+            interval_strings.deinit();
+        }
+        for (intervals) |iv| {
+            try interval_strings.append(try format_interval(iv, show_tolerance, force_center, scale, allocator));
+        }
+
+        if (interval_strings.items.len == 1) {
+            const single = interval_strings.items[0];
+            const has_range = std.mem.indexOf(u8, single, "..") != null;
+            const has_percent_tolerance = std.mem.indexOf(u8, single, "±") != null and std.mem.indexOf(u8, single, "%") != null;
+            if (!has_range and (!show_tolerance or has_percent_tolerance)) {
+                return std.fmt.allocPrint(allocator, "{s}{s}", .{ single, unit_symbol });
+            }
+        }
+
+        var out = std.ArrayList(u8).init(allocator);
+        errdefer out.deinit();
+        try out.append('{');
+        for (interval_strings.items, 0..) |s, i| {
+            if (i > 0) try out.appendSlice(", ");
+            try out.appendSlice(s);
+        }
+        try out.append('}');
+        try out.appendSlice(unit_symbol);
+        return out.toOwnedSlice();
     }
 
     pub fn get_values(self: @This(), allocator: std.mem.Allocator) ![]f64 {
@@ -2071,6 +2293,53 @@ test "literals numbers units mul divide output units" {
     const div = try Numbers.op_div_intervals(lhs, rhs, std.testing.allocator);
     const div_info = units.info_of(div.get_is_unit());
     try std.testing.expectEqual(@as(i64, -2), div_info.basis_vector.ampere);
+}
+
+test "literals numbers uncertainty sets with unit arithmetic pretty print" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const volt = units.to_is_unit(units.Volt.create_instance(&g, &tg));
+    const ampere = units.to_is_unit(units.Ampere.create_instance(&g, &tg));
+
+    var v_set = Numbers.create_instance(&g, &tg);
+    v_set = try v_set.setup_from_min_max_with_unit(0.9, 1.1, volt, std.testing.allocator);
+    var i_set = Numbers.create_instance(&g, &tg);
+    i_set = try i_set.setup_from_min_max_with_unit(1.8, 2.2, ampere, std.testing.allocator);
+
+    const mul = try Numbers.op_mul_intervals(v_set, i_set, std.testing.allocator);
+    const div = try Numbers.op_div_intervals(v_set, i_set, std.testing.allocator);
+    const v_pretty = try v_set.pretty_str(std.testing.allocator);
+    defer std.testing.allocator.free(v_pretty);
+    const i_pretty = try i_set.pretty_str(std.testing.allocator);
+    defer std.testing.allocator.free(i_pretty);
+    const mul_pretty = try mul.pretty_str(std.testing.allocator);
+    defer std.testing.allocator.free(mul_pretty);
+    const div_pretty = try div.pretty_str(std.testing.allocator);
+    defer std.testing.allocator.free(div_pretty);
+
+    const mul_intervals = try mul.get_numeric_set().get_intervals(std.testing.allocator);
+    defer std.testing.allocator.free(mul_intervals);
+    const div_intervals = try div.get_numeric_set().get_intervals(std.testing.allocator);
+    defer std.testing.allocator.free(div_intervals);
+
+    const mul_repr = try units.compact_repr(mul.get_is_unit(), std.testing.allocator);
+    defer std.testing.allocator.free(mul_repr);
+    const div_repr = try units.compact_repr(div.get_is_unit(), std.testing.allocator);
+    defer std.testing.allocator.free(div_repr);
+
+    std.debug.print("pretty> {s} * {s} = {s}\n", .{ v_pretty, i_pretty, mul_pretty });
+    std.debug.print("pretty> {s} / {s} = {s}\n", .{ v_pretty, i_pretty, div_pretty });
+
+    try std.testing.expectApproxEqAbs(@as(f64, 1.62), mul_intervals[0].min, 1e-12);
+    try std.testing.expectApproxEqAbs(@as(f64, 2.42), mul_intervals[0].max, 1e-12);
+    try std.testing.expectApproxEqAbs(@as(f64, 0.9 / 2.2), div_intervals[0].min, 1e-12);
+    try std.testing.expectApproxEqAbs(@as(f64, 1.1 / 1.8), div_intervals[0].max, 1e-12);
+    try std.testing.expect(std.mem.indexOf(u8, mul_pretty, "[") == null);
+    try std.testing.expect(std.mem.indexOf(u8, div_pretty, "[") == null);
+    try std.testing.expect(std.mem.indexOf(u8, mul_pretty, "W") != null);
+    try std.testing.expect(std.mem.indexOf(u8, div_pretty, "Ω") != null);
 }
 
 test "literals counts api" {
