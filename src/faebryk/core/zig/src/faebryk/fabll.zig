@@ -701,6 +701,7 @@ pub fn MakeDependantEdge(
     };
 }
 
+// TODO: not sure we need those. kinda janky
 pub fn MakeDependantDeclaration(
     comptime owner_child_identifier: str,
     comptime dependant: type,
@@ -771,7 +772,6 @@ pub const RefPath = struct {
             .segments = &.{.{ .child_identifier = identifier }},
         };
     }
-
 };
 
 fn wrap_instance(comptime T: type, instance: graph.BoundNodeReference) T {
