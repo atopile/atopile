@@ -339,9 +339,18 @@ function layoutSheet(
   path: string[],
   savedPositions: Record<string, ComponentPosition> | null,
   ports: SchematicPort[] = [],
-): Record<string, ComponentPosition> {
+): {
+  positions: Record<string, ComponentPosition>;
+  suggestedPortSignalOrders: Record<string, string[]>;
+} {
   const powerPorts = derivePowerPorts(sheet);
-  const autoPos = autoLayoutSheet(sheet, ports, powerPorts);
+  const localSuggestedOrders: Record<string, string[]> = {};
+  const autoPos = autoLayoutSheet(
+    sheet,
+    ports,
+    powerPorts,
+    localSuggestedOrders,
+  );
   const savedForPath: Record<string, ComponentPosition> = {};
 
   // Extract saved positions for this path
@@ -362,7 +371,29 @@ function layoutSheet(
   for (const [id, pos] of Object.entries(merged)) {
     scoped[scopedId(path, id)] = pos;
   }
-  return scoped;
+  const scopedSuggestedOrders: Record<string, string[]> = {};
+  for (const [portId, order] of Object.entries(localSuggestedOrders)) {
+    scopedSuggestedOrders[scopedId(path, portId)] = [...order];
+  }
+
+  return {
+    positions: scoped,
+    suggestedPortSignalOrders: scopedSuggestedOrders,
+  };
+}
+
+function mergeAutoPortSignalOrders(
+  existing: Record<string, string[]>,
+  suggested: Record<string, string[]>,
+): Record<string, string[]> {
+  if (Object.keys(suggested).length === 0) return existing;
+  const next = clonePortSignalOrders(existing);
+  for (const [key, order] of Object.entries(suggested)) {
+    if (next[key]) continue;
+    if (!Array.isArray(order) || order.length < 2) continue;
+    next[key] = [...order];
+  }
+  return next;
 }
 
 // ── Undo / Redo stacks (module-level, not in store state) ───────
@@ -426,7 +457,12 @@ export const useSchematicStore = create<SchematicState>()(
         const rootSheet = getRootSheet(schematicData);
         const embeddedPositions = data.positions ?? null;
         const savedSignalOrders = data.portSignalOrders ?? {};
-        const rootPositions = layoutSheet(rootSheet, [], embeddedPositions);
+        const { positions: rootPositions, suggestedPortSignalOrders } =
+          layoutSheet(rootSheet, [], embeddedPositions);
+        const mergedSignalOrders = mergeAutoPortSignalOrders(
+          savedSignalOrders,
+          suggestedPortSignalOrders,
+        );
         const positions = normalizePositionsMap({
           ...(embeddedPositions ?? {}),
           ...rootPositions,
@@ -434,7 +470,7 @@ export const useSchematicStore = create<SchematicState>()(
         set({
           schematic: schematicData,
           positions,
-          portSignalOrders: savedSignalOrders,
+          portSignalOrders: mergedSignalOrders,
           currentPath: [],
           isLoading: false,
           selectedComponentIds: [],
@@ -457,7 +493,12 @@ export const useSchematicStore = create<SchematicState>()(
       const rootSheet = getRootSheet(data);
       const embeddedPositions = data.positions ?? null;
       const savedSignalOrders = data.portSignalOrders ?? {};
-      const rootPositions = layoutSheet(rootSheet, [], embeddedPositions);
+      const { positions: rootPositions, suggestedPortSignalOrders } =
+        layoutSheet(rootSheet, [], embeddedPositions);
+      const mergedSignalOrders = mergeAutoPortSignalOrders(
+        savedSignalOrders,
+        suggestedPortSignalOrders,
+      );
       const positions = normalizePositionsMap({
         ...(embeddedPositions ?? {}),
         ...rootPositions,
@@ -465,7 +506,7 @@ export const useSchematicStore = create<SchematicState>()(
       set({
         schematic: data,
         positions,
-        portSignalOrders: savedSignalOrders,
+        portSignalOrders: mergedSignalOrders,
         currentPath: [],
         isLoading: false,
         loadError: null,
@@ -488,7 +529,12 @@ export const useSchematicStore = create<SchematicState>()(
       const incomingSignalOrders = data.portSignalOrders ?? portSignalOrders;
 
       // Re-layout the root sheet, merging with existing positions
-      const rootPositions = layoutSheet(rootSheet, [], embeddedPositions);
+      const { positions: rootPositions, suggestedPortSignalOrders } =
+        layoutSheet(rootSheet, [], embeddedPositions);
+      const mergedSignalOrders = mergeAutoPortSignalOrders(
+        incomingSignalOrders,
+        suggestedPortSignalOrders,
+      );
       const merged = normalizePositionsMap({
         ...(embeddedPositions ?? {}),
         ...rootPositions,
@@ -504,7 +550,7 @@ export const useSchematicStore = create<SchematicState>()(
       set({
         schematic: data,
         positions: merged,
-        portSignalOrders: incomingSignalOrders,
+        portSignalOrders: mergedSignalOrders,
         currentPath: validPath,
         isLoading: false,
         loadError: null,
@@ -657,7 +703,12 @@ export const useSchematicStore = create<SchematicState>()(
           );
         }
       }
-      const positions = layoutSheet(sheet, currentPath, null, ports);
+      const { positions, suggestedPortSignalOrders } = layoutSheet(
+        sheet,
+        currentPath,
+        null,
+        ports,
+      );
       set((s) => {
         const prefix = pathKey(currentPath) + ':';
         const kept: Record<string, ComponentPosition> = {};
@@ -665,8 +716,15 @@ export const useSchematicStore = create<SchematicState>()(
           if (!k.startsWith(prefix)) kept[k] = v;
         }
         const merged = { ...kept, ...positions };
-        debouncedSave(merged, s.portSignalOrders);
-        return { positions: merged };
+        const mergedOrders = mergeAutoPortSignalOrders(
+          s.portSignalOrders,
+          suggestedPortSignalOrders,
+        );
+        debouncedSave(merged, mergedOrders);
+        return {
+          positions: merged,
+          portSignalOrders: mergedOrders,
+        };
       });
     },
 
@@ -979,10 +1037,15 @@ export const useSchematicStore = create<SchematicState>()(
           mod,
           getSignalOrderOverridesForPath(get().portSignalOrders, newPath),
         );
-        const childPositions = layoutSheet(mod.sheet, newPath, saved, ports);
+        const { positions: childPositions, suggestedPortSignalOrders } =
+          layoutSheet(mod.sheet, newPath, saved, ports);
         set((s) => ({
           currentPath: newPath,
           positions: { ...s.positions, ...childPositions },
+          portSignalOrders: mergeAutoPortSignalOrders(
+            s.portSignalOrders,
+            suggestedPortSignalOrders,
+          ),
           selectedComponentIds: [],
           selectedComponentId: null,
           selectedNetId: null,
@@ -1048,10 +1111,15 @@ export const useSchematicStore = create<SchematicState>()(
                 getSignalOrderOverridesForPath(get().portSignalOrders, path),
               )
             : [];
-          const childPositions = layoutSheet(sheet, path, saved, ports);
+          const { positions: childPositions, suggestedPortSignalOrders } =
+            layoutSheet(sheet, path, saved, ports);
           set((s) => ({
             currentPath: path,
             positions: { ...s.positions, ...childPositions },
+            portSignalOrders: mergeAutoPortSignalOrders(
+              s.portSignalOrders,
+              suggestedPortSignalOrders,
+            ),
             selectedComponentIds: [],
             selectedComponentId: null,
             selectedNetId: null,

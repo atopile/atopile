@@ -177,18 +177,32 @@ export function snapToPinGridLowerTie(v: number, grid = PIN_GRID_MM): number {
  */
 export function getNormalizedComponentPinGeometry(
   component: SchematicComponent,
-  pin: Pick<SchematicPin, 'x' | 'y' | 'bodyX' | 'bodyY'>,
+  pin: Pick<SchematicPin, 'x' | 'y' | 'bodyX' | 'bodyY'> & Partial<Pick<SchematicPin, 'side'>>,
 ): { x: number; y: number; bodyX: number; bodyY: number } {
   const offset = getComponentGridAlignmentOffset(component);
   const x = snapToPinGridLowerTie(pin.x + offset.x) - offset.x;
   const y = snapToPinGridLowerTie(pin.y + offset.y) - offset.y;
   const dx = x - pin.x;
   const dy = y - pin.y;
+
+  // Keep the body-edge anchor constrained to the symbol edge axis.
+  // For left/right pins, preserve bodyX and only slide bodyY with row changes.
+  // For top/bottom pins, preserve bodyY and only slide bodyX with column changes.
+  let bodyX = pin.bodyX + dx;
+  let bodyY = pin.bodyY + dy;
+  if (pin.side === 'left' || pin.side === 'right') {
+    bodyX = pin.bodyX;
+    bodyY = pin.bodyY + dy;
+  } else if (pin.side === 'top' || pin.side === 'bottom') {
+    bodyX = pin.bodyX + dx;
+    bodyY = pin.bodyY;
+  }
+
   return {
     x,
     y,
-    bodyX: pin.bodyX + dx,
-    bodyY: pin.bodyY + dy,
+    bodyX,
+    bodyY,
   };
 }
 

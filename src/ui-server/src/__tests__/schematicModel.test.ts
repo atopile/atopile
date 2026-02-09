@@ -107,5 +107,9 @@ describe('schematic model contracts', () => {
     const phase = (v: number) => ((v % 2.54) + 2.54) % 2.54;
 
     expect(phase(left.y)).toBeCloseTo(phase(right.y), 6);
+    // Right-side pin keeps its edge on the right body boundary (bodyX fixed)
+    // while row shifts track the normalized pin Y.
+    expect(right.bodyX).toBeCloseTo(component.pins[1].bodyX, 6);
+    expect(right.bodyY).toBeCloseTo(right.y, 6);
   });
 });

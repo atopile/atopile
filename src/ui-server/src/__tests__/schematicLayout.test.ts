@@ -8,6 +8,7 @@ import type {
   SchematicSheet,
 } from '../schematic-viewer/types/schematic';
 import {
+  BREAKOUT_PIN_SPACING,
   getComponentGridAlignmentOffset,
   getPortGridAlignmentOffset,
   PIN_GRID_MM,
@@ -108,6 +109,35 @@ function makeSinglePort(
     pinX,
     pinY,
     pinSide,
+  };
+}
+
+function makeBreakoutPort(
+  id: string,
+  signals: string[],
+): SchematicPort {
+  const signalPins: Record<string, { x: number; y: number }> = {};
+  for (let i = 0; i < signals.length; i++) {
+    signalPins[signals[i]] = {
+      x: 8,
+      y: (signals.length - 1) * BREAKOUT_PIN_SPACING / 2 - i * BREAKOUT_PIN_SPACING,
+    };
+  }
+
+  return {
+    kind: 'port',
+    id,
+    name: id,
+    side: 'left',
+    category: 'i2c',
+    interfaceType: 'I2C',
+    bodyWidth: 12,
+    bodyHeight: Math.max(PORT_H, (signals.length - 1) * BREAKOUT_PIN_SPACING + 1.2),
+    pinX: -8,
+    pinY: 0,
+    pinSide: 'right',
+    signals: [...signals],
+    signalPins,
   };
 }
 
@@ -338,5 +368,74 @@ describe('schematicLayout single-port anchoring', () => {
     expect(portPinWorld.x).toBeLessThan(compPinWorldX);
     expect(Math.abs(compPinWorldX - portPinWorld.x - ANCHOR_OFFSET)).toBeLessThan(1e-6);
     expect((portPos.rotation || 0) % 360).toBe(180);
+  });
+});
+
+describe('schematicLayout multi-port anchoring', () => {
+  it('matches contiguous target pin runs, suggests signal order, and orients breakout ports', () => {
+    const target = makeComponent(
+      'u1',
+      'U',
+      16,
+      10,
+      [
+        makePin('11', 'SCL', 'right', 'signal', { x: 5.08, y: 2.54, bodyX: 5, bodyY: 2.54 }),
+        makePin('12', 'SDA', 'right', 'signal', { x: 5.08, y: 0, bodyX: 5, bodyY: 0 }),
+        makePin('13', 'INT', 'right', 'signal', { x: 5.08, y: -2.54, bodyX: 5, bodyY: -2.54 }),
+      ],
+    );
+    const port = makeBreakoutPort('i2c', ['sda', 'scl', 'int']);
+
+    const sheet: SchematicSheet = {
+      modules: [],
+      components: [target],
+      nets: [
+        net('n_scl', 'signal', [
+          { componentId: 'u1', pinNumber: '11' },
+          { componentId: 'i2c', pinNumber: 'scl' },
+        ]),
+        net('n_sda', 'signal', [
+          { componentId: 'u1', pinNumber: '12' },
+          { componentId: 'i2c', pinNumber: 'sda' },
+        ]),
+        net('n_int', 'signal', [
+          { componentId: 'u1', pinNumber: '13' },
+          { componentId: 'i2c', pinNumber: 'int' },
+        ]),
+      ],
+    };
+
+    const suggestedOrders: Record<string, string[]> = {};
+    const positions = autoLayoutSheet(sheet, [port], [], suggestedOrders);
+    const compPos = positions.u1;
+    const portPos = positions.i2c;
+    expect(compPos).toBeDefined();
+    expect(portPos).toBeDefined();
+
+    expect(suggestedOrders.i2c).toBeDefined();
+    expect([...(suggestedOrders.i2c || [])].sort()).toEqual(['int', 'scl', 'sda']);
+    expect([...(port.signals || [])].sort()).toEqual(['int', 'scl', 'sda']);
+    expect((portPos.rotation || 0) % 360).toBe(180);
+
+    const compAlign = getComponentGridAlignmentOffset(target);
+    const compTopPinX = compPos.x + target.pins[0].x + compAlign.x;
+    const compTopPinY = compPos.y + target.pins[0].y + compAlign.y;
+
+    const portAlign = getPortGridAlignmentOffset(port);
+    const signalLocal = port.signalPins?.scl;
+    expect(signalLocal).toBeDefined();
+    const signalRot = transformPinOffset(
+      (signalLocal?.x ?? 0) + portAlign.x,
+      (signalLocal?.y ?? 0) + portAlign.y,
+      portPos.rotation,
+      portPos.mirrorX,
+      portPos.mirrorY,
+    );
+    const portTopPinX = portPos.x + signalRot.x;
+    const portTopPinY = portPos.y + signalRot.y;
+
+    // Same straight-line policy as single ports: pin stays 5 pitches away.
+    expect(Math.abs(portTopPinX - compTopPinX - PIN_GRID_MM * 5)).toBeLessThan(1e-6);
+    expect(Math.abs(portTopPinY - compTopPinY)).toBeLessThan(1e-6);
   });
 });
