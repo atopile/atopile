@@ -87,7 +87,23 @@ pub fn resolve_node(node: graph.BoundNodeReference, tg: *faebryk.typegraph.TypeG
         if (same_type(node, t)) {
             const expr = fabll.Node.bind_instance(expressions.Power, node);
             const base = try resolve_can_be_operand(expr.base_ptr.get().deref(), tg);
-            return units.op_power(base, node.g, tg, expr.get_exponent());
+            const exponent_operand = expr.exponent_ptr.get().deref();
+            const exponent_owner = exponent_operand.get_owner_node() orelse return Error.ExponentMustBeSingletonInteger;
+
+            const numbers_type = get_type(tg, literals.Numbers) orelse return Error.ExponentMustBeSingletonInteger;
+            if (!same_type(exponent_owner, numbers_type)) return Error.ExponentMustBeSingletonInteger;
+
+            const exponent_numbers = fabll.Node.bind_instance(literals.Numbers, exponent_owner);
+            if (!units.is_dimensionless(exponent_numbers.get_is_unit())) return Error.ExponentMustBeDimensionless;
+            if (!(exponent_numbers.is_singleton(std.heap.page_allocator) catch return Error.ExponentMustBeSingletonInteger)) {
+                return Error.ExponentMustBeSingletonInteger;
+            }
+            const exponent_value = exponent_numbers.get_single(std.heap.page_allocator) catch return Error.ExponentMustBeSingletonInteger;
+            if (!std.math.approxEqAbs(f64, exponent_value, @round(exponent_value), 1e-9)) {
+                return Error.ExponentMustBeSingletonInteger;
+            }
+            const exponent: i64 = @intFromFloat(@round(exponent_value));
+            return units.op_power(base, node.g, tg, exponent);
         }
     }
 
@@ -127,3 +143,54 @@ test "unit resolver basic expression parity" {
     try std.testing.expect(std.mem.eql(u8, div_repr, "Ω"));
 }
 
+test "unit resolver power expression with numeric exponent operand" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const p_v = parameters.NumericParameter.create_instance(&g, &tg)
+        .setup_units(units.to_is_unit(units.Volt.create_instance(&g, &tg)), null);
+
+    var exp = literals.Numbers.create_instance(&g, &tg);
+    exp = try exp.setup_from_singleton(2.0, std.testing.allocator);
+
+    const pow_expr = expressions.Power.create_instance(&g, &tg).setup(
+        p_v.can_be_operand.get(),
+        exp.can_be_operand.get(),
+    );
+    const resolved = try resolve_node(pow_expr.node.instance, &tg);
+    try std.testing.expect(resolved != null);
+
+    const ref = units.op_power(p_v.try_get_units(), &g, &tg, 2);
+    try std.testing.expect(ref != null);
+    try std.testing.expect(std.meta.eql(units.info_of(resolved), units.info_of(ref)));
+}
+
+test "unit resolver power exponent must be dimensionless integer singleton" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const p_v = parameters.NumericParameter.create_instance(&g, &tg)
+        .setup_units(units.to_is_unit(units.Volt.create_instance(&g, &tg)), null);
+
+    var exp_non_integer = literals.Numbers.create_instance(&g, &tg);
+    exp_non_integer = try exp_non_integer.setup_from_singleton(2.5, std.testing.allocator);
+    const bad_non_integer = expressions.Power.create_instance(&g, &tg).setup(
+        p_v.can_be_operand.get(),
+        exp_non_integer.can_be_operand.get(),
+    );
+    try std.testing.expectError(Error.ExponentMustBeSingletonInteger, resolve_node(bad_non_integer.node.instance, &tg));
+
+    var exp_unitful = literals.Numbers.create_instance(&g, &tg);
+    exp_unitful = try exp_unitful.setup_from_singleton_with_unit(
+        2.0,
+        units.to_is_unit(units.Volt.create_instance(&g, &tg)),
+        std.testing.allocator,
+    );
+    const bad_unitful = expressions.Power.create_instance(&g, &tg).setup(
+        p_v.can_be_operand.get(),
+        exp_unitful.can_be_operand.get(),
+    );
+    try std.testing.expectError(Error.ExponentMustBeDimensionless, resolve_node(bad_unitful.node.instance, &tg));
+}
