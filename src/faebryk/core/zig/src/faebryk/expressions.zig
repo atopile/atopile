@@ -6,8 +6,28 @@ const fabll = @import("fabll.zig");
 const collections = @import("collections.zig");
 const parameters = @import("parameters.zig");
 
+const is_trait = struct {
+    node: fabll.Node,
+
+    pub fn MakeEdge(comptime traitchildfield: type, comptime owner: ?fabll.RefPath) type {
+        const owner_path = owner orelse fabll.RefPath.self();
+        return traitchildfield.add_dependant(
+            fabll.MakeDependantEdge(
+                owner_path,
+                fabll.RefPath.owner_child(),
+                faebryk.trait.EdgeTrait,
+            ),
+        );
+    }
+
+    pub fn MakeChild() type {
+        return fabll.Node.MakeChild(@This());
+    }
+};
+
 pub const is_expression = struct {
     node: fabll.Node,
+    _is_trait: is_trait.MakeChild(),
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
@@ -16,8 +36,8 @@ pub const is_expression = struct {
 
 pub const Add = struct {
     node: fabll.Node,
-    is_expression: is_expression.MakeChild(),
-    can_be_operand: parameters.can_be_operand.MakeChild(),
+    is_expression: is_trait.MakeEdge(is_expression.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
     operands: collections.PointerSequenceOf(parameters.can_be_operand).MakeChild(),
 
     pub fn MakeChild() type {
@@ -41,8 +61,8 @@ pub const Add = struct {
 
 pub const Subtract = struct {
     node: fabll.Node,
-    is_expression: is_expression.MakeChild(),
-    can_be_operand: parameters.can_be_operand.MakeChild(),
+    is_expression: is_trait.MakeEdge(is_expression.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
     minuend: collections.PointerOf(parameters.can_be_operand).MakeChild(),
     subtrahends: collections.PointerSequenceOf(parameters.can_be_operand).MakeChild(),
 
@@ -68,8 +88,8 @@ pub const Subtract = struct {
 
 pub const Multiply = struct {
     node: fabll.Node,
-    is_expression: is_expression.MakeChild(),
-    can_be_operand: parameters.can_be_operand.MakeChild(),
+    is_expression: is_trait.MakeEdge(is_expression.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
     operands: collections.PointerSequenceOf(parameters.can_be_operand).MakeChild(),
 
     pub fn MakeChild() type {
@@ -93,8 +113,8 @@ pub const Multiply = struct {
 
 pub const Divide = struct {
     node: fabll.Node,
-    is_expression: is_expression.MakeChild(),
-    can_be_operand: parameters.can_be_operand.MakeChild(),
+    is_expression: is_trait.MakeEdge(is_expression.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
     numerator: collections.PointerOf(parameters.can_be_operand).MakeChild(),
     denominators: collections.PointerSequenceOf(parameters.can_be_operand).MakeChild(),
 
@@ -120,8 +140,8 @@ pub const Divide = struct {
 
 pub const Power = struct {
     node: fabll.Node,
-    is_expression: is_expression.MakeChild(),
-    can_be_operand: parameters.can_be_operand.MakeChild(),
+    is_expression: is_trait.MakeEdge(is_expression.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
     base_ptr: collections.PointerOf(parameters.can_be_operand).MakeChild(),
     exponent_ptr: collections.PointerOf(parameters.can_be_operand).MakeChild(),
 
@@ -142,8 +162,8 @@ pub const Power = struct {
 
 pub const Negate = struct {
     node: fabll.Node,
-    is_expression: is_expression.MakeChild(),
-    can_be_operand: parameters.can_be_operand.MakeChild(),
+    is_expression: is_trait.MakeEdge(is_expression.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
     operand: collections.PointerOf(parameters.can_be_operand).MakeChild(),
 
     pub fn MakeChild() type {
@@ -162,8 +182,8 @@ pub const Negate = struct {
 
 pub const Abs = struct {
     node: fabll.Node,
-    is_expression: is_expression.MakeChild(),
-    can_be_operand: parameters.can_be_operand.MakeChild(),
+    is_expression: is_trait.MakeEdge(is_expression.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
     operand: collections.PointerOf(parameters.can_be_operand).MakeChild(),
 
     pub fn MakeChild() type {
@@ -182,8 +202,8 @@ pub const Abs = struct {
 
 pub const Floor = struct {
     node: fabll.Node,
-    is_expression: is_expression.MakeChild(),
-    can_be_operand: parameters.can_be_operand.MakeChild(),
+    is_expression: is_trait.MakeEdge(is_expression.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
     operand: collections.PointerOf(parameters.can_be_operand).MakeChild(),
 
     pub fn MakeChild() type {
@@ -202,8 +222,8 @@ pub const Floor = struct {
 
 pub const Ceil = struct {
     node: fabll.Node,
-    is_expression: is_expression.MakeChild(),
-    can_be_operand: parameters.can_be_operand.MakeChild(),
+    is_expression: is_trait.MakeEdge(is_expression.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
     operand: collections.PointerOf(parameters.can_be_operand).MakeChild(),
 
     pub fn MakeChild() type {

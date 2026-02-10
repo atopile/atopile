@@ -5,8 +5,28 @@ const faebryk = @import("faebryk");
 const fabll = @import("fabll.zig");
 const units = @import("units.zig");
 
+pub const is_trait = struct {
+    node: fabll.Node,
+
+    pub fn MakeEdge(comptime traitchildfield: type, comptime owner: ?fabll.RefPath) type {
+        const owner_path = owner orelse fabll.RefPath.self();
+        return traitchildfield.add_dependant(
+            fabll.MakeDependantEdge(
+                owner_path,
+                fabll.RefPath.owner_child(),
+                faebryk.trait.EdgeTrait,
+            ),
+        );
+    }
+
+    pub fn MakeChild() type {
+        return fabll.Node.MakeChild(@This());
+    }
+};
+
 pub const can_be_operand = struct {
     node: fabll.Node,
+    _is_trait: is_trait.MakeChild(),
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
@@ -22,6 +42,7 @@ pub const can_be_operand = struct {
 
 pub const is_parameter_operatable = struct {
     node: fabll.Node,
+    _is_trait: is_trait.MakeChild(),
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
@@ -30,10 +51,10 @@ pub const is_parameter_operatable = struct {
 
 pub const NumericParameter = struct {
     node: fabll.Node,
-    is_parameter_operatable: is_parameter_operatable.MakeChild(),
-    can_be_operand: can_be_operand.MakeChild(),
-    unit_trait: units.has_unit.MakeChild(),
-    display_unit_trait: units.has_display_unit.MakeChild(),
+    is_parameter_operatable: is_trait.MakeEdge(is_parameter_operatable.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(can_be_operand.MakeChild(), null),
+    unit_trait: is_trait.MakeEdge(units.has_unit.MakeChild(), null),
+    display_unit_trait: is_trait.MakeEdge(units.has_display_unit.MakeChild(), null),
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
