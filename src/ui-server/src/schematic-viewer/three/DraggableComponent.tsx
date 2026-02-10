@@ -35,6 +35,7 @@ interface Props {
   theme: ThemeColors;
   netsForComponent: Map<string, string>;
   selectedNetId: string | null;
+  symbolTuningRevision?: number;
 }
 
 export const DraggableComponent = memo(function DraggableComponent({
@@ -42,6 +43,7 @@ export const DraggableComponent = memo(function DraggableComponent({
   theme,
   netsForComponent,
   selectedNetId,
+  symbolTuningRevision = 0,
 }: Props) {
   const committedPos = useComponentPosition(component.id);
 
@@ -247,6 +249,7 @@ export const DraggableComponent = memo(function DraggableComponent({
         rotation={committedPos.rotation}
         mirrorX={committedPos.mirrorX}
         mirrorY={committedPos.mirrorY}
+        tuningRevision={symbolTuningRevision}
       />
     </group>
   );

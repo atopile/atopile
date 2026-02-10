@@ -10,6 +10,12 @@ import {
   SYMBOL_RENDER_TUNING,
   type SymbolRenderTuning,
 } from '../../src/schematic-viewer/symbol-catalog/symbolTuning';
+import {
+  getSymbolVisualTuning,
+  type SymbolLabelVisualTuning,
+  type SymbolPackageLabelVisualTuning,
+  type SymbolVisualTuning,
+} from '../../src/schematic-viewer/symbol-catalog/symbolVisualTuning';
 import type { KicadArc, KicadSymbol } from '../../src/schematic-viewer/types/symbol';
 import {
   getComponentGridAlignmentOffset,
@@ -20,6 +26,7 @@ import {
   type SchematicSymbolFamily,
   transformPinOffset,
 } from '../../src/schematic-viewer/types/schematic';
+import { getUprightTextTransform } from '../../src/schematic-viewer/lib/itemTransform';
 import {
   CUSTOM_SYMBOL_BODY_BASE_Y,
   getCanonicalGlyphTransform,
@@ -35,6 +42,9 @@ type Family = ComponentFamily | PowerFamily;
 type Point = { x: number; y: number };
 
 type SymbolTuning = SymbolRenderTuning;
+type LabelTuning = SymbolLabelVisualTuning;
+type PackageLabelTuning = SymbolPackageLabelVisualTuning;
+type VisualTuning = SymbolVisualTuning;
 
 interface PreviewModel {
   bodyPolylines: Point[][];
@@ -44,26 +54,6 @@ interface PreviewModel {
   centerCross: { h0: Point; h1: Point; v0: Point; v1: Point };
   viewBox: { x: number; y: number; width: number; height: number };
   gridOffset: Point;
-}
-
-interface LabelTuning {
-  offsetX: number;
-  offsetY: number;
-  fontSize: number;
-  rotationDeg: number;
-}
-
-interface PackageLabelTuning extends LabelTuning {
-  followInstanceRotation: boolean;
-}
-
-interface VisualTuning {
-  symbolStrokeWidth: number;
-  leadStrokeWidth: number;
-  connectionDotRadius: number;
-  designator: LabelTuning;
-  value: LabelTuning;
-  package: PackageLabelTuning;
 }
 
 interface DragState {
@@ -102,7 +92,7 @@ const PIN_COUNT_BY_FAMILY: Record<Family, number> = {
   transistor_pnp: 3,
   mosfet_n: 3,
   mosfet_p: 3,
-  testpoint: 1,
+  testpoint: 2,
   vcc: 1,
   gnd: 1,
 };
@@ -277,29 +267,25 @@ const FIXTURE_BY_FAMILY: Record<Family, SchematicComponent> = {
   transistor_pnp: fixtureThreePinComponent('transistor_pnp', 'SOT-23', 'Q2', ['B', 'C', 'E']),
   mosfet_n: fixtureThreePinComponent('mosfet_n', 'SOT-23', 'Q3', ['G', 'D', 'S']),
   mosfet_p: fixtureThreePinComponent('mosfet_p', 'SOT-23', 'Q4', ['G', 'D', 'S']),
-  testpoint: {
-    kind: 'component',
-    id: 'fixture_testpoint',
-    name: 'fixture_testpoint',
-    designator: 'TP1',
-    reference: 'TP',
-    symbolFamily: 'testpoint',
-    packageCode: 'TESTPOINT',
-    pins: [{
-      ...BASE_SINGLE_PIN,
-      name: 'contact',
-    }],
-    bodyWidth: 5.08,
-    bodyHeight: 2.04,
-  },
+  // Keep testpoint fixture geometry aligned to exported schematic data:
+  // two-pin compact body, with runtime rendering only showing pin "1".
+  testpoint: fixtureComponent('testpoint', 'TESTPOINT', 'TP1', ['contact', 'unused']),
   vcc: fixturePowerSymbol('vcc', 'VCC'),
   gnd: fixturePowerSymbol('gnd', 'GND'),
 };
 
 const STORAGE_KEY = 'atopile.symbol_tuner.v2';
 const VISUAL_STORAGE_KEY = 'atopile.symbol_tuner.visual.v1';
-const TUNER_SYMBOL_STROKE_WIDTH = 0.26;
-const TUNER_LEAD_STROKE_WIDTH = 0.28;
+
+function shouldRestoreStoredTunings(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('restore') === '1';
+  } catch {
+    return false;
+  }
+}
 
 const DEFAULT_TUNINGS: Record<Family, SymbolTuning> = {
   resistor: { ...SYMBOL_RENDER_TUNING.resistor },
@@ -331,36 +317,30 @@ const DEFAULT_TUNINGS: Record<Family, SymbolTuning> = {
   },
 };
 
-function defaultLabelFontSize(component: SchematicComponent): number {
-  const isSmall = component.bodyWidth * component.bodyHeight < 40;
-  const maxDim = Math.min(component.bodyWidth, component.bodyHeight);
-  const base = isSmall
-    ? Math.min(1.35, Math.max(0.62, maxDim * 0.34))
-    : Math.min(1.35, Math.max(0.78, maxDim * 0.18));
-  return base * 0.85;
-}
+function defaultVisualTuning(family: Family, component: SchematicComponent): VisualTuning {
+  if (isComponentFamily(family)) {
+    return getSymbolVisualTuning(family, component);
+  }
 
-function defaultVisualTuning(component: SchematicComponent): VisualTuning {
-  const designatorFontSize = defaultLabelFontSize(component);
   return {
-    symbolStrokeWidth: TUNER_SYMBOL_STROKE_WIDTH,
-    leadStrokeWidth: TUNER_LEAD_STROKE_WIDTH,
+    symbolStrokeWidth: 0.26,
+    leadStrokeWidth: 0.28,
     connectionDotRadius: 0.17,
     designator: {
       offsetX: 0,
       offsetY: -Math.min(component.bodyHeight * 0.36, 0.96),
-      fontSize: designatorFontSize,
+      fontSize: 0.62,
       rotationDeg: 0,
     },
     value: {
       offsetX: 0,
-      offsetY: Math.max(component.bodyHeight * 0.42, 1.2),
-      fontSize: Math.max(0.5, designatorFontSize * 0.8),
+      offsetY: 0,
+      fontSize: 0.5,
       rotationDeg: 0,
     },
     package: {
       offsetX: 0,
-      offsetY: -Math.max(component.bodyHeight * 0.5 + 0.82, 1.4),
+      offsetY: 0,
       fontSize: 0.52,
       rotationDeg: 0,
       followInstanceRotation: true,
@@ -370,7 +350,7 @@ function defaultVisualTuning(component: SchematicComponent): VisualTuning {
 
 const DEFAULT_VISUAL_TUNINGS: Record<Family, VisualTuning> = (() => {
   const out = Object.fromEntries(
-    FAMILIES.map((family) => [family, defaultVisualTuning(FIXTURE_BY_FAMILY[family])]),
+    FAMILIES.map((family) => [family, defaultVisualTuning(family, FIXTURE_BY_FAMILY[family])]),
   ) as Record<Family, VisualTuning>;
   out.vcc = {
     ...out.vcc,
@@ -505,6 +485,7 @@ function parseStoredTunings(raw: string): Record<Family, SymbolTuning> | null {
 }
 
 function initialTunings(): Record<Family, SymbolTuning> {
+  if (!shouldRestoreStoredTunings()) return { ...DEFAULT_TUNINGS };
   if (typeof window === 'undefined') return { ...DEFAULT_TUNINGS };
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return { ...DEFAULT_TUNINGS };
@@ -583,6 +564,7 @@ function parseStoredVisualTunings(raw: string): Record<Family, VisualTuning> | n
 }
 
 function initialVisualTunings(): Record<Family, VisualTuning> {
+  if (!shouldRestoreStoredTunings()) return { ...DEFAULT_VISUAL_TUNINGS };
   if (typeof window === 'undefined') return { ...DEFAULT_VISUAL_TUNINGS };
   const raw = window.localStorage.getItem(VISUAL_STORAGE_KEY);
   if (!raw) return { ...DEFAULT_VISUAL_TUNINGS };
@@ -774,6 +756,12 @@ function buildPreviewModel(
   const bodyFillPolygons: Point[][] = [];
   const bodyCircles: Array<{ center: Point; radius: number }> = [];
   const leads: Array<{ attach: Point; pin: Point; rawPin: Point; number: string; name: string }> = [];
+  const renderedPins = family === 'testpoint'
+    ? (() => {
+      const primaryPin = component.pins.find((pin) => pin.number === '1') ?? component.pins[0];
+      return primaryPin ? [primaryPin] : [];
+    })()
+    : component.pins;
 
   const gridOffset = getComponentGridAlignmentOffset(component);
   const glyphTransform = getCanonicalGlyphTransform(component, family, symbol, tuning);
@@ -852,7 +840,7 @@ function buildPreviewModel(
     bodyCircles.push({ center, radius: circle.radius * glyphTransform.unit });
   }
 
-  for (const pin of component.pins) {
+  for (const pin of renderedPins) {
     const tuned = getTunedPinGeometry(
       component,
       pin,
@@ -1112,11 +1100,20 @@ export function SymbolTunerApp() {
   const [instanceRotation, setInstanceRotation] = useState<number>(0);
   const [mirrorX, setMirrorX] = useState(false);
   const [mirrorY, setMirrorY] = useState(false);
+  const [showDebugOverlays, setShowDebugOverlays] = useState(false);
   const [selectedLabel, setSelectedLabel] = useState<'designator' | 'value' | 'package' | null>('designator');
   const [dragState, setDragState] = useState<DragState | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const isPowerSymbol = isPowerFamily(family);
   const valuePreviewText = isPowerSymbol ? '' : '100nF';
+  const textTf = useMemo(
+    () => getUprightTextTransform(instanceRotation, mirrorX, mirrorY),
+    [instanceRotation, mirrorX, mirrorY],
+  );
+  const textTfRotationDeg = useMemo(
+    () => (-textTf.rotationZ * 180) / Math.PI,
+    [textTf.rotationZ],
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1265,6 +1262,10 @@ export function SymbolTunerApp() {
     () => JSON.stringify(tunings, null, 2),
     [tunings],
   );
+  const visualTuningJson = useMemo(
+    () => JSON.stringify(visualTunings, null, 2),
+    [visualTunings],
+  );
 
   const setTuning = (partial: Partial<SymbolTuning>) => {
     setTunings((prev) => ({
@@ -1334,9 +1335,9 @@ export function SymbolTunerApp() {
     setVisualTunings({ ...DEFAULT_VISUAL_TUNINGS });
   };
 
-  const copyAllTunings = async () => {
+  const copyJson = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(tuningJson);
+      await navigator.clipboard.writeText(text);
       setCopyState('done');
       window.setTimeout(() => setCopyState('idle'), 1400);
     } catch {
@@ -1443,6 +1444,9 @@ export function SymbolTunerApp() {
           Uses the exact canvas pipeline: canonical glyph transform, pin-grid normalization, lead tuning, and
           instance rotation/mirroring.
         </p>
+        <p className="symbol-tuner-hint">
+          Defaults mirror runtime code. Append <code>?restore=1</code> to reload previously saved local tuning edits.
+        </p>
 
         <label className="symbol-tuner-field">
           <span className="symbol-tuner-label">Symbol Type</span>
@@ -1491,6 +1495,15 @@ export function SymbolTunerApp() {
             <span>Mirror Y</span>
           </label>
         </div>
+
+        <label className="symbol-tuner-check symbol-tuner-check-block">
+          <input
+            type="checkbox"
+            checked={showDebugOverlays}
+            onChange={(event) => setShowDebugOverlays(event.target.checked)}
+          />
+          <span>Show Debug Overlays</span>
+        </label>
 
         <SliderField
           label="Move Body X"
@@ -1716,19 +1729,26 @@ export function SymbolTunerApp() {
           <button type="button" onClick={resetAll}>
             Reset All
           </button>
-          <button type="button" onClick={copyAllTunings}>
-            Copy JSON
+          <button type="button" onClick={() => void copyJson(tuningJson)}>
+            Copy Geometry JSON
+          </button>
+          <button type="button" onClick={() => void copyJson(visualTuningJson)}>
+            Copy Visual JSON
           </button>
         </div>
 
         <div className="symbol-tuner-copy-state">
-          {copyState === 'done' && 'Copied tuning JSON'}
+          {copyState === 'done' && 'Copied JSON'}
           {copyState === 'error' && 'Clipboard copy failed'}
         </div>
 
         <details className="symbol-tuner-json">
-          <summary>Tuning JSON</summary>
+          <summary>Geometry JSON</summary>
           <pre>{tuningJson}</pre>
+        </details>
+        <details className="symbol-tuner-json">
+          <summary>Visual JSON</summary>
+          <pre>{visualTuningJson}</pre>
         </details>
       </aside>
 
@@ -1824,7 +1844,7 @@ export function SymbolTunerApp() {
               />
             ))}
 
-            {!isPowerSymbol && preview.leads.map((lead) => (
+            {!isPowerSymbol && showDebugOverlays && preview.leads.map((lead) => (
               <circle
                 key={`raw-${lead.number}`}
                 cx={lead.rawPin.x}
@@ -1845,54 +1865,76 @@ export function SymbolTunerApp() {
             ))}
 
             {designatorWorld && (
-              <text
-                className={`symbol-tuner-label-text ${selectedLabel === 'designator' ? 'is-selected' : ''} ${dragState?.target === 'designator' ? 'is-dragging' : ''}`}
-                x={designatorWorld.x}
-                y={-designatorWorld.y}
-                fontSize={visualTuning.designator.fontSize}
-                fill="#334155"
-                textAnchor="middle"
-                dominantBaseline="middle"
-                transform={`rotate(${-visualTuning.designator.rotationDeg} ${designatorWorld.x} ${-designatorWorld.y})`}
-                onPointerDown={(event) => startLabelDrag(event, 'designator')}
-              >
-                {fixture.designator}
-              </text>
+              <g transform={`translate(${designatorWorld.x} ${-designatorWorld.y})`}>
+                <g transform={`rotate(${textTfRotationDeg})`}>
+                  <g transform={`scale(${textTf.scaleX} ${textTf.scaleY})`}>
+                    <g transform={`rotate(${visualTuning.designator.rotationDeg})`}>
+                      <text
+                        className={`symbol-tuner-label-text ${selectedLabel === 'designator' ? 'is-selected' : ''} ${dragState?.target === 'designator' ? 'is-dragging' : ''}`}
+                        x={0}
+                        y={0}
+                        fontSize={visualTuning.designator.fontSize}
+                        fill="#334155"
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        onPointerDown={(event) => startLabelDrag(event, 'designator')}
+                      >
+                        {fixture.designator}
+                      </text>
+                    </g>
+                  </g>
+                </g>
+              </g>
             )}
 
             {!isPowerSymbol && valueWorld && (
-              <text
-                className={`symbol-tuner-label-text ${selectedLabel === 'value' ? 'is-selected' : ''} ${dragState?.target === 'value' ? 'is-dragging' : ''}`}
-                x={valueWorld.x}
-                y={-valueWorld.y}
-                fontSize={visualTuning.value.fontSize}
-                fill="#475569"
-                textAnchor="middle"
-                dominantBaseline="middle"
-                transform={`rotate(${-visualTuning.value.rotationDeg} ${valueWorld.x} ${-valueWorld.y})`}
-                onPointerDown={(event) => startLabelDrag(event, 'value')}
-              >
-                {valuePreviewText}
-              </text>
+              <g transform={`translate(${valueWorld.x} ${-valueWorld.y})`}>
+                <g transform={`rotate(${textTfRotationDeg})`}>
+                  <g transform={`scale(${textTf.scaleX} ${textTf.scaleY})`}>
+                    <g transform={`rotate(${visualTuning.value.rotationDeg})`}>
+                      <text
+                        className={`symbol-tuner-label-text ${selectedLabel === 'value' ? 'is-selected' : ''} ${dragState?.target === 'value' ? 'is-dragging' : ''}`}
+                        x={0}
+                        y={0}
+                        fontSize={visualTuning.value.fontSize}
+                        fill="#475569"
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        onPointerDown={(event) => startLabelDrag(event, 'value')}
+                      >
+                        {valuePreviewText}
+                      </text>
+                    </g>
+                  </g>
+                </g>
+              </g>
             )}
 
             {!isPowerSymbol && packageWorld && fixture.packageCode && (
-              <text
-                className={`symbol-tuner-label-text ${selectedLabel === 'package' ? 'is-selected' : ''} ${dragState?.target === 'package' ? 'is-dragging' : ''}`}
-                x={packageWorld.x}
-                y={-packageWorld.y}
-                fontSize={visualTuning.package.fontSize}
-                fill="#64748b"
-                textAnchor="middle"
-                dominantBaseline="middle"
-                transform={`rotate(${-packageLabelRotationDeg} ${packageWorld.x} ${-packageWorld.y})`}
-                onPointerDown={(event) => startLabelDrag(event, 'package')}
-              >
-                {fixture.packageCode}
-              </text>
+              <g transform={`translate(${packageWorld.x} ${-packageWorld.y})`}>
+                <g transform={`rotate(${textTfRotationDeg})`}>
+                  <g transform={`scale(${textTf.scaleX} ${textTf.scaleY})`}>
+                    <g transform={`rotate(${packageLabelRotationDeg})`}>
+                      <text
+                        className={`symbol-tuner-label-text ${selectedLabel === 'package' ? 'is-selected' : ''} ${dragState?.target === 'package' ? 'is-dragging' : ''}`}
+                        x={0}
+                        y={0}
+                        fontSize={visualTuning.package.fontSize}
+                        fill="#64748b"
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        onPointerDown={(event) => startLabelDrag(event, 'package')}
+                      >
+                        {fixture.packageCode}
+                      </text>
+                    </g>
+                  </g>
+                </g>
+              </g>
             )}
 
-            {!isPowerSymbol && preview.leads.map((lead) => (
+
+            {!isPowerSymbol && showDebugOverlays && preview.leads.map((lead) => (
               <text
                 key={`pin-label-${lead.number}`}
                 x={lead.pin.x + 0.18}
@@ -1904,33 +1946,36 @@ export function SymbolTunerApp() {
               </text>
             ))}
 
-            <line
-              x1={preview.centerCross.h0.x}
-              y1={-preview.centerCross.h0.y}
-              x2={preview.centerCross.h1.x}
-              y2={-preview.centerCross.h1.y}
-              stroke="#9ca3af"
-              strokeWidth="0.1"
-              strokeDasharray="0.35 0.25"
-            />
-            <line
-              x1={preview.centerCross.v0.x}
-              y1={-preview.centerCross.v0.y}
-              x2={preview.centerCross.v1.x}
-              y2={-preview.centerCross.v1.y}
-              stroke="#9ca3af"
-              strokeWidth="0.1"
-              strokeDasharray="0.35 0.25"
-            />
-
-            <text
-              x={preview.centerCross.h1.x + 0.2}
-              y={-preview.centerCross.h1.y - 0.2}
-              fontSize="0.58"
-              fill="#64748b"
-            >
-              gridOffset ({fmt(preview.gridOffset.x)}, {fmt(preview.gridOffset.y)})
-            </text>
+            {showDebugOverlays && (
+              <>
+                <line
+                  x1={preview.centerCross.h0.x}
+                  y1={-preview.centerCross.h0.y}
+                  x2={preview.centerCross.h1.x}
+                  y2={-preview.centerCross.h1.y}
+                  stroke="#9ca3af"
+                  strokeWidth="0.1"
+                  strokeDasharray="0.35 0.25"
+                />
+                <line
+                  x1={preview.centerCross.v0.x}
+                  y1={-preview.centerCross.v0.y}
+                  x2={preview.centerCross.v1.x}
+                  y2={-preview.centerCross.v1.y}
+                  stroke="#9ca3af"
+                  strokeWidth="0.1"
+                  strokeDasharray="0.35 0.25"
+                />
+                <text
+                  x={preview.centerCross.h1.x + 0.2}
+                  y={-preview.centerCross.h1.y - 0.2}
+                  fontSize="0.58"
+                  fill="#64748b"
+                >
+                  gridOffset ({fmt(preview.gridOffset.x)}, {fmt(preview.gridOffset.y)})
+                </text>
+              </>
+            )}
           </svg>
         )}
       </main>

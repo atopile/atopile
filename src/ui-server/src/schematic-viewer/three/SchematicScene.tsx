@@ -38,6 +38,7 @@ import { NetLines } from './NetLines';
 import { GridBackground } from './GridBackground';
 import { ContextMenu } from './ContextMenu';
 import { getModuleRenderSize } from '../lib/moduleInterfaces';
+import { SymbolDevTunerPanel, useSymbolDevModeEnabled } from '../components/SymbolDevTunerPanel';
 
 /** Stable singleton for items with no net connections. */
 const EMPTY_NET_MAP = new Map<string, string>();
@@ -50,9 +51,11 @@ function scenePathKey(path: string[]): string {
 
 function SceneContent({
   theme,
+  symbolTuningRevision,
   onSceneReady,
 }: {
   theme: ThemeColors;
+  symbolTuningRevision: number;
   onSceneReady?: (scene: THREE.Scene, camera: THREE.Camera, canvas: HTMLCanvasElement) => void;
 }) {
   const sheet = useCurrentSheet();
@@ -339,6 +342,7 @@ function SceneContent({
           key={comp.id}
           component={comp}
           theme={theme}
+          symbolTuningRevision={symbolTuningRevision}
           selectedNetId={selectedNetId}
           netsForComponent={
             itemNetMaps.get(comp.id) || EMPTY_NET_MAP
@@ -390,6 +394,7 @@ interface SelectionRect {
 
 export function SchematicScene() {
   const theme = useTheme();
+  const symbolDevModeEnabled = useSymbolDevModeEnabled();
   const portEditMode = useSchematicStore((s) => s.portEditMode);
   const portEditTargetId = useSchematicStore((s) => s.portEditTargetId);
   const setPortEditMode = useSchematicStore((s) => s.setPortEditMode);
@@ -405,6 +410,7 @@ export function SchematicScene() {
   const projectCornerMinRef = useRef(new THREE.Vector3());
   const projectCornerMaxRef = useRef(new THREE.Vector3());
   const [selRect, setSelRect] = useState<SelectionRect | null>(null);
+  const [symbolTuningRevision, setSymbolTuningRevision] = useState(0);
   const selDragging = useRef(false);
   const portEditTargetPortName = useMemo(
     () => ports.find((p) => p.id === portEditTargetId)?.name ?? null,
@@ -682,8 +688,19 @@ export function SchematicScene() {
           useSchematicStore.getState().closeContextMenu();
         }}
       >
-        <SceneContent theme={theme} onSceneReady={handleSceneReady} />
+        <SceneContent
+          theme={theme}
+          symbolTuningRevision={symbolTuningRevision}
+          onSceneReady={handleSceneReady}
+        />
       </Canvas>
+
+      {symbolDevModeEnabled && (
+        <SymbolDevTunerPanel
+          theme={theme}
+          onTuningChanged={() => setSymbolTuningRevision((value) => value + 1)}
+        />
+      )}
 
       {/* Port edit mode dimmer */}
       {portEditMode && (

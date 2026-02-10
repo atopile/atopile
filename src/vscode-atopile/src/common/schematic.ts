@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { getBuildTarget } from '../common/target';
 import { Build } from './manifest';
 import * as fs from 'fs';
-import * as path from 'path';
 import { FileResource, FileResourceWatcher } from './file-resource-watcher';
 
 export interface Schematic extends FileResource {}
@@ -13,12 +12,14 @@ class SchematicWatcher extends FileResourceWatcher<Schematic> {
     }
 
     protected getResourceForBuild(build: Build | undefined): Schematic | undefined {
-        if (!build?.entry) {
+        if (!build?.pcb_path) {
             return undefined;
         }
 
-        // Derive .ato_sch path from pcb_path (respects ato.yaml layout config)
-        const jsonPath = build.pcb_path.replace(/\.kicad_pcb$/, '.ato_sch');
+        if (!/\.kicad_pcb$/i.test(build.pcb_path)) {
+            return undefined;
+        }
+        const jsonPath = build.pcb_path.replace(/\.kicad_pcb$/i, '.ato_sch');
         return { path: jsonPath, exists: fs.existsSync(jsonPath) };
     }
 }

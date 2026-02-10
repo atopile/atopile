@@ -214,9 +214,9 @@
 .selection-details {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   padding: 0;
-  background: color-mix(in srgb, var(--sv-border) 55%, transparent);
+  background: color-mix(in srgb, var(--sv-border) 68%, transparent);
 }
 
 .selection-details.with-top-border {
@@ -229,7 +229,7 @@
   gap: 8px;
   border-bottom: none;
   background: var(--sv-bg);
-  padding: 10px 12px;
+  padding: 10px 12px 11px;
 }
 
 .selection-card-header {
@@ -269,23 +269,39 @@
 }
 
 .selection-card-kicker {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
+  width: 100%;
+  margin-bottom: 1px;
+  padding-bottom: 4px;
   font-size: 10px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--sv-muted);
+  color: color-mix(in srgb, var(--sv-text) 70%, var(--sv-muted));
 }
 
 .selection-card-kicker::before {
   content: '';
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--sv-accent) 72%, var(--sv-text));
-  opacity: 0.8;
+  width: 2px;
+  height: 10px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--sv-accent) 82%, var(--sv-text));
+  opacity: 0.95;
   flex-shrink: 0;
+}
+
+.selection-card-kicker::after {
+  content: '';
+  flex: 1;
+  min-width: 14px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--sv-accent) 34%, transparent) 0%,
+    color-mix(in srgb, var(--sv-border) 78%, transparent) 72%
+  );
+  opacity: 0.9;
 }
 
 .selection-badge {
@@ -520,6 +536,126 @@
   font-size: 10px;
   text-align: center;
   flex-shrink: 0;
+}
+
+.selection-pin-table {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid color-mix(in srgb, var(--sv-border) 50%, transparent);
+}
+
+.selection-pin-table-header,
+.selection-pin-table-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 2.2fr) minmax(34px, 0.8fr) minmax(0, 1.8fr) minmax(0, 1.4fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 26px;
+}
+
+.selection-pin-table-header {
+  font-size: 10px;
+  color: var(--sv-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid color-mix(in srgb, var(--sv-border) 40%, transparent);
+}
+
+.selection-pin-header {
+  min-width: 0;
+}
+
+.selection-pin-header.net {
+  text-align: right;
+}
+
+.selection-pin-table-row {
+  border-bottom: 1px solid color-mix(in srgb, var(--sv-border) 40%, transparent);
+  padding: 3px 0;
+}
+
+.selection-pin-table-row:last-child {
+  border-bottom: none;
+}
+
+.selection-pin-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--sv-secondary);
+}
+
+.selection-pin-cell.pin {
+  --pin-color: var(--sv-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--pin-color) 38%, transparent);
+  background: color-mix(in srgb, var(--pin-color) 12%, transparent);
+  color: color-mix(in srgb, var(--pin-color) 70%, var(--sv-text));
+  font-family: var(--sv-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace);
+  font-size: 10px;
+}
+
+.selection-pin-cell.name {
+  color: var(--sv-text);
+}
+
+.selection-pin-cell.side {
+  text-transform: lowercase;
+}
+
+.selection-pin-cell.type {
+  font-size: 10px;
+  color: var(--sv-muted);
+}
+
+.selection-pin-net-btn {
+  width: 100%;
+  min-width: 0;
+  min-height: 20px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--sv-secondary);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.selection-pin-net-btn:hover {
+  background: var(--sv-hover);
+  color: var(--sv-text);
+}
+
+.selection-pin-net-btn.active {
+  color: var(--sv-text);
+  background: color-mix(in srgb, var(--sv-accent) 16%, transparent);
+}
+
+.selection-pin-net-btn .selection-dot {
+  width: 6px;
+  height: 6px;
+}
+
+.selection-pin-empty-net {
+  font-size: 10px;
+  color: var(--sv-muted);
+  text-align: right;
+  min-width: 0;
 }
 
 .selection-signal-list {

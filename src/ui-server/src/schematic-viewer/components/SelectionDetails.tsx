@@ -661,29 +661,39 @@ export function SelectionDetails({
 
           <section className="selection-card">
             <div className="selection-card-kicker">Pins</div>
-            <div className="selection-list">
+            <div className="selection-pin-table">
+              <div className="selection-pin-table-header">
+                <span className="selection-pin-header">Pin</span>
+                <span className="selection-pin-header">Name</span>
+                <span className="selection-pin-header">Side</span>
+                <span className="selection-pin-header">Type</span>
+                <span className="selection-pin-header net">Net</span>
+              </div>
               {componentPins.map(({ pin, net }) => (
-                <div className="selection-list-row" key={pin.number}>
-                  <div className="selection-list-main">
-                    <span className="selection-list-title">
-                      <span
-                        className="selection-pin-chip"
-                        style={{ color: getPinColor(pin.category, theme) }}
-                      >
-                        {pin.number}
-                      </span>
-                      <span className="selection-list-name">{pin.name || '(unnamed)'}</span>
-                    </span>
-                    <span className="selection-list-trailing">{pin.side}</span>
-                  </div>
-                  <div className="selection-list-subtitle">
+                <div className="selection-pin-table-row" key={pin.number}>
+                  <span
+                    className="selection-pin-cell pin"
+                    style={{ '--pin-color': getPinColor(pin.category, theme) } as CSSProperties}
+                    title={`Pin ${pin.number}`}
+                  >
+                    {pin.number}
+                  </span>
+                  <span className="selection-pin-cell name" title={pin.name || '(unnamed)'}>
+                    {pin.name || '(unnamed)'}
+                  </span>
+                  <span className="selection-pin-cell side">{pin.side}</span>
+                  <span
+                    className="selection-pin-cell type"
+                    title={`${pin.category} · ${pin.electricalType}`}
+                  >
                     {pin.category} · {pin.electricalType}
-                  </div>
+                  </span>
                   {net ? (
                     <button
                       type="button"
-                      className={`selection-inline-btn ${selectedNetId === net.id ? 'active' : ''}`}
+                      className={`selection-pin-net-btn ${selectedNetId === net.id ? 'active' : ''}`}
                       onClick={() => selectNet(net.id)}
+                      title={`Select net ${net.name}`}
                     >
                       <span
                         className="selection-dot"
@@ -692,7 +702,7 @@ export function SelectionDetails({
                       {net.name}
                     </button>
                   ) : (
-                    <div className="selection-list-subtitle">No net assigned.</div>
+                    <span className="selection-pin-empty-net">--</span>
                   )}
                 </div>
               ))}
@@ -748,30 +758,40 @@ export function SelectionDetails({
 
           <section className="selection-card">
             <div className="selection-card-kicker">Interface Pins</div>
-            <div className="selection-list">
+            <div className="selection-pin-table">
+              <div className="selection-pin-table-header">
+                <span className="selection-pin-header">Pin</span>
+                <span className="selection-pin-header">Name</span>
+                <span className="selection-pin-header">Side</span>
+                <span className="selection-pin-header">Type</span>
+                <span className="selection-pin-header net">Net</span>
+              </div>
               {modulePins.map(({ pin, net }) => (
-                <div className="selection-list-row" key={pin.id}>
-                  <div className="selection-list-main">
-                    <span className="selection-list-title">
-                      <span
-                        className="selection-pin-chip"
-                        style={{ color: getPinColor(pin.category, theme) }}
-                      >
-                        {pin.id}
-                      </span>
-                      <span className="selection-list-name">{pin.name}</span>
-                    </span>
-                    <span className="selection-list-trailing">{pin.side}</span>
-                  </div>
-                  <div className="selection-list-subtitle">
+                <div className="selection-pin-table-row" key={pin.id}>
+                  <span
+                    className="selection-pin-cell pin"
+                    style={{ '--pin-color': getPinColor(pin.category, theme) } as CSSProperties}
+                    title={`Pin ${pin.id}`}
+                  >
+                    {pin.id}
+                  </span>
+                  <span className="selection-pin-cell name" title={pin.name}>
+                    {pin.name}
+                  </span>
+                  <span className="selection-pin-cell side">{pin.side}</span>
+                  <span
+                    className="selection-pin-cell type"
+                    title={`${pin.interfaceType} · ${pin.category}`}
+                  >
                     {pin.interfaceType} · {pin.category}
                     {pin.signals && pin.signals.length > 0 ? ` · ${pin.signals.length} signals` : ''}
-                  </div>
+                  </span>
                   {net ? (
                     <button
                       type="button"
-                      className={`selection-inline-btn ${selectedNetId === net.id ? 'active' : ''}`}
+                      className={`selection-pin-net-btn ${selectedNetId === net.id ? 'active' : ''}`}
                       onClick={() => selectNet(net.id)}
+                      title={`Select net ${net.name}`}
                     >
                       <span
                         className="selection-dot"
@@ -780,7 +800,7 @@ export function SelectionDetails({
                       {net.name}
                     </button>
                   ) : (
-                    <div className="selection-list-subtitle">No net assigned.</div>
+                    <span className="selection-pin-empty-net">--</span>
                   )}
                 </div>
               ))}

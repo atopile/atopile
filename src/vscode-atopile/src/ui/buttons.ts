@@ -502,6 +502,22 @@ async function atoPinoutExplorer() {
 }
 
 async function atoSchematicPreview() {
+    let build = getBuildTarget();
+    if (!build) {
+        const builds = await _reloadBuilds();
+        const root = getProjectRoot();
+        const candidates = root ? builds.filter((b) => b.root === root) : builds;
+        if (candidates.length > 0) {
+            setSelectedTargets([candidates[0]]);
+            build = candidates[0];
+        }
+    }
+
+    if (!build) {
+        vscode.window.showErrorMessage('No build target selected.');
+        return;
+    }
+
     await schematicViewer.openSchematicPreview();
 }
 

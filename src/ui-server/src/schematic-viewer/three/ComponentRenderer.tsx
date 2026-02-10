@@ -5,9 +5,9 @@
  * selection/hover/drag state actually changes for this component.
  */
 
-import { memo, useMemo } from 'react';
-import { Line, RoundedBox, Text } from '@react-three/drei';
-import { Shape } from 'three';
+import { memo, useCallback, useMemo, useRef } from 'react';
+import { Html, Line, RoundedBox, Text } from '@react-three/drei';
+import { Shape, type Camera, type Object3D, Vector3 } from 'three';
 import type {
   SchematicComponent,
   SchematicPin,
@@ -20,12 +20,12 @@ import {
 import type { ThemeColors } from '../lib/theme';
 import { getCanonicalKicadSymbol } from '../symbol-catalog/canonicalSymbolCatalog';
 import { getSymbolRenderTuning } from '../symbol-catalog/symbolTuning';
-import { getKicadTemplateSymbol } from '../parsers/kicadSymbolTemplates';
+import { getSymbolVisualTuning } from '../symbol-catalog/symbolVisualTuning';
+import { inferSymbolFamily } from '../symbol-catalog/symbolFamilyInference';
 import { anchorFromVisualSide, getUprightTextTransform } from '../lib/itemTransform';
 import { getConnectionColor } from './connectionColor';
 import {
   CUSTOM_SYMBOL_BODY_BASE_Y,
-  chipScale,
   getCanonicalGlyphTransform,
   getCanonicalPinAttachmentMap,
   getTunedPinGeometry,
@@ -34,87 +34,14 @@ import {
 
 const SMALL_AREA = 40;
 const NO_RAYCAST = () => {};
-const SYMBOL_STROKE_WIDTH = 0.26;
-const SYMBOL_STROKE_WIDTH_FINE = 0.22;
-const PIN_LEAD_WIDTH = 0.28;
-const PIN_LEAD_WIDTH_ACTIVE = 0.34;
+const PIN_LEAD_WIDTH_ACTIVE_RATIO = 1.22;
 const DIODE_FILL_OPACITY = 0.28;
 const LED_FILL_OPACITY = 0.42;
 const POLARIZED_CAP_NEGATIVE_PLATE_FILL_OPACITY = 0.72;
-
-function getDesignatorPrefix(designator: string): string {
-  return designator.replace(/[^A-Za-z]/g, '').toUpperCase();
-}
-
-function inferSymbolFamily(component: SchematicComponent): SchematicSymbolFamily | null {
-  // Connectors stay on the generic box renderer for now.
-  if (component.symbolFamily === 'connector') return null;
-  if (component.symbolFamily) return component.symbolFamily;
-
-  const designatorPrefix = getDesignatorPrefix(component.designator);
-  const haystack = [
-    component.name,
-    designatorPrefix,
-    component.reference,
-    component.symbolVariant,
-    component.packageCode,
-  ].join(' ').toLowerCase();
-
-  if (haystack.includes('led')) return 'led';
-  if (haystack.includes('testpoint') || designatorPrefix.startsWith('TP')) return 'testpoint';
-
-  if (
-    haystack.includes('pmos')
-    || haystack.includes('p-mos')
-    || haystack.includes('pfet')
-    || haystack.includes('p-fet')
-    || haystack.includes('pchannel')
-    || haystack.includes('p-channel')
-  ) {
-    return 'mosfet_p';
-  }
-  if (
-    haystack.includes('nmos')
-    || haystack.includes('n-mos')
-    || haystack.includes('nfet')
-    || haystack.includes('n-fet')
-    || haystack.includes('nchannel')
-    || haystack.includes('n-channel')
-  ) {
-    return 'mosfet_n';
-  }
-  if (
-    haystack.includes('mosfet')
-    || /(^|[^a-z0-9])fet([^a-z0-9]|$)/.test(haystack)
-  ) {
-    return 'mosfet_n';
-  }
-
-  if (haystack.includes('pnp')) return 'transistor_pnp';
-  if (haystack.includes('npn')) return 'transistor_npn';
-  if (
-    designatorPrefix.startsWith('Q')
-    || haystack.includes('bjt')
-    || haystack.includes('transistor')
-  ) {
-    return 'transistor_npn';
-  }
-
-  if (
-    haystack.includes('capacitorpolarized')
-    || haystack.includes('capacitor_polarized')
-    || haystack.includes('polarized')
-    || haystack.includes('electrolytic')
-  ) {
-    return 'capacitor_polarized';
-  }
-  if (haystack.includes('capacitor') || designatorPrefix.startsWith('C')) return 'capacitor';
-  if (haystack.includes('resistor') || designatorPrefix.startsWith('R')) return 'resistor';
-  if (haystack.includes('inductor') || designatorPrefix.startsWith('L')) return 'inductor';
-  if (haystack.includes('diode') || designatorPrefix.startsWith('D')) return 'diode';
-
-  return null;
-}
+const HOVER_CARD_MAX_WIDTH_PX = 260;
+const HOVER_CARD_MIN_WIDTH_PX = 140;
+const HOVER_CARD_MARGIN_PX = 14;
+const HOVER_CARD_MAX_HEIGHT_PX = 62;
 
 function circlePoints(
   cx: number,
@@ -125,22 +52,6 @@ function circlePoints(
   const points: Array<[number, number, number]> = [];
   for (let i = 0; i <= segments; i += 1) {
     const t = (i / segments) * Math.PI * 2;
-    points.push([cx + Math.cos(t) * radius, cy + Math.sin(t) * radius, 0]);
-  }
-  return points;
-}
-
-function arcPoints(
-  cx: number,
-  cy: number,
-  radius: number,
-  start: number,
-  end: number,
-  segments = 8,
-): Array<[number, number, number]> {
-  const points: Array<[number, number, number]> = [];
-  for (let i = 0; i <= segments; i += 1) {
-    const t = start + ((end - start) * i) / segments;
     points.push([cx + Math.cos(t) * radius, cy + Math.sin(t) * radius, 0]);
   }
   return points;
@@ -287,11 +198,40 @@ function inferLedFillColor(component: SchematicComponent): string {
   return '#c77b86';
 }
 
+function normalizeTextRotationUpright(rotationDeg: number): number {
+  let rot = ((rotationDeg % 360) + 360) % 360;
+  if (rot > 180) rot -= 360;
+  if (rot > 90) rot -= 180;
+  if (rot <= -90) rot += 180;
+  return rot;
+}
+
+function stripToleranceSuffix(value: string): string {
+  return value
+    .replace(/\s*(?:\+\/-|±)\s*\d+(?:\.\d+)?\s*%.*$/i, '')
+    .trim();
+}
+
+function deriveValueLabel(component: SchematicComponent): string {
+  const raw = component.name.trim();
+  if (!raw) return '';
+  const stripped = stripToleranceSuffix(raw);
+  if (!stripped) return '';
+  if (stripped.toUpperCase() === component.designator.toUpperCase()) return '';
+  // Avoid showing package-only names like "0603" and template IDs like "Demo_LED_0603".
+  if (!/[a-z]/i.test(stripped) || stripped.includes('_')) return '';
+  // Only render likely value-like tokens (e.g. 100nF, 10k, 4.7uH).
+  if (!/\d/.test(stripped)) return '';
+  if (!/(ohm|[munpfk]?f|[munpfk]?h|[mk]?r)\b/i.test(stripped)) return '';
+  return stripped;
+}
+
 interface SymbolGlyphProps {
   component: SchematicComponent;
   family: SchematicSymbolFamily;
   color: string;
   templateSymbol: ReturnType<typeof getCanonicalKicadSymbol>;
+  symbolStrokeWidth: number;
   tuning: {
     bodyOffsetX: number;
     bodyOffsetY: number;
@@ -305,13 +245,11 @@ function SymbolGlyph({
   family,
   color,
   templateSymbol,
+  symbolStrokeWidth,
   tuning,
 }: SymbolGlyphProps) {
-  const W = component.bodyWidth;
-  const H = component.bodyHeight;
-  const scale = chipScale(component.packageCode);
   const lineColor = color;
-  const lineWidth = SYMBOL_STROKE_WIDTH;
+  const lineWidth = symbolStrokeWidth;
   if (
     templateSymbol
     && templateSymbol.bodyBounds.width > 1e-6
@@ -471,243 +409,6 @@ function SymbolGlyph({
     );
   }
 
-  if (family === 'resistor') {
-    const halfW = Math.max(0.9, W * 0.28 * scale);
-    const halfH = Math.max(0.26, H * 0.3);
-    const points: Array<[number, number, number]> = [
-      [-halfW, -halfH, 0],
-      [halfW, -halfH, 0],
-      [halfW, halfH, 0],
-      [-halfW, halfH, 0],
-      [-halfW, -halfH, 0],
-    ];
-    return (
-      <Line
-        points={points}
-        color={lineColor}
-        lineWidth={lineWidth}
-        worldUnits
-        raycast={NO_RAYCAST}
-      />
-    );
-  }
-
-  if (family === 'capacitor' || family === 'capacitor_polarized') {
-    const plateGap = Math.max(0.18, W * 0.12 * scale);
-    const halfPlate = Math.max(0.34, H * 0.36);
-    const plateHalfThickness = 0.22;
-    const negativePlateFillShape = new Shape();
-    negativePlateFillShape.moveTo(plateGap - plateHalfThickness, -halfPlate);
-    negativePlateFillShape.lineTo(plateGap + plateHalfThickness, -halfPlate);
-    negativePlateFillShape.lineTo(plateGap + plateHalfThickness, halfPlate);
-    negativePlateFillShape.lineTo(plateGap - plateHalfThickness, halfPlate);
-    negativePlateFillShape.closePath();
-    return (
-      <group raycast={NO_RAYCAST}>
-        {family === 'capacitor_polarized' && (
-          <mesh position={[0, 0, -0.0004]} raycast={NO_RAYCAST}>
-            <shapeGeometry args={[negativePlateFillShape]} />
-            <meshBasicMaterial
-              color={lineColor}
-              transparent
-              opacity={POLARIZED_CAP_NEGATIVE_PLATE_FILL_OPACITY}
-              depthWrite={false}
-            />
-          </mesh>
-        )}
-        <Line
-          points={[
-            [-plateGap, -halfPlate, 0],
-            [-plateGap, halfPlate, 0],
-          ]}
-          color={lineColor}
-          lineWidth={lineWidth}
-          worldUnits
-          raycast={NO_RAYCAST}
-        />
-        <Line
-          points={[
-            [plateGap, -halfPlate, 0],
-            [plateGap, halfPlate, 0],
-          ]}
-          color={lineColor}
-          lineWidth={lineWidth}
-          worldUnits
-          raycast={NO_RAYCAST}
-        />
-        {family === 'capacitor_polarized' && (
-          <group raycast={NO_RAYCAST}>
-            <Line
-              points={[
-                [-plateGap - 0.32, 0.18, 0],
-                [-plateGap - 0.12, 0.18, 0],
-              ]}
-              color={lineColor}
-              lineWidth={SYMBOL_STROKE_WIDTH_FINE}
-              worldUnits
-              raycast={NO_RAYCAST}
-            />
-            <Line
-              points={[
-                [-plateGap - 0.22, 0.08, 0],
-                [-plateGap - 0.22, 0.28, 0],
-              ]}
-              color={lineColor}
-              lineWidth={SYMBOL_STROKE_WIDTH_FINE}
-              worldUnits
-              raycast={NO_RAYCAST}
-            />
-          </group>
-        )}
-      </group>
-    );
-  }
-
-  if (family === 'inductor') {
-    const turns = 4;
-    const radius = Math.max(0.2, Math.min(W * 0.09 * scale, H * 0.34));
-    const startX = -turns * radius;
-    const points: Array<[number, number, number]> = [];
-
-    for (let i = 0; i < turns; i += 1) {
-      const cx = startX + radius + i * radius * 2;
-      const arc = arcPoints(cx, 0, radius, Math.PI, 0, 10);
-      if (i > 0) arc.shift();
-      points.push(...arc);
-    }
-
-    return (
-      <Line
-        points={points}
-        color={lineColor}
-        lineWidth={lineWidth}
-        worldUnits
-        raycast={NO_RAYCAST}
-      />
-    );
-  }
-
-  if (family === 'diode' || family === 'led') {
-    const left = -Math.max(0.9, W * 0.2);
-    const barX = Math.max(0.8, W * 0.2);
-    const halfY = Math.max(0.32, H * 0.3);
-    const fillShape = new Shape();
-    fillShape.moveTo(left, -halfY);
-    fillShape.lineTo(left, halfY);
-    fillShape.lineTo(barX, 0);
-    fillShape.closePath();
-    const fillColor = family === 'led' ? inferLedFillColor(component) : lineColor;
-    const fillOpacity = family === 'led' ? LED_FILL_OPACITY : DIODE_FILL_OPACITY;
-
-    return (
-      <group raycast={NO_RAYCAST}>
-        <mesh position={[0, 0, -0.0004]} raycast={NO_RAYCAST}>
-          <shapeGeometry args={[fillShape]} />
-          <meshBasicMaterial
-            color={fillColor}
-            transparent
-            opacity={fillOpacity}
-            depthWrite={false}
-          />
-        </mesh>
-        <Line
-          points={[
-            [left, -halfY, 0],
-            [left, halfY, 0],
-            [barX, 0, 0],
-            [left, -halfY, 0],
-          ]}
-          color={lineColor}
-          lineWidth={lineWidth}
-          worldUnits
-          raycast={NO_RAYCAST}
-        />
-        <Line
-          points={[
-            [barX, -halfY, 0],
-            [barX, halfY, 0],
-          ]}
-          color={lineColor}
-          lineWidth={lineWidth}
-          worldUnits
-          raycast={NO_RAYCAST}
-        />
-
-        {family === 'led' && (
-          <group raycast={NO_RAYCAST}>
-            <Line
-              points={[
-                [barX - 0.14, halfY * 0.2, 0],
-                [barX + 0.62, halfY + 0.62, 0],
-              ]}
-              color={lineColor}
-              lineWidth={SYMBOL_STROKE_WIDTH_FINE}
-              worldUnits
-              raycast={NO_RAYCAST}
-            />
-            <Line
-              points={[
-                [barX + 0.42, halfY + 0.63, 0],
-                [barX + 0.62, halfY + 0.62, 0],
-                [barX + 0.57, halfY + 0.42, 0],
-              ]}
-              color={lineColor}
-              lineWidth={SYMBOL_STROKE_WIDTH_FINE}
-              worldUnits
-              raycast={NO_RAYCAST}
-            />
-            <Line
-              points={[
-                [barX - 0.3, -halfY * 0.06, 0],
-                [barX + 0.45, halfY + 0.34, 0],
-              ]}
-              color={lineColor}
-              lineWidth={SYMBOL_STROKE_WIDTH_FINE}
-              worldUnits
-              raycast={NO_RAYCAST}
-            />
-            <Line
-              points={[
-                [barX + 0.25, halfY + 0.35, 0],
-                [barX + 0.45, halfY + 0.34, 0],
-                [barX + 0.4, halfY + 0.14, 0],
-              ]}
-              color={lineColor}
-              lineWidth={SYMBOL_STROKE_WIDTH_FINE}
-              worldUnits
-              raycast={NO_RAYCAST}
-            />
-          </group>
-        )}
-      </group>
-    );
-  }
-
-  if (family === 'testpoint') {
-    const radius = Math.max(0.32, Math.min(W, H) * 0.34);
-    return (
-      <group raycast={NO_RAYCAST}>
-        <Line
-          points={circlePoints(0, 0.08, radius, 24)}
-          color={lineColor}
-          lineWidth={lineWidth}
-          worldUnits
-          raycast={NO_RAYCAST}
-        />
-        <Line
-          points={[
-            [0, -radius + 0.08, 0],
-            [0, -radius - 0.56, 0],
-          ]}
-          color={lineColor}
-          lineWidth={lineWidth}
-          worldUnits
-          raycast={NO_RAYCAST}
-        />
-      </group>
-    );
-  }
-
   return null;
 }
 
@@ -722,6 +423,7 @@ interface Props {
   rotation?: number;
   mirrorX?: boolean;
   mirrorY?: boolean;
+  tuningRevision?: number;
 }
 
 export const ComponentRenderer = memo(function ComponentRenderer({
@@ -735,6 +437,7 @@ export const ComponentRenderer = memo(function ComponentRenderer({
   rotation = 0,
   mirrorX = false,
   mirrorY = false,
+  tuningRevision = 0,
 }: Props) {
   const W = component.bodyWidth;
   const H = component.bodyHeight;
@@ -744,12 +447,15 @@ export const ComponentRenderer = memo(function ComponentRenderer({
   const symbolFamily = useMemo(() => inferSymbolFamily(component), [component]);
   const symbolTuning = useMemo(
     () => getSymbolRenderTuning(symbolFamily),
-    [symbolFamily],
+    [symbolFamily, tuningRevision],
+  );
+  const symbolVisualTuning = useMemo(
+    () => getSymbolVisualTuning(symbolFamily, component),
+    [symbolFamily, component, tuningRevision],
   );
   const templateSymbol = useMemo(() => {
     if (!symbolFamily) return null;
-    return getCanonicalKicadSymbol(symbolFamily, component.pins.length)
-      ?? getKicadTemplateSymbol(symbolFamily, component.pins.length);
+    return getCanonicalKicadSymbol(symbolFamily, component.pins.length);
   }, [symbolFamily, component.pins.length]);
   const pinAttachOverrides = useMemo(() => {
     if (!symbolFamily || !templateSymbol) return null;
@@ -785,22 +491,83 @@ export const ComponentRenderer = memo(function ComponentRenderer({
   const refFontSizeBase = isSmall
     ? Math.min(1.35, Math.max(0.62, maxDim * 0.34))
     : Math.min(1.35, Math.max(0.78, maxDim * 0.18));
-  const refFontSize = hasCustomSymbol ? refFontSizeBase * 0.85 : refFontSizeBase;
-  const refLabelY = hasCustomSymbol ? -Math.min(H * 0.36, 0.96) : 0;
+  const refFontSize = hasCustomSymbol
+    ? symbolVisualTuning.designator.fontSize
+    : refFontSizeBase;
+  const refLabelX = hasCustomSymbol ? symbolVisualTuning.designator.offsetX : 0;
+  const refLabelY = hasCustomSymbol ? symbolVisualTuning.designator.offsetY : 0;
+  const refLabelRotationZ = hasCustomSymbol
+    ? (-symbolVisualTuning.designator.rotationDeg * Math.PI) / 180
+    : 0;
+  const packageLabelX = hasCustomSymbol ? symbolVisualTuning.package.offsetX : 0;
+  const packageLabelY = hasCustomSymbol ? symbolVisualTuning.package.offsetY : -H / 2 - 0.82;
+  const packageFontSize = hasCustomSymbol ? symbolVisualTuning.package.fontSize : 0.52;
+  const valueLabel = hasCustomSymbol ? deriveValueLabel(component) : '';
+  const showValueLabel = hasCustomSymbol && valueLabel.length > 0;
+  const valueLabelX = hasCustomSymbol ? symbolVisualTuning.value.offsetX : 0;
+  const valueLabelY = hasCustomSymbol ? symbolVisualTuning.value.offsetY : H / 2 + 0.86;
+  const valueFontSize = hasCustomSymbol ? symbolVisualTuning.value.fontSize : 0.52;
+  const valueRotationZ = hasCustomSymbol
+    ? (-symbolVisualTuning.value.rotationDeg * Math.PI) / 180
+    : 0;
+  const packageLabelRotationDeg = hasCustomSymbol
+    ? (() => {
+      const raw = symbolVisualTuning.package.rotationDeg
+        + (symbolVisualTuning.package.followInstanceRotation ? rotation : 0);
+      if (!symbolVisualTuning.package.followInstanceRotation) return raw;
+      return normalizeTextRotationUpright(raw);
+    })()
+    : 0;
+  const packageRotationZ = (-packageLabelRotationDeg * Math.PI) / 180;
+  const pinLeadWidth = hasCustomSymbol ? symbolVisualTuning.leadStrokeWidth : 0.28;
+  const pinLeadWidthActive = pinLeadWidth * PIN_LEAD_WIDTH_ACTIVE_RATIO;
+  const pinDotRadius = hasCustomSymbol ? symbolVisualTuning.connectionDotRadius : 0.15;
   const bodyRefMaxWidth = hasCustomSymbol ? W * 0.72 : W * 0.84;
 
-  const showNameBadge = (isHovered || isSelected) && component.name.trim().length > 0;
-  const nameBadgeWidth = Math.min(Math.max(W * 0.95, 10), 28);
-  const nameBadgeHeight = 1.9;
-  const nameBadgeRadius = 0.34;
-  const nameBadgeFontSize = 0.72;
-  const displayName = useMemo(() => {
-    const raw = component.name.trim();
-    if (!raw) return '';
-    const maxChars = Math.max(10, Math.floor(nameBadgeWidth / (nameBadgeFontSize * 0.55)));
-    if (raw.length <= maxChars) return raw;
-    return raw.slice(0, Math.max(1, maxChars - 1)) + '\u2026';
-  }, [component.name, nameBadgeWidth, nameBadgeFontSize]);
+  const showHoverCard = (isHovered || isSelected) && component.name.trim().length > 0;
+  const hoverCardTitle = useMemo(() => {
+    const name = component.name.trim();
+    if (!name) return component.designator;
+    const maxChars = 34;
+    return name.length <= maxChars ? name : `${name.slice(0, maxChars - 1)}\u2026`;
+  }, [component.designator, component.name]);
+  const hoverCardMeta = useMemo(() => {
+    const meta = [component.designator, component.packageCode]
+      .filter((v): v is string => !!v && v.trim().length > 0);
+    return meta.join(' \u00b7 ');
+  }, [component.designator, component.packageCode]);
+  const hoverCardWidthPx = useMemo(() => {
+    const charWidthPx = 7.1;
+    const paddingPx = 28;
+    const desired = hoverCardTitle.length * charWidthPx + paddingPx;
+    return Math.max(HOVER_CARD_MIN_WIDTH_PX, Math.min(HOVER_CARD_MAX_WIDTH_PX, desired));
+  }, [hoverCardTitle]);
+  const hoverCardAnchorY = H / 2 + (hasCustomSymbol ? 1.9 : 1.35);
+  const hoverProjectRef = useRef(new Vector3());
+  const calculateHoverCardPosition = useCallback(
+    (
+      object: Object3D,
+      camera: Camera,
+      size: { width: number; height: number },
+    ): [number, number] => {
+      object.getWorldPosition(hoverProjectRef.current);
+      hoverProjectRef.current.project(camera);
+      const rawX = (hoverProjectRef.current.x * 0.5 + 0.5) * size.width;
+      const rawY = (-hoverProjectRef.current.y * 0.5 + 0.5) * size.height;
+      const halfW = hoverCardWidthPx * 0.5;
+      const halfH = HOVER_CARD_MAX_HEIGHT_PX * 0.5;
+      const x = Math.min(
+        size.width - HOVER_CARD_MARGIN_PX - halfW,
+        Math.max(HOVER_CARD_MARGIN_PX + halfW, rawX),
+      );
+      const y = Math.min(
+        size.height - HOVER_CARD_MARGIN_PX - halfH,
+        Math.max(HOVER_CARD_MARGIN_PX + halfH, rawY),
+      );
+      return [x, y];
+    },
+    [hoverCardWidthPx],
+  );
 
   const zOffset = isDragging ? 0.5 : 0;
   const gridOffset = useMemo(
@@ -808,7 +575,7 @@ export const ComponentRenderer = memo(function ComponentRenderer({
     [component],
   );
 
-  const showPackageLabel = hasCustomSymbol && !!component.packageCode && !isSmall;
+  const showPackageLabel = hasCustomSymbol && !!component.packageCode;
 
   return (
     <group position={[gridOffset.x, gridOffset.y, zOffset]} raycast={NO_RAYCAST}>
@@ -879,6 +646,7 @@ export const ComponentRenderer = memo(function ComponentRenderer({
                 family={symbolFamily}
                 color={accent}
                 templateSymbol={templateSymbol}
+                symbolStrokeWidth={symbolVisualTuning.symbolStrokeWidth}
                 tuning={symbolTuning}
               />
             </group>
@@ -887,93 +655,144 @@ export const ComponentRenderer = memo(function ComponentRenderer({
       )}
 
       <group
-        position={[0, refLabelY, 0.001]}
+        position={[refLabelX, refLabelY, 0.001]}
         rotation={[0, 0, textTf.rotationZ]}
         scale={[textTf.scaleX, textTf.scaleY, 1]}
       >
-        <Text
-          fontSize={refFontSize}
-          color={accent}
-          anchorX="center"
-          anchorY="middle"
-          letterSpacing={0.04}
-          maxWidth={bodyRefMaxWidth}
-          clipRect={[-W / 2, -H / 2, W / 2, H / 2]}
-          font={undefined}
-          raycast={NO_RAYCAST}
-        >
-          {component.designator}
-        </Text>
+        <group rotation={[0, 0, refLabelRotationZ]} raycast={NO_RAYCAST}>
+          <Text
+            fontSize={refFontSize}
+            color={accent}
+            anchorX="center"
+            anchorY="middle"
+            letterSpacing={0.04}
+            maxWidth={bodyRefMaxWidth}
+            clipRect={hasCustomSymbol ? undefined : [-W / 2, -H / 2, W / 2, H / 2]}
+            font={undefined}
+            raycast={NO_RAYCAST}
+          >
+            {component.designator}
+          </Text>
+        </group>
       </group>
 
-      {showPackageLabel && (
+      {showValueLabel && (
         <group
-          position={[0, -H / 2 - 0.82, 0.01]}
+          position={[valueLabelX, valueLabelY, 0.01]}
           rotation={[0, 0, textTf.rotationZ]}
           scale={[textTf.scaleX, textTf.scaleY, 1]}
           raycast={NO_RAYCAST}
         >
-          <Text
-            fontSize={0.52}
-            color={theme.textMuted}
-            anchorX="center"
-            anchorY="middle"
-            letterSpacing={0.02}
-            font={undefined}
-            raycast={NO_RAYCAST}
-          >
-            {component.packageCode}
-          </Text>
+          <group rotation={[0, 0, valueRotationZ]} raycast={NO_RAYCAST}>
+            <Text
+              fontSize={valueFontSize}
+              color={theme.textMuted}
+              anchorX="center"
+              anchorY="middle"
+              letterSpacing={0.02}
+              font={undefined}
+              raycast={NO_RAYCAST}
+            >
+              {valueLabel}
+            </Text>
+          </group>
         </group>
       )}
 
-      {showNameBadge && (
+      {showPackageLabel && (
         <group
-          position={[0, H / 2 + nameBadgeHeight / 2 + 0.7, 0.01]}
+          position={[packageLabelX, packageLabelY, 0.01]}
           rotation={[0, 0, textTf.rotationZ]}
           scale={[textTf.scaleX, textTf.scaleY, 1]}
           raycast={NO_RAYCAST}
         >
-          <RoundedBox
-            args={[nameBadgeWidth + 0.12, nameBadgeHeight + 0.12, 0.001]}
-            radius={nameBadgeRadius + 0.03}
-            smoothness={4}
-            position={[0, 0, -0.001]}
-            raycast={NO_RAYCAST}
+          <group rotation={[0, 0, packageRotationZ]} raycast={NO_RAYCAST}>
+            <Text
+              fontSize={packageFontSize}
+              color={theme.textMuted}
+              anchorX="center"
+              anchorY="middle"
+              letterSpacing={0.02}
+              font={undefined}
+              raycast={NO_RAYCAST}
+            >
+              {component.packageCode}
+            </Text>
+          </group>
+        </group>
+      )}
+
+      {showHoverCard && (
+        <group position={[0, hoverCardAnchorY, 0.03]} raycast={NO_RAYCAST}>
+          <Html
+            center
+            style={{ pointerEvents: 'none' }}
+            calculatePosition={calculateHoverCardPosition}
           >
-            <meshBasicMaterial
-              color={isSelected ? accent : theme.bodyBorder}
-              transparent
-              opacity={0.82}
-              depthWrite={false}
-            />
-          </RoundedBox>
-          <RoundedBox
-            args={[nameBadgeWidth, nameBadgeHeight, 0.001]}
-            radius={nameBadgeRadius}
-            smoothness={4}
-            raycast={NO_RAYCAST}
-          >
-            <meshBasicMaterial
-              color={theme.bgSecondary}
-              transparent
-              opacity={0.94}
-              depthWrite={false}
-            />
-          </RoundedBox>
-          <Text
-            position={[0, 0, 0.002]}
-            fontSize={nameBadgeFontSize}
-            color={theme.textPrimary}
-            anchorX="center"
-            anchorY="middle"
-            maxWidth={nameBadgeWidth - 1.2}
-            letterSpacing={0.015}
-            font={undefined}
-            raycast={NO_RAYCAST}
-          >
-            {displayName}
-          </Text>
+            <div
+              style={{
+                minWidth: `${HOVER_CARD_MIN_WIDTH_PX}px`,
+                maxWidth: `${hoverCardWidthPx}px`,
+                padding: '8px 10px',
+                borderRadius: '10px',
+                border: `1px solid ${isSelected ? `${accent}99` : `${theme.borderColor}cc`}`,
+                background: `linear-gradient(180deg, ${theme.bgSecondary}f2 0%, ${theme.bgPrimary}f0 100%)`,
+                boxShadow: '0 10px 24px rgba(0,0,0,0.34)',
+                backdropFilter: 'blur(5px)',
+                WebkitBackdropFilter: 'blur(5px)',
+                color: theme.textPrimary,
+                lineHeight: 1.2,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  minWidth: 0,
+                }}
+              >
+                <span
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: 999,
+                    background: accent,
+                    opacity: 0.92,
+                    flex: '0 0 auto',
+                    boxShadow: `0 0 0 1px ${theme.bgPrimary}99`,
+                  }}
+                />
+                <span
+                  style={{
+                    display: 'block',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    minWidth: 0,
+                  }}
+                >
+                  {hoverCardTitle}
+                </span>
+              </div>
+              {hoverCardMeta && (
+                <div
+                  style={{
+                    marginTop: 4,
+                    fontSize: 11,
+                    color: theme.textMuted,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {hoverCardMeta}
+                </div>
+              )}
+            </div>
+          </Html>
         </group>
       )}
 
@@ -1007,6 +826,10 @@ export const ComponentRenderer = memo(function ComponentRenderer({
           symbolFamily={symbolFamily}
           pinAttachOverride={pinAttachOverrides?.get(pin.number) ?? null}
           pinBodyCenterOverride={symbolBodyCenter}
+          leadStrokeWidth={pinLeadWidth}
+          leadStrokeWidthActive={pinLeadWidthActive}
+          connectionDotRadius={pinDotRadius}
+          pinVisualColor={hasCustomSymbol ? accent : undefined}
         />
       ))}
     </group>
@@ -1029,6 +852,10 @@ const SchematicPinElement = memo(function SchematicPinElement({
   symbolFamily,
   pinAttachOverride,
   pinBodyCenterOverride,
+  leadStrokeWidth = 0.28,
+  leadStrokeWidthActive = 0.34,
+  connectionDotRadius = 0.15,
+  pinVisualColor,
 }: {
   component: SchematicComponent;
   pin: SchematicPin;
@@ -1045,12 +872,15 @@ const SchematicPinElement = memo(function SchematicPinElement({
   symbolFamily: SchematicSymbolFamily | null;
   pinAttachOverride?: { x: number; y: number } | null;
   pinBodyCenterOverride?: { x: number; y: number } | null;
+  leadStrokeWidth?: number;
+  leadStrokeWidthActive?: number;
+  connectionDotRadius?: number;
+  pinVisualColor?: string;
 }) {
-  const color = getConnectionColor(pin.category, theme);
+  const color = pinVisualColor ?? getConnectionColor(pin.category, theme);
   const isNetHighlighted = netId !== null && netId === selectedNetId;
   const isDimmed = selectedNetId !== null && !isNetHighlighted;
   const showName = pin.name !== pin.number;
-  const DOT_RADIUS = 0.15;
   const pinOpacity = isNetHighlighted ? 1 : isDimmed ? 0.25 : 0.8;
   const pinGeom = useMemo(
     () => getTunedPinGeometry(
@@ -1114,7 +944,7 @@ const SchematicPinElement = memo(function SchematicPinElement({
           [bodyX, bodyY, 0],
         ]}
         color={color}
-        lineWidth={isNetHighlighted ? PIN_LEAD_WIDTH_ACTIVE : PIN_LEAD_WIDTH}
+        lineWidth={isNetHighlighted ? leadStrokeWidthActive : leadStrokeWidth}
         worldUnits
         transparent
         opacity={pinOpacity}
@@ -1122,7 +952,7 @@ const SchematicPinElement = memo(function SchematicPinElement({
       />
 
       <mesh position={[pinX, pinY, 0.001]} raycast={NO_RAYCAST}>
-        <circleGeometry args={[DOT_RADIUS, 16]} />
+        <circleGeometry args={[connectionDotRadius, 16]} />
         <meshBasicMaterial color={color} transparent opacity={pinOpacity} />
       </mesh>
 

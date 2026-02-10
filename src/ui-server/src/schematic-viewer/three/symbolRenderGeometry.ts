@@ -14,6 +14,7 @@ export interface CanonicalGlyphTransform {
   centerY: number;
   rotateToHorizontal: boolean;
   rotateClockwise: boolean;
+  flip180: boolean;
   unit: number;
   cosBody: number;
   sinBody: number;
@@ -30,6 +31,61 @@ export interface PinAttachmentPoint {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function normalizePinName(name: string): string {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function isAnodePinName(name: string): boolean {
+  const token = normalizePinName(name);
+  return token === 'a' || token === 'anode';
+}
+
+function isCathodePinName(name: string): boolean {
+  const token = normalizePinName(name);
+  return token === 'k' || token === 'cathode';
+}
+
+function findComponentPinBySemanticName(
+  component: SchematicComponent,
+  kind: 'anode' | 'cathode',
+): SchematicPin | null {
+  for (const pin of component.pins) {
+    if (kind === 'anode' && isAnodePinName(pin.name)) return pin;
+    if (kind === 'cathode' && isCathodePinName(pin.name)) return pin;
+  }
+  return null;
+}
+
+function findSymbolPinBySemanticName(
+  symbol: KicadSymbol,
+  kind: 'anode' | 'cathode',
+): { x: number; y: number } | null {
+  for (const pin of symbol.pins) {
+    if (kind === 'anode' && isAnodePinName(pin.name)) return { x: pin.x, y: pin.y };
+    if (kind === 'cathode' && isCathodePinName(pin.name)) return { x: pin.x, y: pin.y };
+  }
+  return null;
+}
+
+function transformCanonicalVector(
+  dx: number,
+  dy: number,
+  rotateToHorizontal: boolean,
+  rotateClockwise: boolean,
+  flip180: boolean,
+): { x: number; y: number } {
+  const rx = rotateToHorizontal
+    ? (rotateClockwise ? dy : -dy)
+    : dx;
+  const ry = rotateToHorizontal
+    ? (rotateClockwise ? -dx : dx)
+    : dy;
+  if (flip180) {
+    return { x: -rx, y: -ry };
+  }
+  return { x: rx, y: ry };
 }
 
 export function chipScale(packageCode?: string): number {
@@ -133,6 +189,51 @@ export function getCanonicalGlyphTransform(
       rotateClockwise = scoreCW >= scoreCCW;
     }
   }
+
+  let flip180 = false;
+  if (
+    (family === 'diode' || family === 'led')
+    && component.polarity === 'anode_cathode'
+  ) {
+    const compAnode = findComponentPinBySemanticName(component, 'anode');
+    const compCathode = findComponentPinBySemanticName(component, 'cathode');
+    const symbolAnode = findSymbolPinBySemanticName(symbol, 'anode');
+    const symbolCathode = findSymbolPinBySemanticName(symbol, 'cathode');
+
+    if (compAnode && compCathode && symbolAnode && symbolCathode) {
+      const compAnodeGeom = getNormalizedComponentPinGeometry(component, compAnode);
+      const compCathodeGeom = getNormalizedComponentPinGeometry(component, compCathode);
+      const compVecX = compAnodeGeom.x - compCathodeGeom.x;
+      const compVecY = compAnodeGeom.y - compCathodeGeom.y;
+      const compLen = Math.hypot(compVecX, compVecY);
+
+      if (compLen > 1e-6) {
+        const symbolAnodeDelta = transformCanonicalVector(
+          symbolAnode.x - centerX,
+          symbolAnode.y - centerY,
+          rotateToHorizontal,
+          rotateClockwise,
+          false,
+        );
+        const symbolCathodeDelta = transformCanonicalVector(
+          symbolCathode.x - centerX,
+          symbolCathode.y - centerY,
+          rotateToHorizontal,
+          rotateClockwise,
+          false,
+        );
+        const symbolVecX = symbolAnodeDelta.x - symbolCathodeDelta.x;
+        const symbolVecY = symbolAnodeDelta.y - symbolCathodeDelta.y;
+        const symbolLen = Math.hypot(symbolVecX, symbolVecY);
+
+        if (symbolLen > 1e-6) {
+          const dot = symbolVecX * compVecX + symbolVecY * compVecY;
+          flip180 = dot < 0;
+        }
+      }
+    }
+  }
+
   const effectiveW = rotateToHorizontal ? bounds.height : bounds.width;
   const effectiveH = rotateToHorizontal ? bounds.width : bounds.height;
   const factors = symbolScaleFactors(family);
@@ -152,6 +253,7 @@ export function getCanonicalGlyphTransform(
     centerY,
     rotateToHorizontal,
     rotateClockwise,
+    flip180,
     unit,
     cosBody: Math.cos(rotationRad),
     sinBody: Math.sin(rotationRad),
@@ -169,12 +271,15 @@ export function transformCanonicalBodyPoint(
 ): { x: number; y: number } {
   const dx = x - transform.centerX;
   const dy = y - transform.centerY;
-  const rx = transform.rotateToHorizontal
-    ? (transform.rotateClockwise ? dy : -dy)
-    : dx;
-  const ry = transform.rotateToHorizontal
-    ? (transform.rotateClockwise ? -dx : dx)
-    : dy;
+  const rotated = transformCanonicalVector(
+    dx,
+    dy,
+    transform.rotateToHorizontal,
+    transform.rotateClockwise,
+    transform.flip180,
+  );
+  const rx = rotated.x;
+  const ry = rotated.y;
   const px = rx * transform.unit;
   const py = ry * transform.unit;
   const rotatedX = px * transform.cosBody - py * transform.sinBody;
@@ -195,6 +300,7 @@ export function getCanonicalPinAttachmentMap(
 ): Map<string, PinAttachmentPoint> {
   interface CandidatePin {
     number: string;
+    name: string;
     attach: PinAttachmentPoint;
     pin: PinAttachmentPoint;
   }
@@ -222,6 +328,7 @@ export function getCanonicalPinAttachmentMap(
     const pinRaw = transformCanonicalBodyPoint(pin.x, pin.y, transform);
     return {
       number: pin.number,
+      name: pin.name,
       attach: { x: attachRaw.x, y: attachRaw.y + bodyBaseYOffset },
       pin: { x: pinRaw.x, y: pinRaw.y + bodyBaseYOffset },
     };
@@ -238,8 +345,34 @@ export function getCanonicalPinAttachmentMap(
     }
   }
 
+  const mapBySemanticPolarity = (
+    semantic: 'anode' | 'cathode',
+  ): void => {
+    const componentPin = findComponentPinBySemanticName(component, semantic);
+    if (!componentPin || out.has(componentPin.number)) return;
+    const idx = candidates.findIndex((candidate, candidateIdx) => (
+      !used.has(candidateIdx)
+      && (
+        (semantic === 'anode' && isAnodePinName(candidate.name))
+        || (semantic === 'cathode' && isCathodePinName(candidate.name))
+      )
+    ));
+    if (idx < 0) return;
+    out.set(componentPin.number, candidates[idx].attach);
+    used.add(idx);
+  };
+
+  if (
+    (family === 'diode' || family === 'led')
+    && component.polarity === 'anode_cathode'
+  ) {
+    mapBySemanticPolarity('anode');
+    mapBySemanticPolarity('cathode');
+  }
+
   // First pass: exact pin-number match where available.
   for (const cpin of component.pins) {
+    if (out.has(cpin.number)) continue;
     const bucket = byNumber.get(cpin.number);
     if (!bucket) continue;
     const idx = bucket.find((candidateIdx) => !used.has(candidateIdx));

@@ -1089,6 +1089,102 @@ def _extract_declared_signals_from_source(
     return {}
 
 
+def _extract_public_interface_names_from_module_source(
+    source_path: Path,
+    locator_component_name: str,
+) -> set[str]:
+    """Parse public ``name = new ...`` interface declarations from a module block."""
+    try:
+        lines = source_path.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        return set()
+
+    module_decl_re = re.compile(
+        r"^(?P<indent>\s*)module\s+(?P<name>[A-Za-z_~][A-Za-z0-9_~\[\]\.]*)"
+        r"(?:\s+from\s+[^:]+)?\s*:\s*$"
+    )
+    assign_re = re.compile(
+        r"^\s*(?P<name>[A-Za-z_~][A-Za-z0-9_~]*)\s*=\s*new\s+"
+        r"(?P<type>[A-Za-z_~][A-Za-z0-9_~\.]*)"
+    )
+    interface_type_names = {
+        "Addressor",
+        "CAN",
+        "CAN_TTL",
+        "DifferentialPair",
+        "Electrical",
+        "ElectricLogic",
+        "ElectricPower",
+        "ElectricSignal",
+        "Ethernet",
+        "GPIO",
+        "HDMI",
+        "I2C",
+        "I2S",
+        "JTAG",
+        "Logic",
+        "MultiSPI",
+        "PDM",
+        "RS232",
+        "RS485HalfDuplex",
+        "SDIO",
+        "Signal",
+        "SPI",
+        "SPIFlash",
+        "SWD",
+        "UART",
+        "UART_Base",
+        "USB2_0",
+        "USB2_0_IF",
+        "USB3",
+        "USB3_IF",
+        "XtalIF",
+    }
+
+    candidate_names = set(_candidate_component_names(locator_component_name))
+    if not candidate_names:
+        return set()
+
+    start_idx: int | None = None
+    base_indent = 0
+    for idx, line in enumerate(lines):
+        m = module_decl_re.match(line)
+        if not m:
+            continue
+        if m.group("name") not in candidate_names:
+            continue
+        start_idx = idx + 1
+        base_indent = len(m.group("indent"))
+        break
+
+    if start_idx is None:
+        return set()
+
+    public_names: set[str] = set()
+    for line in lines[start_idx:]:
+        code = line.split("#", 1)[0].rstrip()
+        if not code.strip():
+            continue
+
+        indent = len(line) - len(line.lstrip())
+        if indent <= base_indent:
+            break
+
+        m = assign_re.match(code)
+        if not m:
+            continue
+
+        name = m.group("name")
+        if name.startswith("_"):
+            continue
+        declared_type = m.group("type").split(".")[-1]
+        if declared_type not in interface_type_names:
+            continue
+        public_names.add(name)
+
+    return public_names
+
+
 def _derive_display_name(
     pad_name: str, lead_name: str, filtered_functions: list[dict]
 ) -> str:
@@ -1433,6 +1529,40 @@ def _mark_passthrough_interfaces(iface_map: dict[str, dict]) -> None:
         if iface_data is None:
             continue
         iface_data["pass_through"] = True
+
+
+def _infer_interface_type_and_category(
+    iface_node: fabll.Node,
+) -> tuple[str, str]:
+    """Infer schematic interface type/category from a graph interface node."""
+
+    candidates = [
+        ("ElectricPower", "ElectricPower", "power"),
+        ("I2C", "I2C", "i2c"),
+        ("SPI", "SPI", "spi"),
+        ("MultiSPI", "SPI", "spi"),
+        ("SPIFlash", "SPI", "spi"),
+        ("UART_Base", "UART", "uart"),
+        ("UART", "UART", "uart"),
+        ("SWD", "SWD", "control"),
+        ("XtalIF", "Crystal", "crystal"),
+        ("ElectricLogic", "GPIO", "control"),
+        ("Logic", "GPIO", "control"),
+        ("ElectricSignal", "Signal", "analog"),
+        ("Electrical", "Signal", "signal"),
+    ]
+
+    for class_name, iface_type, category in candidates:
+        cls = getattr(F, class_name, None)
+        if cls is None:
+            continue
+        try:
+            if iface_node.isinstance(cls):
+                return iface_type, category
+        except Exception:
+            continue
+
+    return "Signal", "signal"
 
 
 # ── Interface pin layout for modules ────────────────────────────
@@ -2623,41 +2753,42 @@ def export_schematic_json(
     # Phase 4: Discover interfaces from lead_functions data
     # ═══════════════════════════════════════════════════════════════
 
-    # For each interesting module, collect interfaces from its components' pins
-    module_interfaces: dict[str, dict[str, dict]] = {}
-
-    for mid in interesting_module_ids:
-        mod = all_modules[mid]
+    def _collect_interfaces_for_owner(
+        owner_module_id: str | None,
+        owner_full_name: str | None,
+        child_module_ids: list[str],
+    ) -> dict[str, dict]:
         iface_map: dict[str, dict] = {}
         pin_map: dict[str, dict[str, dict[str, _PinBinding]]] = defaultdict(
             lambda: defaultdict(dict)
         )
 
-        # Build a set of internal entity names (relative to module).
+        # Build a set of internal entity names for this owner scope.
         # Interface names matching these are internal wiring, not public ports.
         # Includes both internal components and child sub-modules.
-        _internal_names: set[str] = set()
+        internal_names: set[str] = set()
         for comp in comp_infos:
-            if comp.owner_module_id != mid:
+            if comp.owner_module_id != owner_module_id:
                 continue
-            # Relative name: strip the module prefix
-            if comp.full_name.startswith(mod.full_name + "."):
-                rel = comp.full_name[len(mod.full_name) + 1 :]
-                # The immediate child name (before any further dots)
-                child = rel.split(".")[0]
-                _internal_names.add(child)
-                # Also add the bare name without array indices
-                bare = re.sub(r"\[\d+\]", "", child)
-                if bare != child:
-                    _internal_names.add(bare)
-        # Also include child sub-module instance names
-        for child_mid in mod.child_module_ids:
+
+            rel_name = comp.full_name
+            if owner_full_name and comp.full_name.startswith(owner_full_name + "."):
+                rel_name = comp.full_name[len(owner_full_name) + 1 :]
+
+            child = rel_name.split(".")[0]
+            internal_names.add(child)
+
+            bare = re.sub(r"\[\d+\]", "", child)
+            if bare != child:
+                internal_names.add(bare)
+
+        for child_mid in child_module_ids:
             child_mod = all_modules.get(child_mid)
             if child_mod:
-                _internal_names.add(child_mod.name)
+                internal_names.add(child_mod.name)
 
         for comp in comp_infos:
-            if comp.owner_module_id != mid:
+            if comp.owner_module_id != owner_module_id:
                 continue
             for pad_name, iface_list in comp.pin_to_iface.items():
                 for iface_name, signal_suffix, iface_type, is_line_level in iface_list:
@@ -2668,8 +2799,9 @@ def export_schematic_json(
                     # (e.g., "core_power_decoupling_capacitor[0]" is wiring,
                     #  not a module port)
                     bare_name = re.sub(r"\[\d+\]$", "", iface_name)
-                    if bare_name in _internal_names or iface_name in _internal_names:
+                    if bare_name in internal_names or iface_name in internal_names:
                         continue
+
                     if iface_name not in iface_map:
                         category = "signal"
                         if iface_type in ("Power", "ElectricPower"):
@@ -2704,6 +2836,18 @@ def export_schematic_json(
                     )
 
         _mark_passthrough_interfaces(iface_map)
+        return iface_map
+
+    # For each interesting module, collect interfaces from its components' pins
+    module_interfaces: dict[str, dict[str, dict]] = {}
+
+    for mid in interesting_module_ids:
+        mod = all_modules[mid]
+        iface_map = _collect_interfaces_for_owner(
+            owner_module_id=mid,
+            owner_full_name=mod.full_name,
+            child_module_ids=mod.child_module_ids,
+        )
         mod.interfaces = iface_map
         module_interfaces[mid] = iface_map
         logger.debug(
@@ -2843,13 +2987,16 @@ def export_schematic_json(
         return module_json
 
     # Root-level modules (interesting modules with no interesting parent)
+    root_module_ids = [
+        mid
+        for mid in interesting_module_ids
+        if all_modules[mid].parent_id not in interesting_module_ids
+    ]
     root_modules = []
-    for mid in interesting_module_ids:
-        mod = all_modules[mid]
-        if mod.parent_id not in interesting_module_ids:
-            module_json = _build_module(mid)
-            if module_json:
-                root_modules.append(module_json)
+    for mid in root_module_ids:
+        module_json = _build_module(mid)
+        if module_json:
+            root_modules.append(module_json)
 
     # Root-level components (not owned by any interesting module)
     root_components = [
@@ -2859,11 +3006,138 @@ def export_schematic_json(
     # Root-level nets
     root_nets = scoped_nets.get(None, [])
 
-    root_sheet = {
-        "modules": root_modules,
-        "components": root_components,
-        "nets": root_nets,
-    }
+    root_entry_source: dict[str, str] | None = None
+    root_entry_type_name = "Module"
+    root_entry_name = "entry"
+    try:
+        if app.has_trait(fabll.is_module):
+            locator = app.get_trait(fabll.is_module).get_module_locator()
+            src_file, src_component = _module_source_from_locator(locator)
+            if src_component:
+                root_entry_type_name = src_component
+                root_entry_name = src_component.rsplit(".", 1)[-1].lower()
+            if src_file and src_component:
+                root_entry_source = _make_source_ref(src_file, src_component)
+    except Exception:
+        pass
+
+    public_root_interface_bases: set[str] = set()
+    if root_entry_source and root_entry_type_name:
+        source_file = root_entry_source.get("filePath", "").strip()
+        if source_file:
+            public_root_interface_bases = (
+                _extract_public_interface_names_from_module_source(
+                    Path(source_file),
+                    root_entry_type_name,
+                )
+            )
+
+    root_interfaces = _collect_interfaces_for_owner(
+        owner_module_id=None,
+        owner_full_name=None,
+        child_module_ids=root_module_ids,
+    )
+    if public_root_interface_bases:
+        root_interfaces = {
+            iface_name: iface_data
+            for iface_name, iface_data in root_interfaces.items()
+            if iface_name.split("[", 1)[0] in public_root_interface_bases
+        }
+
+    # Standalone module builds can flatten the entry module into ROOT.
+    # In that shape, lead-function tracing may miss some declared public
+    # interfaces. Merge direct public interface children from the app.
+    fallback_root_interfaces: dict[str, dict] = {}
+    try:
+        iface_nodes = app.get_children(
+            direct_only=False,
+            types=fabll.Node,
+            required_trait=fabll.is_interface,
+        )
+    except Exception:
+        iface_nodes = []
+
+    for iface_node in iface_nodes:
+        try:
+            parent = iface_node.get_parent()
+            if not parent or not parent[0].is_same(app):
+                continue
+        except Exception:
+            continue
+
+        iface_name = strip_root_hex(iface_node.get_full_name()).rsplit(".", 1)[-1]
+        if not iface_name or iface_name.startswith("_"):
+            continue
+
+        iface_base = iface_name.split("[", 1)[0]
+        if (
+            public_root_interface_bases
+            and iface_base not in public_root_interface_bases
+        ):
+            continue
+
+        iface_type, category = _infer_interface_type_and_category(iface_node)
+        fallback_root_interfaces[iface_name] = {
+            "type": iface_type,
+            "category": category,
+            "signals": set(),
+            "pin_map": {},
+        }
+
+    if fallback_root_interfaces:
+        if root_interfaces:
+            for iface_name, iface_data in fallback_root_interfaces.items():
+                root_interfaces.setdefault(iface_name, iface_data)
+        else:
+            root_interfaces = fallback_root_interfaces
+
+    root_entry_id = re.sub(r"[^a-zA-Z0-9_]", "_", root_entry_name).strip("_").lower()
+    if not root_entry_id:
+        root_entry_id = "entry"
+    existing_root_ids = {m.get("id") for m in root_modules}
+    if root_entry_id in existing_root_ids:
+        root_entry_id = f"{root_entry_id}_root"
+
+    root_entry_pins, root_entry_w, root_entry_h = _build_interface_pins(
+        root_interfaces,
+        root_entry_source,
+    )
+
+    # Only wrap when components are flattened at ROOT. Pure block-level designs
+    # (root modules + nets, no root components) should stay at the top level.
+    # If there is already exactly one root module, keep existing hierarchy.
+    wrap_root_with_entry_module = (
+        bool(root_entry_pins) and bool(root_components) and len(root_modules) != 1
+    )
+    if wrap_root_with_entry_module:
+        root_entry_module = {
+            "kind": "module",
+            "id": root_entry_id,
+            "name": root_entry_name,
+            "typeName": root_entry_type_name,
+            "componentCount": len(comp_infos),
+            "interfacePins": root_entry_pins,
+            "bodyWidth": root_entry_w,
+            "bodyHeight": root_entry_h,
+            "sheet": {
+                "modules": root_modules,
+                "components": root_components,
+                "nets": root_nets,
+            },
+        }
+        if root_entry_source:
+            root_entry_module["source"] = root_entry_source
+        root_sheet = {
+            "modules": [root_entry_module],
+            "components": [],
+            "nets": [],
+        }
+    else:
+        root_sheet = {
+            "modules": root_modules,
+            "components": root_components,
+            "nets": root_nets,
+        }
 
     # ═══════════════════════════════════════════════════════════════
     # Phase 8: Write output

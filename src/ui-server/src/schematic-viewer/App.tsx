@@ -93,6 +93,32 @@ function readInitialSidebarCollapsed() {
   return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === '1';
 }
 
+function normalizeSchematicDataUrl(rawValue: string | null): string | null {
+  if (!rawValue) return null;
+
+  let value = rawValue.trim();
+  if (!value) return null;
+
+  try {
+    value = decodeURIComponent(value);
+  } catch {
+    // Keep original value if decode fails.
+  }
+
+  // Browsers/query builders may encode "@fs" as "%40fs", which Vite treats as
+  // a normal route and returns HTML instead of the JSON file.
+  if (value.startsWith('/%40fs/')) {
+    value = '/@fs/' + value.slice('/%40fs/'.length);
+  }
+
+  // Convenience for local dev: allow absolute .ato_sch paths directly.
+  if (value.startsWith('/') && value.endsWith('.ato_sch') && !value.startsWith('/@fs/')) {
+    value = `/@fs${value}`;
+  }
+
+  return value;
+}
+
 function normalizePathForMatch(value: string | null | undefined): string {
   if (!value) return '';
   return value.trim().replace(/\\/g, '/').toLowerCase();
@@ -398,7 +424,7 @@ function SchematicApp() {
 
     // Dev mode: URL param or static demo
     const params = new URLSearchParams(window.location.search);
-    const url = params.get('data') || './samples/demo-schematic.json';
+    const url = normalizeSchematicDataUrl(params.get('data')) || './samples/demo-schematic.json';
     loadSchematic(url);
   }, []);
 
