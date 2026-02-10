@@ -167,8 +167,8 @@ function SchematicApp() {
             store.rotateSelected();
           }
           break;
-        case 'x':
-        case 'X':
+        case 'f':
+        case 'F':
           if (!e.ctrlKey && !e.metaKey) {
             store.mirrorSelectedX();
           }

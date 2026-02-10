@@ -1,15 +1,79 @@
-import { useMemo } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { useEffect, useMemo, useRef, type MutableRefObject } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
+import * as THREE from 'three';
 import { useTreeStore } from '../stores/treeStore';
 import { TreeNodeMesh } from './TreeNodeMesh';
 import { TreeEdgeLines } from './TreeEdgeLines';
 import { GroupBox } from './GroupBox';
 import { useTheme } from '../lib/theme';
 
+function ZoomToCursor({ controlsRef }: { controlsRef: MutableRefObject<any> }) {
+  const { camera, gl } = useThree();
+  const zoomRaycaster = useRef(new THREE.Raycaster());
+  const zoomPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0));
+  const zoomNDC = useRef(new THREE.Vector2());
+  const zoomWorldA = useRef(new THREE.Vector3());
+  const zoomWorldB = useRef(new THREE.Vector3());
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+
+      const rect = canvas.getBoundingClientRect();
+      zoomNDC.current.set(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+
+      // World point under cursor BEFORE zoom.
+      zoomRaycaster.current.setFromCamera(zoomNDC.current, camera);
+      zoomRaycaster.current.ray.intersectPlane(
+        zoomPlane.current,
+        zoomWorldA.current,
+      );
+
+      // Match schematic-viewer zoom response.
+      const rawDelta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+      const step = rawDelta * 0.002;
+      const factor = Math.exp(step);
+      const newZ = THREE.MathUtils.clamp(camera.position.z * factor, 0.4, 400);
+      camera.position.z = newZ;
+      camera.updateMatrixWorld(true);
+
+      // World point under cursor AFTER zoom.
+      zoomRaycaster.current.setFromCamera(zoomNDC.current, camera);
+      zoomRaycaster.current.ray.intersectPlane(
+        zoomPlane.current,
+        zoomWorldB.current,
+      );
+
+      // Pan to keep the same world point under the cursor.
+      const dx = zoomWorldA.current.x - zoomWorldB.current.x;
+      const dy = zoomWorldA.current.y - zoomWorldB.current.y;
+      camera.position.x += dx;
+      camera.position.y += dy;
+
+      if (controlsRef.current) {
+        controlsRef.current.target.x += dx;
+        controlsRef.current.target.y += dy;
+        controlsRef.current.update();
+      }
+    };
+
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', handleWheel);
+  }, [camera, controlsRef, gl]);
+
+  return null;
+}
+
 export function TreeScene() {
   const { graphData, layout } = useTreeStore();
   const theme = useTheme();
+  const controlsRef = useRef<any>(null);
 
   // Compute groups from node data
   const groups = useMemo(() => {
@@ -58,19 +122,21 @@ export function TreeScene() {
         useTreeStore.getState().setSelectedNode(null);
       }}
     >
+      <ZoomToCursor controlsRef={controlsRef} />
       <ambientLight intensity={1} />
 
       <OrbitControls
+        ref={controlsRef}
         target={[centerX, centerY, 0]}
         enableRotate={false}
         enablePan={true}
-        enableZoom={true}
+        enableZoom={false}
         minDistance={1}
         maxDistance={50}
         mouseButtons={{
-          LEFT: 2,
-          MIDDLE: 1,
-          RIGHT: 2,
+          LEFT: 0 as any,
+          MIDDLE: 1 as any,
+          RIGHT: 2 as any,
         }}
       />
 

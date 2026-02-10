@@ -799,13 +799,51 @@ export const useSchematicStore = create<SchematicState>()(
     rotateSelected: () => {
       const { selectedComponentIds, currentPath, positions } = get();
       if (selectedComponentIds.length === 0) return;
+      const selectedItems = selectedComponentIds
+        .map((id) => {
+          const key = scopedId(currentPath, id);
+          const pos = positions[key];
+          if (!pos) return null;
+          return { id, key, pos };
+        })
+        .filter((item): item is { id: string; key: string; pos: ComponentPosition } => !!item);
+      if (selectedItems.length === 0) return;
       pushUndo(positions, get().portSignalOrders, get().routeOverrides);
       set((s) => {
         const newPositions = { ...s.positions };
-        for (const id of selectedComponentIds) {
-          const key = scopedId(currentPath, id);
+        if (selectedItems.length === 1) {
+          const { key } = selectedItems[0];
           const pos = newPositions[key] || { x: 0, y: 0 };
           newPositions[key] = { ...pos, rotation: ((pos.rotation || 0) + 90) % 360 };
+          debouncedSave(newPositions, s.portSignalOrders, s.routeOverrides);
+          return { positions: newPositions };
+        }
+
+        const centroidX = selectedItems.reduce((sum, item) => sum + item.pos.x, 0) / selectedItems.length;
+        const centroidY = selectedItems.reduce((sum, item) => sum + item.pos.y, 0) / selectedItems.length;
+        const rotated = selectedItems.map((item) => {
+          const dx = item.pos.x - centroidX;
+          const dy = item.pos.y - centroidY;
+          return {
+            ...item,
+            x: centroidX - dy,
+            y: centroidY + dx,
+          };
+        });
+
+        // Apply a shared translation so all items stay on-grid while preserving spacing.
+        const anchor = rotated[0];
+        const shiftX = snapToGrid(anchor.x) - anchor.x;
+        const shiftY = snapToGrid(anchor.y) - anchor.y;
+
+        for (const item of rotated) {
+          const pos = newPositions[item.key] || item.pos;
+          newPositions[item.key] = {
+            ...pos,
+            x: item.x + shiftX,
+            y: item.y + shiftY,
+            rotation: ((pos.rotation || 0) + 90) % 360,
+          };
         }
         debouncedSave(newPositions, s.portSignalOrders, s.routeOverrides);
         return { positions: newPositions };
@@ -815,13 +853,45 @@ export const useSchematicStore = create<SchematicState>()(
     mirrorSelectedX: () => {
       const { selectedComponentIds, currentPath, positions } = get();
       if (selectedComponentIds.length === 0) return;
+      const selectedItems = selectedComponentIds
+        .map((id) => {
+          const key = scopedId(currentPath, id);
+          const pos = positions[key];
+          if (!pos) return null;
+          return { id, key, pos };
+        })
+        .filter((item): item is { id: string; key: string; pos: ComponentPosition } => !!item);
+      if (selectedItems.length === 0) return;
       pushUndo(positions, get().portSignalOrders, get().routeOverrides);
       set((s) => {
         const newPositions = { ...s.positions };
-        for (const id of selectedComponentIds) {
-          const key = scopedId(currentPath, id);
+        if (selectedItems.length === 1) {
+          const { key } = selectedItems[0];
           const pos = newPositions[key] || { x: 0, y: 0 };
           newPositions[key] = { ...pos, mirrorX: !pos.mirrorX };
+          debouncedSave(newPositions, s.portSignalOrders, s.routeOverrides);
+          return { positions: newPositions };
+        }
+
+        const centroidX = selectedItems.reduce((sum, item) => sum + item.pos.x, 0) / selectedItems.length;
+        const mirrored = selectedItems.map((item) => ({
+          ...item,
+          x: 2 * centroidX - item.pos.x,
+          y: item.pos.y,
+        }));
+
+        const anchor = mirrored[0];
+        const shiftX = snapToGrid(anchor.x) - anchor.x;
+        const shiftY = snapToGrid(anchor.y) - anchor.y;
+
+        for (const item of mirrored) {
+          const pos = newPositions[item.key] || item.pos;
+          newPositions[item.key] = {
+            ...pos,
+            x: item.x + shiftX,
+            y: item.y + shiftY,
+            mirrorX: !pos.mirrorX,
+          };
         }
         debouncedSave(newPositions, s.portSignalOrders, s.routeOverrides);
         return { positions: newPositions };

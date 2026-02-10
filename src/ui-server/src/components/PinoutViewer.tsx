@@ -276,9 +276,33 @@ interface PanZoomCanvasProps {
 function PanZoomCanvas({ children, onClick, panelOpen, setPanelOpen }: PanZoomCanvasProps) {
   const [scale, setScale] = useState(0.8)
   const [translate, setTranslate] = useState({ x: 0, y: 0 })
+  const scaleRef = useRef(scale)
+  const translateRef = useRef(translate)
   const isPanning = useRef(false)
+  const suppressClick = useRef(false)
   const lastMouse = useRef({ x: 0, y: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { scaleRef.current = scale }, [scale])
+  useEffect(() => { translateRef.current = translate }, [translate])
+
+  const applyZoomAt = useCallback((nextScaleRaw: number, anchorX: number, anchorY: number) => {
+    const prevScale = scaleRef.current
+    const prevTranslate = translateRef.current
+    const nextScale = Math.max(0.1, Math.min(10, nextScaleRaw))
+    if (!Number.isFinite(nextScale) || Math.abs(nextScale - prevScale) < 1e-6) return
+
+    const scaleRatio = nextScale / prevScale
+    const nextTranslate = {
+      x: anchorX - scaleRatio * (anchorX - prevTranslate.x),
+      y: anchorY - scaleRatio * (anchorY - prevTranslate.y),
+    }
+
+    scaleRef.current = nextScale
+    translateRef.current = nextTranslate
+    setScale(nextScale)
+    setTranslate(nextTranslate)
+  }, [])
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault()
@@ -287,22 +311,17 @@ function PanZoomCanvas({ children, onClick, panelOpen, setPanelOpen }: PanZoomCa
 
     const mouseX = e.clientX - rect.left
     const mouseY = e.clientY - rect.top
+    const rawDelta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY
+    const step = rawDelta * 0.002
+    const factor = Math.exp(-step)
 
-    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9
-    const newScale = Math.max(0.1, Math.min(10, scale * zoomFactor))
-
-    // Zoom toward mouse position
-    const scaleChange = newScale / scale
-    setTranslate(prev => ({
-      x: mouseX - scaleChange * (mouseX - prev.x),
-      y: mouseY - scaleChange * (mouseY - prev.y),
-    }))
-    setScale(newScale)
-  }, [scale])
+    applyZoomAt(scaleRef.current * factor, mouseX, mouseY)
+  }, [applyZoomAt])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button === 0 || e.button === 1) { // left or middle click
+    if (e.button === 1 || e.button === 2) { // middle or right click
       isPanning.current = true
+      suppressClick.current = false
       lastMouse.current = { x: e.clientX, y: e.clientY }
       e.preventDefault()
     }
@@ -313,17 +332,37 @@ function PanZoomCanvas({ children, onClick, panelOpen, setPanelOpen }: PanZoomCa
     const dx = e.clientX - lastMouse.current.x
     const dy = e.clientY - lastMouse.current.y
     lastMouse.current = { x: e.clientX, y: e.clientY }
-    setTranslate(prev => ({ x: prev.x + dx, y: prev.y + dy }))
+    if (Math.abs(dx) > 0 || Math.abs(dy) > 0) suppressClick.current = true
+    setTranslate(prev => {
+      const next = { x: prev.x + dx, y: prev.y + dy }
+      translateRef.current = next
+      return next
+    })
   }, [])
 
   const handleMouseUp = useCallback(() => {
+    if (suppressClick.current) {
+      window.setTimeout(() => { suppressClick.current = false }, 0)
+    }
     isPanning.current = false
   }, [])
 
   const resetView = useCallback(() => {
+    scaleRef.current = 0.8
+    translateRef.current = { x: 0, y: 0 }
     setScale(0.8)
     setTranslate({ x: 0, y: 0 })
   }, [])
+
+  const zoomBy = useCallback((factor: number) => {
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    applyZoomAt(
+      scaleRef.current * factor,
+      rect.width / 2,
+      rect.height / 2,
+    )
+  }, [applyZoomAt])
 
   return (
     <div
@@ -334,7 +373,14 @@ function PanZoomCanvas({ children, onClick, panelOpen, setPanelOpen }: PanZoomCa
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      onClick={() => { if (!isPanning.current) onClick() }}
+      onContextMenu={(e) => e.preventDefault()}
+      onClick={() => {
+        if (suppressClick.current) {
+          suppressClick.current = false
+          return
+        }
+        if (!isPanning.current) onClick()
+      }}
     >
       {!panelOpen && (
         <button className="pinout-menu-btn" onClick={e => { e.stopPropagation(); setPanelOpen(true) }}>
@@ -342,8 +388,8 @@ function PanZoomCanvas({ children, onClick, panelOpen, setPanelOpen }: PanZoomCa
         </button>
       )}
       <div className="pinout-zoom-controls">
-        <button onClick={(e) => { e.stopPropagation(); setScale(s => Math.min(10, s * 1.3)) }}>+</button>
-        <button onClick={(e) => { e.stopPropagation(); setScale(s => Math.max(0.1, s / 1.3)) }}>&minus;</button>
+        <button onClick={(e) => { e.stopPropagation(); zoomBy(1.3) }}>+</button>
+        <button onClick={(e) => { e.stopPropagation(); zoomBy(1 / 1.3) }}>&minus;</button>
         <button onClick={(e) => { e.stopPropagation(); resetView() }}>&#8634;</button>
       </div>
       <div
