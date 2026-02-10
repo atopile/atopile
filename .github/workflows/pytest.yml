@@ -20,9 +20,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 100
-          fetch-tags: true
+        #with:
+        #  fetch-depth: 100
+        #  fetch-tags: true
+
+      - run: git fetch --prune --unshallow --tags
 
       - name: Prepare artifacts dir
         run: mkdir -p artifacts
