@@ -5,6 +5,7 @@ const faebryk = @import("faebryk");
 const fabll = faebryk.fabll;
 const collections = @import("collections.zig");
 const parameters = @import("parameters.zig");
+const literals = @import("literals.zig");
 
 const is_trait = struct {
     node: fabll.Node,
@@ -160,7 +161,117 @@ pub const Power = struct {
     }
 };
 
+pub const Sqrt = struct {
+    node: fabll.Node,
+    is_expression: is_trait.MakeEdge(is_expression.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
+    operand: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+
+    pub fn MakeChild() type {
+        return fabll.Node.MakeChild(@This());
+    }
+
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() {
+        return fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
+    }
+
+    pub fn setup(self: @This(), operand: parameters.can_be_operand) @This() {
+        self.operand.get().point(operand);
+        return self;
+    }
+};
+
+pub const Log = struct {
+    node: fabll.Node,
+    is_expression: is_trait.MakeEdge(is_expression.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
+    operand: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+    zbase: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+
+    pub fn MakeChild() type {
+        return fabll.Node.MakeChild(@This());
+    }
+
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() {
+        return fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
+    }
+
+    pub fn setup(self: @This(), operand: parameters.can_be_operand, base: ?parameters.can_be_operand) @This() {
+        self.operand.get().point(operand);
+        if (base) |b| {
+            self.zbase.get().point(b);
+        } else {
+            var tg = self.node.typegraph();
+            var base_literal = literals.Numbers.create_instance(self.node.instance.g, &tg);
+            base_literal = base_literal.setup_from_singleton(std.math.e, std.heap.page_allocator) catch
+                @panic("failed to create default log base");
+            self.zbase.get().point(base_literal.can_be_operand.get());
+        }
+        return self;
+    }
+};
+
+pub const Sin = struct {
+    node: fabll.Node,
+    is_expression: is_trait.MakeEdge(is_expression.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
+    operand: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+
+    pub fn MakeChild() type {
+        return fabll.Node.MakeChild(@This());
+    }
+
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() {
+        return fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
+    }
+
+    pub fn setup(self: @This(), operand: parameters.can_be_operand) @This() {
+        self.operand.get().point(operand);
+        return self;
+    }
+};
+
+pub const Cos = struct {
+    node: fabll.Node,
+    is_expression: is_trait.MakeEdge(is_expression.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
+    operand: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+
+    pub fn MakeChild() type {
+        return fabll.Node.MakeChild(@This());
+    }
+
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() {
+        return fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
+    }
+
+    pub fn setup(self: @This(), operand: parameters.can_be_operand) @This() {
+        self.operand.get().point(operand);
+        return self;
+    }
+};
+
 pub const Negate = struct {
+    node: fabll.Node,
+    is_expression: is_trait.MakeEdge(is_expression.MakeChild(), null),
+    can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
+    operand: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+
+    pub fn MakeChild() type {
+        return fabll.Node.MakeChild(@This());
+    }
+
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() {
+        return fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
+    }
+
+    pub fn setup(self: @This(), operand: parameters.can_be_operand) @This() {
+        self.operand.get().point(operand);
+        return self;
+    }
+};
+
+pub const Round = struct {
     node: fabll.Node,
     is_expression: is_trait.MakeEdge(is_expression.MakeChild(), null),
     can_be_operand: is_trait.MakeEdge(parameters.can_be_operand.MakeChild(), null),
@@ -278,9 +389,20 @@ test "expressions unary setup stores operand" {
     const abs = Abs.create_instance(&g, &tg).setup(p.can_be_operand.get());
     const floor = Floor.create_instance(&g, &tg).setup(p.can_be_operand.get());
     const ceil = Ceil.create_instance(&g, &tg).setup(p.can_be_operand.get());
+    const round = Round.create_instance(&g, &tg).setup(p.can_be_operand.get());
+    const sqrt = Sqrt.create_instance(&g, &tg).setup(p.can_be_operand.get());
+    const sin = Sin.create_instance(&g, &tg).setup(p.can_be_operand.get());
+    const cos = Cos.create_instance(&g, &tg).setup(p.can_be_operand.get());
+    const log = Log.create_instance(&g, &tg).setup(p.can_be_operand.get(), null);
 
     try std.testing.expect(neg.operand.get().deref().node.instance.node.is_same(p.can_be_operand.get().node.instance.node));
     try std.testing.expect(abs.operand.get().deref().node.instance.node.is_same(p.can_be_operand.get().node.instance.node));
     try std.testing.expect(floor.operand.get().deref().node.instance.node.is_same(p.can_be_operand.get().node.instance.node));
     try std.testing.expect(ceil.operand.get().deref().node.instance.node.is_same(p.can_be_operand.get().node.instance.node));
+    try std.testing.expect(round.operand.get().deref().node.instance.node.is_same(p.can_be_operand.get().node.instance.node));
+    try std.testing.expect(sqrt.operand.get().deref().node.instance.node.is_same(p.can_be_operand.get().node.instance.node));
+    try std.testing.expect(sin.operand.get().deref().node.instance.node.is_same(p.can_be_operand.get().node.instance.node));
+    try std.testing.expect(cos.operand.get().deref().node.instance.node.is_same(p.can_be_operand.get().node.instance.node));
+    try std.testing.expect(log.operand.get().deref().node.instance.node.is_same(p.can_be_operand.get().node.instance.node));
+    try std.testing.expect(log.zbase.get().try_deref() != null);
 }
