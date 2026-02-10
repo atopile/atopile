@@ -548,13 +548,11 @@ class _PackageValidators:
             file_path = ato_file.relative_to(config.project.paths.root)
             message = ""
             if unused_imports:
-                message = (
-                    f"Unused imports: [{', '.join(unused_imports)}] in {file_path}"
-                )
+                message = f"Unused imports: [{', '.join(sorted(unused_imports))}] in "
+                f"{file_path}"
             if duplicates:
-                message += (
-                    f"\nDuplicate imports: [{', '.join(duplicates)}] in {file_path}"
-                )
+                message += f"\nDuplicate imports: [{', '.join(sorted(duplicates))}] in "
+                f"{file_path}"
             if message:
                 raise UserBadParameterError(message)
 
@@ -574,8 +572,8 @@ _STRICT_VALIDATORS = [
     _PackageValidators.verify_usage_import,
     _PackageValidators.verify_usage_in_readme,
     _PackageValidators.verify_build_artifacts,
-    _PackageValidators.verify_unused_and_duplicate_imports,
     _PackageValidators.verify_no_comma_separated_imports,
+    _PackageValidators.verify_unused_and_duplicate_imports,
 ]
 
 
