@@ -18,8 +18,7 @@ pub const Add = struct {
     node: fabll.Node,
     is_expression: is_expression.MakeChild(),
     can_be_operand: parameters.can_be_operand.MakeChild(),
-    lhs_ptr: collections.PointerOf(parameters.can_be_operand).MakeChild(),
-    rhs_ptr: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+    operands: collections.PointerSequenceOf(parameters.can_be_operand).MakeChild(),
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
@@ -29,9 +28,13 @@ pub const Add = struct {
         return fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
     }
 
-    pub fn setup(self: @This(), lhs: parameters.can_be_operand, rhs: parameters.can_be_operand) @This() {
-        self.lhs_ptr.get().point(lhs);
-        self.rhs_ptr.get().point(rhs);
+    pub fn setup(self: @This(), operands: []const parameters.can_be_operand) @This() {
+        self.operands.get().append(operands);
+        return self;
+    }
+
+    pub fn setup2(self: @This(), lhs: parameters.can_be_operand, rhs: parameters.can_be_operand) @This() {
+        _ = self.setup(&.{ lhs, rhs });
         return self;
     }
 };
@@ -40,8 +43,8 @@ pub const Subtract = struct {
     node: fabll.Node,
     is_expression: is_expression.MakeChild(),
     can_be_operand: parameters.can_be_operand.MakeChild(),
-    lhs_ptr: collections.PointerOf(parameters.can_be_operand).MakeChild(),
-    rhs_ptr: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+    minuend: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+    subtrahends: collections.PointerSequenceOf(parameters.can_be_operand).MakeChild(),
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
@@ -51,9 +54,14 @@ pub const Subtract = struct {
         return fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
     }
 
-    pub fn setup(self: @This(), lhs: parameters.can_be_operand, rhs: parameters.can_be_operand) @This() {
-        self.lhs_ptr.get().point(lhs);
-        self.rhs_ptr.get().point(rhs);
+    pub fn setup(self: @This(), minuend: parameters.can_be_operand, subtrahends: []const parameters.can_be_operand) @This() {
+        self.minuend.get().point(minuend);
+        self.subtrahends.get().append(subtrahends);
+        return self;
+    }
+
+    pub fn setup2(self: @This(), lhs: parameters.can_be_operand, rhs: parameters.can_be_operand) @This() {
+        _ = self.setup(lhs, &.{rhs});
         return self;
     }
 };
@@ -62,8 +70,7 @@ pub const Multiply = struct {
     node: fabll.Node,
     is_expression: is_expression.MakeChild(),
     can_be_operand: parameters.can_be_operand.MakeChild(),
-    lhs_ptr: collections.PointerOf(parameters.can_be_operand).MakeChild(),
-    rhs_ptr: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+    operands: collections.PointerSequenceOf(parameters.can_be_operand).MakeChild(),
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
@@ -73,9 +80,13 @@ pub const Multiply = struct {
         return fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
     }
 
-    pub fn setup(self: @This(), lhs: parameters.can_be_operand, rhs: parameters.can_be_operand) @This() {
-        self.lhs_ptr.get().point(lhs);
-        self.rhs_ptr.get().point(rhs);
+    pub fn setup(self: @This(), operands: []const parameters.can_be_operand) @This() {
+        self.operands.get().append(operands);
+        return self;
+    }
+
+    pub fn setup2(self: @This(), lhs: parameters.can_be_operand, rhs: parameters.can_be_operand) @This() {
+        _ = self.setup(&.{ lhs, rhs });
         return self;
     }
 };
@@ -84,8 +95,8 @@ pub const Divide = struct {
     node: fabll.Node,
     is_expression: is_expression.MakeChild(),
     can_be_operand: parameters.can_be_operand.MakeChild(),
-    lhs_ptr: collections.PointerOf(parameters.can_be_operand).MakeChild(),
-    rhs_ptr: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+    numerator: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+    denominators: collections.PointerSequenceOf(parameters.can_be_operand).MakeChild(),
 
     pub fn MakeChild() type {
         return fabll.Node.MakeChild(@This());
@@ -95,9 +106,14 @@ pub const Divide = struct {
         return fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
     }
 
-    pub fn setup(self: @This(), lhs: parameters.can_be_operand, rhs: parameters.can_be_operand) @This() {
-        self.lhs_ptr.get().point(lhs);
-        self.rhs_ptr.get().point(rhs);
+    pub fn setup(self: @This(), numerator: parameters.can_be_operand, denominators: []const parameters.can_be_operand) @This() {
+        self.numerator.get().point(numerator);
+        self.denominators.get().append(denominators);
+        return self;
+    }
+
+    pub fn setup2(self: @This(), lhs: parameters.can_be_operand, rhs: parameters.can_be_operand) @This() {
+        _ = self.setup(lhs, &.{rhs});
         return self;
     }
 };
@@ -131,10 +147,12 @@ test "expressions binary setup stores operands" {
 
     const p1 = parameters.NumericParameter.create_instance(&g, &tg);
     const p2 = parameters.NumericParameter.create_instance(&g, &tg);
-    const add = Add.create_instance(&g, &tg).setup(p1.can_be_operand.get(), p2.can_be_operand.get());
-
-    try std.testing.expect(add.lhs_ptr.get().deref().node.instance.node.is_same(p1.can_be_operand.get().node.instance.node));
-    try std.testing.expect(add.rhs_ptr.get().deref().node.instance.node.is_same(p2.can_be_operand.get().node.instance.node));
+    const add = Add.create_instance(&g, &tg).setup2(p1.can_be_operand.get(), p2.can_be_operand.get());
+    const ops = try add.operands.get().as_list(std.testing.allocator);
+    defer std.testing.allocator.free(ops);
+    try std.testing.expect(ops.len == 2);
+    try std.testing.expect(ops[0].node.instance.node.is_same(p1.can_be_operand.get().node.instance.node));
+    try std.testing.expect(ops[1].node.instance.node.is_same(p2.can_be_operand.get().node.instance.node));
 }
 
 test "expressions power setup stores operands" {
