@@ -9,7 +9,9 @@ from pathlib import Path
 
 import platformdirs
 
-from faebryk.libs.util import once, robustly_rm_dir
+from faebryk.libs.util import ConfigFlagString, once, robustly_rm_dir
+
+_LOG_DIR_OVERRIDE = ConfigFlagString("LOG_DIR", descr="Override the log directory path")
 
 
 @once
@@ -70,8 +72,8 @@ def get_cache_dir() -> Path:
 
 
 def get_log_dir() -> Path:
-    if env_dir := os.environ.get("ATO_LOG_DIR"):
-        p = Path(env_dir)
+    if override := _LOG_DIR_OVERRIDE.get():
+        p = Path(override)
         p.mkdir(parents=True, exist_ok=True)
         return p
     return Path(platformdirs.user_log_dir("atopile", ensure_exists=True))
