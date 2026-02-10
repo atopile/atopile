@@ -232,11 +232,11 @@ class BuildHistory:
                     (limit,),
                 ).fetchall()
                 return [BuildHistory._from_row(r) for r in rows]
-        except Exception:
+        except Exception as e:
             logger.exception(
                 "Failed to load build history. Try running 'ato dev clear_logs'."
             )
-            raise
+            raise e
 
 
 # build_logs.db -> logs table helper
