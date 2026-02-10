@@ -28,41 +28,31 @@ jobs:
       - name: Prepare artifacts dir
         run: mkdir -p artifacts
 
-      # disable for self-hosted runner
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
+      - name: Install uv + Python
+        uses: astral-sh/setup-uv@v7
         with:
           version: 0.8
+          python-version-file: "pyproject.toml"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
-
-      # disable for self-hosted runner
-      - name: "Set up Python"
-        id: setup-python
-        uses: actions/setup-python@v5
-        with:
-          # self-hosted runner struggles with this one
-          python-version-file: "pyproject.toml"
-          #python-version: "3.13"
+          cache-python: true
 
       - name: "Install dependencies"
         run: |
           uv sync --dev --no-install-project --frozen
-        # for self-hosted runner
-        #env:
-        #  UV_CACHE_DIR: /var/cache/uv
 
-      - name: Compute zig source hash
+      - name: Compute zig cache key
         id: zig-hash
         run: |
           echo "hash=$(python src/faebryk/core/zig/compute_hash.py)" >> "$GITHUB_OUTPUT"
+          echo "pyver=$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')" >> "$GITHUB_OUTPUT"
 
       - name: Restore zig cache
         id: zig-cache
         uses: actions/cache/restore@v4
         with:
           path: src/faebryk/core/zig/zig-out
-          key: zig-${{ runner.os }}-${{ runner.arch }}-py${{ steps.setup-python.outputs.python-version }}-${{ steps.zig-hash.outputs.hash }}
+          key: zig-${{ runner.os }}-${{ runner.arch }}-py${{ steps.zig-hash.outputs.pyver }}-${{ steps.zig-hash.outputs.hash }}
 
       - name: "Compile & build package"
         run: |
@@ -75,7 +65,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: src/faebryk/core/zig/zig-out
-          key: zig-${{ runner.os }}-${{ runner.arch }}-py${{ steps.setup-python.outputs.python-version }}-${{ steps.zig-hash.outputs.hash }}
+          key: zig-${{ runner.os }}-${{ runner.arch }}-py${{ steps.zig-hash.outputs.pyver }}-${{ steps.zig-hash.outputs.hash }}
 
       - name: Run pytest
         id: pytest
