@@ -20,7 +20,7 @@ import { setCurrentPCB } from '../common/pcb';
 import { setCurrentThreeDModel, startThreeDModelBuild } from '../common/3dmodel';
 import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/target';
 import { loadBuilds, getBuilds } from '../common/manifest';
-import { createWebviewOptions } from '../common/webview';
+import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openModelViewerPreview } from '../ui/modelviewer';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
@@ -199,26 +199,6 @@ function isDevelopmentMode(extensionPath: string): boolean {
   return !fs.existsSync(prodPath);
 }
 
-/**
- * Generate a nonce for Content Security Policy.
- */
-function getNonce(): string {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
-}
-
-function getWsOrigin(wsUrl: string): string {
-  try {
-    return new URL(wsUrl).origin;
-  } catch {
-    return wsUrl;
-  }
-}
-
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
   public static readonly viewType = 'atopile.sidebar';
@@ -232,7 +212,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private _disposables: vscode.Disposable[] = [];
   private _lastMode: 'dev' | 'prod' | null = null;
-  private _hasHtml: boolean = false;
+  private _hasHtml = false;
   private _lastWorkspaceRoot: string | null = null;
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;

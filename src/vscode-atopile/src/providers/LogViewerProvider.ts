@@ -12,34 +12,11 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
-import { createWebviewOptions } from '../common/webview';
+import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 
-/**
- * Check if we're running in development mode.
- */
 function isDevelopmentMode(extensionPath: string): boolean {
   const prodPath = path.join(extensionPath, 'resources', 'webviews', 'logViewer.js');
   return !fs.existsSync(prodPath);
-}
-
-/**
- * Generate a nonce for Content Security Policy.
- */
-function getNonce(): string {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
-}
-
-function getWsOrigin(wsUrl: string): string {
-  try {
-    return new URL(wsUrl).origin;
-  } catch {
-    return wsUrl;
-  }
 }
 
 export class LogViewerProvider implements vscode.WebviewViewProvider {
