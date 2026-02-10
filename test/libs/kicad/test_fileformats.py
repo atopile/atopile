@@ -559,3 +559,23 @@ def test_malformed_sexp_key_only():
     except ValueError:
         # Expected - stroke may be required, but importantly no crash
         pass
+
+
+def test_text_layer_with_knockout():
+    """Test that Text with TextLayer (including knockout) parses correctly."""
+    sexp = """
+    (kicad_pcb
+        (generator "test_atopile")
+        (generator_version "latest")
+        (gr_text "Hello" (at 0 0) (layer "F.Cu" knockout) (effects (font (size 1 1))))
+    )
+    """
+    pcb = kicad.loads(kicad.pcb.PcbFile, sexp)
+    text = pcb.kicad_pcb.gr_texts[0]
+    assert text.layer.layer == "F.Cu"
+    assert text.layer.knockout == kicad.pcb.E_knockout.KNOCKOUT
+
+    # Verify round-trip
+    dumped = kicad.dumps(pcb)
+    pcb2 = kicad.loads(kicad.pcb.PcbFile, dumped)
+    assert pcb2.kicad_pcb.gr_texts[0].layer.knockout == kicad.pcb.E_knockout.KNOCKOUT
