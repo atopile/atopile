@@ -75,6 +75,8 @@ jobs:
           uv run ato --version \
           uv run ato --semver \
           python -c "import importlib.metadata; print(importlib.metadata.version('atopile'))"
+        env:
+          PYTHONPATH: .
 
       - name: Run pytest
         id: pytest
