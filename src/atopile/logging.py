@@ -1104,8 +1104,8 @@ class LogHandler(RichHandler):
         #     ):
         #         return False
 
-        # Console only shows WARNING and above
-        if record.levelno < logging.WARNING:
+        # Console only shows INFO and above
+        if record.levelno < logging.INFO:
             return False
 
         return True
