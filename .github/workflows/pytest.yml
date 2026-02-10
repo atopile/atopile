@@ -57,9 +57,9 @@ jobs:
         run: |
           echo "hash=$(python src/faebryk/core/zig/compute_hash.py)" >> "$GITHUB_OUTPUT"
 
-      - name: Cache zig build
+      - name: Restore zig cache
         id: zig-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: src/faebryk/core/zig/zig-out
           key: zig-${{ runner.os }}-${{ runner.arch }}-py${{ steps.setup-python.outputs.python-version }}-${{ steps.zig-hash.outputs.hash }}
@@ -69,6 +69,13 @@ jobs:
           uv pip install --no-deps .
         env:
           ATOPILE_ZIG_OUT_DIR: ${{ github.workspace }}/src/faebryk/core/zig/zig-out
+
+      - name: Save zig cache
+        if: steps.zig-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: src/faebryk/core/zig/zig-out
+          key: zig-${{ runner.os }}-${{ runner.arch }}-py${{ steps.setup-python.outputs.python-version }}-${{ steps.zig-hash.outputs.hash }}
 
       - name: Run pytest
         id: pytest

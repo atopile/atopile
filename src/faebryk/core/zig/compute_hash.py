@@ -34,12 +34,8 @@ if __name__ == "__main__":
     import argparse
 
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument(
-        "-o", "--output", type=Path, help="Write hash to file"
-    )
-    p.add_argument(
-        "--zig-dir", type=Path, help="Zig source directory"
-    )
+    p.add_argument("-o", "--output", type=Path, help="Write hash to file")
+    p.add_argument("--zig-dir", type=Path, help="Zig source directory")
     args = p.parse_args()
     h = compute_source_hash(zig_dir=args.zig_dir)
     if args.output:
