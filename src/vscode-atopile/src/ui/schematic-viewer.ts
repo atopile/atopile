@@ -221,15 +221,22 @@ class SchematicWebview extends BaseWebview {
                     const filePath = message.filePath as string | undefined;
                     const line = message.line as number | undefined;
                     const column = message.column as number | undefined;
+                    const hasValidLine = typeof line === 'number' && Number.isFinite(line) && line > 0;
 
-                    if (filePath) {
-                        // Direct file path (if provided)
+                    if (filePath && hasValidLine) {
+                        // Direct source location when the schematic has a concrete line mapping.
                         this.openSourceFile(filePath, line, column);
                     } else if (address) {
+                        // Fallback for schematics where source.line is missing/0:
+                        // resolve the address to a concrete location first.
                         const resolved = await this.resolveAddressToSource(address);
                         if (resolved) {
                             this.openSourceFile(resolved.filePath, resolved.line, resolved.column);
+                        } else if (filePath) {
+                            this.openSourceFile(filePath);
                         }
+                    } else if (filePath) {
+                        this.openSourceFile(filePath);
                     }
                     break;
                 }
@@ -317,10 +324,13 @@ class SchematicWebview extends BaseWebview {
             const options: vscode.TextDocumentShowOptions = {
                 viewColumn: vscode.ViewColumn.One,
             };
-            if (line != null) {
+            if (line != null && line > 0) {
+                const zeroBasedColumn = (column != null && column > 0)
+                    ? column - 1
+                    : 0;
                 const position = new vscode.Position(
                     Math.max(0, line - 1),
-                    column ?? 0,
+                    zeroBasedColumn,
                 );
                 options.selection = new vscode.Range(position, position);
             }
