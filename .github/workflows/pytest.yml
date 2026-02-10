@@ -73,6 +73,7 @@ jobs:
 
       - name: Check ato version
         run: |
+          git describe --tags --dirty --long; \
           .venv/bin/python -c "import importlib.metadata; print(importlib.metadata.version('atopile'))"; \
           .venv/bin/ato self-check; \
           .venv/bin/ato --version; \
