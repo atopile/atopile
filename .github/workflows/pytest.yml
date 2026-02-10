@@ -19,11 +19,10 @@ jobs:
     #runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-
-      # Required due to a bug in the checkout action
-      # https://github.com/actions/checkout/issues/1471
-      - run: git fetch --prune --unshallow --tags
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 100
+          fetch-tags: true
 
       - name: Prepare artifacts dir
         run: mkdir -p artifacts
