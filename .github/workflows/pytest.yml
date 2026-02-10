@@ -32,7 +32,6 @@ jobs:
       - name: Install uv + Python
         uses: astral-sh/setup-uv@v7
         with:
-          version: 0.8
           python-version: "3.14"
 
       - name: "Install dependencies"
