@@ -71,7 +71,7 @@ jobs:
 
       - name: Check ato version
         run: |
-          python -c "import importlib.metadata; print(importlib.metadata.version('atopile'))" \
+          .venv/bin/python -c "import importlib.metadata; print(importlib.metadata.version('atopile'))" \
           .venv/bin/ato self-check \
           .venv/bin/ato --version \
           .venv/bin/ato --semver \
