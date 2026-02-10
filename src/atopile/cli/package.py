@@ -493,12 +493,16 @@ class _PackageValidators:
 
         # only match import statements at the beginning of a line
         _import_name_regex = r"(?m)^(import ([^,\n]+))"
+        # match "from ... import Name" statements at the beginning of a line
+        _from_import_name_regex = r'(?m)^(from\s+"[^"]+"\s+import\s+(\w+))'
 
         ato_files = config.project.paths.root.rglob("*.ato")
         for ato_file in ato_files:
             import_statements: list[re.Match[str]] = []
             content = ato_file.read_text(encoding="utf-8")
             for import_name in re.finditer(_import_name_regex, content):
+                import_statements.append(import_name)
+            for import_name in re.finditer(_from_import_name_regex, content):
                 import_statements.append(import_name)
 
             # check if the name is at least twice in the file
