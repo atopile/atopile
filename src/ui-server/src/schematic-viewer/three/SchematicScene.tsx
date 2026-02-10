@@ -607,6 +607,15 @@ export function SchematicScene() {
       store.openContextMenu(e.clientX, e.clientY, 'port');
       return;
     }
+    if (store.selectedComponentIds.length === 1) {
+      store.openContextMenu(
+        e.clientX,
+        e.clientY,
+        'selection',
+        store.selectedComponentIds[0],
+      );
+      return;
+    }
     if (store.selectedComponentIds.length >= 2) {
       store.openContextMenu(e.clientX, e.clientY, 'align');
       return;

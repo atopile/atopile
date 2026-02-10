@@ -194,7 +194,12 @@ def _handle_build_sync(payload: dict) -> dict:
                     build_ids = []
                     for target_name in all_targets:
                         existing_id = _build_queue.is_duplicate(
-                            project_root, target_name, entry
+                            project_root,
+                            target_name,
+                            entry,
+                            include_targets=include_targets,
+                            exclude_targets=exclude_targets,
+                            frozen=frozen,
                         )
                         if existing_id:
                             build_ids.append(existing_id)
@@ -247,7 +252,14 @@ def _handle_build_sync(payload: dict) -> dict:
     timestamp = generate_build_timestamp()
 
     for target_name in targets:
-        existing_build_id = _build_queue.is_duplicate(project_root, target_name, entry)
+        existing_build_id = _build_queue.is_duplicate(
+            project_root,
+            target_name,
+            entry,
+            include_targets=include_targets,
+            exclude_targets=exclude_targets,
+            frozen=frozen,
+        )
         if existing_build_id:
             build_ids.append(existing_build_id)
             continue

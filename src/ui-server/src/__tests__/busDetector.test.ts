@@ -73,4 +73,18 @@ describe('busDetector', () => {
 
     expect(groups).toHaveLength(0);
   });
+
+  it('classifies protocol names with underscores for bus color/type', () => {
+    const groups = detectBuses(
+      [
+        mkNet('n1', 'UART_TX', true),
+        mkNet('n2', 'UART_RX', true),
+      ],
+      theme,
+    );
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].busType).toBe('uart');
+    expect(groups[0].color).toBe(theme.busUART);
+  });
 });

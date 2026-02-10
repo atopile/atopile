@@ -154,6 +154,218 @@ def _net_type(net_name: str) -> str:
     return "signal"
 
 
+def _extract_designator_prefix(designator: str) -> str:
+    return "".join(ch for ch in designator.upper() if ch.isalpha())
+
+
+def _extract_footprint_hint(component_node: fabll.Node) -> str:
+    """Return a best-effort footprint identifier for package inference."""
+    fp_trait = component_node.try_get_trait(F.Footprints.has_associated_footprint)
+    if fp_trait is None:
+        return ""
+
+    try:
+        fp = fp_trait.get_footprint()
+    except Exception:
+        return ""
+
+    if pcb_trait := fp.try_get_trait(
+        F.KiCadFootprints.has_associated_kicad_pcb_footprint
+    ):
+        for getter in (
+            pcb_trait.get_kicad_identifier,
+            lambda: pcb_trait.get_footprint().name,
+            pcb_trait.get_library_name,
+        ):
+            try:
+                value = getter()
+                if value:
+                    return str(value)
+            except Exception:
+                continue
+
+    if lib_trait := fp.try_get_trait(
+        F.KiCadFootprints.has_associated_kicad_library_footprint
+    ):
+        for getter in (
+            lib_trait.get_kicad_identifier,
+            lambda: Path(lib_trait.get_kicad_footprint_file_path()).stem,
+            lib_trait.get_library_name,
+        ):
+            try:
+                value = getter()
+                if value:
+                    return str(value)
+            except Exception:
+                continue
+
+    return ""
+
+
+def _normalize_package_code(footprint_hint: str) -> str | None:
+    if not footprint_hint:
+        return None
+
+    upper = footprint_hint.upper().replace(" ", "")
+
+    for pattern, template in (
+        (r"SOD[-_]?([0-9]{3,4})", "SOD-{0}"),
+        (r"SOT[-_]?([0-9]{2,4})", "SOT-{0}"),
+        (r"DO[-_]?([0-9A-Z]{2,6})", "DO-{0}"),
+    ):
+        if match := re.search(pattern, upper):
+            return template.format(match.group(1))
+
+    if match := re.search(r"\b(SMA|SMB|SMC)\b", upper):
+        return match.group(1)
+
+    if match := re.search(
+        r"(?<![0-9])(01005|0201|0402|0603|0805|1206|1210|1812|2010|2512)(?![0-9])",
+        upper,
+    ):
+        return match.group(1)
+
+    if "TESTPOINT" in upper:
+        if "LOOP" in upper:
+            return "TESTPOINT-LOOP"
+        if "TH" in upper or "THT" in upper:
+            return "TESTPOINT-THT"
+        return "TESTPOINT"
+
+    if "USB-C" in upper or "USBC" in upper:
+        return "USB-C"
+
+    if match := re.search(r"([12]X[0-9]{1,2})", upper):
+        return match.group(1)
+
+    if "HEADER" in upper or "CONNECTOR" in upper or "CONN" in upper:
+        return "CONNECTOR"
+
+    return None
+
+
+def _infer_symbol_family(
+    module_type: str | None,
+    component_name: str | None,
+    designator: str,
+    reference: str,
+    pin_count: int,
+) -> str | None:
+    """Infer schematic symbol family from module type/name + reference hints."""
+    designator_prefix = _extract_designator_prefix(designator)
+
+    haystack = " ".join(
+        part.lower()
+        for part in (module_type, component_name, designator_prefix, reference)
+        if part
+    )
+
+    if "led" in haystack:
+        return "led"
+    if "testpoint" in haystack or designator_prefix.startswith("TP"):
+        return "testpoint"
+
+    connector_keywords = (
+        "connector",
+        "header",
+        "usb",
+        "jst",
+        "socket",
+        "terminal",
+        "receptacle",
+        "jack",
+        "plug",
+        "conn",
+    )
+    if designator_prefix.startswith(("J", "P", "CN", "USB")):
+        return "connector"
+    if pin_count >= 3 and any(keyword in haystack for keyword in connector_keywords):
+        return "connector"
+
+    if (
+        "capacitorpolarized" in haystack
+        or "capacitor_polarized" in haystack
+        or "polarized" in haystack
+        or "electrolytic" in haystack
+    ):
+        return "capacitor_polarized"
+    if "capacitor" in haystack or designator_prefix.startswith("C"):
+        return "capacitor"
+    if "resistor" in haystack or designator_prefix.startswith("R"):
+        return "resistor"
+    if "inductor" in haystack or designator_prefix.startswith("L"):
+        return "inductor"
+    if "diode" in haystack or designator_prefix.startswith(("D", "CR", "ZD")):
+        return "diode"
+    return None
+
+
+def _infer_symbol_variant(family: str, package_code: str | None) -> str | None:
+    if family in {"resistor", "capacitor", "capacitor_polarized", "inductor", "led"}:
+        if package_code and re.fullmatch(r"[0-9]{4,5}", package_code):
+            return f"chip-{package_code}"
+        return "iec"
+    if family == "diode":
+        if package_code and package_code.startswith(
+            ("SOD-", "SOT-", "DO-", "SMA", "SMB", "SMC")
+        ):
+            return package_code.lower()
+        return "iec"
+    if family == "connector":
+        if package_code and re.fullmatch(r"[12]X[0-9]{1,2}", package_code):
+            return f"header-{package_code.lower()}"
+        return "generic"
+    if family == "testpoint":
+        if package_code == "TESTPOINT-LOOP":
+            return "loop"
+        if package_code == "TESTPOINT-THT":
+            return "through_hole"
+        return "pad"
+    return None
+
+
+def _infer_polarity(family: str) -> str | None:
+    if family in {"diode", "led"}:
+        return "anode_cathode"
+    if family == "capacitor_polarized":
+        return "plus_minus"
+    if family in {"connector", "testpoint"}:
+        return "pin1"
+    return None
+
+
+def _build_symbol_metadata(
+    module_type: str | None,
+    component_name: str | None,
+    designator: str,
+    reference: str,
+    pin_count: int,
+    footprint_hint: str,
+) -> dict[str, str]:
+    family = _infer_symbol_family(
+        module_type=module_type,
+        component_name=component_name,
+        designator=designator,
+        reference=reference,
+        pin_count=pin_count,
+    )
+    if family is None:
+        return {}
+
+    package_code = _normalize_package_code(footprint_hint)
+    variant = _infer_symbol_variant(family, package_code)
+    polarity = _infer_polarity(family)
+
+    out: dict[str, str] = {"symbolFamily": family}
+    if variant:
+        out["symbolVariant"] = variant
+    if package_code:
+        out["packageCode"] = package_code
+    if polarity:
+        out["polarity"] = polarity
+    return out
+
+
 # ── Body layout ─────────────────────────────────────────────────
 
 
@@ -320,10 +532,105 @@ class _ModInfo:
     parent_id: str | None  # json_id of parent module or None for root
     full_name: str  # Graph full name for matching
     atomic_part_count: int  # Recursive count of atomic parts inside
+    source_path: str | None = None
+    source_component: str | None = None
     direct_component_ids: list[str] = field(default_factory=list)
     child_module_ids: list[str] = field(default_factory=list)
     # Discovered interfaces: iface_name -> {type, signals}
     interfaces: dict[str, dict] = field(default_factory=dict)
+
+
+def _normalize_component_name(raw: str | None) -> str:
+    if not raw:
+        return ""
+    name = strip_root_hex(raw).strip().rstrip(".:")
+    if "::" in name:
+        name = name.rsplit("::", 1)[-1].strip()
+    return name
+
+
+def _module_source_from_locator(locator: str) -> tuple[str | None, str | None]:
+    if not locator:
+        return None, None
+
+    source_path, locator_component = _extract_locator_source_and_component(locator)
+    file_path = str(source_path) if source_path else None
+
+    component_name = _normalize_component_name(locator_component)
+    if not component_name and "::" in locator:
+        component_name = _normalize_component_name(locator.rsplit("::", 1)[-1])
+
+    return file_path, component_name or None
+
+
+def _strip_internal_path_segments(path: str) -> str:
+    if not path:
+        return ""
+    segments = [
+        segment
+        for segment in path.split(".")
+        if segment and segment.split("[", 1)[0] not in {"package"}
+    ]
+    return ".".join(segments)
+
+
+def _make_source_ref(file_path: str, instance_path: str) -> dict[str, str] | None:
+    clean_file = file_path.strip()
+    clean_instance = instance_path.strip().strip(".")
+    if not clean_file or not clean_instance:
+        return None
+    return {
+        "address": f"{clean_file}::{clean_instance}",
+        "filePath": clean_file,
+        "instancePath": clean_instance,
+    }
+
+
+def _build_instance_source_ref(
+    full_name: str,
+    module_by_fullname: dict[str, _ModInfo],
+) -> dict[str, str] | None:
+    candidates = [
+        mod
+        for mod in module_by_fullname.values()
+        if mod.source_path
+        and mod.source_component
+        and (full_name == mod.full_name or full_name.startswith(mod.full_name + "."))
+    ]
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda mod: len(mod.full_name), reverse=True)
+
+    for mod in candidates:
+        rel = full_name[len(mod.full_name) :]
+        if rel.startswith("."):
+            rel = rel[1:]
+        rel = _strip_internal_path_segments(rel)
+        if not rel:
+            continue
+        return _make_source_ref(
+            mod.source_path,
+            f"{mod.source_component}.{rel}",
+        )
+
+    best = candidates[0]
+    return _make_source_ref(best.source_path, best.source_component)
+
+
+def _append_source_segment(
+    source_ref: dict[str, str] | None,
+    segment: str,
+) -> dict[str, str] | None:
+    if not source_ref:
+        return None
+    file_path = source_ref.get("filePath", "").strip()
+    instance_path = source_ref.get("instancePath", "").strip()
+    if not file_path or not instance_path:
+        return None
+    clean_segment = segment.strip().strip(".")
+    next_path = f"{instance_path}.{clean_segment}" if clean_segment else instance_path
+    return _make_source_ref(file_path, next_path)
 
 
 # ── Hierarchy discovery ─────────────────────────────────────────
@@ -363,13 +670,20 @@ def _discover_modules(app: fabll.Node) -> dict[str, _ModInfo]:
 
             # Get type name
             type_name = full_name.split(".")[-1] if "." in full_name else full_name
+            source_path: str | None = None
+            source_component: str | None = None
             try:
                 locator = module_node.get_trait(fabll.is_module).get_module_locator()
-                if "::" in locator:
-                    type_name = locator.split("::")[-1]
-                type_name = strip_root_hex(type_name)
+                source_path, source_component = _module_source_from_locator(locator)
+                if source_component:
+                    type_name = source_component
+                elif "::" in locator:
+                    type_name = _normalize_component_name(locator.split("::")[-1])
             except Exception:
                 pass
+            type_name = strip_root_hex(type_name)
+            if not source_component:
+                source_component = type_name
 
             # Instance name (last segment)
             name = full_name.rsplit(".", 1)[-1] if "." in full_name else full_name
@@ -385,6 +699,8 @@ def _discover_modules(app: fabll.Node) -> dict[str, _ModInfo]:
                 parent_id=None,  # filled in later
                 full_name=full_name,
                 atomic_part_count=0,
+                source_path=source_path,
+                source_component=source_component,
             )
 
             module_by_fullname[full_name] = info
@@ -1039,6 +1355,7 @@ def _mark_passthrough_interfaces(iface_map: dict[str, dict]) -> None:
 
 def _build_interface_pins(
     interfaces: dict[str, dict],
+    source_ref: dict[str, str] | None = None,
 ) -> tuple[list[dict], float, float]:
     """
     Build interface-level port dicts for a module and compute body dimensions.
@@ -1069,6 +1386,9 @@ def _build_interface_pins(
             "category": category,
             "interfaceType": iface_type.replace("Power", "ElectricPower"),
         }
+        pin_source = _append_source_segment(source_ref, iface_name)
+        if pin_source:
+            pin_data["source"] = pin_source
         if iface_info.get("pass_through"):
             pin_data["passThrough"] = True
 
@@ -1126,6 +1446,8 @@ def _build_interface_pins(
                 entry["signals"] = p["signals"]
             if p.get("passThrough"):
                 entry["passThrough"] = True
+            if "source" in p:
+                entry["source"] = p["source"]
             final_pins.append(entry)
 
     _place(left_pins, "left")
@@ -1775,6 +2097,7 @@ def export_schematic_json(
         len(all_modules),
         [m.full_name for m in list(all_modules.values())[:15]],
     )
+    module_by_fullname = {m.full_name: m for m in all_modules.values()}
 
     # ═══════════════════════════════════════════════════════════════
     # Phase 2: Collect components (picked/atomic parts with footprints)
@@ -1908,17 +2231,28 @@ def export_schematic_json(
 
             # Module type – the "kind" of component (e.g., "Capacitor", "Resistor")
             module_type = None
+            component_source_file: str | None = None
+            component_source_component: str | None = None
             # Try the component node itself first
             for check_node in [component_node] + ([parent[0]] if parent else []):
                 try:
                     if check_node.has_trait(fabll.is_module):
-                        module_type = check_node.get_trait(
+                        locator = check_node.get_trait(
                             fabll.is_module
                         ).get_module_locator()
-                        if "::" in module_type:
-                            module_type = module_type.split("::")[-1]
-                        module_type = strip_root_hex(module_type)
-                        break
+                        src_file, src_component = _module_source_from_locator(locator)
+                        if src_file and not component_source_file:
+                            component_source_file = src_file
+                        if src_component and not component_source_component:
+                            component_source_component = src_component
+
+                        resolved_type = src_component
+                        if not resolved_type and "::" in locator:
+                            resolved_type = _normalize_component_name(
+                                locator.split("::")[-1]
+                            )
+                        if resolved_type and module_type is None:
+                            module_type = strip_root_hex(resolved_type)
                 except Exception:
                     continue
 
@@ -2059,6 +2393,17 @@ def export_schematic_json(
                 component_node=component_node,
             )
 
+            component_name = module_type or display_name.rsplit(".", 1)[-1]
+            footprint_hint = _extract_footprint_hint(component_node)
+            symbol_metadata = _build_symbol_metadata(
+                module_type=module_type,
+                component_name=component_name,
+                designator=designator,
+                reference=reference,
+                pin_count=len(pin_numbers),
+                footprint_hint=footprint_hint,
+            )
+
             # Store pad mapping (use pad node directly — stable hash/eq)
             for pad in pads:
                 try:
@@ -2070,13 +2415,30 @@ def export_schematic_json(
             json_component = {
                 "kind": "component",
                 "id": comp_json_id,
-                "name": module_type or display_name.rsplit(".", 1)[-1],
+                "name": component_name,
                 "designator": designator,
                 "reference": reference,
                 "bodyWidth": round(body_w, 2),
                 "bodyHeight": round(body_h, 2),
                 "pins": pins_data,
             }
+            if symbol_metadata:
+                json_component.update(symbol_metadata)
+            component_source = _build_instance_source_ref(
+                comp_full,
+                module_by_fullname,
+            )
+            if (
+                component_source is None
+                and component_source_file
+                and component_source_component
+            ):
+                component_source = _make_source_ref(
+                    component_source_file,
+                    component_source_component,
+                )
+            if component_source:
+                json_component["source"] = component_source
 
             # Extract interface mapping for this component's pins
             pin_to_iface = _extract_pin_interfaces(
@@ -2346,8 +2708,16 @@ def export_schematic_json(
         if not mod:
             return None
 
+        module_source = _build_instance_source_ref(
+            mod.full_name,
+            module_by_fullname,
+        )
+
         # Build interface pins
-        interface_pins, body_w, body_h = _build_interface_pins(mod.interfaces)
+        interface_pins, body_w, body_h = _build_interface_pins(
+            mod.interfaces,
+            module_source,
+        )
 
         # Build child modules
         child_modules = []
@@ -2366,7 +2736,7 @@ def export_schematic_json(
         # Get nets for this module's sheet
         nets = scoped_nets.get(mod_id, [])
 
-        return {
+        module_json = {
             "kind": "module",
             "id": mod.json_id,
             "name": mod.name,
@@ -2381,6 +2751,9 @@ def export_schematic_json(
                 "nets": nets,
             },
         }
+        if module_source:
+            module_json["source"] = module_source
+        return module_json
 
     # Root-level modules (interesting modules with no interesting parent)
     root_modules = []

@@ -6,6 +6,15 @@ import {
 
 const PITCH = 2.54;
 
+function hasDiagonalSegment(route: [number, number, number][]): boolean {
+  for (let i = 0; i < route.length - 1; i++) {
+    const dx = Math.abs(route[i + 1][0] - route[i][0]);
+    const dy = Math.abs(route[i + 1][1] - route[i][1]);
+    if (dx > 1e-6 && dy > 1e-6) return true;
+  }
+  return false;
+}
+
 describe('routeOrthogonalWithHeuristics', () => {
   it('nudges a horizontal direct route off an occupied colinear lane', () => {
     const existing: RouteSegment[] = [
@@ -90,5 +99,19 @@ describe('routeOrthogonalWithHeuristics', () => {
     // With the only obstacle ignored, route should remain straight.
     expect(result.route[1][1]).toBeCloseTo(0, 6);
     expect(result.route[result.route.length - 2][1]).toBeCloseTo(0, 6);
+  });
+
+  it('keeps transitions orthogonal when off-grid stubs are bridged to A* grid points', () => {
+    const result = routeOrthogonalWithHeuristics(
+      0, 0, 'right',
+      40, 10, 'left',
+      {
+        // Force A* pathing and grid quantization so stub↔grid transitions are exercised.
+        obstacles: [{ id: 'wall', minX: 10, minY: -100, maxX: 11, maxY: 100 }],
+        preferredSpacing: PITCH,
+      },
+    );
+
+    expect(hasDiagonalSegment(result.route)).toBe(false);
   });
 });

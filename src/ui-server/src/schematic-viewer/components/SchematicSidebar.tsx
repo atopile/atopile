@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
   Cable,
-  ChevronLeft,
   ChevronRight,
   Cpu,
   GitBranch,
@@ -26,13 +25,11 @@ function readInitialTab(): SidebarTab {
 
 interface SchematicSidebarProps {
   width: number;
-  collapsed: boolean;
   onSetCollapsed: (collapsed: boolean) => void;
 }
 
 export function SchematicSidebar({
   width,
-  collapsed,
   onSetCollapsed,
 }: SchematicSidebarProps) {
   const theme = useTheme();
@@ -61,6 +58,7 @@ export function SchematicSidebar({
     '--sv-muted': theme.textMuted,
     '--sv-secondary': theme.textSecondary,
     '--sv-accent': theme.accent,
+    '--sv-mono': 'var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace)',
   } as React.CSSProperties;
 
   const updateTab = (tab: SidebarTab) => {
@@ -70,107 +68,72 @@ export function SchematicSidebar({
     }
   };
 
-  const openTab = (tab: SidebarTab) => {
-    updateTab(tab);
-    if (collapsed) onSetCollapsed(false);
-  };
-
   return (
     <aside
-      className={`schematic-sidebar ${collapsed ? 'collapsed' : ''}`}
-      style={{ ...cssVars, width: collapsed ? 46 : width }}
+      className="schematic-sidebar"
+      style={{ ...cssVars, width }}
     >
-      {collapsed ? (
-        <div className="schematic-sidebar-rail">
-          <div className="schematic-sidebar-rail-top">
-            <button
-              className={`sidebar-rail-btn ${activeTab === 'structure' ? 'active' : ''}`}
-              onClick={() => openTab('structure')}
-              title="Open structure navigator"
-            >
-              <GitBranch size={16} />
-            </button>
-            <button
-              className={`sidebar-rail-btn ${activeTab === 'selection' ? 'active' : ''}`}
-              onClick={() => openTab('selection')}
-              title="Open selection details"
-            >
-              <Target size={16} />
-            </button>
-          </div>
+      <header className="schematic-sidebar-header">
+        <div className="schematic-sidebar-kicker">Schematic Inspector</div>
+        <div className="schematic-sidebar-title-row">
+          <h2 className="schematic-sidebar-title">
+            {activeTab === 'structure' ? 'Structure' : 'Selection'}
+          </h2>
           <button
-            className="sidebar-rail-btn expand"
-            onClick={() => onSetCollapsed(false)}
-            title="Expand sidebar"
+            className="schematic-sidebar-collapse-btn"
+            onClick={() => onSetCollapsed(true)}
+            title="Collapse sidebar"
           >
-            <ChevronLeft size={16} />
+            <ChevronRight size={16} />
           </button>
         </div>
-      ) : (
-        <>
-          <header className="schematic-sidebar-header">
-            <div className="schematic-sidebar-kicker">Schematic Inspector</div>
-            <div className="schematic-sidebar-title-row">
-              <h2 className="schematic-sidebar-title">
-                {activeTab === 'structure' ? 'Structure' : 'Selection'}
-              </h2>
-              <button
-                className="schematic-sidebar-collapse-btn"
-                onClick={() => onSetCollapsed(true)}
-                title="Collapse sidebar"
-              >
-                <ChevronRight size={16} />
-              </button>
+      </header>
+
+      {statItems.length > 0 && (
+        <div className="schematic-sidebar-summary">
+          <div className="schematic-sidebar-summary-title">Sheet Summary</div>
+          {statItems.map((item) => (
+            <div className="schematic-summary-row" key={item.label}>
+              <item.icon size={14} className="schematic-summary-row-icon" />
+              <span className="schematic-summary-row-label">{item.label}</span>
+              <span className="schematic-summary-row-count">{item.value}</span>
             </div>
-          </header>
-
-          {statItems.length > 0 && (
-            <div className="schematic-sidebar-summary">
-              <div className="schematic-sidebar-summary-title">Sheet Summary</div>
-              {statItems.map((item) => (
-                <div className="schematic-summary-row" key={item.label}>
-                  <item.icon size={14} className="schematic-summary-row-icon" />
-                  <span className="schematic-summary-row-label">{item.label}</span>
-                  <span className="schematic-summary-row-count">{item.value}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="schematic-sidebar-tabs">
-            <button
-              className={`schematic-sidebar-tab ${activeTab === 'structure' ? 'active' : ''}`}
-              onClick={() => updateTab('structure')}
-            >
-              <GitBranch size={14} />
-              <span>Structure</span>
-            </button>
-            <button
-              className={`schematic-sidebar-tab ${activeTab === 'selection' ? 'active' : ''}`}
-              onClick={() => updateTab('selection')}
-            >
-              <Target size={14} />
-              <span>Selection</span>
-            </button>
-          </div>
-
-          <div className="schematic-sidebar-content">
-            {activeTab === 'structure' ? (
-              <StructureTree />
-            ) : hasSelection ? (
-              <SelectionDetails showTopBorder={false} />
-            ) : (
-              <div className="schematic-sidebar-empty">
-                <div className="schematic-sidebar-empty-title">No item selected</div>
-                <div className="schematic-sidebar-empty-copy">
-                  Pick a symbol or net from the canvas to inspect attributes, connected nets, and
-                  hierarchy context.
-                </div>
-              </div>
-            )}
-          </div>
-        </>
+          ))}
+        </div>
       )}
+
+      <div className="schematic-sidebar-tabs">
+        <button
+          className={`schematic-sidebar-tab ${activeTab === 'structure' ? 'active' : ''}`}
+          onClick={() => updateTab('structure')}
+        >
+          <GitBranch size={14} />
+          <span>Structure</span>
+        </button>
+        <button
+          className={`schematic-sidebar-tab ${activeTab === 'selection' ? 'active' : ''}`}
+          onClick={() => updateTab('selection')}
+        >
+          <Target size={14} />
+          <span>Selection</span>
+        </button>
+      </div>
+
+      <div className="schematic-sidebar-content">
+        {activeTab === 'structure' ? (
+          <StructureTree />
+        ) : hasSelection ? (
+          <SelectionDetails showTopBorder={false} />
+        ) : (
+          <div className="schematic-sidebar-empty">
+            <div className="schematic-sidebar-empty-title">No item selected</div>
+            <div className="schematic-sidebar-empty-copy">
+              Pick a symbol or net from the canvas to inspect attributes, connected nets, and
+              hierarchy context.
+            </div>
+          </div>
+        )}
+      </div>
     </aside>
   );
 }

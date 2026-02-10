@@ -32,7 +32,7 @@ import {
   transformPinSide,
 } from '../types/schematic';
 import { useCurrentPorts, useCurrentPowerPorts } from '../stores/schematicStore';
-import type { ThemeColors } from '../lib/theme';
+import { type ThemeColors } from '../lib/theme';
 import { useSchematicStore, liveDrag } from '../stores/schematicStore';
 import {
   computeOrthogonalRoute,
@@ -47,7 +47,6 @@ import {
 } from '../lib/orthoRouter';
 import {
   detectBuses,
-  trunkMidpoint,
   type BusGroup,
   type BusEndpoint,
   type NetForBus,
@@ -58,11 +57,21 @@ import {
   getModuleRenderSize,
   getOrderedModuleInterfacePins,
 } from '../lib/moduleInterfaces';
+import {
+  getSemanticConnectionColor,
+  neutralConnectionColor,
+} from './connectionColor';
+import {
+  getStandardInterfaceColor,
+  resolveStandardInterfaceId,
+} from '../../interfaceColors';
 
 const STUB_LENGTH = 2.54;
 const ROUTE_SPACING = 2.54;
 const ROUTE_DRAG_HIT_THICKNESS = 2.2;
 const ROUTE_PICK_HIT_THICKNESS = ROUTE_SPACING * 0.5;
+const BUS_ROUTE_DRAG_HIT_THICKNESS = 3.0;
+const BUS_ROUTE_PICK_HIT_THICKNESS = 2.1;
 const JUMP_MASK_OVERDRAW = 0.06;
 const JUMP_MASK_SEGMENTS = 32;
 const JUMP_VERTICAL_REPAINT_MARGIN = 0.12;
@@ -71,28 +80,190 @@ const COMPLEX_ROUTE_CROSSINGS = 2;
 const COMPLEX_ROUTE_PARALLEL = 3;
 const MAX_MULTI_ROUTE_PINS = 5;
 const MULTI_ROUTE_MAX_SPAN = 48;
+const POWER_PORT_DIRECT_MAX_DISTANCE = 30;
+const BUS_LABEL_FONT_SIZE = 0.72;
+const BUS_LABEL_LETTER_SPACING = 0.06;
+const BUS_LABEL_SIDE_PADDING = 0.5;
+const BUS_LABEL_ROUTE_CLEARANCE = 0.9;
 const NO_RAYCAST = () => {};
 const ROUTE_OBSTACLE_CLEARANCE = 0.5;
 
 // ── Helpers ────────────────────────────────────────────────────
 
 function netColor(net: SchematicNet, theme: ThemeColors): string {
-  switch (net.type) {
-    case 'power':
-      return theme.pinPower;
-    case 'ground':
-      return theme.pinGround;
-    case 'electrical':
-      return theme.netElectrical;
-    case 'bus':
-      if (/scl|sda|i2c/i.test(net.name)) return theme.busI2C;
-      if (/spi|mosi|miso|sclk|cs/i.test(net.name)) return theme.busSPI;
-      if (/uart|tx|rx/i.test(net.name)) return theme.busUART;
-      return theme.pinSignal;
-    case 'signal':
+  if (net.type === 'power') return getSemanticConnectionColor('power') || neutralConnectionColor(theme);
+  if (net.type === 'ground') return getSemanticConnectionColor('ground') || neutralConnectionColor(theme);
+  return protocolColorForName(net.name) ?? neutralConnectionColor(theme);
+}
+
+function endpointCategoryPriority(category: string): number {
+  const normalized = category.toLowerCase();
+  if (normalized === 'power') return 99;
+  if (normalized === 'ground') return 97;
+
+  const id = resolveStandardInterfaceId(category);
+  switch (id) {
+    case 'i2c':
+      return 100;
+    case 'spi':
+    case 'qspi':
+      return 95;
+    case 'uart':
+      return 90;
+    case 'i2s':
+      return 88;
+    case 'usb':
+      return 86;
+    case 'can':
+      return 84;
     default:
-      return theme.pinSignal;
+      return id ? 80 : 0;
   }
+}
+
+function dominantEndpointCategory(categories: string[]): string | null {
+  let bestCategory: string | null = null;
+  let bestPriority = 0;
+  for (const category of categories) {
+    const priority = endpointCategoryPriority(category);
+    if (priority > bestPriority) {
+      bestPriority = priority;
+      bestCategory = category;
+    }
+  }
+  return bestCategory;
+}
+
+function resolvedNetColor(
+  net: SchematicNet,
+  categories: string[],
+  theme: ThemeColors,
+): string {
+  const dominantCategory = dominantEndpointCategory(categories);
+  if (dominantCategory) {
+    const semanticColor = getSemanticConnectionColor(dominantCategory);
+    if (semanticColor) return semanticColor;
+  }
+  return netColor(net, theme);
+}
+
+function extractVoltageToken(raw: string): string | null {
+  const m = raw.toLowerCase().match(/(\d+(?:\.\d+)?v\d+|\d+(?:\.\d+)?v)/);
+  if (!m) return null;
+  return m[1].replace(/[^a-z0-9]/g, '');
+}
+
+function netStubLabel(
+  net: SchematicNet,
+  worldPins: WorldPin[],
+  interfaceTrack: boolean,
+): string {
+  if (net.type === 'power' || net.type === 'ground') {
+    // Electrical/component-level power wiring should retain canonical net
+    // naming (hv/lv) for schematic readability.
+    if (!interfaceTrack) return net.name;
+
+    // Block-level/interface wiring should read as power rails so we avoid
+    // exposing hv/lv internals; include voltage token when available.
+    const candidates = [
+      ...worldPins.map((wp) => wp.pinNumber),
+      net.name,
+      net.id,
+    ];
+    for (const value of candidates) {
+      const voltage = extractVoltageToken(value);
+      if (voltage) return `power${voltage}`;
+    }
+    return 'power';
+  }
+  return net.name;
+}
+
+function isNetEmphasized(
+  netId: string,
+  selectedNetId: string | null,
+  highlightedNetIds: Set<string>,
+): boolean {
+  if (selectedNetId !== null) return selectedNetId === netId;
+  return highlightedNetIds.has(netId);
+}
+
+function hasAnyNetEmphasis(
+  selectedNetId: string | null,
+  highlightedNetIds: Set<string>,
+): boolean {
+  return selectedNetId !== null || highlightedNetIds.size > 0;
+}
+
+function isBusGroupEmphasized(
+  group: BusGroup,
+  selectedNetId: string | null,
+  highlightedNetIds: Set<string>,
+): boolean {
+  if (selectedNetId !== null) return group.memberNetIds.has(selectedNetId);
+  for (const netId of group.memberNetIds) {
+    if (highlightedNetIds.has(netId)) return true;
+  }
+  return false;
+}
+
+function busRouteId(group: BusGroup): string {
+  return `__bus__${group.id}`;
+}
+
+function busTrunkLabelPose(route: [number, number, number][]): {
+  x: number;
+  y: number;
+  angle: number;
+  segmentLength: number;
+} {
+  if (route.length < 2) return { x: 0, y: 0, angle: 0, segmentLength: 0 };
+
+  let bestLen = -1;
+  let bestX = route[0][0];
+  let bestY = route[0][1];
+  let bestAngle = 0;
+  let bestSegmentLength = 0;
+
+  for (let i = 0; i < route.length - 1; i++) {
+    const a = route[i];
+    const b = route[i + 1];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq <= bestLen) continue;
+    bestLen = lenSq;
+    bestX = (a[0] + b[0]) / 2;
+    bestY = (a[1] + b[1]) / 2;
+    bestSegmentLength = Math.sqrt(lenSq);
+    let angle = Math.atan2(dy, dx);
+    if (angle > Math.PI / 2 || angle < -Math.PI / 2) {
+      angle += Math.PI;
+      if (angle > Math.PI) angle -= Math.PI * 2;
+    }
+    bestAngle = angle;
+  }
+
+  return { x: bestX, y: bestY, angle: bestAngle, segmentLength: bestSegmentLength };
+}
+
+function estimateBusLabelGap(name: string): number {
+  const chars = Math.max(name.trim().length, 1);
+  const glyphWidth = BUS_LABEL_FONT_SIZE * 0.56;
+  const spacingWidth = Math.max(0, chars - 1) * BUS_LABEL_FONT_SIZE * BUS_LABEL_LETTER_SPACING;
+  return chars * glyphWidth + spacingWidth + BUS_LABEL_SIDE_PADDING * 2;
+}
+
+function protocolTypeForCategory(category: string | null): string | null {
+  return resolveStandardInterfaceId(category);
+}
+
+function protocolTypeForName(name: string): string | null {
+  return resolveStandardInterfaceId(name);
+}
+
+function protocolColorForName(name: string): string | null {
+  return getStandardInterfaceColor(name);
 }
 
 function oppositeSide(side: string): string {
@@ -116,6 +287,7 @@ interface PinInfo {
   x: number;
   y: number;
   side: string;
+  category?: string;
 }
 
 interface ItemLookup {
@@ -150,6 +322,7 @@ function buildLookup(
         x: norm.x + offset.x,
         y: norm.y + offset.y,
         side: pin.side,
+        category: pin.category,
       });
     }
     pinMap.set(comp.id, pm);
@@ -167,6 +340,7 @@ function buildLookup(
         x: pin.x + offset.x,
         y: pin.y + offset.y,
         side: pin.side,
+        category: pin.category,
       });
     }
     pinMap.set(mod.id, pm);
@@ -183,6 +357,7 @@ function buildLookup(
             x: sp.x + offset.x,
             y: sp.y + offset.y,
             side: port.pinSide,
+            category: port.category,
           });
         }
       }
@@ -193,18 +368,21 @@ function buildLookup(
         x: port.pinX + offset.x,
         y: port.pinY + offset.y,
         side: oppositeSide(port.pinSide),
+        category: port.category,
       });
     } else {
       pm.set('1', {
         x: port.pinX + offset.x,
         y: port.pinY + offset.y,
         side: port.pinSide,
+        category: port.category,
       });
       if (port.passThrough) {
         pm.set('2', {
           x: -port.pinX + offset.x,
           y: -port.pinY + offset.y,
           side: oppositeSide(port.pinSide),
+          category: port.category,
         });
       }
     }
@@ -218,6 +396,7 @@ function buildLookup(
       x: pp.pinX + offset.x,
       y: pp.pinY + offset.y,
       side: pp.pinSide,
+      category: pp.type,
     });
     pinMap.set(pp.id, pm);
   }
@@ -241,12 +420,14 @@ interface DirectNetData {
   worldPins: WorldPin[];
   route: [number, number, number][];
   color: string;
+  interfaceTrack: boolean;
 }
 
 interface StubNetData {
   net: SchematicNet;
   worldPins: WorldPin[];
   color: string;
+  interfaceTrack: boolean;
 }
 
 interface PendingDirectNetData {
@@ -256,6 +437,8 @@ interface PendingDirectNetData {
   color: string;
   distance: number;
   forceDirect: boolean;
+  preferStub: boolean;
+  interfaceTrack: boolean;
 }
 
 interface PendingMultiNetData {
@@ -264,6 +447,7 @@ interface PendingMultiNetData {
   edges: Array<{ a: WorldPin; b: WorldPin }>;
   color: string;
   span: number;
+  interfaceTrack: boolean;
 }
 
 interface RouteSegmentHandle {
@@ -424,6 +608,13 @@ function routePriority(net: SchematicNet): number {
   if (net.type === 'bus') return 2;
   if (net.type === 'electrical') return 3;
   return 3;
+}
+
+function baseTrackWidth(net: SchematicNet, interfaceTrack: boolean): number {
+  if (net.type === 'bus') return 3.0;
+  if (interfaceTrack) return 2.6;
+  if (net.type === 'electrical') return 1.6;
+  return 1.85;
 }
 
 function cloneRoute(route: [number, number, number][]): [number, number, number][] {
@@ -615,6 +806,7 @@ export const NetLines = memo(function NetLines({
   const portSignalOrders = useSchematicStore((s) => s.portSignalOrders);
   const routeOverrides = useSchematicStore((s) => s.routeOverrides);
   const selectedNetId = useSchematicStore((s) => s.selectedNetId);
+  const selectedComponentIds = useSchematicStore((s) => s.selectedComponentIds);
   const ports = useCurrentPorts();
   const powerPorts = useCurrentPowerPorts();
 
@@ -636,10 +828,18 @@ export const NetLines = memo(function NetLines({
   // Net → color map (shared by crossing jumps + bus rendering)
   const netColorMap = useMemo(() => {
     const map = new Map<string, string>();
-    if (!sheet) return map;
-    for (const net of sheet.nets) map.set(net.id, netColor(net, theme));
+    if (!sheet || !lookup) return map;
+    for (const net of sheet.nets) {
+      const endpointCategories: string[] = [];
+      for (const np of net.pins) {
+        const resolved = resolvePinFromMap(lookup.pinMap.get(np.componentId), np.pinNumber);
+        if (!resolved?.pin.category) continue;
+        endpointCategories.push(resolved.pin.category);
+      }
+      map.set(net.id, resolvedNetColor(net, endpointCategories, theme));
+    }
     return map;
-  }, [sheet, theme]);
+  }, [sheet, lookup, theme]);
 
   // ── Compute routes, detect buses, find crossings ──────────
 
@@ -659,6 +859,8 @@ export const NetLines = memo(function NetLines({
     const pendingMultiNets: PendingMultiNetData[] = [];
     const allSegments: RouteSegment[] = [];
     const routeObstacles = buildRouteObstacles(sheet, ports, positions, pk);
+    const moduleIds = new Set(sheet.modules.map((m) => m.id));
+    const portIds = new Set(ports.map((p) => p.id));
     const breakoutPortIds = new Set(
       ports
         .filter((p) => !!p.signals && p.signals.length >= 2)
@@ -674,55 +876,65 @@ export const NetLines = memo(function NetLines({
     const busInputs: NetForBus[] = [];
 
     for (const net of sheet.nets) {
-      const color = netColorMap.get(net.id) || theme.pinSignal;
+      const color = netColorMap.get(net.id) || neutralConnectionColor(theme);
 
       // ── Power/ground nets: draw individual wires from each
       //    power port symbol to its connected component pin ──
       if (net.type === 'power' || net.type === 'ground') {
-        for (const np of net.pins) {
+        const canUsePowerSymbols = net.pins.length > 0 && net.pins.every((np) => {
           const ppId = `__pwr__${net.id}__${np.componentId}__${np.pinNumber}`;
-          const ppPinMap = lookup.pinMap.get(ppId);
-          const compPinMap = lookup.pinMap.get(np.componentId);
-          if (!ppPinMap || !compPinMap) continue;
+          return lookup.pinMap.has(ppId) && lookup.pinMap.has(np.componentId);
+        });
 
-          const ppResolved = resolvePinFromMap(ppPinMap, '1');
-          const compResolved = resolvePinFromMap(compPinMap, np.pinNumber);
-          if (!ppResolved || !compResolved) continue;
-          const ppPin = ppResolved.pin;
-          const compPin = compResolved.pin;
+        if (canUsePowerSymbols) {
+          for (const np of net.pins) {
+            const ppId = `__pwr__${net.id}__${np.componentId}__${np.pinNumber}`;
+            const ppPinMap = lookup.pinMap.get(ppId);
+            const compPinMap = lookup.pinMap.get(np.componentId);
+            if (!ppPinMap || !compPinMap) continue;
 
-          const ppPos = positions[pk + ppId] || { x: 0, y: 0 };
-          const compPos = positions[pk + np.componentId] || { x: 0, y: 0 };
+            const ppResolved = resolvePinFromMap(ppPinMap, '1');
+            const compResolved = resolvePinFromMap(compPinMap, np.pinNumber);
+            if (!ppResolved || !compResolved) continue;
+            const ppPin = ppResolved.pin;
+            const compPin = compResolved.pin;
 
-          const ppTp = transformPinOffset(ppPin.x, ppPin.y, ppPos.rotation, ppPos.mirrorX, ppPos.mirrorY);
-          const ppTs = transformPinSide(ppPin.side, ppPos.rotation, ppPos.mirrorX, ppPos.mirrorY);
-          const compTp = transformPinOffset(compPin.x, compPin.y, compPos.rotation, compPos.mirrorX, compPos.mirrorY);
-          const compTs = transformPinSide(compPin.side, compPos.rotation, compPos.mirrorX, compPos.mirrorY);
+            const ppPos = positions[pk + ppId] || { x: 0, y: 0 };
+            const compPos = positions[pk + np.componentId] || { x: 0, y: 0 };
 
-          const wp0: WorldPin = {
-            x: ppPos.x + ppTp.x, y: ppPos.y + ppTp.y,
-            side: ppTs, compId: ppId, pinNumber: '1',
-          };
-          const wp1: WorldPin = {
-            x: compPos.x + compTp.x, y: compPos.y + compTp.y,
-            side: compTs, compId: np.componentId, pinNumber: np.pinNumber,
-          };
+            const ppTp = transformPinOffset(ppPin.x, ppPin.y, ppPos.rotation, ppPos.mirrorX, ppPos.mirrorY);
+            const ppTs = transformPinSide(ppPin.side, ppPos.rotation, ppPos.mirrorX, ppPos.mirrorY);
+            const compTp = transformPinOffset(compPin.x, compPin.y, compPos.rotation, compPos.mirrorX, compPos.mirrorY);
+            const compTs = transformPinSide(compPin.side, compPos.rotation, compPos.mirrorX, compPos.mirrorY);
 
-          // Skip wire if power port pin is on (or very near) the component pin
-          const dx = wp0.x - wp1.x;
-          const dy = wp0.y - wp1.y;
-          if (dx * dx + dy * dy < 0.5) continue;
+            const wp0: WorldPin = {
+              x: ppPos.x + ppTp.x, y: ppPos.y + ppTp.y,
+              side: ppTs, compId: ppId, pinNumber: '1',
+            };
+            const wp1: WorldPin = {
+              x: compPos.x + compTp.x, y: compPos.y + compTp.y,
+              side: compTs, compId: np.componentId, pinNumber: np.pinNumber,
+            };
 
-          pendingDirects.push({
-            routeId: ppId,
-            net,
-            worldPins: [wp0, wp1],
-            color,
-            distance: Math.sqrt(dx * dx + dy * dy),
-            forceDirect: true,
-          });
+            // Skip wire if power port pin is on (or very near) the component pin
+            const dx = wp0.x - wp1.x;
+            const dy = wp0.y - wp1.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dx * dx + dy * dy < 0.5) continue;
+
+            pendingDirects.push({
+              routeId: ppId,
+              net,
+              worldPins: [wp0, wp1],
+              color,
+              distance: dist,
+              forceDirect: true,
+              preferStub: dist > POWER_PORT_DIRECT_MAX_DISTANCE,
+              interfaceTrack: false,
+            });
+          }
+          continue; // this net is fully rendered through power symbols
         }
-        continue; // power/ground nets fully handled above
       }
 
       // ── Normal nets (signal / bus) ──
@@ -752,6 +964,12 @@ export const NetLines = memo(function NetLines({
       }
 
       if (worldPins.length < 2) continue;
+      const interfaceTrack = worldPins.some(
+        (wp) => moduleIds.has(wp.compId) || portIds.has(wp.compId),
+      );
+      const endpointCategories = worldPins
+        .map((wp) => lookup.pinMap.get(wp.compId)?.get(wp.pinNumber)?.category)
+        .filter((category): category is string => !!category);
 
       // 2-pin nets between exactly 2 items can be direct wires.
       const isTwoPinDirect = uniqueItems.size === 2 && worldPins.length === 2;
@@ -768,21 +986,34 @@ export const NetLines = memo(function NetLines({
           color,
           distance: dist,
           forceDirect: net.type !== 'signal',
+          preferStub: false,
+          interfaceTrack,
         });
 
         // Also register as bus candidate
-        busInputs.push({
-          netId: net.id,
-          netName: net.name,
-          netType: net.type,
-          allowBundle: !hasBreakoutSignalEndpoint,
-          worldPins: worldPins.map((wp) => ({
-            x: wp.x,
-            y: wp.y,
-            side: wp.side,
-            compId: wp.compId,
-          })),
-        });
+        if (net.type !== 'power' && net.type !== 'ground') {
+          // Promote interface-level electrical protocol lines (UART/SPI/I2C)
+          // into bus candidates so they render as one bundled module link.
+          const protocolType =
+            protocolTypeForName(net.name) ||
+            protocolTypeForCategory(dominantEndpointCategory(endpointCategories));
+          const busCandidateType =
+            net.type === 'bus' || (interfaceTrack && protocolType)
+              ? 'bus'
+              : net.type;
+          busInputs.push({
+            netId: net.id,
+            netName: protocolType ?? net.name,
+            netType: busCandidateType,
+            allowBundle: !hasBreakoutSignalEndpoint,
+            worldPins: worldPins.map((wp) => ({
+              x: wp.x,
+              y: wp.y,
+              side: wp.side,
+              compId: wp.compId,
+            })),
+          });
+        }
       } else if (
         net.type !== 'bus' &&
         worldPins.length >= 3 &&
@@ -798,17 +1029,41 @@ export const NetLines = memo(function NetLines({
             edges,
             color,
             span,
+            interfaceTrack,
           });
         } else {
-          stubs.push({ net, worldPins, color });
+          stubs.push({ net, worldPins, color, interfaceTrack });
         }
       } else {
-        stubs.push({ net, worldPins, color });
+        stubs.push({ net, worldPins, color, interfaceTrack });
       }
     }
 
     // ── Bus detection ───────────────────────────────────────
-    const buses = detectBuses(busInputs, theme);
+    const buses = detectBuses(busInputs, theme).map((group) => {
+      const manualRoute = anchorManualRoute(
+        routeOverrides[pk + busRouteId(group)] ?? [],
+        {
+          x: group.endpointA.mergeX,
+          y: group.endpointA.mergeY,
+          side: group.endpointA.side,
+          compId: group.endpointA.itemId,
+          pinNumber: '1',
+        },
+        {
+          x: group.endpointB.mergeX,
+          y: group.endpointB.mergeY,
+          side: group.endpointB.side,
+          compId: group.endpointB.itemId,
+          pinNumber: '1',
+        },
+      );
+      if (!manualRoute) return group;
+      return {
+        ...group,
+        trunkRoute: manualRoute,
+      };
+    });
 
     // Nets consumed by buses → suppress individual routes and add bus trunk.
     const busNetIds = new Set<string>();
@@ -849,9 +1104,20 @@ export const NetLines = memo(function NetLines({
           worldPins: pd.worldPins,
           route: manualRoute,
           color: pd.color,
+          interfaceTrack: pd.interfaceTrack,
         });
         allSegments.push(...segmentsFromRoute(manualRoute, pd.net.id));
         existingSegments.push(...segmentsFromRoute(manualRoute, pd.routeId));
+        continue;
+      }
+
+      if (pd.preferStub) {
+        stubs.push({
+          net: pd.net,
+          worldPins: pd.worldPins,
+          color: pd.color,
+          interfaceTrack: pd.interfaceTrack,
+        });
         continue;
       }
 
@@ -879,7 +1145,12 @@ export const NetLines = memo(function NetLines({
         );
 
       if (shouldFallbackToLabels) {
-        stubs.push({ net: pd.net, worldPins: pd.worldPins, color: pd.color });
+        stubs.push({
+          net: pd.net,
+          worldPins: pd.worldPins,
+          color: pd.color,
+          interfaceTrack: pd.interfaceTrack,
+        });
         continue;
       }
 
@@ -891,7 +1162,12 @@ export const NetLines = memo(function NetLines({
           new Set([a.compId, b.compId]),
         )
       ) {
-        stubs.push({ net: pd.net, worldPins: pd.worldPins, color: pd.color });
+        stubs.push({
+          net: pd.net,
+          worldPins: pd.worldPins,
+          color: pd.color,
+          interfaceTrack: pd.interfaceTrack,
+        });
         continue;
       }
       directs.push({
@@ -900,6 +1176,7 @@ export const NetLines = memo(function NetLines({
         worldPins: pd.worldPins,
         route,
         color: pd.color,
+        interfaceTrack: pd.interfaceTrack,
       });
       allSegments.push(...segmentsFromRoute(route, pd.net.id));
       existingSegments.push(...segmentsFromRoute(route, pd.routeId));
@@ -990,7 +1267,12 @@ export const NetLines = memo(function NetLines({
       }
 
       if (failed || edgeRoutes.length === 0) {
-        stubs.push({ net: pm.net, worldPins: pm.worldPins, color: pm.color });
+        stubs.push({
+          net: pm.net,
+          worldPins: pm.worldPins,
+          color: pm.color,
+          interfaceTrack: pm.interfaceTrack,
+        });
         continue;
       }
 
@@ -1001,6 +1283,7 @@ export const NetLines = memo(function NetLines({
           worldPins: er.worldPins,
           route: er.route,
           color: pm.color,
+          interfaceTrack: pm.interfaceTrack,
         });
         allSegments.push(...segmentsFromRoute(er.route, pm.net.id));
       }
@@ -1018,7 +1301,21 @@ export const NetLines = memo(function NetLines({
     };
   }, [sheet, lookup, positions, pk, netColorMap, theme, ports, routeOverrides]);
 
+  const highlightedNetIds = useMemo(() => {
+    const out = new Set<string>();
+    if (!sheet || selectedComponentIds.length === 0) return out;
+    const selectedIds = new Set(selectedComponentIds);
+    for (const net of sheet.nets) {
+      if (net.pins.some((pin) => selectedIds.has(pin.componentId))) {
+        out.add(net.id);
+      }
+    }
+    return out;
+  }, [sheet, selectedComponentIds]);
+
   if (!sheet || !lookup) return null;
+
+  const hasEmphasis = hasAnyNetEmphasis(selectedNetId, highlightedNetIds);
 
   return (
     <group raycast={NO_RAYCAST}>
@@ -1027,15 +1324,17 @@ export const NetLines = memo(function NetLines({
         <BusConnection
           key={group.id}
           group={group}
+          pk={pk}
           theme={theme}
           selectedNetId={selectedNetId}
+          highlightedNetIds={highlightedNetIds}
         />
       ))}
 
       {/* Individual orthogonal connections */}
-      {directNets.map(({ routeId, net, worldPins, route, color }) => {
-        const isSelected = selectedNetId === net.id;
-        const opacity = isSelected ? 1 : selectedNetId ? 0.25 : 0.8;
+      {directNets.map(({ routeId, net, worldPins, route, color, interfaceTrack }) => {
+        const isSelected = isNetEmphasized(net.id, selectedNetId, highlightedNetIds);
+        const opacity = isSelected ? 1 : hasEmphasis ? 0.25 : 0.8;
         return (
           <OrthogonalConnection
             key={routeId}
@@ -1048,14 +1347,15 @@ export const NetLines = memo(function NetLines({
             color={color}
             opacity={opacity}
             isActive={isSelected}
+            interfaceTrack={interfaceTrack}
           />
         );
       })}
 
       {/* Stub connections */}
-      {stubNets.map(({ net, worldPins, color }) => {
-        const isSelected = selectedNetId === net.id;
-        const opacity = isSelected ? 1 : selectedNetId ? 0.25 : 0.8;
+      {stubNets.map(({ net, worldPins, color, interfaceTrack }) => {
+        const isSelected = isNetEmphasized(net.id, selectedNetId, highlightedNetIds);
+        const opacity = isSelected ? 1 : hasEmphasis ? 0.25 : 0.8;
         return (
           <NetStubs
             key={net.id}
@@ -1066,6 +1366,7 @@ export const NetLines = memo(function NetLines({
             color={color}
             opacity={opacity}
             isActive={isSelected}
+            interfaceTrack={interfaceTrack}
           />
         );
       })}
@@ -1076,6 +1377,7 @@ export const NetLines = memo(function NetLines({
         netColorMap={netColorMap}
         theme={theme}
         selectedNetId={selectedNetId}
+        highlightedNetIds={highlightedNetIds}
       />
     </group>
   );
@@ -1087,24 +1389,140 @@ export const NetLines = memo(function NetLines({
 
 const BusConnection = memo(function BusConnection({
   group,
+  pk,
   theme,
   selectedNetId,
+  highlightedNetIds,
 }: {
   group: BusGroup;
+  pk: string;
   theme: ThemeColors;
   selectedNetId: string | null;
+  highlightedNetIds: Set<string>;
 }) {
   const selectNet = useSchematicStore((s) => s.selectNet);
   const hoverNet = useSchematicStore((s) => s.hoverNet);
+  const setRouteOverride = useSchematicStore((s) => s.setRouteOverride);
+  const { camera, gl } = useThree();
+  const lineRef = useRef<any>(null);
+  const segmentDragActive = useRef(false);
+  const raycaster = useRef(new THREE.Raycaster());
+  const zPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0));
+  const worldTarget = useRef(new THREE.Vector3());
+  const ndc = useRef(new THREE.Vector2());
 
-  const isActive = selectedNetId != null && group.memberNetIds.has(selectedNetId);
-  const opacity = isActive ? 1 : selectedNetId ? 0.25 : 0.85;
+  const isActive = isBusGroupEmphasized(group, selectedNetId, highlightedNetIds);
+  const opacity = isActive ? 1 : hasAnyNetEmphasis(selectedNetId, highlightedNetIds) ? 0.25 : 0.85;
   const firstNetId = [...group.memberNetIds][0];
+  const explicitlySelected = selectedNetId !== null && group.memberNetIds.has(selectedNetId);
+  const routeId = busRouteId(group);
 
   const { trunkRoute, endpointA, endpointB, color, name } = group;
-  const signalCount = group.memberNetIds.size;
+  const labelPose = useMemo(() => busTrunkLabelPose(trunkRoute), [trunkRoute]);
+  const labelGapLength = useMemo(() => {
+    const preferredGap = estimateBusLabelGap(name);
+    const maxGap = Math.max(0, labelPose.segmentLength - BUS_LABEL_ROUTE_CLEARANCE);
+    return Math.min(preferredGap, maxGap);
+  }, [labelPose.segmentLength, name]);
+  const editableSegments = useMemo(
+    () => getInteriorSegmentHandles(trunkRoute),
+    [trunkRoute],
+  );
+  const routeHitSegments = useMemo(
+    () => getRouteHitSegments(trunkRoute),
+    [trunkRoute],
+  );
+  const editableSegmentByIndex = useMemo(
+    () => new Map(editableSegments.map((seg) => [seg.pointIndex, seg] as const)),
+    [editableSegments],
+  );
 
-  const badge = useMemo(() => trunkMidpoint(trunkRoute), [trunkRoute]);
+  const screenToWorld = useCallback((clientX: number, clientY: number) => {
+    const rect = gl.domElement.getBoundingClientRect();
+    ndc.current.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    raycaster.current.setFromCamera(ndc.current, camera);
+    const hit = raycaster.current.ray.intersectPlane(zPlane.current, worldTarget.current);
+    if (!hit) return null;
+    return { x: worldTarget.current.x, y: worldTarget.current.y };
+  }, [camera, gl]);
+
+  useEffect(() => {
+    if (!lineRef.current) return;
+    writeRouteToLine2(lineRef.current, trunkRoute);
+  }, [trunkRoute]);
+
+  const beginSegmentDrag = useCallback((e: any, segment: RouteSegmentHandle) => {
+    if (e.button !== 0) return;
+    if (liveDrag.componentId) return;
+    e.stopPropagation();
+
+    const baseRoute = simplifyOrthRoute(trunkRoute);
+    const idx = segment.pointIndex;
+    if (idx <= 0 || idx + 1 >= baseRoute.length - 1) return;
+    const startWorld = screenToWorld(
+      (e.nativeEvent?.clientX ?? e.clientX) as number,
+      (e.nativeEvent?.clientY ?? e.clientY) as number,
+    );
+    if (!startWorld) return;
+
+    selectNet(firstNetId);
+    segmentDragActive.current = true;
+
+    const axis: 'x' | 'y' = segment.horizontal ? 'y' : 'x';
+    const startCoord = axis === 'y' ? baseRoute[idx][1] : baseRoute[idx][0];
+    const pointerStart = axis === 'y' ? startWorld.y : startWorld.x;
+    let changed = false;
+    let draggedRoute = baseRoute;
+
+    const onMove = (me: PointerEvent) => {
+      const world = screenToWorld(me.clientX, me.clientY);
+      if (!world) return;
+      const pointerNow = axis === 'y' ? world.y : world.x;
+      const snapped = snapRouteCoord(startCoord + (pointerNow - pointerStart));
+      const prevCoord = axis === 'y'
+        ? draggedRoute[idx][1]
+        : draggedRoute[idx][0];
+      if (Math.abs(snapped - prevCoord) < 1e-6) return;
+
+      const next = cloneRoute(baseRoute);
+      if (axis === 'y') {
+        next[idx][1] = snapped;
+        next[idx + 1][1] = snapped;
+      } else {
+        next[idx][0] = snapped;
+        next[idx + 1][0] = snapped;
+      }
+      draggedRoute = simplifyOrthRoute(next);
+      changed = true;
+      writeRouteToLine2(lineRef.current, draggedRoute);
+      gl.domElement.style.cursor = axis === 'y' ? 'ns-resize' : 'ew-resize';
+    };
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      segmentDragActive.current = false;
+      gl.domElement.style.cursor = 'auto';
+
+      if (!changed) {
+        writeRouteToLine2(lineRef.current, trunkRoute);
+        return;
+      }
+
+      if (routesEqual(draggedRoute, simplifyOrthRoute(trunkRoute))) {
+        writeRouteToLine2(lineRef.current, trunkRoute);
+        return;
+      }
+
+      setRouteOverride(pk + routeId, draggedRoute);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }, [trunkRoute, screenToWorld, selectNet, firstNetId, gl, setRouteOverride, pk, routeId]);
 
   return (
     <group
@@ -1117,37 +1535,103 @@ const BusConnection = memo(function BusConnection({
     >
       {/* Thick bus trunk */}
       <Line
+        ref={lineRef}
         points={trunkRoute}
-        lineWidth={isActive ? 4.5 : 3.5}
+        lineWidth={isActive ? 6.4 : 5.1}
         color={color}
         transparent
         opacity={opacity}
       />
+
+      {routeHitSegments.map((seg) => {
+        const editable = editableSegmentByIndex.get(seg.pointIndex);
+        const isEditableSegment = explicitlySelected && !!editable;
+        const hitThickness = isEditableSegment
+          ? BUS_ROUTE_DRAG_HIT_THICKNESS
+          : BUS_ROUTE_PICK_HIT_THICKNESS;
+        return (
+          <mesh
+            key={`${routeId}:hit:${seg.pointIndex}`}
+            position={[seg.cx, seg.cy, 0.03]}
+            onPointerDown={(e) => {
+              if (!isEditableSegment || !editable) return;
+              beginSegmentDrag(e, editable);
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isEditableSegment) return;
+              selectNet(firstNetId);
+            }}
+            onPointerEnter={(e) => {
+              e.stopPropagation();
+              gl.domElement.style.cursor = isEditableSegment
+                ? (seg.horizontal ? 'ns-resize' : 'ew-resize')
+                : 'pointer';
+            }}
+            onPointerLeave={(e) => {
+              e.stopPropagation();
+              if (!segmentDragActive.current) {
+                gl.domElement.style.cursor = 'auto';
+              }
+            }}
+          >
+            <planeGeometry
+              args={seg.horizontal
+                ? [seg.length, hitThickness]
+                : [hitThickness, seg.length]}
+            />
+            <meshBasicMaterial transparent opacity={0.001} depthWrite={false} />
+          </mesh>
+        );
+      })}
 
       {/* Fan-out entries at each endpoint */}
       <BusEntries
         endpoint={endpointA}
         color={color}
         opacity={opacity}
-        lineWidth={isActive ? 2.2 : 1.5}
+        lineWidth={isActive ? 3.6 : 2.8}
       />
       <BusEntries
         endpoint={endpointB}
         color={color}
         opacity={opacity}
-        lineWidth={isActive ? 2.2 : 1.5}
+        lineWidth={isActive ? 3.6 : 2.8}
       />
 
-      {/* Bus name badge on the trunk */}
-      <BusBadge
-        x={badge.x}
-        y={badge.y}
-        name={name}
-        count={signalCount}
-        color={color}
-        bgColor={theme.bgPrimary}
-        opacity={opacity}
-      />
+      {/* Inline protocol label on trunk */}
+      <group
+        position={[labelPose.x, labelPose.y, 0.04]}
+        rotation={[0, 0, labelPose.angle]}
+        raycast={NO_RAYCAST}
+      >
+        {labelGapLength > 0.8 && (
+          <Line
+            points={[
+              [-labelGapLength * 0.5, 0, 0],
+              [labelGapLength * 0.5, 0, 0],
+            ]}
+            lineWidth={(isActive ? 6.4 : 5.1) + 1}
+            color={theme.bgPrimary}
+            transparent={false}
+            toneMapped={false}
+            depthTest={false}
+            raycast={NO_RAYCAST}
+          />
+        )}
+        <Text
+          fontSize={BUS_LABEL_FONT_SIZE}
+          color={color}
+          anchorX="center"
+          anchorY="middle"
+          letterSpacing={BUS_LABEL_LETTER_SPACING}
+          fillOpacity={opacity * 0.9}
+          font={undefined}
+          raycast={NO_RAYCAST}
+        >
+          {name}
+        </Text>
+      </group>
 
       {/* Animated flow dot when selected */}
       {isActive && <FlowDot points={trunkRoute} color={color} />}
@@ -1236,80 +1720,6 @@ function BusEntries({
   );
 }
 
-// ── Bus name badge ─────────────────────────────────────────────
-
-function BusBadge({
-  x,
-  y,
-  name,
-  count,
-  color,
-  bgColor,
-  opacity,
-}: {
-  x: number;
-  y: number;
-  name: string;
-  count: number;
-  color: string;
-  bgColor: string;
-  opacity: number;
-}) {
-  const label = `${name}`;
-  const badgeW = Math.max(name.length * 0.65 + 2, 4.5);
-  const badgeH = 2.2;
-
-  return (
-    <group position={[x, y, 0.04]}>
-      {/* Background mask — hides trunk line behind badge */}
-      <mesh raycast={NO_RAYCAST}>
-        <planeGeometry args={[badgeW + 0.6, badgeH + 0.4]} />
-        <meshBasicMaterial color={bgColor} />
-      </mesh>
-
-      {/* Colored fill (subtle tint) */}
-      <mesh position={[0, 0, 0.001]} raycast={NO_RAYCAST}>
-        <planeGeometry args={[badgeW, badgeH]} />
-        <meshBasicMaterial color={color} transparent opacity={0.12 * (opacity / 0.85)} />
-      </mesh>
-
-      {/* Thin colored border effect */}
-      <mesh position={[0, 0, 0.0005]} raycast={NO_RAYCAST}>
-        <planeGeometry args={[badgeW + 0.25, badgeH + 0.25]} />
-        <meshBasicMaterial color={color} transparent opacity={0.3 * (opacity / 0.85)} />
-      </mesh>
-
-      {/* Bus protocol name */}
-      <Text
-        position={[0, 0.25, 0.002]}
-        fontSize={0.85}
-        color={color}
-        anchorX="center"
-        anchorY="middle"
-        fillOpacity={opacity}
-        font={undefined}
-        raycast={NO_RAYCAST}
-      >
-        {label}
-      </Text>
-
-      {/* Signal count */}
-      <Text
-        position={[0, -0.55, 0.002]}
-        fontSize={0.5}
-        color={color}
-        anchorX="center"
-        anchorY="middle"
-        fillOpacity={opacity * 0.6}
-        font={undefined}
-        raycast={NO_RAYCAST}
-      >
-        {count} signals
-      </Text>
-    </group>
-  );
-}
-
 // ════════════════════════════════════════════════════════════════
 // ── Orthogonal direct connection
 // ════════════════════════════════════════════════════════════════
@@ -1324,6 +1734,7 @@ const OrthogonalConnection = memo(function OrthogonalConnection({
   color,
   opacity,
   isActive,
+  interfaceTrack,
 }: {
   routeId: string;
   net: SchematicNet;
@@ -1334,6 +1745,7 @@ const OrthogonalConnection = memo(function OrthogonalConnection({
   color: string;
   opacity: number;
   isActive: boolean;
+  interfaceTrack: boolean;
 }) {
   const selectNet = useSchematicStore((s) => s.selectNet);
   const hoverNet = useSchematicStore((s) => s.hoverNet);
@@ -1508,7 +1920,7 @@ const OrthogonalConnection = memo(function OrthogonalConnection({
         ref={lineRef}
         points={initialRoute}
         color={color}
-        lineWidth={isActive ? 2.8 : net.type === 'bus' ? 2.2 : 1.5}
+        lineWidth={isActive ? Math.max(2.8, baseTrackWidth(net, interfaceTrack) + 0.8) : baseTrackWidth(net, interfaceTrack)}
         transparent
         opacity={opacity}
       />
@@ -1624,6 +2036,7 @@ function NetStubs({
   color,
   opacity,
   isActive,
+  interfaceTrack,
 }: {
   net: SchematicNet;
   worldPins: WorldPin[];
@@ -1632,6 +2045,7 @@ function NetStubs({
   color: string;
   opacity: number;
   isActive: boolean;
+  interfaceTrack: boolean;
 }) {
   const selectNet = useSchematicStore((s) => s.selectNet);
   const hoverNet = useSchematicStore((s) => s.hoverNet);
@@ -1692,7 +2106,7 @@ function NetStubs({
             <Line
               points={[[pin.x, pin.y, 0], [endX, endY, 0]]}
               color={color}
-              lineWidth={isActive ? 2.8 : 1.5}
+              lineWidth={isActive ? Math.max(2.8, baseTrackWidth(net, interfaceTrack) + 0.8) : baseTrackWidth(net, interfaceTrack)}
               transparent
               opacity={opacity}
               raycast={NO_RAYCAST}
@@ -1707,10 +2121,10 @@ function NetStubs({
               font={undefined}
               raycast={NO_RAYCAST}
             >
-              {net.name}
+              {netStubLabel(net, worldPins, interfaceTrack)}
             </Text>
             <mesh position={[endX, endY, 0.02]} raycast={NO_RAYCAST}>
-              <circleGeometry args={[0.2, 8]} />
+              <circleGeometry args={[0.1, 8]} />
               <meshBasicMaterial color={color} transparent opacity={opacity} />
             </mesh>
           </group>
@@ -1729,11 +2143,13 @@ const CrossingJumps = memo(function CrossingJumps({
   netColorMap,
   theme,
   selectedNetId,
+  highlightedNetIds,
 }: {
   crossings: Crossing[];
   netColorMap: Map<string, string>;
   theme: ThemeColors;
   selectedNetId: string | null;
+  highlightedNetIds: Set<string>;
 }) {
   if (crossings.length === 0) return null;
 
@@ -1746,6 +2162,7 @@ const CrossingJumps = memo(function CrossingJumps({
           netColorMap={netColorMap}
           theme={theme}
           selectedNetId={selectedNetId}
+          highlightedNetIds={highlightedNetIds}
         />
       ))}
     </group>
@@ -1757,20 +2174,23 @@ const CrossingJump = memo(function CrossingJump({
   netColorMap,
   theme,
   selectedNetId,
+  highlightedNetIds,
 }: {
   crossing: Crossing;
   netColorMap: Map<string, string>;
   theme: ThemeColors;
   selectedNetId: string | null;
+  highlightedNetIds: Set<string>;
 }) {
   const { x, y, hNetId, vNetId } = crossing;
-  const hColor = netColorMap.get(hNetId) || theme.pinSignal;
-  const vColor = netColorMap.get(vNetId) || theme.pinSignal;
+  const hColor = netColorMap.get(hNetId) || neutralConnectionColor(theme);
+  const vColor = netColorMap.get(vNetId) || neutralConnectionColor(theme);
 
-  const hActive = selectedNetId === hNetId;
-  const vActive = selectedNetId === vNetId;
-  const hOpacity = hActive ? 1 : selectedNetId ? 0.25 : 0.8;
-  const vOpacity = vActive ? 1 : selectedNetId ? 0.25 : 0.8;
+  const hActive = isNetEmphasized(hNetId, selectedNetId, highlightedNetIds);
+  const vActive = isNetEmphasized(vNetId, selectedNetId, highlightedNetIds);
+  const hasEmphasis = hasAnyNetEmphasis(selectedNetId, highlightedNetIds);
+  const hOpacity = hActive ? 1 : hasEmphasis ? 0.25 : 0.8;
+  const vOpacity = vActive ? 1 : hasEmphasis ? 0.25 : 0.8;
 
   const arcPts = useMemo(
     (): [number, number, number][] =>
@@ -1791,7 +2211,7 @@ const CrossingJump = memo(function CrossingJump({
       <Line
         points={[[x, y - verticalHalfSpan, 0.002], [x, y + verticalHalfSpan, 0.002]]}
         color={vColor}
-        lineWidth={1.5}
+        lineWidth={2.1}
         transparent
         opacity={vOpacity}
         raycast={NO_RAYCAST}
@@ -1799,7 +2219,7 @@ const CrossingJump = memo(function CrossingJump({
       <Line
         points={arcPts}
         color={hColor}
-        lineWidth={1.5}
+        lineWidth={2.1}
         transparent
         opacity={hOpacity}
         raycast={NO_RAYCAST}

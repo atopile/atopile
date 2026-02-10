@@ -26,6 +26,19 @@ export interface SchematicData {
   root: SchematicSheet;
 }
 
+/** Source location metadata for symbol-to-code navigation. */
+export interface SchematicSourceRef {
+  /** Atopile address, usually "file.ato::Module.path". */
+  address?: string;
+  /** Absolute filesystem path to the source file. */
+  filePath?: string;
+  /** Human-friendly instance path (e.g., "PinoutTest.pullup_sda"). */
+  instancePath?: string;
+  /** Optional 1-based line/column hints. */
+  line?: number;
+  column?: number;
+}
+
 // ── Sheet: one level of hierarchy ───────────────────────────────
 
 /**
@@ -63,6 +76,8 @@ export interface SchematicModule {
   /** Computed body dimensions (mm) */
   bodyWidth: number;
   bodyHeight: number;
+  /** Optional source location for go-to-source actions. */
+  source?: SchematicSourceRef;
   /** The module's internal contents — another sheet */
   sheet: SchematicSheet;
 }
@@ -92,6 +107,8 @@ export interface SchematicInterfacePin {
   signals?: string[];
   /** Single-signal GPIO/control bridge with explicit front/back anchors. */
   passThrough?: boolean;
+  /** Optional source location for go-to-source actions. */
+  source?: SchematicSourceRef;
 }
 
 // ── Component: a leaf atomic part ───────────────────────────────
@@ -102,10 +119,28 @@ export interface SchematicComponent {
   name: string;                  // display name e.g. "TLV75901"
   designator: string;            // "U1", "R3"
   reference: string;             // "U", "R", "C"
+  symbolFamily?: SchematicSymbolFamily;
+  symbolVariant?: string;
+  packageCode?: string;
+  polarity?: SchematicPolarity;
   pins: SchematicPin[];
   bodyWidth: number;             // mm
   bodyHeight: number;            // mm
+  /** Optional source location for go-to-source actions. */
+  source?: SchematicSourceRef;
 }
+
+export type SchematicSymbolFamily =
+  | 'resistor'
+  | 'capacitor'
+  | 'capacitor_polarized'
+  | 'inductor'
+  | 'diode'
+  | 'led'
+  | 'connector'
+  | 'testpoint';
+
+export type SchematicPolarity = 'anode_cathode' | 'plus_minus' | 'pin1';
 
 export interface SchematicPin {
   number: string;
@@ -306,6 +341,8 @@ export interface SchematicPort {
   signalPins?: Record<string, { x: number; y: number }>;
   /** Single-signal GPIO/control bridge with explicit front/back anchors. */
   passThrough?: boolean;
+  /** Optional source location for go-to-source actions. */
+  source?: SchematicSourceRef;
 }
 
 // Port geometry constants
@@ -438,6 +475,7 @@ export function derivePortsFromModule(
         pinSide,
         signals,
         signalPins,
+        source: ipin.source,
       };
     }
 
@@ -483,6 +521,7 @@ export function derivePortsFromModule(
       pinY,
       pinSide,
       passThrough: !!ipin.passThrough,
+      source: ipin.source,
     };
   });
 }
@@ -519,6 +558,11 @@ export interface SchematicPowerPort {
 
 export const POWER_PORT_W = 2.0;
 export const POWER_PORT_H = 1.2;
+const DEPRECATED_POWER_PORT_NAMES = new Set(['vcc', 'gnd']);
+
+function isDeprecatedPowerPortName(name: string): boolean {
+  return DEPRECATED_POWER_PORT_NAMES.has(name.trim().toLowerCase());
+}
 
 /**
  * Derive power/ground port symbols from a sheet's nets.
@@ -526,9 +570,22 @@ export const POWER_PORT_H = 1.2;
  */
 export function derivePowerPorts(sheet: SchematicSheet): SchematicPowerPort[] {
   const ports: SchematicPowerPort[] = [];
+  const moduleIds = new Set(sheet.modules.map((mod) => mod.id));
 
   for (const net of sheet.nets) {
     if (net.type !== 'power' && net.type !== 'ground') continue;
+    // Temporary compatibility shim:
+    // hide legacy VCC/GND power symbols now that HV/LV is the canonical naming.
+    // Safe when legacy nets are fully removed because this simply won't match.
+    if (isDeprecatedPowerPortName(net.name) || isDeprecatedPowerPortName(net.id)) continue;
+
+    // Block-level sheets should route module power links like regular nets.
+    // If a power/ground net touches module pins, skip symbolizing this net.
+    const hasBlockLevelEndpoint = net.pins.some((pin) => {
+      if (moduleIds.has(pin.componentId)) return true;
+      return false;
+    });
+    if (hasBlockLevelEndpoint) continue;
 
     for (const pin of net.pins) {
       const id = `__pwr__${net.id}__${pin.componentId}__${pin.pinNumber}`;

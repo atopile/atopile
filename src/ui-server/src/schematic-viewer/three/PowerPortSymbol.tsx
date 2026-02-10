@@ -16,6 +16,7 @@ import type { SchematicPowerPort } from '../types/schematic';
 import { POWER_PORT_W, getPowerPortGridAlignmentOffset } from '../types/schematic';
 import type { ThemeColors } from '../lib/theme';
 import { getUprightTextTransform } from '../lib/itemTransform';
+import { neutralConnectionColor } from './connectionColor';
 
 const NO_RAYCAST = () => {};
 const BAR_HALF = POWER_PORT_W / 2;
@@ -45,9 +46,8 @@ export const PowerPortSymbol = memo(function PowerPortSymbol({
   mirrorY = false,
 }: Props) {
   const zOffset = isDragging ? 0.5 : 0;
-  const isPower = powerPort.type === 'power';
   const isNetSelected = selectedNetId === powerPort.netId;
-  const color = isPower ? theme.pinPower : theme.pinGround;
+  const color = neutralConnectionColor(theme);
   const fillOpacity = isSelected || isNetSelected ? 0.4 : isHovered ? 0.3 : 0;
   const pinX = powerPort.pinX;
   const pinY = powerPort.pinY;
@@ -75,7 +75,7 @@ export const PowerPortSymbol = memo(function PowerPortSymbol({
       )}
 
       <group raycast={NO_RAYCAST}>
-        {isPower ? (
+        {powerPort.type === 'power' ? (
           <PowerBarGlyph
             color={color}
             name={powerPort.name}
@@ -89,7 +89,7 @@ export const PowerPortSymbol = memo(function PowerPortSymbol({
 
       {/* ── Connection dot at pin point ── */}
       <mesh position={[pinX, pinY, 0.01]} raycast={NO_RAYCAST}>
-        <circleGeometry args={[0.25, 10]} />
+        <circleGeometry args={[0.125, 10]} />
         <meshBasicMaterial color={color} />
       </mesh>
     </group>

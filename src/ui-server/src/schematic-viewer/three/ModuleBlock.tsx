@@ -2,7 +2,7 @@ import { useMemo, memo } from 'react';
 import { Text, RoundedBox, Line } from '@react-three/drei';
 import type { SchematicModule, SchematicInterfacePin } from '../types/schematic';
 import type { ThemeColors } from '../lib/theme';
-import { getPinColor, isThemeLight } from '../lib/theme';
+import { isThemeLight } from '../lib/theme';
 import {
   getUprightTextTransform,
   anchorFromVisualSide,
@@ -20,9 +20,12 @@ import {
   getModuleRenderSize,
   getOrderedModuleInterfacePins,
 } from '../lib/moduleInterfaces';
+import { getConnectionColor } from './connectionColor';
 
 const NO_RAYCAST = () => {};
 const MODULE_INSET = 0.72;
+const MODULE_HEADER_PAD_X = 1.6;
+const MODULE_HEADER_Y_OFFSET = 1.34;
 
 function moduleAccentColor(typeName: string, lightMode: boolean): string {
   const t = typeName.toLowerCase();
@@ -78,8 +81,12 @@ export const ModuleBlock = memo(function ModuleBlock({
     [module, pinOrderOverride],
   );
   const { width: W, height: H } = useMemo(
-    () => getModuleRenderSize({ interfacePins }),
-    [interfacePins],
+    () => getModuleRenderSize({
+      interfacePins,
+      bodyWidth: module.bodyWidth,
+      bodyHeight: module.bodyHeight,
+    }),
+    [interfacePins, module.bodyWidth, module.bodyHeight],
   );
   const lightTheme = isThemeLight(theme);
   const accent = useMemo(
@@ -91,9 +98,13 @@ export const ModuleBlock = memo(function ModuleBlock({
   const maxDim = Math.min(W, H);
   const titleFontSize = Math.min(1.48, Math.max(0.88, maxDim * 0.085));
   const subtitleFontSize = Math.min(0.92, Math.max(0.62, titleFontSize * 0.56));
-  const maxTextWidth = W * 0.74;
+  const maxTextWidth = W * 0.68;
   const showType = module.typeName.trim() !== module.name.trim();
   const zOffset = isDragging ? 0.5 : 0;
+  const headerY = H / 2 - MODULE_HEADER_Y_OFFSET;
+  const partCountText = `${module.componentCount} parts`;
+  const partBadgeW = Math.max(3.5, partCountText.length * 0.36 + 1.2);
+  const partBadgeH = 1.14;
   const gridOffset = useMemo(
     () => getModuleGridOffsetFromPins(interfacePins),
     [interfacePins],
@@ -181,14 +192,9 @@ export const ModuleBlock = memo(function ModuleBlock({
         <meshBasicMaterial color={accent} transparent opacity={0.1} depthWrite={false} />
       </RoundedBox>
 
-      <mesh position={[0, H / 2 - 0.52, -0.008]} raycast={NO_RAYCAST}>
-        <planeGeometry args={[Math.max(1.6, W - 1.12), 0.3]} />
-        <meshBasicMaterial color={accent} transparent opacity={0.48} depthWrite={false} />
-      </mesh>
-
       <group position={[0, 0, 0.001]} rotation={[0, 0, textTf.rotationZ]} scale={[textTf.scaleX, textTf.scaleY, 1]}>
         <Text
-          position={[0, showType ? 0.68 : 0.2, 0]}
+          position={[0, showType ? 0.48 : 0.08, 0]}
           fontSize={titleFontSize}
           color={accent}
           anchorX="center"
@@ -203,7 +209,7 @@ export const ModuleBlock = memo(function ModuleBlock({
 
         {showType && (
           <Text
-            position={[0, -0.55, 0]}
+            position={[0, -0.64, 0]}
             fontSize={subtitleFontSize}
             color={theme.textMuted}
             anchorX="center"
@@ -218,8 +224,12 @@ export const ModuleBlock = memo(function ModuleBlock({
         )}
       </group>
 
-      <group position={[W / 2 - 2.3, H / 2 - 1.2, 0.001]} rotation={[0, 0, textTf.rotationZ]} scale={[textTf.scaleX, textTf.scaleY, 1]}>
-        <RoundedBox args={[3.8, 1.2, 0.001]} radius={0.28} smoothness={4} raycast={NO_RAYCAST}>
+      <group
+        position={[W / 2 - MODULE_HEADER_PAD_X - partBadgeW / 2, headerY, 0.001]}
+        rotation={[0, 0, textTf.rotationZ]}
+        scale={[textTf.scaleX, textTf.scaleY, 1]}
+      >
+        <RoundedBox args={[partBadgeW, partBadgeH, 0.001]} radius={0.26} smoothness={4} raycast={NO_RAYCAST}>
           <meshBasicMaterial color={accent} transparent opacity={0.17} depthWrite={false} />
         </RoundedBox>
         <Text
@@ -232,21 +242,7 @@ export const ModuleBlock = memo(function ModuleBlock({
           font={undefined}
           raycast={NO_RAYCAST}
         >
-          {`${module.componentCount} parts`}
-        </Text>
-      </group>
-
-      <group position={[-W / 2 + 1.6, H / 2 - 1.2, 0.001]} rotation={[0, 0, textTf.rotationZ]} scale={[textTf.scaleX, textTf.scaleY, 1]}>
-        <Text
-          fontSize={0.62}
-          color={theme.textMuted}
-          anchorX="left"
-          anchorY="middle"
-          letterSpacing={0.04}
-          font={undefined}
-          raycast={NO_RAYCAST}
-        >
-          {'MODULE'}
+          {partCountText}
         </Text>
       </group>
 
@@ -300,7 +296,7 @@ const InterfacePinElement = memo(function InterfacePinElement({
   mirrorX?: boolean;
   mirrorY?: boolean;
 }) {
-  const color = getPinColor(pin.category, theme);
+  const color = getConnectionColor(pin.category, theme);
   const isHighlighted = netId !== null && netId === selectedNetId;
   const isBus = isBusInterface(pin.signals);
   const dotRadius = getInterfaceDotRadius(pin.signals);
@@ -315,16 +311,21 @@ const InterfacePinElement = memo(function InterfacePinElement({
   const perpY = offset.y;
   const lineColor = isHighlighted ? theme.accent : color;
   const stroke = getInterfaceStrokeStyle(pin.signals, isHighlighted);
-  const edgeMarkerW = pin.side === 'left' || pin.side === 'right'
-    ? 0.22
-    : isBus
-      ? 1.16
-      : 0.86;
-  const edgeMarkerH = pin.side === 'left' || pin.side === 'right'
-    ? isBus
-      ? 1.28
-      : 0.9
-    : 0.22;
+  const edgeMarkerThickness = 0.22;
+  const edgeMarkerLength = isBus ? 1.32 : 0.98;
+  let edgeMarkerW = edgeMarkerThickness;
+  let edgeMarkerH = edgeMarkerThickness;
+  let edgeMarkerX = bodyX;
+  let edgeMarkerY = bodyY;
+  if (pin.side === 'left' || pin.side === 'right') {
+    edgeMarkerW = edgeMarkerLength;
+    edgeMarkerH = edgeMarkerThickness;
+    edgeMarkerX = bodyX + (pin.side === 'left' ? -edgeMarkerLength / 2 : edgeMarkerLength / 2);
+  } else {
+    edgeMarkerW = edgeMarkerThickness;
+    edgeMarkerH = edgeMarkerLength;
+    edgeMarkerY = bodyY + (pin.side === 'bottom' ? -edgeMarkerLength / 2 : edgeMarkerLength / 2);
+  }
 
   let nameX: number;
   let nameY: number;
@@ -353,7 +354,7 @@ const InterfacePinElement = memo(function InterfacePinElement({
 
   return (
     <group raycast={NO_RAYCAST}>
-      <mesh position={[bodyX, bodyY, 0.001]} raycast={NO_RAYCAST}>
+      <mesh position={[edgeMarkerX, edgeMarkerY, 0.001]} raycast={NO_RAYCAST}>
         <planeGeometry args={[edgeMarkerW, edgeMarkerH]} />
         <meshBasicMaterial color={lineColor} transparent opacity={isBus ? 0.52 : 0.32} depthWrite={false} />
       </mesh>

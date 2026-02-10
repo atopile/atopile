@@ -15,7 +15,7 @@ import axios from 'axios';
 import { getCurrentSchematic, onSchematicChanged } from '../common/schematic';
 import { BaseWebview } from './webview-base';
 import { backendServer } from '../common/backendServer';
-import { getProjectRoot } from '../common/target';
+import { getBuildTarget, getProjectRoot } from '../common/target';
 
 /**
  * Locate the schematic viewer dist directory.
@@ -41,6 +41,30 @@ function getSchematicViewerDistPath(): string | null {
 
     return null;
 }
+
+type SchematicBuildPhase = 'idle' | 'building' | 'queued' | 'success' | 'failed';
+
+interface SchematicBuildStatusPayload {
+    phase: SchematicBuildPhase;
+    dirty: boolean;
+    viewingLastSuccessful: boolean;
+    lastSuccessfulAt: number | null;
+    message: string | null;
+}
+
+interface SchematicBuildError {
+    message: string;
+    filePath: string | null;
+    line: number | null;
+    column: number | null;
+}
+
+const SCHEMATIC_BUILD_DEBOUNCE_MS = 500;
+const SCHEMATIC_BUILD_POLL_MS = 700;
+const SCHEMATIC_BUILD_TIMEOUT_MS = 8 * 60 * 1000;
+const SCHEMATIC_INCLUDE_TARGETS = ['schematic'];
+const SCHEMATIC_EXCLUDE_TARGETS = ['default'];
+const AUTO_BUILD_EXTENSIONS = new Set(['.ato', '.py']);
 
 class SchematicWebview extends BaseWebview {
     /**
@@ -172,21 +196,30 @@ class SchematicWebview extends BaseWebview {
                     // Bidirectional: webview sends an atopile address to open in source
                     const address = message.address as string | undefined;
                     const filePath = message.filePath as string | undefined;
+                    const line = message.line as number | undefined;
+                    const column = message.column as number | undefined;
 
                     if (filePath) {
                         // Direct file path (if provided)
-                        this.openSourceFile(filePath, message.line as number, message.column as number);
-                    } else if (address && backendServer.isConnected) {
-                        // Resolve atopile address via the backend API
-                        try {
-                            const root = getProjectRoot();
-                            const url = `${backendServer.apiUrl}/api/resolve-location?address=${encodeURIComponent(address)}${root ? `&project_root=${encodeURIComponent(root)}` : ''}`;
-                            const resp = await axios.get(url);
-                            if (resp.data?.file_path) {
-                                this.openSourceFile(resp.data.file_path, resp.data.line, resp.data.column);
-                            }
-                        } catch {
-                            // Silently fail — resolve-location may not find all addresses
+                        this.openSourceFile(filePath, line, column);
+                    } else if (address) {
+                        const resolved = await this.resolveAddressToSource(address);
+                        if (resolved) {
+                            this.openSourceFile(resolved.filePath, resolved.line, resolved.column);
+                        }
+                    }
+                    break;
+                }
+                case 'revealInExplorer': {
+                    const filePath = message.filePath as string | undefined;
+                    const address = message.address as string | undefined;
+
+                    if (filePath) {
+                        this.revealFileInExplorer(filePath);
+                    } else if (address) {
+                        const resolved = await this.resolveAddressToSource(address);
+                        if (resolved?.filePath) {
+                            this.revealFileInExplorer(resolved.filePath);
                         }
                     }
                     break;
@@ -223,6 +256,18 @@ class SchematicWebview extends BaseWebview {
                     }
                     break;
                 }
+                case 'revertToLastSuccessful': {
+                    if (lastSuccessfulSchematicData) {
+                        this.postMessage({
+                            type: 'update-schematic',
+                            data: lastSuccessfulSchematicData,
+                        });
+                        updateSchematicBuildState({
+                            viewingLastSuccessful: true,
+                        });
+                    }
+                    break;
+                }
             }
         });
     }
@@ -244,6 +289,32 @@ class SchematicWebview extends BaseWebview {
         });
     }
 
+    private revealFileInExplorer(filePath: string): void {
+        void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(filePath));
+    }
+
+    private async resolveAddressToSource(address: string): Promise<{
+        filePath: string;
+        line?: number;
+        column?: number;
+    } | null> {
+        if (!backendServer.isConnected) return null;
+
+        try {
+            const root = getProjectRoot();
+            const url = `${backendServer.apiUrl}/api/resolve-location?address=${encodeURIComponent(address)}${root ? `&project_root=${encodeURIComponent(root)}` : ''}`;
+            const resp = await axios.get(url);
+            const filePath = (resp.data?.file_path ?? resp.data?.file) as string | undefined;
+            if (!filePath) return null;
+            const line = typeof resp.data?.line === 'number' ? resp.data.line : undefined;
+            const column = typeof resp.data?.column === 'number' ? resp.data.column : undefined;
+            return { filePath, line, column };
+        } catch {
+            // Silently fail — resolve-location may not find all addresses
+            return null;
+        }
+    }
+
     /**
      * Send a message to the webview (for active file tracking etc).
      */
@@ -253,29 +324,401 @@ class SchematicWebview extends BaseWebview {
 }
 
 let schematicViewer: SchematicWebview | undefined;
+let buildDebounceTimer: NodeJS.Timeout | null = null;
+let buildInFlight = false;
+let buildQueued = false;
+let lastSuccessfulSchematicData: unknown | null = null;
+let lastBuildErrors: SchematicBuildError[] = [];
 
-export async function openSchematicPreview() {
-    if (!schematicViewer) {
-        schematicViewer = new SchematicWebview();
+const schematicBuildState: SchematicBuildStatusPayload = {
+    phase: 'idle',
+    dirty: false,
+    viewingLastSuccessful: false,
+    lastSuccessfulAt: null,
+    message: null,
+};
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function updateSchematicBuildState(
+    patch: Partial<SchematicBuildStatusPayload>,
+): void {
+    Object.assign(schematicBuildState, patch);
+    schematicViewer?.postMessage({
+        type: 'schematic-build-status',
+        ...schematicBuildState,
+    });
+}
+
+function setSchematicBuildErrors(errors: SchematicBuildError[]): void {
+    lastBuildErrors = errors;
+    schematicViewer?.postMessage({
+        type: 'schematic-build-errors',
+        errors,
+    });
+}
+
+function readCurrentSchematicPayload():
+    | { data: unknown; mtimeMs: number }
+    | null {
+    const resource = getCurrentSchematic();
+    if (!resource?.exists) return null;
+    try {
+        const raw = fs.readFileSync(resource.path, 'utf-8');
+        const data = JSON.parse(raw);
+        const mtimeMs = fs.statSync(resource.path).mtimeMs;
+        return { data, mtimeMs };
+    } catch {
+        return null;
     }
-    await schematicViewer.open();
+}
+
+function rememberLastSuccessfulSchematic(
+    data: unknown,
+    mtimeMs?: number,
+): void {
+    lastSuccessfulSchematicData = data;
+    updateSchematicBuildState({
+        lastSuccessfulAt: mtimeMs ?? Date.now(),
+    });
 }
 
 /**
  * Send updated schematic data to an already-open webview without
  * replacing the HTML (preserves navigation state, selection, etc.).
  */
-function sendSchematicUpdate() {
-    if (!schematicViewer?.isOpen()) return;
-    const resource = getCurrentSchematic();
-    if (!resource?.exists) return;
-    try {
-        const raw = fs.readFileSync(resource.path, 'utf-8');
-        const data = JSON.parse(raw);
-        schematicViewer.postMessage({ type: 'update-schematic', data });
-    } catch {
-        // File may be mid-write or corrupt — silently skip
+function sendSchematicUpdate(markSuccessful: boolean = false): boolean {
+    if (!schematicViewer?.isOpen()) return false;
+    const payload = readCurrentSchematicPayload();
+    if (!payload) return false;
+
+    schematicViewer.postMessage({ type: 'update-schematic', data: payload.data });
+
+    if (markSuccessful) {
+        rememberLastSuccessfulSchematic(payload.data, payload.mtimeMs);
+        setSchematicBuildErrors([]);
+        if (!buildInFlight) {
+            updateSchematicBuildState({
+                phase: 'success',
+                dirty: false,
+                viewingLastSuccessful: false,
+                message: null,
+            });
+        }
     }
+
+    return true;
+}
+
+function parseBuildIdFromResponse(data: unknown): string | null {
+    const obj = (data && typeof data === 'object') ? data as Record<string, unknown> : {};
+    const rawTargets = obj.buildTargets ?? obj.build_targets;
+    if (!Array.isArray(rawTargets) || rawTargets.length === 0) return null;
+    const first = rawTargets[0];
+    if (!first || typeof first !== 'object') return null;
+    const firstObj = first as Record<string, unknown>;
+    const buildId = firstObj.buildId ?? firstObj.build_id;
+    return typeof buildId === 'string' ? buildId : null;
+}
+
+async function enqueueSchematicBuild(projectRoot: string, target: string): Promise<string> {
+    const response = await axios.post(
+        `${backendServer.apiUrl}/api/build`,
+        {
+            project_root: projectRoot,
+            targets: [target],
+            include_targets: SCHEMATIC_INCLUDE_TARGETS,
+            exclude_targets: SCHEMATIC_EXCLUDE_TARGETS,
+        },
+        { timeout: 15000 },
+    );
+    const data = response.data;
+    const success = (data && typeof data === 'object')
+        ? ((data as Record<string, unknown>).success !== false)
+        : true;
+    if (!success) {
+        const msg = (data as Record<string, unknown> | undefined)?.message;
+        throw new Error(typeof msg === 'string' ? msg : 'Failed to queue schematic build');
+    }
+    const buildId = parseBuildIdFromResponse(data);
+    if (!buildId) {
+        throw new Error('Schematic build queued without build ID');
+    }
+    return buildId;
+}
+
+async function waitForBuildCompletion(buildId: string): Promise<{
+    status: string;
+    error: string | null;
+}> {
+    const deadline = Date.now() + SCHEMATIC_BUILD_TIMEOUT_MS;
+
+    while (Date.now() < deadline) {
+        const response = await axios.get(`${backendServer.apiUrl}/api/build/${buildId}/status`, {
+            timeout: 10000,
+        });
+        const data = response.data as Record<string, unknown>;
+        const status = typeof data.status === 'string' ? data.status : 'queued';
+        const error = typeof data.error === 'string' ? data.error : null;
+
+        if (status === 'queued') {
+            updateSchematicBuildState({
+                phase: 'queued',
+                dirty: true,
+                viewingLastSuccessful: !!lastSuccessfulSchematicData,
+                message: 'Build queued',
+            });
+        } else if (status === 'building') {
+            updateSchematicBuildState({
+                phase: 'building',
+                dirty: true,
+                viewingLastSuccessful: !!lastSuccessfulSchematicData,
+                message: null,
+            });
+        } else {
+            return { status, error };
+        }
+
+        await sleep(SCHEMATIC_BUILD_POLL_MS);
+    }
+
+    return { status: 'failed', error: 'Schematic build timed out' };
+}
+
+async function fetchBuildErrors(
+    projectRoot: string,
+    target: string,
+    startedAtMs: number,
+): Promise<SchematicBuildError[]> {
+    try {
+        const response = await axios.get(`${backendServer.apiUrl}/api/problems`, {
+            params: {
+                project_root: projectRoot,
+                build_name: target,
+                level: 'error',
+            },
+            timeout: 10000,
+        });
+        const rawProblems = response.data?.problems;
+        if (!Array.isArray(rawProblems)) return [];
+        return rawProblems
+            .filter((p: Record<string, unknown>) => {
+                const timestamp = typeof p.timestamp === 'string'
+                    ? Date.parse(p.timestamp)
+                    : Number.NaN;
+                return Number.isNaN(timestamp) || timestamp >= startedAtMs - 5000;
+            })
+            .map((p: Record<string, unknown>) => {
+                const rawFile = typeof p.file === 'string' ? p.file : null;
+                const filePath = rawFile
+                    ? (path.isAbsolute(rawFile) ? rawFile : path.resolve(projectRoot, rawFile))
+                    : null;
+                const line = typeof p.line === 'number'
+                    ? p.line
+                    : (typeof p.line === 'string' ? Number.parseInt(p.line, 10) : null);
+                const column = typeof p.column === 'number'
+                    ? p.column
+                    : (typeof p.column === 'string' ? Number.parseInt(p.column, 10) : null);
+                return {
+                    message: typeof p.message === 'string' ? p.message : 'Build error',
+                    filePath,
+                    line: Number.isFinite(line ?? Number.NaN) ? line : null,
+                    column: Number.isFinite(column ?? Number.NaN) ? column : null,
+                };
+            });
+    } catch {
+        return [];
+    }
+}
+
+async function runAutoSchematicBuild(): Promise<void> {
+    if (buildInFlight) return;
+    const build = getBuildTarget();
+    if (!build) {
+        updateSchematicBuildState({
+            phase: 'failed',
+            dirty: true,
+            viewingLastSuccessful: !!lastSuccessfulSchematicData,
+            message: 'No build target selected for schematic rebuild',
+        });
+        return;
+    }
+
+    buildInFlight = true;
+    const startedAtMs = Date.now();
+    updateSchematicBuildState({
+        phase: 'building',
+        dirty: true,
+        viewingLastSuccessful: !!lastSuccessfulSchematicData,
+        message: null,
+    });
+    setSchematicBuildErrors([]);
+
+    try {
+        await backendServer.startServer();
+        const buildId = await enqueueSchematicBuild(build.root, build.name);
+
+        const result = await waitForBuildCompletion(buildId);
+        if (result.status === 'success' || result.status === 'warning') {
+            const updated = sendSchematicUpdate(true);
+            if (!updated && lastSuccessfulSchematicData) {
+                schematicViewer?.postMessage({
+                    type: 'update-schematic',
+                    data: lastSuccessfulSchematicData,
+                });
+            }
+            updateSchematicBuildState({
+                phase: 'success',
+                dirty: false,
+                viewingLastSuccessful: false,
+                message: null,
+            });
+            setSchematicBuildErrors([]);
+        } else {
+            const errors = await fetchBuildErrors(build.root, build.name, startedAtMs);
+            if (errors.length === 0) {
+                errors.push({
+                    message: result.error || `Build ${result.status}`,
+                    filePath: null,
+                    line: null,
+                    column: null,
+                });
+            }
+            setSchematicBuildErrors(errors);
+            updateSchematicBuildState({
+                phase: 'failed',
+                dirty: true,
+                viewingLastSuccessful: !!lastSuccessfulSchematicData,
+                message: result.error || `Build ${result.status}`,
+            });
+            if (lastSuccessfulSchematicData) {
+                schematicViewer?.postMessage({
+                    type: 'update-schematic',
+                    data: lastSuccessfulSchematicData,
+                });
+            }
+        }
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setSchematicBuildErrors([
+            {
+                message,
+                filePath: null,
+                line: null,
+                column: null,
+            },
+        ]);
+        updateSchematicBuildState({
+            phase: 'failed',
+            dirty: true,
+            viewingLastSuccessful: !!lastSuccessfulSchematicData,
+            message,
+        });
+        if (lastSuccessfulSchematicData) {
+            schematicViewer?.postMessage({
+                type: 'update-schematic',
+                data: lastSuccessfulSchematicData,
+            });
+        }
+    } finally {
+        buildInFlight = false;
+        if (buildQueued) {
+            buildQueued = false;
+            if (buildDebounceTimer) {
+                clearTimeout(buildDebounceTimer);
+            }
+            buildDebounceTimer = setTimeout(() => {
+                buildDebounceTimer = null;
+                void runAutoSchematicBuild();
+            }, SCHEMATIC_BUILD_DEBOUNCE_MS);
+        }
+    }
+}
+
+function scheduleAutoSchematicBuild(): void {
+    if (!schematicViewer?.isOpen()) return;
+
+    if (buildInFlight) {
+        buildQueued = true;
+        updateSchematicBuildState({
+            phase: 'queued',
+            dirty: true,
+            viewingLastSuccessful: !!lastSuccessfulSchematicData,
+            message: 'Build queued',
+        });
+        return;
+    }
+
+    updateSchematicBuildState({
+        dirty: true,
+        viewingLastSuccessful: !!lastSuccessfulSchematicData,
+    });
+
+    if (buildDebounceTimer) {
+        clearTimeout(buildDebounceTimer);
+    }
+
+    buildDebounceTimer = setTimeout(() => {
+        buildDebounceTimer = null;
+        void runAutoSchematicBuild();
+    }, SCHEMATIC_BUILD_DEBOUNCE_MS);
+}
+
+function shouldAutoBuildForSave(document: vscode.TextDocument): boolean {
+    if (!schematicViewer?.isOpen()) return false;
+    if (document.uri.scheme !== 'file') return false;
+
+    const fsPath = document.uri.fsPath;
+    const basename = path.basename(fsPath).toLowerCase();
+    const ext = path.extname(fsPath).toLowerCase();
+
+    if (ext === '.ato_sch') return false;
+    const isAllowed = basename === 'ato.yaml' || AUTO_BUILD_EXTENSIONS.has(ext);
+    if (!isAllowed) return false;
+
+    const selectedBuild = getBuildTarget();
+    if (!selectedBuild?.root) return false;
+
+    const rel = path.relative(selectedBuild.root, fsPath);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
+
+    return true;
+}
+
+function clearBuildDebounce(): void {
+    if (buildDebounceTimer) {
+        clearTimeout(buildDebounceTimer);
+        buildDebounceTimer = null;
+    }
+}
+
+function pushBuildStateAndErrorsToWebview(): void {
+    if (!schematicViewer?.isOpen()) return;
+    schematicViewer.postMessage({
+        type: 'schematic-build-status',
+        ...schematicBuildState,
+    });
+    schematicViewer.postMessage({
+        type: 'schematic-build-errors',
+        errors: lastBuildErrors,
+    });
+}
+
+export async function openSchematicPreview() {
+    if (!schematicViewer) {
+        schematicViewer = new SchematicWebview();
+    }
+    await schematicViewer.open();
+
+    // Always seed from the currently selected schematic to avoid stale
+    // last-successful snapshots when switching targets/projects.
+    sendSchematicUpdate(true);
+
+    setTimeout(() => {
+        pushBuildStateAndErrorsToWebview();
+    }, 150);
 }
 
 export function closeSchematicPreview() {
@@ -300,9 +743,13 @@ export async function activate(context: vscode.ExtensionContext) {
                     return;
                 }
                 // For external changes (rebuild), send data via message
-                // to preserve navigation state instead of replacing HTML
-                sendSchematicUpdate();
+                // to preserve navigation state instead of replacing HTML.
+                sendSchematicUpdate(true);
             }
+        }),
+        vscode.workspace.onDidSaveTextDocument((document) => {
+            if (!shouldAutoBuildForSave(document)) return;
+            scheduleAutoSchematicBuild();
         }),
         // Track active editor for bidirectional navigation
         vscode.window.onDidChangeActiveTextEditor((editor) => {
@@ -315,5 +762,6 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
+    clearBuildDebounce();
     closeSchematicPreview();
 }

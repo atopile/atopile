@@ -7,6 +7,7 @@
  */
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import { getStandardInterfaceColor } from '../interfaceColors'
 import './PinoutViewer.css'
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -54,19 +55,20 @@ interface BusData {
 
 // ── Constants ──────────────────────────────────────────────────────────
 
-const BUS_COLORS: Record<string, string> = {
-  Power: '#e06c75', I2C: '#61afef', SPI: '#c678dd', UART: '#e5c07b',
-  I2S: '#56b6c2', USB: '#98c379', JTAG: '#d19a66', Crystal: '#abb2bf',
-  Analog: '#be5046', GPIO: '#6b7280', Control: '#d19a66', Signal: '#4b5263',
+const TYPE_COLORS: Record<string, string> = {
+  power: '#ce8ea1', ground: '#9aa4b8', signal: '#9aa3b5', nc: '#5b6273',
 }
 
-const TYPE_COLORS: Record<string, string> = {
-  power: '#e06c75', ground: '#555', signal: '#888', nc: '#3e4451',
+function getBusColor(type: string): string {
+  const normalized = type.trim().toLowerCase()
+  if (normalized === 'power') return '#ce8ea1'
+  if (normalized === 'ground') return '#9aa4b8'
+  return getStandardInterfaceColor(type) || '#9aa3b5'
 }
 
 function getPinColor(pin: PinData): string {
-  if (pin.active_function) return BUS_COLORS[pin.active_function.type] || '#666'
-  return TYPE_COLORS[pin.type] || '#666'
+  if (pin.active_function) return getBusColor(pin.active_function.type)
+  return TYPE_COLORS[pin.type] || '#9aa3b5'
 }
 
 // ── Scale: convert mm to px ────────────────────────────────────────────
@@ -236,7 +238,7 @@ export function PinoutViewer({ data }: PinoutViewerProps) {
                 className={`pinout-bus-item ${selectedBus === b.id ? 'active' : ''}`}
                 onClick={(e) => { e.stopPropagation(); setSelectedBus(prev => prev === b.id ? null : b.id) }}
               >
-                <span className="pinout-bus-swatch" style={{ background: BUS_COLORS[b.type] || '#666' }} />
+                <span className="pinout-bus-swatch" style={{ background: getBusColor(b.type) }} />
                 <span className="pinout-bus-name">{b.name}</span>
                 <span className="pinout-bus-type">{b.type}</span>
                 <span className="pinout-bus-cnt">{b.pinCount}</span>
@@ -632,7 +634,7 @@ function PinDetail({ pin, pos, onClose }: PinDetailProps) {
         <>
           <div className="pinout-detail-section">Active</div>
           <div className="pinout-detail-fn">
-            <span className="pinout-detail-dot" style={{ background: BUS_COLORS[pin.active_function.type] || '#666' }} />
+            <span className="pinout-detail-dot" style={{ background: getBusColor(pin.active_function.type) }} />
             <span className="pinout-detail-fn-name">{pin.active_function.name}</span>
             <span className="pinout-detail-fn-type">{pin.active_function.type}</span>
           </div>
@@ -644,7 +646,7 @@ function PinDetail({ pin, pos, onClose }: PinDetailProps) {
           <div className="pinout-detail-section">Alternates</div>
           {pin.alternate_functions.map((fn, i) => (
             <div key={i} className="pinout-detail-fn">
-              <span className="pinout-detail-dot" style={{ background: BUS_COLORS[fn.type] || '#666' }} />
+              <span className="pinout-detail-dot" style={{ background: getBusColor(fn.type) }} />
               <span className="pinout-detail-fn-name">{fn.name}</span>
               <span className="pinout-detail-fn-type">{fn.type}</span>
             </div>

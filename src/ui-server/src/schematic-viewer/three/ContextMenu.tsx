@@ -1,13 +1,13 @@
 /**
- * ContextMenu — right-click alignment/distribution menu for multi-selected items.
+ * ContextMenu — right-click context actions for alignment, ports, and source links.
  *
  * Rendered as an HTML overlay (not Three.js) for crisp text and native behavior.
- * Only appears when 2+ items are selected and user right-clicks.
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { ThemeColors } from '../lib/theme';
-import { useSchematicStore, type AlignMode } from '../stores/schematicStore';
+import { useCurrentPorts, useCurrentSheet, useSchematicStore, type AlignMode } from '../stores/schematicStore';
+import { postToExtension } from '../lib/vscodeApi';
 
 interface Props {
   theme: ThemeColors;
@@ -31,7 +31,10 @@ export function ContextMenu({ theme }: Props) {
   const setPortEditMode = useSchematicStore((s) => s.setPortEditMode);
   const portEditMode = useSchematicStore((s) => s.portEditMode);
   const portEditTargetId = useSchematicStore((s) => s.portEditTargetId);
+  const selectedComponentId = useSchematicStore((s) => s.selectedComponentId);
   const selectedCount = useSchematicStore((s) => s.selectedComponentIds.length);
+  const sheet = useCurrentSheet();
+  const ports = useCurrentPorts();
   const menuRef = useRef<HTMLDivElement>(null);
 
   const handleClick = useCallback(
@@ -43,7 +46,7 @@ export function ContextMenu({ theme }: Props) {
   );
 
   const handlePortEditToggle = useCallback(() => {
-    const targetId = contextMenu?.portId ?? null;
+    const targetId = contextMenu?.targetId ?? null;
     if (!targetId && !portEditMode) {
       closeContextMenu();
       return;
@@ -55,6 +58,51 @@ export function ContextMenu({ theme }: Props) {
     }
     closeContextMenu();
   }, [setPortEditMode, portEditMode, portEditTargetId, contextMenu, closeContextMenu]);
+
+  const menuTargetId = contextMenu?.targetId ?? selectedComponentId ?? null;
+  const source = useMemo(() => {
+    if (!menuTargetId) return null;
+    return sheet?.components.find((c) => c.id === menuTargetId)?.source
+      ?? sheet?.modules.find((m) => m.id === menuTargetId)?.source
+      ?? ports.find((p) => p.id === menuTargetId)?.source
+      ?? null;
+  }, [menuTargetId, sheet, ports]);
+  const fallbackAddress = menuTargetId && menuTargetId.includes('::')
+    ? menuTargetId
+    : undefined;
+  const openSourceRequest = useMemo(() => {
+    const address = source?.address ?? fallbackAddress;
+    const filePath = source?.filePath;
+    if (!address && !filePath) return null;
+    return {
+      address,
+      filePath,
+      line: source?.line,
+      column: source?.column,
+    };
+  }, [source, fallbackAddress]);
+  const revealSourceRequest = useMemo(() => {
+    const address = source?.address ?? fallbackAddress;
+    const filePath = source?.filePath;
+    if (!address && !filePath) return null;
+    return { address, filePath };
+  }, [source, fallbackAddress]);
+  const handleOpenSource = useCallback(() => {
+    if (!openSourceRequest) return;
+    postToExtension({
+      type: 'openSource',
+      ...openSourceRequest,
+    });
+    closeContextMenu();
+  }, [openSourceRequest, closeContextMenu]);
+  const handleRevealSource = useCallback(() => {
+    if (!revealSourceRequest) return;
+    postToExtension({
+      type: 'revealInExplorer',
+      ...revealSourceRequest,
+    });
+    closeContextMenu();
+  }, [revealSourceRequest, closeContextMenu]);
 
   // Close on click outside
   useEffect(() => {
@@ -76,7 +124,8 @@ export function ContextMenu({ theme }: Props) {
 
   if (!contextMenu) return null;
   if (contextMenu.kind === 'align' && selectedCount < 2) return null;
-  if (contextMenu.kind === 'port' && !contextMenu.portId && !portEditMode) return null;
+  if (contextMenu.kind === 'port' && !contextMenu.targetId && !portEditMode) return null;
+  if (contextMenu.kind === 'selection' && !menuTargetId) return null;
 
   return (
     <div
@@ -111,33 +160,15 @@ export function ContextMenu({ theme }: Props) {
             Align ({selectedCount} items)
           </div>
           {MENU_ITEMS.map((item) => (
-            <button
+            <MenuButton
               key={item.mode}
+              theme={theme}
+              label={item.label}
               onClick={() => handleClick(item.mode)}
-              style={{
-                display: 'block',
-                width: '100%',
-                padding: '6px 12px',
-                background: 'none',
-                border: 'none',
-                color: theme.textPrimary,
-                fontSize: 12,
-                textAlign: 'left',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}
-              onMouseEnter={(e) => {
-                (e.target as HTMLButtonElement).style.background = theme.bgTertiary;
-              }}
-              onMouseLeave={(e) => {
-                (e.target as HTMLButtonElement).style.background = 'none';
-              }}
-            >
-              {item.label}
-            </button>
+            />
           ))}
         </>
-      ) : (
+      ) : contextMenu.kind === 'port' ? (
         <>
           <div
             style={{
@@ -151,35 +182,109 @@ export function ContextMenu({ theme }: Props) {
           >
             Ports
           </div>
-          <button
+          <MenuButton
+            theme={theme}
             onClick={handlePortEditToggle}
+            label={
+              portEditMode && (!contextMenu.targetId || contextMenu.targetId === portEditTargetId)
+                ? 'Done Editing Ports'
+                : portEditMode
+                  ? 'Edit These Ports'
+                  : 'Edit Ports'
+            }
+          />
+          {(openSourceRequest || revealSourceRequest) && (
+            <>
+              <div
+                style={{
+                  margin: '4px 0',
+                  borderTop: `1px solid ${theme.borderColor}`,
+                }}
+              />
+              <MenuButton
+                theme={theme}
+                label="Open in ATO"
+                disabled={!openSourceRequest}
+                onClick={handleOpenSource}
+              />
+              <MenuButton
+                theme={theme}
+                label="Reveal in Explorer"
+                disabled={!revealSourceRequest}
+                onClick={handleRevealSource}
+              />
+            </>
+          )}
+        </>
+      ) : (
+        <>
+          <div
             style={{
-              display: 'block',
-              width: '100%',
-              padding: '6px 12px',
-              background: 'none',
-              border: 'none',
-              color: theme.textPrimary,
-              fontSize: 12,
-              textAlign: 'left',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-            }}
-            onMouseEnter={(e) => {
-              (e.target as HTMLButtonElement).style.background = theme.bgTertiary;
-            }}
-            onMouseLeave={(e) => {
-              (e.target as HTMLButtonElement).style.background = 'none';
+              padding: '4px 12px 6px',
+              color: theme.textMuted,
+              fontSize: 10,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
             }}
           >
-            {portEditMode && (!contextMenu.portId || contextMenu.portId === portEditTargetId)
-              ? 'Done Editing Ports'
-              : portEditMode
-                ? 'Edit These Ports'
-                : 'Edit Ports'}
-          </button>
+            Symbol
+          </div>
+          <MenuButton
+            theme={theme}
+            label="Open in ATO"
+            disabled={!openSourceRequest}
+            onClick={handleOpenSource}
+          />
+          <MenuButton
+            theme={theme}
+            label="Reveal in Explorer"
+            disabled={!revealSourceRequest}
+            onClick={handleRevealSource}
+          />
         </>
       )}
     </div>
+  );
+}
+
+function MenuButton({
+  theme,
+  label,
+  onClick,
+  disabled,
+}: {
+  theme: ThemeColors;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: 'block',
+        width: '100%',
+        padding: '6px 12px',
+        background: 'none',
+        border: 'none',
+        color: disabled ? theme.textMuted : theme.textPrimary,
+        fontSize: 12,
+        textAlign: 'left',
+        cursor: disabled ? 'default' : 'pointer',
+        fontFamily: 'inherit',
+      }}
+      onMouseEnter={(e) => {
+        if (disabled) return;
+        (e.target as HTMLButtonElement).style.background = theme.bgTertiary;
+      }}
+      onMouseLeave={(e) => {
+        if (disabled) return;
+        (e.target as HTMLButtonElement).style.background = 'none';
+      }}
+    >
+      {label}
+    </button>
   );
 }

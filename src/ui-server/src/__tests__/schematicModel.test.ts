@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  derivePowerPorts,
   derivePortsFromModule,
   getNormalizedComponentPinGeometry,
   getPortPinNumbers,
   getRootSheet,
+  type SchematicSheet,
   type SchematicModule,
 } from '../schematic-viewer/types/schematic';
 
@@ -111,5 +113,213 @@ describe('schematic model contracts', () => {
     // while row shifts track the normalized pin Y.
     expect(right.bodyX).toBeCloseTo(component.pins[1].bodyX, 6);
     expect(right.bodyY).toBeCloseTo(right.y, 6);
+  });
+
+  it('derives power symbols for component-only HV/LV nets', () => {
+    const sheet: SchematicSheet = {
+      modules: [],
+      components: [
+        {
+          kind: 'component',
+          id: 'u1',
+          name: 'u1',
+          designator: 'U1',
+          reference: 'U',
+          bodyWidth: 10,
+          bodyHeight: 6,
+          pins: [
+            {
+              number: '1',
+              name: 'HV',
+              side: 'left',
+              electricalType: 'power_in',
+              category: 'power',
+              x: -2.54,
+              y: 0,
+              bodyX: -2,
+              bodyY: 0,
+            },
+            {
+              number: '2',
+              name: 'LV',
+              side: 'left',
+              electricalType: 'power_in',
+              category: 'ground',
+              x: -2.54,
+              y: -2.54,
+              bodyX: -2,
+              bodyY: -2.54,
+            },
+          ],
+        },
+      ],
+      nets: [
+        {
+          id: 'hv',
+          name: 'hv',
+          type: 'power',
+          pins: [{ componentId: 'u1', pinNumber: '1' }],
+        },
+        {
+          id: 'lv',
+          name: 'lv',
+          type: 'ground',
+          pins: [{ componentId: 'u1', pinNumber: '2' }],
+        },
+      ],
+    };
+
+    const ports = derivePowerPorts(sheet);
+    expect(ports).toHaveLength(2);
+    expect(ports.map((p) => p.name).sort()).toEqual(['hv', 'lv']);
+    expect(ports.every((p) => p.componentId === 'u1')).toBe(true);
+  });
+
+  it('filters deprecated VCC/GND power symbols while keeping HV/LV', () => {
+    const sheet: SchematicSheet = {
+      modules: [],
+      components: [
+        {
+          kind: 'component',
+          id: 'u1',
+          name: 'u1',
+          designator: 'U1',
+          reference: 'U',
+          bodyWidth: 10,
+          bodyHeight: 6,
+          pins: [
+            {
+              number: '1',
+              name: 'VCC',
+              side: 'left',
+              electricalType: 'power_in',
+              category: 'power',
+              x: -2.54,
+              y: 0,
+              bodyX: -2,
+              bodyY: 0,
+            },
+            {
+              number: '2',
+              name: 'GND',
+              side: 'left',
+              electricalType: 'power_in',
+              category: 'ground',
+              x: -2.54,
+              y: -2.54,
+              bodyX: -2,
+              bodyY: -2.54,
+            },
+            {
+              number: '3',
+              name: 'HV',
+              side: 'left',
+              electricalType: 'power_in',
+              category: 'power',
+              x: -2.54,
+              y: -5.08,
+              bodyX: -2,
+              bodyY: -5.08,
+            },
+            {
+              number: '4',
+              name: 'LV',
+              side: 'left',
+              electricalType: 'power_in',
+              category: 'ground',
+              x: -2.54,
+              y: -7.62,
+              bodyX: -2,
+              bodyY: -7.62,
+            },
+          ],
+        },
+      ],
+      nets: [
+        {
+          id: 'VCC',
+          name: 'VCC',
+          type: 'power',
+          pins: [{ componentId: 'u1', pinNumber: '1' }],
+        },
+        {
+          id: 'gnd',
+          name: 'gnd',
+          type: 'ground',
+          pins: [{ componentId: 'u1', pinNumber: '2' }],
+        },
+        {
+          id: 'hv',
+          name: 'hv',
+          type: 'power',
+          pins: [{ componentId: 'u1', pinNumber: '3' }],
+        },
+        {
+          id: 'lv',
+          name: 'lv',
+          type: 'ground',
+          pins: [{ componentId: 'u1', pinNumber: '4' }],
+        },
+      ],
+    };
+
+    const ports = derivePowerPorts(sheet);
+    expect(ports).toHaveLength(2);
+    expect(ports.map((p) => p.name).sort()).toEqual(['hv', 'lv']);
+  });
+
+  it('skips power symbols for nets that touch module-level endpoints', () => {
+    const sheet: SchematicSheet = {
+      modules: [
+        {
+          kind: 'module',
+          id: 'm1',
+          name: 'm1',
+          typeName: 'M1',
+          componentCount: 0,
+          bodyWidth: 20,
+          bodyHeight: 12,
+          interfacePins: [],
+          sheet: { modules: [], components: [], nets: [] },
+        },
+      ],
+      components: [
+        {
+          kind: 'component',
+          id: 'u1',
+          name: 'u1',
+          designator: 'U1',
+          reference: 'U',
+          bodyWidth: 10,
+          bodyHeight: 6,
+          pins: [
+            {
+              number: '1',
+              name: 'VCC',
+              side: 'left',
+              electricalType: 'power_in',
+              category: 'power',
+              x: -2.54,
+              y: 0,
+              bodyX: -2,
+              bodyY: 0,
+            },
+          ],
+        },
+      ],
+      nets: [
+        {
+          id: 'vcc',
+          name: 'VCC',
+          type: 'power',
+          pins: [
+            { componentId: 'u1', pinNumber: '1' },
+            { componentId: 'm1', pinNumber: 'power' },
+          ],
+        },
+      ],
+    };
+
+    expect(derivePowerPorts(sheet)).toHaveLength(0);
   });
 });

@@ -8,6 +8,7 @@
     "dev:all": "./dev.sh",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "symbols:import": "tsx scripts/import-kicad-canonical-symbols.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

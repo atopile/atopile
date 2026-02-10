@@ -70,8 +70,8 @@ interface SchematicState {
   contextMenu: {
     x: number;
     y: number;
-    kind: 'align' | 'port';
-    portId?: string;
+    kind: 'align' | 'port' | 'selection';
+    targetId?: string;
   } | null;
 
   // Port edit mode (reorder + snap)
@@ -111,7 +111,12 @@ interface SchematicState {
   alignSelected: (mode: AlignMode) => void;
 
   // Context menu
-  openContextMenu: (x: number, y: number, kind?: 'align' | 'port', portId?: string) => void;
+  openContextMenu: (
+    x: number,
+    y: number,
+    kind?: 'align' | 'port' | 'selection',
+    targetId?: string,
+  ) => void;
   closeContextMenu: () => void;
 
   // Port edit mode
@@ -821,6 +826,7 @@ export const useSchematicStore = create<SchematicState>()(
 
         const centroidX = selectedItems.reduce((sum, item) => sum + item.pos.x, 0) / selectedItems.length;
         const centroidY = selectedItems.reduce((sum, item) => sum + item.pos.y, 0) / selectedItems.length;
+
         const rotated = selectedItems.map((item) => {
           const dx = item.pos.x - centroidX;
           const dy = item.pos.y - centroidY;
@@ -831,7 +837,7 @@ export const useSchematicStore = create<SchematicState>()(
           };
         });
 
-        // Apply a shared translation so all items stay on-grid while preserving spacing.
+        // Apply one shared translation so we keep exact relative spacing.
         const anchor = rotated[0];
         const shiftX = snapToGrid(anchor.x) - anchor.x;
         const shiftY = snapToGrid(anchor.y) - anchor.y;
@@ -845,6 +851,7 @@ export const useSchematicStore = create<SchematicState>()(
             rotation: ((pos.rotation || 0) + 90) % 360,
           };
         }
+
         debouncedSave(newPositions, s.portSignalOrders, s.routeOverrides);
         return { positions: newPositions };
       });
@@ -901,13 +908,46 @@ export const useSchematicStore = create<SchematicState>()(
     mirrorSelectedY: () => {
       const { selectedComponentIds, currentPath, positions } = get();
       if (selectedComponentIds.length === 0) return;
+      const selectedItems = selectedComponentIds
+        .map((id) => {
+          const key = scopedId(currentPath, id);
+          const pos = positions[key];
+          if (!pos) return null;
+          return { id, key, pos };
+        })
+        .filter((item): item is { id: string; key: string; pos: ComponentPosition } => !!item);
+      if (selectedItems.length === 0) return;
+
       pushUndo(positions, get().portSignalOrders, get().routeOverrides);
       set((s) => {
         const newPositions = { ...s.positions };
-        for (const id of selectedComponentIds) {
-          const key = scopedId(currentPath, id);
+        if (selectedItems.length === 1) {
+          const { key } = selectedItems[0];
           const pos = newPositions[key] || { x: 0, y: 0 };
           newPositions[key] = { ...pos, mirrorY: !pos.mirrorY };
+          debouncedSave(newPositions, s.portSignalOrders, s.routeOverrides);
+          return { positions: newPositions };
+        }
+
+        const centroidY = selectedItems.reduce((sum, item) => sum + item.pos.y, 0) / selectedItems.length;
+        const mirrored = selectedItems.map((item) => ({
+          ...item,
+          x: item.pos.x,
+          y: 2 * centroidY - item.pos.y,
+        }));
+
+        const anchor = mirrored[0];
+        const shiftX = snapToGrid(anchor.x) - anchor.x;
+        const shiftY = snapToGrid(anchor.y) - anchor.y;
+
+        for (const item of mirrored) {
+          const pos = newPositions[item.key] || item.pos;
+          newPositions[item.key] = {
+            ...pos,
+            x: item.x + shiftX,
+            y: item.y + shiftY,
+            mirrorY: !pos.mirrorY,
+          };
         }
         debouncedSave(newPositions, s.portSignalOrders, s.routeOverrides);
         return { positions: newPositions };
@@ -1063,8 +1103,8 @@ export const useSchematicStore = create<SchematicState>()(
 
     // ── Context menu ────────────────────────────────────────────
 
-    openContextMenu: (x, y, kind = 'align', portId) =>
-      set({ contextMenu: { x, y, kind, portId } }),
+    openContextMenu: (x, y, kind = 'align', targetId) =>
+      set({ contextMenu: { x, y, kind, targetId } }),
     closeContextMenu: () => set({ contextMenu: null }),
 
     setPortEditMode: (enabled, portId) => {
@@ -1078,7 +1118,7 @@ export const useSchematicStore = create<SchematicState>()(
         return;
       }
       const st = get();
-      const targetId = portId ?? st.contextMenu?.portId ?? null;
+      const targetId = portId ?? st.contextMenu?.targetId ?? null;
       if (!targetId) {
         set({
           portEditMode: false,

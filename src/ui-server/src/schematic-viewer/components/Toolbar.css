@@ -1,0 +1,138 @@
+.schematic-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  min-height: 38px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  background: var(--st-bg);
+  border-bottom: 1px solid var(--st-border);
+}
+
+.schematic-toolbar-brand {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--st-accent);
+  user-select: none;
+}
+
+.schematic-toolbar-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--st-border);
+  flex-shrink: 0;
+}
+
+.schematic-toolbar-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.schematic-toolbar-breadcrumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.schematic-toolbar-crumb {
+  font-size: 11px;
+  line-height: 1.2;
+  height: 100%;
+  padding: 0 8px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--st-secondary);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schematic-toolbar-crumb:hover {
+  color: var(--st-text);
+  background: var(--st-hover);
+}
+
+.schematic-toolbar-crumb.active {
+  color: var(--st-text);
+  font-weight: 600;
+  border-bottom-color: var(--st-text);
+}
+
+.schematic-toolbar-separator {
+  font-size: 11px;
+  color: var(--st-muted);
+}
+
+.schematic-toolbar-spacer {
+  flex: 1;
+}
+
+.schematic-toolbar-view-text {
+  font-size: 11px;
+  color: var(--st-muted);
+  white-space: nowrap;
+}
+
+.schematic-toolbar-freshness {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.schematic-toolbar-freshness.live {
+  color: var(--st-text);
+}
+
+.schematic-toolbar-freshness.stale {
+  color: #f5a7ba;
+}
+
+.schematic-toolbar-freshness.muted {
+  color: var(--st-muted);
+}
+
+.schematic-toolbar-status {
+  font-size: 11px;
+  line-height: 1.2;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--st-status-border);
+  background: var(--st-status-bg);
+  color: var(--st-status-fg);
+  white-space: nowrap;
+}
+
+.schematic-toolbar-button {
+  font-size: 11px;
+  line-height: 1.2;
+  height: 100%;
+  padding: 0 10px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--st-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.schematic-toolbar-button:hover {
+  background: var(--st-hover);
+  color: var(--st-text);
+}
+
+.schematic-toolbar-button.subtle {
+  padding: 0 8px;
+}
+
+.schematic-toolbar-button.active {
+  border-bottom-color: var(--st-accent);
+  color: var(--st-text);
+}

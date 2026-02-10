@@ -1,9 +1,10 @@
 /**
  * Toolbar — top bar for the schematic viewer.
- * Shows breadcrumb navigation, sheet stats, and controls.
+ * Shows breadcrumb navigation and key controls.
  */
 
-import { useMemo } from 'react';
+import { useMemo, type CSSProperties } from 'react';
+import { useEffect, useState } from 'react';
 import {
   useSchematicStore,
   useCurrentSheet,
@@ -11,56 +12,159 @@ import {
 import { getRootSheet, getPathLabels } from '../types/schematic';
 import { useTheme } from '../lib/theme';
 import type { ThemeColors } from '../lib/theme';
+import './Toolbar.css';
 
-export function Toolbar() {
+export type SchematicBuildPhase = 'idle' | 'building' | 'queued' | 'success' | 'failed';
+
+export interface SchematicBuildStatus {
+  phase: SchematicBuildPhase;
+  dirty: boolean;
+  viewingLastSuccessful: boolean;
+  lastSuccessfulAt: number | null;
+  message: string | null;
+}
+
+function buildStatusStyle(
+  status: SchematicBuildStatus,
+  theme: ThemeColors,
+): { text: string; bg: string; fg: string; border: string } {
+  switch (status.phase) {
+    case 'building':
+      return {
+        text: 'Building...',
+        bg: `${theme.accent}22`,
+        fg: theme.textPrimary,
+        border: `${theme.accent}66`,
+      };
+    case 'queued':
+      return {
+        text: 'Queued',
+        bg: `${theme.bgTertiary}`,
+        fg: theme.textSecondary,
+        border: theme.borderColor,
+      };
+    case 'success':
+      return {
+        text: 'Built',
+        bg: '#3c6f3b33',
+        fg: '#9fe29b',
+        border: '#4f8e4d99',
+      };
+    case 'failed':
+      return {
+        text: 'Failed',
+        bg: '#7d2b3e33',
+        fg: '#f5a7ba',
+        border: '#a8455f99',
+      };
+    case 'idle':
+    default:
+      return {
+        text: status.dirty ? 'Dirty' : 'Idle',
+        bg: theme.bgTertiary,
+        fg: theme.textMuted,
+        border: theme.borderColor,
+      };
+  }
+}
+
+function buildViewingText(status: SchematicBuildStatus): string {
+  if (status.viewingLastSuccessful && (status.dirty || status.phase === 'failed')) return 'View: last successful';
+  if (status.viewingLastSuccessful) return 'View: last successful';
+  if (status.dirty || status.phase === 'failed') return 'View: dirty/failed';
+  return 'View: latest';
+}
+
+function formatRelativeAge(epochMs: number, nowMs: number): string {
+  const diffMs = Math.max(0, nowMs - epochMs);
+  const secs = Math.floor(diffMs / 1000);
+  const mins = Math.floor(secs / 60);
+  const hours = Math.floor(mins / 60);
+  const days = Math.floor(hours / 24);
+
+  if (secs < 10) return 'just now';
+  if (secs < 60) return `${secs}s ago`;
+  if (mins < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days}d ago`;
+  return new Date(epochMs).toLocaleDateString();
+}
+
+function buildFreshnessText(
+  status: SchematicBuildStatus,
+  nowMs: number,
+): { text: string; tone: 'live' | 'stale' | 'muted' } {
+  if (status.phase === 'building') return { text: 'Live · rebuilding', tone: 'live' };
+  if (status.phase === 'queued') return { text: 'Live · queued', tone: 'live' };
+
+  if (!status.lastSuccessfulAt) {
+    if (status.phase === 'failed' || status.dirty) {
+      return { text: 'No successful build yet', tone: 'stale' };
+    }
+    return { text: 'Waiting for first build', tone: 'muted' };
+  }
+
+  const age = formatRelativeAge(status.lastSuccessfulAt, nowMs);
+  if (status.phase === 'failed') return { text: `Generated ${age} · failed`, tone: 'stale' };
+  if (status.dirty) return { text: `Generated ${age} · dirty`, tone: 'stale' };
+  if (status.viewingLastSuccessful) return { text: `Generated ${age} · snapshot`, tone: 'muted' };
+  return { text: `Generated ${age} · live`, tone: 'live' };
+}
+
+export function Toolbar({
+  buildStatus,
+  sidebarCollapsed,
+  onToggleSidebar,
+}: {
+  buildStatus: SchematicBuildStatus;
+  sidebarCollapsed: boolean;
+  onToggleSidebar: () => void;
+}) {
   const schematic = useSchematicStore((s) => s.schematic);
   const currentPath = useSchematicStore((s) => s.currentPath);
   const navigateToPath = useSchematicStore((s) => s.navigateToPath);
   const navigateUp = useSchematicStore((s) => s.navigateUp);
   const resetLayout = useSchematicStore((s) => s.resetLayout);
-  const sheet = useCurrentSheet();
+  const currentSheet = useCurrentSheet();
   const theme = useTheme();
+  const statusPill = buildStatusStyle(buildStatus, theme);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setNowMs(Date.now()), 15_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const pathLabels = useMemo(() => {
     if (!schematic) return [];
     return getPathLabels(getRootSheet(schematic), currentPath);
   }, [schematic, currentPath]);
 
-  const netCount = sheet?.nets.length ?? 0;
+  const cssVars = {
+    '--st-bg': theme.bgSecondary,
+    '--st-border': theme.borderColor,
+    '--st-hover': theme.bgHover,
+    '--st-elev': theme.bgTertiary,
+    '--st-text': theme.textPrimary,
+    '--st-secondary': theme.textSecondary,
+    '--st-muted': theme.textMuted,
+    '--st-accent': theme.accent,
+    '--st-status-bg': statusPill.bg,
+    '--st-status-fg': statusPill.fg,
+    '--st-status-border': statusPill.border,
+  } as CSSProperties;
+  const freshness = buildFreshnessText(buildStatus, nowMs);
+  const freshnessTitle = buildStatus.lastSuccessfulAt
+    ? `Last successful build: ${new Date(buildStatus.lastSuccessfulAt).toLocaleString()}`
+    : 'No successful schematic build yet';
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '0 16px',
-        height: 40,
-        flexShrink: 0,
-        background: theme.bgSecondary,
-        borderBottom: `1px solid ${theme.borderColor}`,
-      }}
-    >
-      {/* Logo */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: '0.05em',
-            color: theme.accent,
-          }}
-        >
-          SCH
-        </span>
-      </div>
+    <div className="schematic-toolbar" style={cssVars}>
+      <div className="schematic-toolbar-brand">SCH</div>
+      <div className="schematic-toolbar-divider" />
 
-      <div
-        style={{ width: 1, height: 16, background: theme.borderColor }}
-      />
-
-      {/* Breadcrumbs */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+      <div className="schematic-toolbar-breadcrumbs">
         <BreadcrumbItem
           label="Root"
           isActive={currentPath.length === 0}
@@ -69,8 +173,8 @@ export function Toolbar() {
         />
 
         {pathLabels.map((seg, i) => (
-          <div key={seg.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ fontSize: 11, color: theme.textMuted }}>/</span>
+          <div key={seg.id} className="schematic-toolbar-breadcrumb-item">
+            <span className="schematic-toolbar-separator">/</span>
             <BreadcrumbItem
               label={seg.name}
               subtitle={seg.typeName}
@@ -84,90 +188,46 @@ export function Toolbar() {
         {currentPath.length > 0 && (
           <button
             onClick={navigateUp}
-            style={{
-              fontSize: 11,
-              padding: '2px 8px',
-              borderRadius: 3,
-              marginLeft: 8,
-              background: theme.bgTertiary,
-              color: theme.textSecondary,
-              border: `1px solid ${theme.borderColor}`,
-              cursor: 'pointer',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = theme.bgHover;
-              e.currentTarget.style.color = theme.textPrimary;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = theme.bgTertiary;
-              e.currentTarget.style.color = theme.textSecondary;
-            }}
+            className="schematic-toolbar-button subtle"
             title="Go up one level (Backspace)"
           >
-            {'<-'} Up
+            Up
           </button>
         )}
       </div>
 
-      <div
-        style={{ width: 1, height: 16, background: theme.borderColor }}
-      />
+      <div className="schematic-toolbar-spacer" />
 
-      {/* Stats */}
-      {sheet && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {sheet.modules.length > 0 && (
-            <span style={{ fontSize: 11, color: theme.textSecondary }}>
-              {sheet.modules.length} modules
-            </span>
-          )}
-          {sheet.components.length > 0 && (
-            <span style={{ fontSize: 11, color: theme.textSecondary }}>
-              {sheet.components.length} components
-            </span>
-          )}
-          <span style={{ fontSize: 11, color: theme.textMuted }}>&middot;</span>
-          <span style={{ fontSize: 11, color: theme.textSecondary }}>
-            {netCount} nets
-          </span>
-        </div>
-      )}
-
-      <div style={{ flex: 1 }} />
-
-      {/* Hints */}
-      <span style={{ fontSize: 11, color: theme.textMuted }}>
-        {currentPath.length > 0
-          ? 'backspace to go up'
-          : 'double-click module to enter'}
-        {' \u00B7 '}drag to move{' \u00B7 '}right-drag to pan
+      <span
+        className={`schematic-toolbar-freshness ${freshness.tone}`}
+        title={freshnessTitle}
+      >
+        {freshness.text}
       </span>
 
-      {/* Reset layout */}
-      {sheet && (
+      <span className="schematic-toolbar-view-text">{buildViewingText(buildStatus)}</span>
+
+      <div className="schematic-toolbar-status">
+        {statusPill.text}
+      </div>
+
+      {currentSheet && (
         <button
           onClick={resetLayout}
-          style={{
-            fontSize: 11,
-            padding: '4px 12px',
-            borderRadius: 3,
-            background: theme.bgTertiary,
-            color: theme.textSecondary,
-            border: `1px solid ${theme.borderColor}`,
-            cursor: 'pointer',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = theme.bgHover;
-            e.currentTarget.style.color = theme.textPrimary;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = theme.bgTertiary;
-            e.currentTarget.style.color = theme.textSecondary;
-          }}
+          className="schematic-toolbar-button"
+          title="Reset symbol layout positions"
         >
-          Reset Layout
+          Reset layout
         </button>
       )}
+
+      <button
+        onClick={onToggleSidebar}
+        className={`schematic-toolbar-button ${sidebarCollapsed ? 'active' : ''}`}
+        title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+      >
+        {sidebarCollapsed ? 'Show inspector' : 'Hide inspector'}
+      </button>
     </div>
   );
 }
@@ -188,33 +248,12 @@ function BreadcrumbItem({
   return (
     <button
       onClick={onClick}
-      style={{
-        fontSize: 11,
-        padding: '2px 6px',
-        borderRadius: 3,
-        maxWidth: 120,
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-        color: isActive ? theme.textPrimary : theme.textSecondary,
-        background: isActive ? theme.bgTertiary : 'transparent',
-        fontWeight: isActive ? 600 : 400,
-        border: 'none',
-        cursor: 'pointer',
-      }}
-      onMouseEnter={(e) => {
-        if (!isActive) {
-          e.currentTarget.style.background = theme.bgHover;
-          e.currentTarget.style.color = theme.textPrimary;
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!isActive) {
-          e.currentTarget.style.background = 'transparent';
-          e.currentTarget.style.color = theme.textSecondary;
-        }
-      }}
+      className={`schematic-toolbar-crumb ${isActive ? 'active' : ''}`}
       title={subtitle ? `${label} (${subtitle})` : label}
+      style={{
+        maxWidth: 160,
+        color: isActive ? theme.textPrimary : theme.textSecondary,
+      }}
     >
       {label}
     </button>

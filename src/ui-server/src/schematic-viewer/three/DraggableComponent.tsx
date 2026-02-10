@@ -57,6 +57,7 @@ export const DraggableComponent = memo(function DraggableComponent({
   const toggleComponentSelection = useSchematicStore((s) => s.toggleComponentSelection);
   const addToSelection = useSchematicStore((s) => s.addToSelection);
   const hoverComponent = useSchematicStore((s) => s.hoverComponent);
+  const openContextMenu = useSchematicStore((s) => s.openContextMenu);
 
   const { camera, gl } = useThree();
   const groupRef = useRef<THREE.Group>(null);
@@ -221,6 +222,18 @@ export const DraggableComponent = memo(function DraggableComponent({
         hoverComponent(null);
         if (!useSchematicStore.getState().dragComponentId)
           gl.domElement.style.cursor = 'auto';
+      }}
+      onContextMenu={(e) => {
+        e.stopPropagation();
+        e.nativeEvent.preventDefault();
+        const state = useSchematicStore.getState();
+        if (
+          state.selectedComponentIds.length !== 1
+          || state.selectedComponentIds[0] !== component.id
+        ) {
+          selectComponent(component.id);
+        }
+        openContextMenu(e.clientX, e.clientY, 'selection', component.id);
       }}
     >
       <ComponentRenderer

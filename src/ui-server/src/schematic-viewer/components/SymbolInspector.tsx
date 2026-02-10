@@ -6,7 +6,7 @@
  * - Net list
  */
 
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import {
   useSchematicStore,
   useCurrentSheet,
@@ -18,6 +18,7 @@ import {
 import { useTheme } from '../lib/theme';
 import type { ThemeColors } from '../lib/theme';
 import { getPinColor } from '../lib/theme';
+import { postToExtension } from '../lib/vscodeApi';
 
 // ── Color helpers (exported for reuse) ─────────────────────────
 
@@ -86,6 +87,48 @@ export function SymbolInspector() {
     return sheet.nets.find((n) => n.id === selectedNetId) ?? null;
   }, [selectedNetId, sheet]);
 
+  const selectedSource = useMemo(() => {
+    if (!selectedComponentId) return null;
+    return sheet?.components.find((c) => c.id === selectedComponentId)?.source
+      ?? sheet?.modules.find((m) => m.id === selectedComponentId)?.source
+      ?? ports.find((p) => p.id === selectedComponentId)?.source
+      ?? null;
+  }, [selectedComponentId, sheet, ports]);
+  const fallbackAddress = selectedComponentId && selectedComponentId.includes('::')
+    ? selectedComponentId
+    : undefined;
+  const openSourceRequest = useMemo(() => {
+    const address = selectedSource?.address ?? fallbackAddress;
+    const filePath = selectedSource?.filePath;
+    if (!address && !filePath) return null;
+    return {
+      address,
+      filePath,
+      line: selectedSource?.line,
+      column: selectedSource?.column,
+    };
+  }, [selectedSource, fallbackAddress]);
+  const revealSourceRequest = useMemo(() => {
+    const address = selectedSource?.address ?? fallbackAddress;
+    const filePath = selectedSource?.filePath;
+    if (!address && !filePath) return null;
+    return { address, filePath };
+  }, [selectedSource, fallbackAddress]);
+  const handleOpenSource = useCallback(() => {
+    if (!openSourceRequest) return;
+    postToExtension({
+      type: 'openSource',
+      ...openSourceRequest,
+    });
+  }, [openSourceRequest]);
+  const handleRevealSource = useCallback(() => {
+    if (!revealSourceRequest) return;
+    postToExtension({
+      type: 'revealInExplorer',
+      ...revealSourceRequest,
+    });
+  }, [revealSourceRequest]);
+
   if (!sheet) {
     return (
       <div style={{ padding: 12, fontSize: 11, color: theme.textMuted }}>
@@ -114,6 +157,14 @@ export function SymbolInspector() {
           <div style={{ fontSize: 11, color: theme.textMuted }}>
             {selectedComp.pins.length} pins
           </div>
+          <SourceActions
+            theme={theme}
+            instancePath={selectedSource?.instancePath}
+            canOpen={!!openSourceRequest}
+            canReveal={!!revealSourceRequest}
+            onOpen={handleOpenSource}
+            onReveal={handleRevealSource}
+          />
           {connectedNets.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 4 }}>
               <div style={{ fontSize: 11, color: theme.textMuted }}>Connected nets:</div>
@@ -153,6 +204,14 @@ export function SymbolInspector() {
             {selectedMod.componentCount} components &middot;{' '}
             {selectedMod.interfacePins.length} interface pins
           </div>
+          <SourceActions
+            theme={theme}
+            instancePath={selectedSource?.instancePath}
+            canOpen={!!openSourceRequest}
+            canReveal={!!revealSourceRequest}
+            onOpen={handleOpenSource}
+            onReveal={handleRevealSource}
+          />
           <button
             onClick={() => navigateInto(selectedMod.id)}
             style={{
@@ -213,6 +272,14 @@ export function SymbolInspector() {
           <div style={{ fontSize: 11, color: theme.textMuted }}>
             External {selectedPort.side} interface
           </div>
+          <SourceActions
+            theme={theme}
+            instancePath={selectedSource?.instancePath}
+            canOpen={!!openSourceRequest}
+            canReveal={!!revealSourceRequest}
+            onOpen={handleOpenSource}
+            onReveal={handleRevealSource}
+          />
           {connectedNets.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 4 }}>
               <div style={{ fontSize: 11, color: theme.textMuted }}>Connected nets:</div>
@@ -573,6 +640,97 @@ export function ListButton({
         }}
       />
       {children}
+    </button>
+  );
+}
+
+function SourceActions({
+  theme,
+  instancePath,
+  canOpen,
+  canReveal,
+  onOpen,
+  onReveal,
+}: {
+  theme: ThemeColors;
+  instancePath?: string;
+  canOpen: boolean;
+  canReveal: boolean;
+  onOpen: () => void;
+  onReveal: () => void;
+}) {
+  if (!canOpen && !canReveal && !instancePath) return null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
+      {instancePath && (
+        <div
+          title={instancePath}
+          style={{
+            fontSize: 11,
+            color: theme.textMuted,
+            fontFamily: 'monospace',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {instancePath}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <SourceActionButton
+          theme={theme}
+          label="Open in ATO"
+          disabled={!canOpen}
+          onClick={onOpen}
+        />
+        <SourceActionButton
+          theme={theme}
+          label="Reveal in Explorer"
+          disabled={!canReveal}
+          onClick={onReveal}
+        />
+      </div>
+    </div>
+  );
+}
+
+function SourceActionButton({
+  theme,
+  label,
+  disabled,
+  onClick,
+}: {
+  theme: ThemeColors;
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        flex: 1,
+        fontSize: 11,
+        padding: '5px 8px',
+        borderRadius: 3,
+        border: `1px solid ${theme.borderColor}`,
+        background: disabled ? theme.bgPrimary : theme.bgSecondary,
+        color: disabled ? theme.textMuted : theme.textPrimary,
+        cursor: disabled ? 'default' : 'pointer',
+      }}
+      onMouseEnter={(e) => {
+        if (disabled) return;
+        e.currentTarget.style.background = theme.bgHover;
+      }}
+      onMouseLeave={(e) => {
+        if (disabled) return;
+        e.currentTarget.style.background = theme.bgSecondary;
+      }}
+    >
+      {label}
     </button>
   );
 }

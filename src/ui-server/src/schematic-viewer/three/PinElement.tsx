@@ -17,8 +17,8 @@ import { Text, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import type { KicadPin } from '../types/symbol';
 import type { ThemeColors } from '../lib/theme';
-import { getPinColor } from '../lib/theme';
 import { useSymbolStore } from '../stores/symbolStore';
+import { getConnectionColor } from './connectionColor';
 
 interface PinElementProps {
   pin: KicadPin;
@@ -63,11 +63,11 @@ export function PinElement({ pin, theme }: PinElementProps) {
   const isSelected = selectedPin?.number === pin.number;
   const isFaded = highlightCategory !== null && pin.category !== highlightCategory;
 
-  const color = useMemo(() => getPinColor(pin.category, theme), [pin.category, theme]);
+  const color = useMemo(() => getConnectionColor(pin.category, theme), [pin.category, theme]);
 
   // Pin geometry
   const { x, y, bodyX, bodyY, side, length } = pin;
-  const DOT_RADIUS = 0.3;
+  const DOT_RADIUS = 0.15;
 
   // Should we show the pin name? Hide if it equals the pin number (common for passives)
   const showName = !pin.nameHidden && pin.name && pin.name !== pin.number;

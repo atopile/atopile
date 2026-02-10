@@ -6,8 +6,8 @@
  */
 
 export const INTERFACE_BUS_STUB_OFFSET = 0.13;
-export const INTERFACE_SINGLE_DOT_RADIUS = 0.34;
-export const INTERFACE_BUS_DOT_RADIUS = 0.38;
+export const INTERFACE_SINGLE_DOT_RADIUS = 0.17;
+export const INTERFACE_BUS_DOT_RADIUS = 0.19;
 export const INTERFACE_SINGLE_NAME_INSET = 0.82;
 export const INTERFACE_BUS_NAME_INSET = 1.02;
 
@@ -75,4 +75,3 @@ export function getInterfaceStrokeStyle(
     ? { primaryWidth: 2.3, primaryOpacity: 0.98 }
     : { primaryWidth: 1.7, primaryOpacity: 0.8 };
 }
-

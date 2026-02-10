@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { KicadSymbol, KicadSymbolLib, KicadPin } from '../types/symbol';
-import { parseKicadSymbolLib } from '../lib/kicadSymParser';
+import { parseKicadSymbolLib } from '../parsers/kicadSymParser';
 
 interface SymbolState {
   // Data

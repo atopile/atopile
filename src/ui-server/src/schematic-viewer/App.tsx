@@ -1,10 +1,19 @@
 import { useEffect, useState, useCallback } from 'react';
 import { SchematicScene } from './three/SchematicScene';
-import { Toolbar } from './components/Toolbar';
+import { Toolbar, type SchematicBuildStatus } from './components/Toolbar';
 import { SchematicSidebar } from './components/SchematicSidebar';
-import { useSchematicStore, useCurrentSheet, setAtoSchPath } from './stores/schematicStore';
+import {
+  useSchematicStore,
+  useCurrentSheet,
+  useCurrentPorts,
+  setAtoSchPath,
+} from './stores/schematicStore';
+import type { SchematicData } from './types/schematic';
 import { useTheme } from './lib/theme';
-import { requestOpenSource, onExtensionMessage } from './lib/vscodeApi';
+import {
+  onExtensionMessage,
+  postToExtension,
+} from './lib/vscodeApi';
 
 // ── Sidebar size constraints ────────────────────────────────────
 
@@ -14,6 +23,21 @@ const SIDEBAR_DEFAULT_W = 320;
 
 const SIDEBAR_WIDTH_STORAGE_KEY = 'schematic.viewer.sidebar.width';
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'schematic.viewer.sidebar.collapsed';
+
+interface SchematicBuildError {
+  message: string;
+  filePath?: string | null;
+  line?: number | null;
+  column?: number | null;
+}
+
+const INITIAL_BUILD_STATUS: SchematicBuildStatus = {
+  phase: 'idle',
+  dirty: false,
+  viewingLastSuccessful: false,
+  lastSuccessfulAt: null,
+  message: null,
+};
 
 function readInitialSidebarWidth() {
   if (typeof window === 'undefined') return SIDEBAR_DEFAULT_W;
@@ -29,15 +53,21 @@ function readInitialSidebarCollapsed() {
 
 function SchematicApp() {
   const loadSchematic = useSchematicStore((s) => s.loadSchematic);
+  const loadSchematicData = useSchematicStore((s) => s.loadSchematicData);
+  const schematicData = useSchematicStore((s) => s.schematic);
   const isLoading = useSchematicStore((s) => s.isLoading);
   const loadError = useSchematicStore((s) => s.loadError);
   const sheet = useCurrentSheet();
+  const ports = useCurrentPorts();
   const theme = useTheme();
 
   // ── Sidebar state ─────────────────────────────────────────────
 
   const [sidebarWidth, setSidebarWidth] = useState(readInitialSidebarWidth);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readInitialSidebarCollapsed);
+  const [buildStatus, setBuildStatus] = useState<SchematicBuildStatus>(INITIAL_BUILD_STATUS);
+  const [buildErrors, setBuildErrors] = useState<SchematicBuildError[]>([]);
+  const [lastSuccessfulSnapshot, setLastSuccessfulSnapshot] = useState<SchematicData | null>(null);
 
   // ── Horizontal resize (sidebar width) ─────────────────────────
 
@@ -105,26 +135,83 @@ function SchematicApp() {
         // Future: match file to module/component and highlight it.
       } else if (msg.type === 'update-schematic' && msg.data) {
         // External rebuild: update data without resetting navigation
-        useSchematicStore.getState().updateSchematicData(msg.data as any);
+        const data = msg.data as SchematicData;
+        useSchematicStore.getState().updateSchematicData(data);
+        setLastSuccessfulSnapshot(data);
+      } else if (msg.type === 'schematic-build-status') {
+        const phase = typeof msg.phase === 'string'
+          && ['idle', 'building', 'queued', 'success', 'failed'].includes(msg.phase)
+          ? msg.phase
+          : 'idle';
+        setBuildStatus({
+          phase: phase as SchematicBuildStatus['phase'],
+          dirty: !!msg.dirty,
+          viewingLastSuccessful: !!msg.viewingLastSuccessful,
+          lastSuccessfulAt: typeof msg.lastSuccessfulAt === 'number' ? msg.lastSuccessfulAt : null,
+          message: typeof msg.message === 'string' ? msg.message : null,
+        });
+      } else if (msg.type === 'schematic-build-errors') {
+        const incoming = Array.isArray(msg.errors) ? msg.errors : [];
+        const parsed: SchematicBuildError[] = incoming.map((err: any) => ({
+          message: typeof err?.message === 'string' ? err.message : 'Build error',
+          filePath: typeof err?.filePath === 'string' ? err.filePath : null,
+          line: typeof err?.line === 'number' ? err.line : null,
+          column: typeof err?.column === 'number' ? err.column : null,
+        }));
+        setBuildErrors(parsed);
       }
     });
 
-    // When a component is selected, notify the extension
-    const unsub = useSchematicStore.subscribe(
-      (s) => s.selectedComponentId,
-      (selectedId) => {
-        if (selectedId) {
-          // Send the component address to the extension for source lookup
-          requestOpenSource(selectedId);
-        }
-      },
-    );
-
     return () => {
       unsubscribe();
-      unsub();
     };
   }, []);
+
+  const openSelectionInSource = useCallback((selectionId: string | null): boolean => {
+    if (!selectionId || !sheet) return false;
+    const source = sheet.components.find((c) => c.id === selectionId)?.source
+      ?? sheet.modules.find((m) => m.id === selectionId)?.source
+      ?? ports.find((p) => p.id === selectionId)?.source
+      ?? null;
+    const fallbackAddress = selectionId.includes('::') ? selectionId : undefined;
+    const request = source
+      ? {
+        address: source.address ?? fallbackAddress,
+        filePath: source.filePath,
+        line: source.line,
+        column: source.column,
+      }
+      : (fallbackAddress ? { address: fallbackAddress } : null);
+    if (!request?.address && !request?.filePath) return false;
+    postToExtension({ type: 'openSource', ...request });
+    return true;
+  }, [sheet, ports]);
+
+  const revertViewToLastSuccessful = useCallback(() => {
+    if (!lastSuccessfulSnapshot) return;
+    postToExtension({ type: 'revertToLastSuccessful' });
+    loadSchematicData(lastSuccessfulSnapshot);
+    setBuildStatus((prev) => ({
+      ...prev,
+      viewingLastSuccessful: true,
+    }));
+  }, [lastSuccessfulSnapshot, loadSchematicData]);
+
+  const openBuildErrorSource = useCallback((err: SchematicBuildError) => {
+    if (!err.filePath) return;
+    postToExtension({
+      type: 'openSource',
+      filePath: err.filePath,
+      line: err.line ?? undefined,
+      column: err.column ?? undefined,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!schematicData) return;
+    if (lastSuccessfulSnapshot) return;
+    setLastSuccessfulSnapshot(schematicData);
+  }, [schematicData, lastSuccessfulSnapshot]);
 
   // ── Keyboard shortcuts ───────────────────────────────────────
 
@@ -146,6 +233,13 @@ function SchematicApp() {
       if (e.key === 'z' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
         e.preventDefault();
         store.redo();
+        return;
+      }
+
+      // Jump to source: Cmd+. / Ctrl+.
+      if (e.key === '.' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        openSelectionInSource(store.selectedComponentId);
         return;
       }
 
@@ -200,7 +294,7 @@ function SchematicApp() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [openSelectionInSource]);
 
   return (
     <div
@@ -215,7 +309,88 @@ function SchematicApp() {
         color: theme.textPrimary,
       }}
     >
-      <Toolbar />
+      <Toolbar
+        buildStatus={buildStatus}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}
+      />
+
+      {buildStatus.phase === 'failed' && (
+        <div
+          style={{
+            padding: '8px 12px',
+            borderBottom: `1px solid ${theme.borderColor}`,
+            background: '#53202f44',
+            color: '#f5a7ba',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 10,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 600 }}>
+            Build failed. Showing last successful schematic.
+          </div>
+          {lastSuccessfulSnapshot && (
+            <button
+              onClick={revertViewToLastSuccessful}
+              style={{
+                fontSize: 11,
+                padding: '3px 10px',
+                borderRadius: 3,
+                border: `1px solid ${theme.borderColor}`,
+                background: theme.bgTertiary,
+                color: theme.textPrimary,
+                cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = theme.bgHover; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = theme.bgTertiary; }}
+            >
+              Revert view to last successful
+            </button>
+          )}
+          {!!buildStatus.message && (
+            <div style={{ fontSize: 11, color: theme.textSecondary }}>
+              {buildStatus.message}
+            </div>
+          )}
+          {buildErrors.length > 0 && (
+            <div
+              style={{
+                width: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+                marginTop: 4,
+              }}
+            >
+              {buildErrors.slice(0, 8).map((err, idx) => {
+                const location = err.filePath
+                  ? `${err.filePath}${err.line ? `:${err.line}` : ''}`
+                  : null;
+                return (
+                  <button
+                    key={`${idx}:${err.message}`}
+                    onClick={() => openBuildErrorSource(err)}
+                    disabled={!err.filePath}
+                    style={{
+                      textAlign: 'left',
+                      border: 'none',
+                      background: 'transparent',
+                      color: err.filePath ? theme.textPrimary : theme.textSecondary,
+                      fontSize: 11,
+                      cursor: err.filePath ? 'pointer' : 'default',
+                      padding: 0,
+                    }}
+                  >
+                    {location ? `${location} - ` : ''}{err.message}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
         {/* Main canvas */}
@@ -281,29 +456,26 @@ function SchematicApp() {
           {sheet && !isLoading && <SchematicScene />}
         </div>
 
-        {/* Right sidebar — always rendered, collapses to narrow strip */}
-
-        {/* Horizontal resize handle (only when expanded) */}
         {!sidebarCollapsed && (
-          <div
-            onMouseDown={handleWidthResize}
-            style={{
-              width: 6,
-              flexShrink: 0,
-              cursor: 'ew-resize',
-              background: 'transparent',
-              zIndex: 5,
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = `${theme.accent}55`; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-          />
+          <>
+            <div
+              onMouseDown={handleWidthResize}
+              style={{
+                width: 6,
+                flexShrink: 0,
+                cursor: 'ew-resize',
+                background: 'transparent',
+                zIndex: 5,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = `${theme.accent}55`; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            />
+            <SchematicSidebar
+              width={sidebarWidth}
+              onSetCollapsed={setSidebarCollapsed}
+            />
+          </>
         )}
-
-        <SchematicSidebar
-          width={sidebarWidth}
-          collapsed={sidebarCollapsed}
-          onSetCollapsed={setSidebarCollapsed}
-        />
       </div>
     </div>
   );

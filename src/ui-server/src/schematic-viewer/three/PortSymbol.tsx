@@ -15,7 +15,6 @@ import {
   type GridAlignmentOffset,
 } from '../types/schematic';
 import type { ThemeColors } from '../lib/theme';
-import { getPinColor } from '../lib/theme';
 import {
   getUprightTextTransform,
   anchorFromVisualSide,
@@ -27,6 +26,7 @@ import {
   getInterfaceNameInset,
   getInterfaceStrokeStyle,
 } from './interfaceVisuals';
+import { getConnectionColor } from './connectionColor';
 
 const BREAKOUT_RADIUS = 0.32;
 const NO_RAYCAST = () => {};
@@ -174,7 +174,7 @@ const SinglePortSymbol = memo(function SinglePortSymbol({
   mirrorX = false,
   mirrorY = false,
 }: SymbolProps) {
-  const color = getPinColor(port.category, theme);
+  const color = getConnectionColor(port.category, theme);
   const isNetHighlighted = netId !== null && netId === selectedNetId;
   const isActive = isSelected || isHovered || isNetHighlighted;
   const isPassThrough = !!port.passThrough;
@@ -372,7 +372,7 @@ const BreakoutPortSymbol = memo(function BreakoutPortSymbol({
 }: SymbolProps) {
   const signals = port.signals!;
   const signalPins = port.signalPins!;
-  const color = getPinColor(port.category, theme);
+  const color = getConnectionColor(port.category, theme);
   const isNetHighlighted = netId !== null && netId === selectedNetId;
   const isActive = isSelected || isHovered || isNetHighlighted;
   const stroke = getInterfaceStrokeStyle(signals, isActive);
@@ -496,7 +496,7 @@ const BreakoutPortSymbol = memo(function BreakoutPortSymbol({
               raycast={NO_RAYCAST}
             />
             <mesh position={[port.pinX, port.pinY, 0.001]} raycast={NO_RAYCAST}>
-              <circleGeometry args={[0.48, 14]} />
+              <circleGeometry args={[0.24, 14]} />
               <meshBasicMaterial
                 color={color}
                 transparent
@@ -505,7 +505,7 @@ const BreakoutPortSymbol = memo(function BreakoutPortSymbol({
               />
             </mesh>
             <mesh position={[port.pinX, port.pinY, 0.002]} raycast={NO_RAYCAST}>
-              <circleGeometry args={[0.24, 14]} />
+              <circleGeometry args={[0.12, 14]} />
               <meshBasicMaterial
                 color={color}
                 transparent

@@ -124,25 +124,22 @@ function TreeRow({
         display: 'flex',
         alignItems: 'center',
         gap: 6,
-        margin: '1px 6px',
-        borderRadius: 8,
-        paddingLeft: 10 + depth * 14,
+        margin: '0 6px',
+        borderRadius: 3,
+        paddingLeft: 8 + depth * 14,
         paddingRight: 8,
         paddingTop: 4,
         paddingBottom: 4,
         cursor: 'pointer',
         fontSize: 12,
         background: isSelected
-          ? `${color}26`
+          ? `${color}22`
           : isOnCurrentPath
             ? `${theme.textMuted}10`
             : 'transparent',
-        border: isSelected
-          ? `1px solid ${color}55`
-          : `1px solid ${theme.borderColor}00`,
         fontWeight: isOnCurrentPath ? 600 : 400,
         userSelect: 'none',
-        transition: 'background 120ms ease, border-color 120ms ease',
+        transition: 'background 120ms ease',
       }}
       onClick={(e) => {
         e.stopPropagation();

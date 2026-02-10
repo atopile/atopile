@@ -11,13 +11,16 @@ import type {
 import {
   BREAKOUT_PIN_SPACING,
   getComponentGridAlignmentOffset,
+  getNormalizedComponentPinGeometry,
   getPortGridAlignmentOffset,
+  getPowerPortGridAlignmentOffset,
   PIN_GRID_MM,
   PORT_H,
   PORT_STUB_LEN,
   snapToPinGrid,
   transformPinOffset,
 } from '../schematic-viewer/types/schematic';
+import { derivePowerPorts } from '../schematic-viewer/types/schematic';
 
 function makePin(
   number: string,
@@ -694,6 +697,117 @@ describe('schematicLayout port-to-port staging', () => {
     expect(Math.abs((i2cSdaPin?.y ?? 0) - (gpio1OuterPin?.y ?? 0))).toBeLessThan(1e-6);
     expect(Math.abs((gpio0OuterPin?.x ?? 0) - (i2cSclPin?.x ?? 0) - ANCHOR_OFFSET)).toBeLessThan(1e-6);
     expect(Math.abs((gpio1OuterPin?.x ?? 0) - (i2cSdaPin?.x ?? 0) - ANCHOR_OFFSET)).toBeLessThan(1e-6);
+  });
+});
+
+describe('schematicLayout side-port occupancy', () => {
+  function overlaps(
+    a: { x: number; y: number; w: number; h: number },
+    b: { x: number; y: number; w: number; h: number },
+  ): boolean {
+    const minAx = a.x - a.w / 2;
+    const maxAx = a.x + a.w / 2;
+    const minAy = a.y - a.h / 2;
+    const maxAy = a.y + a.h / 2;
+    const minBx = b.x - b.w / 2;
+    const maxBx = b.x + b.w / 2;
+    const minBy = b.y - b.h / 2;
+    const maxBy = b.y + b.h / 2;
+    return Math.min(maxAx, maxBx) > Math.max(minAx, minBx) &&
+      Math.min(maxAy, maxBy) > Math.max(minAy, minBy);
+  }
+
+  it('keeps side-placed ports off anchored ports on the same side', () => {
+    const target = makeComponent(
+      'u1',
+      'U',
+      20,
+      10,
+      [makePin('1', 'GPIO0', 'left', 'signal', { x: -5.08, y: 0, bodyX: -5, bodyY: 0 })],
+    );
+    const gpio0: SchematicPort = {
+      ...makeSinglePort('gpio[0]', 'left'),
+      passThrough: true,
+    };
+    const compensation = makeSinglePort('compensation_capacitors[0]', 'left');
+
+    const sheet: SchematicSheet = {
+      modules: [],
+      components: [target],
+      nets: [
+        net('n_gpio0', 'signal', [
+          { componentId: 'u1', pinNumber: '1' },
+          { componentId: 'gpio[0]', pinNumber: '2' },
+        ]),
+      ],
+    };
+
+    const positions = autoLayoutSheet(sheet, [gpio0, compensation], []);
+    const gpioPos = positions['gpio[0]'];
+    const compPos = positions['compensation_capacitors[0]'];
+    expect(gpioPos).toBeDefined();
+    expect(compPos).toBeDefined();
+
+    expect(
+      overlaps(
+        { x: gpioPos.x, y: gpioPos.y, w: gpio0.bodyWidth, h: gpio0.bodyHeight },
+        { x: compPos.x, y: compPos.y, w: compensation.bodyWidth, h: compensation.bodyHeight },
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('schematicLayout power-port anchoring', () => {
+  it('keeps power symbols on the same Y pitch, one pitch out from the pin', () => {
+    // This component has off-grid pin origins (1.27mm row offsets),
+    // so missing grid-alignment compensation would shift the symbol by one pitch.
+    const u1 = makeComponent(
+      'u1',
+      'U',
+      20,
+      12,
+      [
+        makePin('33', 'IOVDD', 'left', 'power', { x: -5.08, y: 1.27, bodyX: -5, bodyY: 1.27 }),
+      ],
+    );
+    const sheet: SchematicSheet = {
+      modules: [],
+      components: [u1],
+      nets: [
+        net('hv', 'power', [{ componentId: 'u1', pinNumber: '33' }]),
+      ],
+    };
+
+    const powerPorts = derivePowerPorts(sheet);
+    expect(powerPorts).toHaveLength(1);
+    const pp = powerPorts[0];
+
+    const positions = autoLayoutSheet(sheet, [], powerPorts);
+    const compPos = positions.u1;
+    const ppPos = positions[pp.id];
+    expect(compPos).toBeDefined();
+    expect(ppPos).toBeDefined();
+
+    const compAlign = getComponentGridAlignmentOffset(u1);
+    const normPin = getNormalizedComponentPinGeometry(u1, u1.pins[0]);
+    const tp = transformPinOffset(
+      normPin.x + compAlign.x,
+      normPin.y + compAlign.y,
+      compPos.rotation,
+      compPos.mirrorX,
+      compPos.mirrorY,
+    );
+    const pinWorldX = snapToPinGrid(compPos.x + tp.x);
+    const pinWorldY = snapToPinGrid(compPos.y + tp.y);
+
+    const ppAlign = getPowerPortGridAlignmentOffset(pp);
+    const ppPinWorldX = snapToPinGrid(ppPos.x + pp.pinX + ppAlign.x);
+    const ppPinWorldY = snapToPinGrid(ppPos.y + pp.pinY + ppAlign.y);
+
+    // Same row.
+    expect(Math.abs(ppPinWorldY - pinWorldY)).toBeLessThan(1e-6);
+    // One pitch out from the left-side pin.
+    expect(Math.abs(ppPinWorldX - (pinWorldX - PIN_GRID_MM))).toBeLessThan(1e-6);
   });
 });
 
