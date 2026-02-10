@@ -20,6 +20,7 @@ import { setCurrentPCB } from '../common/pcb';
 import { setCurrentThreeDModel, startThreeDModelBuild } from '../common/3dmodel';
 import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/target';
 import { loadBuilds, getBuilds } from '../common/manifest';
+import { createWebviewOptions } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { openModelViewerPreview } from '../ui/modelviewer';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
@@ -221,6 +222,12 @@ function getWsOrigin(wsUrl: string): string {
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
   public static readonly viewType = 'atopile.sidebar';
+  private static readonly PROD_LOCAL_RESOURCE_ROOTS = [
+    'resources',
+    'resources/webviews',
+    'resources/model-viewer',
+    'webviews/dist',
+  ];
 
   private _view?: vscode.WebviewView;
   private _disposables: vscode.Disposable[] = [];
@@ -229,6 +236,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _lastWorkspaceRoot: string | null = null;
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;
+  private _lastPort: number | null = null;
   private _lastAtopileSettingsKey: string | null = null;
   private _fileWatcher?: vscode.FileSystemWatcher;
   private _watchedProjectRoot: string | null = null;
@@ -290,6 +298,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       clearTimeout(this._fileChangeDebounce);
       this._fileChangeDebounce = null;
     }
+  }
+
+  private _buildWebviewOptions(isDev: boolean): vscode.WebviewOptions & {
+    retainContextWhenHidden?: boolean;
+  } {
+    return createWebviewOptions({
+      isDev,
+      extensionPath: this._extensionUri.fsPath,
+      port: backendServer.port,
+      prodLocalResourceRoots: SidebarProvider.PROD_LOCAL_RESOURCE_ROOTS,
+    });
   }
 
   /**
@@ -359,11 +378,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
+    const port = backendServer.port;
     const urlsUnchanged = this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl;
-    if (this._hasHtml && this._lastMode === mode && urlsUnchanged) {
+    const portUnchanged = this._lastPort === port;
+    if (this._hasHtml && this._lastMode === mode && urlsUnchanged && portUnchanged) {
       traceInfo('[SidebarProvider] Skipping refresh (already loaded)', { mode });
       return;
     }
+
+    this._view.webview.options = this._buildWebviewOptions(isDev);
 
     if (isDev) {
       this._view.webview.html = this._getDevHtml();
@@ -374,6 +397,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._lastMode = mode;
     this._lastApiUrl = apiUrl;
     this._lastWsUrl = wsUrl;
+    this._lastPort = port;
   }
 
   public resolveWebviewView(
@@ -394,20 +418,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       wsUrl: backendServer.wsUrl,
     });
 
-    const webviewOptions: vscode.WebviewOptions & {
-      retainContextWhenHidden?: boolean;
-    } = {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-      localResourceRoots: isDev
-        ? [] // No local resources in dev mode
-        : [
-          vscode.Uri.file(path.join(extensionPath, 'resources')),
-          vscode.Uri.file(path.join(extensionPath, 'resources', 'webviews')),
-          vscode.Uri.file(path.join(extensionPath, 'resources', 'model-viewer')),
-          vscode.Uri.file(path.join(extensionPath, 'webviews', 'dist')),
-        ],
-    };
+    const webviewOptions = this._buildWebviewOptions(isDev);
     webviewView.webview.options = webviewOptions;
 
     if (isDev) {
@@ -423,6 +434,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._lastMode = mode;
     this._lastApiUrl = backendServer.apiUrl;
     this._lastWsUrl = backendServer.wsUrl;
+    this._lastPort = backendServer.port;
     this._postWorkspaceRoot();
     // Send current active file to webview
     this._postActiveFile(vscode.window.activeTextEditor);
