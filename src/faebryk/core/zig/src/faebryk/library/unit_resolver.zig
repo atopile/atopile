@@ -6,7 +6,7 @@ const units = @import("units.zig");
 const parameters = @import("parameters.zig");
 const literals = @import("literals.zig");
 const expressions = @import("expressions.zig");
-const fabll = @import("fabll.zig");
+const fabll = faebryk.fabll;
 
 pub const Error = error{
     UnsupportedNodeType,

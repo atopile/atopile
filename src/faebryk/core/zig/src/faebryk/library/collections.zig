@@ -3,7 +3,7 @@ const graph_mod = @import("graph");
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
 const faebryk = @import("faebryk");
-const fabll = @import("fabll.zig");
+const fabll = faebryk.fabll;
 const str = []const u8;
 
 fn child_identifier_of(comptime ChildFieldType: type) str {

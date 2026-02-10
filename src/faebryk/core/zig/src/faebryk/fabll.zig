@@ -2,7 +2,15 @@ const std = @import("std");
 const graph_mod = @import("graph");
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
-const faebryk = @import("faebryk");
+const faebryk = struct {
+    pub const composition = @import("composition.zig");
+    pub const edgebuilder = @import("edgebuilder.zig");
+    pub const interface = @import("interface.zig");
+    pub const node_type = @import("node_type.zig");
+    pub const nodebuilder = @import("nodebuilder.zig");
+    pub const trait = @import("trait.zig");
+    pub const typegraph = @import("typegraph.zig");
+};
 const str = []const u8;
 
 // =============================================================================

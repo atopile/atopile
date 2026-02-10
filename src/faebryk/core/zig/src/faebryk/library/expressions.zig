@@ -2,7 +2,7 @@ const graph_mod = @import("graph");
 const graph = graph_mod.graph;
 const std = @import("std");
 const faebryk = @import("faebryk");
-const fabll = @import("fabll.zig");
+const fabll = faebryk.fabll;
 const collections = @import("collections.zig");
 const parameters = @import("parameters.zig");
 
