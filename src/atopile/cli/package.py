@@ -488,32 +488,6 @@ class _PackageValidators:
             )
 
     @staticmethod
-    def verify_no_comma_separated_imports(config: "Config"):
-        import re
-
-        # match "import a, b" or "from ... import a, b" at start of line
-        _comma_import_regex = r"(?m)^(import\s+.+,.+)"
-        _comma_from_import_regex = r'(?m)^(from\s+"[^"]+"\s+import\s+.+,.+)'
-
-        ato_files = config.project.paths.root.rglob("*.ato")
-        for ato_file in ato_files:
-            content = ato_file.read_text(encoding="utf-8")
-            comma_imports: list[str] = []
-            for match in re.finditer(_comma_import_regex, content):
-                comma_imports.append(match.group(1).strip())
-            for match in re.finditer(_comma_from_import_regex, content):
-                comma_imports.append(match.group(1).strip())
-
-            if comma_imports:
-                file_path = ato_file.relative_to(config.project.paths.root)
-                stmts = ", ".join(repr(s) for s in comma_imports)
-                raise UserBadParameterError(
-                    f"Comma-separated imports are deprecated, "
-                    f"use separate import statements instead: "
-                    f"[{stmts}] in {file_path}"
-                )
-
-    @staticmethod
     def verify_unused_and_duplicate_imports(config: "Config"):
         import re
 
@@ -572,7 +546,6 @@ _STRICT_VALIDATORS = [
     _PackageValidators.verify_usage_import,
     _PackageValidators.verify_usage_in_readme,
     _PackageValidators.verify_build_artifacts,
-    _PackageValidators.verify_no_comma_separated_imports,
     _PackageValidators.verify_unused_and_duplicate_imports,
 ]
 
