@@ -71,9 +71,9 @@ jobs:
 
       - name: Check ato version
         run: |
-          ato self-check \
-          ato --version \
-          ato --semver \
+          uv run ato self-check \
+          uv run ato --version \
+          uv run ato --semver \
           python -c "import importlib.metadata; print(importlib.metadata.version('atopile'))"
 
       - name: Run pytest
