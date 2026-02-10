@@ -71,10 +71,10 @@ jobs:
 
       - name: Check ato version
         run: |
+          python -c "import importlib.metadata; print(importlib.metadata.version('atopile'))" \
           uv run ato self-check \
           uv run ato --version \
           uv run ato --semver \
-          python -c "import importlib.metadata; print(importlib.metadata.version('atopile'))"
         env:
           PYTHONPATH: .
 
