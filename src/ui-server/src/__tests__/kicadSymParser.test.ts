@@ -71,7 +71,7 @@ describe('kicadSymParser', () => {
     expect(meta.source.commit.length).toBeGreaterThan(6);
     expect(resistor?.name).toBe('R');
     expect(capacitor?.name).toBe('C');
-    expect(connector?.name).toContain('Conn_01x06');
+    expect(connector).toBeNull();
     expect(testpoint?.name).toContain('TestPoint');
   });
 });

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import {
   Cable,
   ChevronRight,
@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../lib/theme';
 import { useCurrentSheet, useSchematicStore } from '../stores/schematicStore';
+import type { SchematicBOMData, SchematicVariablesData } from '../types/artifacts';
+import { componentColor, moduleColor, netTypeColor } from './SymbolInspector';
 import { SelectionDetails } from './SelectionDetails';
 import { StructureTree } from './StructureTree';
 import './SchematicSidebar.css';
@@ -26,11 +28,15 @@ function readInitialTab(): SidebarTab {
 interface SchematicSidebarProps {
   width: number;
   onSetCollapsed: (collapsed: boolean) => void;
+  bomData?: SchematicBOMData | null;
+  variablesData?: SchematicVariablesData | null;
 }
 
 export function SchematicSidebar({
   width,
   onSetCollapsed,
+  bomData = null,
+  variablesData = null,
 }: SchematicSidebarProps) {
   const theme = useTheme();
   const sheet = useCurrentSheet();
@@ -43,11 +49,26 @@ export function SchematicSidebar({
   const statItems = useMemo(() => {
     if (!sheet) return [];
     return [
-      { label: 'Modules', value: sheet.modules.length, icon: Layout },
-      { label: 'Components', value: sheet.components.length, icon: Cpu },
-      { label: 'Nets', value: sheet.nets.length, icon: Cable },
+      {
+        label: 'Modules',
+        value: sheet.modules.length,
+        icon: Layout,
+        accent: moduleColor('sensor'),
+      },
+      {
+        label: 'Components',
+        value: sheet.components.length,
+        icon: Cpu,
+        accent: componentColor('R'),
+      },
+      {
+        label: 'Nets',
+        value: sheet.nets.length,
+        icon: Cable,
+        accent: netTypeColor('bus', theme),
+      },
     ];
-  }, [sheet]);
+  }, [sheet, theme]);
 
   const cssVars = {
     '--sv-bg': theme.bgSecondary,
@@ -93,8 +114,14 @@ export function SchematicSidebar({
         <div className="schematic-sidebar-summary">
           <div className="schematic-sidebar-summary-title">Sheet Summary</div>
           {statItems.map((item) => (
-            <div className="schematic-summary-row" key={item.label}>
-              <item.icon size={14} className="schematic-summary-row-icon" />
+            <div
+              className="schematic-summary-row"
+              key={item.label}
+              style={{ '--summary-accent': item.accent } as CSSProperties}
+            >
+              <span className="schematic-summary-row-icon-wrap">
+                <item.icon size={13} className="schematic-summary-row-icon" />
+              </span>
               <span className="schematic-summary-row-label">{item.label}</span>
               <span className="schematic-summary-row-count">{item.value}</span>
             </div>
@@ -106,15 +133,17 @@ export function SchematicSidebar({
         <button
           className={`schematic-sidebar-tab ${activeTab === 'structure' ? 'active' : ''}`}
           onClick={() => updateTab('structure')}
+          style={{ '--tab-accent': moduleColor('sensor') } as CSSProperties}
         >
-          <GitBranch size={14} />
+          <GitBranch size={14} className="schematic-sidebar-tab-icon" />
           <span>Structure</span>
         </button>
         <button
           className={`schematic-sidebar-tab ${activeTab === 'selection' ? 'active' : ''}`}
           onClick={() => updateTab('selection')}
+          style={{ '--tab-accent': componentColor('R') } as CSSProperties}
         >
-          <Target size={14} />
+          <Target size={14} className="schematic-sidebar-tab-icon" />
           <span>Selection</span>
         </button>
       </div>
@@ -123,7 +152,11 @@ export function SchematicSidebar({
         {activeTab === 'structure' ? (
           <StructureTree />
         ) : hasSelection ? (
-          <SelectionDetails showTopBorder={false} />
+          <SelectionDetails
+            showTopBorder={false}
+            bomData={bomData}
+            variablesData={variablesData}
+          />
         ) : (
           <div className="schematic-sidebar-empty">
             <div className="schematic-sidebar-empty-title">No item selected</div>

@@ -243,6 +243,12 @@
                 "category": "atopile"
             },
             {
+                "command": "atopile.show_in_schematic",
+                "title": "Show in Schematic",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            },
+            {
                 "command": "atopile.llm.setup",
                 "title": "Setup LLM rules & MCP",
                 "category": "atopile"
@@ -260,6 +266,11 @@
         ],
         "menus": {
             "editor/context": [
+                {
+                    "command": "atopile.show_in_schematic",
+                    "when": "editorLangId == ato",
+                    "group": "navigation@45"
+                },
                 {
                     "command": "atopile.schematic_preview",
                     "when": "editorLangId == ato",

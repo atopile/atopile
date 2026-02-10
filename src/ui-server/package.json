@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:symbol-tuner": "vite --open /tools/symbol-tuner.html",
     "dev:all": "./dev.sh",
     "build": "tsc && vite build",
     "preview": "vite preview",

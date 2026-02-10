@@ -59,12 +59,35 @@ interface SchematicBuildError {
     column: number | null;
 }
 
+interface ShowInSchematicRequest {
+    filePath: string;
+    line: number;
+    column: number;
+    symbol?: string;
+}
+
 const SCHEMATIC_BUILD_DEBOUNCE_MS = 500;
 const SCHEMATIC_BUILD_POLL_MS = 700;
 const SCHEMATIC_BUILD_TIMEOUT_MS = 8 * 60 * 1000;
 const SCHEMATIC_INCLUDE_TARGETS = ['schematic'];
 const SCHEMATIC_EXCLUDE_TARGETS = ['default'];
 const AUTO_BUILD_EXTENSIONS = new Set(['.ato', '.py']);
+const SHOW_IN_SCHEMATIC_COMMAND = 'atopile.show_in_schematic';
+const SYMBOL_TOKEN_RE = /[A-Za-z_][A-Za-z0-9_\[\]\.]*/;
+const IGNORED_SYMBOL_TOKENS = new Set([
+    'new',
+    'module',
+    'component',
+    'interface',
+    'signal',
+    'from',
+    'import',
+    'if',
+    'else',
+    'for',
+    'while',
+    'return',
+]);
 
 class SchematicWebview extends BaseWebview {
     /**
@@ -268,6 +291,22 @@ class SchematicWebview extends BaseWebview {
                     }
                     break;
                 }
+                case 'showInSchematicResult': {
+                    const found = message.found === true;
+                    if (!found) {
+                        const symbol = typeof message.symbol === 'string'
+                            ? message.symbol
+                            : undefined;
+                        const detail = symbol
+                            ? ` for "${symbol}"`
+                            : '';
+                        void vscode.window.setStatusBarMessage(
+                            `atopile: No schematic match found${detail}`,
+                            3500,
+                        );
+                    }
+                    break;
+                }
             }
         });
     }
@@ -360,6 +399,74 @@ function setSchematicBuildErrors(errors: SchematicBuildError[]): void {
     });
 }
 
+async function fetchSchematicArtifact(
+    endpoint: '/api/bom' | '/api/variables',
+    projectRoot: string,
+    target: string,
+): Promise<unknown | null> {
+    try {
+        const response = await axios.get(`${backendServer.apiUrl}${endpoint}`, {
+            params: {
+                project_root: projectRoot,
+                target,
+            },
+            timeout: 10000,
+        });
+        return response.data ?? null;
+    } catch (error) {
+        if (axios.isAxiosError(error)) {
+            const status = error.response?.status;
+            // No artifacts yet is expected before the first successful build.
+            if (status === 404 || status === 400) {
+                return null;
+            }
+        }
+        return null;
+    }
+}
+
+async function pushSchematicArtifactsToWebview(): Promise<void> {
+    if (!schematicViewer?.isOpen()) return;
+
+    const build = getBuildTarget();
+    if (!build) {
+        schematicViewer.postMessage({
+            type: 'schematic-artifacts',
+            bomData: null,
+            variablesData: null,
+        });
+        return;
+    }
+
+    try {
+        if (!backendServer.isConnected) {
+            await backendServer.startServer();
+        }
+    } catch {
+        // If backend startup fails, still push an empty payload.
+    }
+
+    if (!backendServer.isConnected) {
+        schematicViewer.postMessage({
+            type: 'schematic-artifacts',
+            bomData: null,
+            variablesData: null,
+        });
+        return;
+    }
+
+    const [bomData, variablesData] = await Promise.all([
+        fetchSchematicArtifact('/api/bom', build.root, build.name),
+        fetchSchematicArtifact('/api/variables', build.root, build.name),
+    ]);
+
+    schematicViewer.postMessage({
+        type: 'schematic-artifacts',
+        bomData,
+        variablesData,
+    });
+}
+
 function readCurrentSchematicPayload():
     | { data: unknown; mtimeMs: number }
     | null {
@@ -407,6 +514,7 @@ function sendSchematicUpdate(markSuccessful: boolean = false): boolean {
                 message: null,
             });
         }
+        void pushSchematicArtifactsToWebview();
     }
 
     return true;
@@ -706,6 +814,112 @@ function pushBuildStateAndErrorsToWebview(): void {
     });
 }
 
+function normalizeSymbolToken(raw: string | null | undefined): string | undefined {
+    if (!raw) return undefined;
+    const cleaned = raw
+        .trim()
+        .replace(/^['"`]+|['"`]+$/g, '')
+        .replace(/[,:;(){}\[\]]+$/g, '');
+    if (!cleaned) return undefined;
+    const lower = cleaned.toLowerCase();
+    if (IGNORED_SYMBOL_TOKENS.has(lower)) return undefined;
+    return cleaned;
+}
+
+function extractSymbolAtPosition(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+): string | undefined {
+    const range = document.getWordRangeAtPosition(position, SYMBOL_TOKEN_RE);
+    if (!range) return undefined;
+    return normalizeSymbolToken(document.getText(range));
+}
+
+function postShowInSchematicRequest(request: ShowInSchematicRequest): void {
+    if (!schematicViewer?.isOpen()) return;
+    const message = { type: 'showInSchematic', ...request };
+    schematicViewer.postMessage(message);
+    // Re-send once shortly after to survive first-load race conditions.
+    setTimeout(() => {
+        if (!schematicViewer?.isOpen()) return;
+        schematicViewer.postMessage(message);
+    }, 220);
+}
+
+async function showInSchematicFromEditor(
+    uri?: vscode.Uri,
+    positionOrRange?: vscode.Position | vscode.Range,
+): Promise<void> {
+    let editor = vscode.window.activeTextEditor;
+
+    if (uri) {
+        const existing = vscode.window.visibleTextEditors.find(
+            (candidate) => candidate.document.uri.toString() === uri.toString(),
+        );
+        if (existing) {
+            editor = existing;
+        } else {
+            const doc = await vscode.workspace.openTextDocument(uri);
+            editor = await vscode.window.showTextDocument(doc, {
+                viewColumn: vscode.ViewColumn.Active,
+                preserveFocus: true,
+                preview: false,
+            });
+        }
+    }
+
+    if (!editor) {
+        void vscode.window.showInformationMessage('Open an .ato file first.');
+        return;
+    }
+
+    if (editor.document.languageId !== 'ato') {
+        void vscode.window.showInformationMessage(
+            'Show in Schematic is only available for .ato files.',
+        );
+        return;
+    }
+
+    const position = positionOrRange instanceof vscode.Range
+        ? positionOrRange.start
+        : positionOrRange ?? editor.selection.active;
+
+    const request: ShowInSchematicRequest = {
+        filePath: editor.document.uri.fsPath,
+        line: position.line + 1,
+        column: position.character + 1,
+    };
+    const symbol = extractSymbolAtPosition(editor.document, position);
+    if (symbol) {
+        request.symbol = symbol;
+    }
+
+    await openSchematicPreview();
+    postShowInSchematicRequest(request);
+}
+
+const showInSchematicCodeActionProvider: vscode.CodeActionProvider = {
+    provideCodeActions(
+        document: vscode.TextDocument,
+        range: vscode.Range | vscode.Selection,
+        _context: vscode.CodeActionContext,
+        _token: vscode.CancellationToken,
+    ): vscode.CodeAction[] {
+        if (document.languageId !== 'ato') return [];
+        const action = new vscode.CodeAction(
+            'Show in Schematic',
+            vscode.CodeActionKind.QuickFix,
+        );
+        action.command = {
+            command: SHOW_IN_SCHEMATIC_COMMAND,
+            title: 'Show in Schematic',
+            arguments: [document.uri, range.start],
+        };
+        action.isPreferred = true;
+        return [action];
+    },
+};
+
 export async function openSchematicPreview() {
     if (!schematicViewer) {
         schematicViewer = new SchematicWebview();
@@ -715,6 +929,7 @@ export async function openSchematicPreview() {
     // Always seed from the currently selected schematic to avoid stale
     // last-successful snapshots when switching targets/projects.
     sendSchematicUpdate(true);
+    void pushSchematicArtifactsToWebview();
 
     setTimeout(() => {
         pushBuildStateAndErrorsToWebview();
@@ -736,6 +951,18 @@ export function notifyActiveFile(filePath: string | null) {
 
 export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
+        vscode.commands.registerCommand(
+            SHOW_IN_SCHEMATIC_COMMAND,
+            (uri?: vscode.Uri, positionOrRange?: vscode.Position | vscode.Range) =>
+                showInSchematicFromEditor(uri, positionOrRange),
+        ),
+        vscode.languages.registerCodeActionsProvider(
+            { language: 'ato' },
+            showInSchematicCodeActionProvider,
+            {
+                providedCodeActionKinds: [vscode.CodeActionKind.QuickFix],
+            },
+        ),
         onSchematicChanged((_) => {
             if (schematicViewer?.isOpen()) {
                 // Skip reload when the change was triggered by our own position save

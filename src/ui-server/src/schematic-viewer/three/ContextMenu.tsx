@@ -203,7 +203,7 @@ export function ContextMenu({ theme }: Props) {
               />
               <MenuButton
                 theme={theme}
-                label="Open in ATO"
+                label="Open in ato"
                 disabled={!openSourceRequest}
                 onClick={handleOpenSource}
               />
@@ -232,7 +232,7 @@ export function ContextMenu({ theme }: Props) {
           </div>
           <MenuButton
             theme={theme}
-            label="Open in ATO"
+            label="Open in ato"
             disabled={!openSourceRequest}
             onClick={handleOpenSource}
           />

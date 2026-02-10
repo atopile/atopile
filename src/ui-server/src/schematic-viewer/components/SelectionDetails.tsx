@@ -8,6 +8,14 @@ import {
   useComponentNets,
 } from '../stores/schematicStore';
 import type { SchematicInterfacePin, SchematicNet, SchematicPin, SchematicSourceRef } from '../types/schematic';
+import type {
+  SchematicBOMComponent,
+  SchematicBOMData,
+  SchematicBOMParameter,
+  SchematicVariable,
+  SchematicVariableNode,
+  SchematicVariablesData,
+} from '../types/artifacts';
 import { useTheme } from '../lib/theme';
 import { getPinColor } from '../lib/theme';
 import {
@@ -22,6 +30,8 @@ import {
 
 interface SelectionDetailsProps {
   showTopBorder?: boolean;
+  bomData?: SchematicBOMData | null;
+  variablesData?: SchematicVariablesData | null;
 }
 
 interface NetConnectionSummary {
@@ -31,6 +41,208 @@ interface NetConnectionSummary {
 
 function formatMm(value: number): string {
   return `${value.toFixed(2)} mm`;
+}
+
+function formatCurrency(value: number | null | undefined): string {
+  if (value == null) return '-';
+  if (value < 0.01) return `$${value.toFixed(4)}`;
+  if (value < 1) return `$${value.toFixed(3)}`;
+  return `$${value.toFixed(2)}`;
+}
+
+function formatStock(stock: number | null | undefined): string {
+  if (stock == null) return 'Unknown';
+  if (stock <= 0) return 'Out of stock';
+  if (stock >= 1_000_000) return `${(stock / 1_000_000).toFixed(1)}M`;
+  if (stock >= 1_000) return `${(stock / 1_000).toFixed(1)}K`;
+  return stock.toLocaleString();
+}
+
+function formatPartSource(source: string | null | undefined): string {
+  if (source === 'picked') return 'Auto-picked';
+  if (source === 'specified') return 'Specified';
+  if (source === 'manual') return 'Manual';
+  return source ?? '-';
+}
+
+function extractAddressPath(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const primary = raw.split('|')[0] ?? raw;
+  let withAddress = primary;
+  if (primary.includes('::')) {
+    const parts = primary.split('::');
+    withAddress = parts[parts.length - 1] ?? primary;
+  }
+  const trimmed = withAddress.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeComponentKey(value: string | null | undefined): string {
+  if (!value) return '';
+  let normalized = value;
+  normalized = normalized.replace(/\|.*$/, '');
+  if (normalized.includes('::')) {
+    const parts = normalized.split('::');
+    normalized = parts[parts.length - 1] ?? normalized;
+  }
+  normalized = normalized.toLowerCase();
+  normalized = normalized.replace(/\[(\d+)\]/g, '_$1');
+  normalized = normalized.replace(/[.\s/-]+/g, '_');
+  normalized = normalized.replace(/[^a-z0-9_]/g, '_');
+  normalized = normalized.replace(/_+/g, '_');
+  normalized = normalized.replace(/^_+|_+$/g, '');
+  return normalized;
+}
+
+function collectComponentMatchKeys(
+  componentId: string,
+  componentName: string,
+  sourceAddress?: string,
+): Set<string> {
+  const keys = new Set<string>();
+  const add = (value: string | null | undefined) => {
+    const key = normalizeComponentKey(value);
+    if (key) keys.add(key);
+  };
+  add(componentId);
+  add(componentName);
+  add(extractAddressPath(componentName));
+  add(sourceAddress);
+  add(extractAddressPath(sourceAddress));
+  for (const key of Array.from(keys)) {
+    if (key.endsWith('_package')) keys.add(key.slice(0, -'_package'.length));
+    if (key.endsWith('_footprint')) keys.add(key.slice(0, -'_footprint'.length));
+  }
+  return keys;
+}
+
+function flattenVariableNodes(nodes: SchematicVariableNode[] | undefined): SchematicVariableNode[] {
+  if (!nodes || nodes.length === 0) return [];
+  const flat: SchematicVariableNode[] = [];
+  const stack = [...nodes];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    flat.push(node);
+    if (node.children && node.children.length > 0) {
+      for (let i = node.children.length - 1; i >= 0; i -= 1) {
+        stack.push(node.children[i]);
+      }
+    }
+  }
+  return flat;
+}
+
+function findBOMComponent(
+  selectedComp: { id: string; name: string; designator: string } | null,
+  selectedSource: SchematicSourceRef | null,
+  bomData: SchematicBOMData | null | undefined,
+): SchematicBOMComponent | null {
+  if (!selectedComp) return null;
+  const components = bomData?.components;
+  if (!components || components.length === 0) return null;
+
+  const byDesignator = components.find((component) =>
+    (component.usages ?? []).some((usage) => usage.designator === selectedComp.designator));
+  if (byDesignator) return byDesignator;
+
+  const keys = collectComponentMatchKeys(
+    selectedComp.id,
+    selectedComp.name,
+    selectedSource?.address,
+  );
+  if (keys.size === 0) return null;
+
+  return components.find((component) =>
+    (component.usages ?? []).some((usage) =>
+      keys.has(normalizeComponentKey(usage.address)))) ?? null;
+}
+
+function findVariableNode(
+  selectedComp: { id: string; name: string } | null,
+  selectedSource: SchematicSourceRef | null,
+  variablesData: SchematicVariablesData | null | undefined,
+): SchematicVariableNode | null {
+  if (!selectedComp) return null;
+  const nodes = flattenVariableNodes(variablesData?.nodes);
+  if (nodes.length === 0) return null;
+
+  const keys = collectComponentMatchKeys(
+    selectedComp.id,
+    selectedComp.name,
+    selectedSource?.address,
+  );
+  if (keys.size === 0) return null;
+
+  for (const node of nodes) {
+    const nodeKey = normalizeComponentKey(node.path);
+    if (!nodeKey) continue;
+    if (keys.has(nodeKey)) return node;
+  }
+
+  return null;
+}
+
+function formatVariableCell(
+  value: string | null | undefined,
+  tolerance: string | null | undefined,
+): string {
+  if (!value) return '--';
+  return `${value}${tolerance ?? ''}`;
+}
+
+function PartParameters({
+  variables,
+  bomParameters,
+}: {
+  variables: SchematicVariable[];
+  bomParameters: SchematicBOMParameter[];
+}) {
+  if (variables.length === 0 && bomParameters.length === 0) return null;
+
+  return (
+    <section className="selection-card">
+      <div className="selection-card-kicker">Parameters</div>
+
+      {variables.length > 0 && (
+        <div className="selection-parameter-table">
+          <div className="selection-parameter-table-header">
+            <span>Parameter</span>
+            <span>Spec</span>
+            <span>Actual</span>
+          </div>
+          {variables.map((variable, index) => (
+            <div
+              key={`${variable.name}:${variable.type ?? 'value'}:${index}`}
+              className={`selection-parameter-row ${variable.meetsSpec === false ? 'error' : ''}`}
+            >
+              <span className="selection-parameter-name">{variable.name}</span>
+              <span className="selection-parameter-value">
+                {formatVariableCell(variable.spec, variable.specTolerance)}
+              </span>
+              <span className="selection-parameter-value">
+                {formatVariableCell(variable.actual, variable.actualTolerance)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {bomParameters.length > 0 && (
+        <>
+          <div className="selection-subsection-title">Picked Part Data</div>
+          <div className="selection-meta-grid">
+            {bomParameters.map((parameter) => (
+              <InfoRow
+                key={parameter.name}
+                label={parameter.name}
+                value={`${parameter.value}${parameter.unit ? ` ${parameter.unit}` : ''}`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
 }
 
 function SourceCard({
@@ -77,7 +289,7 @@ function SourceCard({
           onClick={onOpen}
           disabled={!canOpen}
         >
-          Open in ATO
+          Open in ato
         </button>
         <button
           className="selection-action-btn"
@@ -169,7 +381,11 @@ function NetConnectionList({
   );
 }
 
-export function SelectionDetails({ showTopBorder = true }: SelectionDetailsProps) {
+export function SelectionDetails({
+  showTopBorder = true,
+  bomData = null,
+  variablesData = null,
+}: SelectionDetailsProps) {
   const sheet = useCurrentSheet();
   const ports = useCurrentPorts();
   const selectedComponentId = useSchematicStore((s) => s.selectedComponentId);
@@ -248,6 +464,17 @@ export function SelectionDetails({ showTopBorder = true }: SelectionDetailsProps
       net: netByPin.get(pin.number) ?? null,
     }));
   }, [selectedComp, connectedNets]);
+
+  const selectedBOMComponent = useMemo(
+    () => findBOMComponent(selectedComp, selectedSource, bomData),
+    [selectedComp, selectedSource, bomData],
+  );
+  const selectedVariableNode = useMemo(
+    () => findVariableNode(selectedComp, selectedSource, variablesData),
+    [selectedComp, selectedSource, variablesData],
+  );
+  const selectedVariables = selectedVariableNode?.variables ?? [];
+  const selectedBOMParameters = selectedBOMComponent?.parameters ?? [];
 
   const moduleNets = useMemo((): NetConnectionSummary[] => {
     if (!selectedMod) return [];
@@ -396,6 +623,29 @@ export function SelectionDetails({ showTopBorder = true }: SelectionDetailsProps
               />
             </div>
           </section>
+
+          {selectedBOMComponent && (
+            <section className="selection-card">
+              <div className="selection-card-kicker">Part Details</div>
+              <div className="selection-meta-grid">
+                <InfoRow label="Supplier" value={selectedBOMComponent.manufacturer || '-'} />
+                <InfoRow label="MPN" value={selectedBOMComponent.mpn || '-'} mono />
+                <InfoRow label="LCSC" value={selectedBOMComponent.lcsc || '-'} mono />
+                <InfoRow label="Stock" value={formatStock(selectedBOMComponent.stock)} />
+                <InfoRow label="Unit price" value={formatCurrency(selectedBOMComponent.unitCost)} />
+                {typeof selectedBOMComponent.quantity === 'number' && (
+                  <InfoRow label="Quantity" value={selectedBOMComponent.quantity} />
+                )}
+                <InfoRow label="Source" value={formatPartSource(selectedBOMComponent.source)} />
+                <InfoRow label="Package" value={selectedBOMComponent.package || '-'} />
+              </div>
+            </section>
+          )}
+
+          <PartParameters
+            variables={selectedVariables}
+            bomParameters={selectedBOMParameters}
+          />
 
           <SourceCard {...sourceActions} />
 

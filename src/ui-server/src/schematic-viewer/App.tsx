@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { SchematicScene } from './three/SchematicScene';
 import { Toolbar, type SchematicBuildStatus } from './components/Toolbar';
 import { SchematicSidebar } from './components/SchematicSidebar';
@@ -8,12 +8,20 @@ import {
   useCurrentPorts,
   setAtoSchPath,
 } from './stores/schematicStore';
-import type { SchematicData } from './types/schematic';
+import type {
+  SchematicData,
+  SchematicSheet,
+  SchematicSourceRef,
+} from './types/schematic';
 import { useTheme } from './lib/theme';
 import {
   onExtensionMessage,
   postToExtension,
 } from './lib/vscodeApi';
+import type {
+  SchematicBOMData,
+  SchematicVariablesData,
+} from './types/artifacts';
 
 // ── Sidebar size constraints ────────────────────────────────────
 
@@ -31,6 +39,24 @@ interface SchematicBuildError {
   column?: number | null;
 }
 
+interface SchematicArtifactsPayload {
+  bomData: SchematicBOMData | null;
+  variablesData: SchematicVariablesData | null;
+}
+
+interface ShowInSchematicRequest {
+  filePath?: string | null;
+  line?: number | null;
+  column?: number | null;
+  symbol?: string | null;
+}
+
+interface SchematicTargetCandidate {
+  id: string;
+  path: string[];
+  score: number;
+}
+
 const INITIAL_BUILD_STATUS: SchematicBuildStatus = {
   phase: 'idle',
   dirty: false,
@@ -38,6 +64,21 @@ const INITIAL_BUILD_STATUS: SchematicBuildStatus = {
   lastSuccessfulAt: null,
   message: null,
 };
+
+const IGNORED_SYMBOL_TOKENS = new Set([
+  'new',
+  'module',
+  'component',
+  'interface',
+  'signal',
+  'from',
+  'import',
+  'if',
+  'else',
+  'for',
+  'while',
+  'return',
+]);
 
 function readInitialSidebarWidth() {
   if (typeof window === 'undefined') return SIDEBAR_DEFAULT_W;
@@ -51,6 +92,202 @@ function readInitialSidebarCollapsed() {
   return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === '1';
 }
 
+function normalizePathForMatch(value: string | null | undefined): string {
+  if (!value) return '';
+  return value.trim().replace(/\\/g, '/').toLowerCase();
+}
+
+function basenameForPath(pathValue: string): string {
+  if (!pathValue) return '';
+  const trimmed = pathValue.endsWith('/') ? pathValue.slice(0, -1) : pathValue;
+  const idx = trimmed.lastIndexOf('/');
+  return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
+}
+
+function normalizeLookupKey(value: string | null | undefined): string {
+  if (!value) return '';
+  let normalized = value;
+  normalized = normalized.replace(/\|.*$/, '');
+  if (normalized.includes('::')) {
+    const parts = normalized.split('::');
+    normalized = parts[parts.length - 1] ?? normalized;
+  }
+  normalized = normalized.toLowerCase();
+  normalized = normalized.replace(/\[(\d+)\]/g, '_$1');
+  normalized = normalized.replace(/[.\s/-]+/g, '_');
+  normalized = normalized.replace(/[^a-z0-9_]/g, '_');
+  normalized = normalized.replace(/_+/g, '_');
+  normalized = normalized.replace(/^_+|_+$/g, '');
+  return normalized;
+}
+
+function normalizeSymbolToken(value: string | null | undefined): string {
+  if (!value) return '';
+  const cleaned = value
+    .trim()
+    .replace(/^['"`]+|['"`]+$/g, '')
+    .replace(/[,:;(){}\[\]]+$/g, '');
+  const normalized = normalizeLookupKey(cleaned);
+  if (!normalized || IGNORED_SYMBOL_TOKENS.has(normalized)) return '';
+  return normalized;
+}
+
+function sourceFileFromAddress(address: string | null | undefined): string {
+  if (!address) return '';
+  const primary = address.split('|')[0] ?? address;
+  const filePart = primary.split('::')[0] ?? '';
+  return normalizePathForMatch(filePart);
+}
+
+function scoreLineDistance(
+  targetLine: number | undefined,
+  sourceLine: number | undefined,
+): number {
+  if (targetLine == null || sourceLine == null) return 0;
+  const delta = Math.abs(sourceLine - targetLine);
+  if (delta === 0) return 220;
+  if (delta <= 1) return 180;
+  if (delta <= 3) return 130;
+  if (delta <= 8) return 80;
+  if (delta <= 20) return 35;
+  return 0;
+}
+
+function scoreNameMatch(
+  tokenKey: string,
+  id: string,
+  name: string,
+): number {
+  if (!tokenKey) return 0;
+  const idKey = normalizeLookupKey(id);
+  const nameKey = normalizeLookupKey(name);
+  let score = 0;
+
+  if (idKey === tokenKey) score = Math.max(score, 190);
+  else if (idKey.endsWith(`_${tokenKey}`)) score = Math.max(score, 160);
+  else if (idKey.includes(tokenKey)) score = Math.max(score, 120);
+
+  if (nameKey === tokenKey) score = Math.max(score, 170);
+  else if (nameKey.endsWith(`_${tokenKey}`)) score = Math.max(score, 145);
+  else if (nameKey.includes(tokenKey)) score = Math.max(score, 105);
+
+  return score;
+}
+
+function scoreSourceMatch({
+  source,
+  fileKey,
+  fileBase,
+  targetLine,
+  tokenKey,
+}: {
+  source: SchematicSourceRef | null | undefined;
+  fileKey: string;
+  fileBase: string;
+  targetLine: number | undefined;
+  tokenKey: string;
+}): number {
+  if (!source) return 0;
+  let score = 0;
+
+  const sourceFiles = [
+    normalizePathForMatch(source.filePath),
+    sourceFileFromAddress(source.address),
+  ].filter((entry): entry is string => !!entry);
+
+  if (fileKey) {
+    if (sourceFiles.some((entry) => entry === fileKey)) {
+      score += 220;
+    } else if (fileBase && sourceFiles.some((entry) => basenameForPath(entry) === fileBase)) {
+      score += 95;
+    }
+  }
+
+  score += scoreLineDistance(
+    targetLine,
+    typeof source.line === 'number' ? source.line : undefined,
+  );
+
+  if (tokenKey) {
+    const instanceKey = normalizeLookupKey(source.instancePath);
+    const addressKey = normalizeLookupKey(source.address);
+
+    if (instanceKey === tokenKey) score += 200;
+    else if (instanceKey.endsWith(`_${tokenKey}`)) score += 170;
+    else if (instanceKey.includes(tokenKey)) score += 120;
+
+    if (addressKey === tokenKey) score += 185;
+    else if (addressKey.endsWith(`_${tokenKey}`)) score += 155;
+    else if (addressKey.includes(tokenKey)) score += 105;
+  }
+
+  return score;
+}
+
+function parseShowInSchematicRequest(
+  message: { [key: string]: unknown },
+): ShowInSchematicRequest | null {
+  const filePath = typeof message.filePath === 'string' ? message.filePath : null;
+  const line = typeof message.line === 'number' ? message.line : null;
+  const column = typeof message.column === 'number' ? message.column : null;
+  const symbol = typeof message.symbol === 'string' ? message.symbol : null;
+  if (!filePath && line == null && !symbol) return null;
+  return { filePath, line, column, symbol };
+}
+
+function findBestSchematicTarget(
+  data: SchematicData,
+  request: ShowInSchematicRequest,
+): SchematicTargetCandidate | null {
+  const fileKey = normalizePathForMatch(request.filePath);
+  const fileBase = basenameForPath(fileKey);
+  const tokenKey = normalizeSymbolToken(request.symbol);
+  const targetLine = typeof request.line === 'number' && Number.isFinite(request.line)
+    ? request.line
+    : undefined;
+
+  const minimumScore = tokenKey ? 110 : 180;
+  let best: SchematicTargetCandidate | null = null;
+
+  const consider = (
+    path: string[],
+    id: string,
+    name: string,
+    source: SchematicSourceRef | null | undefined,
+  ) => {
+    const sourceScore = scoreSourceMatch({
+      source,
+      fileKey,
+      fileBase,
+      targetLine,
+      tokenKey,
+    });
+    const nameScore = scoreNameMatch(tokenKey, id, name);
+
+    let score = Math.max(sourceScore, nameScore);
+    if (sourceScore > 0 && nameScore > 0) score += 35;
+    if (fileKey && sourceScore === 0 && nameScore < 130) score -= 25;
+    if (score < minimumScore) return;
+
+    if (!best || score > best.score) {
+      best = { id, path: [...path], score };
+    }
+  };
+
+  const visit = (sheet: SchematicSheet, path: string[]) => {
+    for (const component of sheet.components) {
+      consider(path, component.id, component.name, component.source);
+    }
+    for (const module of sheet.modules) {
+      consider(path, module.id, module.name, module.source);
+      visit(module.sheet, [...path, module.id]);
+    }
+  };
+
+  visit(data.root, []);
+  return best;
+}
+
 function SchematicApp() {
   const loadSchematic = useSchematicStore((s) => s.loadSchematic);
   const loadSchematicData = useSchematicStore((s) => s.loadSchematicData);
@@ -60,6 +297,7 @@ function SchematicApp() {
   const sheet = useCurrentSheet();
   const ports = useCurrentPorts();
   const theme = useTheme();
+  const pendingShowInSchematicRef = useRef<ShowInSchematicRequest | null>(null);
 
   // ── Sidebar state ─────────────────────────────────────────────
 
@@ -68,6 +306,10 @@ function SchematicApp() {
   const [buildStatus, setBuildStatus] = useState<SchematicBuildStatus>(INITIAL_BUILD_STATUS);
   const [buildErrors, setBuildErrors] = useState<SchematicBuildError[]>([]);
   const [lastSuccessfulSnapshot, setLastSuccessfulSnapshot] = useState<SchematicData | null>(null);
+  const [artifacts, setArtifacts] = useState<SchematicArtifactsPayload>({
+    bomData: null,
+    variablesData: null,
+  });
 
   // ── Horizontal resize (sidebar width) ─────────────────────────
 
@@ -125,6 +367,34 @@ function SchematicApp() {
     loadSchematic(url);
   }, []);
 
+  const showInSchematic = useCallback((request: ShowInSchematicRequest): boolean => {
+    const store = useSchematicStore.getState();
+    if (!store.schematic) return false;
+    const target = findBestSchematicTarget(store.schematic, request);
+    if (!target) {
+      postToExtension({
+        type: 'showInSchematicResult',
+        found: false,
+        symbol: request.symbol ?? undefined,
+        filePath: request.filePath ?? undefined,
+        line: request.line ?? undefined,
+        column: request.column ?? undefined,
+      });
+      return true;
+    }
+
+    store.navigateToPath([...target.path]);
+    store.selectNet(null);
+    store.selectComponent(target.id);
+    postToExtension({
+      type: 'showInSchematicResult',
+      found: true,
+      targetId: target.id,
+      path: target.path,
+    });
+    return true;
+  }, []);
+
   // ── VSCode extension messaging ─────────────────────────────
 
   useEffect(() => {
@@ -159,13 +429,31 @@ function SchematicApp() {
           column: typeof err?.column === 'number' ? err.column : null,
         }));
         setBuildErrors(parsed);
+      } else if (msg.type === 'schematic-artifacts') {
+        setArtifacts({
+          bomData: (msg.bomData && typeof msg.bomData === 'object')
+            ? msg.bomData as SchematicBOMData
+            : null,
+          variablesData: (msg.variablesData && typeof msg.variablesData === 'object')
+            ? msg.variablesData as SchematicVariablesData
+            : null,
+        });
+      } else if (msg.type === 'showInSchematic') {
+        const request = parseShowInSchematicRequest(msg);
+        if (!request) return;
+        const handled = showInSchematic(request);
+        if (handled) {
+          pendingShowInSchematicRef.current = null;
+        } else {
+          pendingShowInSchematicRef.current = request;
+        }
       }
     });
 
     return () => {
       unsubscribe();
     };
-  }, []);
+  }, [showInSchematic]);
 
   const openSelectionInSource = useCallback((selectionId: string | null): boolean => {
     if (!selectionId || !sheet) return false;
@@ -212,6 +500,14 @@ function SchematicApp() {
     if (lastSuccessfulSnapshot) return;
     setLastSuccessfulSnapshot(schematicData);
   }, [schematicData, lastSuccessfulSnapshot]);
+
+  useEffect(() => {
+    const pending = pendingShowInSchematicRef.current;
+    if (!pending) return;
+    if (showInSchematic(pending)) {
+      pendingShowInSchematicRef.current = null;
+    }
+  }, [schematicData, showInSchematic]);
 
   // ── Keyboard shortcuts ───────────────────────────────────────
 
@@ -473,6 +769,8 @@ function SchematicApp() {
             <SchematicSidebar
               width={sidebarWidth}
               onSetCollapsed={setSidebarCollapsed}
+              bomData={artifacts.bomData}
+              variablesData={artifacts.variablesData}
             />
           </>
         )}

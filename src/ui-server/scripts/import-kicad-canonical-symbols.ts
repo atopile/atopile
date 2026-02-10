@@ -23,8 +23,6 @@ interface SymbolSource {
 }
 
 const KICAD_REPO_URL = 'https://gitlab.com/kicad/libraries/kicad-symbols.git';
-const CONNECTOR_VARIANT_MIN = 1;
-const CONNECTOR_VARIANT_MAX = 20;
 
 const FAMILY_SOURCES: Record<FamilyKey, SymbolSource> = {
   resistor: { lib: 'Device', symbolFile: 'R.kicad_sym', symbolName: 'R' },
@@ -85,25 +83,6 @@ async function loadSymbol(repoDir: string, source: SymbolSource) {
   };
 }
 
-function loadConnectorVariants(repoDir: string) {
-  const loadTasks = Array.from(
-    { length: CONNECTOR_VARIANT_MAX - CONNECTOR_VARIANT_MIN + 1 },
-    (_, idx) => CONNECTOR_VARIANT_MIN + idx,
-  ).map(async (pinCount) => {
-    const countToken = pinCount.toString().padStart(2, '0');
-    const symbolFile = `Conn_01x${countToken}.kicad_sym`;
-    const symbolName = `Conn_01x${countToken}`;
-    const source: SymbolSource = {
-      lib: 'Connector_Generic',
-      symbolFile,
-      symbolName,
-    };
-    const loaded = await loadSymbol(repoDir, source);
-    return [String(pinCount), loaded] as const;
-  });
-  return Promise.all(loadTasks).then((entries) => Object.fromEntries(entries));
-}
-
 async function main(): Promise<void> {
   const repoDir = repoFromEnv() ?? (await cloneKiCadSymbolsTemp());
   const commit = getRepoCommit(repoDir);
@@ -116,12 +95,6 @@ async function main(): Promise<void> {
   );
   const families = Object.fromEntries(familyEntries);
 
-  const connector = {
-    minPinCount: CONNECTOR_VARIANT_MIN,
-    maxPinCount: CONNECTOR_VARIANT_MAX,
-    variants: await loadConnectorVariants(repoDir),
-  };
-
   const output = {
     version: 1,
     generator: 'scripts/import-kicad-canonical-symbols.ts',
@@ -131,7 +104,6 @@ async function main(): Promise<void> {
       commit,
     },
     families,
-    connector,
   };
 
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));

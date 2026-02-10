@@ -681,7 +681,7 @@ function SourceActions({
       <div style={{ display: 'flex', gap: 6 }}>
         <SourceActionButton
           theme={theme}
-          label="Open in ATO"
+          label="Open in ato"
           disabled={!canOpen}
           onClick={onOpen}
         />

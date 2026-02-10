@@ -15,16 +15,28 @@ import type {
 import type { KicadArc } from '../types/symbol';
 import {
   getComponentGridAlignmentOffset,
-  getNormalizedComponentPinGeometry,
 } from '../types/schematic';
 import type { ThemeColors } from '../lib/theme';
 import { getCanonicalKicadSymbol } from '../symbol-catalog/canonicalSymbolCatalog';
+import { getSymbolRenderTuning } from '../symbol-catalog/symbolTuning';
 import { getKicadTemplateSymbol } from '../parsers/kicadSymbolTemplates';
 import { anchorFromVisualSide, getUprightTextTransform } from '../lib/itemTransform';
 import { getConnectionColor } from './connectionColor';
+import {
+  CUSTOM_SYMBOL_BODY_BASE_Y,
+  chipScale,
+  getCanonicalGlyphTransform,
+  getCanonicalPinAttachmentMap,
+  getTunedPinGeometry,
+  transformCanonicalBodyPoint,
+} from './symbolRenderGeometry';
 
 const SMALL_AREA = 40;
 const NO_RAYCAST = () => {};
+const SYMBOL_STROKE_WIDTH = 0.26;
+const SYMBOL_STROKE_WIDTH_FINE = 0.22;
+const PIN_LEAD_WIDTH = 0.28;
+const PIN_LEAD_WIDTH_ACTIVE = 0.34;
 
 function getDesignatorPrefix(designator: string): string {
   return designator.replace(/[^A-Za-z]/g, '').toUpperCase();
@@ -55,15 +67,6 @@ function inferSymbolFamily(component: SchematicComponent): SchematicSymbolFamily
   if (haystack.includes('diode') || designatorPrefix.startsWith('D')) return 'diode';
 
   return null;
-}
-
-function chipScale(packageCode?: string): number {
-  const code = (packageCode ?? '').toUpperCase();
-  if (!code) return 1;
-  if (['01005', '0201', '0402'].includes(code)) return 0.82;
-  if (['1206', '1210', '2010', '2512'].includes(code)) return 1.16;
-  if (code.startsWith('SOD-') || code.startsWith('SOT-')) return 0.92;
-  return 1;
 }
 
 function circlePoints(
@@ -168,67 +171,38 @@ interface SymbolGlyphProps {
   component: SchematicComponent;
   family: SchematicSymbolFamily;
   color: string;
+  templateSymbol: ReturnType<typeof getCanonicalKicadSymbol>;
+  tuning: {
+    bodyOffsetX: number;
+    bodyOffsetY: number;
+    bodyRotationDeg: number;
+    leadDelta: number;
+  };
 }
 
-function symbolScaleFactors(family: SchematicSymbolFamily): { width: number; height: number } {
-  switch (family) {
-    case 'resistor':
-      return { width: 0.9, height: 0.9 };
-    case 'capacitor':
-    case 'capacitor_polarized':
-      return { width: 0.88, height: 0.94 };
-    case 'inductor':
-      return { width: 0.92, height: 0.9 };
-    case 'diode':
-      return { width: 0.9, height: 1.28 };
-    case 'led':
-      return { width: 0.95, height: 1.32 };
-    case 'testpoint':
-      return { width: 0.74, height: 1.02 };
-    case 'connector':
-      return { width: 0.9, height: 0.9 };
-    default:
-      return { width: 0.88, height: 0.9 };
-  }
-}
-
-function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
+function SymbolGlyph({
+  component,
+  family,
+  color,
+  templateSymbol,
+  tuning,
+}: SymbolGlyphProps) {
   const W = component.bodyWidth;
   const H = component.bodyHeight;
   const scale = chipScale(component.packageCode);
   const lineColor = color;
-  const lineWidth = 2.2;
-  const templateSymbol = getCanonicalKicadSymbol(family, component.pins.length)
-    ?? getKicadTemplateSymbol(family, component.pins.length);
-
+  const lineWidth = SYMBOL_STROKE_WIDTH;
   if (
     templateSymbol
     && templateSymbol.bodyBounds.width > 1e-6
     && templateSymbol.bodyBounds.height > 1e-6
   ) {
-    const bounds = templateSymbol.bodyBounds;
-    const cx = (bounds.minX + bounds.maxX) * 0.5;
-    const cy = (bounds.minY + bounds.maxY) * 0.5;
-    const rotateToHorizontal =
-      family !== 'connector'
-      && family !== 'testpoint'
-      && bounds.height > bounds.width;
-    const effectiveW = rotateToHorizontal ? bounds.height : bounds.width;
-    const effectiveH = rotateToHorizontal ? bounds.width : bounds.height;
-    const factors = symbolScaleFactors(family);
-    const targetW = Math.max(0.7, W * factors.width * scale);
-    const targetH = Math.max(0.55, H * factors.height);
-    const sx = targetW / Math.max(effectiveW, 1e-6);
-    const sy = targetH / Math.max(effectiveH, 1e-6);
-    const unit = Math.min(sx, sy);
-    const rotatePoint = (x: number, y: number): [number, number] => {
-      const dx = x - cx;
-      const dy = y - cy;
-      return rotateToHorizontal ? [dy, -dx] : [dx, dy];
-    };
+    const transform = getCanonicalGlyphTransform(component, family, templateSymbol, tuning);
+    if (!transform) return null;
+
     const pt = (x: number, y: number): [number, number, number] => {
-      const [rx, ry] = rotatePoint(x, y);
-      return [rx * unit, ry * unit, 0];
+      const p = transformCanonicalBodyPoint(x, y, transform);
+      return [p.x, p.y, 0];
     };
 
     return (
@@ -245,6 +219,7 @@ function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
             ]}
             color={lineColor}
             lineWidth={lineWidth}
+            worldUnits
             raycast={NO_RAYCAST}
           />
         ))}
@@ -255,23 +230,29 @@ function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
             points={poly.points.map((p) => pt(p.x, p.y))}
             color={lineColor}
             lineWidth={lineWidth}
+            worldUnits
             raycast={NO_RAYCAST}
           />
         ))}
 
         {templateSymbol.circles.map((circle, idx) => {
-          const [rx, ry] = rotatePoint(circle.centerX, circle.centerY);
+          const center = transformCanonicalBodyPoint(
+            circle.centerX,
+            circle.centerY,
+            transform,
+          );
           return (
             <Line
               key={`circle-${idx}`}
               points={circlePoints(
-                rx * unit,
-                ry * unit,
-                circle.radius * unit,
+                center.x,
+                center.y,
+                circle.radius * transform.unit,
                 24,
               )}
               color={lineColor}
               lineWidth={lineWidth}
+              worldUnits
               raycast={NO_RAYCAST}
             />
           );
@@ -283,6 +264,7 @@ function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
             points={kicadArcPoints(arc, 20).map(([x, y]) => pt(x, y))}
             color={lineColor}
             lineWidth={lineWidth}
+            worldUnits
             raycast={NO_RAYCAST}
           />
         ))}
@@ -305,6 +287,7 @@ function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
         points={points}
         color={lineColor}
         lineWidth={lineWidth}
+        worldUnits
         raycast={NO_RAYCAST}
       />
     );
@@ -322,6 +305,7 @@ function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
           ]}
           color={lineColor}
           lineWidth={lineWidth}
+          worldUnits
           raycast={NO_RAYCAST}
         />
         <Line
@@ -331,6 +315,7 @@ function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
           ]}
           color={lineColor}
           lineWidth={lineWidth}
+          worldUnits
           raycast={NO_RAYCAST}
         />
         {family === 'capacitor_polarized' && (
@@ -341,7 +326,8 @@ function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
                 [-plateGap - 0.12, 0.18, 0],
               ]}
               color={lineColor}
-              lineWidth={1.9}
+              lineWidth={SYMBOL_STROKE_WIDTH_FINE}
+              worldUnits
               raycast={NO_RAYCAST}
             />
             <Line
@@ -350,7 +336,8 @@ function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
                 [-plateGap - 0.22, 0.28, 0],
               ]}
               color={lineColor}
-              lineWidth={1.9}
+              lineWidth={SYMBOL_STROKE_WIDTH_FINE}
+              worldUnits
               raycast={NO_RAYCAST}
             />
           </group>
@@ -377,6 +364,7 @@ function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
         points={points}
         color={lineColor}
         lineWidth={lineWidth}
+        worldUnits
         raycast={NO_RAYCAST}
       />
     );
@@ -398,6 +386,7 @@ function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
           ]}
           color={lineColor}
           lineWidth={lineWidth}
+          worldUnits
           raycast={NO_RAYCAST}
         />
         <Line
@@ -407,6 +396,7 @@ function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
           ]}
           color={lineColor}
           lineWidth={lineWidth}
+          worldUnits
           raycast={NO_RAYCAST}
         />
 
@@ -418,7 +408,8 @@ function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
                 [barX + 0.62, halfY + 0.62, 0],
               ]}
               color={lineColor}
-              lineWidth={1.8}
+              lineWidth={SYMBOL_STROKE_WIDTH_FINE}
+              worldUnits
               raycast={NO_RAYCAST}
             />
             <Line
@@ -428,7 +419,8 @@ function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
                 [barX + 0.57, halfY + 0.42, 0],
               ]}
               color={lineColor}
-              lineWidth={1.7}
+              lineWidth={SYMBOL_STROKE_WIDTH_FINE}
+              worldUnits
               raycast={NO_RAYCAST}
             />
             <Line
@@ -437,7 +429,8 @@ function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
                 [barX + 0.45, halfY + 0.34, 0],
               ]}
               color={lineColor}
-              lineWidth={1.8}
+              lineWidth={SYMBOL_STROKE_WIDTH_FINE}
+              worldUnits
               raycast={NO_RAYCAST}
             />
             <Line
@@ -447,7 +440,8 @@ function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
                 [barX + 0.4, halfY + 0.14, 0],
               ]}
               color={lineColor}
-              lineWidth={1.7}
+              lineWidth={SYMBOL_STROKE_WIDTH_FINE}
+              worldUnits
               raycast={NO_RAYCAST}
             />
           </group>
@@ -464,6 +458,7 @@ function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
           points={circlePoints(0, 0.08, radius, 24)}
           color={lineColor}
           lineWidth={lineWidth}
+          worldUnits
           raycast={NO_RAYCAST}
         />
         <Line
@@ -473,6 +468,7 @@ function SymbolGlyph({ component, family, color }: SymbolGlyphProps) {
           ]}
           color={lineColor}
           lineWidth={lineWidth}
+          worldUnits
           raycast={NO_RAYCAST}
         />
       </group>
@@ -513,6 +509,37 @@ export const ComponentRenderer = memo(function ComponentRenderer({
   const accent = isSelected ? theme.textSecondary : theme.textMuted;
 
   const symbolFamily = useMemo(() => inferSymbolFamily(component), [component]);
+  const symbolTuning = useMemo(
+    () => getSymbolRenderTuning(symbolFamily),
+    [symbolFamily],
+  );
+  const templateSymbol = useMemo(() => {
+    if (!symbolFamily) return null;
+    return getCanonicalKicadSymbol(symbolFamily, component.pins.length)
+      ?? getKicadTemplateSymbol(symbolFamily, component.pins.length);
+  }, [symbolFamily, component.pins.length]);
+  const pinAttachOverrides = useMemo(() => {
+    if (!symbolFamily || !templateSymbol) return null;
+    return getCanonicalPinAttachmentMap(
+      component,
+      symbolFamily,
+      templateSymbol,
+      symbolTuning,
+      CUSTOM_SYMBOL_BODY_BASE_Y,
+    );
+  }, [component, symbolFamily, templateSymbol, symbolTuning]);
+  const symbolBodyCenter = useMemo(() => {
+    if (!symbolFamily) return null;
+    return {
+      x: symbolTuning.bodyOffsetX,
+      y: symbolTuning.bodyOffsetY + CUSTOM_SYMBOL_BODY_BASE_Y,
+    };
+  }, [symbolFamily, symbolTuning]);
+  const renderedPins = useMemo(() => {
+    if (symbolFamily !== 'testpoint') return component.pins;
+    const primaryPin = component.pins.find((pin) => pin.number === '1') ?? component.pins[0];
+    return primaryPin ? [primaryPin] : [];
+  }, [component.pins, symbolFamily]);
   const hasCustomSymbol = symbolFamily !== null;
 
   const textTf = useMemo(
@@ -613,11 +640,13 @@ export const ComponentRenderer = memo(function ComponentRenderer({
       {hasCustomSymbol && (
         <>
           {symbolFamily && (
-            <group position={[0, 0.05, 0.001]} raycast={NO_RAYCAST}>
+            <group position={[0, CUSTOM_SYMBOL_BODY_BASE_Y, 0.001]} raycast={NO_RAYCAST}>
               <SymbolGlyph
                 component={component}
                 family={symbolFamily}
                 color={accent}
+                templateSymbol={templateSymbol}
+                tuning={symbolTuning}
               />
             </group>
           )}
@@ -727,7 +756,7 @@ export const ComponentRenderer = memo(function ComponentRenderer({
         <meshBasicMaterial color={theme.textMuted} transparent opacity={0.3} />
       </mesh>
 
-      {component.pins.map((pin) => (
+      {renderedPins.map((pin) => (
         <SchematicPinElement
           key={pin.number}
           component={component}
@@ -742,6 +771,9 @@ export const ComponentRenderer = memo(function ComponentRenderer({
           rotationDeg={rotation}
           mirrorX={mirrorX}
           mirrorY={mirrorY}
+          symbolFamily={symbolFamily}
+          pinAttachOverride={pinAttachOverrides?.get(pin.number) ?? null}
+          pinBodyCenterOverride={symbolBodyCenter}
         />
       ))}
     </group>
@@ -761,6 +793,9 @@ const SchematicPinElement = memo(function SchematicPinElement({
   rotationDeg = 0,
   mirrorX = false,
   mirrorY = false,
+  symbolFamily,
+  pinAttachOverride,
+  pinBodyCenterOverride,
 }: {
   component: SchematicComponent;
   pin: SchematicPin;
@@ -774,6 +809,9 @@ const SchematicPinElement = memo(function SchematicPinElement({
   rotationDeg?: number;
   mirrorX?: boolean;
   mirrorY?: boolean;
+  symbolFamily: SchematicSymbolFamily | null;
+  pinAttachOverride?: { x: number; y: number } | null;
+  pinBodyCenterOverride?: { x: number; y: number } | null;
 }) {
   const color = getConnectionColor(pin.category, theme);
   const isNetHighlighted = netId !== null && netId === selectedNetId;
@@ -782,8 +820,15 @@ const SchematicPinElement = memo(function SchematicPinElement({
   const DOT_RADIUS = 0.15;
   const pinOpacity = isNetHighlighted ? 1 : isDimmed ? 0.25 : 0.8;
   const pinGeom = useMemo(
-    () => getNormalizedComponentPinGeometry(component, pin),
-    [component, pin],
+    () => getTunedPinGeometry(
+      component,
+      pin,
+      symbolFamily,
+      pinAttachOverride,
+      undefined,
+      pinBodyCenterOverride,
+    ),
+    [component, pin, symbolFamily, pinAttachOverride, pinBodyCenterOverride],
   );
   const pinX = pinGeom.x;
   const pinY = pinGeom.y;
@@ -836,7 +881,8 @@ const SchematicPinElement = memo(function SchematicPinElement({
           [bodyX, bodyY, 0],
         ]}
         color={color}
-        lineWidth={isNetHighlighted ? 2.5 : 1.8}
+        lineWidth={isNetHighlighted ? PIN_LEAD_WIDTH_ACTIVE : PIN_LEAD_WIDTH}
+        worldUnits
         transparent
         opacity={pinOpacity}
         raycast={NO_RAYCAST}

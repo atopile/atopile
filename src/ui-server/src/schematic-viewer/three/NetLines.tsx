@@ -87,6 +87,14 @@ const BUS_LABEL_SIDE_PADDING = 0.5;
 const BUS_LABEL_ROUTE_CLEARANCE = 0.9;
 const NO_RAYCAST = () => {};
 const ROUTE_OBSTACLE_CLEARANCE = 0.5;
+const TRACK_WIDTH_SIGNAL = 0.28;
+const TRACK_WIDTH_ELECTRICAL = 0.24;
+const TRACK_WIDTH_INTERFACE = 0.32;
+const TRACK_WIDTH_BUS = 0.4;
+const TRACK_WIDTH_ACTIVE_DELTA = 0.08;
+const BUS_ENTRY_WIDTH = 0.3;
+const BUS_ENTRY_WIDTH_ACTIVE = 0.36;
+const JUMP_TRACK_WIDTH = 0.3;
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -611,10 +619,10 @@ function routePriority(net: SchematicNet): number {
 }
 
 function baseTrackWidth(net: SchematicNet, interfaceTrack: boolean): number {
-  if (net.type === 'bus') return 3.0;
-  if (interfaceTrack) return 2.6;
-  if (net.type === 'electrical') return 1.6;
-  return 1.85;
+  if (net.type === 'bus') return TRACK_WIDTH_BUS;
+  if (interfaceTrack) return TRACK_WIDTH_INTERFACE;
+  if (net.type === 'electrical') return TRACK_WIDTH_ELECTRICAL;
+  return TRACK_WIDTH_SIGNAL;
 }
 
 function cloneRoute(route: [number, number, number][]): [number, number, number][] {
@@ -1537,7 +1545,8 @@ const BusConnection = memo(function BusConnection({
       <Line
         ref={lineRef}
         points={trunkRoute}
-        lineWidth={isActive ? 6.4 : 5.1}
+        lineWidth={isActive ? TRACK_WIDTH_BUS + TRACK_WIDTH_ACTIVE_DELTA : TRACK_WIDTH_BUS}
+        worldUnits
         color={color}
         transparent
         opacity={opacity}
@@ -1590,13 +1599,13 @@ const BusConnection = memo(function BusConnection({
         endpoint={endpointA}
         color={color}
         opacity={opacity}
-        lineWidth={isActive ? 3.6 : 2.8}
+        lineWidth={isActive ? BUS_ENTRY_WIDTH_ACTIVE : BUS_ENTRY_WIDTH}
       />
       <BusEntries
         endpoint={endpointB}
         color={color}
         opacity={opacity}
-        lineWidth={isActive ? 3.6 : 2.8}
+        lineWidth={isActive ? BUS_ENTRY_WIDTH_ACTIVE : BUS_ENTRY_WIDTH}
       />
 
       {/* Inline protocol label on trunk */}
@@ -1611,7 +1620,12 @@ const BusConnection = memo(function BusConnection({
               [-labelGapLength * 0.5, 0, 0],
               [labelGapLength * 0.5, 0, 0],
             ]}
-            lineWidth={(isActive ? 6.4 : 5.1) + 1}
+            lineWidth={(
+              isActive
+                ? TRACK_WIDTH_BUS + TRACK_WIDTH_ACTIVE_DELTA
+                : TRACK_WIDTH_BUS
+            ) + 0.14}
+            worldUnits
             color={theme.bgPrimary}
             transparent={false}
             toneMapped={false}
@@ -1681,6 +1695,7 @@ function BusEntries({
                 [pin.stubX, pin.stubY, 0],
               ]}
               lineWidth={lineWidth}
+              worldUnits
               color={color}
               transparent
               opacity={opacity}
@@ -1694,6 +1709,7 @@ function BusEntries({
                 [endpoint.mergeX, endpoint.mergeY, 0],
               ]}
               lineWidth={lineWidth}
+              worldUnits
               color={color}
               transparent
               opacity={opacity}
@@ -1920,7 +1936,10 @@ const OrthogonalConnection = memo(function OrthogonalConnection({
         ref={lineRef}
         points={initialRoute}
         color={color}
-        lineWidth={isActive ? Math.max(2.8, baseTrackWidth(net, interfaceTrack) + 0.8) : baseTrackWidth(net, interfaceTrack)}
+        lineWidth={isActive
+          ? baseTrackWidth(net, interfaceTrack) + TRACK_WIDTH_ACTIVE_DELTA
+          : baseTrackWidth(net, interfaceTrack)}
+        worldUnits
         transparent
         opacity={opacity}
       />
@@ -2106,7 +2125,10 @@ function NetStubs({
             <Line
               points={[[pin.x, pin.y, 0], [endX, endY, 0]]}
               color={color}
-              lineWidth={isActive ? Math.max(2.8, baseTrackWidth(net, interfaceTrack) + 0.8) : baseTrackWidth(net, interfaceTrack)}
+              lineWidth={isActive
+                ? baseTrackWidth(net, interfaceTrack) + TRACK_WIDTH_ACTIVE_DELTA
+                : baseTrackWidth(net, interfaceTrack)}
+              worldUnits
               transparent
               opacity={opacity}
               raycast={NO_RAYCAST}
@@ -2211,7 +2233,8 @@ const CrossingJump = memo(function CrossingJump({
       <Line
         points={[[x, y - verticalHalfSpan, 0.002], [x, y + verticalHalfSpan, 0.002]]}
         color={vColor}
-        lineWidth={2.1}
+        lineWidth={JUMP_TRACK_WIDTH}
+        worldUnits
         transparent
         opacity={vOpacity}
         raycast={NO_RAYCAST}
@@ -2219,7 +2242,8 @@ const CrossingJump = memo(function CrossingJump({
       <Line
         points={arcPts}
         color={hColor}
-        lineWidth={2.1}
+        lineWidth={JUMP_TRACK_WIDTH}
+        worldUnits
         transparent
         opacity={hOpacity}
         raycast={NO_RAYCAST}
