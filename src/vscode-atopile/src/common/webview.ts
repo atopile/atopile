@@ -1,12 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 
-export function getPortMapping(port: number): vscode.WebviewPortMapping[] {
-  return port
-    ? [{ webviewPort: port, extensionHostPort: port }]
-    : [];
-}
-
 export function createWebviewOptions(params: {
   isDev: boolean;
   extensionPath: string;
@@ -17,7 +11,9 @@ export function createWebviewOptions(params: {
   return {
     enableScripts: true,
     retainContextWhenHidden: true,
-    portMapping: getPortMapping(port),
+    portMapping: port
+      ? [{ webviewPort: port, extensionHostPort: port }]
+      : [],
     localResourceRoots: isDev
       ? []
       : prodLocalResourceRoots.map((relativePath) =>

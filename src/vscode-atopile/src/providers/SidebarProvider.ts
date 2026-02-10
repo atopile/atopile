@@ -236,7 +236,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _lastWorkspaceRoot: string | null = null;
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;
-  private _lastPort: number | null = null;
   private _lastAtopileSettingsKey: string | null = null;
   private _fileWatcher?: vscode.FileSystemWatcher;
   private _watchedProjectRoot: string | null = null;
@@ -300,17 +299,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private _buildWebviewOptions(isDev: boolean): vscode.WebviewOptions & {
-    retainContextWhenHidden?: boolean;
-  } {
-    return createWebviewOptions({
-      isDev,
-      extensionPath: this._extensionUri.fsPath,
-      port: backendServer.port,
-      prodLocalResourceRoots: SidebarProvider.PROD_LOCAL_RESOURCE_ROOTS,
-    });
-  }
-
   /**
    * Set up a file watcher for the given project root.
    * Notifies the webview when files change so it can refresh.
@@ -361,43 +349,33 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   private _refreshWebview(): void {
     if (!this._view) {
-      traceInfo('[SidebarProvider] _refreshWebview called but no view');
       return;
     }
-
-    traceInfo('[SidebarProvider] Refreshing webview with URLs:', {
-      apiUrl: backendServer.apiUrl,
-      wsUrl: backendServer.wsUrl,
-      port: backendServer.port,
-      isConnected: backendServer.isConnected,
-    });
 
     const extensionPath = this._extensionUri.fsPath;
     const isDev = isDevelopmentMode(extensionPath);
     const mode: 'dev' | 'prod' = isDev ? 'dev' : 'prod';
-
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
-    const port = backendServer.port;
-    const urlsUnchanged = this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl;
-    const portUnchanged = this._lastPort === port;
-    if (this._hasHtml && this._lastMode === mode && urlsUnchanged && portUnchanged) {
-      traceInfo('[SidebarProvider] Skipping refresh (already loaded)', { mode });
+
+    // Port changes are always reflected in apiUrl/wsUrl (see backendServer._setPort)
+    if (this._hasHtml && this._lastMode === mode && this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl) {
       return;
     }
 
-    this._view.webview.options = this._buildWebviewOptions(isDev);
-
-    if (isDev) {
-      this._view.webview.html = this._getDevHtml();
-    } else {
-      this._view.webview.html = this._getProdHtml(this._view.webview);
-    }
+    this._view.webview.options = createWebviewOptions({
+      isDev,
+      extensionPath,
+      port: backendServer.port,
+      prodLocalResourceRoots: SidebarProvider.PROD_LOCAL_RESOURCE_ROOTS,
+    });
+    this._view.webview.html = isDev
+      ? this._getDevHtml()
+      : this._getProdHtml(this._view.webview);
     this._hasHtml = true;
     this._lastMode = mode;
     this._lastApiUrl = apiUrl;
     this._lastWsUrl = wsUrl;
-    this._lastPort = port;
   }
 
   public resolveWebviewView(
@@ -406,42 +384,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     _token: vscode.CancellationToken
   ): void {
     this._view = webviewView;
-
-    const extensionPath = this._extensionUri.fsPath;
-    const isDev = isDevelopmentMode(extensionPath);
-    const mode: 'dev' | 'prod' = isDev ? 'dev' : 'prod';
-
-    traceInfo('[SidebarProvider] resolveWebviewView called', {
-      extensionPath,
-      isDev,
-      apiUrl: backendServer.apiUrl,
-      wsUrl: backendServer.wsUrl,
-    });
-
-    const webviewOptions = this._buildWebviewOptions(isDev);
-    webviewView.webview.options = webviewOptions;
-
-    if (isDev) {
-      traceInfo('[SidebarProvider] Using dev HTML');
-      webviewView.webview.html = this._getDevHtml();
-    } else {
-      traceInfo('[SidebarProvider] Using prod HTML');
-      const html = this._getProdHtml(webviewView.webview);
-      traceInfo('[SidebarProvider] Generated HTML length:', html.length);
-      webviewView.webview.html = html;
-    }
-    this._hasHtml = true;
-    this._lastMode = mode;
-    this._lastApiUrl = backendServer.apiUrl;
-    this._lastWsUrl = backendServer.wsUrl;
-    this._lastPort = backendServer.port;
+    this._refreshWebview();
     this._postWorkspaceRoot();
-    // Send current active file to webview
     this._postActiveFile(vscode.window.activeTextEditor);
-    // Send current atopile settings to webview so slider reflects the correct state
     this._sendAtopileSettings();
 
-    // Listen for messages from webview
     this._disposables.push(
       webviewView.webview.onDidReceiveMessage(
         (message: WebviewMessage) => this._handleWebviewMessage(message),
