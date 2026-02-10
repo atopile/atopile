@@ -28,7 +28,12 @@ jobs:
       - name: Prepare artifacts dir
         run: mkdir -p artifacts
 
+      - name: Check for uv
+        id: check-uv
+        run: echo "has-uv=$(command -v uv >/dev/null 2>&1 && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
       - name: Install uv + Python
+        if: steps.check-uv.outputs.has-uv != 'true'
         uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.14"
@@ -36,6 +41,8 @@ jobs:
       - name: "Install dependencies"
         run: |
           uv sync --dev --no-install-project --frozen
+        env:
+          UV_PYTHON: "3.14"
 
       - name: Compute zig cache key
         id: zig-hash
