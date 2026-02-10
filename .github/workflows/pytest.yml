@@ -69,6 +69,13 @@ jobs:
           path: src/faebryk/core/zig/zig-out
           key: zig-${{ runner.os }}-${{ runner.arch }}-py${{ steps.zig-hash.outputs.pyver }}-${{ steps.zig-hash.outputs.hash }}
 
+      - name: Check ato version
+        run: |
+          ato self-check \
+          ato --version \
+          ato --semver \
+          python -c "import importlib.metadata; print(importlib.metadata.version('atopile'))"
+
       - name: Run pytest
         id: pytest
         continue-on-error: true
