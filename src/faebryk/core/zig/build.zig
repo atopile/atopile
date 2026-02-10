@@ -4,33 +4,6 @@ const py_lib_name = "pyzig";
 
 const ModuleMap = std.StringArrayHashMap(*std.Build.Module);
 
-/// Cross-platform build step that creates a directory (replaces `mkdir -p`).
-const MakeDirStep = struct {
-    step: std.Build.Step,
-    dir_path: []const u8,
-
-    fn create(b: *std.Build, dir_path: []const u8) *MakeDirStep {
-        const self = b.allocator.create(MakeDirStep) catch @panic("OOM");
-        self.* = .{
-            .step = std.Build.Step.init(.{
-                .id = .custom,
-                .name = "mkdir",
-                .owner = b,
-                .makeFn = make,
-            }),
-            .dir_path = dir_path,
-        };
-        return self;
-    }
-
-    fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) !void {
-        const self: *MakeDirStep = @fieldParentPtr("step", step);
-        std.fs.cwd().makePath(self.dir_path) catch |err| {
-            return step.fail("unable to create directory '{s}': {}", .{ self.dir_path, err });
-        };
-    }
-};
-
 fn build_pyi(b: *std.Build, modules: ModuleMap, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step {
     // Build a small executable that generates the pyi files
     const pyi_exe = b.addExecutable(.{
@@ -57,8 +30,15 @@ fn build_pyi(b: *std.Build, modules: ModuleMap, target: std.Build.ResolvedTarget
     run_gen.addArg(b.path("src/python/").getPath(b));
 
     // Create a step that ensures the output directory exists (cross-platform)
-    const make_dir_step = MakeDirStep.create(b, b.getInstallPath(.lib, "."));
-    run_gen.step.dependOn(&make_dir_step.step);
+    const make_dir_step = b.step("make-dir", "Create output directory");
+    make_dir_step.makeFn = struct {
+        fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) !void {
+            std.fs.cwd().makePath(step.owner.getInstallPath(.lib, ".")) catch |err| {
+                return step.fail("unable to create directory: {}", .{err});
+            };
+        }
+    }.make;
+    run_gen.step.dependOn(make_dir_step);
 
     return &run_gen.step;
 }
