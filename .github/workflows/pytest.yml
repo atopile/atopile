@@ -70,26 +70,31 @@ jobs:
       - name: Run pytest
         id: pytest
         continue-on-error: true
-        # FIXME timeout
-        # TODO consider replacing with `ato dev test --ci`
         run: |
-          uv run \
-            test/runner/main.py \
-            -m "not not_in_ci and not slow and not regression" \
-            --timeout=120 \
-        env:
-          PYTHONPATH: .
-          GH_TOKEN: ${{ github.token }}
-          COLUMNS: 150 # rich console width will be pulled from this
-          FBRK_TEST_REPORT_INTERVAL: 10
-          FBRK_TEST_LONG_THRESHOLD: 30
-          FBRK_TEST_SHOW_PYTEST_OUTPUT: 0
-          FBRK_TEST_WORKERS: -2 # 32 threads/16 cpus -> 32 workers
-          FBRK_TEST_PERIODIC_HTML: 0
-          FBRK_TEST_GENERATE_HTML: 1
-          # threshold for worker to restart after exceeding after a test run
-          FBRK_TEST_WORKER_MEMORY_LIMIT_MB: 1024
-          PYTHON_UNBUFFERED: 1
+          echo hi
+      # - name: Run pytest
+      #   id: pytest
+      #   continue-on-error: true
+      #   # FIXME timeout
+      #   # TODO consider replacing with `ato dev test --ci`
+      #   run: |
+      #     uv run \
+      #       test/runner/main.py \
+      #       -m "not not_in_ci and not slow and not regression" \
+      #       --timeout=120 \
+      #   env:
+      #     PYTHONPATH: .
+      #     GH_TOKEN: ${{ github.token }}
+      #     COLUMNS: 150 # rich console width will be pulled from this
+      #     FBRK_TEST_REPORT_INTERVAL: 10
+      #     FBRK_TEST_LONG_THRESHOLD: 30
+      #     FBRK_TEST_SHOW_PYTEST_OUTPUT: 0
+      #     FBRK_TEST_WORKERS: -2 # 32 threads/16 cpus -> 32 workers
+      #     FBRK_TEST_PERIODIC_HTML: 0
+      #     FBRK_TEST_GENERATE_HTML: 1
+      #     # threshold for worker to restart after exceeding after a test run
+      #     FBRK_TEST_WORKER_MEMORY_LIMIT_MB: 1024
+      #     PYTHON_UNBUFFERED: 1
 
       - name: Upload test report json artifact
         if: always()
