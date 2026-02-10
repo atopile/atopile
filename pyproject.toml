@@ -137,8 +137,8 @@ source = "vcs"
 # Passed through to setuptools-scm
 # See: https://setuptools-scm.readthedocs.io/en/latest/config/
 # https://setuptools-scm.readthedocs.io/en/latest/extending/
-version_scheme = "only-version"
-local_scheme = "no-local-version"
+version_scheme = "no-guess-dev"
+local_scheme = "node-and-timestamp"
 
 [tool.pytest]
 [tool.pytest.ini_options]
