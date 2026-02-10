@@ -140,6 +140,86 @@ pub const Power = struct {
     }
 };
 
+pub const Negate = struct {
+    node: fabll.Node,
+    is_expression: is_expression.MakeChild(),
+    can_be_operand: parameters.can_be_operand.MakeChild(),
+    operand: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+
+    pub fn MakeChild() type {
+        return fabll.Node.MakeChild(@This());
+    }
+
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() {
+        return fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
+    }
+
+    pub fn setup(self: @This(), operand: parameters.can_be_operand) @This() {
+        self.operand.get().point(operand);
+        return self;
+    }
+};
+
+pub const Abs = struct {
+    node: fabll.Node,
+    is_expression: is_expression.MakeChild(),
+    can_be_operand: parameters.can_be_operand.MakeChild(),
+    operand: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+
+    pub fn MakeChild() type {
+        return fabll.Node.MakeChild(@This());
+    }
+
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() {
+        return fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
+    }
+
+    pub fn setup(self: @This(), operand: parameters.can_be_operand) @This() {
+        self.operand.get().point(operand);
+        return self;
+    }
+};
+
+pub const Floor = struct {
+    node: fabll.Node,
+    is_expression: is_expression.MakeChild(),
+    can_be_operand: parameters.can_be_operand.MakeChild(),
+    operand: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+
+    pub fn MakeChild() type {
+        return fabll.Node.MakeChild(@This());
+    }
+
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() {
+        return fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
+    }
+
+    pub fn setup(self: @This(), operand: parameters.can_be_operand) @This() {
+        self.operand.get().point(operand);
+        return self;
+    }
+};
+
+pub const Ceil = struct {
+    node: fabll.Node,
+    is_expression: is_expression.MakeChild(),
+    can_be_operand: parameters.can_be_operand.MakeChild(),
+    operand: collections.PointerOf(parameters.can_be_operand).MakeChild(),
+
+    pub fn MakeChild() type {
+        return fabll.Node.MakeChild(@This());
+    }
+
+    pub fn create_instance(g: *graph.GraphView, tg: *faebryk.typegraph.TypeGraph) @This() {
+        return fabll.Node.bind_typegraph(@This(), tg).create_instance(g);
+    }
+
+    pub fn setup(self: @This(), operand: parameters.can_be_operand) @This() {
+        self.operand.get().point(operand);
+        return self;
+    }
+};
+
 test "expressions binary setup stores operands" {
     var g = graph.GraphView.init(std.testing.allocator);
     defer g.deinit();
@@ -166,4 +246,21 @@ test "expressions power setup stores operands" {
 
     try std.testing.expect(pow.base_ptr.get().deref().node.instance.node.is_same(p1.can_be_operand.get().node.instance.node));
     try std.testing.expect(pow.exponent_ptr.get().deref().node.instance.node.is_same(p2.can_be_operand.get().node.instance.node));
+}
+
+test "expressions unary setup stores operand" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const p = parameters.NumericParameter.create_instance(&g, &tg);
+    const neg = Negate.create_instance(&g, &tg).setup(p.can_be_operand.get());
+    const abs = Abs.create_instance(&g, &tg).setup(p.can_be_operand.get());
+    const floor = Floor.create_instance(&g, &tg).setup(p.can_be_operand.get());
+    const ceil = Ceil.create_instance(&g, &tg).setup(p.can_be_operand.get());
+
+    try std.testing.expect(neg.operand.get().deref().node.instance.node.is_same(p.can_be_operand.get().node.instance.node));
+    try std.testing.expect(abs.operand.get().deref().node.instance.node.is_same(p.can_be_operand.get().node.instance.node));
+    try std.testing.expect(floor.operand.get().deref().node.instance.node.is_same(p.can_be_operand.get().node.instance.node));
+    try std.testing.expect(ceil.operand.get().deref().node.instance.node.is_same(p.can_be_operand.get().node.instance.node));
 }

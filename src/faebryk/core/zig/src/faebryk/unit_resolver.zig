@@ -129,6 +129,30 @@ pub fn resolve_node(node: graph.BoundNodeReference, tg: *faebryk.typegraph.TypeG
             return units.op_power(base, node.g, tg, exponent);
         }
     }
+    if (get_type(tg, expressions.Negate)) |t| {
+        if (same_type(node, t)) {
+            const expr = fabll.Node.bind_instance(expressions.Negate, node);
+            return resolve_can_be_operand(expr.operand.get().deref(), tg);
+        }
+    }
+    if (get_type(tg, expressions.Abs)) |t| {
+        if (same_type(node, t)) {
+            const expr = fabll.Node.bind_instance(expressions.Abs, node);
+            return resolve_can_be_operand(expr.operand.get().deref(), tg);
+        }
+    }
+    if (get_type(tg, expressions.Floor)) |t| {
+        if (same_type(node, t)) {
+            const expr = fabll.Node.bind_instance(expressions.Floor, node);
+            return resolve_can_be_operand(expr.operand.get().deref(), tg);
+        }
+    }
+    if (get_type(tg, expressions.Ceil)) |t| {
+        if (same_type(node, t)) {
+            const expr = fabll.Node.bind_instance(expressions.Ceil, node);
+            return resolve_can_be_operand(expr.operand.get().deref(), tg);
+        }
+    }
 
     return Error.UnsupportedNodeType;
 }
@@ -215,6 +239,34 @@ pub fn resolve_numbers_node(
             }
             const exponent = exponent_numbers.get_single(allocator) catch return Error.ExponentMustBeSingletonInteger;
             return base.op_pow_intervals(exponent, allocator) catch return Error.UnitsNotCommensurable;
+        }
+    }
+    if (get_type(tg, expressions.Negate)) |t| {
+        if (same_type(node, t)) {
+            const expr = fabll.Node.bind_instance(expressions.Negate, node);
+            const in = try resolve_numbers_can_be_operand(expr.operand.get().deref(), tg, allocator);
+            return in.op_neg(allocator) catch return Error.UnitsNotCommensurable;
+        }
+    }
+    if (get_type(tg, expressions.Abs)) |t| {
+        if (same_type(node, t)) {
+            const expr = fabll.Node.bind_instance(expressions.Abs, node);
+            const in = try resolve_numbers_can_be_operand(expr.operand.get().deref(), tg, allocator);
+            return in.op_abs(allocator) catch return Error.UnitsNotCommensurable;
+        }
+    }
+    if (get_type(tg, expressions.Floor)) |t| {
+        if (same_type(node, t)) {
+            const expr = fabll.Node.bind_instance(expressions.Floor, node);
+            const in = try resolve_numbers_can_be_operand(expr.operand.get().deref(), tg, allocator);
+            return in.op_floor(allocator) catch return Error.UnitsNotCommensurable;
+        }
+    }
+    if (get_type(tg, expressions.Ceil)) |t| {
+        if (same_type(node, t)) {
+            const expr = fabll.Node.bind_instance(expressions.Ceil, node);
+            const in = try resolve_numbers_can_be_operand(expr.operand.get().deref(), tg, allocator);
+            return in.op_ceil(allocator) catch return Error.UnitsNotCommensurable;
         }
     }
     return Error.EvalRequiresNumbers;
@@ -335,4 +387,38 @@ test "numbers evaluator nested arithmetic expression parity" {
     try std.testing.expect(intervals.len == 1);
     try std.testing.expectApproxEqAbs(@as(f64, 64.0), intervals[0].min, 1e-9);
     try std.testing.expectApproxEqAbs(@as(f64, 225.0), intervals[0].max, 1e-9);
+}
+
+test "numbers evaluator unary expression parity" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    var tg = faebryk.typegraph.TypeGraph.init(&g);
+
+    const volt = units.to_is_unit(units.Volt.create_instance(&g, &tg));
+    var n = literals.Numbers.create_instance(&g, &tg);
+    n = try n.setup_from_min_max_with_unit(-2.2, 3.8, volt, std.testing.allocator);
+
+    const neg_expr = expressions.Negate.create_instance(&g, &tg).setup(n.can_be_operand.get());
+    const abs_expr = expressions.Abs.create_instance(&g, &tg).setup(n.can_be_operand.get());
+    const floor_expr = expressions.Floor.create_instance(&g, &tg).setup(n.can_be_operand.get());
+    const ceil_expr = expressions.Ceil.create_instance(&g, &tg).setup(n.can_be_operand.get());
+
+    const neg = try resolve_numbers_node(neg_expr.node.instance, &tg, std.testing.allocator);
+    const abs = try resolve_numbers_node(abs_expr.node.instance, &tg, std.testing.allocator);
+    const flo = try resolve_numbers_node(floor_expr.node.instance, &tg, std.testing.allocator);
+    const cei = try resolve_numbers_node(ceil_expr.node.instance, &tg, std.testing.allocator);
+
+    try std.testing.expect(units.is_commensurable_with(n.get_is_unit(), neg.get_is_unit()));
+    try std.testing.expect(units.is_commensurable_with(n.get_is_unit(), abs.get_is_unit()));
+    try std.testing.expect(units.is_commensurable_with(n.get_is_unit(), flo.get_is_unit()));
+    try std.testing.expect(units.is_commensurable_with(n.get_is_unit(), cei.get_is_unit()));
+
+    try std.testing.expectApproxEqAbs(@as(f64, -3.8), try neg.get_min_value(std.testing.allocator), 1e-9);
+    try std.testing.expectApproxEqAbs(@as(f64, 2.2), try neg.get_max_value(std.testing.allocator), 1e-9);
+    try std.testing.expectApproxEqAbs(@as(f64, 0.0), try abs.get_min_value(std.testing.allocator), 1e-9);
+    try std.testing.expectApproxEqAbs(@as(f64, 3.8), try abs.get_max_value(std.testing.allocator), 1e-9);
+    try std.testing.expectApproxEqAbs(@as(f64, -3.0), try flo.get_min_value(std.testing.allocator), 1e-9);
+    try std.testing.expectApproxEqAbs(@as(f64, 3.0), try flo.get_max_value(std.testing.allocator), 1e-9);
+    try std.testing.expectApproxEqAbs(@as(f64, -2.0), try cei.get_min_value(std.testing.allocator), 1e-9);
+    try std.testing.expectApproxEqAbs(@as(f64, 4.0), try cei.get_max_value(std.testing.allocator), 1e-9);
 }
