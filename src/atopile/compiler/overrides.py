@@ -17,7 +17,7 @@ from typing import Any, Callable
 import atopile.compiler.ast_types as AST
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.compiler import DslException
+from atopile.compiler import DslException, DslRichException
 from atopile.compiler.gentypegraph import (
     ActionsFactory,
     AddMakeChildAction,
@@ -26,7 +26,7 @@ from atopile.compiler.gentypegraph import (
     LinkPath,
     NoOpAction,
 )
-from atopile.errors import DeprecatedException, downgrade
+from atopile.errors import downgrade
 from atopile.logging import get_logger
 from faebryk.core.faebrykpy import EdgeComposition, EdgeTrait
 from faebryk.libs.smd import SMDSize
@@ -34,10 +34,16 @@ from faebryk.libs.smd import SMDSize
 logger = get_logger(__name__)
 
 
-def _deprecated_warning(input: str, replacement: str) -> None:
-    with downgrade(DeprecatedException):
-        raise DeprecatedException(
-            f"'{input}' is deprecated. Use '{replacement}' instead."
+def _deprecated_warning(
+    input: str,
+    replacement: str,
+    source_node: fabll.Node | None = None,
+) -> None:
+    with downgrade(DslRichException):
+        raise DslRichException(
+            f"`{input}` is deprecated. Use `{replacement}` instead.",
+            original=DslException(f"`{input}` is deprecated."),
+            source_node=source_node,
         )
 
 
@@ -230,10 +236,11 @@ class TraitOverrideRegistry:
         name: str,
         target_path: LinkPath | None,
         value: Any,
+        source_node: fabll.Node | None = None,
     ) -> list[AddMakeChildAction | AddMakeLinkAction] | NoOpAction:
         """Apply a spec to create trait actions."""
         if spec.deprecated_hint:
-            _deprecated_warning(name, spec.trait_class.__name__)
+            _deprecated_warning(name, spec.trait_class.__name__, source_node)
 
         if spec.expected_type and not isinstance(value, spec.expected_type):
             raise DslException(
@@ -259,7 +266,10 @@ class TraitOverrideRegistry:
 
     @classmethod
     def handle_assignment(
-        cls, target_path: FieldPath, assignable_node: AST.Assignable
+        cls,
+        target_path: FieldPath,
+        assignable_node: AST.Assignable,
+        source_node: fabll.Node | None = None,
     ) -> list[AddMakeChildAction | AddMakeLinkAction] | NoOpAction:
         """Handle assignment overrides like `node.package = "0402"`."""
         leaf_name = target_path.leaf.identifier
@@ -284,7 +294,7 @@ class TraitOverrideRegistry:
             else None
         )
 
-        return cls._apply_spec(spec, leaf_name, parent_path, value)
+        return cls._apply_spec(spec, leaf_name, parent_path, value, source_node)
 
     @classmethod
     def handle_trait(
@@ -292,6 +302,7 @@ class TraitOverrideRegistry:
         trait_type_name: str,
         target_path: LinkPath,
         template_args: dict[str, Any] | None,
+        source_node: fabll.Node | None = None,
     ) -> list[AddMakeChildAction | AddMakeLinkAction] | NoOpAction:
         """Handle trait overrides like `trait can_bridge_by_name<...>`."""
         return cls._apply_spec(
@@ -299,6 +310,7 @@ class TraitOverrideRegistry:
             trait_type_name,
             target_path,
             template_args or {},
+            source_node,
         )
 
     @classmethod
@@ -460,7 +472,9 @@ class ReferenceOverrideRegistry:
     """
 
     @classmethod
-    def transform_link_path(cls, path: LinkPath) -> LinkPath:
+    def transform_link_path(
+        cls, path: LinkPath, source_node: fabll.Node | None = None
+    ) -> LinkPath:
         """
         Transform a LinkPath if it contains a reference override identifier.
 
@@ -526,13 +540,15 @@ class ReferenceOverrideRegistry:
                     "reference",
                     *suffix_str,
                 ]
-                with downgrade(DeprecatedException):
-                    raise DeprecatedException(
+                with downgrade(DslRichException):
+                    raise DslRichException(
                         "Field `reference_shim` is deprecated.\n\n"
                         f"Replace `{old_expr}` with `{_fmt(replacement_parts)}`.\n\n"
                         "Example:\n"
                         "- `i2c.reference_shim ~ power`\n"
-                        "- `i2c.has_single_electric_reference.reference ~ power`"
+                        "- `i2c.has_single_electric_reference.reference ~ power`",
+                        original=DslException("`reference_shim` is deprecated."),
+                        source_node=source_node,
                     )
 
             # Build the new path:

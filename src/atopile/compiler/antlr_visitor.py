@@ -15,7 +15,7 @@ from atopile.compiler import DslException
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
-from atopile.errors import DeprecatedException, UserSyntaxError, downgrade
+from atopile.errors import UserSyntaxError
 from atopile.logging import get_logger
 
 logger = get_logger(__name__)
@@ -146,18 +146,9 @@ class ANTLRVisitor(AtoParserVisitor):
     def visitSimple_stmts(
         self, ctx: AtoParser.Simple_stmtsContext
     ) -> Iterable[AST.is_statement]:
-        return itertools.chain.from_iterable(
-            (
-                child
-                if (isinstance(child, Iterable) and not isinstance(child, str))
-                else [child]
-                for child in (self.visit(child) for child in ctx.simple_stmt())
-            )
-        )
+        return (self.visit(child) for child in ctx.simple_stmt())
 
-    def visitSimple_stmt(
-        self, ctx: AtoParser.Simple_stmtContext
-    ) -> AST.is_statement | list[AST.is_statement]:
+    def visitSimple_stmt(self, ctx: AtoParser.Simple_stmtContext) -> AST.is_statement:
         (stmt_ctx,) = [
             stmt_ctx
             for stmt_ctx in [
@@ -178,9 +169,6 @@ class ANTLRVisitor(AtoParserVisitor):
         ]
 
         stmt = self.visit(stmt_ctx)
-        # Handle multi-import statements which return a list of ImportStmt
-        if isinstance(stmt, list):
-            return [s._is_statement.get() for s in stmt]
         return stmt._is_statement.get()
 
     def visitCompound_stmt(
@@ -205,20 +193,14 @@ class ANTLRVisitor(AtoParserVisitor):
 
     def visitImport_stmt(
         self, ctx: AtoParser.Import_stmtContext
-    ) -> AST.ImportStmt | list[AST.ImportStmt]:
+    ) -> AST.ImportStmt | AST.MultiImportStmt:
         type_refs = ctx.type_reference()
         path_info = self.visitString(ctx.string()) if ctx.string() else None
         source_info = self._extract_source_info(ctx)
 
         # Handle multiple imports on one line (deprecated syntax)
         if len(type_refs) > 1:
-            with downgrade(DeprecatedException):
-                raise DeprecatedException(
-                    "Multiple imports on one line is deprecated. "
-                    "Please use separate import statements for each module. "
-                    f"Found: {ctx.getText()}"
-                )
-            return [
+            import_stmts = [
                 self._new(AST.ImportStmt).setup(
                     source_info=source_info,
                     type_ref_name=name,
@@ -229,6 +211,10 @@ class ANTLRVisitor(AtoParserVisitor):
                     self.visitType_reference(ref) for ref in type_refs
                 )
             ]
+            return self._new(AST.MultiImportStmt).setup(
+                source_info=source_info,
+                import_stmts=import_stmts,
+            )
 
         # Single import (normal case)
         type_ref_name, type_ref_source_info = self.visitType_reference(type_refs[0])

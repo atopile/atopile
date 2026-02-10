@@ -841,6 +841,26 @@ class ImportStmt(fabll.Node):
         return path
 
 
+class MultiImportStmt(fabll.Node):
+    """Deprecated multi-import syntax: `import A, B from "path"`."""
+
+    _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
+
+    source = SourceChunk.MakeChild()
+    imports = Collections.PointerSequence.MakeChild()
+
+    def setup(
+        self,
+        source_info: SourceInfo,
+        import_stmts: Iterable[ImportStmt],
+    ) -> Self:
+        self.source.get().setup(source_info=source_info)
+        for stmt in import_stmts:
+            self.imports.get().append(stmt)
+            _add_anon_child(self, stmt)
+        return self
+
+
 class TemplateArg(fabll.Node):
     source = SourceChunk.MakeChild()
     name = F.Literals.Strings.MakeChild()

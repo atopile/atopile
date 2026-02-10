@@ -2946,7 +2946,7 @@ class TestMultiImportShim:
             f"Expected 1 deprecation warning, got {len(warning_messages)}"
         )
         assert (
-            "Multiple imports on one line is deprecated. Please use separate import statements for each module. Found:"  # noqa E501
+            "Multiple imports on one line is deprecated. Please use separate import statements for each module."  # noqa E501
             in warning_messages[0]
         )
 
