@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import webbrowser
@@ -15,6 +16,9 @@ logger = get_logger(__name__)
 
 
 dev_app = typer.Typer(rich_markup_mode="rich")
+
+# Resolve npm path once for Windows compat (npm.cmd needs shell=True)
+_npm = shutil.which("npm") or "npm"
 
 
 @dev_app.command()
@@ -62,9 +66,9 @@ def compile(
 
         node_modules = viz_dir / "node_modules"
         if not node_modules.exists():
-            subprocess.run(["npm", "install"], cwd=viz_dir, check=True)
+            subprocess.run([_npm, "install"], cwd=viz_dir, check=True)
 
-        subprocess.run(["npm", "run", "build"], cwd=viz_dir, check=True)
+        subprocess.run([_npm, "run", "build"], cwd=viz_dir, check=True)
 
     if target in {"all", "vscode"}:
         import time
@@ -84,7 +88,7 @@ def compile(
             and package_lock.stat().st_mtime > node_modules.stat().st_mtime
         )
         if needs_install:
-            subprocess.run(["npm", "install"], cwd=vscode_dir, check=True)
+            subprocess.run([_npm, "install"], cwd=vscode_dir, check=True)
 
         # Update version with timestamp for dev builds
         package_json_path = vscode_dir / "package.json"
@@ -101,7 +105,7 @@ def compile(
         try:
             # Package the extension (vscode:prepublish builds dashboard + extension)
             subprocess.run(
-                ["npm", "exec", "--", "vsce", "package", "--allow-missing-repository"],
+                [_npm, "exec", "--", "vsce", "package", "--allow-missing-repository"],
                 cwd=vscode_dir,
                 check=True,
             )

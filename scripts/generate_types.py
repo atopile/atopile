@@ -12,9 +12,9 @@ The generated types are written to src/ui-server/src/types/gen/generated.ts
 """
 
 import json
+import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 # Models to export (the main ones used by the frontend)
@@ -63,30 +63,33 @@ def get_model_schema(model) -> dict:
     # Keep $defs for quicktype to resolve (it handles circular refs)
     # But convert all field names to camelCase
 
-    def convert_to_camel(obj, in_properties=False):
+    def convert_schema(obj, in_properties=False):
         if isinstance(obj, dict):
             result = {}
             for k, v in obj.items():
-                # Convert property names to camelCase
-                if in_properties and not k.startswith("$"):
+                # Rename $defs -> definitions for quicktype (draft-07) compatibility
+                if k == "$defs":
+                    new_key = "definitions"
+                elif in_properties and not k.startswith("$"):
                     new_key = to_camel_case(k)
                 else:
                     new_key = k
 
-                # Recursively convert, noting if we're in a properties block
-                if k == "properties":
-                    result[new_key] = convert_to_camel(v, in_properties=True)
+                # Rewrite $ref paths from $defs to definitions
+                if k == "$ref" and isinstance(v, str):
+                    result[new_key] = v.replace("#/$defs/", "#/definitions/")
+                elif k == "properties":
+                    result[new_key] = convert_schema(v, in_properties=True)
                 elif k == "required" and isinstance(v, list):
-                    # Convert required field names too
                     result[new_key] = [to_camel_case(name) for name in v]
                 else:
-                    result[new_key] = convert_to_camel(v, in_properties=False)
+                    result[new_key] = convert_schema(v, in_properties=False)
             return result
         elif isinstance(obj, list):
-            return [convert_to_camel(item, in_properties=False) for item in obj]
+            return [convert_schema(item, in_properties=False) for item in obj]
         return obj
 
-    return convert_to_camel(schema)
+    return convert_schema(schema)
 
 
 def get_all_schemas() -> dict[str, dict]:
@@ -121,15 +124,20 @@ def convert_with_quicktype(schemas: dict[str, dict], output_path: Path) -> bool:
         for name, schema in schemas.items():
             # Add title for quicktype
             schema["title"] = name
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".json", delete=False, prefix=f"{name}_"
-            ) as f:
-                json.dump(schema, f, indent=2)
-                temp_files.append(f.name)
+            # Write temp files to cwd so quicktype gets simple relative paths
+            # (avoids Windows URI resolution issues with C:\ drive paths)
+            temp_path = ui_server_dir / f"{name}_schema.json"
+            temp_path.write_text(json.dumps(schema, indent=2))
+            temp_files.append(temp_path.name)
 
         # Run quicktype with all schema files
+        npx = shutil.which("npx")
+        if npx is None:
+            print("Error: npx not found")
+            return False
+
         args = [
-            "npx",
+            npx,
             "quicktype",
             "--lang",
             "typescript",
@@ -159,7 +167,7 @@ def convert_with_quicktype(schemas: dict[str, dict], output_path: Path) -> bool:
     finally:
         # Clean up temp files
         for f in temp_files:
-            Path(f).unlink(missing_ok=True)
+            (ui_server_dir / f).unlink(missing_ok=True)
 
 
 def add_header(output_path: Path) -> None:
