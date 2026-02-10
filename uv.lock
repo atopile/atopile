@@ -156,7 +156,7 @@ requires-dist = [
     { name = "gitpython", specifier = ">=3.1.41" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jinja2", specifier = ">=3.1.6" },
-    { name = "kicad-python" },
+    { name = "kicad-python", url = "https://github.com/atopile/kicad-python/releases/download/v0.5.1/kicad_python-0.5.1-py3-none-any.whl" },
     { name = "kicadcliwrapper", specifier = ">=1.1.1" },
     { name = "matplotlib", specifier = ">=3.7.1" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.10.1" },
@@ -1086,15 +1086,21 @@ wheels = [
 
 [[package]]
 name = "kicad-python"
-version = "0.5.0"
-source = { registry = "https://pypi.org/simple" }
+version = "0.5.1"
+source = { url = "https://github.com/atopile/kicad-python/releases/download/v0.5.1/kicad_python-0.5.1-py3-none-any.whl" }
 dependencies = [
     { name = "protobuf" },
     { name = "pynng" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/55/ad/b33939d2e0c099f04875c250564dde79baec09927c5c70a7a101cd612d94/kicad_python-0.5.0.tar.gz", hash = "sha256:9abb6ad87b822b6c63c80543e485e674bddc46080f9706ae3dff7f05d8dc63f9", size = 198708, upload-time = "2025-10-13T15:10:03.665Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ad/ab/b9edb6088ba8263a7f2446f1f3ae088c50bde149d7dc149abca32c4d21d2/kicad_python-0.5.0-py3-none-any.whl", hash = "sha256:fe7adeff9f1c23a76f2ace9468faadcbeef915ce026b187ca35db1cf4faa4451", size = 130154, upload-time = "2025-10-13T15:10:02.695Z" },
+    { url = "https://github.com/atopile/kicad-python/releases/download/v0.5.1/kicad_python-0.5.1-py3-none-any.whl", hash = "sha256:02273fb6bccbd9a1dc394b51e7ba4e7c5db84ed7e59f15fe1a091f65af78c030" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "protobuf", specifier = ">=5.29,<6" },
+    { name = "pynng", specifier = ">=0.8.0" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'", specifier = ">=4.13.2" },
 ]
 
 [[package]]
