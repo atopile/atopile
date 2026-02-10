@@ -17,7 +17,8 @@ logger = get_logger(__name__)
 
 dev_app = typer.Typer(rich_markup_mode="rich")
 
-# Resolve npm path once for Windows compat (npm.cmd needs shell=True)
+# On Windows, npm/npx are .cmd wrappers, not .exe files.
+# shutil.which() resolves the full path so subprocess can find them.
 _npm = shutil.which("npm") or "npm"
 
 

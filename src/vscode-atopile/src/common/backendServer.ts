@@ -126,9 +126,7 @@ class BackendServerManager implements vscode.Disposable {
         this._updateStatusBar();
         this._statusBarItem.show();
 
-        // Note: The menu command is registered in vscode-menu.ts
         // Connection state is updated via postMessage from the webview
-        // (see SidebarProvider._handleWebviewMessage)
     }
 
     /**

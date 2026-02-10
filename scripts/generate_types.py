@@ -60,9 +60,6 @@ def get_model_schema(model) -> dict:
     """Get JSON schema for a single model, with camelCase field names."""
     schema = model.model_json_schema(mode="serialization")
 
-    # Keep $defs for quicktype to resolve (it handles circular refs)
-    # But convert all field names to camelCase
-
     def convert_schema(obj, in_properties=False):
         if isinstance(obj, dict):
             result = {}

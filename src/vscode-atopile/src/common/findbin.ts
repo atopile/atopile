@@ -61,8 +61,7 @@ let g_buildTerminal: vscode.Terminal | undefined;
  * Get the full ato command as a string (for running in terminals).
  * Unlike getAtoBin(), this returns the command ready to be sent to a terminal.
  *
- * Always single-quotes each part to protect against shell special characters
- * (spaces, $, `, !, *, ?, etc.).
+ * Single-quotes each part to protect against shell special characters.
  */
 export async function getAtoCommand(settings?: ISettings, subcommand: string[] = []): Promise<string | null> {
     const atoBin = await getAtoBin(settings);
@@ -70,7 +69,6 @@ export async function getAtoCommand(settings?: ISettings, subcommand: string[] =
         return null;
     }
 
-    // Build the full command string - always single-quote each part for safety
     const commandParts = atoBin.command.map(c => `'${c}'`);
     if (subcommand.length > 0) {
         commandParts.push(...subcommand.map(c => `'${c}'`));
