@@ -903,16 +903,14 @@ class BuildPrinter:
             renderables.append(
                 Text(f"Warnings ({len(warnings_list)}):", style="bold yellow")
             )
-            for warn in warnings_list[:5]:  # Limit to first 5
-                msg = warn.get("message", "")
-                renderables.append(Text(f"  • {msg}", style="yellow"))
-            if len(warnings_list) > 5:
-                renderables.append(
-                    Text(
-                        f"  ... and {len(warnings_list) - 5} more warnings",
-                        style="dim yellow",
-                    )
-                )
+            from collections import Counter
+
+            counts = Counter(
+                warn.get("message", "").split("\n", 1)[0] for warn in warnings_list
+            )
+            for msg, count in counts.items():
+                prefix = f"(x{count}) " if count > 1 else ""
+                renderables.append(Text(f"  • {prefix}{msg}", style="yellow"))
 
         # Add error message from build if present (fallback)
         if build.error and not errors_list:
