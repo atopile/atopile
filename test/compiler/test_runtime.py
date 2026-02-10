@@ -1704,7 +1704,7 @@ def test_assign_to_child_parameter():
         import Resistor
 
         module CustomResistor:
-            resistance: ohms
+            resistance: Resistance
 
         module App:
             r = new Resistor

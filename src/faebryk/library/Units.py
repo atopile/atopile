@@ -988,13 +988,16 @@ def _get_close_matches(symbol: str, possibilities: list[str]) -> list[str]:
 
 
 # TODO: model quantities as distinct from units
+# TODO: expasnd beyond electrical quantities
 _QUANTITY_NAMES_TO_SYMBOLS: dict[str, str] = {
     "current": "ampere",
+    "energy": "joule",
+    "power": "watt",
+    "charge": "coulomb",
     "voltage": "volt",
     "resistance": "ohm",
-    "power": "watt",
-    "energy": "joule",
-    "frequency": "hertz",
+    "capacitance": "farad",
+    "inductance": "henry",
 }
 
 
@@ -1015,7 +1018,7 @@ def decode_symbol(
         g, tg
     )  # Ensure all unit types are registered)
 
-    symbol = _QUANTITY_NAMES_TO_SYMBOLS.get(symbol, symbol)
+    symbol = _QUANTITY_NAMES_TO_SYMBOLS.get(symbol.lower(), symbol)
 
     # 1. Exact match
     if symbol in sorted_symbol_map.keys():
