@@ -990,6 +990,8 @@ class LogHandler(RichHandler):
     ) -> ConsoleRenderable:
         if record.exc_info and (exc := record.exc_info[1]):
             if isinstance(exc, ConsoleRenderable) or hasattr(exc, "__rich_console__"):
+                if hasattr(exc, "_log_level"):
+                    exc._log_level = record.levelno
                 return exc  # type: ignore
 
         from datetime import datetime

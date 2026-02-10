@@ -17,7 +17,7 @@ from typing import Any, Callable
 import atopile.compiler.ast_types as AST
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.compiler import DslException, DslRichException
+from atopile.compiler import DslDeprecationWarning, DslException, DslRichException
 from atopile.compiler.gentypegraph import (
     ActionsFactory,
     AddMakeChildAction,
@@ -42,7 +42,7 @@ def _deprecated_warning(
     with downgrade(DslRichException):
         raise DslRichException(
             f"`{input}` is deprecated. Use `{replacement}` instead.",
-            original=DslException(f"`{input}` is deprecated."),
+            original=DslDeprecationWarning(f"`{input}` is deprecated."),
             source_node=source_node,
         )
 
@@ -547,7 +547,9 @@ class ReferenceOverrideRegistry:
                         "Example:\n"
                         "- `i2c.reference_shim ~ power`\n"
                         "- `i2c.has_single_electric_reference.reference ~ power`",
-                        original=DslException("`reference_shim` is deprecated."),
+                        original=DslDeprecationWarning(
+                            "`reference_shim` is deprecated."
+                        ),
                         source_node=source_node,
                     )
 

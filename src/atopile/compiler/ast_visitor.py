@@ -13,6 +13,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.compiler import (
     CompilerException,
+    DslDeprecationWarning,
     DslException,
     DslFeatureNotEnabledError,
     DslImportError,
@@ -787,7 +788,9 @@ class ASTVisitor:
             raise DslRichException(
                 "Multiple imports on one line is deprecated. "
                 "Please use separate import statements for each module.",
-                original=DslException("Multiple imports on one line is deprecated."),
+                original=DslDeprecationWarning(
+                    "Multiple imports on one line is deprecated."
+                ),
                 source_node=node,
             )
         for import_node in node.imports.get().as_list():
@@ -1341,7 +1344,7 @@ class ASTVisitor:
                         raise DslRichException(
                             "`assert x is <literal>` is deprecated. "
                             "Use `assert x within <literal>` instead.",
-                            original=DslException(
+                            original=DslDeprecationWarning(
                                 "`assert x is <literal>` is deprecated."
                             ),
                             source_node=node,
