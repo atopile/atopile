@@ -10,7 +10,6 @@ on:
 env:
   KICAD_VERSION: "9.0"
 
-
 jobs:
   pytest:
     #runs-on: blacksmith-4vcpu-ubuntu-2404
