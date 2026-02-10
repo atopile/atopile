@@ -494,7 +494,10 @@ class _PackageValidators:
     def verify_unused_and_duplicate_imports(config: "Config"):
         import re
 
-        _import_name_regex = r"(import ([^,\n]+))"
+        # only match import statements at the beginning of a line
+        _import_name_regex = r"(?m)^(import ([^,\n]+))"
+        # match "from ... import Name" statements at the beginning of a line
+        _from_import_name_regex = r'(?m)^(from\s+"[^"]+"\s+import\s+(\w+))'
 
         ato_files = config.project.paths.root.rglob("*.ato")
         for ato_file in ato_files:
@@ -502,26 +505,31 @@ class _PackageValidators:
             content = ato_file.read_text(encoding="utf-8")
             for import_name in re.finditer(_import_name_regex, content):
                 import_statements.append(import_name)
+            for import_name in re.finditer(_from_import_name_regex, content):
+                import_statements.append(import_name)
 
-            # check if the name is at lease twice in the file
-            unused_imports: list[str] = []
-            duplicates: list[str] = []
+            # check if the name is at least twice in the file
+            unused_imports: set[str] = set()
+            duplicates: set[str] = set()
             for import_match in import_statements:
-                if content.count(import_match.group(2)) < 2:
-                    unused_imports.append(import_match.group(2))
-                if content.count(import_match.group(1)) > 1:
-                    duplicates.append(import_match.group(1))
+                name = import_match.group(2).strip()
+                stmt = import_match.group(1).strip()
+                # Use word boundary matching to avoid substring false positives
+                name_count = len(re.findall(r"\b" + re.escape(name) + r"\b", content))
+                if name_count < 2:
+                    unused_imports.add(name)
+                stmt_count = len(re.findall(r"\b" + re.escape(stmt) + r"\b", content))
+                if stmt_count > 1:
+                    duplicates.add(stmt)
 
             file_path = ato_file.relative_to(config.project.paths.root)
             message = ""
             if unused_imports:
-                message = (
-                    f"Unused imports: [{', '.join(unused_imports)}] in {file_path}"
-                )
+                message = f"Unused imports: [{', '.join(sorted(unused_imports))}] in "
+                f"{file_path}"
             if duplicates:
-                message += (
-                    f"\nDuplicate imports: [{', '.join(duplicates)}] in {file_path}"
-                )
+                message += f"\nDuplicate imports: [{', '.join(sorted(duplicates))}] in "
+                f"{file_path}"
             if message:
                 raise UserBadParameterError(message)
 
