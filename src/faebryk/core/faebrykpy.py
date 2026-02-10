@@ -14,9 +14,11 @@ from faebryk.core.zig.gen.faebryk.trait import EdgeTrait as _ZigEdgeTrait
 from faebryk.core.zig.gen.faebryk.trait import Trait
 from faebryk.core.zig.gen.faebryk.typegraph import (
     TypeGraph,
+    TypeGraphDuplicateFieldError,
     TypeGraphInstantiationError,
     TypeGraphPathError,
     TypeGraphResolveError,
+    TypeGraphUnresolvedReferenceError,
 )
 
 if TYPE_CHECKING:
@@ -110,7 +112,9 @@ __all__ = [
     "NodeCreationAttributes",
     "Trait",
     "TypeGraph",
-    "TypeGraphPathError",
+    "TypeGraphDuplicateFieldError",
     "TypeGraphInstantiationError",
+    "TypeGraphPathError",
     "TypeGraphResolveError",
+    "TypeGraphUnresolvedReferenceError",
 ]

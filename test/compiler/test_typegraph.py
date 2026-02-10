@@ -745,7 +745,7 @@ def test_deep_nested_connects_across_child_fields():
 
 def test_nested_connect_missing_prefix_raises():
     with pytest.raises(
-        DslException, match="Field `left.missing.branch` could not be resolved"
+        DslException, match="Field `left.missing` could not be resolved"
     ):
         build_type(
             """
@@ -1089,6 +1089,40 @@ class TestEdgeTraversalPathResolution:
         assert path[1] == "can_bridge"
         assert path[2] == "in_"
         assert path[3] == ""  # Pointer dereference
+
+    def test_unresolved_reference_hides_internal_operand_suffix(self):
+        """Unresolved paths should not expose internal operand trait suffixes."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        App = tg.add_type(identifier="TestApp")
+        Leaf = tg.add_type(identifier="Leaf")
+        tg.add_make_child(type_node=App, child_type=Leaf, identifier="existing")
+
+        lhs = tg.ensure_child_reference(
+            type_node=App,
+            path=["feedback_divider", "r_bottom", "resistance", "can_be_operand"],
+            validate=False,
+        )
+        rhs = tg.ensure_child_reference(
+            type_node=App, path=["existing"], validate=False
+        )
+
+        tg.add_make_link(
+            type_node=App,
+            lhs_reference=lhs,
+            rhs_reference=rhs,
+            edge_attributes=fbrk.EdgeInterfaceConnection.build(shallow=False),
+        )
+
+        errors = tg.validate_type(type_node=App)
+        assert len(errors) == 1
+        err = errors[0]
+        assert isinstance(err, fbrk.TypeGraphUnresolvedReferenceError)
+        assert err.path == "feedback_divider"
+        assert str(err) == "Field `feedback_divider` could not be resolved"
+        assert "can_be_operand" not in err.path
+        assert "can_be_operand" not in str(err)
 
 
 def _filter_directed_connect_links(make_links):

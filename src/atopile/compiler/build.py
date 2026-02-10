@@ -800,12 +800,18 @@ def build_stage_2(
                     types_to_validate.append((entry_file_path, type_node))
 
             for file_path, type_node in types_to_validate:
-                for error_node, message in tg.validate_type(type_node=type_node):
+                for err in tg.validate_type(type_node=type_node):
                     with accumulator.collect():
-                        source_chunk = ASTVisitor.get_source_chunk(error_node)
+                        source_chunk = ASTVisitor.get_source_chunk(err.node)
+                        match err:
+                            case fbrk.TypeGraphUnresolvedReferenceError():
+                                original = DslUndefinedSymbolError(str(err))
+                            case _:
+                                original = DslException(str(err))
+
                         raise DslRichException(
-                            message,
-                            original=DslException(message),
+                            str(original),
+                            original=original,
                             source_node=source_chunk,
                             traceback=[],
                         )

@@ -72,9 +72,16 @@ pub const TypeGraph = struct {
         rhs_path: []const ChildReferenceNode.EdgeTraversal,
     };
 
+    pub const ValidationErrorKind = enum {
+        unresolved_reference,
+        duplicate_field,
+    };
+
     pub const ValidationError = struct {
         node: BoundNodeReference,
         message: []const u8,
+        kind: ValidationErrorKind,
+        path: []const u8,
     };
 
     /// Error returned when instantiation fails, containing the failing node
@@ -1031,11 +1038,18 @@ pub const TypeGraph = struct {
                 // Check if identifiers match
                 if (std.mem.eql(u8, id, other_id)) {
                     const message = std.fmt.allocPrint(allocator, "Field `{s}` is already defined", .{id}) catch continue;
+                    const path_dup = allocator.dupe(u8, id) catch {
+                        allocator.free(message);
+                        continue;
+                    };
                     errors.append(.{
                         .node = other_info.make_child,
                         .message = message,
+                        .kind = .duplicate_field,
+                        .path = path_dup,
                     }) catch {
                         allocator.free(message);
+                        allocator.free(path_dup);
                     };
                 }
             }
@@ -1058,15 +1072,25 @@ pub const TypeGraph = struct {
         for (make_links) |link_info| {
             // Validate lhs path (skip paths that can't be type-level validated)
             if (link_info.lhs_path.len > 0 and self.isValidatablePath(link_info.lhs_path)) {
-                const lhs_result = self.resolve_path_segments(type_node, link_info.lhs_path, null);
+                var lhs_failure: ?PathResolutionFailure = null;
+                const lhs_result = self.resolve_path_segments(type_node, link_info.lhs_path, &lhs_failure);
                 if (lhs_result) |_| {} else |_| {
-                    if (self.format_path(allocator, link_info.lhs_path)) |path_str| {
-                        const message = std.fmt.allocPrint(allocator, "Field `{s}` could not be resolved", .{path_str}) catch continue;
+                    // Format only up to and including the failing segment so
+                    // trailing segments are never shown to the user.
+                    const end = if (lhs_failure) |f| f.failing_segment_index + 1 else link_info.lhs_path.len;
+                    if (self.format_path(allocator, link_info.lhs_path[0..end])) |path_str| {
+                        const message = std.fmt.allocPrint(allocator, "Field `{s}` could not be resolved", .{path_str}) catch {
+                            allocator.free(path_str);
+                            continue;
+                        };
                         errors.append(.{
                             .node = link_info.make_link,
                             .message = message,
+                            .kind = .unresolved_reference,
+                            .path = path_str,
                         }) catch {
                             allocator.free(message);
+                            allocator.free(path_str);
                         };
                     }
                 }
@@ -1074,14 +1098,22 @@ pub const TypeGraph = struct {
 
             // Validate rhs path (skip paths that can't be type-level validated)
             if (link_info.rhs_path.len > 0 and self.isValidatablePath(link_info.rhs_path)) {
-                const rhs_result = self.resolve_path_segments(type_node, link_info.rhs_path, null);
+                var rhs_failure: ?PathResolutionFailure = null;
+                const rhs_result = self.resolve_path_segments(type_node, link_info.rhs_path, &rhs_failure);
                 if (rhs_result) |_| {} else |_| {
-                    if (self.format_path(allocator, link_info.rhs_path)) |path_str| {
-                        const message = std.fmt.allocPrint(allocator, "Field `{s}` could not be resolved", .{path_str}) catch continue;
+                    const end = if (rhs_failure) |f| f.failing_segment_index + 1 else link_info.rhs_path.len;
+                    if (self.format_path(allocator, link_info.rhs_path[0..end])) |path_str| {
+                        const message = std.fmt.allocPrint(allocator, "Field `{s}` could not be resolved", .{path_str}) catch {
+                            allocator.free(path_str);
+                            continue;
+                        };
                         errors.append(.{
                             .node = link_info.make_link,
                             .message = message,
+                            .kind = .unresolved_reference,
+                            .path = path_str,
                         }) catch {
+                            allocator.free(message);
                             allocator.free(path_str);
                         };
                     }
@@ -1114,58 +1146,30 @@ pub const TypeGraph = struct {
         return true;
     }
 
+    /// Format a reference path for user-facing error messages.
+    /// Numeric segments use bracket notation: items[0].value
     fn format_path(self: *@This(), allocator: std.mem.Allocator, path: []const ChildReferenceNode.EdgeTraversal) ?[]const u8 {
         _ = self;
         if (path.len == 0) {
             return allocator.dupe(u8, "") catch return null;
         }
 
-        var total_len: usize = 0;
-        for (path, 0..) |traversal, i| {
-            total_len += traversal.identifier.len;
-            if (i < path.len - 1) total_len += 1; // for '.'
-        }
-
-        const result = allocator.alloc(u8, total_len) catch return null;
-        var pos: usize = 0;
+        var buf = std.ArrayList(u8).init(allocator);
         for (path, 0..) |traversal, i| {
             const segment = traversal.identifier;
-            @memcpy(result[pos .. pos + segment.len], segment);
-            pos += segment.len;
-            if (i < path.len - 1) {
-                result[pos] = '.';
-                pos += 1;
-            }
-        }
-        return result;
-    }
-
-    /// Format a path with bracket notation for numeric indices (e.g., "members.5" -> "members[5]")
-    fn formatPathWithBrackets(self: *@This(), allocator: std.mem.Allocator, path: []const []const u8) ?[]const u8 {
-        _ = self;
-        if (path.len == 0) {
-            return allocator.dupe(u8, "") catch return null;
-        }
-
-        // Build the formatted path
-        var buf = std.ArrayList(u8).init(allocator);
-        for (path, 0..) |segment, i| {
-            // Check if segment is purely numeric (array index)
             const is_numeric = blk: {
                 if (segment.len == 0) break :blk false;
                 for (segment) |c| {
-                    if (c < '0' or c > '9') break :blk false;
+                    if (!ascii.isDigit(c)) break :blk false;
                 }
                 break :blk true;
             };
 
             if (is_numeric and i > 0) {
-                // Format as array index: [N]
                 buf.append('[') catch return null;
                 buf.appendSlice(segment) catch return null;
                 buf.append(']') catch return null;
             } else {
-                // Regular field access
                 if (i > 0) buf.append('.') catch return null;
                 buf.appendSlice(segment) catch return null;
             }
