@@ -1,0 +1,10 @@
+requires-atopile: ^0.14.1
+
+paths:
+  src: ./
+  layout: ./layout
+
+builds:
+  default:
+    entry: block_level_demo.ato:BlockLevelDemo
+

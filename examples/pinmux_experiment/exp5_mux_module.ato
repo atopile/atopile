@@ -1,0 +1,72 @@
+"""
+Experiment 5: Pin Mux as a first-class module pattern.
+
+Key insight from research:
+- Zephyr: Static devicetree declarations, pinctrl states
+- CubeMX: Constraint solver with conflict detection
+- Rust: Type-state pattern (compile-time pin locking)
+
+For atopile, the best fit seems to be a STRUCTURAL approach:
+The MCU module exposes pin-mux-aware interfaces where the
+CONNECTION ITSELF is the "pin assignment."
+
+When you connect `sensor.i2c ~ mcu.i2c1_pb6`, you're choosing
+I2C1-on-PB6. The pins PB6/PB7 are then "claimed" because they're
+in the netlist.
+
+The solver could VALIDATE this (check for conflicts) even if
+it can't auto-ASSIGN.
+
+Let's test: what happens if we accidentally double-connect a GPIO?
+"""
+#pragma experiment("FOR_LOOP")
+#pragma experiment("BRIDGE_CONNECT")
+
+import ElectricPower
+import ElectricLogic
+import I2C
+import UART
+
+module MCU_WithMux:
+    power = new ElectricPower
+
+    gpio = new ElectricLogic[16]
+    for io in gpio:
+        io.reference ~ power
+
+    # I2C1 config A: PB6/PB7
+    i2c1_a = new I2C
+    i2c1_a.scl ~ gpio[6]
+    i2c1_a.sda ~ gpio[7]
+
+    # I2C1 config B: PB8/PB9
+    i2c1_b = new I2C
+    i2c1_b.scl ~ gpio[8]
+    i2c1_b.sda ~ gpio[9]
+
+    # UART1: PB6=TX, PB7=RX (CONFLICTS with I2C1 config A!)
+    uart1 = new UART
+    uart1.base_uart.tx ~ gpio[6]
+    uart1.base_uart.rx ~ gpio[7]
+
+
+module App:
+    """
+    Test: What happens when we use BOTH i2c1_a AND uart1?
+    They share PB6/PB7 — this SHOULD fail or warn.
+    """
+    power = new ElectricPower
+    mcu = new MCU_WithMux
+    power ~ mcu.power
+
+    sensor = new I2C
+    sensor ~ mcu.i2c1_a
+
+    gps = new UART
+    gps ~ mcu.uart1
+
+    # Both i2c1_a.scl and uart1.tx are connected to gpio[6]
+    # This means gpio[6].line carries both I2C SCL and UART TX
+    # which is physically impossible (pin mux conflict)
+    #
+    # Question: Does the build system detect/flag this?

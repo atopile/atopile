@@ -4,13 +4,13 @@
  */
 
 import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import { Files, Package, Cpu, Library, GitBranch, SlidersHorizontal, ClipboardList } from 'lucide-react';
+import { Files, Package, Cpu, Library, Eye, SlidersHorizontal, ClipboardList } from 'lucide-react';
 import { ActiveProjectPanel, BuildQueueItem } from './ActiveProjectPanel';
 import { StandardLibraryPanel } from './StandardLibraryPanel';
 import { VariablesPanel } from './VariablesPanel';
 import { BOMPanel } from './BOMPanel';
 import { PackageDetailPanel } from './PackageDetailPanel';
-import { StructurePanel } from './StructurePanel';
+import { ViewsPanel } from './ViewsPanel';
 import { PackagesPanel } from './PackagesPanel';
 import { PartsSearchPanel } from './PartsSearchPanel';
 import { PartsDetailPanel } from './PartsDetailPanel';
@@ -86,7 +86,7 @@ export function Sidebar() {
   const [, setSelection] = useState<Selection>({ type: 'none' });
   const [selectedPackage, setSelectedPackage] = useState<SelectedPackage | null>(null);
   const [selectedPart, setSelectedPart] = useState<SelectedPart | null>(null);
-  const [activeTab, setActiveTab] = useState<'files' | 'structure' | 'packages' | 'parts' | 'stdlib' | 'parameters' | 'bom'>('files');
+  const [activeTab, setActiveTab] = useState<'files' | 'views' | 'packages' | 'parts' | 'stdlib' | 'parameters' | 'bom'>('files');
 
   // Build queue panel state
   const [buildQueueCollapsed, setBuildQueueCollapsed] = useState(false);
@@ -451,12 +451,12 @@ export function Sidebar() {
             {showTabLabels && <span className="tab-label">Lib</span>}
           </button>
           <button
-            className={`tab-button ${activeTab === 'structure' ? 'active' : ''}`}
-            onClick={() => setActiveTab('structure')}
-            data-tooltip="Structure"
+            className={`tab-button ${activeTab === 'views' ? 'active' : ''}`}
+            onClick={() => setActiveTab('views')}
+            data-tooltip="Views"
           >
-            <GitBranch size={14} />
-            {showTabLabels && <span className="tab-label">Struct</span>}
+            <Eye size={14} />
+            {showTabLabels && <span className="tab-label">Views</span>}
           </button>
           <button
             className={`tab-button ${activeTab === 'parameters' ? 'active' : ''}`}
@@ -509,13 +509,14 @@ export function Sidebar() {
                 isExpanded={activeTab === 'stdlib'}
               />
             )}
-            {activeTab === 'structure' && (
-              <StructurePanel
+            {activeTab === 'views' && (
+              <ViewsPanel
                 activeFilePath={activeEditorFile}
                 lastAtoFile={lastAtoFile}
                 projects={projects || []}
                 onRefreshStructure={handlers.handleStructureRefresh}
-                isExpanded={activeTab === 'structure'}
+                isExpanded={activeTab === 'views'}
+                hasActiveProject={!!selectedProjectRoot}
               />
             )}
             {activeTab === 'parameters' && (

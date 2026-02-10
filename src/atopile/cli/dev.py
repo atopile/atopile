@@ -22,13 +22,13 @@ dev_app = typer.Typer(rich_markup_mode="rich")
 def compile(
     target: str = typer.Argument(
         "all",
-        help="Build target: all, zig, visualizer, or vscode.",
+        help="Build target: all, zig, or vscode.",
     ),
 ):
     import sys
 
     target = target.lower()
-    valid_targets = {"all", "zig", "visualizer", "vscode"}
+    valid_targets = {"all", "zig", "vscode"}
     if target not in valid_targets:
         raise typer.BadParameter(
             f"target must be one of: {', '.join(sorted(valid_targets))}"
@@ -52,19 +52,6 @@ def compile(
         import faebryk.core.zig
 
         _ = faebryk.core.zig
-
-    if target in {"all", "visualizer"}:
-        print("compiling visualizer")
-        repo_root = Path(__file__).resolve().parents[3]
-        viz_dir = repo_root / "src" / "atopile" / "visualizer" / "web"
-        if not viz_dir.exists():
-            raise FileNotFoundError(f"visualizer web directory not found: {viz_dir}")
-
-        node_modules = viz_dir / "node_modules"
-        if not node_modules.exists():
-            subprocess.run(["npm", "install"], cwd=viz_dir, check=True)
-
-        subprocess.run(["npm", "run", "build"], cwd=viz_dir, check=True)
 
     if target in {"all", "vscode"}:
         import time

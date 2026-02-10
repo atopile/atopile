@@ -1,0 +1,372 @@
+#pragma experiment("MODULE_TEMPLATING")
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
+#pragma experiment("TRAITS")
+import ElectricPower
+import ElectricLogic
+import ElectricSignal
+import Electrical
+import Capacitor
+import SWD
+import USB2_0
+import I2C
+import I2S
+import UART_Base
+import SPI
+import SPIFlash
+import MultiSPI
+import FilterElectricalRC
+import XtalIF
+import Crystal
+import Inductor
+import Resistor
+import has_part_removed
+import can_bridge_by_name
+import has_single_electric_reference
+
+from "parts/Raspberry_Pi_RP2040/Raspberry_Pi_RP2040.ato" import Raspberry_Pi_RP2040_package
+from "parts/Winbond_Elec_W25Q128JVSIQ/Winbond_Elec_W25Q128JVSIQ.ato" import Winbond_Elec_W25Q128JVSIQ_package
+from "parts/Abracon_LLC_ABM8_272_T3/Abracon_LLC_ABM8_272_T3.ato" import Abracon_LLC_ABM8_272_T3_package
+from "parts/Hubei_KENTO_Elec_KT_0603R/Hubei_KENTO_Elec_KT_0603R.ato" import Hubei_KENTO_Elec_KT_0603R_package
+from "parts/ALPSALPINE_SKRPACE010/ALPSALPINE_SKRPACE010.ato" import ALPSALPINE_SKRPACE010_package
+
+module Raspberry_Pi_RP2040:
+    """
+    Raspberry Pi RP2040 microcontroller
+    """
+    package = new Raspberry_Pi_RP2040_package
+
+    # --- External interfaces ---
+    power = new ElectricPower
+    """
+    Primary 3.3 V rail powering IO buffers
+    """
+    power.required = True
+    assert power.voltage within 3.3V +/- 10%
+
+    i2c = new I2C
+    """Default I²C bus exposed on GPIO20 (SDA) / GPIO21 (SCL)."""
+
+    spi = new SPI
+    """SPI bus (GPIO8-11) with dedicated chip-select"""
+
+    uart = new UART_Base
+    """UART0 routed to GPIO4 (TX) / GPIO5 (RX)"""
+
+    usb = new USB2_0
+    """Full-speed USB 2.0 interface (DP/DM) with on-chip PHY"""
+
+    gpio = new ElectricLogic[36]
+    """General-purpose IO"""
+
+    analog = new ElectricSignal[4]
+    """Analog input pins"""
+
+    reset = new ElectricLogic
+    """Reset pin. Can be used to reset the MCU"""
+
+    swd = new SWD
+    """Serial Wire Debug (SWD) interface for programming and debugging"""
+
+    # --- Internal interfaces ---
+    # Core regulator power
+    _io_power = new ElectricPower
+    _adc_power = new ElectricPower
+    _core_power = new ElectricPower
+    _usb_phy_power = new ElectricPower
+    _core_regulator_in_power = new ElectricPower
+
+    _core_regulator_out_power = new ElectricPower
+    assert _core_regulator_out_power.voltage within 1.2V +/- 5%
+    core_power_decoupling_capacitor = new Capacitor[3]
+    for cap in core_power_decoupling_capacitor[1: ]:
+        cap.capacitance = 100nF +/- 20%
+        cap.package = "C0402"
+    core_power_decoupling_capacitor[0].capacitance = 2.2uF +/- 20%
+    core_power_decoupling_capacitor[0].package = "C0402"
+    package.VREG_VOUT ~> core_power_decoupling_capacitor[1] ~> _core_regulator_out_power.lv
+    package.50 ~> core_power_decoupling_capacitor[2] ~> _core_power.lv
+    package.23 ~> core_power_decoupling_capacitor[0] ~> _core_power.lv
+
+    # factory test pin
+    _factory_test_enable = new Electrical
+
+    # crystal oscillator interface
+    _crystal_interface = new XtalIF
+
+    # package usb
+    _package_usb = new USB2_0
+
+    # quad spi interface, connected to the external flash
+    qspi = new MultiSPI<data_lane_count = 4>
+
+    # --- Components ---
+    reset_switch = new _TactileSwitch
+    boot_switch = new _TactileSwitch
+    crystal_oscillator = new _CrystalOscillator
+    qspi_flash = new _QSPIFlash
+    red_led = new _RedIndicatorLED
+    usb_termination = new _USBTermination
+
+    # --- Connections ---
+    # power
+    power ~ qspi_flash.power
+    power ~ _io_power
+    power ~ _adc_power
+    power ~ _usb_phy_power
+    power ~ _core_regulator_in_power
+    _core_power ~ _core_regulator_out_power
+
+    # _io_power decoupling
+    io_power_decoupling_capacitor = new Capacitor[7]
+    for cap in io_power_decoupling_capacitor[1: ]:
+        cap.capacitance = 100nF +/- 20%
+        cap.package = "C0402"
+    io_power_decoupling_capacitor[0].capacitance = 2.2uF +/- 20%
+    io_power_decoupling_capacitor[0].package = "C0402"
+    package.44 ~> io_power_decoupling_capacitor[0] ~> _io_power.lv
+    package.1 ~> io_power_decoupling_capacitor[1] ~> _io_power.lv
+    package.10 ~> io_power_decoupling_capacitor[2] ~> _io_power.lv
+    package.22 ~> io_power_decoupling_capacitor[3] ~> _io_power.lv
+    package.33 ~> io_power_decoupling_capacitor[4] ~> _io_power.lv
+    package.42 ~> io_power_decoupling_capacitor[5] ~> _io_power.lv
+    package.49 ~> io_power_decoupling_capacitor[6] ~> _io_power.lv
+
+    # crystal oscillator
+    crystal_oscillator.crystal_interface ~ _crystal_interface
+    _crystal_interface.gnd ~ _core_power.lv
+
+    # usb termination
+    usb ~> usb_termination ~> _package_usb
+
+    # qspi
+    qspi ~> qspi_flash.qspi
+
+    # indicator led
+    red_led.input ~ gpio[25]
+
+    # reset and boot switches
+    reset_switch.output ~ reset
+    boot_switch.output ~ qspi.chip_select
+
+    # factory test enable
+    _factory_test_enable ~ power.lv
+
+    # --- Peripherals default sensible connections ---
+    # i2c
+    i2c.sda ~ gpio[2]
+    i2c.scl ~ gpio[3]
+
+    # uart
+    uart.tx ~ gpio[0]
+    uart.rx ~ gpio[1]
+
+    # spi
+    spi.mosi ~ gpio[19]
+    spi.miso ~ gpio[20]
+    spi.sclk ~ gpio[18]
+
+    # analog
+    analog[0] ~ gpio[26]
+    analog[1] ~ gpio[27]
+    analog[2] ~ gpio[28]
+    analog[3] ~ gpio[29]
+
+    # --- Package ---
+    # power
+    _io_power.hv ~ package.IOVDD
+    _io_power.lv ~ package.GND
+    _core_power.hv ~ package.DVDD
+    _adc_power.hv ~ package.ADC_AVDD
+    _usb_phy_power.hv ~ package.USB_VDD
+    _core_regulator_in_power.hv ~ package.VREG_IN
+    _core_regulator_out_power.hv ~ package.VREG_VOUT
+
+    # qspi
+    qspi.clock.line ~ package.QSPI_SCLK
+    qspi.chip_select.line ~ package.QSPI_SS
+    qspi.data[0].line ~ package.QSPI_SD0
+    qspi.data[1].line ~ package.QSPI_SD1
+    qspi.data[2].line ~ package.QSPI_SD2
+    qspi.data[3].line ~ package.QSPI_SD3
+
+    # swd
+    swd.clk.line ~ package.SWCLK
+    swd.dio.line ~ package.SWD
+
+    # usb
+    _package_usb.usb_if.d.p.line ~ package.USB_DP
+    _package_usb.usb_if.d.n.line ~ package.USB_DM
+
+    # crystal interface
+    _crystal_interface.xin ~ package.XIN
+    _crystal_interface.xout ~ package.XOUT
+
+    # misc
+    reset.line ~ package.RUN
+    _factory_test_enable ~ package.TESTEN
+
+    # gpio
+    package.GPIO0 ~ gpio[0].line
+    package.GPIO1 ~ gpio[1].line
+    package.GPIO2 ~ gpio[2].line
+    package.GPIO3 ~ gpio[3].line
+    package.GPIO4 ~ gpio[4].line
+    package.GPIO5 ~ gpio[5].line
+    package.GPIO6 ~ gpio[6].line
+    package.GPIO7 ~ gpio[7].line
+    package.GPIO8 ~ gpio[8].line
+    package.GPIO9 ~ gpio[9].line
+    package.GPIO10 ~ gpio[10].line
+    package.GPIO11 ~ gpio[11].line
+    package.GPIO12 ~ gpio[12].line
+    package.GPIO13 ~ gpio[13].line
+    package.GPIO14 ~ gpio[14].line
+    package.GPIO15 ~ gpio[15].line
+    package.GPIO16 ~ gpio[16].line
+    package.GPIO17 ~ gpio[17].line
+    package.GPIO18 ~ gpio[18].line
+    package.GPIO19 ~ gpio[19].line
+    package.GPIO20 ~ gpio[20].line
+    package.GPIO21 ~ gpio[21].line
+    package.GPIO22 ~ gpio[22].line
+    package.GPIO23 ~ gpio[23].line
+    package.GPIO24 ~ gpio[24].line
+    package.GPIO25 ~ gpio[25].line
+    package.GPIO26_ADC0 ~ gpio[26].line
+    package.GPIO27_ADC1 ~ gpio[27].line
+    package.GPIO28_ADC2 ~ gpio[28].line
+    package.GPIO29_ADC3 ~ gpio[29].line
+
+    # --- References ---
+    # connect all grounds
+    # trait has_single_electric_reference<ground_only = True>
+
+    # for logic in [
+    #     i2c,
+    #     spi,
+    #     uart,
+    #     qspi,
+    #     swd,
+    #     reset,
+    # ]:
+    #     logic.reference_shim ~ _io_power
+
+    # for logic in gpio:
+    #     logic.reference_shim ~ _io_power
+    # for an in analog:
+    #     an.reference_shim ~ _adc_power
+
+# --- Helper modules ---
+
+module _USBTermination:
+    """
+    USB termination resistors
+    """
+    input = new USB2_0
+    output = new USB2_0
+
+    trait can_bridge_by_name
+
+    termination_resistors = new Resistor[2]
+    for resistor in termination_resistors:
+        resistor.resistance = 27ohm +/- 5%
+        resistor.package = "R0402"
+
+    input.usb_if.d.p.line ~> termination_resistors[0] ~> output.usb_if.d.p.line
+    input.usb_if.d.n.line ~> termination_resistors[1] ~> output.usb_if.d.n.line
+    input.usb_if.buspower ~ output.usb_if.buspower
+
+module _Crystal:
+    """
+    Crystal oscillator
+    """
+    package = new Abracon_LLC_ABM8_272_T3_package
+
+    input = new Electrical
+    output = new Electrical
+    gnd = new Electrical
+
+    trait can_bridge_by_name<input_name = "input", output_name = "output">
+
+    input ~ package.1
+    output ~ package.3
+    gnd ~ package.GND
+
+module _CrystalOscillator:
+    """
+    Crystal oscillator
+    """
+    crystal_interface = new XtalIF
+
+    crystal = new _Crystal
+    compensation_capacitors = new Capacitor[2]
+    for cap in compensation_capacitors:
+        cap.capacitance = 15pF +/- 10%
+        cap.package = "0402"
+
+    current_limiting_resistor = new Resistor
+    current_limiting_resistor.resistance = 1kohm +/- 5%
+    current_limiting_resistor.package = "R0402"
+
+    crystal_interface.xin ~> crystal ~> current_limiting_resistor ~> crystal_interface.xout
+    crystal.input ~> compensation_capacitors[0] ~> crystal_interface.gnd
+    crystal.output ~> compensation_capacitors[1] ~> crystal_interface.gnd
+    crystal.gnd ~ crystal_interface.gnd
+
+module _QSPIFlash from SPIFlash:
+    """
+    128Mbit QSPI Flash memory.
+    """
+    package = new Winbond_Elec_W25Q128JVSIQ_package
+
+    assert power.voltage within 3.3V +/- 10%
+    assert memory_size is 128Mbit
+
+    # parts
+    decoupling_capacitor = new Capacitor[2]
+    for cap in decoupling_capacitor:
+        power.hv ~> cap ~> power.lv
+        cap.package = "C0402"
+    decoupling_capacitor[0].capacitance = 2.2uF +/- 20%
+    decoupling_capacitor[1].capacitance = 100nF +/- 20%
+
+    # --- package ---
+    qspi.chip_select.line ~ package.nCS
+    qspi.clock.line ~ package.CLK
+    qspi.data[0].line ~ package.DI
+    qspi.data[1].line ~ package.DO
+    qspi.data[2].line ~ package.IO2
+    qspi.data[3].line ~ package.IO3
+    power.lv ~ package.GND
+    power.hv ~ package.VCC
+
+module _RedIndicatorLED:
+    """
+    Red indicator LED
+    """
+    led_package = new Hubei_KENTO_Elec_KT_0603R_package
+    current_limiting_resistor = new Resistor
+    current_limiting_resistor.resistance = 10kohm +/- 10%
+    current_limiting_resistor.package = "0402"
+
+    input = new ElectricLogic
+
+    input.line ~ led_package.A
+    input.reference.lv ~> current_limiting_resistor ~> led_package.K
+
+module _TactileSwitch:
+    """
+    A tactile switch (push = low, release = high), with pull-up resistor.
+    """
+    package = new ALPSALPINE_SKRPACE010_package
+    output = new ElectricLogic
+    pull_up_resistor = new Resistor
+    pull_up_resistor.resistance = 10kohm +/- 10%
+    pull_up_resistor.package = "0402"
+
+    output.line ~> pull_up_resistor ~> output.reference.hv
+    output.line ~ package.1
+    output.line ~ package.2
+    output.reference.lv ~ package.3
+    output.reference.lv ~ package.4

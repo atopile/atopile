@@ -1342,3 +1342,33 @@ kicanvas-embed::part(button):hover {
   background: var(--bg-hover) !important;
   color: var(--text-primary) !important;
 }
+
+/* ============================================
+   GLB Optimization Badge
+   Shows in bottom-left corner during background optimization
+   ============================================ */
+.optimization-badge {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+  z-index: 10;
+  font-family: var(--font-mono);
+}
+
+.optimization-badge .spinner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--border-subtle);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}

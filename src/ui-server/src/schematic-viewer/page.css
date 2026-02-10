@@ -1,0 +1,11 @@
+/* Schematic webview must never page-scroll; only internal panels may scroll. */
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}

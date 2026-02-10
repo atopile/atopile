@@ -1,0 +1,59 @@
+"""
+Experiment 8: Force solver to resolve pin function parameters
+by tying them to a real component (resistor).
+
+The trick: use a resistor whose value is derived from the function_id.
+If function_id has contradictory constraints, the resistor picking fails.
+
+This is hacky, but tests whether the architecture could work.
+"""
+#pragma experiment("FOR_LOOP")
+#pragma experiment("BRIDGE_CONNECT")
+
+import ElectricPower
+import Resistor
+
+module PinSlot:
+    """A physical pin with a solver-visible function selector."""
+    power = new ElectricPower
+
+    # The function ID: 0=free, 1=I2C_SCL, 2=I2C_SDA, 3=UART_TX, 4=UART_RX
+    function_id: dimensionless
+    assert function_id within 0 to 99
+
+    # Force the solver to resolve function_id by tying it to a resistor
+    # This is a "phantom" resistor — it exists only to make the solver
+    # evaluate our constraint. In a real implementation, this would be
+    # a build-step check instead.
+    phantom = new Resistor
+    phantom.package = "0201"
+    assert phantom.resistance within 1kohm +/- 50%
+    power.hv ~> phantom ~> power.lv
+
+
+module App_NoConflict:
+    """Two pins, different functions — should build OK."""
+    power = new ElectricPower
+
+    pin_a = new PinSlot
+    pin_b = new PinSlot
+    power ~ pin_a.power
+    power ~ pin_b.power
+
+    # Pin A is I2C SCL (function 1)
+    assert pin_a.function_id within 1 to 1
+    # Pin B is UART TX (function 3)
+    assert pin_b.function_id within 3 to 3
+
+
+module App_Conflict:
+    """One pin, two conflicting functions — should FAIL."""
+    power = new ElectricPower
+
+    pin_a = new PinSlot
+    power ~ pin_a.power
+
+    # Pin A is I2C SCL (function 1)
+    assert pin_a.function_id within 1 to 1
+    # Pin A is ALSO UART TX (function 3) — CONTRADICTION
+    assert pin_a.function_id within 3 to 3

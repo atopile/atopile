@@ -108,9 +108,17 @@ def run_build_targets(ctx: BuildStepContext) -> None:
 
     from atopile import build_steps
 
-    targets = {build_steps.generate_default.name} | set(config.build.targets) - set(
+    logger.info(
+        "Build targets config: include=%s exclude=%s env_exclude=%s env_include=%s",
+        list(config.build.targets),
+        list(config.build.exclude_targets),
+        os.environ.get("ATO_EXCLUDE_TARGET"),
+        os.environ.get("ATO_TARGET"),
+    )
+    targets = ({build_steps.generate_default.name} | set(config.build.targets)) - set(
         config.build.exclude_targets
     )
+    logger.info("Resolved build targets: %s", sorted(targets))
 
     # Count targets from DAG without materializing the generator
     # (the generator yields based on succeeded status which we can't check upfront)
@@ -203,7 +211,7 @@ def _load_python_app_class() -> type[fabll.Node]:
 
 def build(
     app: fabll.Node | None = None, ctx: BuildStepContext | None = None
-) -> fabll.Node:
+) -> fabll.Node | None:
     """Build the project.
 
     Args:
@@ -211,14 +219,15 @@ def build(
         ctx: Optional build context to use (allows caller to access completed_stages)
 
     Returns:
-        The built app node
+        The built app node, or None if no app was instantiated (e.g. glb-only builds)
     """
     if ctx is None:
         ctx = BuildStepContext(build=None, app=app)
     else:
         ctx.app = app
     run_build_targets(ctx)
-    return ctx.require_app()
+    # Return app if available, None otherwise (e.g. for glb-only builds)
+    return ctx.app or (ctx.build.app if ctx.build else None)
 
 
 def init_app() -> fabll.Node:
