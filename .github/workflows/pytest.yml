@@ -71,10 +71,10 @@ jobs:
 
       - name: Check ato version
         run: |
-          .venv/bin/python -c "import importlib.metadata; print(importlib.metadata.version('atopile'))" \
-          .venv/bin/ato self-check \
-          .venv/bin/ato --version \
-          .venv/bin/ato --semver \
+          .venv/bin/python -c "import importlib.metadata; print(importlib.metadata.version('atopile'))"; \
+          .venv/bin/ato self-check; \
+          .venv/bin/ato --version; \
+          .venv/bin/ato --semver; \
         env:
           PYTHONPATH: .venv/bin/python
 
