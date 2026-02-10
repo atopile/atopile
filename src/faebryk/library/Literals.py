@@ -4868,6 +4868,20 @@ class Numbers(fabll.Node):
 
 
 class TestNumbers:
+    @property
+    @once
+    def _meter_symbols(self) -> list[str]:
+        from faebryk.library.Units import _UNIT_SYMBOLS, _UnitRegistry
+
+        return list(_UNIT_SYMBOLS[_UnitRegistry.Meter])
+
+    @property
+    @once
+    def _kelvin_symbols(self) -> list[str]:
+        from faebryk.library.Units import _UNIT_SYMBOLS, _UnitRegistry
+
+        return list(_UNIT_SYMBOLS[_UnitRegistry.Kelvin])
+
     def test_make_child(self):
         from faebryk.library.Units import is_unit
 
@@ -4883,7 +4897,10 @@ class TestNumbers:
         numeric_set = app.quantity_set.get().get_numeric_set()
         assert numeric_set.get_min_value() == 0.0
         assert numeric_set.get_max_value() == 1.0
-        assert is_unit.get_symbols(app.quantity_set.get().get_is_unit()) == ["m"]
+        assert (
+            is_unit.get_symbols(app.quantity_set.get().get_is_unit())
+            == self._meter_symbols
+        )
 
     def test_make_child_single_value(self):
         from faebryk.library.Units import is_unit
@@ -4900,7 +4917,10 @@ class TestNumbers:
         numeric_set = app.quantity_set.get().get_numeric_set()
         assert numeric_set.get_min_value() == 1.0
         assert numeric_set.get_max_value() == 1.0
-        assert is_unit.get_symbols(app.quantity_set.get().get_is_unit()) == ["m"]
+        assert (
+            is_unit.get_symbols(app.quantity_set.get().get_is_unit())
+            == self._meter_symbols
+        )
 
     def test_make_child_prefixed_unit(self):
         """Test that prefixed units (mV) store both has_display_unit and has_unit."""
@@ -5020,7 +5040,10 @@ class TestNumbers:
         )
         assert quantity_set.get_numeric_set().get_min_value() == 0.0
         assert quantity_set.get_numeric_set().get_max_value() == 1.0
-        assert not_none(is_unit.get_symbols(quantity_set.get_is_unit())) == ["m"]
+        assert (
+            not_none(is_unit.get_symbols(quantity_set.get_is_unit()))
+            == self._meter_symbols
+        )
 
     def test_setup_from_singleton(self):
         g = graph.GraphView.create()
@@ -5056,7 +5079,7 @@ class TestNumbers:
         )
         min_quantity = quantity_set.min_elem(g=g, tg=tg)
         assert min_quantity.get_numeric_set().get_min_value() == 0.0
-        assert is_unit.get_symbols(min_quantity.get_is_unit()) == ["m"]
+        assert is_unit.get_symbols(min_quantity.get_is_unit()) == self._meter_symbols
 
     def test_get_max_quantity(self):
         from faebryk.library.Units import is_unit
@@ -5072,7 +5095,7 @@ class TestNumbers:
         )
         max_quantity = quantity_set.max_elem(g=g, tg=tg)
         assert max_quantity.get_numeric_set().get_max_value() == 1.0
-        assert is_unit.get_symbols(max_quantity.get_is_unit()) == ["m"]
+        assert is_unit.get_symbols(max_quantity.get_is_unit()) == self._meter_symbols
 
     def test_op_add_same_unit(self):
         from faebryk.library.Units import is_unit
@@ -5093,7 +5116,7 @@ class TestNumbers:
         result = Numbers.op_add_intervals(quantity_set_1, quantity_set_2, g=g, tg=tg)
         assert result.get_numeric_set().get_min_value() == 0.0
         assert result.get_numeric_set().get_max_value() == 2.0
-        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == self._meter_symbols
 
     def test_op_add_different_unit(self):
         # returns result in the self unit
@@ -5116,7 +5139,7 @@ class TestNumbers:
             g=g, tg=tg, ndigits=2
         )
         assert result_numeric_set_rounded.get_min_value() == 273.15
-        assert is_unit.get_symbols(result.get_is_unit()) == ["K"]
+        assert is_unit.get_symbols(result.get_is_unit()) == self._kelvin_symbols
 
     def test_op_multiply_same_unit(self):
         from faebryk.library.Units import is_unit
@@ -5208,7 +5231,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == -5.0
         assert result.get_numeric_set().get_max_value() == -2.0
         # Unit should remain the same
-        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == self._meter_symbols
 
     def test_op_subtract_same_unit(self):
         """Test subtraction of quantity sets with the same unit."""
@@ -5234,7 +5257,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 2.0
         assert result.get_numeric_set().get_max_value() == 9.0
         # Unit should remain the same as self
-        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == self._meter_symbols
 
     def test_op_invert(self):
         """Test inversion (1/x) of a quantity set."""
@@ -5353,7 +5376,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 2.3
         assert result.get_numeric_set().get_max_value() == 5.7
         # Unit should remain the same
-        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == self._meter_symbols
 
     @pytest.mark.parametrize(
         "min_val, max_val, expected_min, expected_max",
@@ -5398,7 +5421,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == expected_min
         assert result.get_numeric_set().get_max_value() == expected_max
         # Unit should remain the same
-        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == self._meter_symbols
 
     def test_op_ceil(self):
         """Test ceil of a quantity set."""
@@ -5417,7 +5440,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 3.0
         assert result.get_numeric_set().get_max_value() == 6.0
         # Unit should remain the same
-        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == self._meter_symbols
 
     def test_op_abs(self):
         """Test absolute value of a quantity set."""
@@ -5438,7 +5461,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 2.0
         assert result.get_numeric_set().get_max_value() == 5.0
         # Unit should remain the same
-        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == self._meter_symbols
 
     def test_op_log(self):
         """Test natural log of a quantity set."""
@@ -5535,7 +5558,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 5.0
         assert result.get_numeric_set().get_max_value() == 5.0
         # Unit should remain the same
-        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == self._meter_symbols
 
     def test_op_symmetric_difference(self):
         """Test symmetric difference of two quantity sets."""
@@ -5588,7 +5611,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 6.0
         assert result.get_numeric_set().get_max_value() == 6.0
         # Unit should remain the same
-        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == self._meter_symbols
 
     def test_op_deviation_to_relative(self):
         """Test relative deviation calculation between two quantity sets."""

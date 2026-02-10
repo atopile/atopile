@@ -2726,6 +2726,13 @@ class _TestWithContext:
 
 
 class TestIsUnit(_TestWithContext):
+    @property
+    @once
+    def _meter_symbols(self) -> list[str]:
+        from faebryk.library.Units import _UNIT_SYMBOLS, _UnitRegistry
+
+        return list(_UNIT_SYMBOLS[_UnitRegistry.Meter])
+
     @staticmethod
     def assert_commensurability(items: Sequence[is_unit]) -> is_unit:
         if not items:
@@ -2757,7 +2764,9 @@ class TestIsUnit(_TestWithContext):
         assert result == ctx.Meter.is_unit.get()
         parent, _ = result.get_parent_force()
         assert parent.isinstance(Meter)
-        assert is_unit.bind_instance(result.instance).get_symbols() == ["m"]
+        assert (
+            is_unit.bind_instance(result.instance).get_symbols() == self._meter_symbols
+        )
 
     def test_assert_commensurability(self, ctx: BoundUnitsContext):
         """Test that commensurable units pass validation and return first unit"""
