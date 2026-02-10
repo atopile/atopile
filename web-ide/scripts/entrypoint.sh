@@ -59,6 +59,18 @@ common["do_not_show_again"]["zone_fill_warning"] = True
 common.setdefault("api", {})
 common["api"]["enable_server"] = True
 
+# Disable "Center and warp cursor on zoom" — fights with VNC scroll handling
+common.setdefault("input", {})
+common["input"]["center_on_zoom"] = False
+
+# No antialiasing — unnecessary overhead on a virtual framebuffer
+common.setdefault("graphics", {})
+common["graphics"]["opengl_antialiasing_mode"] = 0
+
+# Small toolbar icons — save screen space in the VNC viewer
+common.setdefault("appearance", {})
+common["appearance"]["toolbar_icon_size"] = 16
+
 common_path.write_text(json.dumps(common, indent=2))
 
 # Create pcbnew.json if missing — marks PCBnew as already-configured

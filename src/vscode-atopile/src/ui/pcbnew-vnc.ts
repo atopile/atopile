@@ -158,6 +158,35 @@ class PcbnewVncWebview extends BaseWebview {
 
         let rfb = null;
 
+        // Patch noVNC's wheel handler to remove delta accumulation.
+        // noVNC accumulates deltaY until it reaches WHEEL_STEP (50px)
+        // before sending a VNC button 4/5 event. On Linux, mouse wheel
+        // clicks often report small deltas, requiring many clicks per
+        // zoom step. This patch sends one VNC scroll per wheel event.
+        const origHandleWheel = RFB.prototype._handleWheel;
+        RFB.prototype._handleWheel = function(ev) {
+            if (this._rfbConnectionState !== 'connected' || this._viewOnly) return;
+            ev.stopPropagation();
+            ev.preventDefault();
+            const pos = this._canvas.getBoundingClientRect();
+            const x = ev.clientX - pos.left;
+            const y = ev.clientY - pos.top;
+            if (ev.deltaY < 0) {
+                this._handleMouseButton(x, y, true, 1 << 3);
+                this._handleMouseButton(x, y, false, 1 << 3);
+            } else if (ev.deltaY > 0) {
+                this._handleMouseButton(x, y, true, 1 << 4);
+                this._handleMouseButton(x, y, false, 1 << 4);
+            }
+            if (ev.deltaX < 0) {
+                this._handleMouseButton(x, y, true, 1 << 5);
+                this._handleMouseButton(x, y, false, 1 << 5);
+            } else if (ev.deltaX > 0) {
+                this._handleMouseButton(x, y, true, 1 << 6);
+                this._handleMouseButton(x, y, false, 1 << 6);
+            }
+        };
+
         function connect() {
             showStatus('Connecting...', false);
 
