@@ -1095,7 +1095,7 @@ dependencies = [
     { name = "pynng" },
 ]
 wheels = [
-    { url = "https://github.com/atopile/kicad-python/releases/download/v0.5.1/kicad_python-0.5.1-py3-none-any.whl", hash = "sha256:a8f4ea546f6dd14c86fe952fb5d921488ad43c31fcfcd75fbb5799bd3bed7a24" },
+    { url = "https://github.com/atopile/kicad-python/releases/download/v0.5.1/kicad_python-0.5.1-py3-none-any.whl", hash = "sha256:02273fb6bccbd9a1dc394b51e7ba4e7c5db84ed7e59f15fe1a091f65af78c030" },
 ]
 
 [package.metadata]
