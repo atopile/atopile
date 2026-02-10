@@ -136,9 +136,9 @@ def install(
     Installs the latest .vsix built by 'ato dev compile vscode'.
     """
     if ide in ("vscode", "code"):
-        cli = "code"
+        cli = shutil.which("code") or "code"
     elif ide == "cursor":
-        cli = "cursor"
+        cli = shutil.which("cursor") or "cursor"
     else:
         typer.secho(
             "Usage: ato dev install <cursor|vscode>",
@@ -655,7 +655,7 @@ def test(
     if ui_server_dir.exists():
         typer.echo("Building log viewer UI...")
         result = subprocess.run(
-            ["npx", "vite", "build"],
+            [shutil.which("npx") or "npx", "vite", "build"],
             cwd=ui_server_dir,
             capture_output=True,
             text=True,
