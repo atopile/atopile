@@ -1117,18 +1117,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Handle request to browse for a local atopile path.
-   * Shows a native folder picker dialog and sends the selected path back to the webview.
+   * Handle request to browse for a local atopile binary.
+   * Shows a native file picker dialog and sends the selected path back to the webview.
    */
   private async _handleBrowseAtopilePath(): Promise<void> {
     traceInfo('[SidebarProvider] Browsing for local atopile path');
 
     const result = await vscode.window.showOpenDialog({
       canSelectFiles: true,
-      canSelectFolders: true,
+      canSelectFolders: false,
       canSelectMany: false,
-      openLabel: 'Select atopile installation',
-      title: 'Select atopile installation directory or binary',
+      openLabel: 'Select atopile binary',
+      title: 'Select atopile binary',
+      filters: process.platform === 'win32'
+        ? { 'Executables': ['exe', 'cmd'], 'All files': ['*'] }
+        : undefined,
     });
 
     const selectedPath = result?.[0]?.fsPath ?? null;
