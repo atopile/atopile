@@ -70,6 +70,10 @@ def get_cache_dir() -> Path:
 
 
 def get_log_dir() -> Path:
+    if env_dir := os.environ.get("ATO_LOG_DIR"):
+        p = Path(env_dir)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
     return Path(platformdirs.user_log_dir("atopile", ensure_exists=True))
 
 
