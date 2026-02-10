@@ -123,7 +123,10 @@ def _load_module(path: list[str], module: ModuleType):
             _load_module(path_, obj)
 
 
-def _load_ext(path: Path, name: str) -> ModuleType:
+def _load_ext(dir: Path, name: str) -> ModuleType:
+    ext = ".pyd" if sys.platform == "win32" else ".so"
+    path = dir / f"{name}{ext}"
+
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
@@ -133,12 +136,11 @@ def _load_ext(path: Path, name: str) -> ModuleType:
 
 
 def load():
-    # Insert at beginning to override any installed version
-    return _load_ext(_build_dir / "pyzig.so", "pyzig")
+    return _load_ext(_build_dir, "pyzig")
 
 
 def load_sexp():
-    return _load_ext(_build_dir / "pyzig_sexp.so", "pyzig_sexp")
+    return _load_ext(_build_dir, "pyzig_sexp")
 
 
 # Fallback to editable build-on-import

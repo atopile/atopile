@@ -39,6 +39,7 @@ dependencies = [
     "gitpython>=3.1.41",
     "httpx>=0.28.1",
     "jinja2>=3.1.6",
+    # forked version of kicad-python to support python 3.14
     "kicad-python @ https://github.com/atopile/kicad-python/releases/download/v0.5.1/kicad_python-0.5.1-py3-none-any.whl",
     "kicadcliwrapper>=1.1.1",
     "matplotlib>=3.7.1",
