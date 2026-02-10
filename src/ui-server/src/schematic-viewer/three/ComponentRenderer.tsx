@@ -7,6 +7,7 @@
 
 import { memo, useMemo } from 'react';
 import { Line, RoundedBox, Text } from '@react-three/drei';
+import { Shape } from 'three';
 import type {
   SchematicComponent,
   SchematicPin,
@@ -37,6 +38,9 @@ const SYMBOL_STROKE_WIDTH = 0.26;
 const SYMBOL_STROKE_WIDTH_FINE = 0.22;
 const PIN_LEAD_WIDTH = 0.28;
 const PIN_LEAD_WIDTH_ACTIVE = 0.34;
+const DIODE_FILL_OPACITY = 0.28;
+const LED_FILL_OPACITY = 0.42;
+const POLARIZED_CAP_NEGATIVE_PLATE_FILL_OPACITY = 0.72;
 
 function getDesignatorPrefix(designator: string): string {
   return designator.replace(/[^A-Za-z]/g, '').toUpperCase();
@@ -210,6 +214,79 @@ function kicadArcPoints(arc: KicadArc, segments = 20): Array<[number, number]> {
   return pts;
 }
 
+function isDiodeCenterBridgePolyline(
+  family: SchematicSymbolFamily,
+  poly: { points: Array<{ x: number; y: number }> },
+): boolean {
+  if (family !== 'diode' && family !== 'led') return false;
+  if (poly.points.length !== 2) return false;
+  const [a, b] = poly.points;
+  const horizontal = Math.abs(a.y - b.y) <= 1e-6;
+  if (!horizontal) return false;
+  if (Math.abs(a.y) > 1e-3 || Math.abs(b.y) > 1e-3) return false;
+  const span = Math.abs(a.x - b.x);
+  return span > 2.4 && span < 2.7;
+}
+
+function pointsNear(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  epsilon = 1e-6,
+): boolean {
+  return Math.abs(a.x - b.x) <= epsilon && Math.abs(a.y - b.y) <= epsilon;
+}
+
+function isDiodeBodyTrianglePolyline(
+  family: SchematicSymbolFamily,
+  poly: { points: Array<{ x: number; y: number }> },
+): boolean {
+  if (family !== 'diode' && family !== 'led') return false;
+  if (poly.points.length < 4) return false;
+  const first = poly.points[0];
+  const last = poly.points[poly.points.length - 1];
+  if (!pointsNear(first, last)) return false;
+
+  const unique: Array<{ x: number; y: number }> = [];
+  for (const p of poly.points.slice(0, -1)) {
+    if (!unique.some((u) => pointsNear(u, p))) unique.push(p);
+  }
+  return unique.length === 3;
+}
+
+function inferLedFillColor(component: SchematicComponent): string {
+  const haystack = [
+    component.name,
+    component.symbolVariant,
+    component.packageCode,
+    component.designator,
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  const palette: Array<{ re: RegExp; color: string }> = [
+    { re: /\b(infrared|ir)\b/, color: '#b58288' },
+    { re: /\b(ultra[\s_-]?violet|uv)\b/, color: '#9f8fca' },
+    { re: /\b(warm[\s_-]?white)\b/, color: '#cec0a6' },
+    { re: /\b(cold[\s_-]?white)\b/, color: '#b2bfd0' },
+    { re: /\b(natural[\s_-]?white)\b/, color: '#c0c6c5' },
+    { re: /\bwhite\b/, color: '#b8bfd0' },
+    { re: /\bred\b/, color: '#c77b86' },
+    { re: /\bgreen\b/, color: '#8fb68a' },
+    { re: /\bblue\b/, color: '#87a7ca' },
+    { re: /\b(amber|orange)\b/, color: '#c69a72' },
+    { re: /\byellow\b/, color: '#c7b784' },
+    { re: /\b(violet|purple)\b/, color: '#ad98cf' },
+    { re: /\b(magenta|pink)\b/, color: '#c996b7' },
+    { re: /\bcyan\b/, color: '#8fbec3' },
+    { re: /\blime\b/, color: '#aac690' },
+    { re: /\bemerald\b/, color: '#7eb59b' },
+  ];
+  for (const entry of palette) {
+    if (entry.re.test(haystack)) return entry.color;
+  }
+  return '#c77b86';
+}
+
 interface SymbolGlyphProps {
   component: SchematicComponent;
   family: SchematicSymbolFamily;
@@ -242,6 +319,61 @@ function SymbolGlyph({
   ) {
     const transform = getCanonicalGlyphTransform(component, family, templateSymbol, tuning);
     if (!transform) return null;
+    const bodyFills: Array<{
+      key: string;
+      points: Array<[number, number]>;
+      color: string;
+      opacity: number;
+    }> = [];
+
+    if (family === 'diode' || family === 'led') {
+      const fillColor = family === 'led' ? inferLedFillColor(component) : lineColor;
+      const fillOpacity = family === 'led' ? LED_FILL_OPACITY : DIODE_FILL_OPACITY;
+      for (let idx = 0; idx < templateSymbol.polylines.length; idx += 1) {
+        const poly = templateSymbol.polylines[idx];
+        if (!isDiodeBodyTrianglePolyline(family, poly)) continue;
+        const points = poly.points
+          .slice(0, -1)
+          .map((p) => transformCanonicalBodyPoint(p.x, p.y, transform))
+          .map((p) => [p.x, p.y] as [number, number]);
+        if (points.length !== 3) continue;
+        bodyFills.push({
+          key: `fill-diode-${idx}`,
+          points,
+          color: fillColor,
+          opacity: fillOpacity,
+        });
+      }
+    }
+
+    if (family === 'capacitor_polarized' && templateSymbol.rectangles.length > 0) {
+      let negativeIdx = 0;
+      let minCenterY = Number.POSITIVE_INFINITY;
+      for (let idx = 0; idx < templateSymbol.rectangles.length; idx += 1) {
+        const rect = templateSymbol.rectangles[idx];
+        const centerY = (rect.startY + rect.endY) * 0.5;
+        if (centerY < minCenterY) {
+          minCenterY = centerY;
+          negativeIdx = idx;
+        }
+      }
+      const rect = templateSymbol.rectangles[negativeIdx];
+      const p0 = transformCanonicalBodyPoint(rect.startX, rect.startY, transform);
+      const p1 = transformCanonicalBodyPoint(rect.endX, rect.startY, transform);
+      const p2 = transformCanonicalBodyPoint(rect.endX, rect.endY, transform);
+      const p3 = transformCanonicalBodyPoint(rect.startX, rect.endY, transform);
+      bodyFills.push({
+        key: `fill-cap-neg-${negativeIdx}`,
+        points: [
+          [p0.x, p0.y],
+          [p1.x, p1.y],
+          [p2.x, p2.y],
+          [p3.x, p3.y],
+        ],
+        color: lineColor,
+        opacity: POLARIZED_CAP_NEGATIVE_PLATE_FILL_OPACITY,
+      });
+    }
 
     const pt = (x: number, y: number): [number, number, number] => {
       const p = transformCanonicalBodyPoint(x, y, transform);
@@ -250,6 +382,26 @@ function SymbolGlyph({
 
     return (
       <group raycast={NO_RAYCAST}>
+        {bodyFills.map((fill) => {
+          const shape = new Shape();
+          shape.moveTo(fill.points[0][0], fill.points[0][1]);
+          for (let i = 1; i < fill.points.length; i += 1) {
+            shape.lineTo(fill.points[i][0], fill.points[i][1]);
+          }
+          shape.closePath();
+          return (
+            <mesh key={fill.key} position={[0, 0, -0.0004]} raycast={NO_RAYCAST}>
+              <shapeGeometry args={[shape]} />
+              <meshBasicMaterial
+                color={fill.color}
+                transparent
+                opacity={fill.opacity}
+                depthWrite={false}
+              />
+            </mesh>
+          );
+        })}
+
         {templateSymbol.rectangles.map((rect, idx) => (
           <Line
             key={`rect-${idx}`}
@@ -268,14 +420,18 @@ function SymbolGlyph({
         ))}
 
         {templateSymbol.polylines.map((poly, idx) => (
-          <Line
-            key={`poly-${idx}`}
-            points={poly.points.map((p) => pt(p.x, p.y))}
-            color={lineColor}
-            lineWidth={lineWidth}
-            worldUnits
-            raycast={NO_RAYCAST}
-          />
+          isDiodeCenterBridgePolyline(family, poly)
+            ? null
+            : (
+              <Line
+                key={`poly-${idx}`}
+                points={poly.points.map((p) => pt(p.x, p.y))}
+                color={lineColor}
+                lineWidth={lineWidth}
+                worldUnits
+                raycast={NO_RAYCAST}
+              />
+            )
         ))}
 
         {templateSymbol.circles.map((circle, idx) => {
@@ -339,8 +495,26 @@ function SymbolGlyph({
   if (family === 'capacitor' || family === 'capacitor_polarized') {
     const plateGap = Math.max(0.18, W * 0.12 * scale);
     const halfPlate = Math.max(0.34, H * 0.36);
+    const plateHalfThickness = 0.22;
+    const negativePlateFillShape = new Shape();
+    negativePlateFillShape.moveTo(plateGap - plateHalfThickness, -halfPlate);
+    negativePlateFillShape.lineTo(plateGap + plateHalfThickness, -halfPlate);
+    negativePlateFillShape.lineTo(plateGap + plateHalfThickness, halfPlate);
+    negativePlateFillShape.lineTo(plateGap - plateHalfThickness, halfPlate);
+    negativePlateFillShape.closePath();
     return (
       <group raycast={NO_RAYCAST}>
+        {family === 'capacitor_polarized' && (
+          <mesh position={[0, 0, -0.0004]} raycast={NO_RAYCAST}>
+            <shapeGeometry args={[negativePlateFillShape]} />
+            <meshBasicMaterial
+              color={lineColor}
+              transparent
+              opacity={POLARIZED_CAP_NEGATIVE_PLATE_FILL_OPACITY}
+              depthWrite={false}
+            />
+          </mesh>
+        )}
         <Line
           points={[
             [-plateGap, -halfPlate, 0],
@@ -417,9 +591,25 @@ function SymbolGlyph({
     const left = -Math.max(0.9, W * 0.2);
     const barX = Math.max(0.8, W * 0.2);
     const halfY = Math.max(0.32, H * 0.3);
+    const fillShape = new Shape();
+    fillShape.moveTo(left, -halfY);
+    fillShape.lineTo(left, halfY);
+    fillShape.lineTo(barX, 0);
+    fillShape.closePath();
+    const fillColor = family === 'led' ? inferLedFillColor(component) : lineColor;
+    const fillOpacity = family === 'led' ? LED_FILL_OPACITY : DIODE_FILL_OPACITY;
 
     return (
       <group raycast={NO_RAYCAST}>
+        <mesh position={[0, 0, -0.0004]} raycast={NO_RAYCAST}>
+          <shapeGeometry args={[fillShape]} />
+          <meshBasicMaterial
+            color={fillColor}
+            transparent
+            opacity={fillOpacity}
+            depthWrite={false}
+          />
+        </mesh>
         <Line
           points={[
             [left, -halfY, 0],

@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { getCanonicalKicadSymbol } from '../../src/schematic-viewer/symbol-catalog/canonicalSymbolCatalog';
 import {
   SYMBOL_RENDER_TUNING,
@@ -7,6 +13,8 @@ import {
 import type { KicadArc, KicadSymbol } from '../../src/schematic-viewer/types/symbol';
 import {
   getComponentGridAlignmentOffset,
+  POWER_PORT_H,
+  POWER_PORT_W,
   type SchematicComponent,
   type SchematicPin,
   type SchematicSymbolFamily,
@@ -20,7 +28,9 @@ import {
   transformCanonicalBodyPoint,
 } from '../../src/schematic-viewer/three/symbolRenderGeometry';
 
-type Family = Exclude<SchematicSymbolFamily, 'connector'>;
+type ComponentFamily = Exclude<SchematicSymbolFamily, 'connector'>;
+type PowerFamily = 'vcc' | 'gnd';
+type Family = ComponentFamily | PowerFamily;
 
 type Point = { x: number; y: number };
 
@@ -28,11 +38,41 @@ type SymbolTuning = SymbolRenderTuning;
 
 interface PreviewModel {
   bodyPolylines: Point[][];
+  bodyFillPolygons: Point[][];
   bodyCircles: Array<{ center: Point; radius: number }>;
   leads: Array<{ attach: Point; pin: Point; rawPin: Point; number: string; name: string }>;
   centerCross: { h0: Point; h1: Point; v0: Point; v1: Point };
   viewBox: { x: number; y: number; width: number; height: number };
   gridOffset: Point;
+}
+
+interface LabelTuning {
+  offsetX: number;
+  offsetY: number;
+  fontSize: number;
+  rotationDeg: number;
+}
+
+interface PackageLabelTuning extends LabelTuning {
+  followInstanceRotation: boolean;
+}
+
+interface VisualTuning {
+  symbolStrokeWidth: number;
+  leadStrokeWidth: number;
+  connectionDotRadius: number;
+  designator: LabelTuning;
+  value: LabelTuning;
+  package: PackageLabelTuning;
+}
+
+interface DragState {
+  target: 'designator' | 'value' | 'package';
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startOffsetX: number;
+  startOffsetY: number;
 }
 
 const FAMILIES: Family[] = [
@@ -42,7 +82,13 @@ const FAMILIES: Family[] = [
   'inductor',
   'diode',
   'led',
+  'transistor_npn',
+  'transistor_pnp',
+  'mosfet_n',
+  'mosfet_p',
   'testpoint',
+  'vcc',
+  'gnd',
 ];
 
 const PIN_COUNT_BY_FAMILY: Record<Family, number> = {
@@ -52,10 +98,61 @@ const PIN_COUNT_BY_FAMILY: Record<Family, number> = {
   inductor: 2,
   diode: 2,
   led: 2,
+  transistor_npn: 3,
+  transistor_pnp: 3,
+  mosfet_n: 3,
+  mosfet_p: 3,
   testpoint: 1,
+  vcc: 1,
+  gnd: 1,
 };
 
+function isPowerFamily(family: Family): family is PowerFamily {
+  return family === 'vcc' || family === 'gnd';
+}
+
+function isComponentFamily(family: Family): family is ComponentFamily {
+  return !isPowerFamily(family);
+}
+
 const BASE_TWO_PINS: SchematicPin[] = [
+  {
+    number: '1',
+    name: 'pin1',
+    side: 'left',
+    electricalType: 'passive',
+    category: 'signal',
+    x: -3.81,
+    y: 0,
+    bodyX: -1.27,
+    bodyY: 0,
+  },
+  {
+    number: '2',
+    name: 'pin2',
+    side: 'right',
+    electricalType: 'passive',
+    category: 'signal',
+    x: 3.81,
+    y: 0,
+    bodyX: 1.27,
+    bodyY: 0,
+  },
+];
+
+const BASE_SINGLE_PIN: SchematicPin = {
+  number: '1',
+  name: 'pin1',
+  side: 'left',
+  electricalType: 'passive',
+  category: 'signal',
+  x: -5.08,
+  y: 0,
+  bodyX: -2.54,
+  bodyY: 0,
+};
+
+const BASE_THREE_PINS: SchematicPin[] = [
   {
     number: '1',
     name: 'pin1',
@@ -73,15 +170,26 @@ const BASE_TWO_PINS: SchematicPin[] = [
     side: 'right',
     electricalType: 'passive',
     category: 'signal',
-    x: 5.08,
-    y: 0,
+    x: 2.54,
+    y: 5.08,
     bodyX: 2.54,
-    bodyY: 0,
+    bodyY: 2.54,
+  },
+  {
+    number: '3',
+    name: 'pin3',
+    side: 'right',
+    electricalType: 'passive',
+    category: 'signal',
+    x: 2.54,
+    y: -5.08,
+    bodyX: 2.54,
+    bodyY: -2.54,
   },
 ];
 
 function fixtureComponent(
-  family: Family,
+  family: ComponentFamily,
   packageCode: string,
   designator: string,
   pinNames?: [string, string],
@@ -101,8 +209,60 @@ function fixtureComponent(
     symbolFamily: family,
     packageCode,
     pins,
-    bodyWidth: 5.08,
+    bodyWidth: 2.54,
     bodyHeight: 2.04,
+  };
+}
+
+function fixtureThreePinComponent(
+  family: ComponentFamily,
+  packageCode: string,
+  designator: string,
+  pinNames?: [string, string, string],
+): SchematicComponent {
+  const [p1, p2, p3] = pinNames ?? ['pin1', 'pin2', 'pin3'];
+  const pins: SchematicPin[] = BASE_THREE_PINS.map((pin) => ({
+    ...pin,
+    name: pin.number === '1' ? p1 : (pin.number === '2' ? p2 : p3),
+  }));
+
+  return {
+    kind: 'component',
+    id: `fixture_${family}`,
+    name: `fixture_${family}`,
+    designator,
+    reference: designator[0] ?? 'X',
+    symbolFamily: family,
+    packageCode,
+    pins,
+    bodyWidth: 14,
+    bodyHeight: 7.08,
+  };
+}
+
+function fixturePowerSymbol(
+  family: PowerFamily,
+  label: string,
+): SchematicComponent {
+  const pinY = family === 'gnd' ? POWER_PORT_H / 2 : -POWER_PORT_H / 2;
+  return {
+    kind: 'component',
+    id: `fixture_${family}`,
+    name: `fixture_${family}`,
+    designator: label,
+    reference: 'P',
+    pins: [
+      {
+        ...BASE_SINGLE_PIN,
+        x: 0,
+        y: pinY,
+        bodyX: 0,
+        bodyY: pinY,
+        name: 'pin',
+      },
+    ],
+    bodyWidth: POWER_PORT_W,
+    bodyHeight: POWER_PORT_H,
   };
 }
 
@@ -113,6 +273,10 @@ const FIXTURE_BY_FAMILY: Record<Family, SchematicComponent> = {
   inductor: fixtureComponent('inductor', '0805', 'L1', ['A', 'B']),
   diode: fixtureComponent('diode', 'SOD-123', 'D1', ['anode', 'cathode']),
   led: fixtureComponent('led', '0603', 'D2', ['anode', 'cathode']),
+  transistor_npn: fixtureThreePinComponent('transistor_npn', 'SOT-23', 'Q1', ['B', 'C', 'E']),
+  transistor_pnp: fixtureThreePinComponent('transistor_pnp', 'SOT-23', 'Q2', ['B', 'C', 'E']),
+  mosfet_n: fixtureThreePinComponent('mosfet_n', 'SOT-23', 'Q3', ['G', 'D', 'S']),
+  mosfet_p: fixtureThreePinComponent('mosfet_p', 'SOT-23', 'Q4', ['G', 'D', 'S']),
   testpoint: {
     kind: 'component',
     id: 'fixture_testpoint',
@@ -122,15 +286,18 @@ const FIXTURE_BY_FAMILY: Record<Family, SchematicComponent> = {
     symbolFamily: 'testpoint',
     packageCode: 'TESTPOINT',
     pins: [{
-      ...BASE_TWO_PINS[0],
+      ...BASE_SINGLE_PIN,
       name: 'contact',
     }],
     bodyWidth: 5.08,
     bodyHeight: 2.04,
   },
+  vcc: fixturePowerSymbol('vcc', 'VCC'),
+  gnd: fixturePowerSymbol('gnd', 'GND'),
 };
 
-const STORAGE_KEY = 'atopile.symbol_tuner.v1';
+const STORAGE_KEY = 'atopile.symbol_tuner.v2';
+const VISUAL_STORAGE_KEY = 'atopile.symbol_tuner.visual.v1';
 const TUNER_SYMBOL_STROKE_WIDTH = 0.26;
 const TUNER_LEAD_STROKE_WIDTH = 0.28;
 
@@ -141,8 +308,90 @@ const DEFAULT_TUNINGS: Record<Family, SymbolTuning> = {
   inductor: { ...SYMBOL_RENDER_TUNING.inductor },
   diode: { ...SYMBOL_RENDER_TUNING.diode },
   led: { ...SYMBOL_RENDER_TUNING.led },
+  transistor_npn: { ...SYMBOL_RENDER_TUNING.transistor_npn },
+  transistor_pnp: { ...SYMBOL_RENDER_TUNING.transistor_pnp },
+  mosfet_n: { ...SYMBOL_RENDER_TUNING.mosfet_n },
+  mosfet_p: { ...SYMBOL_RENDER_TUNING.mosfet_p },
   testpoint: { ...SYMBOL_RENDER_TUNING.testpoint },
+  vcc: {
+    bodyOffsetX: 0,
+    bodyOffsetY: 1.2,
+    bodyRotationDeg: 0,
+    bodyScaleX: 2,
+    bodyScaleY: 2,
+    leadDelta: 0,
+  },
+  gnd: {
+    bodyOffsetX: 0,
+    bodyOffsetY: 0.15,
+    bodyRotationDeg: 0,
+    bodyScaleX: 2,
+    bodyScaleY: 2,
+    leadDelta: 0,
+  },
 };
+
+function defaultLabelFontSize(component: SchematicComponent): number {
+  const isSmall = component.bodyWidth * component.bodyHeight < 40;
+  const maxDim = Math.min(component.bodyWidth, component.bodyHeight);
+  const base = isSmall
+    ? Math.min(1.35, Math.max(0.62, maxDim * 0.34))
+    : Math.min(1.35, Math.max(0.78, maxDim * 0.18));
+  return base * 0.85;
+}
+
+function defaultVisualTuning(component: SchematicComponent): VisualTuning {
+  const designatorFontSize = defaultLabelFontSize(component);
+  return {
+    symbolStrokeWidth: TUNER_SYMBOL_STROKE_WIDTH,
+    leadStrokeWidth: TUNER_LEAD_STROKE_WIDTH,
+    connectionDotRadius: 0.17,
+    designator: {
+      offsetX: 0,
+      offsetY: -Math.min(component.bodyHeight * 0.36, 0.96),
+      fontSize: designatorFontSize,
+      rotationDeg: 0,
+    },
+    value: {
+      offsetX: 0,
+      offsetY: Math.max(component.bodyHeight * 0.42, 1.2),
+      fontSize: Math.max(0.5, designatorFontSize * 0.8),
+      rotationDeg: 0,
+    },
+    package: {
+      offsetX: 0,
+      offsetY: -Math.max(component.bodyHeight * 0.5 + 0.82, 1.4),
+      fontSize: 0.52,
+      rotationDeg: 0,
+      followInstanceRotation: true,
+    },
+  };
+}
+
+const DEFAULT_VISUAL_TUNINGS: Record<Family, VisualTuning> = (() => {
+  const out = Object.fromEntries(
+    FAMILIES.map((family) => [family, defaultVisualTuning(FIXTURE_BY_FAMILY[family])]),
+  ) as Record<Family, VisualTuning>;
+  out.vcc = {
+    ...out.vcc,
+    designator: {
+      ...out.vcc.designator,
+      offsetX: 0,
+      offsetY: 1.05,
+      fontSize: 0.54,
+    },
+  };
+  out.gnd = {
+    ...out.gnd,
+    designator: {
+      ...out.gnd.designator,
+      offsetX: 0,
+      offsetY: 1.1,
+      fontSize: 0.54,
+    },
+  };
+  return out;
+})();
 
 function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
@@ -244,6 +493,8 @@ function parseStoredTunings(raw: string): Record<Family, SymbolTuning> | null {
         bodyOffsetX: Number.isFinite(item.bodyOffsetX) ? item.bodyOffsetX : 0,
         bodyOffsetY: Number.isFinite(item.bodyOffsetY) ? item.bodyOffsetY : 0,
         bodyRotationDeg: Number.isFinite(item.bodyRotationDeg) ? item.bodyRotationDeg : 0,
+        bodyScaleX: Number.isFinite(item.bodyScaleX) ? item.bodyScaleX : 1,
+        bodyScaleY: Number.isFinite(item.bodyScaleY) ? item.bodyScaleY : 1,
         leadDelta: Number.isFinite(item.leadDelta) ? item.leadDelta : 0,
       };
     }
@@ -258,6 +509,84 @@ function initialTunings(): Record<Family, SymbolTuning> {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return { ...DEFAULT_TUNINGS };
   return parseStoredTunings(raw) ?? { ...DEFAULT_TUNINGS };
+}
+
+function parseStoredVisualTunings(raw: string): Record<Family, VisualTuning> | null {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, Partial<VisualTuning>>;
+    const out: Record<Family, VisualTuning> = { ...DEFAULT_VISUAL_TUNINGS };
+    for (const family of FAMILIES) {
+      const item = parsed[family];
+      if (!item) continue;
+      const defaults = DEFAULT_VISUAL_TUNINGS[family];
+      out[family] = {
+        symbolStrokeWidth: Number.isFinite(item.symbolStrokeWidth)
+          ? item.symbolStrokeWidth as number
+          : defaults.symbolStrokeWidth,
+        leadStrokeWidth: Number.isFinite(item.leadStrokeWidth)
+          ? item.leadStrokeWidth as number
+          : defaults.leadStrokeWidth,
+        connectionDotRadius: Number.isFinite(item.connectionDotRadius)
+          ? item.connectionDotRadius as number
+          : defaults.connectionDotRadius,
+        designator: {
+          offsetX: Number.isFinite(item.designator?.offsetX)
+            ? item.designator!.offsetX as number
+            : defaults.designator.offsetX,
+          offsetY: Number.isFinite(item.designator?.offsetY)
+            ? item.designator!.offsetY as number
+            : defaults.designator.offsetY,
+          fontSize: Number.isFinite(item.designator?.fontSize)
+            ? item.designator!.fontSize as number
+            : defaults.designator.fontSize,
+          rotationDeg: Number.isFinite(item.designator?.rotationDeg)
+            ? item.designator!.rotationDeg as number
+            : defaults.designator.rotationDeg,
+        },
+        value: {
+          offsetX: Number.isFinite(item.value?.offsetX)
+            ? item.value!.offsetX as number
+            : defaults.value.offsetX,
+          offsetY: Number.isFinite(item.value?.offsetY)
+            ? item.value!.offsetY as number
+            : defaults.value.offsetY,
+          fontSize: Number.isFinite(item.value?.fontSize)
+            ? item.value!.fontSize as number
+            : defaults.value.fontSize,
+          rotationDeg: Number.isFinite(item.value?.rotationDeg)
+            ? item.value!.rotationDeg as number
+            : defaults.value.rotationDeg,
+        },
+        package: {
+          offsetX: Number.isFinite(item.package?.offsetX)
+            ? item.package!.offsetX as number
+            : defaults.package.offsetX,
+          offsetY: Number.isFinite(item.package?.offsetY)
+            ? item.package!.offsetY as number
+            : defaults.package.offsetY,
+          fontSize: Number.isFinite(item.package?.fontSize)
+            ? item.package!.fontSize as number
+            : defaults.package.fontSize,
+          rotationDeg: Number.isFinite(item.package?.rotationDeg)
+            ? item.package!.rotationDeg as number
+            : defaults.package.rotationDeg,
+          followInstanceRotation: typeof item.package?.followInstanceRotation === 'boolean'
+            ? item.package!.followInstanceRotation
+            : defaults.package.followInstanceRotation,
+        },
+      };
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+function initialVisualTunings(): Record<Family, VisualTuning> {
+  if (typeof window === 'undefined') return { ...DEFAULT_VISUAL_TUNINGS };
+  const raw = window.localStorage.getItem(VISUAL_STORAGE_KEY);
+  if (!raw) return { ...DEFAULT_VISUAL_TUNINGS };
+  return parseStoredVisualTunings(raw) ?? { ...DEFAULT_VISUAL_TUNINGS };
 }
 function applyInstanceTransform(
   point: Point,
@@ -275,9 +604,166 @@ function applyInstanceTransform(
   return { x: transformed.x, y: transformed.y };
 }
 
+function applyInverseInstanceTransform(
+  point: Point,
+  rotationDeg: number,
+  mirrorX: boolean,
+  mirrorY: boolean,
+): Point {
+  const rot = ((rotationDeg % 360) + 360) % 360;
+  let x = point.x;
+  let y = point.y;
+
+  // Inverse of rotate-CCW is rotate-CW.
+  switch (rot) {
+    case 90:
+      [x, y] = [y, -x];
+      break;
+    case 180:
+      [x, y] = [-x, -y];
+      break;
+    case 270:
+      [x, y] = [-y, x];
+      break;
+    default:
+      break;
+  }
+
+  // Mirrors are self-inverse.
+  if (mirrorX) x = -x;
+  if (mirrorY) y = -y;
+  return { x, y };
+}
+
+function labelPositionToWorld(
+  local: Point,
+  preview: PreviewModel,
+  rotationDeg: number,
+  mirrorX: boolean,
+  mirrorY: boolean,
+): Point {
+  return applyInstanceTransform(
+    { x: local.x + preview.gridOffset.x, y: local.y + preview.gridOffset.y },
+    rotationDeg,
+    mirrorX,
+    mirrorY,
+  );
+}
+
+function estimateTextHalfWidth(text: string, fontSize: number): number {
+  return Math.max(0.3, text.length * fontSize * 0.28);
+}
+
+function expandViewBoxWithLabels(
+  viewBox: PreviewModel['viewBox'],
+  labels: Array<{ position: Point; text: string; fontSize: number }>,
+): PreviewModel['viewBox'] {
+  let minX = viewBox.x;
+  let maxX = viewBox.x + viewBox.width;
+  let minY = -viewBox.y - viewBox.height;
+  let maxY = -viewBox.y;
+
+  for (const label of labels) {
+    const halfW = estimateTextHalfWidth(label.text, label.fontSize);
+    const halfH = Math.max(0.35, label.fontSize * 0.65);
+    minX = Math.min(minX, label.position.x - halfW - 0.4);
+    maxX = Math.max(maxX, label.position.x + halfW + 0.4);
+    minY = Math.min(minY, label.position.y - halfH - 0.4);
+    maxY = Math.max(maxY, label.position.y + halfH + 0.4);
+  }
+
+  return {
+    x: minX,
+    y: -maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+function isDiodeCenterBridgePolyline(
+  family: Family,
+  poly: { points: Array<{ x: number; y: number }> },
+): boolean {
+  if (family !== 'diode' && family !== 'led') return false;
+  if (poly.points.length !== 2) return false;
+  const [a, b] = poly.points;
+  const horizontal = Math.abs(a.y - b.y) <= 1e-6;
+  if (!horizontal) return false;
+  if (Math.abs(a.y) > 1e-3 || Math.abs(b.y) > 1e-3) return false;
+  const span = Math.abs(a.x - b.x);
+  return span > 2.4 && span < 2.7;
+}
+
+function pointsNear(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  epsilon = 1e-6,
+): boolean {
+  return Math.abs(a.x - b.x) <= epsilon && Math.abs(a.y - b.y) <= epsilon;
+}
+
+function isDiodeBodyTrianglePolyline(
+  family: Family,
+  poly: { points: Array<{ x: number; y: number }> },
+): boolean {
+  if (family !== 'diode' && family !== 'led') return false;
+  if (poly.points.length < 4) return false;
+  const first = poly.points[0];
+  const last = poly.points[poly.points.length - 1];
+  if (!pointsNear(first, last)) return false;
+
+  const unique: Array<{ x: number; y: number }> = [];
+  for (const p of poly.points.slice(0, -1)) {
+    if (!unique.some((u) => pointsNear(u, p))) unique.push(p);
+  }
+  return unique.length === 3;
+}
+
+function inferLedFillColor(component: SchematicComponent): string {
+  const haystack = [
+    component.name,
+    component.symbolVariant,
+    component.packageCode,
+    component.designator,
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  const palette: Array<{ re: RegExp; color: string }> = [
+    { re: /\b(infrared|ir)\b/, color: '#b58288' },
+    { re: /\b(ultra[\s_-]?violet|uv)\b/, color: '#9f8fca' },
+    { re: /\b(warm[\s_-]?white)\b/, color: '#cec0a6' },
+    { re: /\b(cold[\s_-]?white)\b/, color: '#b2bfd0' },
+    { re: /\b(natural[\s_-]?white)\b/, color: '#c0c6c5' },
+    { re: /\bwhite\b/, color: '#b8bfd0' },
+    { re: /\bred\b/, color: '#c77b86' },
+    { re: /\bgreen\b/, color: '#8fb68a' },
+    { re: /\bblue\b/, color: '#87a7ca' },
+    { re: /\b(amber|orange)\b/, color: '#c69a72' },
+    { re: /\byellow\b/, color: '#c7b784' },
+    { re: /\b(violet|purple)\b/, color: '#ad98cf' },
+    { re: /\b(magenta|pink)\b/, color: '#c996b7' },
+    { re: /\bcyan\b/, color: '#8fbec3' },
+    { re: /\blime\b/, color: '#aac690' },
+    { re: /\bemerald\b/, color: '#7eb59b' },
+  ];
+  for (const entry of palette) {
+    if (entry.re.test(haystack)) return entry.color;
+  }
+  return '#c77b86';
+}
+
+function normalizeTextRotationUpright(rotationDeg: number): number {
+  let rot = ((rotationDeg % 360) + 360) % 360;
+  if (rot > 180) rot -= 360;
+  if (rot > 90) rot -= 180;
+  if (rot <= -90) rot += 180;
+  return rot;
+}
+
 function buildPreviewModel(
   component: SchematicComponent,
-  family: Family,
+  family: ComponentFamily,
   symbol: KicadSymbol,
   tuning: SymbolTuning,
   rotationDeg: number,
@@ -285,6 +771,7 @@ function buildPreviewModel(
   mirrorY: boolean,
 ): PreviewModel | null {
   const bodyPolylines: Point[][] = [];
+  const bodyFillPolygons: Point[][] = [];
   const bodyCircles: Array<{ center: Point; radius: number }> = [];
   const leads: Array<{ attach: Point; pin: Point; rawPin: Point; number: string; name: string }> = [];
 
@@ -312,20 +799,42 @@ function buildPreviewModel(
     return toWorld({ x: p.x, y: p.y + CUSTOM_SYMBOL_BODY_BASE_Y });
   };
 
-  for (const rect of symbol.rectangles) {
-    bodyPolylines.push([
+  let polarizedNegativeRectIdx = -1;
+  if (family === 'capacitor_polarized' && symbol.rectangles.length > 0) {
+    let minCenterY = Number.POSITIVE_INFINITY;
+    for (let idx = 0; idx < symbol.rectangles.length; idx += 1) {
+      const rect = symbol.rectangles[idx];
+      const centerY = (rect.startY + rect.endY) * 0.5;
+      if (centerY < minCenterY) {
+        minCenterY = centerY;
+        polarizedNegativeRectIdx = idx;
+      }
+    }
+  }
+
+  for (let idx = 0; idx < symbol.rectangles.length; idx += 1) {
+    const rect = symbol.rectangles[idx];
+    const rectPoints = [
       toWorldBody(transformCanonicalBodyPoint(rect.startX, rect.startY, glyphTransform)),
       toWorldBody(transformCanonicalBodyPoint(rect.endX, rect.startY, glyphTransform)),
       toWorldBody(transformCanonicalBodyPoint(rect.endX, rect.endY, glyphTransform)),
       toWorldBody(transformCanonicalBodyPoint(rect.startX, rect.endY, glyphTransform)),
       toWorldBody(transformCanonicalBodyPoint(rect.startX, rect.startY, glyphTransform)),
-    ]);
+    ];
+    bodyPolylines.push(rectPoints);
+    if (idx === polarizedNegativeRectIdx) {
+      bodyFillPolygons.push(rectPoints.slice(0, 4));
+    }
   }
 
   for (const poly of symbol.polylines) {
-    bodyPolylines.push(
-      poly.points.map((p) => toWorldBody(transformCanonicalBodyPoint(p.x, p.y, glyphTransform))),
-    );
+    if (isDiodeCenterBridgePolyline(family, poly)) continue;
+    const worldPoints = poly.points.map((p) =>
+      toWorldBody(transformCanonicalBodyPoint(p.x, p.y, glyphTransform)));
+    bodyPolylines.push(worldPoints);
+    if (isDiodeBodyTrianglePolyline(family, poly) && worldPoints.length >= 4) {
+      bodyFillPolygons.push(worldPoints.slice(0, -1));
+    }
   }
 
   for (const arc of symbol.arcs) {
@@ -396,6 +905,118 @@ function buildPreviewModel(
 
   return {
     bodyPolylines,
+    bodyFillPolygons,
+    bodyCircles,
+    leads,
+    centerCross,
+    gridOffset,
+    viewBox: {
+      x: minX,
+      y: -maxY,
+      width: maxX - minX,
+      height: maxY - minY,
+    },
+  };
+}
+
+function transformPowerBodyPoint(point: Point, tuning: SymbolTuning): Point {
+  const sx = clamp(tuning.bodyScaleX ?? 1, 0.1, 4);
+  const sy = clamp(tuning.bodyScaleY ?? 1, 0.1, 4);
+  const xScaled = point.x * sx;
+  const yScaled = point.y * sy;
+  const angle = (tuning.bodyRotationDeg * Math.PI) / 180;
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+  return {
+    x: xScaled * cosA - yScaled * sinA + tuning.bodyOffsetX,
+    y: xScaled * sinA + yScaled * cosA + tuning.bodyOffsetY,
+  };
+}
+
+function buildPowerPreviewModel(
+  family: PowerFamily,
+  component: SchematicComponent,
+  tuning: SymbolTuning,
+  rotationDeg: number,
+  mirrorX: boolean,
+  mirrorY: boolean,
+): PreviewModel {
+  const bodyPolylines: Point[][] = [];
+  const bodyFillPolygons: Point[][] = [];
+  const bodyCircles: Array<{ center: Point; radius: number }> = [];
+  const leads: Array<{ attach: Point; pin: Point; rawPin: Point; number: string; name: string }> = [];
+  const gridOffset = getComponentGridAlignmentOffset(component);
+
+  const toWorld = (p: Point): Point => {
+    const translated = { x: p.x + gridOffset.x, y: p.y + gridOffset.y };
+    return applyInstanceTransform(translated, rotationDeg, mirrorX, mirrorY);
+  };
+
+  const BAR_HALF = POWER_PORT_W / 2;
+  if (family === 'vcc') {
+    bodyPolylines.push(
+      [
+        { x: -BAR_HALF, y: 0.4 },
+        { x: BAR_HALF, y: 0.4 },
+      ].map((p) => toWorld(transformPowerBodyPoint(p, tuning))),
+    );
+
+    const attach = toWorld(transformPowerBodyPoint({ x: 0, y: 0.4 }, tuning));
+    const pin = toWorld(transformPowerBodyPoint({ x: 0, y: -0.6 }, tuning));
+    leads.push({
+      attach,
+      pin,
+      rawPin: pin,
+      number: '1',
+      name: '',
+    });
+  } else {
+    const WIDTHS = [BAR_HALF, BAR_HALF * 0.6, BAR_HALF * 0.25];
+    const GAP = 0.4;
+    for (let i = 0; i < WIDTHS.length; i += 1) {
+      const halfW = WIDTHS[i];
+      const y = -0.1 - i * GAP;
+      bodyPolylines.push(
+        [
+          { x: -halfW, y },
+          { x: halfW, y },
+        ].map((p) => toWorld(transformPowerBodyPoint(p, tuning))),
+      );
+    }
+
+    const attach = toWorld(transformPowerBodyPoint({ x: 0, y: -0.1 }, tuning));
+    const pin = toWorld(transformPowerBodyPoint({ x: 0, y: 0.6 }, tuning));
+    leads.push({
+      attach,
+      pin,
+      rawPin: pin,
+      number: '1',
+      name: '',
+    });
+  }
+
+  const allPoints: Point[] = [];
+  for (const poly of bodyPolylines) allPoints.push(...poly);
+  for (const lead of leads) allPoints.push(lead.attach, lead.pin, lead.rawPin);
+  const bounds = pointsToBounds(allPoints);
+  const pad = 2.8;
+  const minX = bounds.minX - pad;
+  const maxX = bounds.maxX + pad;
+  const minY = bounds.minY - pad;
+  const maxY = bounds.maxY + pad;
+
+  const center = toWorld({ x: 0, y: 0 });
+  const crossSize = 0.5;
+  const centerCross = {
+    h0: { x: center.x - crossSize, y: center.y },
+    h1: { x: center.x + crossSize, y: center.y },
+    v0: { x: center.x, y: center.y - crossSize },
+    v1: { x: center.x, y: center.y + crossSize },
+  };
+
+  return {
+    bodyPolylines,
+    bodyFillPolygons,
     bodyCircles,
     leads,
     centerCross,
@@ -424,6 +1045,7 @@ function SliderField({
   max,
   step,
   onChange,
+  onSetAll,
 }: {
   label: string;
   value: number;
@@ -431,24 +1053,39 @@ function SliderField({
   max: number;
   step: number;
   onChange: (next: number) => void;
+  onSetAll?: () => void;
 }) {
   return (
     <label className="symbol-tuner-field">
       <div className="symbol-tuner-field-row">
         <span className="symbol-tuner-label">{label}</span>
-        <input
-          type="number"
-          className="symbol-tuner-number"
-          value={value}
-          min={min}
-          max={max}
-          step={step}
-          onChange={(event) => {
-            const next = Number.parseFloat(event.target.value);
-            if (!Number.isFinite(next)) return;
-            onChange(clamp(next, min, max));
-          }}
-        />
+        <div className="symbol-tuner-field-controls">
+          {onSetAll && (
+            <button
+              type="button"
+              className="symbol-tuner-set-all-btn"
+              onClick={(event) => {
+                event.preventDefault();
+                onSetAll();
+              }}
+            >
+              Set All
+            </button>
+          )}
+          <input
+            type="number"
+            className="symbol-tuner-number"
+            value={value}
+            min={min}
+            max={max}
+            step={step}
+            onChange={(event) => {
+              const next = Number.parseFloat(event.target.value);
+              if (!Number.isFinite(next)) return;
+              onChange(clamp(next, min, max));
+            }}
+          />
+        </div>
       </div>
       <input
         type="range"
@@ -470,38 +1107,159 @@ function SliderField({
 export function SymbolTunerApp() {
   const [family, setFamily] = useState<Family>('resistor');
   const [tunings, setTunings] = useState<Record<Family, SymbolTuning>>(initialTunings);
+  const [visualTunings, setVisualTunings] = useState<Record<Family, VisualTuning>>(initialVisualTunings);
   const [copyState, setCopyState] = useState<'idle' | 'done' | 'error'>('idle');
   const [instanceRotation, setInstanceRotation] = useState<number>(0);
   const [mirrorX, setMirrorX] = useState(false);
   const [mirrorY, setMirrorY] = useState(false);
+  const [selectedLabel, setSelectedLabel] = useState<'designator' | 'value' | 'package' | null>('designator');
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const isPowerSymbol = isPowerFamily(family);
+  const valuePreviewText = isPowerSymbol ? '' : '100nF';
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(tunings));
   }, [tunings]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(VISUAL_STORAGE_KEY, JSON.stringify(visualTunings));
+  }, [visualTunings]);
+
   const tuning = tunings[family];
+  const visualTuning = visualTunings[family];
   const fixture = useMemo(() => FIXTURE_BY_FAMILY[family], [family]);
   const symbol = useMemo(
-    () => getCanonicalKicadSymbol(family, PIN_COUNT_BY_FAMILY[family]),
+    () => (
+      isComponentFamily(family)
+        ? getCanonicalKicadSymbol(family, PIN_COUNT_BY_FAMILY[family])
+        : null
+    ),
     [family],
   );
   const preview = useMemo(
-    () => (
-      symbol
-        ? buildPreviewModel(
-          fixture,
+    () => {
+      if (isPowerFamily(family)) {
+        return buildPowerPreviewModel(
           family,
-          symbol,
+          fixture,
           tuning,
+          instanceRotation,
+          mirrorX,
+          mirrorY,
+        );
+      }
+      if (!symbol) return null;
+      return buildPreviewModel(
+        fixture,
+        family,
+        symbol,
+        tuning,
+        instanceRotation,
+        mirrorX,
+        mirrorY,
+      );
+    },
+    [symbol, fixture, family, tuning, instanceRotation, mirrorX, mirrorY],
+  );
+
+  useEffect(() => {
+    if (!isPowerSymbol) return;
+    if (selectedLabel === 'designator') return;
+    setSelectedLabel('designator');
+  }, [isPowerSymbol, selectedLabel]);
+
+  const designatorWorld = useMemo(
+    () => (
+      preview
+        ? labelPositionToWorld(
+          { x: visualTuning.designator.offsetX, y: visualTuning.designator.offsetY },
+          preview,
           instanceRotation,
           mirrorX,
           mirrorY,
         )
         : null
     ),
-    [symbol, fixture, family, tuning, instanceRotation, mirrorX, mirrorY],
+    [preview, visualTuning.designator, instanceRotation, mirrorX, mirrorY],
   );
+
+  const valueWorld = useMemo(
+    () => (
+      preview
+        ? labelPositionToWorld(
+          { x: visualTuning.value.offsetX, y: visualTuning.value.offsetY },
+          preview,
+          instanceRotation,
+          mirrorX,
+          mirrorY,
+        )
+        : null
+    ),
+    [preview, visualTuning.value, instanceRotation, mirrorX, mirrorY],
+  );
+
+  const packageWorld = useMemo(
+    () => (
+      preview
+        ? labelPositionToWorld(
+          { x: visualTuning.package.offsetX, y: visualTuning.package.offsetY },
+          preview,
+          instanceRotation,
+          mirrorX,
+          mirrorY,
+        )
+        : null
+    ),
+    [preview, visualTuning.package, instanceRotation, mirrorX, mirrorY],
+  );
+
+  const packageLabelRotationDeg = useMemo(() => {
+    const raw = visualTuning.package.rotationDeg
+      + (visualTuning.package.followInstanceRotation ? instanceRotation : 0);
+    if (!visualTuning.package.followInstanceRotation) return raw;
+    return normalizeTextRotationUpright(raw);
+  }, [visualTuning.package, instanceRotation]);
+
+  const previewViewBox = useMemo(() => {
+    if (!preview || !designatorWorld) return preview?.viewBox ?? null;
+    const labels: Array<{ position: Point; text: string; fontSize: number }> = [
+      {
+        position: designatorWorld,
+        text: fixture.designator,
+        fontSize: visualTuning.designator.fontSize,
+      },
+    ];
+    if (!isPowerSymbol && valueWorld) {
+      labels.push({
+        position: valueWorld,
+        text: valuePreviewText,
+        fontSize: visualTuning.value.fontSize,
+      });
+    }
+    if (!isPowerSymbol && packageWorld && fixture.packageCode) {
+      labels.push({
+        position: packageWorld,
+        text: fixture.packageCode,
+        fontSize: visualTuning.package.fontSize,
+      });
+    }
+    return expandViewBoxWithLabels(preview.viewBox, labels);
+  }, [
+    preview,
+    designatorWorld,
+    valueWorld,
+    packageWorld,
+    isPowerSymbol,
+    fixture.designator,
+    fixture.packageCode,
+    valuePreviewText,
+    visualTuning.designator.fontSize,
+    visualTuning.value.fontSize,
+    visualTuning.package.fontSize,
+  ]);
 
   const tuningJson = useMemo(
     () => JSON.stringify(tunings, null, 2),
@@ -518,15 +1276,62 @@ export function SymbolTunerApp() {
     }));
   };
 
+  const setVisualTuning = (partial: Partial<VisualTuning>) => {
+    setVisualTunings((prev) => ({
+      ...prev,
+      [family]: {
+        ...prev[family],
+        ...partial,
+      },
+    }));
+  };
+
+  const setLabelTuning = (
+    target: 'designator' | 'value' | 'package',
+    partial: Partial<LabelTuning>,
+  ) => {
+    setVisualTunings((prev) => ({
+      ...prev,
+      [family]: {
+        ...prev[family],
+        [target]: {
+          ...prev[family][target],
+          ...partial,
+        },
+      },
+    }));
+  };
+
+  const applyVisualFieldToAll = (
+    key: 'symbolStrokeWidth' | 'leadStrokeWidth' | 'connectionDotRadius',
+    value: number,
+  ) => {
+    setVisualTunings((prev) => {
+      const out = { ...prev };
+      for (const f of FAMILIES) {
+        out[f] = {
+          ...out[f],
+          [key]: value,
+        };
+      }
+      return out;
+    });
+  };
+
   const resetFamily = () => {
     setTunings((prev) => ({
       ...prev,
       [family]: { ...DEFAULT_TUNINGS[family] },
     }));
+    setVisualTunings((prev) => ({
+      ...prev,
+      [family]: { ...DEFAULT_VISUAL_TUNINGS[family] },
+    }));
   };
 
   const resetAll = () => {
     setTunings({ ...DEFAULT_TUNINGS });
+    setVisualTunings({ ...DEFAULT_VISUAL_TUNINGS });
   };
 
   const copyAllTunings = async () => {
@@ -540,6 +1345,96 @@ export function SymbolTunerApp() {
     }
   };
 
+  const startLabelDrag = (
+    event: ReactPointerEvent<SVGTextElement>,
+    target: 'designator' | 'value' | 'package',
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedLabel(target);
+    const current = visualTuning[target];
+    setDragState({
+      target,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startOffsetX: current.offsetX,
+      startOffsetY: current.offsetY,
+    });
+  };
+
+  useEffect(() => {
+    if (!dragState || !previewViewBox) return;
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== dragState.pointerId) return;
+      const svg = svgRef.current;
+      if (!svg) return;
+      const rect = svg.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+
+      const dxPx = event.clientX - dragState.startClientX;
+      const dyPx = event.clientY - dragState.startClientY;
+      const dxWorld = dxPx * (previewViewBox.width / rect.width);
+      const dyWorld = -dyPx * (previewViewBox.height / rect.height);
+      const localDelta = applyInverseInstanceTransform(
+        { x: dxWorld, y: dyWorld },
+        instanceRotation,
+        mirrorX,
+        mirrorY,
+      );
+      setLabelTuning(dragState.target, {
+        offsetX: clamp(dragState.startOffsetX + localDelta.x, -24, 24),
+        offsetY: clamp(dragState.startOffsetY + localDelta.y, -24, 24),
+      });
+    };
+
+    const onPointerEnd = (event: PointerEvent) => {
+      if (event.pointerId !== dragState.pointerId) return;
+      setDragState(null);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerEnd);
+    window.addEventListener('pointercancel', onPointerEnd);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerEnd);
+      window.removeEventListener('pointercancel', onPointerEnd);
+    };
+  }, [
+    dragState,
+    previewViewBox,
+    instanceRotation,
+    mirrorX,
+    mirrorY,
+  ]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'r') return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (!selectedLabel) return;
+      const active = document.activeElement;
+      if (
+        active
+        && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')
+      ) {
+        return;
+      }
+      event.preventDefault();
+      const delta = event.shiftKey ? -90 : 90;
+      const current = visualTuning[selectedLabel].rotationDeg;
+      const next = ((current + delta + 540) % 360) - 180;
+      setLabelTuning(selectedLabel, { rotationDeg: next });
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [selectedLabel, visualTuning, family]);
+
   return (
     <div className="symbol-tuner-root">
       <aside className="symbol-tuner-controls">
@@ -550,7 +1445,7 @@ export function SymbolTunerApp() {
         </p>
 
         <label className="symbol-tuner-field">
-          <span className="symbol-tuner-label">Component Type</span>
+          <span className="symbol-tuner-label">Symbol Type</span>
           <select
             className="symbol-tuner-select"
             value={family}
@@ -625,12 +1520,193 @@ export function SymbolTunerApp() {
         />
 
         <SliderField
-          label="Lead Length Delta"
-          value={tuning.leadDelta}
-          min={-6}
-          max={6}
+          label="Scale Body X"
+          value={tuning.bodyScaleX ?? 1}
+          min={0.2}
+          max={2.5}
+          step={0.01}
+          onChange={(next) => setTuning({ bodyScaleX: next })}
+        />
+
+        <SliderField
+          label="Scale Body Y"
+          value={tuning.bodyScaleY ?? 1}
+          min={0.2}
+          max={2.5}
+          step={0.01}
+          onChange={(next) => setTuning({ bodyScaleY: next })}
+        />
+
+        {!isPowerSymbol && (
+          <SliderField
+            label="Lead Length Delta"
+            value={tuning.leadDelta}
+            min={-6}
+            max={6}
+            step={0.05}
+            onChange={(next) => setTuning({ leadDelta: next })}
+          />
+        )}
+
+        <div className="symbol-tuner-section-title">Text Placement</div>
+        <p className="symbol-tuner-hint">Click a label and press <code>R</code> to rotate (+90 deg). <code>Shift+R</code> rotates the other way.</p>
+
+        <SliderField
+          label={isPowerSymbol ? 'Label X' : 'Designator X'}
+          value={visualTuning.designator.offsetX}
+          min={-12}
+          max={12}
           step={0.05}
-          onChange={(next) => setTuning({ leadDelta: next })}
+          onChange={(next) => setLabelTuning('designator', { offsetX: next })}
+        />
+
+        <SliderField
+          label={isPowerSymbol ? 'Label Y' : 'Designator Y'}
+          value={visualTuning.designator.offsetY}
+          min={-12}
+          max={12}
+          step={0.05}
+          onChange={(next) => setLabelTuning('designator', { offsetY: next })}
+        />
+
+        <SliderField
+          label={isPowerSymbol ? 'Label Size' : 'Designator Size'}
+          value={visualTuning.designator.fontSize}
+          min={0.3}
+          max={2.5}
+          step={0.01}
+          onChange={(next) => setLabelTuning('designator', { fontSize: next })}
+        />
+
+        <SliderField
+          label={isPowerSymbol ? 'Label Rotation' : 'Designator Rotation'}
+          value={visualTuning.designator.rotationDeg}
+          min={-180}
+          max={180}
+          step={1}
+          onChange={(next) => setLabelTuning('designator', { rotationDeg: next })}
+        />
+
+        {!isPowerSymbol && (
+          <>
+            <SliderField
+              label="Value X"
+              value={visualTuning.value.offsetX}
+              min={-12}
+              max={12}
+              step={0.05}
+              onChange={(next) => setLabelTuning('value', { offsetX: next })}
+            />
+
+            <SliderField
+              label="Value Y"
+              value={visualTuning.value.offsetY}
+              min={-12}
+              max={12}
+              step={0.05}
+              onChange={(next) => setLabelTuning('value', { offsetY: next })}
+            />
+
+            <SliderField
+              label="Value Size"
+              value={visualTuning.value.fontSize}
+              min={0.3}
+              max={2.5}
+              step={0.01}
+              onChange={(next) => setLabelTuning('value', { fontSize: next })}
+            />
+
+            <SliderField
+              label="Value Rotation"
+              value={visualTuning.value.rotationDeg}
+              min={-180}
+              max={180}
+              step={1}
+              onChange={(next) => setLabelTuning('value', { rotationDeg: next })}
+            />
+
+            <SliderField
+              label="Package X"
+              value={visualTuning.package.offsetX}
+              min={-12}
+              max={12}
+              step={0.05}
+              onChange={(next) => setLabelTuning('package', { offsetX: next })}
+            />
+
+            <SliderField
+              label="Package Y"
+              value={visualTuning.package.offsetY}
+              min={-12}
+              max={12}
+              step={0.05}
+              onChange={(next) => setLabelTuning('package', { offsetY: next })}
+            />
+
+            <SliderField
+              label="Package Size"
+              value={visualTuning.package.fontSize}
+              min={0.3}
+              max={2.5}
+              step={0.01}
+              onChange={(next) => setLabelTuning('package', { fontSize: next })}
+            />
+
+            <SliderField
+              label="Package Rotation"
+              value={visualTuning.package.rotationDeg}
+              min={-180}
+              max={180}
+              step={1}
+              onChange={(next) => setLabelTuning('package', { rotationDeg: next })}
+            />
+
+            <label className="symbol-tuner-check symbol-tuner-check-block">
+              <input
+                type="checkbox"
+                checked={visualTuning.package.followInstanceRotation}
+                onChange={(event) => setVisualTuning({
+                  package: {
+                    ...visualTuning.package,
+                    followInstanceRotation: event.target.checked,
+                  },
+                })}
+              />
+              <span>Package follows component rotation</span>
+            </label>
+          </>
+        )}
+
+        <div className="symbol-tuner-section-title">Stroke Thickness</div>
+
+        <SliderField
+          label="Body Stroke"
+          value={visualTuning.symbolStrokeWidth}
+          min={0.08}
+          max={1.2}
+          step={0.01}
+          onChange={(next) => setVisualTuning({ symbolStrokeWidth: next })}
+          onSetAll={() => applyVisualFieldToAll('symbolStrokeWidth', visualTuning.symbolStrokeWidth)}
+        />
+
+        <SliderField
+          label="Lead Stroke"
+          value={visualTuning.leadStrokeWidth}
+          min={0.08}
+          max={1.2}
+          step={0.01}
+          onChange={(next) => setVisualTuning({ leadStrokeWidth: next })}
+          onSetAll={() => applyVisualFieldToAll('leadStrokeWidth', visualTuning.leadStrokeWidth)}
+        />
+
+        <SliderField
+          label="Connection Dot Radius"
+          value={visualTuning.connectionDotRadius}
+          min={0.05}
+          max={0.8}
+          step={0.01}
+          onChange={(next) => setVisualTuning({ connectionDotRadius: next })}
+          onSetAll={() => applyVisualFieldToAll('connectionDotRadius', visualTuning.connectionDotRadius)}
         />
 
         <div className="symbol-tuner-actions">
@@ -661,9 +1737,14 @@ export function SymbolTunerApp() {
           <strong>{family}</strong>
           <span>
             offset({fmt(tuning.bodyOffsetX)}, {fmt(tuning.bodyOffsetY)}) | rot {fmt(tuning.bodyRotationDeg)}
-            deg | lead {fmt(tuning.leadDelta)} | inst {instanceRotation} deg
+            deg | scale({fmt(tuning.bodyScaleX ?? 1)}, {fmt(tuning.bodyScaleY ?? 1)})
+            {!isPowerSymbol ? ` | lead ${fmt(tuning.leadDelta)}` : ''}
+            | body {fmt(visualTuning.symbolStrokeWidth)} | lead {fmt(visualTuning.leadStrokeWidth)}
+            | dot {fmt(visualTuning.connectionDotRadius)}
+            | inst {instanceRotation} deg
             {mirrorX ? ' | MX' : ''}
             {mirrorY ? ' | MY' : ''}
+            {selectedLabel ? ` | sel ${selectedLabel}` : ''}
           </span>
         </div>
 
@@ -673,8 +1754,9 @@ export function SymbolTunerApp() {
 
         {preview && (
           <svg
+            ref={svgRef}
             className="symbol-tuner-svg"
-            viewBox={`${preview.viewBox.x} ${preview.viewBox.y} ${preview.viewBox.width} ${preview.viewBox.height}`}
+            viewBox={`${previewViewBox?.x ?? preview.viewBox.x} ${previewViewBox?.y ?? preview.viewBox.y} ${previewViewBox?.width ?? preview.viewBox.width} ${previewViewBox?.height ?? preview.viewBox.height}`}
             xmlns="http://www.w3.org/2000/svg"
           >
             <defs>
@@ -683,10 +1765,10 @@ export function SymbolTunerApp() {
               </pattern>
             </defs>
             <rect
-              x={preview.viewBox.x}
-              y={preview.viewBox.y}
-              width={preview.viewBox.width}
-              height={preview.viewBox.height}
+              x={previewViewBox?.x ?? preview.viewBox.x}
+              y={previewViewBox?.y ?? preview.viewBox.y}
+              width={previewViewBox?.width ?? preview.viewBox.width}
+              height={previewViewBox?.height ?? preview.viewBox.height}
               fill="url(#symbol-tuner-grid)"
             />
 
@@ -698,8 +1780,23 @@ export function SymbolTunerApp() {
                 x2={lead.pin.x}
                 y2={-lead.pin.y}
                 stroke="#6b7280"
-                strokeWidth={TUNER_LEAD_STROKE_WIDTH}
+                strokeWidth={visualTuning.leadStrokeWidth}
                 strokeLinecap="round"
+              />
+            ))}
+
+            {preview.bodyFillPolygons.map((poly, idx) => (
+              <polygon
+                key={`fill-${idx}`}
+                points={poly.map((p) => pt(p)).join(' ')}
+                fill={family === 'led' ? inferLedFillColor(fixture) : '#374151'}
+                fillOpacity={
+                  family === 'led'
+                    ? 0.42
+                    : family === 'capacitor_polarized'
+                      ? 0.72
+                      : 0.28
+                }
               />
             ))}
 
@@ -709,7 +1806,7 @@ export function SymbolTunerApp() {
                 points={poly.map((p) => pt(p)).join(' ')}
                 fill="none"
                 stroke="#374151"
-                strokeWidth={TUNER_SYMBOL_STROKE_WIDTH}
+                strokeWidth={visualTuning.symbolStrokeWidth}
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
@@ -723,11 +1820,11 @@ export function SymbolTunerApp() {
                 r={circle.radius}
                 fill="none"
                 stroke="#374151"
-                strokeWidth={TUNER_SYMBOL_STROKE_WIDTH}
+                strokeWidth={visualTuning.symbolStrokeWidth}
               />
             ))}
 
-            {preview.leads.map((lead) => (
+            {!isPowerSymbol && preview.leads.map((lead) => (
               <circle
                 key={`raw-${lead.number}`}
                 cx={lead.rawPin.x}
@@ -742,12 +1839,60 @@ export function SymbolTunerApp() {
                 key={`pin-${lead.number}`}
                 cx={lead.pin.x}
                 cy={-lead.pin.y}
-                r={0.17}
+                r={visualTuning.connectionDotRadius}
                 fill="#4b5563"
               />
             ))}
 
-            {preview.leads.map((lead) => (
+            {designatorWorld && (
+              <text
+                className={`symbol-tuner-label-text ${selectedLabel === 'designator' ? 'is-selected' : ''} ${dragState?.target === 'designator' ? 'is-dragging' : ''}`}
+                x={designatorWorld.x}
+                y={-designatorWorld.y}
+                fontSize={visualTuning.designator.fontSize}
+                fill="#334155"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                transform={`rotate(${-visualTuning.designator.rotationDeg} ${designatorWorld.x} ${-designatorWorld.y})`}
+                onPointerDown={(event) => startLabelDrag(event, 'designator')}
+              >
+                {fixture.designator}
+              </text>
+            )}
+
+            {!isPowerSymbol && valueWorld && (
+              <text
+                className={`symbol-tuner-label-text ${selectedLabel === 'value' ? 'is-selected' : ''} ${dragState?.target === 'value' ? 'is-dragging' : ''}`}
+                x={valueWorld.x}
+                y={-valueWorld.y}
+                fontSize={visualTuning.value.fontSize}
+                fill="#475569"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                transform={`rotate(${-visualTuning.value.rotationDeg} ${valueWorld.x} ${-valueWorld.y})`}
+                onPointerDown={(event) => startLabelDrag(event, 'value')}
+              >
+                {valuePreviewText}
+              </text>
+            )}
+
+            {!isPowerSymbol && packageWorld && fixture.packageCode && (
+              <text
+                className={`symbol-tuner-label-text ${selectedLabel === 'package' ? 'is-selected' : ''} ${dragState?.target === 'package' ? 'is-dragging' : ''}`}
+                x={packageWorld.x}
+                y={-packageWorld.y}
+                fontSize={visualTuning.package.fontSize}
+                fill="#64748b"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                transform={`rotate(${-packageLabelRotationDeg} ${packageWorld.x} ${-packageWorld.y})`}
+                onPointerDown={(event) => startLabelDrag(event, 'package')}
+              >
+                {fixture.packageCode}
+              </text>
+            )}
+
+            {!isPowerSymbol && preview.leads.map((lead) => (
               <text
                 key={`pin-label-${lead.number}`}
                 x={lead.pin.x + 0.18}

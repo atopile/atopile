@@ -869,8 +869,49 @@ function extractSymbolAtPosition(
     position: vscode.Position,
 ): string | undefined {
     const range = document.getWordRangeAtPosition(position, SYMBOL_TOKEN_RE);
-    if (!range) return undefined;
-    return normalizeSymbolToken(document.getText(range));
+    if (range) {
+        const direct = normalizeSymbolToken(document.getText(range));
+        if (direct) return direct;
+    }
+
+    // Context-menu clicks often land on whitespace; in that case, pick the closest
+    // symbol token on the same line so "Show in Schematic" still targets intent.
+    const lineText = document.lineAt(position.line).text;
+    const tokenPattern = /[A-Za-z_][A-Za-z0-9_\[\]\.]*/g;
+    let bestToken: string | undefined;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    let bestStart = -1;
+    let match: RegExpExecArray | null;
+
+    while ((match = tokenPattern.exec(lineText)) !== null) {
+        const token = normalizeSymbolToken(match[0]);
+        if (!token) continue;
+
+        const start = match.index;
+        const end = start + match[0].length;
+        let distance = 0;
+        if (position.character < start) {
+            distance = start - position.character;
+        } else if (position.character > end) {
+            distance = position.character - end;
+        }
+
+        // Tie-break toward tokens to the left of the cursor, since right-click
+        // usually happens just after the identifier in source code lines.
+        const isBetter = distance < bestDistance
+            || (
+                distance === bestDistance
+                && start <= position.character
+                && start > bestStart
+            );
+        if (isBetter) {
+            bestDistance = distance;
+            bestStart = start;
+            bestToken = token;
+        }
+    }
+
+    return bestToken;
 }
 
 function postShowInSchematicRequest(request: ShowInSchematicRequest): void {

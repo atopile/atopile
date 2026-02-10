@@ -211,6 +211,7 @@ def _normalize_package_code(footprint_hint: str) -> str | None:
     for pattern, template in (
         (r"SOD[-_]?([0-9]{3,4})", "SOD-{0}"),
         (r"SOT[-_]?([0-9]{2,4})", "SOT-{0}"),
+        (r"TO[-_]?([0-9]{2,4})", "TO-{0}"),
         (r"DO[-_]?([0-9A-Z]{2,6})", "DO-{0}"),
     ):
         if match := re.search(pattern, upper):
@@ -264,6 +265,30 @@ def _infer_symbol_family(
         return "led"
     if "testpoint" in haystack or designator_prefix.startswith("TP"):
         return "testpoint"
+
+    if any(
+        token in haystack
+        for token in ("pmos", "p-mos", "pfet", "p-fet", "pchannel", "p-channel")
+    ):
+        return "mosfet_p"
+    if any(
+        token in haystack
+        for token in ("nmos", "n-mos", "nfet", "n-fet", "nchannel", "n-channel")
+    ):
+        return "mosfet_n"
+    if "mosfet" in haystack or re.search(r"(^|[^a-z0-9])fet([^a-z0-9]|$)", haystack):
+        return "mosfet_n"
+
+    if "pnp" in haystack:
+        return "transistor_pnp"
+    if "npn" in haystack:
+        return "transistor_npn"
+    if (
+        designator_prefix.startswith("Q")
+        or "bjt" in haystack
+        or "transistor" in haystack
+    ):
+        return "transistor_npn"
 
     connector_keywords = (
         "connector",
@@ -321,6 +346,10 @@ def _infer_symbol_variant(family: str, package_code: str | None) -> str | None:
         if package_code == "TESTPOINT-THT":
             return "through_hole"
         return "pad"
+    if family in {"transistor_npn", "transistor_pnp", "mosfet_n", "mosfet_p"}:
+        if package_code and package_code.startswith(("SOT-", "TO-")):
+            return package_code.lower()
+        return "iec"
     return None
 
 
@@ -329,7 +358,14 @@ def _infer_polarity(family: str) -> str | None:
         return "anode_cathode"
     if family == "capacitor_polarized":
         return "plus_minus"
-    if family in {"connector", "testpoint"}:
+    if family in {
+        "connector",
+        "testpoint",
+        "transistor_npn",
+        "transistor_pnp",
+        "mosfet_n",
+        "mosfet_p",
+    }:
         return "pin1"
     return None
 
@@ -403,6 +439,7 @@ def _layout_pins(
     pin_number_to_display: dict[str, str],
     pin_number_to_functions: dict[str, list[dict]],
     component_node: fabll.Node | None = None,
+    symbol_family: str | None = None,
 ) -> tuple[list[dict], float, float]:
     """Assign pins to sides using KiCad footprint positions, compute geometry.
 
@@ -444,6 +481,49 @@ def _layout_pins(
     for side in side_buckets:
         side_buckets[side].sort(key=lambda t: t[3])
 
+    if (
+        symbol_family in {"transistor_npn", "transistor_pnp", "mosfet_n", "mosfet_p"}
+        and len(pin_numbers) == 3
+    ):
+        # Match KiCad canonical 3-pin discrete geometry:
+        # pin endpoints: (-5.08, 0), (2.54, 5.08), (2.54, -5.08)
+        # body attach:   (-2.54, 0), (2.54, 2.54), (2.54, -2.54)
+        pin_meta: dict[str, tuple[str, str]] = {}
+        for bucket in side_buckets.values():
+            for pn, display, cat, _pos in bucket:
+                pin_meta[pn] = (display, cat)
+
+        ordered = [pn for pn in ("1", "2", "3") if pn in pin_meta]
+        if len(ordered) < 3:
+            ordered = sorted(pin_numbers, key=natural_sort_key)[:3]
+
+        slot_geom = [
+            ("left", -5.08, 0.0, -2.54, 0.0),
+            ("right", 2.54, 5.08, 2.54, 2.54),
+            ("right", 2.54, -5.08, 2.54, -2.54),
+        ]
+        pins: list[dict] = []
+        for idx, pn in enumerate(ordered):
+            display, cat = pin_meta.get(
+                pn, (pin_number_to_display.get(pn, pn), "signal")
+            )
+            side, px, py, bx, by = slot_geom[idx]
+            pins.append(
+                {
+                    "number": pn,
+                    "name": display,
+                    "side": side,
+                    "electricalType": "passive",
+                    "category": cat,
+                    "x": round(px, 2),
+                    "y": round(py, 2),
+                    "bodyX": round(bx, 2),
+                    "bodyY": round(by, 2),
+                }
+            )
+
+        return pins, 14, 7.08
+
     # For the schematic view, collapse top/bottom into left/right:
     # top → left (power pins often on top of IC), bottom → right
     left_pins = side_buckets["left"] + side_buckets["top"]
@@ -455,7 +535,12 @@ def _layout_pins(
     body_height = max(max_pins * pin_spacing + 2, _MIN_BODY)
     body_width = max(14, _MIN_BODY)
 
-    if len(pin_numbers) <= 2:
+    if len(pin_numbers) == 2:
+        # Match KiCad canonical 2-pin symbol pitch: pin centers at +/-3.81mm.
+        # With 2.54mm stubs this implies a 2.54mm body width.
+        body_width = 2.54
+        body_height = 2.04
+    elif len(pin_numbers) == 1:
         body_width = 5.08
         body_height = 2.04
 
@@ -2385,14 +2470,6 @@ def export_schematic_json(
                 dict(list(pin_number_to_display.items())[:8]),
             )
 
-            # Layout pins using real KiCad footprint pad positions
-            pins_data, body_w, body_h = _layout_pins(
-                pin_numbers,
-                pin_number_to_display,
-                pin_number_to_functions,
-                component_node=component_node,
-            )
-
             component_name = module_type or display_name.rsplit(".", 1)[-1]
             footprint_hint = _extract_footprint_hint(component_node)
             symbol_metadata = _build_symbol_metadata(
@@ -2402,6 +2479,16 @@ def export_schematic_json(
                 reference=reference,
                 pin_count=len(pin_numbers),
                 footprint_hint=footprint_hint,
+            )
+            symbol_family = symbol_metadata.get("symbolFamily")
+
+            # Layout pins using real KiCad footprint pad positions
+            pins_data, body_w, body_h = _layout_pins(
+                pin_numbers,
+                pin_number_to_display,
+                pin_number_to_functions,
+                component_node=component_node,
+                symbol_family=symbol_family,
             )
 
             # Store pad mapping (use pad node directly — stable hash/eq)

@@ -79,6 +79,12 @@ interface SchematicState {
   /** Only this port is editable while port edit mode is active. */
   portEditTargetId: string | null;
   portEditSnapshot: Record<string, { x: number; y: number }[]> | null;
+  /** One-shot focus request used by explicit navigation actions (e.g. Show in Schematic). */
+  focusRequest: {
+    id: string;
+    path: string[];
+    nonce: number;
+  } | null;
 
   // Actions
   loadSchematic: (url: string) => Promise<void>;
@@ -96,6 +102,8 @@ interface SchematicState {
   selectComponents: (ids: string[]) => void;
   /** Add item to selection without removing others. */
   addToSelection: (id: string) => void;
+  /** Request camera centering on a specific item in a given path. */
+  requestFocusOnItem: (id: string, path?: string[]) => void;
   selectNet: (id: string | null) => void;
   hoverComponent: (id: string | null) => void;
   hoverNet: (id: string | null) => void;
@@ -504,6 +512,7 @@ export const useSchematicStore = create<SchematicState>()(
     portEditMode: false,
     portEditTargetId: null,
     portEditSnapshot: null,
+    focusRequest: null,
 
     loadSchematic: async (url: string) => {
       set({ isLoading: true, loadError: null });
@@ -743,6 +752,15 @@ export const useSchematicStore = create<SchematicState>()(
           selectedNetId: null,
         };
       }),
+
+    requestFocusOnItem: (id, path) =>
+      set((s) => ({
+        focusRequest: {
+          id,
+          path: [...(path ?? s.currentPath)],
+          nonce: (s.focusRequest?.nonce ?? 0) + 1,
+        },
+      })),
 
     selectNet: (id) =>
       set((s) => ({

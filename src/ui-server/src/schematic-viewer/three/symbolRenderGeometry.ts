@@ -144,6 +144,8 @@ export function getCanonicalGlyphTransform(
   const unit = Math.min(sx, sy);
   const rotationRad = (tuning.bodyRotationDeg * Math.PI) / 180;
   const axisScale = symbolBodyAxisScale(family);
+  const tuningScaleX = clamp(tuning.bodyScaleX ?? 1, 0.1, 4);
+  const tuningScaleY = clamp(tuning.bodyScaleY ?? 1, 0.1, 4);
 
   return {
     centerX,
@@ -153,8 +155,8 @@ export function getCanonicalGlyphTransform(
     unit,
     cosBody: Math.cos(rotationRad),
     sinBody: Math.sin(rotationRad),
-    bodyScaleX: axisScale.x,
-    bodyScaleY: axisScale.y,
+    bodyScaleX: axisScale.x * tuningScaleX,
+    bodyScaleY: axisScale.y * tuningScaleY,
     bodyOffsetX: tuning.bodyOffsetX,
     bodyOffsetY: tuning.bodyOffsetY,
   };

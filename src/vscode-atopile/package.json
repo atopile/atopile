@@ -268,13 +268,13 @@
             "editor/context": [
                 {
                     "command": "atopile.show_in_schematic",
-                    "when": "editorLangId == ato",
-                    "group": "navigation@45"
+                    "when": "editorTextFocus && (editorLangId == ato || editorLangId == atopile || resourceExtname == .ato)",
+                    "group": "navigation@5"
                 },
                 {
                     "command": "atopile.schematic_preview",
-                    "when": "editorLangId == ato",
-                    "group": "navigation@50"
+                    "when": "editorTextFocus && (editorLangId == ato || editorLangId == atopile || resourceExtname == .ato)",
+                    "group": "navigation@6"
                 }
             ]
         },

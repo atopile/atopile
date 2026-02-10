@@ -63,6 +63,10 @@ describe('kicadSymParser', () => {
   it('loads canonical symbols from imported KiCad catalog', () => {
     const resistor = getCanonicalKicadSymbol('resistor', 2);
     const capacitor = getCanonicalKicadSymbol('capacitor', 2);
+    const transistorNpn = getCanonicalKicadSymbol('transistor_npn', 3);
+    const transistorPnp = getCanonicalKicadSymbol('transistor_pnp', 3);
+    const mosfetN = getCanonicalKicadSymbol('mosfet_n', 3);
+    const mosfetP = getCanonicalKicadSymbol('mosfet_p', 3);
     const connector = getCanonicalKicadSymbol('connector', 6);
     const testpoint = getCanonicalKicadSymbol('testpoint', 1);
     const meta = getCanonicalSymbolCatalogMetadata();
@@ -71,6 +75,10 @@ describe('kicadSymParser', () => {
     expect(meta.source.commit.length).toBeGreaterThan(6);
     expect(resistor?.name).toBe('R');
     expect(capacitor?.name).toBe('C');
+    expect(transistorNpn?.name).toBe('Q_NPN_BCE');
+    expect(transistorPnp?.name).toBe('Q_PNP_BCE');
+    expect(mosfetN?.name).toBe('Q_NMOS_GDS');
+    expect(mosfetP?.name).toBe('Q_PMOS_GDS');
     expect(connector).toBeNull();
     expect(testpoint?.name).toContain('TestPoint');
   });

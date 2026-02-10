@@ -42,6 +42,10 @@ import { getModuleRenderSize } from '../lib/moduleInterfaces';
 /** Stable singleton for items with no net connections. */
 const EMPTY_NET_MAP = new Map<string, string>();
 
+function scenePathKey(path: string[]): string {
+  return path.length === 0 ? '__root__' : path.join('/');
+}
+
 // ── Inner scene (has access to useThree) ───────────────────────
 
 function SceneContent({
@@ -57,6 +61,7 @@ function SceneContent({
   const currentPath = useSchematicStore((s) => s.currentPath);
   const dragComponentId = useSchematicStore((s) => s.dragComponentId);
   const selectedNetId = useSchematicStore((s) => s.selectedNetId);
+  const focusRequest = useSchematicStore((s) => s.focusRequest);
 
   const controlsRef = useRef<any>(null);
   const { camera, gl, scene } = useThree();
@@ -163,6 +168,28 @@ function SceneContent({
       controlsRef.current.enabled = !dragComponentId;
     }
   }, [dragComponentId]);
+
+  // ── Explicit camera focus for "Show in Schematic" actions ───
+
+  useEffect(() => {
+    if (!focusRequest) return;
+
+    const activePathKey = scenePathKey(currentPath);
+    const requestPathKey = scenePathKey(focusRequest.path);
+    if (activePathKey !== requestPathKey) return;
+
+    const pos = useSchematicStore.getState().positions[`${activePathKey}:${focusRequest.id}`];
+    if (!pos) return;
+
+    const keepZ = camera.position.z;
+    camera.position.set(pos.x, pos.y, keepZ);
+    camera.lookAt(pos.x, pos.y, 0);
+
+    if (controlsRef.current) {
+      controlsRef.current.target.set(pos.x, pos.y, 0);
+      controlsRef.current.update();
+    }
+  }, [focusRequest?.nonce, currentPath, camera]);
 
   // ── Zoom-to-cursor (KiCad-style) ────────────────────────────
   // Smooth zoom using continuous delta normalization. The world point

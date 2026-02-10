@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generator": "scripts/import-kicad-canonical-symbols.ts",
-  "generatedAt": "2026-02-10T05:32:42.336Z",
+  "generatedAt": "2026-02-10T07:29:00.551Z",
   "source": {
     "repo": "https://gitlab.com/kicad/libraries/kicad-symbols.git",
     "commit": "b32a60838ff65c541531a3d2ea15e170ced7949f"
@@ -660,6 +660,878 @@
           "minY": -2.286,
           "maxX": 6.35,
           "maxY": 1.27
+        }
+      }
+    },
+    "transistor_npn": {
+      "source": {
+        "lib": "Transistor_BJT",
+        "symbolFile": "Q_NPN_BCE.kicad_sym",
+        "symbolName": "Q_NPN_BCE"
+      },
+      "symbol": {
+        "name": "Q_NPN_BCE",
+        "reference": "Q",
+        "value": "Q_NPN_BCE",
+        "footprint": "",
+        "datasheet": "",
+        "pins": [
+          {
+            "name": "B",
+            "number": "1",
+            "electricalType": "input",
+            "graphicStyle": "line",
+            "x": -5.08,
+            "y": 0,
+            "angle": 0,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "right",
+            "category": "input",
+            "bodyX": -7.62,
+            "bodyY": 0
+          },
+          {
+            "name": "C",
+            "number": "2",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 2.54,
+            "y": 5.08,
+            "angle": 270,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "bottom",
+            "category": "signal",
+            "bodyX": 2.5400000000000005,
+            "bodyY": 7.62
+          },
+          {
+            "name": "E",
+            "number": "3",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 2.54,
+            "y": -5.08,
+            "angle": 90,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "top",
+            "category": "signal",
+            "bodyX": 2.54,
+            "bodyY": -7.62
+          }
+        ],
+        "rectangles": [],
+        "circles": [
+          {
+            "centerX": 1.27,
+            "centerY": 0,
+            "radius": 2.8194,
+            "fillType": "none"
+          }
+        ],
+        "polylines": [
+          {
+            "points": [
+              {
+                "x": -2.54,
+                "y": 0
+              },
+              {
+                "x": 0.635,
+                "y": 0
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.635,
+                "y": 1.905
+              },
+              {
+                "x": 0.635,
+                "y": -1.905
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.635,
+                "y": 0.635
+              },
+              {
+                "x": 2.54,
+                "y": 2.54
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.635,
+                "y": -0.635
+              },
+              {
+                "x": 2.54,
+                "y": -2.54
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 1.27,
+                "y": -1.778
+              },
+              {
+                "x": 1.778,
+                "y": -1.27
+              },
+              {
+                "x": 2.286,
+                "y": -2.286
+              },
+              {
+                "x": 1.27,
+                "y": -1.778
+              }
+            ],
+            "fillType": "outline"
+          }
+        ],
+        "arcs": [],
+        "bodyBounds": {
+          "minX": -2.54,
+          "minY": -2.8194,
+          "maxX": 4.0893999999999995,
+          "maxY": 2.8194,
+          "width": 6.6293999999999995,
+          "height": 5.6388
+        },
+        "totalBounds": {
+          "minX": -7.62,
+          "minY": -7.62,
+          "maxX": 4.0893999999999995,
+          "maxY": 7.62
+        }
+      }
+    },
+    "transistor_pnp": {
+      "source": {
+        "lib": "Transistor_BJT",
+        "symbolFile": "Q_PNP_BCE.kicad_sym",
+        "symbolName": "Q_PNP_BCE"
+      },
+      "symbol": {
+        "name": "Q_PNP_BCE",
+        "reference": "Q",
+        "value": "Q_PNP_BCE",
+        "footprint": "",
+        "datasheet": "",
+        "pins": [
+          {
+            "name": "B",
+            "number": "1",
+            "electricalType": "input",
+            "graphicStyle": "line",
+            "x": -5.08,
+            "y": 0,
+            "angle": 0,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "right",
+            "category": "input",
+            "bodyX": -7.62,
+            "bodyY": 0
+          },
+          {
+            "name": "C",
+            "number": "2",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 2.54,
+            "y": 5.08,
+            "angle": 270,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "bottom",
+            "category": "signal",
+            "bodyX": 2.5400000000000005,
+            "bodyY": 7.62
+          },
+          {
+            "name": "E",
+            "number": "3",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 2.54,
+            "y": -5.08,
+            "angle": 90,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "top",
+            "category": "signal",
+            "bodyX": 2.54,
+            "bodyY": -7.62
+          }
+        ],
+        "rectangles": [],
+        "circles": [
+          {
+            "centerX": 1.27,
+            "centerY": 0,
+            "radius": 2.8194,
+            "fillType": "none"
+          }
+        ],
+        "polylines": [
+          {
+            "points": [
+              {
+                "x": -2.54,
+                "y": 0
+              },
+              {
+                "x": 0.635,
+                "y": 0
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.635,
+                "y": 1.905
+              },
+              {
+                "x": 0.635,
+                "y": -1.905
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.635,
+                "y": 0.635
+              },
+              {
+                "x": 2.54,
+                "y": 2.54
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.635,
+                "y": -0.635
+              },
+              {
+                "x": 2.54,
+                "y": -2.54
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 2.286,
+                "y": -1.778
+              },
+              {
+                "x": 1.778,
+                "y": -2.286
+              },
+              {
+                "x": 1.27,
+                "y": -1.27
+              },
+              {
+                "x": 2.286,
+                "y": -1.778
+              }
+            ],
+            "fillType": "outline"
+          }
+        ],
+        "arcs": [],
+        "bodyBounds": {
+          "minX": -2.54,
+          "minY": -2.8194,
+          "maxX": 4.0893999999999995,
+          "maxY": 2.8194,
+          "width": 6.6293999999999995,
+          "height": 5.6388
+        },
+        "totalBounds": {
+          "minX": -7.62,
+          "minY": -7.62,
+          "maxX": 4.0893999999999995,
+          "maxY": 7.62
+        }
+      }
+    },
+    "mosfet_n": {
+      "source": {
+        "lib": "Transistor_FET",
+        "symbolFile": "Q_NMOS_GDS.kicad_sym",
+        "symbolName": "Q_NMOS_GDS"
+      },
+      "symbol": {
+        "name": "Q_NMOS_GDS",
+        "reference": "Q",
+        "value": "Q_NMOS_GDS",
+        "footprint": "",
+        "datasheet": "",
+        "pins": [
+          {
+            "name": "G",
+            "number": "1",
+            "electricalType": "input",
+            "graphicStyle": "line",
+            "x": -5.08,
+            "y": 0,
+            "angle": 0,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "right",
+            "category": "input",
+            "bodyX": -7.62,
+            "bodyY": 0
+          },
+          {
+            "name": "D",
+            "number": "2",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 2.54,
+            "y": 5.08,
+            "angle": 270,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "bottom",
+            "category": "signal",
+            "bodyX": 2.5400000000000005,
+            "bodyY": 7.62
+          },
+          {
+            "name": "S",
+            "number": "3",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 2.54,
+            "y": -5.08,
+            "angle": 90,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "top",
+            "category": "signal",
+            "bodyX": 2.54,
+            "bodyY": -7.62
+          }
+        ],
+        "rectangles": [],
+        "circles": [
+          {
+            "centerX": 1.651,
+            "centerY": 0,
+            "radius": 2.794,
+            "fillType": "none"
+          },
+          {
+            "centerX": 2.54,
+            "centerY": 1.778,
+            "radius": 0.254,
+            "fillType": "outline"
+          },
+          {
+            "centerX": 2.54,
+            "centerY": -1.778,
+            "radius": 0.254,
+            "fillType": "outline"
+          }
+        ],
+        "polylines": [
+          {
+            "points": [
+              {
+                "x": 0.254,
+                "y": 1.905
+              },
+              {
+                "x": 0.254,
+                "y": -1.905
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.254,
+                "y": 0
+              },
+              {
+                "x": -2.54,
+                "y": 0
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.762,
+                "y": 2.286
+              },
+              {
+                "x": 0.762,
+                "y": 1.27
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.762,
+                "y": 0.508
+              },
+              {
+                "x": 0.762,
+                "y": -0.508
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.762,
+                "y": -1.27
+              },
+              {
+                "x": 0.762,
+                "y": -2.286
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.762,
+                "y": -1.778
+              },
+              {
+                "x": 3.302,
+                "y": -1.778
+              },
+              {
+                "x": 3.302,
+                "y": 1.778
+              },
+              {
+                "x": 0.762,
+                "y": 1.778
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 1.016,
+                "y": 0
+              },
+              {
+                "x": 2.032,
+                "y": 0.381
+              },
+              {
+                "x": 2.032,
+                "y": -0.381
+              },
+              {
+                "x": 1.016,
+                "y": 0
+              }
+            ],
+            "fillType": "outline"
+          },
+          {
+            "points": [
+              {
+                "x": 2.54,
+                "y": 2.54
+              },
+              {
+                "x": 2.54,
+                "y": 1.778
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 2.54,
+                "y": -2.54
+              },
+              {
+                "x": 2.54,
+                "y": 0
+              },
+              {
+                "x": 0.762,
+                "y": 0
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 2.921,
+                "y": 0.381
+              },
+              {
+                "x": 3.683,
+                "y": 0.381
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 3.302,
+                "y": 0.381
+              },
+              {
+                "x": 2.921,
+                "y": -0.254
+              },
+              {
+                "x": 3.683,
+                "y": -0.254
+              },
+              {
+                "x": 3.302,
+                "y": 0.381
+              }
+            ],
+            "fillType": "none"
+          }
+        ],
+        "arcs": [],
+        "bodyBounds": {
+          "minX": -2.54,
+          "minY": -2.794,
+          "maxX": 4.445,
+          "maxY": 2.794,
+          "width": 6.985,
+          "height": 5.588
+        },
+        "totalBounds": {
+          "minX": -7.62,
+          "minY": -7.62,
+          "maxX": 4.445,
+          "maxY": 7.62
+        }
+      }
+    },
+    "mosfet_p": {
+      "source": {
+        "lib": "Transistor_FET",
+        "symbolFile": "Q_PMOS_GDS.kicad_sym",
+        "symbolName": "Q_PMOS_GDS"
+      },
+      "symbol": {
+        "name": "Q_PMOS_GDS",
+        "reference": "Q",
+        "value": "Q_PMOS_GDS",
+        "footprint": "",
+        "datasheet": "",
+        "pins": [
+          {
+            "name": "G",
+            "number": "1",
+            "electricalType": "input",
+            "graphicStyle": "line",
+            "x": -5.08,
+            "y": 0,
+            "angle": 0,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "right",
+            "category": "input",
+            "bodyX": -7.62,
+            "bodyY": 0
+          },
+          {
+            "name": "D",
+            "number": "2",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 2.54,
+            "y": 5.08,
+            "angle": 270,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "bottom",
+            "category": "signal",
+            "bodyX": 2.5400000000000005,
+            "bodyY": 7.62
+          },
+          {
+            "name": "S",
+            "number": "3",
+            "electricalType": "passive",
+            "graphicStyle": "line",
+            "x": 2.54,
+            "y": -5.08,
+            "angle": 90,
+            "length": 2.54,
+            "nameHidden": false,
+            "numberHidden": false,
+            "side": "top",
+            "category": "signal",
+            "bodyX": 2.54,
+            "bodyY": -7.62
+          }
+        ],
+        "rectangles": [],
+        "circles": [
+          {
+            "centerX": 1.651,
+            "centerY": 0,
+            "radius": 2.794,
+            "fillType": "none"
+          },
+          {
+            "centerX": 2.54,
+            "centerY": 1.778,
+            "radius": 0.254,
+            "fillType": "outline"
+          },
+          {
+            "centerX": 2.54,
+            "centerY": -1.778,
+            "radius": 0.254,
+            "fillType": "outline"
+          }
+        ],
+        "polylines": [
+          {
+            "points": [
+              {
+                "x": 0.254,
+                "y": 1.905
+              },
+              {
+                "x": 0.254,
+                "y": -1.905
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.254,
+                "y": 0
+              },
+              {
+                "x": -2.54,
+                "y": 0
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.762,
+                "y": 2.286
+              },
+              {
+                "x": 0.762,
+                "y": 1.27
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.762,
+                "y": 1.778
+              },
+              {
+                "x": 3.302,
+                "y": 1.778
+              },
+              {
+                "x": 3.302,
+                "y": -1.778
+              },
+              {
+                "x": 0.762,
+                "y": -1.778
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.762,
+                "y": 0.508
+              },
+              {
+                "x": 0.762,
+                "y": -0.508
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 0.762,
+                "y": -1.27
+              },
+              {
+                "x": 0.762,
+                "y": -2.286
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 2.286,
+                "y": 0
+              },
+              {
+                "x": 1.27,
+                "y": 0.381
+              },
+              {
+                "x": 1.27,
+                "y": -0.381
+              },
+              {
+                "x": 2.286,
+                "y": 0
+              }
+            ],
+            "fillType": "outline"
+          },
+          {
+            "points": [
+              {
+                "x": 2.54,
+                "y": 2.54
+              },
+              {
+                "x": 2.54,
+                "y": 1.778
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 2.54,
+                "y": -2.54
+              },
+              {
+                "x": 2.54,
+                "y": 0
+              },
+              {
+                "x": 0.762,
+                "y": 0
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 2.921,
+                "y": -0.381
+              },
+              {
+                "x": 3.683,
+                "y": -0.381
+              }
+            ],
+            "fillType": "none"
+          },
+          {
+            "points": [
+              {
+                "x": 3.302,
+                "y": -0.381
+              },
+              {
+                "x": 2.921,
+                "y": 0.254
+              },
+              {
+                "x": 3.683,
+                "y": 0.254
+              },
+              {
+                "x": 3.302,
+                "y": -0.381
+              }
+            ],
+            "fillType": "none"
+          }
+        ],
+        "arcs": [],
+        "bodyBounds": {
+          "minX": -2.54,
+          "minY": -2.794,
+          "maxX": 4.445,
+          "maxY": 2.794,
+          "width": 6.985,
+          "height": 5.588
+        },
+        "totalBounds": {
+          "minX": -7.62,
+          "minY": -7.62,
+          "maxX": 4.445,
+          "maxY": 7.62
         }
       }
     },

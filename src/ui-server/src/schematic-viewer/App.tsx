@@ -52,6 +52,7 @@ interface ShowInSchematicRequest {
 }
 
 interface SchematicTargetCandidate {
+  kind: 'component' | 'module';
   id: string;
   path: string[];
   score: number;
@@ -249,7 +250,31 @@ function findBestSchematicTarget(
   const minimumScore = tokenKey ? 110 : 180;
   let best: SchematicTargetCandidate | null = null;
 
+  const isBetterTarget = (
+    candidate: SchematicTargetCandidate,
+    currentBest: SchematicTargetCandidate | null,
+  ): boolean => {
+    if (!currentBest) return true;
+    const delta = candidate.score - currentBest.score;
+    if (delta > 10) return true;
+    if (delta < -10) return false;
+
+    // For token-based requests, prefer navigating deeper and landing on concrete symbols.
+    if (tokenKey) {
+      if (candidate.path.length !== currentBest.path.length) {
+        return candidate.path.length > currentBest.path.length;
+      }
+      if (candidate.kind !== currentBest.kind) {
+        return candidate.kind === 'component';
+      }
+    }
+
+    if (delta !== 0) return delta > 0;
+    return candidate.id < currentBest.id;
+  };
+
   const consider = (
+    kind: 'component' | 'module',
     path: string[],
     id: string,
     name: string,
@@ -267,19 +292,29 @@ function findBestSchematicTarget(
     let score = Math.max(sourceScore, nameScore);
     if (sourceScore > 0 && nameScore > 0) score += 35;
     if (fileKey && sourceScore === 0 && nameScore < 130) score -= 25;
+    if (tokenKey) {
+      if (kind === 'component') score += 22;
+      if (path.length > 0) score += Math.min(path.length * 12, 36);
+    }
     if (score < minimumScore) return;
 
-    if (!best || score > best.score) {
-      best = { id, path: [...path], score };
+    const candidate: SchematicTargetCandidate = {
+      kind,
+      id,
+      path: [...path],
+      score,
+    };
+    if (isBetterTarget(candidate, best)) {
+      best = candidate;
     }
   };
 
   const visit = (sheet: SchematicSheet, path: string[]) => {
     for (const component of sheet.components) {
-      consider(path, component.id, component.name, component.source);
+      consider('component', path, component.id, component.name, component.source);
     }
     for (const module of sheet.modules) {
-      consider(path, module.id, module.name, module.source);
+      consider('module', path, module.id, module.name, module.source);
       visit(module.sheet, [...path, module.id]);
     }
   };
@@ -385,7 +420,8 @@ function SchematicApp() {
 
     store.navigateToPath([...target.path]);
     store.selectNet(null);
-    store.selectComponent(target.id);
+    store.selectComponents([target.id]);
+    store.requestFocusOnItem(target.id, target.path);
     postToExtension({
       type: 'showInSchematicResult',
       found: true,
