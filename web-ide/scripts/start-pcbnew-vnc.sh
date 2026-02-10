@@ -19,6 +19,14 @@ RESOLUTION="${RESOLUTION:-1920x1080x24}"
 
 export DISPLAY=:${DISPLAY_NUM}
 
+# Set GTK theme to match VS Code dark/light mode
+# KICAD_DARK_MODE=1 → dark, KICAD_DARK_MODE=0 → light (default: dark)
+if [ "${KICAD_DARK_MODE:-1}" = "0" ]; then
+    export GTK_THEME=Adwaita
+else
+    export GTK_THEME=Adwaita:dark
+fi
+
 # Cleanup function
 cleanup() {
     kill "$PCBNEW_PID" "$WEBSOCKIFY_PID" "$X11VNC_PID" "$OPENBOX_PID" "$XVFB_PID" 2>/dev/null || true

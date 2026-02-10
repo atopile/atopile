@@ -37,6 +37,8 @@ class VncServerManager implements vscode.Disposable {
     private terminal: vscode.Terminal | undefined;
     private _isRunning = false;
     private _disposables: vscode.Disposable[] = [];
+    private _lastPcbFile: string | undefined;
+    private _lastDarkMode: boolean | undefined;
 
     constructor() {
         // Clean up if the user closes the terminal manually
@@ -57,20 +59,27 @@ class VncServerManager implements vscode.Disposable {
 
     /**
      * Start the VNC stack and return the WebSocket URL for noVNC.
+     * @param pcbFile — optional path to .kicad_pcb file
+     * @param darkMode — if true, set GTK dark theme for KiCad
      */
-    async start(pcbFile?: string): Promise<string> {
+    async start(pcbFile?: string, darkMode?: boolean): Promise<string> {
         // If already running, just return the URL
         if (this._isRunning && this.terminal) {
             traceInfo('VncServer: Already running');
             return this.getNoVncUrl();
         }
 
-        traceInfo(`VncServer: Starting VNC stack${pcbFile ? ` with ${pcbFile}` : ''}`);
+        // Store for restart()
+        this._lastPcbFile = pcbFile;
+        this._lastDarkMode = darkMode;
 
-        // Build command
+        traceInfo(`VncServer: Starting VNC stack${pcbFile ? ` with ${pcbFile}` : ''} (dark=${darkMode ?? 'unset'})`);
+
+        // Build command with dark mode env var prefix
+        const darkEnv = darkMode !== undefined ? `KICAD_DARK_MODE=${darkMode ? '1' : '0'} ` : '';
         const cmd = pcbFile
-            ? `start-pcbnew-vnc.sh "${pcbFile}"`
-            : 'start-pcbnew-vnc.sh';
+            ? `${darkEnv}start-pcbnew-vnc.sh "${pcbFile}"`
+            : `${darkEnv}start-pcbnew-vnc.sh`;
 
         // Create terminal and run the script
         this.terminal = vscode.window.createTerminal({
@@ -110,6 +119,14 @@ class VncServerManager implements vscode.Disposable {
             this.terminal = undefined;
         }
         this._isRunning = false;
+    }
+
+    /**
+     * Restart the VNC stack with the given dark mode, re-using the last PCB file.
+     */
+    async restart(darkMode: boolean): Promise<string> {
+        await this.stop();
+        return this.start(this._lastPcbFile, darkMode);
     }
 
     /**

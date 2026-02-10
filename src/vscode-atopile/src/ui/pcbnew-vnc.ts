@@ -249,6 +249,14 @@ class PcbnewVncWebview extends BaseWebview {
 let pcbnewVnc: PcbnewVncWebview | undefined;
 
 /**
+ * Detect whether the active VS Code color theme is dark.
+ */
+function isDarkTheme(): boolean {
+    const kind = vscode.window.activeColorTheme.kind;
+    return kind === vscode.ColorThemeKind.Dark || kind === vscode.ColorThemeKind.HighContrast;
+}
+
+/**
  * Open PCBnew in an embedded VNC viewer.
  * Starts the VNC stack if not already running, then opens the webview panel.
  *
@@ -259,6 +267,8 @@ let pcbnewVnc: PcbnewVncWebview | undefined;
 export async function openPcbnewVnc(pcbFile?: string): Promise<void> {
     traceInfo(`PcbnewVnc: openPcbnewVnc called (pcbFile=${pcbFile ?? 'none'})`);
 
+    const darkMode = isDarkTheme();
+
     try {
         if (!vncServer.isRunning) {
             await vscode.window.withProgress(
@@ -268,7 +278,7 @@ export async function openPcbnewVnc(pcbFile?: string): Promise<void> {
                     cancellable: false,
                 },
                 async () => {
-                    await vncServer.start(pcbFile);
+                    await vncServer.start(pcbFile, darkMode);
                 },
             );
         }
@@ -291,10 +301,37 @@ export function closePcbnewVnc(): void {
     vncServer.stop();
 }
 
-export async function activate(_context: vscode.ExtensionContext): Promise<void> {
-    // PCB reload on changes is handled by the KiCad IPC mechanism:
-    // `ato build` → `reload_pcb()` → KiCad socket API → PCBnew reloads from disk.
-    // No extension-side handling needed.
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
+    // Restart VNC stack when the user switches VS Code color theme so KiCad
+    // GTK chrome matches the new dark/light mode.
+    context.subscriptions.push(
+        vscode.window.onDidChangeActiveColorTheme(async () => {
+            if (!vncServer.isRunning) {
+                return;
+            }
+            const darkMode = isDarkTheme();
+            traceInfo(`PcbnewVnc: Theme changed → dark=${darkMode}, restarting VNC`);
+
+            // Close current webview so user sees the loading state on reopen
+            pcbnewVnc?.dispose();
+            pcbnewVnc = undefined;
+
+            await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: 'Restarting PCBnew with new theme...',
+                    cancellable: false,
+                },
+                async () => {
+                    await vncServer.restart(darkMode);
+                },
+            );
+
+            // Re-open the webview panel
+            pcbnewVnc = new PcbnewVncWebview();
+            await pcbnewVnc.open();
+        }),
+    );
 }
 
 export function deactivate(): void {

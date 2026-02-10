@@ -70,6 +70,7 @@ common["graphics"]["opengl_antialiasing_mode"] = 0
 # Small toolbar icons — save screen space in the VNC viewer
 common.setdefault("appearance", {})
 common["appearance"]["toolbar_icon_size"] = 16
+common["appearance"]["icon_theme"] = 2  # AUTO — adapts to GTK dark/light
 
 common_path.write_text(json.dumps(common, indent=2))
 
