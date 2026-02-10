@@ -480,6 +480,7 @@ class BuildQueue:
         include_targets: list[str] | None = None,
         exclude_targets: list[str] | None = None,
         frozen: bool | None = None,
+        keep_picked_parts: bool | None = None,
     ) -> str | None:
         """
         Check if a build with the same config is already running or queued.
@@ -503,6 +504,11 @@ class BuildQueue:
                 if build.exclude_targets != exclude_targets:
                     continue
                 if frozen is not None and build.frozen != frozen:
+                    continue
+                if (
+                    keep_picked_parts is not None
+                    and build.keep_picked_parts != keep_picked_parts
+                ):
                     continue
                 return build.build_id
         return None

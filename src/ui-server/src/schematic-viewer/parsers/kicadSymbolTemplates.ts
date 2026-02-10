@@ -12,10 +12,10 @@ function wrapLib(symbolBody: string): string {
 )`;
 }
 
-const TWO_PIN_TEMPLATES: Record<
+const TWO_PIN_TEMPLATES: Partial<Record<
   Exclude<SchematicSymbolFamily, 'connector' | 'testpoint'>,
   string
-> = {
+>> = {
   resistor: wrapLib(`(symbol "ATO_R"
     (property "Reference" "R" (at 0 2.2 0) (effects (font (size 1 1))))
     (property "Value" "R" (at 0 -2.2 0) (effects (font (size 1 1))))
@@ -225,6 +225,7 @@ export function getKicadTemplateSymbol(
   if (family === 'testpoint') {
     return parseTemplate('testpoint', TESTPOINT_TEMPLATE);
   }
-  return parseTemplate(family, TWO_PIN_TEMPLATES[family]);
+  const source = TWO_PIN_TEMPLATES[family];
+  if (!source) return null;
+  return parseTemplate(family, source);
 }
-

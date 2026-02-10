@@ -21,6 +21,8 @@ import { neutralConnectionColor } from './connectionColor';
 const NO_RAYCAST = () => {};
 const BAR_HALF = POWER_PORT_W / 2;
 const POWER_LABEL_MAX_CHARS = 14;
+const POWER_PORT_STROKE_WIDTH = 0.22;
+const POWER_PORT_STROKE_WIDTH_FINE = 0.18;
 
 interface Props {
   powerPort: SchematicPowerPort;
@@ -121,14 +123,16 @@ function PowerBarGlyph({
       <Line
         points={[[-BAR_HALF, 0.4, 0], [BAR_HALF, 0.4, 0]]}
         color={color}
-        lineWidth={2.2}
+        lineWidth={POWER_PORT_STROKE_WIDTH}
+        worldUnits
         raycast={NO_RAYCAST}
       />
       {/* Vertical stem from bar down to pin */}
       <Line
         points={[[0, 0.4, 0], [0, -0.6, 0]]}
         color={color}
-        lineWidth={1.5}
+        lineWidth={POWER_PORT_STROKE_WIDTH_FINE}
+        worldUnits
         raycast={NO_RAYCAST}
       />
       {/* Net name above bar */}
@@ -177,7 +181,8 @@ function GroundGlyph({ color }: { color: string }) {
       <Line
         points={[[0, 0.6, 0], [0, -0.1, 0]]}
         color={color}
-        lineWidth={1.5}
+        lineWidth={POWER_PORT_STROKE_WIDTH_FINE}
+        worldUnits
         raycast={NO_RAYCAST}
       />
       {/* Three horizontal bars getting smaller */}
@@ -186,7 +191,8 @@ function GroundGlyph({ color }: { color: string }) {
           key={i}
           points={[[-hw, -0.1 - i * GAP, 0], [hw, -0.1 - i * GAP, 0]]}
           color={color}
-          lineWidth={i === 0 ? 2.2 : 1.5}
+          lineWidth={i === 0 ? POWER_PORT_STROKE_WIDTH : POWER_PORT_STROKE_WIDTH_FINE}
+          worldUnits
           raycast={NO_RAYCAST}
         />
       ))}

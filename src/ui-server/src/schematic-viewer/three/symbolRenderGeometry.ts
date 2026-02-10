@@ -56,6 +56,13 @@ export function symbolScaleFactors(
       return { width: 0.9, height: 1.28 };
     case 'led':
       return { width: 0.95, height: 1.32 };
+    case 'transistor_npn':
+    case 'transistor_pnp':
+    case 'mosfet_n':
+    case 'mosfet_p':
+      // Three-pin discretes use compact bodies even though the generic layout
+      // may allocate an IC-like body width for pin labeling.
+      return { width: 0.38, height: 0.62 };
     case 'testpoint':
       return { width: 0.74, height: 1.02 };
     case 'connector':
@@ -72,7 +79,7 @@ function symbolBodyAxisScale(
     case 'capacitor':
       // Keep capacitor visual width aligned with diode/resistor families while
       // preserving plate height.
-      return { x: 0.7, y: 1 };
+      return { x: 0.62, y: 1 };
     default:
       return { x: 1, y: 1 };
   }
@@ -92,6 +99,10 @@ export function getCanonicalGlyphTransform(
   const rotateToHorizontal =
     family !== 'connector'
     && family !== 'testpoint'
+    && family !== 'transistor_npn'
+    && family !== 'transistor_pnp'
+    && family !== 'mosfet_n'
+    && family !== 'mosfet_p'
     && bounds.height > bounds.width;
   let rotateClockwise = true;
   if (rotateToHorizontal && symbol.pins.length > 0 && component.pins.length > 0) {

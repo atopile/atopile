@@ -320,19 +320,46 @@ class SchematicWebview extends BaseWebview {
 
     private openSourceFile(filePath: string, line?: number, column?: number): void {
         const uri = vscode.Uri.file(filePath);
+        const location = (() => {
+            if (line == null || line <= 0) return null;
+            const zeroBasedColumn = (column != null && column > 0)
+                ? column - 1
+                : 0;
+            const position = new vscode.Position(
+                Math.max(0, line - 1),
+                zeroBasedColumn,
+            );
+            return {
+                position,
+                range: new vscode.Range(position, position),
+                selection: new vscode.Selection(position, position),
+            };
+        })();
+
+        const existingVisibleEditor = vscode.window.visibleTextEditors.find(
+            (editor) => editor.document.uri.toString() === uri.toString(),
+        );
+        if (existingVisibleEditor) {
+            if (location) {
+                existingVisibleEditor.selection = location.selection;
+                existingVisibleEditor.revealRange(
+                    location.range,
+                    vscode.TextEditorRevealType.InCenterIfOutsideViewport,
+                );
+            }
+            void vscode.window.showTextDocument(existingVisibleEditor.document, {
+                viewColumn: existingVisibleEditor.viewColumn,
+                preserveFocus: true,
+            });
+            return;
+        }
+
         vscode.workspace.openTextDocument(uri).then((doc) => {
             const options: vscode.TextDocumentShowOptions = {
-                viewColumn: vscode.ViewColumn.One,
+                viewColumn: vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One,
             };
-            if (line != null && line > 0) {
-                const zeroBasedColumn = (column != null && column > 0)
-                    ? column - 1
-                    : 0;
-                const position = new vscode.Position(
-                    Math.max(0, line - 1),
-                    zeroBasedColumn,
-                );
-                options.selection = new vscode.Range(position, position);
+            if (location) {
+                options.selection = location.range;
             }
             vscode.window.showTextDocument(doc, options);
         });
@@ -549,6 +576,7 @@ async function enqueueSchematicBuild(projectRoot: string, target: string): Promi
             targets: [target],
             include_targets: SCHEMATIC_INCLUDE_TARGETS,
             exclude_targets: SCHEMATIC_EXCLUDE_TARGETS,
+            keep_picked_parts: true,
         },
         { timeout: 15000 },
     );

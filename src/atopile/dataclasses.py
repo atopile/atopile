@@ -523,6 +523,7 @@ class BuildRequest(CamelModel):
     # Muster targets to include (e.g., "all", "mfg-data") - defaults to "default"
     include_targets: list[str] = []
     exclude_targets: list[str] = []
+    keep_picked_parts: bool | None = None
 
 
 class BuildTargetInfo(CamelModel):

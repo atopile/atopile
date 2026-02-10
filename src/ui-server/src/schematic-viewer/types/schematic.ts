@@ -137,6 +137,10 @@ export type SchematicSymbolFamily =
   | 'inductor'
   | 'diode'
   | 'led'
+  | 'transistor_npn'
+  | 'transistor_pnp'
+  | 'mosfet_n'
+  | 'mosfet_p'
   | 'connector'
   | 'testpoint';
 

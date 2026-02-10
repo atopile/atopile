@@ -48,10 +48,53 @@ function inferSymbolFamily(component: SchematicComponent): SchematicSymbolFamily
   if (component.symbolFamily) return component.symbolFamily;
 
   const designatorPrefix = getDesignatorPrefix(component.designator);
-  const haystack = `${component.name} ${designatorPrefix} ${component.reference}`.toLowerCase();
+  const haystack = [
+    component.name,
+    designatorPrefix,
+    component.reference,
+    component.symbolVariant,
+    component.packageCode,
+  ].join(' ').toLowerCase();
 
   if (haystack.includes('led')) return 'led';
   if (haystack.includes('testpoint') || designatorPrefix.startsWith('TP')) return 'testpoint';
+
+  if (
+    haystack.includes('pmos')
+    || haystack.includes('p-mos')
+    || haystack.includes('pfet')
+    || haystack.includes('p-fet')
+    || haystack.includes('pchannel')
+    || haystack.includes('p-channel')
+  ) {
+    return 'mosfet_p';
+  }
+  if (
+    haystack.includes('nmos')
+    || haystack.includes('n-mos')
+    || haystack.includes('nfet')
+    || haystack.includes('n-fet')
+    || haystack.includes('nchannel')
+    || haystack.includes('n-channel')
+  ) {
+    return 'mosfet_n';
+  }
+  if (
+    haystack.includes('mosfet')
+    || /(^|[^a-z0-9])fet([^a-z0-9]|$)/.test(haystack)
+  ) {
+    return 'mosfet_n';
+  }
+
+  if (haystack.includes('pnp')) return 'transistor_pnp';
+  if (haystack.includes('npn')) return 'transistor_npn';
+  if (
+    designatorPrefix.startsWith('Q')
+    || haystack.includes('bjt')
+    || haystack.includes('transistor')
+  ) {
+    return 'transistor_npn';
+  }
 
   if (
     haystack.includes('capacitorpolarized')

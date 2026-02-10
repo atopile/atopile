@@ -53,6 +53,9 @@ def _handle_build_sync(payload: dict) -> dict:
     exclude_targets = payload.get("excludeTargets") or payload.get(
         "exclude_targets", []
     )
+    keep_picked_parts = payload.get("keepPickedParts")
+    if keep_picked_parts is None:
+        keep_picked_parts = payload.get("keep_picked_parts")
 
     log.info(
         "Build request targets: include=%s exclude=%s",
@@ -200,6 +203,7 @@ def _handle_build_sync(payload: dict) -> dict:
                             include_targets=include_targets,
                             exclude_targets=exclude_targets,
                             frozen=frozen,
+                            keep_picked_parts=keep_picked_parts,
                         )
                         if existing_id:
                             build_ids.append(existing_id)
@@ -221,6 +225,7 @@ def _handle_build_sync(payload: dict) -> dict:
                                 frozen=frozen,
                                 include_targets=include_targets,
                                 exclude_targets=exclude_targets,
+                                keep_picked_parts=keep_picked_parts,
                                 status=BuildStatus.QUEUED,
                                 started_at=time.time(),
                             )
@@ -259,6 +264,7 @@ def _handle_build_sync(payload: dict) -> dict:
             include_targets=include_targets,
             exclude_targets=exclude_targets,
             frozen=frozen,
+            keep_picked_parts=keep_picked_parts,
         )
         if existing_build_id:
             build_ids.append(existing_build_id)
@@ -281,6 +287,7 @@ def _handle_build_sync(payload: dict) -> dict:
                 frozen=frozen,
                 include_targets=include_targets,
                 exclude_targets=exclude_targets,
+                keep_picked_parts=keep_picked_parts,
                 status=BuildStatus.QUEUED,
                 started_at=time.time(),
             )

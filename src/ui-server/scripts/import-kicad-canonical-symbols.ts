@@ -14,6 +14,10 @@ type FamilyKey =
   | 'inductor'
   | 'diode'
   | 'led'
+  | 'transistor_npn'
+  | 'transistor_pnp'
+  | 'mosfet_n'
+  | 'mosfet_p'
   | 'testpoint';
 
 interface SymbolSource {
@@ -35,6 +39,26 @@ const FAMILY_SOURCES: Record<FamilyKey, SymbolSource> = {
   inductor: { lib: 'Device', symbolFile: 'L.kicad_sym', symbolName: 'L' },
   diode: { lib: 'Device', symbolFile: 'D.kicad_sym', symbolName: 'D' },
   led: { lib: 'Device', symbolFile: 'LED.kicad_sym', symbolName: 'LED' },
+  transistor_npn: {
+    lib: 'Transistor_BJT',
+    symbolFile: 'Q_NPN_BCE.kicad_sym',
+    symbolName: 'Q_NPN_BCE',
+  },
+  transistor_pnp: {
+    lib: 'Transistor_BJT',
+    symbolFile: 'Q_PNP_BCE.kicad_sym',
+    symbolName: 'Q_PNP_BCE',
+  },
+  mosfet_n: {
+    lib: 'Transistor_FET',
+    symbolFile: 'Q_NMOS_GDS.kicad_sym',
+    symbolName: 'Q_NMOS_GDS',
+  },
+  mosfet_p: {
+    lib: 'Transistor_FET',
+    symbolFile: 'Q_PMOS_GDS.kicad_sym',
+    symbolName: 'Q_PMOS_GDS',
+  },
   testpoint: {
     lib: 'Connector',
     symbolFile: 'TestPoint_Small.kicad_sym',

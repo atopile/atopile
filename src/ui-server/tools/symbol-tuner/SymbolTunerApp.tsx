@@ -131,6 +131,8 @@ const FIXTURE_BY_FAMILY: Record<Family, SchematicComponent> = {
 };
 
 const STORAGE_KEY = 'atopile.symbol_tuner.v1';
+const TUNER_SYMBOL_STROKE_WIDTH = 0.26;
+const TUNER_LEAD_STROKE_WIDTH = 0.28;
 
 const DEFAULT_TUNINGS: Record<Family, SymbolTuning> = {
   resistor: { ...SYMBOL_RENDER_TUNING.resistor },
@@ -696,7 +698,8 @@ export function SymbolTunerApp() {
                 x2={lead.pin.x}
                 y2={-lead.pin.y}
                 stroke="#6b7280"
-                strokeWidth="0.18"
+                strokeWidth={TUNER_LEAD_STROKE_WIDTH}
+                strokeLinecap="round"
               />
             ))}
 
@@ -706,7 +709,7 @@ export function SymbolTunerApp() {
                 points={poly.map((p) => pt(p)).join(' ')}
                 fill="none"
                 stroke="#374151"
-                strokeWidth="0.18"
+                strokeWidth={TUNER_SYMBOL_STROKE_WIDTH}
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
@@ -720,7 +723,7 @@ export function SymbolTunerApp() {
                 r={circle.radius}
                 fill="none"
                 stroke="#374151"
-                strokeWidth="0.18"
+                strokeWidth={TUNER_SYMBOL_STROKE_WIDTH}
               />
             ))}
 
