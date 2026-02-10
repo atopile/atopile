@@ -22,7 +22,7 @@ def _resolve_main_worktree(repo_path: Path) -> Path:
     )
     for line in result.stdout.splitlines():
         if line.startswith("worktree "):
-            return Path(line[len("worktree "):])
+            return Path(line[len("worktree ") :])
     raise RuntimeError("failed to detect main worktree path")
 
 
@@ -100,7 +100,7 @@ def _create_helper_files(worktree_path: Path) -> None:
     """Create .atopile-worktree-env.sh and ato wrapper script."""
     env_sh = worktree_path / ".atopile-worktree-env.sh"
     env_sh.write_text(
-        '#!/usr/bin/env sh\n'
+        "#!/usr/bin/env sh\n"
         'WORKTREE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"\n'
         'export PYTHONPATH="$WORKTREE_ROOT/src:$WORKTREE_ROOT/tools/'
         'atopile_mkdocs_plugin${PYTHONPATH:+:$PYTHONPATH}"\n'
@@ -109,8 +109,8 @@ def _create_helper_files(worktree_path: Path) -> None:
 
     ato_wrapper = worktree_path / "ato"
     ato_wrapper.write_text(
-        '#!/usr/bin/env bash\n'
-        'set -euo pipefail\n'
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
         'WORKTREE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\n'
         'source "$WORKTREE_ROOT/.atopile-worktree-env.sh"\n'
         'exec "$WORKTREE_ROOT/.venv/bin/ato" "$@"\n'
@@ -167,24 +167,50 @@ def create_worktree(
     _log(f"start point:   {start_point}")
 
     # Create git worktree
-    branch_exists = subprocess.run(
-        ["git", "-C", str(source_root), "show-ref", "--verify", "--quiet",
-         f"refs/heads/{name}"],
-        capture_output=True,
-    ).returncode == 0
+    branch_exists = (
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(source_root),
+                "show-ref",
+                "--verify",
+                "--quiet",
+                f"refs/heads/{name}",
+            ],
+            capture_output=True,
+        ).returncode
+        == 0
+    )
 
     if branch_exists:
         _log(f"branch '{name}' already exists; creating worktree on existing branch")
         subprocess.run(
-            ["git", "-C", str(source_root), "worktree", "add",
-             str(worktree_path), name],
+            [
+                "git",
+                "-C",
+                str(source_root),
+                "worktree",
+                "add",
+                str(worktree_path),
+                name,
+            ],
             check=True,
         )
     else:
         _log(f"creating branch '{name}' from '{start_point}'")
         subprocess.run(
-            ["git", "-C", str(source_root), "worktree", "add", "-b", name,
-             str(worktree_path), start_point],
+            [
+                "git",
+                "-C",
+                str(source_root),
+                "worktree",
+                "add",
+                "-b",
+                name,
+                str(worktree_path),
+                start_point,
+            ],
             check=True,
         )
 
