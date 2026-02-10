@@ -8,7 +8,6 @@ on:
     branches:
       - main
       - stage/*
-      - fix/package_verify_warning_check
   release:
     types:
       - published
