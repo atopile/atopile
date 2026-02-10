@@ -224,13 +224,19 @@ class BuildHistory:
     @staticmethod
     def get_all(limit: int = 50) -> list[Build]:
         """Get recent builds. Raises on error so callers can handle gracefully."""
-        with _get_connection(BUILD_HISTORY_DB) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT * FROM build_history ORDER BY started_at DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-            return [BuildHistory._from_row(r) for r in rows]
+        try:
+            with _get_connection(BUILD_HISTORY_DB) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    "SELECT * FROM build_history ORDER BY started_at DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+                return [BuildHistory._from_row(r) for r in rows]
+        except Exception:
+            logger.exception(
+                "Failed to load build history. Try running 'ato dev clear_logs'."
+            )
+            raise
 
 
 # build_logs.db -> logs table helper
