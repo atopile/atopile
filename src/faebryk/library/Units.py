@@ -987,6 +987,17 @@ def _get_close_matches(symbol: str, possibilities: list[str]) -> list[str]:
     return difflib.get_close_matches(symbol, possibilities)
 
 
+# TODO: model quantities as distinct from units
+_QUANTITY_NAMES_TO_SYMBOLS: dict[str, str] = {
+    "current": "ampere",
+    "voltage": "volt",
+    "resistance": "ohm",
+    "power": "watt",
+    "energy": "joule",
+    "frequency": "hertz",
+}
+
+
 def decode_symbol(
     g: graph.GraphView, tg: fbrk.TypeGraph, symbol: str
 ) -> type[fabll.Node]:
@@ -1003,6 +1014,8 @@ def decode_symbol(
     sorted_symbol_map = register_all_units(
         g, tg
     )  # Ensure all unit types are registered)
+
+    symbol = _QUANTITY_NAMES_TO_SYMBOLS.get(symbol, symbol)
 
     # 1. Exact match
     if symbol in sorted_symbol_map.keys():
@@ -1051,6 +1064,8 @@ def decode_symbol_runtime(
     all_units = fabll.Traits.get_implementors(is_unit.bind_typegraph(tg), g)
     # TODO: more efficient filtering
     symbol_map = {s: unit for unit in all_units for s in unit.get_symbols()}
+
+    symbol = _QUANTITY_NAMES_TO_SYMBOLS.get(symbol, symbol)
 
     # 1. Exact match
     if symbol in symbol_map:
@@ -1161,47 +1176,47 @@ _UNIT_SYMBOLS: dict[_UnitRegistry, tuple[str, ...]] = {
     _UnitRegistry.Dimensionless: (DIMENSIONLESS_SYMBOL,),
     _UnitRegistry.Percent: (PERCENT_SYMBOL,),
     _UnitRegistry.Ppm: ("ppm",),
-    _UnitRegistry.Ampere: ("A", "ampere", "current"),
-    _UnitRegistry.Second: ("s",),
-    _UnitRegistry.Meter: ("m",),
-    _UnitRegistry.Kilogram: ("kg",),
-    _UnitRegistry.Kelvin: ("K",),
-    _UnitRegistry.Mole: ("mol",),
-    _UnitRegistry.Candela: ("cd",),
-    _UnitRegistry.Radian: ("rad",),
-    _UnitRegistry.Steradian: ("sr",),
+    _UnitRegistry.Ampere: ("A", "ampere"),
+    _UnitRegistry.Second: ("s", "second"),
+    _UnitRegistry.Meter: ("m", "meter"),
+    _UnitRegistry.Kilogram: ("kg", "kilogram"),
+    _UnitRegistry.Kelvin: ("K", "kelvin"),
+    _UnitRegistry.Mole: ("mol", "mole"),
+    _UnitRegistry.Candela: ("cd", "candela"),
+    _UnitRegistry.Radian: ("rad", "radian"),
+    _UnitRegistry.Steradian: ("sr", "steradian"),
     _UnitRegistry.Hertz: ("Hz", "hertz"),
-    _UnitRegistry.Newton: ("N",),
-    _UnitRegistry.Pascal: ("Pa",),
-    _UnitRegistry.Joule: ("J",),
+    _UnitRegistry.Newton: ("N", "newton"),
+    _UnitRegistry.Pascal: ("Pa", "pascal"),
+    _UnitRegistry.Joule: ("J", "joule"),
     _UnitRegistry.Watt: ("W", "watt"),
-    _UnitRegistry.Coulomb: ("C",),
-    _UnitRegistry.Volt: ("V", "volt", "voltage"),
+    _UnitRegistry.Coulomb: ("C", "coulomb"),
+    _UnitRegistry.Volt: ("V", "volt"),
     _UnitRegistry.Farad: ("F", "farad"),
-    _UnitRegistry.Ohm: ("Ω", "ohm", "ohms"),
-    _UnitRegistry.Siemens: ("S",),
-    _UnitRegistry.Weber: ("Wb",),
-    _UnitRegistry.Tesla: ("T",),
+    _UnitRegistry.Ohm: ("Ω", "ohm"),
+    _UnitRegistry.Siemens: ("S", "siemens"),
+    _UnitRegistry.Weber: ("Wb", "weber"),
+    _UnitRegistry.Tesla: ("T", "tesla"),
     _UnitRegistry.Henry: ("H", "henry"),
     _UnitRegistry.DegreeCelsius: ("°C", "degC"),
-    _UnitRegistry.Lumen: ("lm",),
-    _UnitRegistry.Lux: ("lx",),
-    _UnitRegistry.Becquerel: ("Bq",),
-    _UnitRegistry.Gray: ("Gy",),
-    _UnitRegistry.Sievert: ("Sv",),
-    _UnitRegistry.Katal: ("kat",),
+    _UnitRegistry.Lumen: ("lm", "lumen"),
+    _UnitRegistry.Lux: ("lx", "lux"),
+    _UnitRegistry.Becquerel: ("Bq", "becquerel"),
+    _UnitRegistry.Gray: ("Gy", "gray"),
+    _UnitRegistry.Sievert: ("Sv", "sievert"),
+    _UnitRegistry.Katal: ("kat", "katal"),
     _UnitRegistry.Bit: ("b", "bit"),
     _UnitRegistry.Byte: ("B", "byte"),
-    _UnitRegistry.Gram: ("g",),
-    _UnitRegistry.Degree: ("°", "deg"),
-    _UnitRegistry.ArcMinute: ("arcmin",),
-    _UnitRegistry.ArcSecond: ("arcsec",),
-    _UnitRegistry.Minute: ("min",),
-    _UnitRegistry.Day: ("day",),
-    _UnitRegistry.Hour: ("hour",),
+    _UnitRegistry.Gram: ("g", "gram"),
+    _UnitRegistry.Degree: ("°", "deg", "degree"),
+    _UnitRegistry.ArcMinute: ("arcmin", "arcminute"),
+    _UnitRegistry.ArcSecond: ("arcsec", "arcsecond"),
+    _UnitRegistry.Minute: ("min", "minute"),
+    _UnitRegistry.Day: ("d", "day"),
+    _UnitRegistry.Hour: ("h", "hr", "hour"),
     _UnitRegistry.Week: ("week",),
     _UnitRegistry.Month: ("month",),
-    _UnitRegistry.Year: ("year",),
+    _UnitRegistry.Year: ("yr", "year"),
     _UnitRegistry.Liter: ("liter",),
     _UnitRegistry.Rpm: ("rpm", "RPM"),
     _UnitRegistry.AmpereHour: ("Ah",),
