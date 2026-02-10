@@ -225,6 +225,11 @@ class PcbnewVncWebview extends BaseWebview {
 
     protected onDispose(): void {
         traceInfo('PcbnewVnc: Webview panel closed');
+        pcbnewVnc = undefined;
+        if (!restarting) {
+            traceInfo('PcbnewVnc: Stopping VNC stack (panel closed by user)');
+            vncServer.stop();
+        }
     }
 
     private getBundleMissingHtml(): string {
@@ -247,6 +252,7 @@ class PcbnewVncWebview extends BaseWebview {
 }
 
 let pcbnewVnc: PcbnewVncWebview | undefined;
+let restarting = false;
 
 /**
  * Detect whether the active VS Code color theme is dark.
@@ -312,9 +318,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             const darkMode = isDarkTheme();
             traceInfo(`PcbnewVnc: Theme changed → dark=${darkMode}, restarting VNC`);
 
-            // Close current webview so user sees the loading state on reopen
+            // Flag prevents onDispose from stopping VNC during restart
+            restarting = true;
             pcbnewVnc?.dispose();
             pcbnewVnc = undefined;
+            restarting = false;
 
             await vscode.window.withProgress(
                 {
