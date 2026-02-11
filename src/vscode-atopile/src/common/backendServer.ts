@@ -504,6 +504,7 @@ class BackendServerManager implements vscode.Disposable {
                 ...atoBin.command.slice(1),
                 'serve', 'backend',
                 '--port', String(this.port),
+                '--no-gen',
                 '--ato-source', atoBin.source,
                 '--ato-binary-path', atoBinaryPath,
             ];
