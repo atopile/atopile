@@ -940,6 +940,13 @@ export function ActiveProjectPanel({
     }
   }, [onCreateTarget, activeProject])
 
+  // Auto-open migrate dialog when active project needs migration
+  useEffect(() => {
+    if (activeProject?.needsMigration && !isMigrating && !migrateDialogProjectRoot) {
+      openMigrateDialog(activeProject.root)
+    }
+  }, [activeProject?.needsMigration, activeProject?.root, isMigrating, migrateDialogProjectRoot, openMigrateDialog])
+
   // Tooltip text based on state
   const getOutputTooltip = (action: string) => {
     if (!activeProject) return 'Select a project first'
@@ -1041,21 +1048,16 @@ export function ActiveProjectPanel({
         {/* Action buttons - single row: Build | KiCad | 3D | Layout | Manufacture */}
         <div className="build-actions-row">
           <button
-            className={`action-btn primary${activeProject?.needsMigration ? ' needs-migration' : ''}`}
+            className="action-btn primary"
             onClick={() => {
-              if (!activeProject) return
-              if (activeProject.needsMigration && !isMigrating) {
-                openMigrateDialog(activeProject.root)
-              } else if (!isMigrating) {
-                if (!activeTargetName) return
-                onBuildTarget(activeProject.root, activeTargetName)
-              }
+              if (!activeProject || !activeTargetName || isMigrating) return
+              onBuildTarget(activeProject.root, activeTargetName)
             }}
-            disabled={!activeProject || isMigrating || (!activeProject.needsMigration && !activeTargetName)}
-            title={isMigrating ? 'Migrating...' : (activeProject?.needsMigration ? 'Your project and dependencies are incompatible with this version of atopile. Use this button to download the latest compatible dependencies. You might need to manually make some minor changes in your project afterwards.' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first'))}
+            disabled={!activeProject || isMigrating || !activeTargetName || activeProject.needsMigration}
+            title={isMigrating ? 'Migrating...' : (activeProject?.needsMigration ? 'Use the migrate flow before building your project!' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first'))}
           >
             {isMigrating ? <Loader2 size={12} className="spin" /> : <Play size={12} />}
-            <span className="action-label">{isMigrating ? 'Migrating...' : (activeProject?.needsMigration ? 'Migrate' : 'Build')}</span>
+            <span className="action-label">{isMigrating ? 'Migrating...' : 'Build'}</span>
           </button>
 
           <div className="action-divider" />

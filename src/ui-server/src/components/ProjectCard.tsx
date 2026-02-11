@@ -361,6 +361,14 @@ export const ProjectCard = memo(function ProjectCard({
   const openMigrateDialog = useStore((state) => state.openMigrateDialog)
   const isMigrating = migratingProjectRoots.includes(project.root)
   const migrationError = migrationErrors[project.root]
+  const migrateDialogProjectRoot = useStore((state) => state.migrateDialogProjectRoot)
+
+  // Auto-open migrate dialog when project needs migration
+  useEffect(() => {
+    if (project.needsMigration && !isMigrating && !migrateDialogProjectRoot && isSelected) {
+      openMigrateDialog(project.root)
+    }
+  }, [project.needsMigration, project.root, isMigrating, migrateDialogProjectRoot, isSelected, openMigrateDialog])
 
   // Build status (for editable mode) - use project.builds here since builds variable isn't defined yet
   const totalErrors = project.builds.reduce((sum, b) => sum + (b.errors || 0), 0)
@@ -657,17 +665,15 @@ export const ProjectCard = memo(function ProjectCard({
               </button>
             ) : (
               <button
-                className={`project-build-btn-icon${project.needsMigration ? ' needs-migration' : ''}${isMigrating ? ' migrating' : ''}${migrationError ? ' has-error' : ''}`}
+                className={`project-build-btn-icon${isMigrating ? ' migrating' : ''}${migrationError ? ' has-error' : ''}`}
                 onClick={(e) => {
                   e.stopPropagation()
-                  if (project.needsMigration) {
-                    openMigrateDialog(project.root)
-                  } else {
+                  if (!project.needsMigration) {
                     onBuild('project', project.id, project.name)
                   }
                 }}
-                disabled={isMigrating}
-                title={migrationError ? `Migration failed: ${migrationError}` : (isMigrating ? 'Migrating...' : (project.needsMigration ? 'Your project and dependencies are incompatible with this version of atopile. Use this button to download the latest compatible dependencies. You might need to manually make some minor changes in your project afterwards.' : `Build all targets in ${project.name}`))}
+                disabled={isMigrating || project.needsMigration}
+                title={migrationError ? `Migration failed: ${migrationError}` : (isMigrating ? 'Migrating...' : (project.needsMigration ? 'Use the migrate flow before building your project!' : `Build all targets in ${project.name}`))}
               >
                 {isMigrating ? <Loader2 size={14} className="spin" /> : <Play size={14} fill="currentColor" />}
               </button>
