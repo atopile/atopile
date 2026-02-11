@@ -46,6 +46,10 @@ NORECOMPILE = ConfigFlag("ZIG_NORECOMPILE", default=False)
 _source_hash_file = _build_dir / ".zig-source-hash"
 
 
+def _extension_suffix() -> str:
+    return ".pyd" if sys.platform == "win32" else ".so"
+
+
 def _compute_source_hash() -> str:
     """Hash all zig source files + build config to detect changes."""
     from .compute_hash import compute_source_hash
@@ -55,9 +59,10 @@ def _compute_source_hash() -> str:
 
 def _zig_sources_changed() -> bool:
     """Check if zig sources changed since last successful build."""
-    if not (_build_dir / "pyzig.so").exists():
+    ext = _extension_suffix()
+    if not (_build_dir / f"pyzig{ext}").exists():
         return True
-    if not (_build_dir / "pyzig_sexp.so").exists():
+    if not (_build_dir / f"pyzig_sexp{ext}").exists():
         return True
     if not _source_hash_file.exists():
         return True
@@ -148,8 +153,7 @@ def _load_module(path: list[str], module: ModuleType):
 
 
 def _load_ext(dir: Path, name: str) -> ModuleType:
-    ext = ".pyd" if sys.platform == "win32" else ".so"
-    path = dir / f"{name}{ext}"
+    path = dir / f"{name}{_extension_suffix()}"
 
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec and spec.loader
