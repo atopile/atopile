@@ -86,8 +86,7 @@ jobs:
         # TODO consider replacing with `ato dev test --ci`
         run: |
           PYTHON=$(uv python find)
-          alias ato="$PYTHON -m atopile"
-          ato dev test --ci --timeout=120
+          $PYTHON -m atopile dev test --ci --timeout=120
         env:
           GH_TOKEN: ${{ github.token }}
           COLUMNS: 150 # rich console width will be pulled from this
