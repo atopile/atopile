@@ -943,7 +943,7 @@ class PCB_Transformer:
             if keepout
             else None,
             connect_pads=kicad.pcb.ConnectPads(
-                mode=kicad.pcb.E_zone_connect_pads_mode.THERMAL_RELIEFS,
+                mode=None,
                 clearance=0.2,
             ),
             filled_polygon=[],
