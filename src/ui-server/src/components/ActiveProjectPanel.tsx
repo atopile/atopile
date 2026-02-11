@@ -71,11 +71,13 @@ function fuzzyMatch(text: string, query: string): boolean {
 function ProjectSelector({
   projects,
   activeProject,
+  activeProjectName,
   onSelectProject,
   onCreateProject,
 }: {
   projects: Project[]
   activeProject: Project | null
+  activeProjectName: string | null
   onSelectProject: (projectRoot: string | null) => void
   onCreateProject?: () => void
 }) {
@@ -162,7 +164,8 @@ function ProjectSelector({
   }
 
   // Display value: show search query when typing, otherwise show active project
-  const displayValue = isOpen ? searchQuery : (activeProject?.name || '')
+  const displayName = activeProject?.name || activeProjectName || ''
+  const displayValue = isOpen ? searchQuery : displayName
 
   return (
     <div className="project-combobox" ref={comboboxRef}>
@@ -177,7 +180,7 @@ function ProjectSelector({
           ref={inputRef}
           type="text"
           className="combobox-input"
-          placeholder={activeProject ? activeProject.name : 'Select project...'}
+          placeholder={displayName || 'Select project...'}
           value={displayValue}
           onChange={handleInputChange}
           onFocus={handleInputFocus}
@@ -313,7 +316,7 @@ function TargetSelector({
     setIsOpen(false)
   }
 
-  if (targets.length === 0) {
+  if (targets.length === 0 && !activeTargetName) {
     return (
       <div className="target-selector-empty">
         <span>No builds defined</span>
@@ -333,7 +336,7 @@ function TargetSelector({
         aria-expanded={isOpen}
       >
         <Target size={14} className="target-icon" />
-        <span className="target-trigger-name">{activeTarget?.name || 'Select build'}</span>
+        <span className="target-trigger-name">{activeTarget?.name || activeTargetName || 'Select build'}</span>
         <span className="target-combobox-chevron">
           <ChevronDown size={14} className={`chevron ${isOpen ? 'open' : ''}`} />
         </span>
@@ -857,6 +860,9 @@ export function ActiveProjectPanel({
   const [createProjectError, setCreateProjectError] = useState<string | null>(null)
   const [createTargetError, setCreateTargetError] = useState<string | null>(null)
 
+  // Persisted project name for instant display before project discovery
+  const selectedProjectName = useStore((state) => state.selectedProjectName)
+
   // Migration state from store
   const migratingProjectRoots = useStore((state) => state.migratingProjectRoots)
   const migrationErrors = useStore((state) => state.migrationErrors)
@@ -904,16 +910,13 @@ export function ActiveProjectPanel({
 
   const activeProject = useMemo(() => {
     if (!projects || projects.length === 0) return null
-    const match = selectedProjectRoot
-      ? projects.find((p) => p.root === selectedProjectRoot)
-      : null
-    return match || projects[0] || null
+    if (!selectedProjectRoot) return null
+    return projects.find((p) => p.root === selectedProjectRoot) ?? null
   }, [projects, selectedProjectRoot])
 
   const activeTargetName = useMemo(() => {
-    if (!activeProject) return null
     if (selectedTargetName) return selectedTargetName
-    return activeProject.targets?.[0]?.name ?? null
+    return activeProject?.targets?.[0]?.name ?? null
   }, [activeProject, selectedTargetName])
 
   const handleCreateTarget = useCallback(async (data: NewTargetData) => {
@@ -932,17 +935,6 @@ export function ActiveProjectPanel({
       setIsCreatingTarget(false)
     }
   }, [onCreateTarget, activeProject])
-
-  useEffect(() => {
-    if (!activeProject) return
-    if (!selectedProjectRoot) {
-      onSelectProject(activeProject.root)
-      return
-    }
-    if (!selectedTargetName && activeTargetName) {
-      onSelectTarget(activeProject.root, activeTargetName)
-    }
-  }, [activeProject, selectedProjectRoot, selectedTargetName, activeTargetName, onSelectProject, onSelectTarget])
 
   // Tooltip text based on state
   const getOutputTooltip = (action: string) => {
@@ -988,6 +980,7 @@ export function ActiveProjectPanel({
           <ProjectSelector
             projects={projects}
             activeProject={activeProject}
+            activeProjectName={selectedProjectName}
             onSelectProject={onSelectProject}
             onCreateProject={onCreateProject ? () => setShowNewProjectForm(true) : undefined}
           />

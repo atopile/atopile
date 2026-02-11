@@ -33,7 +33,7 @@ def parse(version_str: str) -> Version:
     prerelease/build information, but semver requires "-"
     we are going to support hatch's shenanigans by splitting and
     reconstituting the string
-    hatch example: "0.0.17.dev0+g0151069.d20230928"
+    hatch example: "0.14.0.post1.dev35+g1bd1cf8c4.d20260210230746"
     """
     if version_str.startswith("v"):
         version_str = version_str[1:]

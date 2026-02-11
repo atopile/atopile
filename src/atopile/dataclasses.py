@@ -522,6 +522,7 @@ class BuildRequest(CamelModel):
     standalone: bool = False  # Whether to use standalone mode
     # Muster targets to include (e.g., "all", "mfg-data") - defaults to "default"
     include_targets: list[str] = []
+    exclude_targets: list[str] = []
 
 
 class BuildTargetInfo(CamelModel):
