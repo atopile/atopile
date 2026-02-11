@@ -7,6 +7,7 @@
 
 import * as vscode from 'vscode';
 import * as http from 'http';
+import * as cp from 'child_process';
 import { traceInfo, traceError } from './log/logging';
 
 const WS_PORT = 6080;
@@ -39,6 +40,9 @@ class VncServerManager implements vscode.Disposable {
     private _disposables: vscode.Disposable[] = [];
     private _lastPcbFile: string | undefined;
     private _lastDarkMode: boolean | undefined;
+    private _resizeTimer: ReturnType<typeof setTimeout> | undefined;
+    private _lastResizeWidth = 0;
+    private _lastResizeHeight = 0;
 
     constructor() {
         // Clean up if the user closes the terminal manually
@@ -109,6 +113,12 @@ class VncServerManager implements vscode.Disposable {
      * Stop the VNC stack.
      */
     async stop(): Promise<void> {
+        if (this._resizeTimer) {
+            clearTimeout(this._resizeTimer);
+            this._resizeTimer = undefined;
+        }
+        this._lastResizeWidth = 0;
+        this._lastResizeHeight = 0;
         if (this.terminal) {
             traceInfo('VncServer: Stopping VNC stack');
             // Send Ctrl+C to trigger the trap handler in the script
@@ -127,6 +137,51 @@ class VncServerManager implements vscode.Disposable {
     async restart(darkMode: boolean): Promise<string> {
         await this.stop();
         return this.start(this._lastPcbFile, darkMode);
+    }
+
+    /**
+     * Resize the Xorg dummy framebuffer to match the webview dimensions.
+     * Uses xrandr newmode/addmode/output to create and apply a custom mode.
+     * Debounced (300ms) to coalesce rapid resize events.
+     */
+    resize(width: number, height: number): void {
+        if (!this._isRunning) {
+            return;
+        }
+
+        // Clamp to minimum 200px and round to even (X11 requirement)
+        const w = Math.max(200, width % 2 === 0 ? width : width + 1);
+        const h = Math.max(200, height % 2 === 0 ? height : height + 1);
+
+        // Skip if same as last resize
+        if (w === this._lastResizeWidth && h === this._lastResizeHeight) {
+            return;
+        }
+
+        if (this._resizeTimer) {
+            clearTimeout(this._resizeTimer);
+        }
+
+        this._resizeTimer = setTimeout(() => {
+            this._resizeTimer = undefined;
+            this._lastResizeWidth = w;
+            this._lastResizeHeight = h;
+            const modeName = `${w}x${h}_vnc`;
+            // Create a new xrandr mode, add it to DUMMY0, and activate it.
+            // --newmode may fail if mode already exists (harmless).
+            // --addmode may fail if already added (harmless).
+            const cmd = [
+                `DISPLAY=:99 xrandr --newmode "${modeName}" 0 ${w} ${w} ${w} ${w} ${h} ${h} ${h} ${h} 2>/dev/null || true`,
+                `DISPLAY=:99 xrandr --addmode DUMMY0 "${modeName}" 2>/dev/null || true`,
+                `DISPLAY=:99 xrandr --output DUMMY0 --mode "${modeName}"`,
+            ].join(' && ');
+            traceInfo(`VncServer: Resizing display → ${w}x${h}`);
+            cp.exec(cmd, { shell: '/bin/bash' }, (err, _stdout, stderr) => {
+                if (err) {
+                    traceError(`VncServer: xrandr resize failed: ${stderr || err.message}`);
+                }
+            });
+        }, 300);
     }
 
     /**
@@ -155,6 +210,12 @@ class VncServerManager implements vscode.Disposable {
     }
 
     dispose(): void {
+        if (this._resizeTimer) {
+            clearTimeout(this._resizeTimer);
+            this._resizeTimer = undefined;
+        }
+        this._lastResizeWidth = 0;
+        this._lastResizeHeight = 0;
         this.stop();
         for (const d of this._disposables) {
             d.dispose();

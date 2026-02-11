@@ -80,11 +80,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     build-essential \
     cmake \
-    xvfb \
+    xserver-xorg-video-dummy \
+    x11-xserver-utils \
     x11vnc \
     openbox \
     websockify \
     novnc \
+    xdotool \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user

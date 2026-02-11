@@ -198,8 +198,8 @@ class PcbnewVncWebview extends BaseWebview {
             rfb = new RFB(container, 'ws://localhost:${WS_PORT}', {
                 wsProtocols: ['binary']
             });
-            rfb.scaleViewport = true;
-            rfb.resizeSession = true;
+            rfb.scaleViewport = false;
+            rfb.resizeSession = false;
             rfb.qualityLevel = 6;
             rfb.compressionLevel = 2;
 
@@ -218,9 +218,41 @@ class PcbnewVncWebview extends BaseWebview {
         }
 
         connect();
+
+        // Report container size to extension host so display framebuffer can match
+        const vscodeApi = acquireVsCodeApi();
+        let resizeTimer;
+        const observer = new ResizeObserver((entries) => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                const rect = entries[0].contentRect;
+                const w = Math.round(rect.width);
+                const h = Math.round(rect.height);
+                console.log('[PcbnewVnc] ResizeObserver fired:', w, 'x', h);
+                if (w > 0 && h > 0) {
+                    vscodeApi.postMessage({ type: 'resize', width: w, height: h });
+                }
+            }, 200);
+        });
+        observer.observe(container);
+        console.log('[PcbnewVnc] ResizeObserver attached to container');
     </script>
 </body>
 </html>`;
+    }
+
+    protected setupPanel(): void {
+        if (!this.panel) {
+            return;
+        }
+        traceInfo('PcbnewVnc: setupPanel — registering message listener');
+        this.panel.webview.onDidReceiveMessage((msg) => {
+            traceInfo(`PcbnewVnc: received message type=${msg.type}`);
+            if (msg.type === 'resize' && typeof msg.width === 'number' && typeof msg.height === 'number') {
+                traceInfo(`PcbnewVnc: resize request ${msg.width}x${msg.height}`);
+                vncServer.resize(msg.width, msg.height);
+            }
+        });
     }
 
     protected onDispose(): void {
