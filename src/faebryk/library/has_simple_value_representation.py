@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
+import pytest
+
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -322,7 +324,7 @@ class TestHasSimpleValueRepresentation:
         val = m._simple_repr.get().get_value()
         assert val == "TM {10..20}V 5A P2 10V P3"
 
-    @setup_project_config
+    @pytest.fixture(setup_project_config)
     def test_repr_with_picked_attributes(self, monkeypatch):
         from unittest.mock import Mock
 
