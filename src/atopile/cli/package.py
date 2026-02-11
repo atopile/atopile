@@ -501,6 +501,8 @@ class _PackageValidators:
 
         ato_files = config.project.paths.root.rglob("*.ato")
         for ato_file in ato_files:
+            if not ato_file.is_file():
+                continue
             import_statements: list[re.Match[str]] = []
             content = ato_file.read_text(encoding="utf-8")
             for import_name in re.finditer(_import_name_regex, content):

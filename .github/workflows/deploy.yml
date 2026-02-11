@@ -177,9 +177,12 @@ jobs:
     - name: Publish to TestPyPI
       if: github.event_name != 'release'
       uses: pypa/gh-action-pypi-publish@release/v1
+      # TestPyPI may reject duplicates with 400 that skip-existing can't catch
+      continue-on-error: true
       with:
         repository-url: https://test.pypi.org/legacy/
         skip-existing: true
+        verbose: true
         attestations: false
 
     - name: Publish to PyPI
