@@ -44,8 +44,8 @@ from atopile.model.build_queue import _build_queue
 from atopile.model.model_state import model_state
 from atopile.model.sqlite import BuildHistory
 from atopile.server.connections import server_state
-from atopile.server.core import projects as core_projects
 from atopile.server.domains import packages as packages_domain
+from atopile.server.domains import projects as projects_domain
 from atopile.server.events import event_bus
 from atopile.server.file_watcher import FileChangeResult, FileWatcher
 
@@ -71,7 +71,7 @@ async def _load_initial_state(ctx: AppContext) -> None:
     async def _discover_projects() -> None:
         t0 = time.perf_counter()
         projects = await asyncio.to_thread(
-            core_projects.discover_projects_in_paths, ctx.workspace_paths
+            projects_domain.discover_projects_in_paths, ctx.workspace_paths
         )
         log.info(
             "[project discovery] found %d projects in %.1fms",
@@ -96,7 +96,7 @@ async def _refresh_projects_state() -> None:
         return
 
     # No try/except - let exceptions crash the server for visibility
-    await asyncio.to_thread(core_projects.discover_projects_in_paths, workspace_paths)
+    await asyncio.to_thread(projects_domain.discover_projects_in_paths, workspace_paths)
     await server_state.emit_event("projects_changed")
 
 
