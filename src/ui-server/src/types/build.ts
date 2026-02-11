@@ -568,6 +568,9 @@ export interface AppState {
 
   // Manufacturing Wizard
   manufacturingWizard: ManufacturingWizardState | null;
+
+  // Migrate Dialog
+  migrateDialogProjectRoot: string | null;
 }
 
 // Re-export manufacturing types for convenience

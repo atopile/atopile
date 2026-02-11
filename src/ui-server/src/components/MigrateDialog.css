@@ -1,0 +1,91 @@
+.migrate-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--ctp-blue);
+  background: var(--bg-secondary);
+}
+
+.migrate-intro {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.migrate-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.migrate-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.migrate-step:hover {
+  background: var(--bg-tertiary);
+}
+
+.migrate-step.disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.migrate-step.disabled:hover {
+  background: transparent;
+}
+
+.migrate-step input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--ctp-blue);
+  cursor: pointer;
+}
+
+.migrate-step.disabled input[type="checkbox"] {
+  cursor: default;
+}
+
+.migrate-step-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.migrate-step-status {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.migrate-step-status .spin {
+  animation: spin 1s linear infinite;
+}
+
+.migrate-step-status.success {
+  color: var(--ctp-green);
+}
+
+.migrate-step-status.error {
+  color: var(--ctp-red);
+  cursor: help;
+}
+
+.migrate-step-error {
+  padding: 4px 8px 4px 32px;
+  font-size: var(--font-size-xxs);
+  color: var(--ctp-red);
+  line-height: 1.3;
+  word-break: break-word;
+}

@@ -26,7 +26,7 @@ import { UsageCard } from './UsageCard'
 import { validateName } from '../utils/nameValidation'
 import { compareVersionsDesc, isInstalledInProject } from '../utils/packageUtils'
 import { generateImportStatement, generateUsageExample } from '../utils/codeHighlight'
-import { sendAction, sendActionWithResponse } from '../api/websocket'
+import { sendActionWithResponse } from '../api/websocket'
 import { useStore } from '../store'
 import type { BuildTarget as ProjectBuildTarget, PackageDetails } from '../types/build'
 import type {
@@ -358,8 +358,7 @@ export const ProjectCard = memo(function ProjectCard({
   // Migration state from store
   const migratingProjectRoots = useStore((state) => state.migratingProjectRoots)
   const migrationErrors = useStore((state) => state.migrationErrors)
-  const addMigratingProject = useStore((state) => state.addMigratingProject)
-  const setMigrationError = useStore((state) => state.setMigrationError)
+  const openMigrateDialog = useStore((state) => state.openMigrateDialog)
   const isMigrating = migratingProjectRoots.includes(project.root)
   const migrationError = migrationErrors[project.root]
 
@@ -662,15 +661,7 @@ export const ProjectCard = memo(function ProjectCard({
                 onClick={(e) => {
                   e.stopPropagation()
                   if (project.needsMigration) {
-                    // Clear any previous error and start migration
-                    if (migrationError) {
-                      setMigrationError(project.root, null)
-                    }
-                    // Add to migrating list and fire-and-forget
-                    addMigratingProject(project.root)
-                    sendAction('migrateProject', {
-                      projectRoot: project.root,
-                    })
+                    openMigrateDialog(project.root)
                   } else {
                     onBuild('project', project.id, project.name)
                   }

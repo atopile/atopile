@@ -1444,6 +1444,198 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Migration failed: {error_msg}",
                 }
 
+        if action == "migrateProjectSteps":
+            project_root = payload.get("projectRoot") or payload.get("project_root", "")
+            steps = payload.get("steps", [])
+
+            if not project_root:
+                return {"success": False, "error": "Missing projectRoot"}
+            if not steps:
+                return {"success": False, "error": "No migration steps specified"}
+
+            project_path = Path(project_root)
+            if not await asyncio.to_thread(project_path.exists):
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            async def run_step(step_id: str) -> None:
+                """Run a single migration step and emit its result."""
+                try:
+                    if step_id == "force_update_deps":
+                        from atopile.config import config
+                        from faebryk.libs.project.dependencies import (
+                            ProjectDependencies,
+                        )
+
+                        def _do_force_update():
+                            config.apply_options(None, working_dir=project_path)
+                            ProjectDependencies(
+                                sync_versions=True,
+                                install_missing=True,
+                                clean_unmanaged_dirs=True,
+                                update_versions=True,
+                                force_sync=True,
+                            )
+
+                        await asyncio.to_thread(_do_force_update)
+
+                    elif step_id == "migrate_has_datasheet_defined":
+                        import re
+
+                        def _do_migrate_datasheet():
+                            for ato_file in project_path.rglob("*.ato"):
+                                try:
+                                    content = ato_file.read_text()
+                                    new_content = re.sub(
+                                        r"\bhas_datasheet_defined\b",
+                                        "has_datasheet",
+                                        content,
+                                    )
+                                    if new_content != content:
+                                        ato_file.write_text(new_content)
+                                        log.info(
+                                            f"[migrate] Updated {ato_file}: "
+                                            "has_datasheet_defined -> has_datasheet"
+                                        )
+                                except Exception as file_exc:
+                                    log.warning(
+                                        f"[migrate] Failed to process {ato_file}: "
+                                        f"{file_exc}"
+                                    )
+
+                        await asyncio.to_thread(_do_migrate_datasheet)
+
+                    elif step_id == "migrate_has_single_electric_reference_shared":
+                        import re
+
+                        def _do_migrate_reference():
+                            for ato_file in project_path.rglob("*.ato"):
+                                try:
+                                    content = ato_file.read_text()
+                                    new_content = re.sub(
+                                        r"\bhas_single_electric_reference_shared\b",
+                                        "has_single_electric_reference",
+                                        content,
+                                    )
+                                    new_content = re.sub(
+                                        r"\bgnd_only\b",
+                                        "ground_only",
+                                        new_content,
+                                    )
+                                    if new_content != content:
+                                        ato_file.write_text(new_content)
+                                        log.info(
+                                            f"[migrate] Updated {ato_file}: "
+                                            "reference trait renames"
+                                        )
+                                except Exception as file_exc:
+                                    log.warning(
+                                        f"[migrate] Failed to process {ato_file}: "
+                                        f"{file_exc}"
+                                    )
+
+                        await asyncio.to_thread(_do_migrate_reference)
+
+                    elif step_id == "bump_requires_atopile":
+                        from atopile import version as ato_version
+
+                        def _do_bump():
+                            current_version = ato_version.clean_version(
+                                ato_version.get_installed_atopile_version()
+                            )
+                            new_requires = f"^{current_version}"
+                            data, ato_file = core_projects._load_ato_yaml(project_path)
+                            data["requires-atopile"] = new_requires
+                            core_projects._save_ato_yaml(ato_file, data)
+                            log.info(
+                                f"[migrate] Updated requires-atopile to {new_requires}"
+                            )
+
+                        await asyncio.to_thread(_do_bump)
+
+                    else:
+                        raise ValueError(f"Unknown migration step: {step_id}")
+
+                    await server_state.emit_event(
+                        "migration_step_result",
+                        {
+                            "project_root": project_root,
+                            "step": step_id,
+                            "success": True,
+                            "error": None,
+                        },
+                    )
+                except Exception as exc:
+                    error_msg = str(exc)[:500] or "Unknown error"
+                    log.exception(f"[migrate] Step {step_id} failed: {error_msg}")
+                    await server_state.emit_event(
+                        "migration_step_result",
+                        {
+                            "project_root": project_root,
+                            "step": step_id,
+                            "success": False,
+                            "error": error_msg,
+                        },
+                    )
+
+            try:
+                # Run each step sequentially
+                for step_id in steps:
+                    await run_step(step_id)
+
+                # Post-migration cleanup
+                from atopile.server.module_introspection import clear_module_cache
+
+                clear_module_cache()
+                await packages_domain.refresh_packages_state(scan_path=project_path)
+
+                # Re-discover projects to pick up updated needs_migration
+                if ctx.workspace_paths:
+                    await asyncio.to_thread(
+                        core_projects.discover_projects_in_paths,
+                        ctx.workspace_paths,
+                    )
+
+                await server_state.emit_event("projects_changed")
+                await server_state.emit_event(
+                    "migration_result",
+                    {"project_root": project_root, "success": True},
+                )
+
+                return {
+                    "success": True,
+                    "message": "Migration steps completed",
+                }
+            except Exception as exc:
+                error_msg = str(exc)[:500] or "Unknown error"
+                log.exception(f"Migration steps failed: {error_msg}")
+
+                # Re-discover projects even on error
+                if ctx.workspace_paths:
+                    try:
+                        await asyncio.to_thread(
+                            core_projects.discover_projects_in_paths,
+                            ctx.workspace_paths,
+                        )
+                    except Exception:
+                        pass
+
+                await server_state.emit_event("projects_changed")
+                await server_state.emit_event(
+                    "migration_result",
+                    {
+                        "project_root": project_root,
+                        "success": False,
+                        "error": error_msg,
+                    },
+                )
+                return {
+                    "success": False,
+                    "error": f"Migration failed: {error_msg}",
+                }
+
         if action == "ping":
             return {"success": True}
 

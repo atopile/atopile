@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2 } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
 import { postMessage } from '../api/vscodeApi'
-import { sendAction } from '../api/websocket'
 import { useStore } from '../store'
+import { MigrateDialog } from './MigrateDialog'
 import './ActiveProjectPanel.css'
 
 // Re-export BuildQueueItem for use in standalone BuildQueue panel
@@ -860,8 +860,12 @@ export function ActiveProjectPanel({
   // Migration state from store
   const migratingProjectRoots = useStore((state) => state.migratingProjectRoots)
   const migrationErrors = useStore((state) => state.migrationErrors)
-  const addMigratingProject = useStore((state) => state.addMigratingProject)
   const setMigrationError = useStore((state) => state.setMigrationError)
+
+  // Migrate dialog state from store
+  const migrateDialogProjectRoot = useStore((state) => state.migrateDialogProjectRoot)
+  const openMigrateDialog = useStore((state) => state.openMigrateDialog)
+  const closeMigrateDialog = useStore((state) => state.closeMigrateDialog)
 
   // Compute isMigrating based on selected project
   const isMigrating = useMemo(() => {
@@ -953,6 +957,14 @@ export function ActiveProjectPanel({
 
   return (
     <div className="projects-panel-v2">
+      {/* Migrate Dialog (shown as overlay when active) */}
+      {migrateDialogProjectRoot && (
+        <MigrateDialog
+          projectRoot={migrateDialogProjectRoot}
+          onClose={closeMigrateDialog}
+        />
+      )}
+
       {/* New Project Form (shown as overlay when active) */}
       {showNewProjectForm && (
         <NewProjectForm
@@ -1040,15 +1052,7 @@ export function ActiveProjectPanel({
             onClick={() => {
               if (!activeProject) return
               if (activeProject.needsMigration && !isMigrating) {
-                // Clear any previous error and start migration
-                if (migrationError) {
-                  setMigrationError(activeProject.root, null)
-                }
-                // Add to migrating list and fire-and-forget
-                addMigratingProject(activeProject.root)
-                sendAction('migrateProject', {
-                  projectRoot: activeProject.root,
-                })
+                openMigrateDialog(activeProject.root)
               } else if (!isMigrating) {
                 if (!activeTargetName) return
                 onBuildTarget(activeProject.root, activeTargetName)
