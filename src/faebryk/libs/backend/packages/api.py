@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 from dataclasses_json import config as dataclasses_json_config
 from dataclasses_json.api import dataclass_json
+from httpx import ReadTimeout
 
 from atopile.config import config
 from faebryk.libs.http import HTTPStatusError, Response, http_client
@@ -318,6 +319,12 @@ class _Endpoints:
 class Errors:
     class PackagesApiError(Exception): ...
 
+    class PackagesApiTimeoutError(PackagesApiError):
+        def __init__(self, error: ReadTimeout, detail: str):
+            super().__init__()
+            self.error = error
+            self.detail = detail
+
     class PackagesApiHTTPError(Exception):
         def __init__(self, error: HTTPStatusError, detail: str):
             super().__init__()
@@ -449,7 +456,14 @@ class PackagesAPIClient:
             self._base_headers,
             verify=not config.project.dangerously_skip_ssl_verification,
         ) as client:
-            response = client.get(f"{self._cfg.api_url}{url}", timeout=timeout)
+            try:
+                response = client.get(f"{self._cfg.api_url}{url}", timeout=timeout)
+            except ReadTimeout as e:
+                raise Errors.PackagesApiTimeoutError(
+                    e,
+                    f"Timeout ({timeout}s) while connecting to the package registry, "
+                    "maybe try again",
+                ) from e
         try:
             response.raise_for_status()
         except HTTPStatusError as e:
