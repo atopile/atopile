@@ -1,33 +1,142 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
-import { getBuildTarget } from '../common/target';
 import { Build } from './manifest';
 import * as fs from 'fs';
 import { FileResource, FileResourceWatcher } from './file-resource-watcher';
-import { getCurrentPcb } from './pcb';
 import { traceInfo, traceWarn } from './log/logging';
-import { build3DModelGLB } from './kicad';
+import { optimizeGLB } from './kicad';
 
-export interface ThreeDModel extends FileResource {}
-
-export type ThreeDModelStatus =
-    | { state: 'idle' }
-    | { state: 'building' }
+/**
+ * 3D Model Viewer State - focuses on what the viewer should display:
+ * - `loading`: No model available, show spinner
+ * - `showing`: Displaying a model (may be rebuilding/optimizing in background)
+ * - `failed`: Error occurred, show message
+ */
+export type ThreeDViewerState =
+    | { state: 'loading' }
+    | { state: 'showing'; modelPath: string; isOptimized: boolean; isBuilding: boolean; isOptimizing: boolean }
     | { state: 'failed'; message: string };
 
-let modelStatus: ThreeDModelStatus = { state: 'idle' };
-const modelStatusEvent = new vscode.EventEmitter<ThreeDModelStatus>();
-export const onThreeDModelStatusChanged = modelStatusEvent.event;
-let buildStatusTimer: NodeJS.Timeout | undefined;
+let viewerState: ThreeDViewerState = { state: 'loading' };
+const viewerStateEmitter = new vscode.EventEmitter<ThreeDViewerState>();
+export const onThreeDViewerStateChanged = viewerStateEmitter.event;
 
-export function getThreeDModelStatus(): ThreeDModelStatus {
-    return modelStatus;
+let optimizationAbortController: AbortController | undefined;
+let buildTimeoutTimer: NodeJS.Timeout | undefined;
+
+export function getThreeDViewerState(): ThreeDViewerState {
+    return viewerState;
 }
 
-function setThreeDModelStatus(status: ThreeDModelStatus) {
-    modelStatus = status;
-    modelStatusEvent.fire(status);
+function setViewerState(newState: ThreeDViewerState) {
+    const oldState = viewerState.state;
+    if (newState.state === 'showing') {
+        traceInfo(`3dmodel: ${oldState} -> showing (building=${newState.isBuilding}, optimizing=${newState.isOptimizing})`);
+    } else {
+        traceInfo(`3dmodel: ${oldState} -> ${newState.state}`);
+    }
+    viewerState = newState;
+    viewerStateEmitter.fire(newState);
 }
+
+function getOptimizedPath(rawPath: string): string {
+    return rawPath.replace(/\.glb$/, '.optimized.glb');
+}
+
+function findBestGlbPath(rawPath: string): { path: string; isOptimized: boolean } | null {
+    const optimizedPath = getOptimizedPath(rawPath);
+    const rawExists = fs.existsSync(rawPath);
+    const optimizedExists = fs.existsSync(optimizedPath);
+
+    // Prefer optimized if it's newer than raw
+    if (optimizedExists && rawExists) {
+        const rawMtime = fs.statSync(rawPath).mtimeMs;
+        const optimizedMtime = fs.statSync(optimizedPath).mtimeMs;
+        if (optimizedMtime >= rawMtime) {
+            return { path: optimizedPath, isOptimized: true };
+        }
+    }
+
+    if (rawExists) {
+        return { path: rawPath, isOptimized: false };
+    }
+
+    if (optimizedExists) {
+        return { path: optimizedPath, isOptimized: true };
+    }
+
+    return null;
+}
+
+function cancelOptimization() {
+    if (optimizationAbortController) {
+        optimizationAbortController.abort();
+        optimizationAbortController = undefined;
+    }
+}
+
+function clearBuildTimeout() {
+    if (buildTimeoutTimer) {
+        clearTimeout(buildTimeoutTimer);
+        buildTimeoutTimer = undefined;
+    }
+}
+
+async function runOptimization(rawPath: string) {
+    cancelOptimization();
+
+    const optimizedPath = getOptimizedPath(rawPath);
+
+    if (viewerState.state === 'showing') {
+        setViewerState({ ...viewerState, isOptimizing: true });
+    }
+
+    optimizationAbortController = new AbortController();
+    const signal = optimizationAbortController.signal;
+
+    try {
+        await optimizeGLB(rawPath, optimizedPath, signal);
+
+        if (signal.aborted) {
+            return;
+        }
+
+        if (fs.existsSync(optimizedPath)) {
+            traceInfo(`3dmodel: Optimization complete: ${optimizedPath}`);
+            if (viewerState.state === 'showing') {
+                setViewerState({
+                    state: 'showing',
+                    modelPath: optimizedPath,
+                    isOptimized: true,
+                    isBuilding: viewerState.isBuilding,
+                    isOptimizing: false,
+                });
+            }
+        } else {
+            traceWarn('3dmodel: Optimized file was not created');
+            if (viewerState.state === 'showing') {
+                setViewerState({ ...viewerState, isOptimizing: false });
+            }
+        }
+    } catch (error) {
+        if (signal.aborted) {
+            return;
+        }
+        traceWarn(`3dmodel: GLB optimization failed: ${error}`);
+        if (viewerState.state === 'showing') {
+            setViewerState({ ...viewerState, isOptimizing: false });
+        }
+    } finally {
+        if (optimizationAbortController?.signal === signal) {
+            optimizationAbortController = undefined;
+        }
+    }
+}
+
+// ============================================================================
+// File Watcher
+// ============================================================================
+
+interface ThreeDModel extends FileResource {}
 
 class ThreeDModelWatcher extends FileResourceWatcher<ThreeDModel> {
     constructor() {
@@ -38,203 +147,166 @@ class ThreeDModelWatcher extends FileResourceWatcher<ThreeDModel> {
         if (!build?.entry) {
             return undefined;
         }
-
         return { path: build.model_path, exists: fs.existsSync(build.model_path) };
     }
 }
 
-// Singleton instance
 const modelWatcher = new ThreeDModelWatcher();
 
-export const onThreeDModelChanged = modelWatcher.onChanged;
-export const onThreeDModelChangedEvent = { fire: (_: ThreeDModel | undefined) => {} }; // Deprecated
+// ============================================================================
+// Main API
+// ============================================================================
 
-export function getCurrentThreeDModel(): ThreeDModel | undefined {
-    return modelWatcher.getCurrent();
+/**
+ * Prepare the 3D viewer for a build target. Handles three scenarios:
+ * 1. Existing GLB → Show immediately, rebuild in background
+ * 2. No GLB exists → Show loading spinner, wait for build
+ * 3. After build completes → Optimize GLB in background
+ */
+export function prepareThreeDViewer(rawGlbPath: string, triggerBuild: () => void): void {
+    cancelOptimization();
+    clearBuildTimeout();
+    modelWatcher.setCurrent({ path: rawGlbPath, exists: fs.existsSync(rawGlbPath) });
+
+    const bestGlb = findBestGlbPath(rawGlbPath);
+
+    if (bestGlb) {
+        setViewerState({
+            state: 'showing',
+            modelPath: bestGlb.path,
+            isOptimized: bestGlb.isOptimized,
+            isBuilding: true,
+            isOptimizing: false,
+        });
+        triggerBuild();
+        setupBuildTimeout(rawGlbPath);
+    } else {
+        setViewerState({ state: 'loading' });
+        triggerBuild();
+        setupBuildTimeout(rawGlbPath);
+    }
 }
 
-export function getThreeDModelForBuild(buildTarget?: Build | undefined): ThreeDModel | undefined {
-    const build = buildTarget || getBuildTarget();
-    return modelWatcher['getResourceForBuild'](build);
-}
+function setupBuildTimeout(rawGlbPath: string) {
+    clearBuildTimeout();
 
-export function setCurrentThreeDModel(model: ThreeDModel | undefined) {
-    modelWatcher.setCurrent(model);
-}
-
-export function eqThreeDModel(a: ThreeDModel | undefined, b: ThreeDModel | undefined) {
-    return modelWatcher['equals'](a, b);
-}
-
-async function rebuild3DModel() {
-    const pcb = getCurrentPcb();
-    if (!pcb || !pcb.exists) {
-        return;
-    }
-
-    const model = getThreeDModelForBuild();
-    if (!model) {
-        return;
-    }
-    // check model newer than pcb
-    if (model && model.exists && fs.statSync(model.path).mtimeMs >= fs.statSync(pcb.path).mtimeMs) {
-        traceInfo(`3dmodel: rebuild3DModel: Model is up to date: ${model.path}`);
-        return;
-    }
-
-    // build model
-    await vscode.window.withProgress(
-        {
-            location: vscode.ProgressLocation.Notification,
-            title: 'atopile: Building 3D model...',
-            cancellable: false,
-        },
-        async (progress) => {
-            progress.report({});
-            fs.mkdirSync(path.dirname(model.path), { recursive: true });
-            await build3DModelGLB(pcb.path, model.path);
-        },
-    );
-    modelWatcher.forceNotify();
-}
-
-export async function ensureThreeDModel(options?: { showProgress?: boolean }) {
-    const pcb = getCurrentPcb();
-    if (!pcb || !pcb.exists) {
-        traceWarn('3dmodel: ensureThreeDModel: PCB not available.');
-        setThreeDModelStatus({ state: 'failed', message: 'PCB not available yet.' });
-        return undefined;
-    }
-
-    const model = getThreeDModelForBuild();
-    if (!model) {
-        traceWarn('3dmodel: ensureThreeDModel: No build target selected.');
-        setThreeDModelStatus({ state: 'failed', message: 'No build target selected.' });
-        return undefined;
-    }
-
-    const modelExists = fs.existsSync(model.path);
-    if (modelExists) {
-        const pcbMtime = fs.statSync(pcb.path).mtimeMs;
-        const modelMtime = fs.statSync(model.path).mtimeMs;
-        if (modelMtime >= pcbMtime) {
-            modelWatcher.setCurrent({ path: model.path, exists: true });
-            setThreeDModelStatus({ state: 'idle' });
-            return model;
+    buildTimeoutTimer = setTimeout(() => {
+        if (fs.existsSync(rawGlbPath)) {
+            return;
         }
+
+        if (viewerState.state === 'loading') {
+            setViewerState({
+                state: 'failed',
+                message: '3D model build timed out. Try building again.',
+            });
+        } else if (viewerState.state === 'showing') {
+            setViewerState({ ...viewerState, isBuilding: false });
+        }
+    }, 300000); // 5 minutes
+}
+
+/** Called when webview reports build completion */
+export function handleThreeDModelBuildResult(success: boolean, error?: string | null) {
+    clearBuildTimeout();
+
+    // "interrupted" errors are stale results from cancelled builds
+    if (!success && error?.includes('interrupted')) {
+        return;
     }
 
-    const showProgress = options?.showProgress !== false;
-    const build = async () => {
-        fs.mkdirSync(path.dirname(model.path), { recursive: true });
-        await build3DModelGLB(pcb.path, model.path);
-    };
+    const model = modelWatcher.getCurrent();
+    if (!model?.path) {
+        traceWarn('3dmodel: Build result received but no model path configured');
+        return;
+    }
 
-    setThreeDModelStatus({ state: 'building' });
+    if (success) {
+        setTimeout(() => onBuildSuccess(model.path), 500);
+    } else {
+        onBuildFailure(error || 'Build failed');
+    }
+}
 
-    const attemptBuild = async (attemptLabel: string) => {
-        try {
-            if (showProgress) {
-                await vscode.window.withProgress(
-                    {
-                        location: vscode.ProgressLocation.Notification,
-                        title: `atopile: Building 3D model${attemptLabel}`,
-                        cancellable: false,
-                    },
-                    async (progress) => {
-                        progress.report({});
-                        await build();
-                    },
-                );
+function onBuildSuccess(rawGlbPath: string) {
+    // Already showing this model and not waiting for a build
+    if (viewerState.state === 'showing' && !viewerState.isBuilding && viewerState.modelPath.includes(rawGlbPath.replace('.glb', ''))) {
+        return;
+    }
+
+    // File might not be written yet, retry
+    if (!fs.existsSync(rawGlbPath)) {
+        setTimeout(() => {
+            if (fs.existsSync(rawGlbPath)) {
+                onBuildSuccess(rawGlbPath);
             } else {
-                await build();
+                onBuildFailure('Build completed but file was not created');
             }
-            return true;
-        } catch (error) {
-            traceWarn(`3dmodel: ensureThreeDModel: ${attemptLabel} failed: ${error}`);
-            return false;
-        }
-    };
-
-    const firstOk = await attemptBuild('');
-    if (!firstOk) {
-        const retryOk = await attemptBuild(' (retry)');
-        if (!retryOk) {
-            setThreeDModelStatus({
-                state: 'failed',
-                message: 'KiCad failed to export the 3D model. Try again.',
-            });
-            return undefined;
-        }
+        }, 1000);
+        return;
     }
 
-    const updated = { path: model.path, exists: fs.existsSync(model.path) };
-    modelWatcher.setCurrent(updated);
-    modelWatcher.forceNotify();
-    setThreeDModelStatus({ state: 'idle' });
-    return updated;
-}
+    modelWatcher.setCurrent({ path: rawGlbPath, exists: true });
 
-export function startThreeDModelBuild(options?: {
-    timeoutMs?: number;
-    retryAttempts?: number;
-    onRetry?: () => void;
-    retryDelayMs?: number;
-}) {
-    if (buildStatusTimer) {
-        clearTimeout(buildStatusTimer);
-        buildStatusTimer = undefined;
+    // If already showing an optimized model, keep showing it while we optimize the new build
+    if (viewerState.state === 'showing' && viewerState.isOptimized) {
+        setViewerState({ ...viewerState, isBuilding: false, isOptimizing: true });
+        runOptimization(rawGlbPath);
+        return;
     }
 
-    setThreeDModelStatus({ state: 'building' });
+    // Otherwise show the best available GLB
+    const bestGlb = findBestGlbPath(rawGlbPath);
 
-    const timeoutMs = options?.timeoutMs ?? 60000;
-    let remainingRetries = options?.retryAttempts ?? 0;
+    if (bestGlb) {
+        setViewerState({
+            state: 'showing',
+            modelPath: bestGlb.path,
+            isOptimized: bestGlb.isOptimized,
+            isBuilding: false,
+            isOptimizing: false,
+        });
 
-    const scheduleTimeout = () => {
-        buildStatusTimer = setTimeout(() => {
-            const model = getThreeDModelForBuild();
-            const exists = model?.path ? fs.existsSync(model.path) : false;
-            if (exists) {
-                return;
-            }
-
-            if (remainingRetries > 0 && options?.onRetry) {
-                remainingRetries -= 1;
-                const delay = options?.retryDelayMs ?? 1500;
-                setTimeout(() => {
-                    options.onRetry?.();
-                    scheduleTimeout();
-                }, delay);
-                return;
-            }
-
-            setThreeDModelStatus({
-                state: 'failed',
-                message: '3D model did not generate. Try again after the build finishes.',
-            });
-        }, timeoutMs);
-    };
-
-    scheduleTimeout();
+        if (!bestGlb.isOptimized) {
+            setTimeout(() => runOptimization(rawGlbPath), 1000);
+        }
+    } else {
+        onBuildFailure('File disappeared after build');
+    }
 }
+
+function onBuildFailure(message: string) {
+    traceWarn(`3dmodel: Build failed: ${message}`);
+
+    if (viewerState.state === 'showing') {
+        setViewerState({ ...viewerState, isBuilding: false });
+    } else {
+        setViewerState({ state: 'failed', message });
+    }
+}
+
+// ============================================================================
+// Activation / Deactivation
+// ============================================================================
 
 export async function activate(context: vscode.ExtensionContext) {
     await modelWatcher.activate(context);
 
+    // When file watcher detects GLB created, update viewer
     context.subscriptions.push(
-        onThreeDModelChanged((model) => {
-            if (model?.exists) {
-                if (buildStatusTimer) {
-                    clearTimeout(buildStatusTimer);
-                    buildStatusTimer = undefined;
-                }
-                setThreeDModelStatus({ state: 'idle' });
+        modelWatcher.onChanged((model) => {
+            if (!model?.path || !model.exists) {
+                return;
+            }
+            if (viewerState.state === 'loading' || (viewerState.state === 'showing' && viewerState.isBuilding)) {
+                onBuildSuccess(model.path);
             }
         }),
     );
 }
 
 export function deactivate() {
+    cancelOptimization();
+    clearBuildTimeout();
     modelWatcher.deactivate();
 }
