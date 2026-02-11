@@ -35,6 +35,8 @@ import { DEFAULT_FILE_TYPES } from '../components/manufacturing/types';
 
 const ERROR_TIMEOUT_MS = 8000;
 
+let _readySignalled = false;
+
 let installErrorTimeout: ReturnType<typeof setTimeout> | null = null;
 let packagesErrorTimeout: ReturnType<typeof setTimeout> | null = null;
 let bomErrorTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -437,6 +439,11 @@ export const useStore = create<Store>()(
           selectedProjectRoot = null;
           selectedProjectName = null;
           selectedTargetNames = [];
+        }
+
+        if (!_readySignalled && projects.length > 0) {
+          _readySignalled = true;
+          postMessage({ type: 'webviewReady' });
         }
 
         return {

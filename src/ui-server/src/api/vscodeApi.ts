@@ -153,6 +153,10 @@ export interface GetAtopileSettingsMessage {
   type: 'getAtopileSettings';
 }
 
+export interface WebviewReadyMessage {
+  type: 'webviewReady';
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -173,7 +177,8 @@ export type ExtensionMessage =
   | ShowInfoMessage
   | ShowErrorMessage
   | GetAtopileSettingsMessage
-  | ThreeDModelBuildResultMessage;
+  | ThreeDModelBuildResultMessage
+  | WebviewReadyMessage;
 
 /**
  * Type-safe helper to post messages to the extension.

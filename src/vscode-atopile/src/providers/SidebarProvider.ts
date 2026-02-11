@@ -166,6 +166,10 @@ interface ThreeDModelBuildResultMessage {
   error?: string | null;
 }
 
+interface WebviewReadyMessage {
+  type: 'webviewReady';
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -193,7 +197,8 @@ type WebviewMessage =
   | ListFilesMessage
   | LoadDirectoryMessage
   | GetAtopileSettingsMessage
-  | ThreeDModelBuildResultMessage;
+  | ThreeDModelBuildResultMessage
+  | WebviewReadyMessage;
 
 /**
  * Check if we're running in development mode.
@@ -230,7 +235,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    private readonly _extensionVersion: string
+    private readonly _extensionVersion: string,
+    private readonly _activationTime: number = Date.now()
   ) {
     this._disposables.push(
       backendServer.onStatusChange((connected) => {
@@ -512,6 +518,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'showInfo':
         void vscode.window.showInformationMessage(message.message);
         break;
+      case 'webviewReady': {
+        const elapsed = (Date.now() - this._activationTime) / 1000;
+        traceInfo(`[PERF] startup-to-ready: ${elapsed.toFixed(2)}s`);
+        break;
+      }
       case 'showError':
         void vscode.window.showErrorMessage(message.message);
         break;
