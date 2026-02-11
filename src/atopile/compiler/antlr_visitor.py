@@ -213,10 +213,13 @@ class ANTLRVisitor(AtoParserVisitor):
         # Handle multiple imports on one line (deprecated syntax)
         if len(type_refs) > 1:
             with downgrade(DeprecatedException):
-                raise DeprecatedException(
-                    "Multiple imports on one line is deprecated. "
-                    "Please use separate import statements for each module. "
-                    f"Found: {ctx.getText()}"
+                raise DeprecatedException.from_ctx(
+                    origin=ctx,
+                    message=(
+                        "Multiple imports on one line is deprecated. "
+                        "Please use separate import statements for each module. "
+                        f"Found: {ctx.getText()}"
+                    ),
                 )
             return [
                 self._new(AST.ImportStmt).setup(

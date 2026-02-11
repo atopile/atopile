@@ -42,6 +42,7 @@ from atopile.compiler.build import (
 from atopile.compiler.parse_utils import get_src_info_from_token
 from atopile.config import find_project_dir
 from atopile.errors import (
+    DeprecatedException,
     DowngradedExceptionCollector,
     SourceLocatedUserException,
     UserException,
@@ -229,6 +230,20 @@ def exception_to_diagnostic(
             )
         else:
             stop_line, stop_col = start_line + 1, 0
+    elif (
+        isinstance(exc, DeprecatedException)
+        and exc.file_location is not None
+        and hasattr(exc.file_location, "get_start_line")
+    ):
+        file_location = exc.file_location
+        start_line = file_location.get_start_line()
+        start_col = file_location.get_start_col()
+        stop_line = file_location.get_end_line()
+        stop_col = file_location.get_end_col()
+        try:
+            start_file_path = file_location.filepath.get().get_single()
+        except Exception:
+            start_file_path = None
 
     # Convert from 1-indexed (ANTLR) to 0-indexed (LSP)
     start_line = max(start_line - 1, 0)

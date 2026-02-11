@@ -332,12 +332,16 @@ class _TypeContextStack:
             case _:
                 raise NotImplementedError(f"Unhandled action: {action}")
 
-    def resolve_reference(self, path: FieldPath) -> graph.BoundNode:
+    def resolve_reference(
+        self, path: FieldPath, source_chunk_node: AST.SourceChunk | None = None
+    ) -> graph.BoundNode:
         type_node, _, _ = self.current()
         # Apply reference overrides (e.g., reference_shim -> trait pointer deref)
         # This must happen before validation so virtual fields can be resolved
         identifiers: list[str | EdgeTraversal] = (
-            ReferenceOverrideRegistry.transform_link_path(list(path.identifiers()))
+            ReferenceOverrideRegistry.transform_link_path(
+                list(path.identifiers()), source_chunk_node=source_chunk_node
+            )
         )
         try:
             return self._tg.ensure_child_reference(
@@ -1326,9 +1330,12 @@ class ASTVisitor:
             case AST.ComparisonClause.ComparisonOperator.IS:
                 if rhs_is_literal:
                     with downgrade(DeprecatedException):
-                        raise DeprecatedException(
-                            "`assert x is <literal>` is deprecated. "
-                            "Use `assert x within <literal>` instead."
+                        raise DeprecatedException.from_file_location(
+                            file_location=node.source.get().loc.get(),
+                            message=(
+                                "`assert x is <literal>` is deprecated. "
+                                "Use `assert x within <literal>` instead."
+                            ),
                         )
                     expr_type = F.Expressions.IsSubset
                 else:
@@ -1562,7 +1569,9 @@ class ASTVisitor:
         """Resolve a reference to an existing field. Returns empty action list."""
         path = self.visit_FieldRef(field_ref)
         # FIXME: refactor this, remove resolve_reference
-        self._type_stack.resolve_reference(path)
+        self._type_stack.resolve_reference(
+            path, source_chunk_node=field_ref.source.get()
+        )
         return path, []
 
     def _resolve_declaration(
@@ -1630,10 +1639,12 @@ class ASTVisitor:
         # Apply legacy path translations (e.g., vcc -> hv, gnd -> lv)
         # and reference overrides (e.g., reference_shim -> trait pointer deref)
         lhs_link_path = ReferenceOverrideRegistry.transform_link_path(
-            LinkPath(list(lhs_path.identifiers()))
+            LinkPath(list(lhs_path.identifiers())),
+            source_chunk_node=node.source.get(),
         )
         rhs_link_path = ReferenceOverrideRegistry.transform_link_path(
-            LinkPath(list(rhs_path.identifiers()))
+            LinkPath(list(rhs_path.identifiers())),
+            source_chunk_node=node.source.get(),
         )
 
         link_action = AddMakeLinkAction(
@@ -1690,7 +1701,9 @@ class ASTVisitor:
             source_chunk_node=node.source.get(),
         )
 
-    def _field_path_to_link_path(self, field_path: FieldPath) -> LinkPath:
+    def _field_path_to_link_path(
+        self, field_path: FieldPath, source_chunk_node: AST.SourceChunk | None = None
+    ) -> LinkPath:
         """
         Convert a FieldPath to LinkPath with reference override transformations applied.
 
@@ -1698,7 +1711,8 @@ class ASTVisitor:
         so that virtual fields can be used in connections.
         """
         return ReferenceOverrideRegistry.transform_link_path(
-            LinkPath(list(field_path.identifiers()))
+            LinkPath(list(field_path.identifiers())),
+            source_chunk_node=source_chunk_node,
         )
 
     def visit_DirectedConnectStmt(self, node: AST.DirectedConnectStmt):
@@ -1724,7 +1738,9 @@ class ASTVisitor:
 
         lhs_node = fabll.Traits(lhs).get_obj_raw()
         lhs_base_path, lhs_actions = self._resolve_connectable_with_path(lhs_node)
-        lhs_link_path = self._field_path_to_link_path(lhs_base_path)
+        lhs_link_path = self._field_path_to_link_path(
+            lhs_base_path, source_chunk_node=node.source.get()
+        )
 
         if nested_rhs := rhs.try_cast(t=AST.DirectedConnectStmt):
             nested_lhs = nested_rhs.get_lhs()
@@ -1732,7 +1748,9 @@ class ASTVisitor:
             middle_base_path, middle_actions = self._resolve_connectable_with_path(
                 nested_lhs_node
             )
-            middle_link_path = self._field_path_to_link_path(middle_base_path)
+            middle_link_path = self._field_path_to_link_path(
+                middle_base_path, source_chunk_node=node.source.get()
+            )
 
             link_action = ActionsFactory.directed_link_action(
                 lhs_link_path,
@@ -1746,7 +1764,9 @@ class ASTVisitor:
 
         rhs_node = fabll.Traits(rhs).get_obj_raw()
         rhs_base_path, rhs_actions = self._resolve_connectable_with_path(rhs_node)
-        rhs_link_path = self._field_path_to_link_path(rhs_base_path)
+        rhs_link_path = self._field_path_to_link_path(
+            rhs_base_path, source_chunk_node=node.source.get()
+        )
 
         link_action = ActionsFactory.directed_link_action(
             lhs_link_path,
@@ -1892,7 +1912,10 @@ class ASTVisitor:
 
         if TraitOverrideRegistry.matches_trait_override(trait_type_name):
             return TraitOverrideRegistry.handle_trait(
-                trait_type_name, target_path_list, template_args
+                trait_type_name,
+                target_path_list,
+                template_args,
+                source_chunk_node=node.source.get(),
             )
         else:
             try:

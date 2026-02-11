@@ -15,3 +15,10 @@
 - Fix: Handle non-source-located `UserException` types safely in `exception_to_diagnostic` and only access source fields for `SourceLocatedUserException`.
 - Regression test: Ad-hoc runtime check via Python snippet calling `exception_to_diagnostic(DeprecatedException(...))`.
 - Structural notes: Add a dedicated LSP unit test for downgraded non-source exceptions to prevent regressions.
+
+### Bug 003: Deprecated warnings were often unlocated in diagnostics
+- Report: Deprecation diagnostics frequently show without a source range, even when warning originates from parsed/visited source.
+- Root cause: `DeprecatedException` did not carry source metadata by default, and deprecation callsites in visitors/overrides did not pass source location.
+- Fix: Make `DeprecatedException` source-locatable; pass parser context in `antlr_visitor`, file-location metadata in `ast_visitor` and override registries, and teach LSP diagnostic conversion to use fallback file-location metadata.
+- Regression test: Ad-hoc runtime checks for both located and unlocated `DeprecatedException` conversion.
+- Structural notes: Add integration test coverage for deprecation diagnostics in LSP (range + file path expectations).

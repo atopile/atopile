@@ -482,8 +482,25 @@ class UserExportError(SourceLocatedUserException):
 # =============================================================================
 
 
-class DeprecatedException(UserException):
+class DeprecatedException(SourceLocatedUserException):
     """This feature is deprecated and will be removed in a future version."""
+
+    def __init__(
+        self,
+        message: str = "",
+        *args,
+        file_location: Any | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(message, *args, **kwargs)
+        self.file_location = file_location
+
+    @classmethod
+    def from_file_location(
+        cls, file_location: Any, message: str, *args, **kwargs
+    ) -> Self:
+        """Create a deprecation warning with AST file-location metadata."""
+        return cls(message, *args, file_location=file_location, **kwargs)
 
 
 class UserResourceException(UserException):
