@@ -17,6 +17,8 @@ jobs:
     runs-on: blacksmith-32vcpu-ubuntu-2404
     #runs-on: [self-hosted]
     #runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.14"
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -40,14 +42,12 @@ jobs:
       - name: "Install dependencies"
         run: |
           uv sync --dev --no-install-project --frozen
-        env:
-          UV_PYTHON: "3.14"
 
       - name: Compute zig cache key
         id: zig-hash
         run: |
-          echo "hash=$(python src/faebryk/core/zig/compute_hash.py)" >> "$GITHUB_OUTPUT"
-          echo "pyver=$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')" >> "$GITHUB_OUTPUT"
+          echo "hash=$(uv run python src/faebryk/core/zig/compute_hash.py)" >> "$GITHUB_OUTPUT"
+          echo "pyver=$(uv run python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')" >> "$GITHUB_OUTPUT"
 
       - name: Restore zig cache
         id: zig-cache
@@ -76,8 +76,6 @@ jobs:
           .venv/bin/ato self-check; \
           .venv/bin/ato --version; \
           .venv/bin/ato --semver; \
-        env:
-          PYTHONPATH: .venv/bin/python
 
       - name: Run pytest
         id: pytest
