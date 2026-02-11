@@ -224,13 +224,7 @@ def get_all_registry_packages() -> list[PackageInfo]:
     """
     try:
         api = PackagesAPIClient()
-        t0 = time.perf_counter()
         result = api.get_all_packages()
-        log.info(
-            "[registry] HTTP fetch + deserialize took %.1fms (%d packages)",
-            (time.perf_counter() - t0) * 1000,
-            len(result.packages),
-        )
 
         packages: list[PackageInfo] = []
         for pkg in result.packages:

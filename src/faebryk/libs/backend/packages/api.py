@@ -693,8 +693,9 @@ class PackagesAPIClient:
         result = _Endpoints.AllPackages.Response.from_dict(r.json())  # type: ignore
         t_parse = time.perf_counter()
         logger.info(
-            "[packages/all] HTTP: %.1fms, JSON parse: %.1fms",
+            "[package registry] HTTP: %.1fms, JSON parse: %.1fms (%d packages)",
             (t_http - t0) * 1000,
             (t_parse - t_http) * 1000,
+            len(result.packages),
         )
         return result

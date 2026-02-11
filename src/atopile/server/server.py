@@ -61,34 +61,32 @@ _last_packages_registry_refresh: float = 0.0
 
 
 async def _load_initial_state(ctx: AppContext) -> None:
-    """Discover projects + fetch registry in parallel, then scan installed packages."""
+    """Load startup state, emitting events as each piece becomes available."""
     if not ctx.workspace_paths:
         await server_state.emit_event("projects_changed")
         return
 
     log.info(f"Loading projects from {ctx.workspace_paths}")
 
-    t0 = time.perf_counter()
-    projects_result, registry_result = await asyncio.gather(
-        asyncio.to_thread(
+    async def _discover_projects() -> None:
+        t0 = time.perf_counter()
+        projects = await asyncio.to_thread(
             core_projects.discover_projects_in_paths, ctx.workspace_paths
-        ),
-        asyncio.to_thread(packages_domain.get_all_registry_packages),
-    )
-    log.info(
-        "Project discovery + registry fetch complete in %.1fms",
-        (time.perf_counter() - t0) * 1000,
-    )
+        )
+        log.info(
+            "[project discovery] found %d projects in %.1fms",
+            len(projects),
+            (time.perf_counter() - t0) * 1000,
+        )
+        await server_state.emit_event("projects_changed")
+        # Re-notify so the frontend picks up installed-package status.
+        await server_state.emit_event("packages_changed")
 
-    scan_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
-    await packages_domain.refresh_packages_state(
-        scan_path=scan_path,
-        projects=projects_result,
-        registry_packages=registry_result,
-    )
-    log.info("Packages refresh complete")
+    async def _fetch_registry() -> None:
+        await asyncio.to_thread(packages_domain.get_all_registry_packages)
+        await server_state.emit_event("packages_changed")
 
-    await server_state.emit_event("projects_changed")
+    await asyncio.gather(_discover_projects(), _fetch_registry())
 
 
 async def _refresh_projects_state() -> None:

@@ -549,12 +549,11 @@ def get_standard_library(
     if _library_cache is None or force_refresh:
         import time
 
-        log.info("Loading standard library data...")
         _stdlib_typegraph_cache = None
         t0 = time.perf_counter()
         _library_cache = introspect_library()
         log.info(
-            "Loaded %d standard library items in %.1fms",
+            "[standard library] loaded %d items in %.1fms",
             len(_library_cache),
             (time.perf_counter() - t0) * 1000,
         )
