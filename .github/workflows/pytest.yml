@@ -14,8 +14,8 @@ jobs:
   pytest:
     #runs-on: blacksmith-4vcpu-ubuntu-2404
     #runs-on: blacksmith-32vcpu-ubuntu-2404-arm
-    #runs-on: blacksmith-32vcpu-ubuntu-2404
-    runs-on: [self-hosted]
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    #runs-on: [self-hosted]
     #runs-on: ubuntu-latest
     env:
       UV_PYTHON: "3.14"
