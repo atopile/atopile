@@ -3,6 +3,7 @@
 
 import logging
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
@@ -14,6 +15,7 @@ from urllib.parse import urlparse
 
 from dataclasses_json import config as dataclasses_json_config
 from dataclasses_json.api import dataclass_json
+from httpx import ReadTimeout
 
 from atopile.config import config
 from faebryk.libs.http import HTTPStatusError, Response, http_client
@@ -317,6 +319,12 @@ class _Endpoints:
 class Errors:
     class PackagesApiError(Exception): ...
 
+    class PackagesApiTimeoutError(PackagesApiError):
+        def __init__(self, error: ReadTimeout, detail: str):
+            super().__init__()
+            self.error = error
+            self.detail = detail
+
     class PackagesApiHTTPError(Exception):
         def __init__(self, error: HTTPStatusError, detail: str):
             super().__init__()
@@ -448,7 +456,14 @@ class PackagesAPIClient:
             self._base_headers,
             verify=not config.project.dangerously_skip_ssl_verification,
         ) as client:
-            response = client.get(f"{self._cfg.api_url}{url}", timeout=timeout)
+            try:
+                response = client.get(f"{self._cfg.api_url}{url}", timeout=timeout)
+            except ReadTimeout as e:
+                raise Errors.PackagesApiTimeoutError(
+                    e,
+                    f"Timeout ({timeout}s) while connecting to the package registry, "
+                    "maybe try again",
+                ) from e
         try:
             response.raise_for_status()
         except HTTPStatusError as e:
@@ -686,5 +701,15 @@ class PackagesAPIClient:
 
         Endpoint: /v1/packages/all
         """
+        t0 = time.perf_counter()
         r = self._get(_Endpoints.AllPackages.url())
-        return _Endpoints.AllPackages.Response.from_dict(r.json())  # type: ignore
+        t_http = time.perf_counter()
+        result = _Endpoints.AllPackages.Response.from_dict(r.json())  # type: ignore
+        t_parse = time.perf_counter()
+        logger.info(
+            "[package registry] HTTP: %.1fms, JSON parse: %.1fms (%d packages)",
+            (t_http - t0) * 1000,
+            (t_parse - t_http) * 1000,
+            len(result.packages),
+        )
+        return result

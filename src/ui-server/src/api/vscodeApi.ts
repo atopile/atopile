@@ -143,8 +143,18 @@ export interface ShowErrorMessage {
   message: string;
 }
 
+export interface ThreeDModelBuildResultMessage {
+  type: 'threeDModelBuildResult';
+  success: boolean;
+  error?: string | null;
+}
+
 export interface GetAtopileSettingsMessage {
   type: 'getAtopileSettings';
+}
+
+export interface WebviewReadyMessage {
+  type: 'webviewReady';
 }
 
 export type ExtensionMessage =
@@ -166,7 +176,9 @@ export type ExtensionMessage =
   | ShowProblemsMessage
   | ShowInfoMessage
   | ShowErrorMessage
-  | GetAtopileSettingsMessage;
+  | GetAtopileSettingsMessage
+  | ThreeDModelBuildResultMessage
+  | WebviewReadyMessage;
 
 /**
  * Type-safe helper to post messages to the extension.
@@ -183,6 +195,7 @@ export interface TriggerBuildMessage {
   requestId?: string;  // For tracking responses
   includeTargets?: string[];
   frozen?: boolean;
+  excludeTargets?: string[];
 }
 
 export interface SetAtopileInstallingMessage {

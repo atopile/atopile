@@ -24,8 +24,6 @@ from atopile.model.model_state import model_state
 from atopile.server import path_utils
 from atopile.server.client_state import client_state
 from atopile.server.connections import server_state
-from atopile.server.core import packages as core_packages
-from atopile.server.core import projects as core_projects
 from atopile.server.domains import artifacts as artifacts_domain
 from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import parts as parts_domain
@@ -49,6 +47,14 @@ def _handle_build_sync(payload: dict) -> dict:
     frozen = payload.get("frozen", False)
     include_targets = payload.get("includeTargets") or payload.get(
         "include_targets", []
+    )
+    exclude_targets = payload.get("excludeTargets") or payload.get(
+        "exclude_targets", []
+    )
+    log.info(
+        "Build request targets: include=%s exclude=%s",
+        include_targets,
+        exclude_targets,
     )
     level = payload.get("level")
     payload_id = payload.get("id")
@@ -206,6 +212,7 @@ def _handle_build_sync(payload: dict) -> dict:
                                 standalone=standalone,
                                 frozen=frozen,
                                 include_targets=include_targets,
+                                exclude_targets=exclude_targets,
                                 status=BuildStatus.QUEUED,
                                 started_at=time.time(),
                             )
@@ -258,6 +265,7 @@ def _handle_build_sync(payload: dict) -> dict:
                 standalone=standalone,
                 frozen=frozen,
                 include_targets=include_targets,
+                exclude_targets=exclude_targets,
                 status=BuildStatus.QUEUED,
                 started_at=time.time(),
             )
@@ -314,7 +322,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
         if action == "refreshProjects":
             if ctx.workspace_paths:
                 await asyncio.to_thread(
-                    core_projects.discover_projects_in_paths, ctx.workspace_paths
+                    projects_domain.discover_projects_in_paths, ctx.workspace_paths
                 )
                 await server_state.emit_event("projects_changed")
             return {"success": True}
@@ -332,7 +340,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             try:
                 # Run blocking project creation in thread pool
                 project_dir, project_name = await asyncio.to_thread(
-                    core_projects.create_project, Path(parent_directory), name
+                    projects_domain.create_project, Path(parent_directory), name
                 )
             except ValueError as exc:
                 return {"success": False, "error": str(exc)}
@@ -631,7 +639,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             def run_install():
                 try:
                     try:
-                        core_packages.install_package_to_project(
+                        packages_domain.install_package_to_project(
                             project_path, package_id, version
                         )
                         action_logger.info(
@@ -740,7 +748,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             # Ensure dependency is direct (present in ato.yaml)
             try:
-                data, _ = core_projects._load_ato_yaml(project_path)
+                data, _ = projects_domain.load_ato_yaml(project_path)
                 deps = data.get("dependencies", [])
                 is_direct = False
                 if isinstance(deps, list):
@@ -782,8 +790,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             def run_change():
                 try:
-                    core_packages.remove_package_from_project(project_path, package_id)
-                    core_packages.install_package_to_project(
+                    packages_domain.remove_package_from_project(
+                        project_path, package_id
+                    )
+                    packages_domain.install_package_to_project(
                         project_path, package_id, version
                     )
                     action_logger.info(
@@ -901,7 +911,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             def run_remove():
                 try:
                     log.info(f"Removing {package_id} from {project_root}")
-                    core_packages.remove_package_from_project(project_path, package_id)
+                    packages_domain.remove_package_from_project(
+                        project_path, package_id
+                    )
                     log.info("ato remove completed successfully")
                     with packages_domain._package_op_lock:
                         packages_domain._active_package_ops[op_id]["status"] = "success"
@@ -961,7 +973,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             # Run blocking file tree build in thread pool
             file_tree = await asyncio.to_thread(
-                core_projects.build_file_tree, project_path, project_path
+                projects_domain.build_file_tree, project_path, project_path
             )
             return {
                 "success": True,
@@ -998,14 +1010,14 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Project not found: {project_root}",
                 }
 
-            data, _ = core_projects._load_ato_yaml(project_path)
+            data, _ = projects_domain.load_ato_yaml(project_path)
             builds = []
             for name, config in (data.get("builds") or {}).items():
                 if isinstance(config, dict):
                     entry = config.get("entry", "")
                 else:
                     entry = str(config)
-                last_build = core_projects._load_last_build_for_target(
+                last_build = projects_domain.load_last_build_for_target(
                     project_path, name
                 )
                 builds.append(
@@ -1297,7 +1309,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             def run_sync():
                 try:
                     log.info(f"Syncing packages for {project_root}, force={force}")
-                    core_packages.sync_packages_for_project(project_path, force=force)
+                    packages_domain.sync_packages_for_project(project_path, force=force)
                     log.info("Package sync completed successfully")
 
                     # Emit success event
@@ -1378,9 +1390,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     ato_version.get_installed_atopile_version()
                 )
                 new_requires = f"^{current_version}"
-                data, ato_file = core_projects._load_ato_yaml(project_path)
+                data, ato_file = projects_domain.load_ato_yaml(project_path)
                 data["requires-atopile"] = new_requires
-                core_projects._save_ato_yaml(ato_file, data)
+                projects_domain.save_ato_yaml(ato_file, data)
                 log.info(f"[migrate] Updated requires-atopile to {new_requires}")
 
             try:
@@ -1396,7 +1408,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 # Re-discover projects to pick up updated needs_migration value
                 if ctx.workspace_paths:
                     await asyncio.to_thread(
-                        core_projects.discover_projects_in_paths, ctx.workspace_paths
+                        projects_domain.discover_projects_in_paths, ctx.workspace_paths
                     )
 
                 await server_state.emit_event("projects_changed")
@@ -1421,7 +1433,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 if ctx.workspace_paths:
                     try:
                         await asyncio.to_thread(
-                            core_projects.discover_projects_in_paths,
+                            projects_domain.discover_projects_in_paths,
                             ctx.workspace_paths,
                         )
                     except Exception:

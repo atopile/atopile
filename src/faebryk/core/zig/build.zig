@@ -29,9 +29,16 @@ fn build_pyi(b: *std.Build, modules: ModuleMap, target: std.Build.ResolvedTarget
     // Pass source directory for manual pyi files
     run_gen.addArg(b.path("src/python/").getPath(b));
 
-    // Create a step that ensures the output directory exists
-    const make_dir_step = b.addSystemCommand(&.{ "mkdir", "-p", b.getInstallPath(.lib, ".") });
-    run_gen.step.dependOn(&make_dir_step.step);
+    // Create a step that ensures the output directory exists (cross-platform)
+    const make_dir_step = b.step("make-dir", "Create output directory");
+    make_dir_step.makeFn = struct {
+        fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) !void {
+            std.fs.cwd().makePath(step.owner.getInstallPath(.lib, ".")) catch |err| {
+                return step.fail("unable to create directory: {}", .{err});
+            };
+        }
+    }.make;
+    run_gen.step.dependOn(make_dir_step);
 
     return &run_gen.step;
 }

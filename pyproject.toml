@@ -39,7 +39,8 @@ dependencies = [
     "gitpython>=3.1.41",
     "httpx>=0.28.1",
     "jinja2>=3.1.6",
-    "kicad-python",
+    # forked version of kicad-python to support python 3.14
+    "kicad-python @ https://github.com/atopile/kicad-python/releases/download/v0.5.1/kicad_python-0.5.1-py3-none-any.whl",
     "kicadcliwrapper>=1.1.1",
     "matplotlib>=3.7.1",
     "mcp[cli]>=1.10.1",
@@ -50,7 +51,7 @@ dependencies = [
     "ordered-set==4.1.0",
     "pathvalidate>=3.2.1",
     "platformdirs>=4.3.6",
-    "posthog==6.0.3",                 # exact version
+    "posthog==7.8.0",                 # exact version
     "prompt-toolkit==3.0.51",         # pinned to avoid questionary compatibility issues
     "psutil>=6.0.0",
     "pydantic-settings>=2.7.1",
@@ -99,7 +100,7 @@ dev = [
     "ziglang==0.14.1",
     "graphviz>=0.21",
     "py-spy>=0.4.1",
-    "pydantic-to-typescript>=2.0.0",  # Generate TypeScript types from Pydantic models
+    "pydantic-to-typescript>=2.0.0", # Generate TypeScript types from Pydantic models
     #"austin-dist>=4.0.0",
     #"austin-python>=2.1.2",
 ]
@@ -119,7 +120,11 @@ allow-direct-references = true
 
 # Add the built viewer and dashboard to the python package
 [tool.hatch.build.targets.wheel]
-artifacts = ["**/viewer/dist", "**/visualizer/web/dist", "**/dashboard/web/dist"]
+artifacts = [
+    "**/viewer/dist",
+    "**/visualizer/web/dist",
+    "**/dashboard/web/dist",
+]
 packages = ["src/faebryk", "src/atopile"]
 exclude = ["**/.zig-cache", "**/.zig-cache/**", "**/zig-out", "**/zig-out/**"]
 
@@ -128,7 +133,11 @@ experimental = true
 cmake.source-dir = "src/faebryk/core"
 
 [tool.hatch.build.targets.sdist]
-artifacts = ["**/viewer/dist", "**/visualizer/web/dist", "**/dashboard/web/dist"]
+artifacts = [
+    "**/viewer/dist",
+    "**/visualizer/web/dist",
+    "**/dashboard/web/dist",
+]
 
 [tool.hatch.version]
 source = "vcs"
@@ -137,8 +146,8 @@ source = "vcs"
 # Passed through to setuptools-scm
 # See: https://setuptools-scm.readthedocs.io/en/latest/config/
 # https://setuptools-scm.readthedocs.io/en/latest/extending/
-version_scheme = "only-version"
-local_scheme = "no-local-version"
+version_scheme = "no-guess-dev"
+local_scheme = "node-and-timestamp"
 
 [tool.pytest]
 [tool.pytest.ini_options]
