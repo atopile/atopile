@@ -21,6 +21,7 @@ import { prepareThreeDViewer, handleThreeDModelBuildResult } from '../common/3dm
 import { isModelViewerOpen, openModelViewerPreview } from '../ui/modelviewer';
 import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/target';
 import { loadBuilds, getBuilds } from '../common/manifest';
+import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
@@ -205,34 +206,20 @@ function isDevelopmentMode(extensionPath: string): boolean {
   return !fs.existsSync(prodPath);
 }
 
-/**
- * Generate a nonce for Content Security Policy.
- */
-function getNonce(): string {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
-}
-
-function getWsOrigin(wsUrl: string): string {
-  try {
-    return new URL(wsUrl).origin;
-  } catch {
-    return wsUrl;
-  }
-}
-
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
   public static readonly viewType = 'atopile.sidebar';
+  private static readonly PROD_LOCAL_RESOURCE_ROOTS = [
+    'resources',
+    'resources/webviews',
+    'resources/model-viewer',
+    'webviews/dist',
+  ];
 
   private _view?: vscode.WebviewView;
   private _disposables: vscode.Disposable[] = [];
   private _lastMode: 'dev' | 'prod' | null = null;
-  private _hasHtml: boolean = false;
+  private _hasHtml = false;
   private _lastWorkspaceRoot: string | null = null;
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;
@@ -349,34 +336,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   private _refreshWebview(): void {
     if (!this._view) {
-      traceInfo('[SidebarProvider] _refreshWebview called but no view');
       return;
     }
-
-    traceInfo('[SidebarProvider] Refreshing webview with URLs:', {
-      apiUrl: backendServer.apiUrl,
-      wsUrl: backendServer.wsUrl,
-      port: backendServer.port,
-      isConnected: backendServer.isConnected,
-    });
 
     const extensionPath = this._extensionUri.fsPath;
     const isDev = isDevelopmentMode(extensionPath);
     const mode: 'dev' | 'prod' = isDev ? 'dev' : 'prod';
-
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
-    const urlsUnchanged = this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl;
-    if (this._hasHtml && this._lastMode === mode && urlsUnchanged) {
-      traceInfo('[SidebarProvider] Skipping refresh (already loaded)', { mode });
+
+    // Port changes are always reflected in apiUrl/wsUrl (see backendServer._setPort)
+    if (this._hasHtml && this._lastMode === mode && this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl) {
       return;
     }
 
-    if (isDev) {
-      this._view.webview.html = this._getDevHtml();
-    } else {
-      this._view.webview.html = this._getProdHtml(this._view.webview);
-    }
+    this._view.webview.options = createWebviewOptions({
+      isDev,
+      extensionPath,
+      port: backendServer.port,
+      prodLocalResourceRoots: SidebarProvider.PROD_LOCAL_RESOURCE_ROOTS,
+    });
+    this._view.webview.html = isDev
+      ? this._getDevHtml()
+      : this._getProdHtml(this._view.webview);
     this._hasHtml = true;
     this._lastMode = mode;
     this._lastApiUrl = apiUrl;
@@ -389,54 +371,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     _token: vscode.CancellationToken
   ): void {
     this._view = webviewView;
-
-    const extensionPath = this._extensionUri.fsPath;
-    const isDev = isDevelopmentMode(extensionPath);
-    const mode: 'dev' | 'prod' = isDev ? 'dev' : 'prod';
-
-    traceInfo('[SidebarProvider] resolveWebviewView called', {
-      extensionPath,
-      isDev,
-      apiUrl: backendServer.apiUrl,
-      wsUrl: backendServer.wsUrl,
-    });
-
-    const webviewOptions: vscode.WebviewOptions & {
-      retainContextWhenHidden?: boolean;
-    } = {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-      localResourceRoots: isDev
-        ? [] // No local resources in dev mode
-        : [
-          vscode.Uri.file(path.join(extensionPath, 'resources')),
-          vscode.Uri.file(path.join(extensionPath, 'resources', 'webviews')),
-          vscode.Uri.file(path.join(extensionPath, 'resources', 'model-viewer')),
-          vscode.Uri.file(path.join(extensionPath, 'webviews', 'dist')),
-        ],
-    };
-    webviewView.webview.options = webviewOptions;
-
-    if (isDev) {
-      traceInfo('[SidebarProvider] Using dev HTML');
-      webviewView.webview.html = this._getDevHtml();
-    } else {
-      traceInfo('[SidebarProvider] Using prod HTML');
-      const html = this._getProdHtml(webviewView.webview);
-      traceInfo('[SidebarProvider] Generated HTML length:', html.length);
-      webviewView.webview.html = html;
-    }
-    this._hasHtml = true;
-    this._lastMode = mode;
-    this._lastApiUrl = backendServer.apiUrl;
-    this._lastWsUrl = backendServer.wsUrl;
+    this._refreshWebview();
     this._postWorkspaceRoot();
-    // Send current active file to webview
     this._postActiveFile(vscode.window.activeTextEditor);
-    // Send current atopile settings to webview so slider reflects the correct state
     this._sendAtopileSettings();
 
-    // Listen for messages from webview
     this._disposables.push(
       webviewView.webview.onDidReceiveMessage(
         (message: WebviewMessage) => this._handleWebviewMessage(message),
@@ -594,10 +533,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         void vscode.commands.executeCommand('atopile.logViewer.focus');
         break;
       case 'showBackendMenu':
-        void vscode.commands.executeCommand('atopile.backendStatus');
-        break;
-      case 'showBackendMenu':
-        void vscode.commands.executeCommand('atopile.backendStatus');
+        void vscode.commands.executeCommand('atopile.showMenu');
         break;
       case 'openInSimpleBrowser':
         void vscode.commands.executeCommand('simpleBrowser.show', message.url);
@@ -1146,18 +1082,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Handle request to browse for a local atopile path.
-   * Shows a native folder picker dialog and sends the selected path back to the webview.
+   * Handle request to browse for a local atopile binary.
+   * Shows a native file picker dialog and sends the selected path back to the webview.
    */
   private async _handleBrowseAtopilePath(): Promise<void> {
     traceInfo('[SidebarProvider] Browsing for local atopile path');
 
     const result = await vscode.window.showOpenDialog({
       canSelectFiles: true,
-      canSelectFolders: true,
+      canSelectFolders: false,
       canSelectMany: false,
-      openLabel: 'Select atopile installation',
-      title: 'Select atopile installation directory or binary',
+      openLabel: 'Select atopile binary',
+      title: 'Select atopile binary',
+      filters: process.platform === 'win32'
+        ? { 'Executables': ['exe', 'cmd'], 'All files': ['*'] }
+        : undefined,
     });
 
     const selectedPath = result?.[0]?.fsPath ?? null;

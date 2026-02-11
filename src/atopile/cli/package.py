@@ -389,10 +389,10 @@ class _PackageValidators:
             )
 
     @staticmethod
-    def verify_no_warnings(config: "Config"):
+    def verify_no_warnings_or_errors(config: "Config"):
         from atopile.dataclasses import Build
         from atopile.model import build_history
-        from atopile.model.sqlite import BuildHistory
+        from atopile.model.sqlite import Logs
 
         project_root = str(config.project.paths.root)
 
@@ -415,37 +415,40 @@ class _PackageValidators:
             if target not in latest_by_target:
                 latest_by_target[target] = build
 
-        # Check total warnings from latest builds per target
-        total_warnings = sum(b.warnings for b in latest_by_target.values())
-        if total_warnings > 0:
-            # Collect warning details from individual builds
-            warning_details: list[str] = []
-            for target, build in latest_by_target.items():
-                build_warnings = build.warnings
-                if build_warnings > 0:
-                    # Get full build info for stage details
-                    build_info = BuildHistory.get(build.build_id)
-                    if build_info:
-                        stages_with_warnings = [
-                            f"  - {stage['name']}: {stage['warnings']} warning(s)"
-                            for stage in build_info.stages
-                            if stage.get("warnings", 0) > 0
-                        ]
-                        if stages_with_warnings:
-                            warning_details.append(
-                                f"{target} ({build_warnings} warning(s)):\n"
-                                + "\n".join(stages_with_warnings)
-                            )
-                        else:
-                            warning_details.append(
-                                f"{target}: {build_warnings} warning(s)"
-                            )
-                    else:
-                        warning_details.append(f"{target}: {build_warnings} warning(s)")
+        # Query actual log entries for warnings/errors from each build
+        warning_details: list[str] = []
+        total_issues = 0
+        for target, build in latest_by_target.items():
+            if not build.build_id:
+                continue
+            log_entries, _ = Logs.fetch_chunk(
+                build.build_id,
+                levels=["WARNING", "ERROR"],
+                count=5000,
+            )
+            if not log_entries:
+                continue
 
+            warning_count = sum(1 for e in log_entries if e["level"] == "WARNING")
+            error_count = sum(1 for e in log_entries if e["level"] == "ERROR")
+            total_issues += warning_count + error_count
+
+            parts: list[str] = []
+            if error_count:
+                parts.append(f"{error_count} error(s)")
+            if warning_count:
+                parts.append(f"{warning_count} warning(s)")
+            summary = ", ".join(parts)
+
+            messages = [f"  - [{e['level']}] {e['message']}" for e in log_entries[:10]]
+            if len(log_entries) > 10:
+                messages.append(f"  ... and {len(log_entries) - 10} more")
+            warning_details.append(f"{target} ({summary}):\n" + "\n".join(messages))
+
+        if total_issues > 0:
             raise UserBadParameterError(
-                f"Build completed with {total_warnings} warning(s). "
-                "Warnings must be resolved before publishing.\n\n"
+                f"Build completed with {total_issues} warning(s)/error(s). "
+                "Warnings and errors must be resolved before publishing.\n\n"
                 + "\n".join(warning_details)
             )
 
@@ -491,33 +494,47 @@ class _PackageValidators:
     def verify_unused_and_duplicate_imports(config: "Config"):
         import re
 
-        _import_name_regex = r"(import ([^,\n]+))"
+        # only match import statements at the beginning of a line
+        _import_name_regex = r"(?m)^(import ([^,\n]+))"
+        # match "from ... import Name" statements at the beginning of a line
+        _from_import_name_regex = r'(?m)^(from\s+"[^"]+"\s+import\s+(\w+))'
 
         ato_files = config.project.paths.root.rglob("*.ato")
         for ato_file in ato_files:
+            if not ato_file.is_file():
+                continue
             import_statements: list[re.Match[str]] = []
             content = ato_file.read_text(encoding="utf-8")
             for import_name in re.finditer(_import_name_regex, content):
                 import_statements.append(import_name)
+            for import_name in re.finditer(_from_import_name_regex, content):
+                import_statements.append(import_name)
 
-            # check if the name is at lease twice in the file
-            unused_imports: list[str] = []
-            duplicates: list[str] = []
+            # check if the name is at least twice in the file
+            unused_imports: set[str] = set()
+            duplicates: set[str] = set()
             for import_match in import_statements:
-                if content.count(import_match.group(2)) < 2:
-                    unused_imports.append(import_match.group(2))
-                if content.count(import_match.group(1)) > 1:
-                    duplicates.append(import_match.group(1))
+                name = import_match.group(2).strip()
+                stmt = import_match.group(1).strip()
+                # Use word boundary matching to avoid substring false positives
+                name_count = len(re.findall(r"\b" + re.escape(name) + r"\b", content))
+                if name_count < 2:
+                    unused_imports.add(name)
+                stmt_count = len(re.findall(r"\b" + re.escape(stmt) + r"\b", content))
+                if stmt_count > 1:
+                    duplicates.add(stmt)
 
             file_path = ato_file.relative_to(config.project.paths.root)
             message = ""
             if unused_imports:
                 message = (
-                    f"Unused imports: [{', '.join(unused_imports)}] in {file_path}"
+                    f"Unused imports: [{', '.join(sorted(unused_imports))}] in "
+                    f"{file_path}"
                 )
             if duplicates:
                 message += (
-                    f"\nDuplicate imports: [{', '.join(duplicates)}] in {file_path}"
+                    f"\nDuplicate imports: [{', '.join(sorted(duplicates))}] in "
+                    f"{file_path}"
                 )
             if message:
                 raise UserBadParameterError(message)
@@ -534,7 +551,7 @@ _DEFAULT_VALIDATORS = [
 _STRICT_VALIDATORS = [
     _PackageValidators.verify_3d_models,
     _PackageValidators.verify_file_structure,
-    _PackageValidators.verify_no_warnings,
+    _PackageValidators.verify_no_warnings_or_errors,
     _PackageValidators.verify_usage_import,
     _PackageValidators.verify_usage_in_readme,
     _PackageValidators.verify_build_artifacts,

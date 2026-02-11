@@ -24,32 +24,30 @@ jobs:
     name: Build SDist
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: true
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 100
+          fetch-tags: true
 
-    # Required due to a bug in the checkout action
-    # https://github.com/actions/checkout/issues/1471
-    - run: git fetch --prune --unshallow --tags
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v6
-      with:
-        version: 0.8
-        enable-cache: true
-        cache-dependency-glob: "uv.lock"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-    - name: Build SDist
-      run: uv build --sdist
+      - name: Build SDist
+        run: uv build --sdist
 
-    - name: Check metadata
-      run: uv tool run twine check dist/*
+      - name: Check metadata
+        run: uv tool run twine check dist/*
 
-    - uses: actions/upload-artifact@v4
-      with:
-        name: cibw-sdist
-        path: dist/*.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-sdist
+          path: dist/*.tar.gz
 
 
   # Split wheel builds into separate jobs so Docker can depend only on Linux
@@ -57,95 +55,78 @@ jobs:
     name: Wheels on Linux
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: true
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 100
+          fetch-tags: true
 
-    - run: git fetch --prune --unshallow --tags
 
-    - uses: astral-sh/setup-uv@v6
-      with:
-        version: 0.8
-        enable-cache: true
-        cache-dependency-glob: "uv.lock"
+      - uses: pypa/cibuildwheel@v3.3
+        env:
+          CIBW_ARCHS_LINUX: x86_64
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
+          CIBW_MANYLINUX_PYPY_X86_64_IMAGE: manylinux_2_28
+          CIBW_MANYLINUX_PYPY_AARCH64_IMAGE: manylinux_2_28
 
-    - uses: pypa/cibuildwheel@v3.3
-      env:
-        CIBW_ARCHS_LINUX: x86_64
-        CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
-        CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
-        CIBW_MANYLINUX_PYPY_X86_64_IMAGE: manylinux_2_28
-        CIBW_MANYLINUX_PYPY_AARCH64_IMAGE: manylinux_2_28
+      - name: Verify clean directory
+        run: git diff --exit-code
+        shell: bash
 
-    - name: Verify clean directory
-      run: git diff --exit-code
-      shell: bash
-
-    - uses: actions/upload-artifact@v4
-      with:
-        name: cibw-wheels-ubuntu-latest
-        path: wheelhouse/*.whl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-wheels-ubuntu-latest
+          path: wheelhouse/*.whl
 
 
   build_wheels_macos:
     name: Wheels on macOS
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: true
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 100
+          fetch-tags: true
 
-    - run: git fetch --prune --unshallow --tags
+      - uses: pypa/cibuildwheel@v3.3
+        env:
+          CIBW_ARCHS_MACOS: x86_64 arm64
 
-    - uses: astral-sh/setup-uv@v6
-      with:
-        version: 0.8
-        enable-cache: true
-        cache-dependency-glob: "uv.lock"
+      - name: Verify clean directory
+        run: git diff --exit-code
+        shell: bash
 
-    - uses: pypa/cibuildwheel@v3.3
-      env:
-        CIBW_ARCHS_MACOS: x86_64 arm64
-
-    - name: Verify clean directory
-      run: git diff --exit-code
-      shell: bash
-
-    - uses: actions/upload-artifact@v4
-      with:
-        name: cibw-wheels-macos-latest
-        path: wheelhouse/*.whl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-wheels-macos-latest
+          path: wheelhouse/*.whl
 
 
   build_wheels_windows:
     name: Wheels on Windows
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: true
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 100
+          fetch-tags: true
 
-    - run: git fetch --prune --unshallow --tags
+      - uses: pypa/cibuildwheel@v3.3
+        env:
+          CIBW_ARCHS_WINDOWS: AMD64
+          CIBW_SKIP: "cp314t-*"  # Skip free-threaded Python (uses python314t.lib, not yet supported)
 
-    - uses: astral-sh/setup-uv@v6
-      with:
-        version: 0.8
-        enable-cache: true
-        cache-dependency-glob: "uv.lock"
+      - name: Verify clean directory
+        run: git diff --exit-code
+        shell: bash
 
-    - uses: pypa/cibuildwheel@v3.3
-      env:
-        CIBW_ARCHS_WINDOWS: AMD64
-        CIBW_SKIP: "cp314t-*"  # Skip free-threaded Python (uses python314t.lib, not yet supported)
-
-    - name: Verify clean directory
-      run: git diff --exit-code
-      shell: bash
-
-    - uses: actions/upload-artifact@v4
-      with:
-        name: cibw-wheels-windows-latest
-        path: wheelhouse/*.whl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-wheels-windows-latest
+          path: wheelhouse/*.whl
 
 
   publish_wheels:
@@ -180,6 +161,7 @@ jobs:
       with:
         repository-url: https://test.pypi.org/legacy/
         skip-existing: true
+        verbose: true
         attestations: false
 
     - name: Publish to PyPI
@@ -223,7 +205,7 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download wheel artifacts
         uses: actions/download-artifact@v4

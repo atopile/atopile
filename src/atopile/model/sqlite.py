@@ -223,7 +223,7 @@ class BuildHistory:
 
     @staticmethod
     def get_all(limit: int = 50) -> list[Build]:
-        """Get recent builds. Exits on error."""
+        """Get recent builds. Raises on error so callers can handle gracefully."""
         try:
             with _get_connection(BUILD_HISTORY_DB) as conn:
                 conn.row_factory = sqlite3.Row
@@ -232,11 +232,11 @@ class BuildHistory:
                     (limit,),
                 ).fetchall()
                 return [BuildHistory._from_row(r) for r in rows]
-        except Exception:
+        except Exception as e:
             logger.exception(
                 "Failed to load build history. Try running 'ato dev clear_logs'."
             )
-            os._exit(1)
+            raise e
 
 
 # build_logs.db -> logs table helper
