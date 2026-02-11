@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { registerLogger, traceInfo, traceLog, traceVerbose } from './common/log/logging';
 import { startOrRestartServer, initServer, onNeedsRestart } from './common/lspServer';
+import { getExtensionManagedUvPath, setUvPathLocal, onDidChangeAtoBinInfoEvent, resetAtoBinFailures } from './common/findbin';
 import { getLSClientTraceLevel } from './common/utilities';
 import { createOutputChannel, get_ide_type } from './common/vscodeapi';
 import * as ui from './ui/ui';
@@ -17,6 +18,7 @@ import * as llm from './common/llm';
 import { backendServer } from './common/backendServer';
 import { initMenu } from './common/vscode-menu';
 import { SidebarProvider, LogViewerProvider } from './providers';
+import { ensureAtoBin } from './ui/setup';
 
 export let g_lsClient: LanguageClient | undefined;
 
@@ -109,7 +111,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     initMenu(context);
     await initializeTelemetry(context);
     captureEvent('vsce:startup');
-    await initServer(context);
+    setUvPathLocal(getExtensionManagedUvPath(context));
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration(async (e) => {
+            if (e.affectsConfiguration('atopile.ato') || e.affectsConfiguration('atopile.from')) {
+                resetAtoBinFailures();
+                onDidChangeAtoBinInfoEvent.fire({ init: false });
+            }
+        }),
+    );
+    initServer(context);
+    await ensureAtoBin(context);
 
     // 3. Start servers and UI in parallel
     let isInitialStart = true;

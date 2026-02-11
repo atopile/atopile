@@ -1,6 +1,5 @@
-import { ConfigurationChangeEvent, Event, EventEmitter, ExtensionContext, window } from 'vscode';
-import { initializePython } from './python';
-import { getExtensionVersion, onDidChangeConfiguration } from './vscodeapi';
+import { Event, EventEmitter, ExtensionContext, window } from 'vscode';
+import { getExtensionVersion } from './vscodeapi';
 import * as fs from 'fs';
 import { getWorkspaceSettings, ISettings } from './settings';
 import { traceError, traceInfo, traceVerbose } from './log/logging';
@@ -26,6 +25,10 @@ export const onDidChangeAtoBinInfoEvent = new EventEmitter<AtoBinInfo>();
 export const onDidChangeAtoBinInfo: Event<AtoBinInfo> = onDidChangeAtoBinInfoEvent.event;
 
 export var g_uv_path_local: string | null = null;
+
+export function setUvPathLocal(path: string | null): void {
+    g_uv_path_local = path;
+}
 
 // Global failure tracking to prevent repeated failed attempts
 const MAX_FAILED_ATTEMPTS = 3;
@@ -450,24 +453,3 @@ export async function runAtoCommandInTerminal(
 }
 
 
-export async function initAtoBin(context: ExtensionContext): Promise<void> {
-    g_uv_path_local = getExtensionManagedUvPath(context);
-
-    context.subscriptions.push(
-        onDidChangeConfiguration(async (e: ConfigurationChangeEvent) => {
-            if (e.affectsConfiguration(`atopile.ato`) || e.affectsConfiguration('atopile.from')) {
-                // Reset failure counter when settings change so we can retry
-                resetAtoBinFailures();
-                onDidChangeAtoBinInfoEvent.fire({ init: false });
-            }
-        }),
-    );
-
-    await initializePython(context);
-
-    let ato_bin = await getAtoBin();
-    if (ato_bin) {
-        traceInfo(`findbin: ato bin found: ${ato_bin.source}. Firing event.`);
-        onDidChangeAtoBinInfoEvent.fire({ init: true });
-    }
-}

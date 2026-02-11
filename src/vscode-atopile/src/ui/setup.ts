@@ -124,7 +124,7 @@ async function installLocalAto(context: vscode.ExtensionContext) {
     );
 }
 
-async function ensureAtoBin(context: vscode.ExtensionContext) {
+export async function ensureAtoBin(context: vscode.ExtensionContext) {
     // Pass context to getAtoBin so it can be stored and used by getExtensionManagedUvPath
     let atoBin = await getAtoBin();
     if (atoBin) {
@@ -168,13 +168,8 @@ async function ensureAtoBin(context: vscode.ExtensionContext) {
     await installLocalAto(context);
 }
 
-export async function activate(context: vscode.ExtensionContext) {
+export async function activate(_context: vscode.ExtensionContext) {
     traceInfo('Activating setup');
-    try {
-        await ensureAtoBin(context);
-    } catch (error: any) {
-        traceError(`Failed to ensure ato bin: ${error.message}`);
-    }
 }
 
 export function deactivate() {}
