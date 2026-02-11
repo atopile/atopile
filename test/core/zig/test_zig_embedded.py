@@ -8,6 +8,8 @@ import tempfile
 from collections.abc import Generator
 from pathlib import Path
 
+import pytest
+
 from faebryk.libs.util import repo_root
 
 ZIG_COMMAND = [sys.executable, "-m", "ziglang"]
@@ -154,10 +156,10 @@ def _test_zig_embedded(
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-# @pytest.mark.parametrize("zig_test", discover_zig_tests(), ids=zig_test_id)
-def test_zig_embedded():
-    for zig_test in discover_zig_tests():
-        _test_zig_embedded(zig_test)
+@pytest.mark.max_parallel(16)
+@pytest.mark.parametrize("zig_test", discover_zig_tests(), ids=zig_test_id)
+def test_zig_embedded(zig_test: tuple[Path, str]):
+    _test_zig_embedded(zig_test)
 
 
 def main(glob_pattern: str, test_name: str):
