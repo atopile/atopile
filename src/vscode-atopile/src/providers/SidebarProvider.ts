@@ -12,7 +12,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
-import { traceInfo, traceError } from '../common/log/logging';
+import { traceInfo, traceError, traceVerbose, traceMilestone } from '../common/log/logging';
 import { getWorkspaceSettings } from '../common/settings';
 import { getProjectRoot } from '../common/utilities';
 import { openPcb } from '../common/kicad';
@@ -443,7 +443,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
    */
   private _postToWebview(message: Record<string, unknown>): void {
     if (!this._view) {
-      traceInfo('[SidebarProvider] Cannot post message - no view');
+      traceVerbose('[SidebarProvider] Cannot post message - no view');
       return;
     }
     this._view.webview.postMessage(message);
@@ -519,8 +519,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         void vscode.window.showInformationMessage(message.message);
         break;
       case 'webviewReady': {
-        const elapsed = (Date.now() - this._activationTime) / 1000;
-        traceInfo(`[PERF] startup-to-ready: ${elapsed.toFixed(2)}s`);
+        traceMilestone('sidebar webview ready');
         break;
       }
       case 'showError':

@@ -764,6 +764,7 @@ def run_server(
     ato_local_path: Optional[str] = None,
     ato_from_branch: Optional[str] = None,
     ato_from_spec: Optional[str] = None,
+    no_gen: bool = False,
 ) -> None:
     """
     Run the dashboard server.
@@ -794,6 +795,7 @@ def run_server(
             ato_local_path=ato_local_path,
             ato_from_branch=ato_from_branch,
             ato_from_spec=ato_from_spec,
+            no_gen=no_gen,
         )
     except KeyboardInterrupt:
         print("\nShutting down...")
@@ -815,16 +817,20 @@ def _run_server_impl(
     ato_local_path: Optional[str] = None,
     ato_from_branch: Optional[str] = None,
     ato_from_spec: Optional[str] = None,
+    no_gen: bool = False,
 ) -> None:
     """Server implementation (called by run_server with exception handling)."""
-    # Generate types if in dev environment
-    repo_root = Path(__file__).resolve().parents[3]
-    gen_script = repo_root / "scripts" / "generate_types.py"
-    ui_server_dir = repo_root / "src" / "ui-server"
-    if gen_script.exists() and ui_server_dir.exists():
-        result = subprocess.run([sys.executable, str(gen_script)], cwd=str(repo_root))
-        if result.returncode != 0:
-            sys.exit(result.returncode)
+    # Generate types if in dev environment (skip with --no-gen)
+    if not no_gen:
+        repo_root = Path(__file__).resolve().parents[3]
+        gen_script = repo_root / "scripts" / "generate_types.py"
+        ui_server_dir = repo_root / "src" / "ui-server"
+        if gen_script.exists() and ui_server_dir.exists():
+            result = subprocess.run(
+                [sys.executable, str(gen_script)], cwd=str(repo_root)
+            )
+            if result.returncode != 0:
+                sys.exit(result.returncode)
 
     # Default to cwd if no workspace paths provided
     if not workspace_paths:
