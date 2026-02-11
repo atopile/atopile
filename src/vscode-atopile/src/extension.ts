@@ -3,7 +3,7 @@
 
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
-import { registerLogger, traceInfo, traceLog, traceVerbose } from './common/log/logging';
+import { registerLogger, traceInfo, traceLog, traceVerbose, initTimer, traceMilestone } from './common/log/logging';
 import { startOrRestartServer, initServer, onNeedsRestart } from './common/lspServer';
 import { getExtensionManagedUvPath, setUvPathLocal, onDidChangeAtoBinInfoEvent, resetAtoBinFailures } from './common/findbin';
 import { getLSClientTraceLevel } from './common/utilities';
@@ -91,7 +91,8 @@ async function handleConfigUpdate(event: vscode.ConfigurationChangeEvent) {
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const activationTime = Date.now();
     const outputChannel = _setupLogging(context);
-    traceInfo(`Activating atopile extension`);
+    initTimer();
+    traceMilestone('activate()');
 
     // 1. Register webview providers FIRST
     // If sidebar is open, webview starts loading immediately while servers start
@@ -106,10 +107,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.workspace.onDidChangeConfiguration(handleConfigUpdate),
         backendServer,
     );
+    traceMilestone('providers registered');
 
     // 2. Initialize menu, telemetry, ato binary detection
     initMenu(context);
     await initializeTelemetry(context);
+    traceMilestone('telemetry initialized');
     captureEvent('vsce:startup');
     setUvPathLocal(getExtensionManagedUvPath(context));
     context.subscriptions.push(
@@ -122,12 +125,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
     initServer(context);
     await ensureAtoBin(context);
+    traceMilestone('ensureAtoBin done');
 
     // 3. Start servers and UI in parallel
     let isInitialStart = true;
     const startLsp = async () => {
         const newClient = await startOrRestartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient);
         g_lsClient = newClient;
+        traceMilestone('LSP ready');
         backendServer.sendToWebview({
             type: 'setAtopileInstalling',
             installing: false,
@@ -140,11 +145,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             ? await backendServer.startServer()
             : await backendServer.restartServer();
         isInitialStart = false;
-
-        if (backendSuccess) {
-            traceInfo('Backend server started successfully');
-        } else {
-            traceInfo('Backend server failed to start');
+        if (!backendSuccess) {
+            traceMilestone('backend failed');
         }
     };
 
@@ -164,7 +166,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     startLsp();
     await Promise.all([ui.activate(context), startBackend()]);
 
-    traceInfo(`atopile extension activated in IDE: ${get_ide_type()}`);
+    traceMilestone('activated');
 }
 
 export async function deactivate(): Promise<void> {
