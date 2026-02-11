@@ -7,11 +7,13 @@ import pathvalidate
 import posthog
 import pytest
 
+from atopile import telemetry
 from faebryk.libs.util import repo_root as _repo_root
 from faebryk.libs.util import robustly_rm_dir
 
 # Disable telemetry for testing
 posthog.disabled = True
+telemetry.client.disabled = True
 
 
 def pytest_configure(config):

@@ -1312,4 +1312,5 @@ test "speed_insert_edge_simple" {
     const per_edge_ns = duration / count;
     std.debug.print("insert_edge with {d} edges took {d}ms\n", .{ count, total_ms });
     std.debug.print("per edge: {d}ns\n", .{per_edge_ns});
+    //
 }

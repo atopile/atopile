@@ -41,11 +41,7 @@ def get_latest_build_for_target(
 ):
     """Get the most recent build for a specific project/target."""
     try:
-        builds = BuildHistory.get_all(limit=1000)
-        for b in builds:
-            if b.project_root == project_root and b.target == target:
-                return b
-        return None
+        return BuildHistory.get_latest_for_target(project_root, target)
     except Exception as exc:
         log.error(f"Failed to get latest build for target: {exc}")
         return None

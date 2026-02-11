@@ -13,7 +13,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import axios from 'axios';
 import * as net from 'net';
-import { traceInfo, traceError, traceVerbose } from './log/logging';
+import { traceInfo, traceError, traceVerbose, traceMilestone } from './log/logging';
 import { resolveAtoBinForWorkspace } from './findbin';
 
 const BACKEND_HOST = '127.0.0.1';
@@ -504,6 +504,7 @@ class BackendServerManager implements vscode.Disposable {
                 ...atoBin.command.slice(1),
                 'serve', 'backend',
                 '--port', String(this.port),
+                '--no-gen',
                 '--ato-source', atoBin.source,
                 '--ato-binary-path', atoBinaryPath,
             ];
@@ -525,7 +526,7 @@ class BackendServerManager implements vscode.Disposable {
             }
 
             const command = atoBin.command[0];
-            traceInfo(`BackendServer: Starting server: ${command} ${args.join(' ')}`);
+            traceMilestone('backend spawning');
             this._log('info', `server: Starting: ${command} ${args.join(' ')}`);
 
             // Spawn the server process with unbuffered Python output
@@ -598,7 +599,7 @@ class BackendServerManager implements vscode.Disposable {
 
             if (ready) {
                 this._serverReady = true;
-                traceInfo(`BackendServer: Server started successfully on port ${this.port}`);
+                traceMilestone(`backend ready (port ${this.port})`);
                 this._log('info', `server: Started successfully on port ${this.port}`);
                 this._serverState = 'running';
                 this._updateStatusBar();
