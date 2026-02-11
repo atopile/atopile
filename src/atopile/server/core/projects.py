@@ -5,6 +5,7 @@ Project discovery and file scanning logic.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -177,6 +178,18 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
     projects: list[Project] = []
     seen_roots: set[str] = set()
 
+    # Directories that never contain projects — skip to avoid
+    # walking potentially huge trees (e.g. .ato/modules dependencies).
+    _SKIP_DIRS = {
+        ".ato",
+        ".git",
+        "build",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+    }
+
     for root_path in paths:
         if not root_path.exists():
             log.warning(f"Path does not exist: {root_path}")
@@ -185,16 +198,20 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
         if (root_path / "ato.yaml").exists():
             ato_files = [root_path / "ato.yaml"]
         else:
-            ato_files = list(root_path.rglob("ato.yaml"))
+            ato_files: list[Path] = []
+            for dirpath, dirnames, filenames in os.walk(root_path):
+                # Prune in-place so os.walk doesn't descend
+                dirnames[:] = [
+                    d
+                    for d in dirnames
+                    if d not in _SKIP_DIRS and not d.startswith("{{")
+                ]
+                if "ato.yaml" in filenames:
+                    ato_files.append(Path(dirpath) / "ato.yaml")
+                    # Don't descend into project subdirs — no nested projects
+                    dirnames.clear()
 
         for ato_file in ato_files:
-            if ".ato" in ato_file.parts:
-                continue
-
-            # Skip cookiecutter template directories
-            if "{{cookiecutter" in str(ato_file):
-                continue
-
             project_root = ato_file.parent
             root_str = str(project_root)
 
@@ -203,8 +220,13 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
             seen_roots.add(root_str)
 
             try:
-                with open(ato_file, "r") as f:
-                    data = yaml.safe_load(f)
+                raw = ato_file.read_bytes()
+
+                # Fast pre-check: skip full YAML parse if no builds section
+                if b"builds:" not in raw and b"builds :" not in raw:
+                    continue
+
+                data = yaml.safe_load(raw)
 
                 if not data or "builds" not in data:
                     continue
@@ -212,28 +234,22 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                 targets: list[BuildTarget] = []
                 for name, config in data.get("builds", {}).items():
                     if isinstance(config, dict):
-                        last_build = _load_last_build_for_target(project_root, name)
                         targets.append(
                             BuildTarget(
                                 name=name,
                                 entry=config.get("entry", ""),
                                 root=root_str,
-                                last_build=last_build,
                             )
                         )
 
                 if targets:
-                    # Build display path: workspace_folder/relative_path
-                    # e.g., "packages/adi-adau145x" or "packages_alt/packages/st-lps22"
                     try:
                         rel_path = project_root.relative_to(root_path)
                         if rel_path == Path("."):
-                            # Project is at workspace root
                             display_path = root_path.name
                         else:
                             display_path = f"{root_path.name}/{rel_path}"
                     except ValueError:
-                        # Fallback if relative_to fails
                         display_path = project_root.name
 
                     projects.append(
@@ -252,7 +268,6 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
                 log.warning(f"Failed to parse {ato_file}: {e}")
                 continue
 
-    # Sort by path (root) to group projects in the same directory together
     projects.sort(key=lambda p: p.root.lower())
     return projects
 

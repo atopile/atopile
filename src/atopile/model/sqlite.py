@@ -61,7 +61,7 @@ class BuildHistory:
     @staticmethod
     def init_db() -> None:
         with _get_connection(BUILD_HISTORY_DB) as conn:
-            conn.execute("""
+            conn.executescript("""
                 CREATE TABLE IF NOT EXISTS build_history (
                     build_id         TEXT PRIMARY KEY,
                     name             TEXT,
@@ -82,7 +82,9 @@ class BuildHistory:
                     timestamp        TEXT,
                     standalone       INTEGER,
                     frozen           INTEGER
-                )
+                );
+                CREATE INDEX IF NOT EXISTS idx_build_history_project_target
+                    ON build_history(project_root, target, started_at DESC);
             """)
 
     @staticmethod
@@ -235,6 +237,28 @@ class BuildHistory:
         except Exception as e:
             logger.exception(
                 "Failed to load build history. Try running 'ato dev clear_logs'."
+            )
+            raise e
+
+    @staticmethod
+    def get_latest_for_target(project_root: str, target: str) -> Build | None:
+        """Get the most recent build for a specific project/target."""
+        try:
+            with _get_connection(BUILD_HISTORY_DB) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(
+                    "SELECT * FROM build_history"
+                    " WHERE project_root = ? AND target = ?"
+                    " ORDER BY started_at DESC LIMIT 1",
+                    (project_root, target),
+                ).fetchone()
+                if row is None:
+                    return None
+                return BuildHistory._from_row(row)
+        except Exception as e:
+            logger.exception(
+                "Failed to get latest build for target. "
+                "Try running 'ato dev clear_logs'."
             )
             raise e
 

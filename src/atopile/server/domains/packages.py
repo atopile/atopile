@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import re
 import threading
 import time
@@ -34,7 +33,6 @@ from atopile.dataclasses import (
     SyncPackagesRequest,
     SyncPackagesResponse,
 )
-from atopile.model.model_state import model_state
 from atopile.server.connections import server_state
 from atopile.server.core import packages as core_packages
 from faebryk.libs.backend.packages.api import PackagesAPIClient
@@ -47,46 +45,12 @@ def _get_api() -> PackagesAPIClient:
 
 log = logging.getLogger(__name__)
 
-# Registry cache
-_registry_cache: dict[str, list[PackageInfo]] = {}
-_registry_cache_time: float = 0.0
-_REGISTRY_CACHE_TTL = int(os.getenv("ATOPILE_REGISTRY_CACHE_TTL", "0"))
-
 _SEMVER_RE = re.compile(r"^v?\d+\.\d+\.\d+(?:[-+].*)?$")
-
-# Lock to prevent concurrent refresh_packages_state calls
-_refresh_lock: asyncio.Lock | None = None
-
-
-def _get_refresh_lock() -> asyncio.Lock:
-    """Get or create the refresh lock (must be called from async context)."""
-    global _refresh_lock
-    if _refresh_lock is None:
-        _refresh_lock = asyncio.Lock()
-    return _refresh_lock
-
 
 # Track active package operations
 _active_package_ops: dict[str, dict[str, object]] = {}
 _package_op_counter = 0
 _package_op_lock = threading.Lock()
-
-
-def _cache_get(key: str) -> list[PackageInfo] | None:
-    if _REGISTRY_CACHE_TTL <= 0:
-        return None
-    now = time.time()
-    if key in _registry_cache and (now - _registry_cache_time) < _REGISTRY_CACHE_TTL:
-        return _registry_cache[key]
-    return None
-
-
-def _cache_set(key: str, packages: list[PackageInfo]) -> None:
-    if _REGISTRY_CACHE_TTL <= 0:
-        return
-    global _registry_cache_time
-    _registry_cache[key] = packages
-    _registry_cache_time = time.time()
 
 
 def version_is_newer(installed: str | None, latest: str | None) -> bool:
@@ -158,32 +122,12 @@ def get_installed_packages_for_workspace(workspace_path: Path | None):
 
 
 def search_registry_packages(query: str) -> list[PackageInfo]:
-    """
-    Search the package registry for packages matching the query.
-
-    Uses the PackagesAPIClient to query the registry API.
-    Results are cached for 5 minutes.
-    """
+    """Search the package registry for packages matching the query."""
     if not query.strip():
-        cache_key = "all"
-        cached = _cache_get(cache_key)
-        if cached is not None:
-            log.debug(f"[registry] Cache HIT for all-packages: {len(cached)} packages")
-            return cached
-
-        packages = get_all_registry_packages()
-        _cache_set(cache_key, packages)
-        return packages
-
-    cache_key = f"search:{query}"
-    cached = _cache_get(cache_key)
-    if cached is not None:
-        log.debug(f"[registry] Cache HIT for '{query}': {len(cached)} packages")
-        return cached
+        return get_all_registry_packages()
 
     try:
         result = _get_api().query_packages(query)
-        log.debug(f"[registry] Fetched {len(result.packages)} packages for '{query}'")
 
         packages: list[PackageInfo] = []
         for pkg in result.packages:
@@ -210,7 +154,6 @@ def search_registry_packages(query: str) -> list[PackageInfo]:
                 )
             )
 
-        _cache_set(cache_key, packages)
         return packages
 
     except Exception as exc:
@@ -256,57 +199,6 @@ def get_all_registry_packages() -> list[PackageInfo]:
     except Exception as exc:
         log.warning(f"Failed to fetch all packages from registry: {exc}")
         return []
-
-
-async def get_all_registry_packages_async() -> list[PackageInfo]:
-    """
-    Async version of get_all_registry_packages.
-
-    Runs the API call in a thread pool to avoid blocking the event loop.
-    """
-    # Run the synchronous function in a thread to avoid blocking
-    return await asyncio.to_thread(get_all_registry_packages)
-
-
-async def enrich_packages_with_registry_async(
-    packages: dict[str, PackageInfo],
-) -> dict[str, PackageInfo]:
-    """
-    Async version of enrich_packages_with_registry.
-
-    Fetches latest_version, summary, homepage, etc. from the registry
-    for each installed package using parallel HTTP requests.
-    """
-    if not packages:
-        return packages
-
-    registry_data = await get_all_registry_packages_async()
-    registry_map: dict[str, PackageInfo] = {
-        pkg.identifier: pkg for pkg in registry_data
-    }
-
-    enriched: dict[str, PackageInfo] = {}
-    for identifier, pkg in packages.items():
-        if identifier in registry_map:
-            reg = registry_map[identifier]
-            enriched[identifier] = PackageInfo(
-                identifier=pkg.identifier,
-                name=pkg.name,
-                publisher=pkg.publisher,
-                version=pkg.version,
-                latest_version=reg.latest_version,
-                description=reg.description,
-                summary=reg.summary,
-                homepage=reg.homepage,
-                repository=reg.repository,
-                license=reg.license,
-                installed=True,
-                installed_in=pkg.installed_in,
-            )
-        else:
-            enriched[identifier] = pkg
-
-    return enriched
 
 
 def get_package_details_from_registry(
@@ -486,145 +378,17 @@ def enrich_packages_with_registry(
     return enriched
 
 
-def _fetch_packages_sync(
-    scan_path: Path | None,
-    projects: list | None = None,
-    registry_packages: list[PackageInfo] | None = None,
-) -> tuple[list, str | None]:
-    """Fetch installed and registry packages. Returns (packages, registry_error).
-
-    Pre-discovered `projects` and `registry_packages` skip redundant work.
-    """
-    from atopile.dataclasses import PackageInfo as StatePackageInfo
-
-    packages_map: dict[str, StatePackageInfo] = {}
-    registry_error: str | None = None
-
-    if scan_path or projects:
-        t0 = time.perf_counter()
-        if projects is not None:
-            installed = core_packages.get_all_installed_packages_from_projects(projects)
-        else:
-            installed = get_installed_packages_for_workspace(scan_path)
-        log.info(
-            "[refresh_packages_state] Scanned installed packages in %.1fms",
-            (time.perf_counter() - t0) * 1000,
-        )
-        for pkg in installed.values():
-            packages_map[pkg.identifier] = StatePackageInfo(
-                identifier=pkg.identifier,
-                name=pkg.name,
-                publisher=pkg.publisher,
-                version=pkg.version,
-                installed=True,
-                installed_in=pkg.installed_in,
-            )
-
-    try:
-        if registry_packages is None:
-            t0 = time.perf_counter()
-            registry_packages = get_all_registry_packages()
-            log.info(
-                "[refresh_packages_state] Registry returned %d packages in %.1fms",
-                len(registry_packages),
-                (time.perf_counter() - t0) * 1000,
-            )
-
-        for reg_pkg in registry_packages:
-            if reg_pkg.identifier in packages_map:
-                existing = packages_map[reg_pkg.identifier]
-                packages_map[reg_pkg.identifier] = StatePackageInfo(
-                    identifier=existing.identifier,
-                    name=existing.name,
-                    publisher=existing.publisher,
-                    version=existing.version,
-                    latest_version=reg_pkg.latest_version,
-                    description=reg_pkg.description or reg_pkg.summary,
-                    summary=reg_pkg.summary,
-                    homepage=reg_pkg.homepage,
-                    repository=reg_pkg.repository,
-                    license=reg_pkg.license,
-                    installed=True,
-                    installed_in=existing.installed_in,
-                    has_update=version_is_newer(
-                        existing.version, reg_pkg.latest_version
-                    ),
-                    downloads=reg_pkg.downloads,
-                    version_count=reg_pkg.version_count,
-                    keywords=reg_pkg.keywords or [],
-                )
-            else:
-                packages_map[reg_pkg.identifier] = StatePackageInfo(
-                    identifier=reg_pkg.identifier,
-                    name=reg_pkg.name,
-                    publisher=reg_pkg.publisher,
-                    latest_version=reg_pkg.latest_version,
-                    description=reg_pkg.description or reg_pkg.summary,
-                    summary=reg_pkg.summary,
-                    homepage=reg_pkg.homepage,
-                    repository=reg_pkg.repository,
-                    license=reg_pkg.license,
-                    installed=False,
-                    installed_in=[],
-                    has_update=False,
-                    downloads=reg_pkg.downloads,
-                    version_count=reg_pkg.version_count,
-                    keywords=reg_pkg.keywords or [],
-                )
-
-    except Exception as exc:
-        registry_error = str(exc)
-        log.warning(f"[refresh_packages_state] Registry fetch failed: {exc}")
-
-    state_packages = sorted(
-        packages_map.values(),
-        key=lambda p: (not p.installed, p.identifier.lower()),
-    )
-
-    return list(state_packages), registry_error
-
-
 async def refresh_packages_state(
     scan_path: Path | None = None,
-    projects: list | None = None,
-    registry_packages: list[PackageInfo] | None = None,
 ) -> None:
-    """Refresh packages and emit a packages_changed event."""
-    lock = _get_refresh_lock()
-
-    # Skip if another refresh is already in progress
-    if lock.locked():
-        log.debug("[refresh_packages_state] Skipping - refresh already in progress")
-        return
-
-    async with lock:
-        if scan_path is None:
-            scan_path = model_state.workspace_path
-
-        # Run blocking I/O in thread pool to avoid blocking event loop
-        state_packages, registry_error = await asyncio.to_thread(
-            _fetch_packages_sync, scan_path, projects, registry_packages
-        )
-
-        await server_state.emit_event(
-            "packages_changed",
-            {"error": registry_error, "total": len(state_packages)},
-        )
-        log.info("Refreshed packages: %d packages", len(state_packages))
+    """Notify the frontend to refetch package data."""
+    await server_state.emit_event("packages_changed")
 
 
 async def refresh_installed_packages_state(
     scan_path: Path | None = None,
 ) -> None:
-    """Refresh installed package flags without hitting the registry."""
-    if scan_path is None:
-        scan_path = model_state.workspace_path
-
-    if not scan_path:
-        await server_state.emit_event("packages_changed")
-        return
-
-    await asyncio.to_thread(core_packages.get_all_installed_packages, [scan_path])
+    """Notify the frontend to refetch package data (installed only)."""
     await server_state.emit_event("packages_changed")
 
 
