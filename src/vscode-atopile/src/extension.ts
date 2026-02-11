@@ -87,13 +87,14 @@ async function handleConfigUpdate(event: vscode.ConfigurationChangeEvent) {
 
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+    const activationTime = Date.now();
     const outputChannel = _setupLogging(context);
     traceInfo(`Activating atopile extension`);
 
     // 1. Register webview providers FIRST
     // If sidebar is open, webview starts loading immediately while servers start
     const extensionVersion = vscode.extensions.getExtension('atopile.atopile')?.packageJSON?.version ?? 'unknown';
-    const sidebarProvider = new SidebarProvider(context.extensionUri, extensionVersion);
+    const sidebarProvider = new SidebarProvider(context.extensionUri, extensionVersion, activationTime);
     const logViewerProvider = new LogViewerProvider(context.extensionUri);
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(SidebarProvider.viewType, sidebarProvider, { webviewOptions: { retainContextWhenHidden: true } }),

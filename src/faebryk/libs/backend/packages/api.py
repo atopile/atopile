@@ -3,6 +3,7 @@
 
 import logging
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
@@ -686,5 +687,15 @@ class PackagesAPIClient:
 
         Endpoint: /v1/packages/all
         """
+        t0 = time.perf_counter()
         r = self._get(_Endpoints.AllPackages.url())
-        return _Endpoints.AllPackages.Response.from_dict(r.json())  # type: ignore
+        t_http = time.perf_counter()
+        result = _Endpoints.AllPackages.Response.from_dict(r.json())  # type: ignore
+        t_parse = time.perf_counter()
+        logger.info(
+            "[package registry] HTTP: %.1fms, JSON parse: %.1fms (%d packages)",
+            (t_http - t0) * 1000,
+            (t_parse - t_http) * 1000,
+            len(result.packages),
+        )
+        return result
