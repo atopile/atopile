@@ -165,7 +165,9 @@ export async function activate(context: vscode.ExtensionContext) {
         );
     }
 
-    await _reloadBuilds();
+    // Only load builds, don't auto-select — the sidebar will restore the
+    // user's persisted selection via selectionChanged once it loads.
+    await loadBuilds();
 
     context.subscriptions.push(
         onDidChangeAtoBinInfo(async () => {
