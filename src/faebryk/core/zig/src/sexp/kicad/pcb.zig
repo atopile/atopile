@@ -497,7 +497,7 @@ pub const Curve = struct {
 pub const Text = struct {
     text: str,
     at: Xyr,
-    layer: str,
+    layer: TextLayer,
     uuid: ?str = null,
     effects: Effects,
 

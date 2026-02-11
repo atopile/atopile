@@ -103,6 +103,14 @@ High-level steps:
 pytest -q
 ```
 
+- Fast worktree setup (CoW-clone `.venv` + Zig cache/output, then `pip install -e`):
+
+```sh
+ato dev worktree <new-branch-name>
+cd ../<new-branch-name>
+./ato --help
+```
+
 - Issues and feature requests: https://github.com/atopile/atopile/issues
 
 ## Support
