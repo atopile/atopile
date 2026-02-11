@@ -1558,9 +1558,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                                 ato_version.get_installed_atopile_version()
                             )
                             new_requires = f"^{current_version}"
-                            data, ato_file = core_projects._load_ato_yaml(project_path)
+                            data, ato_file = projects_domain.load_ato_yaml(project_path)
                             data["requires-atopile"] = new_requires
-                            core_projects._save_ato_yaml(ato_file, data)
+                            projects_domain.save_ato_yaml(ato_file, data)
                             log.info(
                                 f"[migrate] Updated requires-atopile to {new_requires}"
                             )
@@ -1606,7 +1606,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 # Re-discover projects to pick up updated needs_migration
                 if ctx.workspace_paths:
                     await asyncio.to_thread(
-                        core_projects.discover_projects_in_paths,
+                        projects_domain.discover_projects_in_paths,
                         ctx.workspace_paths,
                     )
 
@@ -1628,7 +1628,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 if ctx.workspace_paths:
                     try:
                         await asyncio.to_thread(
-                            core_projects.discover_projects_in_paths,
+                            projects_domain.discover_projects_in_paths,
                             ctx.workspace_paths,
                         )
                     except Exception:
