@@ -125,24 +125,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // 3. Start servers and UI in parallel
     let isInitialStart = true;
-    const startServers = async () => {
-        if (!isInitialStart) {
-            traceInfo('User requested restart, restarting backend server...');
-        }
-
-        const [newClient, backendSuccess] = await Promise.all([
-            startOrRestartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient),
-            isInitialStart ? backendServer.startServer() : backendServer.restartServer(),
-        ]);
-        isInitialStart = false;
+    const startLsp = async () => {
+        const newClient = await startOrRestartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient);
         g_lsClient = newClient;
-
-        if (backendSuccess) {
-            traceInfo('Backend server started successfully');
-        } else {
-            traceInfo('Backend server failed to start');
-        }
-
         backendServer.sendToWebview({
             type: 'setAtopileInstalling',
             installing: false,
@@ -150,14 +135,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         });
     };
 
+    const startBackend = async () => {
+        const backendSuccess = isInitialStart
+            ? await backendServer.startServer()
+            : await backendServer.restartServer();
+        isInitialStart = false;
+
+        if (backendSuccess) {
+            traceInfo('Backend server started successfully');
+        } else {
+            traceInfo('Backend server failed to start');
+        }
+    };
+
+    const restartAll = async () => {
+        traceInfo('User requested restart, restarting servers...');
+        await Promise.all([startLsp(), startBackend()]);
+    };
+
     context.subscriptions.push(
-        onNeedsRestart(startServers),
+        onNeedsRestart(restartAll),
         onBuildTargetChanged((target: Build | undefined) => {
             g_lsClient?.sendNotification('atopile/didChangeBuildTarget', { buildTarget: target?.entry ?? '' });
         }),
     );
 
-    await Promise.all([ui.activate(context), startServers()]);
+    // LSP starts in background (only needed for .ato editing), backend and UI block activation
+    startLsp();
+    await Promise.all([ui.activate(context), startBackend()]);
 
     traceInfo(`atopile extension activated in IDE: ${get_ide_type()}`);
 }
