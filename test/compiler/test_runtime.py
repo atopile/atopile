@@ -530,6 +530,67 @@ def test_assert_is():
     # TODO: check b is c; d is e is f
 
 
+def test_assert_is_map_to_subset():
+    """
+    Test assert is constraints is mapped to subset constraint when outside a module.
+    """
+    _, _, _, _, app_instance = build_instance(
+        """
+        module Inner:
+            a: V
+            b: V
+            assert b within 1V +/- 10%
+
+        module App:
+            inner = new Inner
+            assert inner.a is inner.b
+        """,
+        "App",
+    )
+
+    inner = _get_child(app_instance, "inner")
+    a = F.Parameters.NumericParameter.bind_instance(_get_child(inner, "a"))
+    b = F.Parameters.NumericParameter.bind_instance(_get_child(inner, "b"))
+    assert (
+        E.lit_op_single((1, E.U.V))
+        .as_literal.force_get()
+        .op_setic_equals(not_none(a.force_extract_subset()))
+    )
+    assert (
+        E.lit_op_range_from_center_rel((1, E.U.V), rel=0.1)
+        .as_literal.force_get()
+        .op_setic_equals(not_none(b.force_extract_subset()))
+    )
+
+
+def test_assert_is_map_to_superset():
+    """
+    Test assert is constraints is mapped to superset constraint when inside a module.
+    """
+    _, _, _, _, app_instance = build_instance(
+        """
+        module App:
+            a: V
+            b: V
+            assert a is b
+            assert b within 1V +/- 10%
+        """,
+        "App",
+    )
+    a = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "a"))
+    b = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "b"))
+    assert (
+        E.lit_op_single((1, E.U.V))
+        .as_literal.force_get()
+        .op_setic_equals(not_none(a.force_extract_superset()))
+    )
+    assert (
+        E.lit_op_range_from_center_rel((1, E.U.V), rel=0.1)
+        .as_literal.force_get()
+        .op_setic_equals(not_none(b.force_extract_subset()))
+    )
+
+
 def test_numeric_literals():
     """Test that numeric literals parse and evaluate correctly."""
     _, _, _, _, app_instance = build_instance(
