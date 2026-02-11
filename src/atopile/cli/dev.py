@@ -716,7 +716,7 @@ def test(
         node_modules = ui_server_dir / "node_modules"
         if not node_modules.exists():
             typer.echo("Installing log viewer dependencies...")
-            subprocess.run(["npm", "install"], cwd=ui_server_dir, check=True)
+            subprocess.run([_npm, "install"], cwd=ui_server_dir, check=True)
         typer.echo("Building log viewer UI...")
         result = subprocess.run(
             [shutil.which("npx") or "npx", "vite", "build"],
