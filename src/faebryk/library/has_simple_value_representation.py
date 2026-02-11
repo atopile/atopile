@@ -263,6 +263,17 @@ class has_simple_value_representation(fabll.Node):
         )
 
 
+# TODO: move to global fixtures
+@pytest.fixture()
+def setup_project_config(tmp_path):
+    from atopile.config import ProjectConfig, ProjectPaths, config
+
+    config.project = ProjectConfig.skeleton(
+        entry="", paths=ProjectPaths(build=tmp_path / "build", root=tmp_path)
+    )
+    yield
+
+
 class TestHasSimpleValueRepresentation:
     def test_repr_chain_basic(self):
         import faebryk.library._F as F
