@@ -11,8 +11,15 @@ import typer
 
 from atopile.logging import get_logger
 from atopile.telemetry import capture
+from faebryk.libs.util import ConfigFlag
 
 logger = get_logger(__name__)
+
+LOG_VIEWER = ConfigFlag(
+    "TEST_LOG_VIEWER",
+    default=True,
+    descr="Build and serve the log viewer UI during tests",
+)
 
 
 dev_app = typer.Typer(rich_markup_mode="rich")
@@ -608,7 +615,7 @@ def test(
     # Handle --list-baselines option: list and exit
     if list_baselines:
         sys.path.insert(0, str(repo_root()))
-        from test.runner.main import list_local_baselines
+        from test.runner.baselines import list_local_baselines
 
         baselines = list_local_baselines()
         if not baselines:
@@ -672,7 +679,7 @@ def test(
     if reuse:
         if direct:
             raise ValueError("--reuse cannot be combined with --direct")
-        from test.runner.main import rebuild_reports_from_existing
+        from test.runner.report import rebuild_reports_from_existing
 
         rebuild_reports_from_existing(
             report_path=Path("artifacts/test-report.json"),
@@ -705,7 +712,7 @@ def test(
 
     # Build the log viewer UI before starting tests
     ui_server_dir = repo_root() / "src" / "ui-server"
-    if ui_server_dir.exists():
+    if LOG_VIEWER and ui_server_dir.exists():
         node_modules = ui_server_dir / "node_modules"
         if not node_modules.exists():
             typer.echo("Installing log viewer dependencies...")

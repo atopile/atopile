@@ -38,6 +38,8 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: "Install dependencies"
         run: |
@@ -98,6 +100,7 @@ jobs:
           # threshold for worker to restart after exceeding after a test run
           FBRK_TEST_WORKER_MEMORY_LIMIT_MB: 1024
           PYTHON_UNBUFFERED: 1
+          FBRK_TEST_LOG_VIEWER: 0
           
       - name: Upload test report json artifact
         if: always()
