@@ -503,6 +503,8 @@ class _PackageValidators:
         for ato_file in ato_files:
             if not ato_file.is_file():
                 continue
+            if ".ato" in ato_file.relative_to(config.project.paths.root).parts:
+                continue
             import_statements: list[re.Match[str]] = []
             content = ato_file.read_text(encoding="utf-8")
             for import_name in re.finditer(_import_name_regex, content):
