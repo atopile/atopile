@@ -10,6 +10,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core import graph
+from faebryk.libs.picker.lcsc import setup_project_config
 from faebryk.libs.util import join_if_non_empty
 
 logger = logging.getLogger(__name__)
@@ -321,6 +322,7 @@ class TestHasSimpleValueRepresentation:
         val = m._simple_repr.get().get_value()
         assert val == "TM {10..20}V 5A P2 10V P3"
 
+    @setup_project_config
     def test_repr_with_picked_attributes(self, monkeypatch):
         from unittest.mock import Mock
 
