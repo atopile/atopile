@@ -27,7 +27,7 @@ def test_collect_speed():
     table.add_column("File", justify="left")
     table.add_column("Time", justify="right")
 
-    max_workers = os.cpu_count() or 4
+    max_workers = min(os.cpu_count() or 4, 16)
     pending = list(python_files)
     running = list[tuple[Path, subprocess.Popen]]()
     results = dict[Path, float]()
