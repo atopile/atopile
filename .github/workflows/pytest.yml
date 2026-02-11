@@ -85,12 +85,10 @@ jobs:
         # FIXME timeout
         # TODO consider replacing with `ato dev test --ci`
         run: |
-          uv run \
-            test/runner/main.py \
-            -m "not not_in_ci and not slow and not regression" \
-            --timeout=120 \
+          PYTHON=$(uv python find)
+          alias ato=$PYTHON -m atopile
+          ato dev test --ci --timeout=120
         env:
-          PYTHONPATH: .
           GH_TOKEN: ${{ github.token }}
           COLUMNS: 150 # rich console width will be pulled from this
           FBRK_TEST_REPORT_INTERVAL: 10
