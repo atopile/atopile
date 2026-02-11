@@ -147,17 +147,6 @@ export function PackagesPanel({
   const [activeTab, setActiveTab] = useState<TabId>('browse')
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Filter installed packages by search query (for project tab)
-  const filteredInstalled = useMemo(() => {
-    if (!searchQuery.trim()) return installedDependencies
-    const query = searchQuery.toLowerCase()
-    return installedDependencies.filter((dep) =>
-      dep.name.toLowerCase().includes(query) ||
-      dep.identifier.toLowerCase().includes(query) ||
-      (dep.summary || '').toLowerCase().includes(query)
-    )
-  }, [installedDependencies, searchQuery])
-
   // Filter and sort marketplace packages by search query and downloads
   const filteredMarketplace = useMemo(() => {
     let filtered = packages
@@ -306,7 +295,7 @@ export function PackagesPanel({
             )}
             {selectedProjectRoot && installedDependencies.length > 0 && (
               <div className="packages-list">
-                {filteredInstalled.map((dep) => (
+                {installedDependencies.map((dep) => (
                   <InstalledPackageRow
                     key={dep.identifier}
                     dependency={dep}
