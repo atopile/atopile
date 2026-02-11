@@ -71,7 +71,7 @@ def test_collect_speed():
             running = still_running
 
             if running:
-                time.sleep(0.01)  # Avoid busy-waiting
+                time.sleep(0.1)  # Avoid busy-waiting
 
     for python_file, time_taken in sorted(results.items(), key=lambda x: x[1]):
         table.add_row(python_file.name, f"{time_taken} seconds")

@@ -84,10 +84,9 @@ jobs:
       - name: Run pytest
         id: pytest
         continue-on-error: true
-        # FIXME timeout
         run: |
           PYTHON=$(uv python find)
-          $PYTHON -m atopile dev test --ci --timeout=120
+          $PYTHON -m atopile dev test --ci
         env:
           GH_TOKEN: ${{ github.token }}
           COLUMNS: 150 # rich console width will be pulled from this
