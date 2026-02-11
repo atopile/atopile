@@ -60,18 +60,35 @@ _debounce_tasks: dict[str, asyncio.Task] = {}
 _last_packages_registry_refresh: float = 0.0
 
 
-async def _load_projects_background(ctx: AppContext) -> None:
-    """Background task to load projects without blocking startup."""
+async def _load_initial_state(ctx: AppContext) -> None:
+    """Discover projects + fetch registry in parallel, then scan installed packages."""
     if not ctx.workspace_paths:
         await server_state.emit_event("projects_changed")
         return
-    # No try/except - let exceptions crash the server for visibility
+
     log.info(f"Loading projects from {ctx.workspace_paths}")
-    await asyncio.to_thread(
-        core_projects.discover_projects_in_paths, ctx.workspace_paths
+
+    t0 = time.perf_counter()
+    projects_result, registry_result = await asyncio.gather(
+        asyncio.to_thread(
+            core_projects.discover_projects_in_paths, ctx.workspace_paths
+        ),
+        asyncio.to_thread(packages_domain.get_all_registry_packages),
     )
+    log.info(
+        "Project discovery + registry fetch complete in %.1fms",
+        (time.perf_counter() - t0) * 1000,
+    )
+
+    scan_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
+    await packages_domain.refresh_packages_state(
+        scan_path=scan_path,
+        projects=projects_result,
+        registry_packages=registry_result,
+    )
+    log.info("Packages refresh complete")
+
     await server_state.emit_event("projects_changed")
-    log.info("Project discovery complete")
 
 
 async def _refresh_projects_state() -> None:
@@ -83,16 +100,6 @@ async def _refresh_projects_state() -> None:
     # No try/except - let exceptions crash the server for visibility
     await asyncio.to_thread(core_projects.discover_projects_in_paths, workspace_paths)
     await server_state.emit_event("projects_changed")
-
-
-async def _load_packages_background(ctx: AppContext) -> None:
-    """Background task to load packages without blocking startup."""
-    # No try/except - let exceptions crash the server for visibility
-    log.info("Loading packages from registry")
-    # Use first workspace path for package scanning
-    scan_path = ctx.workspace_paths[0] if ctx.workspace_paths else None
-    await packages_domain.refresh_packages_state(scan_path=scan_path)
-    log.info("Packages refresh complete")
 
 
 async def _refresh_stdlib_state() -> None:
@@ -538,10 +545,8 @@ def create_app(
             log.info("No workspace paths configured, skipping initial state population")
             return
 
-        # Fire background tasks - don't await, server starts immediately
-        asyncio.create_task(_load_projects_background(ctx))
-        asyncio.create_task(_load_packages_background(ctx))
-        log.info("Server started - background loaders running")
+        asyncio.create_task(_load_initial_state(ctx))
+        log.info("Server started - loading initial state in background")
 
     # Health check endpoint for extension to verify server is running
     @app.get("/health")

@@ -84,9 +84,15 @@ def get_all_installed_packages(paths: list[Path]) -> dict[str, PackageInfo]:
     """
     Get all installed packages across all projects in the given paths.
     """
-    packages_map: dict[str, PackageInfo] = {}
-
     projects = core_projects.discover_projects_in_paths(paths)
+    return get_all_installed_packages_from_projects(projects)
+
+
+def get_all_installed_packages_from_projects(
+    projects: list,
+) -> dict[str, PackageInfo]:
+    """Get all installed packages from pre-discovered projects."""
+    packages_map: dict[str, PackageInfo] = {}
 
     for project in projects:
         project_root = Path(project.root)
