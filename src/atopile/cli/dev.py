@@ -11,8 +11,15 @@ import typer
 
 from atopile.logging import get_logger
 from atopile.telemetry import capture
+from faebryk.libs.util import ConfigFlag
 
 logger = get_logger(__name__)
+
+LOG_VIEWER = ConfigFlag(
+    "TEST_LOG_VIEWER",
+    default=True,
+    descr="Build and serve the log viewer UI during tests",
+)
 
 
 dev_app = typer.Typer(rich_markup_mode="rich")
@@ -181,6 +188,58 @@ def install(
 
     typer.secho("Extension installed!", fg=typer.colors.GREEN)
     print("Remember to reload your extension!")
+
+
+@dev_app.command()
+@capture("cli:dev_worktree_start", "cli:dev_worktree_end")
+def worktree(
+    name: str = typer.Argument(..., help="Branch/worktree name to create."),
+    path: Path | None = typer.Option(
+        None,
+        "--path",
+        help="Explicit worktree path. Defaults to <parent-of-main-worktree>/<name>.",
+    ),
+    start_point: str = typer.Option(
+        "HEAD",
+        "--start-point",
+        help="Git ref to branch from when creating a new branch.",
+    ),
+    base_dir: Path | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Base directory used when --path is not provided.",
+    ),
+    source_root: Path | None = typer.Option(
+        None,
+        "--source-root",
+        help="Main worktree to clone caches/venv from (auto-detected by default).",
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite existing cloned cache targets if needed."
+    ),
+    skip_editable_install: bool = typer.Option(
+        False,
+        "--skip-editable-install",
+        help="Skip editable install step in the cloned worktree venv.",
+    ),
+):
+    """
+    Create a fast development worktree with cloned `.venv` and Zig artifacts.
+    """
+    from atopile.worktree import create_worktree
+
+    try:
+        create_worktree(
+            name,
+            path=path,
+            start_point=start_point,
+            base_dir=base_dir,
+            source_root=source_root,
+            force=force,
+            skip_editable_install=skip_editable_install,
+        )
+    except (RuntimeError, FileExistsError, FileNotFoundError) as e:
+        raise typer.BadParameter(str(e))
 
 
 def _env_truthy(name: str) -> bool | None:
@@ -556,7 +615,7 @@ def test(
     # Handle --list-baselines option: list and exit
     if list_baselines:
         sys.path.insert(0, str(repo_root()))
-        from test.runner.main import list_local_baselines
+        from test.runner.baselines import list_local_baselines
 
         baselines = list_local_baselines()
         if not baselines:
@@ -620,7 +679,7 @@ def test(
     if reuse:
         if direct:
             raise ValueError("--reuse cannot be combined with --direct")
-        from test.runner.main import rebuild_reports_from_existing
+        from test.runner.report import rebuild_reports_from_existing
 
         rebuild_reports_from_existing(
             report_path=Path("artifacts/test-report.json"),
@@ -653,7 +712,11 @@ def test(
 
     # Build the log viewer UI before starting tests
     ui_server_dir = repo_root() / "src" / "ui-server"
-    if ui_server_dir.exists():
+    if LOG_VIEWER and ui_server_dir.exists():
+        node_modules = ui_server_dir / "node_modules"
+        if not node_modules.exists():
+            typer.echo("Installing log viewer dependencies...")
+            subprocess.run([_npm, "install"], cwd=ui_server_dir, check=True)
         typer.echo("Building log viewer UI...")
         result = subprocess.run(
             [shutil.which("npx") or "npx", "vite", "build"],
