@@ -706,6 +706,10 @@ def test(
     # Build the log viewer UI before starting tests
     ui_server_dir = repo_root() / "src" / "ui-server"
     if ui_server_dir.exists():
+        node_modules = ui_server_dir / "node_modules"
+        if not node_modules.exists():
+            typer.echo("Installing log viewer dependencies...")
+            subprocess.run(["npm", "install"], cwd=ui_server_dir, check=True)
         typer.echo("Building log viewer UI...")
         result = subprocess.run(
             [shutil.which("npx") or "npx", "vite", "build"],

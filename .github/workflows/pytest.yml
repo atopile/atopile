@@ -83,7 +83,6 @@ jobs:
         id: pytest
         continue-on-error: true
         # FIXME timeout
-        # TODO consider replacing with `ato dev test --ci`
         run: |
           PYTHON=$(uv python find)
           $PYTHON -m atopile dev test --ci --timeout=120
