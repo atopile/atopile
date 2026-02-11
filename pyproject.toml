@@ -39,10 +39,8 @@ dependencies = [
     "gitpython>=3.1.41",
     "httpx>=0.28.1",
     "jinja2>=3.1.6",
-
     # forked version of kicad-python to support python 3.14
     "kicad-python @ https://github.com/atopile/kicad-python/releases/download/v0.5.1/kicad_python-0.5.1-py3-none-any.whl",
-
     "kicadcliwrapper>=1.1.1",
     "matplotlib>=3.7.1",
     "mcp[cli]>=1.10.1",
@@ -53,7 +51,7 @@ dependencies = [
     "ordered-set==4.1.0",
     "pathvalidate>=3.2.1",
     "platformdirs>=4.3.6",
-    "posthog==6.0.3",                 # exact version
+    "posthog==7.8.0",                 # exact version
     "prompt-toolkit==3.0.51",         # pinned to avoid questionary compatibility issues
     "psutil>=6.0.0",
     "pydantic-settings>=2.7.1",

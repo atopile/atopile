@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { onDidChangeAtoBinInfoEvent, g_uv_path_local, getAtoBin } from '../common/findbin';
+import { onDidChangeAtoBinInfoEvent, g_uv_path_local, getAtoBin, resetAtoBinFailures } from '../common/findbin';
 import { traceError, traceInfo } from '../common/log/logging';
 import { downloadReleaseAssetBin, PlatformArch } from '../common/github';
 import { captureEvent, deinitializeTelemetry, initializeTelemetry } from '../common/telemetry';
@@ -101,6 +101,7 @@ async function installLocalAto(context: vscode.ExtensionContext) {
                 return;
             }
             try {
+                resetAtoBinFailures();
                 const atoBin = await getAtoBin(undefined, 300_000);
                 if (!atoBin) {
                     traceError('Failed to install atopile via uv');

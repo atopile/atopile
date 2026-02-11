@@ -12,42 +12,21 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
+import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 
-/**
- * Check if we're running in development mode.
- */
 function isDevelopmentMode(extensionPath: string): boolean {
   const prodPath = path.join(extensionPath, 'resources', 'webviews', 'logViewer.js');
   return !fs.existsSync(prodPath);
 }
 
-/**
- * Generate a nonce for Content Security Policy.
- */
-function getNonce(): string {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
-}
-
-function getWsOrigin(wsUrl: string): string {
-  try {
-    return new URL(wsUrl).origin;
-  } catch {
-    return wsUrl;
-  }
-}
-
 export class LogViewerProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'atopile.logViewer';
+  private static readonly PROD_LOCAL_RESOURCE_ROOTS = ['resources/webviews', 'webviews/dist'];
 
   private _view?: vscode.WebviewView;
   private _disposables: vscode.Disposable[] = [];
+  private _hasHtml = false;
   private _lastMode: 'dev' | 'prod' | null = null;
-  private _hasHtml: boolean = false;
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;
 
@@ -70,34 +49,29 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
 
   private _refreshWebview(): void {
     if (!this._view) {
-      console.log('[LogViewerProvider] _refreshWebview called but no view');
       return;
     }
-
-    console.log('[LogViewerProvider] Refreshing webview with URLs:', {
-      apiUrl: backendServer.apiUrl,
-      wsUrl: backendServer.wsUrl,
-      port: backendServer.port,
-      isConnected: backendServer.isConnected,
-    });
 
     const extensionPath = this._extensionUri.fsPath;
     const isDev = isDevelopmentMode(extensionPath);
     const mode: 'dev' | 'prod' = isDev ? 'dev' : 'prod';
-
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
-    const urlsUnchanged = this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl;
-    if (this._hasHtml && this._lastMode === mode && urlsUnchanged) {
-      console.log('[LogViewerProvider] Skipping refresh (already loaded)', { mode });
+
+    // Port changes are always reflected in apiUrl/wsUrl (see backendServer._setPort)
+    if (this._hasHtml && this._lastMode === mode && this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl) {
       return;
     }
 
-    if (isDev) {
-      this._view.webview.html = this._getDevHtml();
-    } else {
-      this._view.webview.html = this._getProdHtml(this._view.webview);
-    }
+    this._view.webview.options = createWebviewOptions({
+      isDev,
+      extensionPath,
+      port: backendServer.port,
+      prodLocalResourceRoots: LogViewerProvider.PROD_LOCAL_RESOURCE_ROOTS,
+    });
+    this._view.webview.html = isDev
+      ? this._getDevHtml()
+      : this._getProdHtml(this._view.webview);
     this._hasHtml = true;
     this._lastMode = mode;
     this._lastApiUrl = apiUrl;
@@ -110,34 +84,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     _token: vscode.CancellationToken
   ): void {
     this._view = webviewView;
-
-    const extensionPath = this._extensionUri.fsPath;
-    const isDev = isDevelopmentMode(extensionPath);
-    const mode: 'dev' | 'prod' = isDev ? 'dev' : 'prod';
-
-    const webviewOptions: vscode.WebviewOptions & {
-      retainContextWhenHidden?: boolean;
-    } = {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-      localResourceRoots: isDev
-        ? []
-        : [
-            vscode.Uri.file(path.join(extensionPath, 'resources', 'webviews')),
-            vscode.Uri.file(path.join(extensionPath, 'webviews', 'dist')),
-          ],
-    };
-    webviewView.webview.options = webviewOptions;
-
-    if (isDev) {
-      webviewView.webview.html = this._getDevHtml();
-    } else {
-      webviewView.webview.html = this._getProdHtml(webviewView.webview);
-    }
-    this._hasHtml = true;
-    this._lastMode = mode;
-    this._lastApiUrl = backendServer.apiUrl;
-    this._lastWsUrl = backendServer.wsUrl;
+    this._refreshWebview();
   }
 
   /**
