@@ -43,6 +43,7 @@ from atopile.compiler.parse_utils import get_src_info_from_token
 from atopile.config import find_project_dir
 from atopile.errors import (
     DowngradedExceptionCollector,
+    SourceLocatedUserException,
     UserException,
     iter_leaf_exceptions,
 )
@@ -217,7 +218,7 @@ def exception_to_diagnostic(
     start_line, start_col = 0, 0
     stop_line, stop_col = 0, 0
 
-    if exc.origin_start is not None:
+    if isinstance(exc, SourceLocatedUserException) and exc.origin_start is not None:
         start_file_path, start_line, start_col = get_src_info_from_token(
             exc.origin_start
         )
@@ -245,7 +246,7 @@ def exception_to_diagnostic(
         ),
         message=exc.message,
         severity=severity,
-        code=exc.code,
+        code=exc.code if isinstance(exc, SourceLocatedUserException) else None,
         source=TOOL_DISPLAY,
     )
 
