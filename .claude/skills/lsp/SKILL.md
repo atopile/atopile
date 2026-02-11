@@ -1,5 +1,5 @@
 ---
-name: LSP
+name: lsp
 description: "How the atopile Language Server works (pygls), how it builds per-document graphs for completion/hover/defs, and the invariants for keeping it fast and crash-proof."
 ---
 

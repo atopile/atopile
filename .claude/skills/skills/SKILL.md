@@ -1,5 +1,5 @@
 ---
-name: Skills
+name: skills
 description: "How to write and maintain `.claude/skills/*/SKILL.md` files: source-of-truth-first process, verification steps, and conventions."
 ---
 

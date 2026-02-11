@@ -1,6 +1,6 @@
 ---
-name: Graph
-description: "How the Zig-backed instance graph works (GraphView/NodeReference/EdgeReference), the real Python API surface, and the invariants around allocation, attributes, and cleanup."
+name: graph
+description: "How the Zig-backed instance graph works (GraphView/NodeReference/EdgeReference), the real Python API surface, and the invariants around allocation, attributes, and cleanup. Use when working with low-level graph APIs, memory management, or building systems that traverse the instance graph."
 ---
 
 # Graph Module

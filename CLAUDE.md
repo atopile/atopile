@@ -37,16 +37,16 @@ Skills are located in `.claude/skills/`.
 
 ```
 .claude/skills
-├── ato_language
+├── ato-language
 │ ├── EXTENSION.md
 │ └── SKILL.md
-├── code_review
+├── code-review
 │ └── SKILL.md
 ├── compiler
 │ └── SKILL.md
 ├── dev
 │ └── SKILL.md
-├── domain_layer
+├── domain-layer
 │ └── SKILL.md
 ├── fabll
 │ └── SKILL.md
