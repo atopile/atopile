@@ -86,7 +86,7 @@ jobs:
         # TODO consider replacing with `ato dev test --ci`
         run: |
           PYTHON=$(uv python find)
-          alias ato=$PYTHON -m atopile
+          alias ato="$PYTHON -m atopile"
           ato dev test --ci --timeout=120
         env:
           GH_TOKEN: ${{ github.token }}
