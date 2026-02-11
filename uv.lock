@@ -72,6 +72,7 @@ source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
     { name = "atopile-easyeda2kicad" },
+    { name = "atopile-kicad-python" },
     { name = "black" },
     { name = "case-converter" },
     { name = "cookiecutter" },
@@ -83,7 +84,6 @@ dependencies = [
     { name = "gitpython" },
     { name = "httpx" },
     { name = "jinja2" },
-    { name = "kicad-python" },
     { name = "kicadcliwrapper" },
     { name = "matplotlib" },
     { name = "mcp", extra = ["cli"] },
@@ -145,6 +145,7 @@ dev = [
 requires-dist = [
     { name = "antlr4-python3-runtime", specifier = "==4.13.2" },
     { name = "atopile-easyeda2kicad", specifier = ">=0.9.7" },
+    { name = "atopile-kicad-python", specifier = ">=0.5.1" },
     { name = "black", specifier = ">=24.4.2" },
     { name = "case-converter", specifier = ">=1.2.0" },
     { name = "cookiecutter", specifier = ">=2.6.0" },
@@ -156,7 +157,6 @@ requires-dist = [
     { name = "gitpython", specifier = ">=3.1.41" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jinja2", specifier = ">=3.1.6" },
-    { name = "kicad-python", url = "https://github.com/atopile/kicad-python/releases/download/v0.5.1/kicad_python-0.5.1-py3-none-any.whl" },
     { name = "kicadcliwrapper", specifier = ">=1.1.1" },
     { name = "matplotlib", specifier = ">=3.7.1" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.10.1" },
@@ -226,6 +226,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d8/4d/ba2c53b3cb3a7f83ed580e1c2df0159faa5cecc25155f6b04e18d68b7a55/atopile_easyeda2kicad-0.9.7.tar.gz", hash = "sha256:6345f59d050f7c6c8d64e32a7db3bed5600d824c810eda1db578b1a995168c7f", size = 1473455, upload-time = "2025-09-01T22:54:39.519Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e1/1a/9f6e2425008a895c4f8b398c6e8826b1bf66fe717ed6ab200ff7f12f4f26/atopile_easyeda2kicad-0.9.7-py3-none-any.whl", hash = "sha256:4ce8e720d499a788897b4082d08c3d527439509cb0768b89227377efa1c8aa4d", size = 54939, upload-time = "2025-09-01T22:54:37.876Z" },
+]
+
+[[package]]
+name = "atopile-kicad-python"
+version = "0.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "protobuf" },
+    { name = "pynng" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d7/97/6f27d3d7d49c9064009526f4b15b24b890bae3d8045f3b8c5dff7e96ff71/atopile_kicad_python-0.5.1-py3-none-any.whl", hash = "sha256:ad5b6beab5bc2e407463695cf31270a06467d83def3f99fe37756f5c107f492a", size = 124779, upload-time = "2026-02-11T23:00:54.792Z" },
 ]
 
 [[package]]
@@ -1082,25 +1094,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/43/4b/674af6ef2f97d56f0ab5153bf0bfa28ccb6c3ed4d1babf4305449668807b/keyring-25.7.0.tar.gz", hash = "sha256:fe01bd85eb3f8fb3dd0405defdeac9a5b4f6f0439edbb3149577f244a2e8245b", size = 63516, upload-time = "2025-11-16T16:26:09.482Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/81/db/e655086b7f3a705df045bf0933bdd9c2f79bb3c97bfef1384598bb79a217/keyring-25.7.0-py3-none-any.whl", hash = "sha256:be4a0b195f149690c166e850609a477c532ddbfbaed96a404d4e43f8d5e2689f", size = 39160, upload-time = "2025-11-16T16:26:08.402Z" },
-]
-
-[[package]]
-name = "kicad-python"
-version = "0.5.1"
-source = { url = "https://github.com/atopile/kicad-python/releases/download/v0.5.1/kicad_python-0.5.1-py3-none-any.whl" }
-dependencies = [
-    { name = "protobuf" },
-    { name = "pynng" },
-]
-wheels = [
-    { url = "https://github.com/atopile/kicad-python/releases/download/v0.5.1/kicad_python-0.5.1-py3-none-any.whl", hash = "sha256:02273fb6bccbd9a1dc394b51e7ba4e7c5db84ed7e59f15fe1a091f65af78c030" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "protobuf", specifier = ">=5.29,<6" },
-    { name = "pynng", specifier = ">=0.8.0" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13'", specifier = ">=4.13.2" },
 ]
 
 [[package]]
