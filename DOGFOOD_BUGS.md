@@ -22,3 +22,10 @@
 - Fix: Make `DeprecatedException` source-locatable; pass parser context in `antlr_visitor`, file-location metadata in `ast_visitor` and override registries, and teach LSP diagnostic conversion to use fallback file-location metadata.
 - Regression test: Ad-hoc runtime checks for both located and unlocated `DeprecatedException` conversion.
 - Structural notes: Add integration test coverage for deprecation diagnostics in LSP (range + file path expectations).
+
+### Bug 004: Runtime ElectricPower alias deprecation warning missing source location
+- Report: Deprecated `vcc/gnd` alias warnings can appear without source location in user diagnostics.
+- Root cause: Runtime warning was emitted from `ElectricPower` design check without attempting to map back to source chunk metadata.
+- Fix: Add best-effort `has_source_chunk` -> `SourceChunk.loc` lookup and attach file location to `DeprecatedException` in `src/faebryk/library/ElectricPower.py`.
+- Regression test: `ruff check` + `py_compile` on modified file.
+- Structural notes: Extend this pattern to other runtime-originated warnings where source chunks exist.

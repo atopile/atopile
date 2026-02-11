@@ -128,8 +128,29 @@ class ElectricPower(fabll.Node):
             aliases_used.append("gnd")
 
         if aliases_used:
+            file_location = None
+            # Best-effort source mapping for user-facing deprecation diagnostics.
+            # Nodes created from ato source generally carry has_source_chunk.
+            try:
+                if self.has_trait(F.has_source_chunk):
+                    trait = self.get_trait(F.has_source_chunk)
+                    if source_chunk_bnode := trait.get_source_chunk_node():
+                        from atopile.compiler import ast_types as AST
+
+                        source_chunk = AST.SourceChunk.bind_instance(source_chunk_bnode)
+                        file_location = source_chunk.loc.get()
+            except Exception:
+                # Keep warning emission robust even if source mapping fails.
+                pass
+
             with downgrade(DeprecatedException):
-                raise DeprecatedException(
+                message = (
                     f"Deprecated ElectricPower aliases used in {self.pretty_repr()}: "
                     f"{', '.join(aliases_used)}. Use hv/lv instead."
                 )
+                if file_location is not None:
+                    raise DeprecatedException.from_file_location(
+                        file_location=file_location,
+                        message=message,
+                    )
+                raise DeprecatedException(message)
