@@ -46,8 +46,9 @@ jobs:
       - name: Compute zig cache key
         id: zig-hash
         run: |
-          echo "hash=$(uv run python src/faebryk/core/zig/compute_hash.py)" >> "$GITHUB_OUTPUT"
-          echo "pyver=$(uv run python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')" >> "$GITHUB_OUTPUT"
+          PYTHON=$(uv python find)
+          echo "hash=$($PYTHON src/faebryk/core/zig/compute_hash.py)" >> "$GITHUB_OUTPUT"
+          echo "pyver=$($PYTHON -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')" >> "$GITHUB_OUTPUT"
 
       - name: Restore zig cache
         id: zig-cache
@@ -71,11 +72,12 @@ jobs:
 
       - name: Check ato version
         run: |
-          git describe --tags --dirty --long; \
-          .venv/bin/python -c "import importlib.metadata; print(importlib.metadata.version('atopile'))"; \
-          .venv/bin/ato self-check; \
-          .venv/bin/ato --version; \
-          .venv/bin/ato --semver; \
+          PYTHON=$(uv python find)
+          git describe --tags --dirty --long
+          $PYTHON -c "import importlib.metadata; print(importlib.metadata.version('atopile'))"
+          $PYTHON -m atopile self-check
+          $PYTHON -m atopile --version
+          $PYTHON -m atopile --semver
 
       - name: Run pytest
         id: pytest
