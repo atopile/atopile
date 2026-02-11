@@ -527,11 +527,15 @@ class _PackageValidators:
             file_path = ato_file.relative_to(config.project.paths.root)
             message = ""
             if unused_imports:
-                message = f"Unused imports: [{', '.join(sorted(unused_imports))}] in "
-                f"{file_path}"
+                message = (
+                    f"Unused imports: [{', '.join(sorted(unused_imports))}] in "
+                    f"{file_path}"
+                )
             if duplicates:
-                message += f"\nDuplicate imports: [{', '.join(sorted(duplicates))}] in "
-                f"{file_path}"
+                message += (
+                    f"\nDuplicate imports: [{', '.join(sorted(duplicates))}] in "
+                    f"{file_path}"
+                )
             if message:
                 raise UserBadParameterError(message)
 
