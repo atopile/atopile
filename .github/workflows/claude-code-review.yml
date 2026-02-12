@@ -47,8 +47,8 @@ jobs:
             - Test coverage
 
             Use the repository skill docs for guidance. Start with:
-            - `.claude/skills/code_review/SKILL.md` (review process and repo-specific expectations)
-            - `.claude/skills/skills/SKILL.md` (how skills are structured; follow relevant skills for the touched areas)
+            - `.claude/skills/code-review/SKILL.md` (review process and repo-specific expectations)
+            - `.claude/skills/atopile-skills/SKILL.md` (how skills are structured; follow relevant skills for the touched areas)
 
             Be constructive and helpful in your feedback.
 
