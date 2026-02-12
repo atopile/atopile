@@ -96,38 +96,52 @@ def _rewrite_venv_paths(source_root: Path, worktree_path: Path) -> None:
             _log(f"rewrote: {pyvenv_cfg}")
 
 
-def _create_helper_files(worktree_path: Path) -> None:
-    """Create .atopile-worktree-env.sh and ato wrapper script."""
-    env_sh = worktree_path / ".atopile-worktree-env.sh"
-    env_sh.write_text(
-        "#!/usr/bin/env sh\n"
-        'WORKTREE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"\n'
-        'export PYTHONPATH="$WORKTREE_ROOT/src:$WORKTREE_ROOT/tools/'
-        'atopile_mkdocs_plugin${PYTHONPATH:+:$PYTHONPATH}"\n'
-    )
-    env_sh.chmod(0o755)
+def _remote_branch_exists(
+    source_root: Path,
+    branch_name: str,
+    *,
+    timeout_seconds: int = 5,
+) -> bool:
+    """
+    Check whether origin has the exact branch name.
 
-    ato_wrapper = worktree_path / "ato"
-    ato_wrapper.write_text(
-        "#!/usr/bin/env bash\n"
-        "set -euo pipefail\n"
-        'WORKTREE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\n'
-        'source "$WORKTREE_ROOT/.atopile-worktree-env.sh"\n'
-        'exec "$WORKTREE_ROOT/.venv/bin/ato" "$@"\n'
-    )
-    ato_wrapper.chmod(0o755)
+    We probe refs/heads/<branch> explicitly (not a tail-match pattern), and bound
+    the network call with a timeout so worktree creation does not hang indefinitely
+    on unreachable remotes.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(source_root),
+                "ls-remote",
+                "--exit-code",
+                "--heads",
+                "origin",
+                f"refs/heads/{branch_name}",
+            ],
+            capture_output=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        _log("timed out checking origin branch; treating as non-existent")
+        return False
+
+    return result.returncode == 0
 
 
 def create_worktree(
-    name: str,
+    name_suffix: str,
     *,
+    branch_name: str | None = None,
     path: Path | None = None,
     start_point: str = "HEAD",
     base_dir: Path | None = None,
     source_root: Path | None = None,
     force: bool = False,
     skip_editable_install: bool = False,
-) -> None:
+) -> Path:
     """Create a fast development worktree with cloned .venv and Zig artifacts."""
     # Resolve current repo root
     result = subprocess.run(
@@ -155,7 +169,7 @@ def create_worktree(
     if path is None:
         if base_dir is None:
             base_dir = source_root.parent
-        worktree_path = base_dir / name
+        worktree_path = base_dir / f"{source_root.name}_{name_suffix}"
     else:
         worktree_path = path
 
@@ -164,10 +178,12 @@ def create_worktree(
 
     _log(f"main worktree: {source_root}")
     _log(f"new worktree:  {worktree_path}")
+    resolved_branch_name = branch_name or name_suffix
+    _log(f"branch:        {resolved_branch_name}")
     _log(f"start point:   {start_point}")
 
     # Create git worktree
-    branch_exists = (
+    branch_exists_local = (
         subprocess.run(
             [
                 "git",
@@ -176,15 +192,20 @@ def create_worktree(
                 "show-ref",
                 "--verify",
                 "--quiet",
-                f"refs/heads/{name}",
+                f"refs/heads/{resolved_branch_name}",
             ],
             capture_output=True,
         ).returncode
         == 0
     )
 
-    if branch_exists:
-        _log(f"branch '{name}' already exists; creating worktree on existing branch")
+    branch_exists_remote = False
+
+    if branch_exists_local:
+        _log(
+            f"branch '{resolved_branch_name}' already exists locally; "
+            "creating worktree on existing branch"
+        )
         subprocess.run(
             [
                 "git",
@@ -193,12 +214,35 @@ def create_worktree(
                 "worktree",
                 "add",
                 str(worktree_path),
-                name,
+                resolved_branch_name,
             ],
             check=True,
         )
     else:
-        _log(f"creating branch '{name}' from '{start_point}'")
+        branch_exists_remote = _remote_branch_exists(source_root, resolved_branch_name)
+
+    if not branch_exists_local and branch_exists_remote:
+        _log(
+            f"branch '{resolved_branch_name}' exists on origin; "
+            "creating local tracking branch"
+        )
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(source_root),
+                "worktree",
+                "add",
+                "--track",
+                "-b",
+                resolved_branch_name,
+                str(worktree_path),
+                f"origin/{resolved_branch_name}",
+            ],
+            check=True,
+        )
+    elif not branch_exists_local:
+        _log(f"creating branch '{resolved_branch_name}' from '{start_point}'")
         subprocess.run(
             [
                 "git",
@@ -207,7 +251,7 @@ def create_worktree(
                 "worktree",
                 "add",
                 "-b",
-                name,
+                resolved_branch_name,
                 str(worktree_path),
                 start_point,
             ],
@@ -240,9 +284,6 @@ def create_worktree(
     else:
         _log("zig-out not found in source tree; skipping zig-out clone")
 
-    # Create helper files
-    _create_helper_files(worktree_path)
-
     # Rewrite venv paths
     if not skip_editable_install:
         _log(f"rewriting venv paths: {source_root} -> {worktree_path}")
@@ -254,9 +295,11 @@ def create_worktree(
 Done.
 Use this worktree with:
   cd {worktree_path}
-  . ./.atopile-worktree-env.sh
-  ./ato --help
+  source .venv/bin/activate
+  ato --help
 
 Notes:
   - This creates an isolated venv clone for the worktree.
   - Venv paths are rewritten in-place (no recompile needed).""")
+
+    return worktree_path
