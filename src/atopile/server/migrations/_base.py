@@ -9,12 +9,20 @@ from pathlib import Path
 
 
 class Topic(StrEnum):
-    """Migration step categories shown as groups in the UI."""
+    """Migration step categories shown as groups in the UI.
+
+    Order here determines display order in the frontend.
+    """
 
     mandatory = "mandatory"
     ato_language = "ato_language"
     project_config = "project_config"
     project_structure = "project_structure"
+
+
+# WebSocket event names — keep in sync with frontend constants
+EVENT_MIGRATION_STEP_RESULT = "migration_step_result"
+EVENT_MIGRATION_RESULT = "migration_result"
 
 
 class MigrationStep(ABC):

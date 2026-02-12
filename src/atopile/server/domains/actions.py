@@ -1457,15 +1457,23 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 }
 
         if action == "getMigrationSteps":
-            from atopile.server.migrations import get_all_steps
+            from atopile.server.migrations import get_all_steps, get_topic_order
 
             return {
                 "success": True,
                 "steps": [step.to_dict() for step in get_all_steps()],
+                "topic_order": get_topic_order(),
             }
 
         if action == "migrateProjectSteps":
-            from atopile.server.migrations import get_step
+            from atopile.server.migrations import (
+                EVENT_MIGRATION_RESULT,
+                EVENT_MIGRATION_STEP_RESULT,
+                get_step,
+            )
+
+            def _truncate_error(exc: Exception, max_len: int = 500) -> str:
+                return str(exc)[:max_len] or "Unknown error"
 
             project_root = payload.get("projectRoot") or payload.get("project_root", "")
             steps = payload.get("steps", [])
@@ -1489,7 +1497,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     await step.run(project_path)
 
                     await server_state.emit_event(
-                        "migration_step_result",
+                        EVENT_MIGRATION_STEP_RESULT,
                         {
                             "project_root": project_root,
                             "step": step_id,
@@ -1501,7 +1509,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     error_msg = f"Unknown migration step: {step_id}"
                     log.error(f"[migrate] {error_msg}")
                     await server_state.emit_event(
-                        "migration_step_result",
+                        EVENT_MIGRATION_STEP_RESULT,
                         {
                             "project_root": project_root,
                             "step": step_id,
@@ -1510,10 +1518,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                         },
                     )
                 except Exception as exc:
-                    error_msg = str(exc)[:500] or "Unknown error"
+                    error_msg = _truncate_error(exc)
                     log.exception(f"[migrate] Step {step_id} failed: {error_msg}")
                     await server_state.emit_event(
-                        "migration_step_result",
+                        EVENT_MIGRATION_STEP_RESULT,
                         {
                             "project_root": project_root,
                             "step": step_id,
@@ -1542,7 +1550,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
                 await server_state.emit_event("projects_changed")
                 await server_state.emit_event(
-                    "migration_result",
+                    EVENT_MIGRATION_RESULT,
                     {"project_root": project_root, "success": True},
                 )
 
@@ -1551,7 +1559,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "message": "Migration steps completed",
                 }
             except Exception as exc:
-                error_msg = str(exc)[:500] or "Unknown error"
+                error_msg = _truncate_error(exc)
                 log.exception(f"Migration steps failed: {error_msg}")
 
                 # Re-discover projects even on error
@@ -1566,7 +1574,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
                 await server_state.emit_event("projects_changed")
                 await server_state.emit_event(
-                    "migration_result",
+                    EVENT_MIGRATION_RESULT,
                     {
                         "project_root": project_root,
                         "success": False,

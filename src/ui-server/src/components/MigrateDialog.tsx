@@ -22,16 +22,20 @@ interface StepGroup {
   steps: MigrationStep[]
 }
 
+// WebSocket event name — keep in sync with _base.py
+const WS_EVENT_MIGRATION_STEP_RESULT = 'migration-step-result'
+
 const TOPIC_META: Record<string, { label: string; icon: typeof Package }> = {
   mandatory: { label: 'Mandatory', icon: Package },
   ato_language: { label: 'Ato Language Renames', icon: FileCode },
   project_config: { label: 'Project Config', icon: Settings },
 }
 
-// Order topics should appear in the UI
-const TOPIC_ORDER = ['mandatory', 'ato_language', 'project_config']
+function toTitleCase(s: string): string {
+  return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
 
-function buildGroups(steps: MigrationStep[]): StepGroup[] {
+function buildGroups(steps: MigrationStep[], topicOrder: string[]): StepGroup[] {
   const byTopic: Record<string, MigrationStep[]> = {}
   for (const step of steps) {
     if (!byTopic[step.topic]) byTopic[step.topic] = []
@@ -39,10 +43,10 @@ function buildGroups(steps: MigrationStep[]): StepGroup[] {
   }
 
   const groups: StepGroup[] = []
-  // Known topics first, in order
-  for (const topic of TOPIC_ORDER) {
+  // Topics in the order defined by the backend
+  for (const topic of topicOrder) {
     if (byTopic[topic] && byTopic[topic].length > 0) {
-      const meta = TOPIC_META[topic] || { label: topic, icon: Package }
+      const meta = TOPIC_META[topic] || { label: toTitleCase(topic), icon: Package }
       groups.push({
         key: topic,
         label: meta.label,
@@ -52,12 +56,12 @@ function buildGroups(steps: MigrationStep[]): StepGroup[] {
       delete byTopic[topic]
     }
   }
-  // Any unknown topics appended at the end
+  // Any topics not in the backend order (shouldn't happen, but safe)
   for (const [topic, topicSteps] of Object.entries(byTopic)) {
     if (topicSteps.length > 0) {
       groups.push({
         key: topic,
-        label: topic.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        label: toTitleCase(topic),
         icon: Package,
         steps: topicSteps,
       })
@@ -94,8 +98,9 @@ export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
         const response = await sendActionWithResponse('getMigrationSteps', {}, { timeoutMs: 15000 })
         if (cancelled) return
         const fetched: MigrationStep[] = (response.result?.steps as MigrationStep[]) || []
+        const topicOrder: string[] = (response.result?.topic_order as string[]) || []
         setSteps(fetched)
-        setGroups(buildGroups(fetched))
+        setGroups(buildGroups(fetched, topicOrder))
         setSelectedSteps(new Set(fetched.map(s => s.id)))
         setLoading(false)
       } catch (err) {
@@ -180,8 +185,8 @@ export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
   }, [projectRoot])
 
   useEffect(() => {
-    window.addEventListener('migration-step-result', handleStepResult)
-    return () => window.removeEventListener('migration-step-result', handleStepResult)
+    window.addEventListener(WS_EVENT_MIGRATION_STEP_RESULT, handleStepResult)
+    return () => window.removeEventListener(WS_EVENT_MIGRATION_STEP_RESULT, handleStepResult)
   }, [handleStepResult])
 
   // Keyboard: Escape to close when not migrating

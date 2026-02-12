@@ -10,9 +10,22 @@ import importlib
 import pkgutil
 from pathlib import Path
 
-from ._base import MigrationStep, Topic
+from ._base import (
+    EVENT_MIGRATION_RESULT,
+    EVENT_MIGRATION_STEP_RESULT,
+    MigrationStep,
+    Topic,
+)
 
-__all__ = ["MigrationStep", "Topic", "get_all_steps", "get_step"]
+__all__ = [
+    "EVENT_MIGRATION_RESULT",
+    "EVENT_MIGRATION_STEP_RESULT",
+    "MigrationStep",
+    "Topic",
+    "get_all_steps",
+    "get_step",
+    "get_topic_order",
+]
 
 # ---- Auto-discovery ----
 
@@ -32,6 +45,11 @@ def _discover() -> dict[str, MigrationStep]:
     for cls in MigrationStep.__subclasses__():
         instance = cls()
         step_id = cls.get_id()
+        if step_id in registry:
+            raise ValueError(
+                f"Duplicate migration step ID '{step_id}' "
+                f"from {cls.__name__} and {type(registry[step_id]).__name__}"
+            )
         registry[step_id] = instance
     return registry
 
@@ -57,3 +75,8 @@ def get_all_steps() -> list[MigrationStep]:
 def get_step(step_id: str) -> MigrationStep:
     """Look up a single step by id. Raises KeyError if not found."""
     return _ensure()[step_id]
+
+
+def get_topic_order() -> list[str]:
+    """Return topic values in their display order."""
+    return [t.value for t in Topic]
