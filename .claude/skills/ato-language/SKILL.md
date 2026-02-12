@@ -1,5 +1,5 @@
 ---
-name: ATO Language
+name: ato-language
 description: "LLM-focused reference for the `ato` declarative DSL: mental model, syntax surface, experiments/feature flags, and common pitfalls when editing `.ato` and `ato.yaml`."
 ---
 

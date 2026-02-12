@@ -3282,9 +3282,8 @@ class Numbers(fabll.Node):
         rel: float,
         unit: type[fabll.Node] | None = None,
     ) -> fabll._ChildField[Self]:
-        return cls.MakeChild(
-            min=center - rel * center, max=center + rel * center, unit=unit
-        )
+        delta = abs(rel * center)
+        return cls.MakeChild(min=center - delta, max=center + delta, unit=unit)
 
     @classmethod
     def MakeChild_SetSuperset(
@@ -3401,8 +3400,9 @@ class Numbers(fabll.Node):
         """Create a Numbers literal from a center and relative tolerance."""
         g = self.g
         tg = self.tg
+        delta = abs(rel * center)
         numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
-            values=[(center - rel * center, center + rel * center)]
+            values=[(center - delta, center + delta)]
         )
         return self.setup(numeric_set=numeric_set, unit=unit)
 
@@ -5031,6 +5031,16 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set.setup_from_singleton(value=1.0, unit=meter_instance.is_unit.get())
         assert quantity_set.get_numeric_set().get_min_value() == 1.0
+
+    def test_setup_from_center_rel_negative_center(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        quantity_set = Numbers.create_instance(g=g, tg=tg)
+
+        quantity_set.setup_from_center_rel(center=-10.0, rel=0.1)
+
+        assert quantity_set.get_numeric_set().get_min_value() == -11.0
+        assert quantity_set.get_numeric_set().get_max_value() == -9.0
 
     def test_get_min_quantity(self):
         from faebryk.library.Units import is_unit

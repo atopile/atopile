@@ -1,5 +1,5 @@
 ---
-name: Dev
+name: dev
 description: "LLM-focused workflow for working in this repo: compile Zig, run the orchestrated test runner, consume test-report.json/html artifacts, and discover/debug ConfigFlags."
 ---
 
