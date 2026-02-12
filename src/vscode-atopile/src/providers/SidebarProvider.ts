@@ -23,6 +23,7 @@ import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/ta
 import { loadBuilds, getBuilds } from '../common/manifest';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
+import { openMigratePreview } from '../ui/migrate';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
 // Message types from the webview
@@ -170,6 +171,11 @@ interface WebviewReadyMessage {
   type: 'webviewReady';
 }
 
+interface OpenMigrateTabMessage {
+  type: 'openMigrateTab';
+  projectRoot: string;
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -198,7 +204,8 @@ type WebviewMessage =
   | LoadDirectoryMessage
   | GetAtopileSettingsMessage
   | ThreeDModelBuildResultMessage
-  | WebviewReadyMessage;
+  | WebviewReadyMessage
+  | OpenMigrateTabMessage;
 
 /**
  * Check if we're running in development mode.
@@ -704,6 +711,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         // Handle 3D model build result from webview
         traceInfo(`[SidebarProvider] Received threeDModelBuildResult: success=${message.success}, error="${message.error}"`);
         handleThreeDModelBuildResult(message.success, message.error);
+        break;
+      case 'openMigrateTab':
+        traceInfo(`[SidebarProvider] Opening migrate tab for: ${message.projectRoot}`);
+        openMigratePreview(this._extensionUri, message.projectRoot);
         break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);

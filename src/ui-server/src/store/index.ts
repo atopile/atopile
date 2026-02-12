@@ -186,9 +186,6 @@ const initialState: AppState = {
 
   // Manufacturing Wizard
   manufacturingWizard: null as ManufacturingWizardState | null,
-
-  // Migrate Dialog
-  migrateDialogProjectRoot: null as string | null,
 };
 
 // Store actions interface
@@ -286,10 +283,6 @@ interface StoreActions {
   clearTestSelection: () => void;
   startTestRun: (testRunId: string) => void;
   completeTestRun: () => void;
-
-  // Migrate Dialog
-  openMigrateDialog: (projectRoot: string) => void;
-  closeMigrateDialog: () => void;
 
   // Manufacturing Wizard
   openManufacturingWizard: (projectRoot: string, targets: string[]) => void;
@@ -822,10 +815,6 @@ export const useStore = create<Store>()(
 
       completeTestRun: () =>
         set((state) => ({ testRun: { ...state.testRun, isRunning: false } })),
-
-      // Migrate Dialog
-      openMigrateDialog: (projectRoot) => set({ migrateDialogProjectRoot: projectRoot }),
-      closeMigrateDialog: () => set({ migrateDialogProjectRoot: null }),
 
       // Manufacturing Wizard
       openManufacturingWizard: (projectRoot, targets) =>

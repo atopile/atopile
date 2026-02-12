@@ -3,7 +3,6 @@ import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, 
 import type { Project, BuildTarget } from '../types/build'
 import { postMessage } from '../api/vscodeApi'
 import { useStore } from '../store'
-import { MigrateDialog } from './MigrateDialog'
 import './ActiveProjectPanel.css'
 
 // Re-export BuildQueueItem for use in standalone BuildQueue panel
@@ -868,11 +867,6 @@ export function ActiveProjectPanel({
   const migrationErrors = useStore((state) => state.migrationErrors)
   const setMigrationError = useStore((state) => state.setMigrationError)
 
-  // Migrate dialog state from store
-  const migrateDialogProjectRoot = useStore((state) => state.migrateDialogProjectRoot)
-  const openMigrateDialog = useStore((state) => state.openMigrateDialog)
-  const closeMigrateDialog = useStore((state) => state.closeMigrateDialog)
-
   // Compute isMigrating based on selected project
   const isMigrating = useMemo(() => {
     if (!selectedProjectRoot) return false
@@ -940,13 +934,6 @@ export function ActiveProjectPanel({
     }
   }, [onCreateTarget, activeProject])
 
-  // Auto-open migrate dialog when active project needs migration
-  useEffect(() => {
-    if (activeProject?.needsMigration && !isMigrating && !migrateDialogProjectRoot) {
-      openMigrateDialog(activeProject.root)
-    }
-  }, [activeProject?.needsMigration, activeProject?.root, isMigrating, migrateDialogProjectRoot, openMigrateDialog])
-
   // Tooltip text based on state
   const getOutputTooltip = (action: string) => {
     if (!activeProject) return 'Select a project first'
@@ -956,14 +943,6 @@ export function ActiveProjectPanel({
 
   return (
     <div className="projects-panel-v2">
-      {/* Migrate Dialog (shown as overlay when active) */}
-      {migrateDialogProjectRoot && (
-        <MigrateDialog
-          projectRoot={migrateDialogProjectRoot}
-          onClose={closeMigrateDialog}
-        />
-      )}
-
       {/* New Project Form (shown as overlay when active) */}
       {showNewProjectForm && (
         <NewProjectForm
@@ -1047,18 +1026,33 @@ export function ActiveProjectPanel({
 
         {/* Action buttons - single row: Build | KiCad | 3D | Layout | Manufacture */}
         <div className="build-actions-row">
-          <button
-            className="action-btn primary"
-            onClick={() => {
-              if (!activeProject || !activeTargetName || isMigrating) return
-              onBuildTarget(activeProject.root, activeTargetName)
-            }}
-            disabled={!activeProject || isMigrating || !activeTargetName || activeProject.needsMigration}
-            title={isMigrating ? 'Migrating...' : (activeProject?.needsMigration ? 'Use the migrate flow before building your project!' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first'))}
-          >
-            {isMigrating ? <Loader2 size={12} className="spin" /> : <Play size={12} />}
-            <span className="action-label">{isMigrating ? 'Migrating...' : 'Build'}</span>
-          </button>
+          {activeProject?.needsMigration ? (
+            <button
+              className="action-btn primary"
+              onClick={() => {
+                if (!activeProject) return
+                postMessage({ type: 'openMigrateTab', projectRoot: activeProject.root })
+              }}
+              disabled={!activeProject || isMigrating}
+              title="Your project needs migration. Click to open the migration helper."
+            >
+              {isMigrating ? <Loader2 size={12} className="spin" /> : <AlertCircle size={12} />}
+              <span className="action-label">{isMigrating ? 'Migrating...' : 'Migrate Help'}</span>
+            </button>
+          ) : (
+            <button
+              className="action-btn primary"
+              onClick={() => {
+                if (!activeProject || !activeTargetName || isMigrating) return
+                onBuildTarget(activeProject.root, activeTargetName)
+              }}
+              disabled={!activeProject || isMigrating || !activeTargetName}
+              title={isMigrating ? 'Migrating...' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first')}
+            >
+              {isMigrating ? <Loader2 size={12} className="spin" /> : <Play size={12} />}
+              <span className="action-label">{isMigrating ? 'Migrating...' : 'Build'}</span>
+            </button>
+          )}
 
           <div className="action-divider" />
 

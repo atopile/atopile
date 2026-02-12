@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { X, Loader2, Check, AlertCircle } from 'lucide-react'
+import { Loader2, Check, AlertCircle, Package, FileCode, Settings } from 'lucide-react'
 import { sendAction } from '../api/websocket'
+import { useStore } from '../store'
 import './MigrateDialog.css'
 
 type StepStatus = 'idle' | 'running' | 'success' | 'error'
@@ -8,14 +9,68 @@ type StepStatus = 'idle' | 'running' | 'success' | 'error'
 interface MigrationStep {
   id: string
   label: string
+  description: string
   alwaysChecked: boolean
+  group: 'mandatory' | 'ato-renames' | 'project-config'
 }
 
 const MIGRATION_STEPS: MigrationStep[] = [
-  { id: 'force_update_deps', label: 'Force update dependencies', alwaysChecked: true },
-  { id: 'migrate_has_datasheet_defined', label: 'Migrate trait has_datasheet_defined', alwaysChecked: false },
-  { id: 'migrate_has_single_electric_reference_shared', label: 'Migrate trait has_single_electric_reference_shared', alwaysChecked: false },
-  { id: 'bump_requires_atopile', label: 'Bump requires-atopile', alwaysChecked: false },
+  {
+    id: 'force_update_deps',
+    label: 'Force update dependencies',
+    description: 'Downloads the latest compatible versions of all project dependencies. This can take a few minutes depending on the number of packages.',
+    alwaysChecked: true,
+    group: 'mandatory',
+  },
+  {
+    id: 'migrate_has_datasheet_defined',
+    label: 'Rename has_datasheet_defined',
+    description: 'Renames the deprecated has_datasheet_defined trait to the new naming convention used in the latest standard library.',
+    alwaysChecked: false,
+    group: 'ato-renames',
+  },
+  {
+    id: 'migrate_has_single_electric_reference_shared',
+    label: 'Rename has_single_electric_reference_shared',
+    description: 'Renames the deprecated has_single_electric_reference_shared trait to match the updated API.',
+    alwaysChecked: false,
+    group: 'ato-renames',
+  },
+  {
+    id: 'bump_requires_atopile',
+    label: 'Bump requires-atopile version',
+    description: 'Updates the requires-atopile field in your ato.yaml to match the current atopile version.',
+    alwaysChecked: false,
+    group: 'project-config',
+  },
+]
+
+interface StepGroup {
+  key: string
+  label: string
+  icon: typeof Package
+  steps: MigrationStep[]
+}
+
+const STEP_GROUPS: StepGroup[] = [
+  {
+    key: 'mandatory',
+    label: 'Mandatory',
+    icon: Package,
+    steps: MIGRATION_STEPS.filter(s => s.group === 'mandatory'),
+  },
+  {
+    key: 'ato-renames',
+    label: 'Ato Language Renames',
+    icon: FileCode,
+    steps: MIGRATION_STEPS.filter(s => s.group === 'ato-renames'),
+  },
+  {
+    key: 'project-config',
+    label: 'Project Config',
+    icon: Settings,
+    steps: MIGRATION_STEPS.filter(s => s.group === 'project-config'),
+  },
 ]
 
 interface MigrateDialogProps {
@@ -24,6 +79,8 @@ interface MigrateDialogProps {
 }
 
 export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
+  const actualVersion = useStore((state) => state.atopile.actualVersion)
+
   const [selectedSteps, setSelectedSteps] = useState<Set<string>>(
     () => new Set(MIGRATION_STEPS.map(s => s.id))
   )
@@ -34,6 +91,8 @@ export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
   const allDone = isMigrating && MIGRATION_STEPS
     .filter(s => selectedSteps.has(s.id))
     .every(s => stepStatuses[s.id] === 'success' || stepStatuses[s.id] === 'error')
+
+  const hasErrors = Object.values(stepStatuses).some(s => s === 'error')
 
   const toggleStep = (stepId: string) => {
     if (isMigrating) return
@@ -138,57 +197,91 @@ export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
     return null
   }
 
+  const versionDisplay = actualVersion || 'the latest version'
+
   return (
-    <div className="migrate-dialog">
-      <div className="form-header">
-        <span className="form-title">Migrate Project</span>
-        <button
-          type="button"
-          className="form-close-btn"
-          onClick={onClose}
-          disabled={isMigrating && !allDone}
-        >
-          <X size={14} />
-        </button>
+    <div className="migrate-page">
+      {/* Header */}
+      <div className="migrate-header">
+        <h1 className="migrate-title">Migrate Project</h1>
+        <p className="migrate-subtitle">
+          It seems your project is not ready for atopile {versionDisplay} yet 😞
+        </p>
+        <p className="migrate-subtitle">
+          Don't worry, this guide will make sure your project will be mostly automatically migrated to the latest standard!
+        </p>
       </div>
 
-      <p className="migrate-intro">
-        Select the migration steps to run. Dependencies will always be updated.
-      </p>
+      {/* Step Groups */}
+      <div className="migrate-groups">
+        {STEP_GROUPS.map(group => {
+          const GroupIcon = group.icon
+          const groupSteps = group.steps
+          if (groupSteps.length === 0) return null
 
-      <div className="migrate-steps">
-        {MIGRATION_STEPS.map(step => (
-          <div key={step.id}>
-            <label
-              className={`migrate-step ${step.alwaysChecked ? 'disabled' : ''}`}
-              onClick={(e) => {
-                // Prevent double-toggle from label+checkbox
-                if ((e.target as HTMLElement).tagName !== 'INPUT') {
-                  e.preventDefault()
-                  toggleStep(step.id)
-                }
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={selectedSteps.has(step.id)}
-                onChange={() => toggleStep(step.id)}
-                disabled={step.alwaysChecked || isMigrating}
-              />
-              <span className="migrate-step-label">{step.label}</span>
-              {renderStepStatus(step.id)}
-            </label>
-            {stepErrors[step.id] && (
-              <div className="migrate-step-error">{stepErrors[step.id]}</div>
-            )}
-          </div>
-        ))}
+          return (
+            <div key={group.key} className="migrate-group">
+              <div className="migrate-group-header">
+                <GroupIcon size={14} className="migrate-group-icon" />
+                <span className="migrate-group-label">{group.label}</span>
+              </div>
+
+              <div className="migrate-group-steps">
+                {groupSteps.map(step => (
+                  <div key={step.id} className="migrate-step-card">
+                    <label
+                      className={`migrate-step ${step.alwaysChecked ? 'disabled' : ''}`}
+                      onClick={(e) => {
+                        if ((e.target as HTMLElement).tagName !== 'INPUT') {
+                          e.preventDefault()
+                          toggleStep(step.id)
+                        }
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedSteps.has(step.id)}
+                        onChange={() => toggleStep(step.id)}
+                        disabled={step.alwaysChecked || isMigrating}
+                      />
+                      <div className="migrate-step-content">
+                        <div className="migrate-step-title-row">
+                          <span className="migrate-step-label">{step.label}</span>
+                          {renderStepStatus(step.id)}
+                        </div>
+                        <span className="migrate-step-description">{step.description}</span>
+                      </div>
+                    </label>
+                    {stepErrors[step.id] && (
+                      <div className="migrate-step-error">{stepErrors[step.id]}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })}
       </div>
 
-      <div className="form-actions">
+      {/* Success / Error banner */}
+      {allDone && !hasErrors && (
+        <div className="migrate-banner success">
+          <Check size={16} />
+          <span>Migration complete! You can now close this tab and build your project.</span>
+        </div>
+      )}
+      {allDone && hasErrors && (
+        <div className="migrate-banner error">
+          <AlertCircle size={16} />
+          <span>Some steps failed. Check the errors above and try again or fix them manually.</span>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="migrate-actions">
         <button
           type="button"
-          className="form-btn secondary"
+          className="migrate-btn secondary"
           onClick={onClose}
           disabled={isMigrating && !allDone}
         >
@@ -197,11 +290,18 @@ export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
         {!allDone && (
           <button
             type="button"
-            className="form-btn primary"
+            className="migrate-btn primary"
             onClick={handleMigrate}
             disabled={isMigrating || selectedSteps.size === 0}
           >
-            {isMigrating ? 'Migrating...' : 'Migrate'}
+            {isMigrating ? (
+              <>
+                <Loader2 size={14} className="spin" />
+                Migrating...
+              </>
+            ) : (
+              'Run Migration'
+            )}
           </button>
         )}
       </div>

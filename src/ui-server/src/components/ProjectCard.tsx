@@ -358,17 +358,8 @@ export const ProjectCard = memo(function ProjectCard({
   // Migration state from store
   const migratingProjectRoots = useStore((state) => state.migratingProjectRoots)
   const migrationErrors = useStore((state) => state.migrationErrors)
-  const openMigrateDialog = useStore((state) => state.openMigrateDialog)
   const isMigrating = migratingProjectRoots.includes(project.root)
   const migrationError = migrationErrors[project.root]
-  const migrateDialogProjectRoot = useStore((state) => state.migrateDialogProjectRoot)
-
-  // Auto-open migrate dialog when project needs migration
-  useEffect(() => {
-    if (project.needsMigration && !isMigrating && !migrateDialogProjectRoot && isSelected) {
-      openMigrateDialog(project.root)
-    }
-  }, [project.needsMigration, project.root, isMigrating, migrateDialogProjectRoot, isSelected, openMigrateDialog])
 
   // Build status (for editable mode) - use project.builds here since builds variable isn't defined yet
   const totalErrors = project.builds.reduce((sum, b) => sum + (b.errors || 0), 0)

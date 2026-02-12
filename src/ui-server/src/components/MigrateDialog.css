@@ -1,34 +1,103 @@
-.migrate-dialog {
+/* ============================================
+   MigrateDialog — full-page migration view
+   ============================================ */
+
+.migrate-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  height: 100%;
+  padding: var(--spacing-xl);
+  box-sizing: border-box;
+  overflow-y: auto;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+}
+
+/* ---- Header ---- */
+
+.migrate-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding-bottom: var(--spacing-md);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.migrate-title {
+  margin: 0;
+  font-size: var(--font-size-xxl);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.migrate-subtitle {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* ---- Step Groups ---- */
+
+.migrate-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  flex: 1 1 auto;
+}
+
+.migrate-group {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
-  padding: var(--spacing-sm);
-  margin-bottom: var(--spacing-xs);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--ctp-blue);
-  background: var(--bg-secondary);
 }
 
-.migrate-intro {
-  font-size: var(--font-size-xs);
+.migrate-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding-bottom: var(--spacing-xs);
+}
+
+.migrate-group-icon {
   color: var(--text-muted);
-  line-height: 1.4;
+  flex-shrink: 0;
 }
 
-.migrate-steps {
+.migrate-group-label {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.migrate-group-steps {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--spacing-xs);
+}
+
+/* ---- Step Card ---- */
+
+.migrate-step-card {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  overflow: hidden;
+  transition: border-color var(--transition-fast);
+}
+
+.migrate-step-card:hover {
+  border-color: var(--border-secondary);
 }
 
 .migrate-step {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  color: var(--text-primary);
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
   cursor: pointer;
   user-select: none;
 }
@@ -38,7 +107,6 @@
 }
 
 .migrate-step.disabled {
-  opacity: 0.6;
   cursor: default;
 }
 
@@ -47,19 +115,45 @@
 }
 
 .migrate-step input[type="checkbox"] {
-  margin: 0;
+  margin: 2px 0 0 0;
   accent-color: var(--ctp-blue);
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .migrate-step.disabled input[type="checkbox"] {
   cursor: default;
 }
 
-.migrate-step-label {
+.migrate-step-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   flex: 1;
   min-width: 0;
 }
+
+.migrate-step-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.migrate-step-label {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+}
+
+.migrate-step-description {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ---- Step Status ---- */
 
 .migrate-step-status {
   display: flex;
@@ -83,9 +177,96 @@
 }
 
 .migrate-step-error {
-  padding: 4px 8px 4px 32px;
+  padding: var(--spacing-xs) var(--spacing-md) var(--spacing-sm) calc(var(--spacing-md) + 22px);
   font-size: var(--font-size-xxs);
   color: var(--ctp-red);
   line-height: 1.3;
   word-break: break-word;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-primary);
+}
+
+/* ---- Banners ---- */
+
+.migrate-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+.migrate-banner.success {
+  background: rgba(166, 227, 161, 0.1);
+  border: 1px solid var(--ctp-green);
+  color: var(--ctp-green);
+}
+
+.migrate-banner.error {
+  background: rgba(243, 139, 168, 0.1);
+  border: 1px solid var(--ctp-red);
+  color: var(--ctp-red);
+}
+
+.migrate-banner svg {
+  flex-shrink: 0;
+}
+
+/* ---- Actions ---- */
+
+.migrate-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border-primary);
+}
+
+.migrate-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), opacity var(--transition-fast);
+  white-space: nowrap;
+}
+
+.migrate-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.migrate-btn.secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--border-primary);
+}
+
+.migrate-btn.secondary:hover:not(:disabled) {
+  background: var(--bg-quaternary, var(--bg-tertiary));
+  border-color: var(--border-secondary);
+}
+
+.migrate-btn.primary {
+  background: var(--ctp-blue);
+  color: var(--ctp-crust, #11111b);
+  border-color: var(--ctp-blue);
+}
+
+.migrate-btn.primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.migrate-btn .spin {
+  animation: spin 1s linear infinite;
 }
