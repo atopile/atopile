@@ -11,6 +11,7 @@ import { Build, getBuilds, loadBuilds } from '../common/manifest';
 import { getAtoBin, onDidChangeAtoBinInfo, runAtoCommandInTerminal } from '../common/findbin';
 import { traceError, traceInfo } from '../common/log/logging';
 import { openPcb } from '../common/kicad';
+import { openAtoShell } from '../common/vscode-menu';
 import { glob } from 'glob';
 import * as path from 'path';
 import { openPackageExplorer } from './packagexplorer';
@@ -215,7 +216,7 @@ async function _runInTerminalWithProjectRoot(name: string, subcommand: string[],
 }
 
 async function atoShell() {
-    await _runInTerminal('shell', undefined, ['--help'], false);
+    await openAtoShell();
 }
 
 async function atoBuild(buildsArg?: Build[]) {
