@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Loader2, Check, AlertCircle, Package, FileCode, Settings } from 'lucide-react'
-import { sendAction } from '../api/websocket'
+import { sendAction, sendActionWithResponse } from '../api/websocket'
 import { useStore } from '../store'
 import './MigrateDialog.css'
 
@@ -10,40 +10,10 @@ interface MigrationStep {
   id: string
   label: string
   description: string
-  alwaysChecked: boolean
-  group: 'mandatory' | 'ato-renames' | 'project-config'
+  topic: string
+  mandatory: boolean
+  order: number
 }
-
-const MIGRATION_STEPS: MigrationStep[] = [
-  {
-    id: 'force_update_deps',
-    label: 'Force update dependencies',
-    description: 'Downloads the latest compatible versions of all project dependencies. This can take a few minutes depending on the number of packages.',
-    alwaysChecked: true,
-    group: 'mandatory',
-  },
-  {
-    id: 'migrate_has_datasheet_defined',
-    label: 'Rename has_datasheet_defined',
-    description: 'Renames the deprecated has_datasheet_defined trait to the new naming convention used in the latest standard library.',
-    alwaysChecked: false,
-    group: 'ato-renames',
-  },
-  {
-    id: 'migrate_has_single_electric_reference_shared',
-    label: 'Rename has_single_electric_reference_shared',
-    description: 'Renames the deprecated has_single_electric_reference_shared trait to match the updated API.',
-    alwaysChecked: false,
-    group: 'ato-renames',
-  },
-  {
-    id: 'bump_requires_atopile',
-    label: 'Bump requires-atopile version',
-    description: 'Updates the requires-atopile field in your ato.yaml to match the current atopile version.',
-    alwaysChecked: false,
-    group: 'project-config',
-  },
-]
 
 interface StepGroup {
   key: string
@@ -52,26 +22,49 @@ interface StepGroup {
   steps: MigrationStep[]
 }
 
-const STEP_GROUPS: StepGroup[] = [
-  {
-    key: 'mandatory',
-    label: 'Mandatory',
-    icon: Package,
-    steps: MIGRATION_STEPS.filter(s => s.group === 'mandatory'),
-  },
-  {
-    key: 'ato-renames',
-    label: 'Ato Language Renames',
-    icon: FileCode,
-    steps: MIGRATION_STEPS.filter(s => s.group === 'ato-renames'),
-  },
-  {
-    key: 'project-config',
-    label: 'Project Config',
-    icon: Settings,
-    steps: MIGRATION_STEPS.filter(s => s.group === 'project-config'),
-  },
-]
+const TOPIC_META: Record<string, { label: string; icon: typeof Package }> = {
+  mandatory: { label: 'Mandatory', icon: Package },
+  ato_language: { label: 'Ato Language Renames', icon: FileCode },
+  project_config: { label: 'Project Config', icon: Settings },
+}
+
+// Order topics should appear in the UI
+const TOPIC_ORDER = ['mandatory', 'ato_language', 'project_config']
+
+function buildGroups(steps: MigrationStep[]): StepGroup[] {
+  const byTopic: Record<string, MigrationStep[]> = {}
+  for (const step of steps) {
+    if (!byTopic[step.topic]) byTopic[step.topic] = []
+    byTopic[step.topic].push(step)
+  }
+
+  const groups: StepGroup[] = []
+  // Known topics first, in order
+  for (const topic of TOPIC_ORDER) {
+    if (byTopic[topic] && byTopic[topic].length > 0) {
+      const meta = TOPIC_META[topic] || { label: topic, icon: Package }
+      groups.push({
+        key: topic,
+        label: meta.label,
+        icon: meta.icon,
+        steps: byTopic[topic],
+      })
+      delete byTopic[topic]
+    }
+  }
+  // Any unknown topics appended at the end
+  for (const [topic, topicSteps] of Object.entries(byTopic)) {
+    if (topicSteps.length > 0) {
+      groups.push({
+        key: topic,
+        label: topic.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        icon: Package,
+        steps: topicSteps,
+      })
+    }
+  }
+  return groups
+}
 
 interface MigrateDialogProps {
   projectRoot: string
@@ -81,14 +74,49 @@ interface MigrateDialogProps {
 export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
   const actualVersion = useStore((state) => state.atopile.actualVersion)
 
-  const [selectedSteps, setSelectedSteps] = useState<Set<string>>(
-    () => new Set(MIGRATION_STEPS.map(s => s.id))
-  )
+  const [steps, setSteps] = useState<MigrationStep[]>([])
+  const [groups, setGroups] = useState<StepGroup[]>([])
+  const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+
+  const [selectedSteps, setSelectedSteps] = useState<Set<string>>(new Set())
   const [stepStatuses, setStepStatuses] = useState<Record<string, StepStatus>>({})
   const [stepErrors, setStepErrors] = useState<Record<string, string>>({})
   const [isMigrating, setIsMigrating] = useState(false)
 
-  const allDone = isMigrating && MIGRATION_STEPS
+  // Fetch steps from backend, retrying until WebSocket is connected
+  useEffect(() => {
+    let cancelled = false
+    let retryTimeout: ReturnType<typeof setTimeout>
+
+    async function fetchSteps() {
+      try {
+        const response = await sendActionWithResponse('getMigrationSteps', {}, { timeoutMs: 15000 })
+        if (cancelled) return
+        const fetched: MigrationStep[] = (response.result?.steps as MigrationStep[]) || []
+        setSteps(fetched)
+        setGroups(buildGroups(fetched))
+        setSelectedSteps(new Set(fetched.map(s => s.id)))
+        setLoading(false)
+      } catch (err) {
+        if (cancelled) return
+        // Retry if WebSocket isn't connected yet
+        if (String(err).includes('not connected')) {
+          retryTimeout = setTimeout(fetchSteps, 500)
+        } else {
+          setFetchError(String(err))
+          setLoading(false)
+        }
+      }
+    }
+    fetchSteps()
+    return () => {
+      cancelled = true
+      clearTimeout(retryTimeout)
+    }
+  }, [])
+
+  const allDone = isMigrating && steps
     .filter(s => selectedSteps.has(s.id))
     .every(s => stepStatuses[s.id] === 'success' || stepStatuses[s.id] === 'error')
 
@@ -96,8 +124,8 @@ export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
 
   const toggleStep = (stepId: string) => {
     if (isMigrating) return
-    const step = MIGRATION_STEPS.find(s => s.id === stepId)
-    if (step?.alwaysChecked) return
+    const step = steps.find(s => s.id === stepId)
+    if (step?.mandatory) return
     setSelectedSteps(prev => {
       const next = new Set(prev)
       if (next.has(stepId)) {
@@ -110,14 +138,14 @@ export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
   }
 
   const handleMigrate = () => {
-    const steps = MIGRATION_STEPS
+    const selected = steps
       .filter(s => selectedSteps.has(s.id))
       .map(s => s.id)
-    if (steps.length === 0) return
+    if (selected.length === 0) return
 
     setIsMigrating(true)
     const initialStatuses: Record<string, StepStatus> = {}
-    for (const id of steps) {
+    for (const id of selected) {
       initialStatuses[id] = 'running'
     }
     setStepStatuses(initialStatuses)
@@ -125,7 +153,7 @@ export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
 
     sendAction('migrateProjectSteps', {
       projectRoot,
-      steps,
+      steps: selected,
     })
   }
 
@@ -199,6 +227,40 @@ export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
 
   const versionDisplay = actualVersion || 'the latest version'
 
+  if (loading) {
+    return (
+      <div className="migrate-page">
+        <div className="migrate-header">
+          <h1 className="migrate-title">Migrate Project</h1>
+          <p className="migrate-subtitle">Loading migration steps...</p>
+        </div>
+        <div className="migrate-loading">
+          <Loader2 size={24} className="spin" />
+        </div>
+      </div>
+    )
+  }
+
+  if (fetchError) {
+    return (
+      <div className="migrate-page">
+        <div className="migrate-header">
+          <h1 className="migrate-title">Migrate Project</h1>
+          <p className="migrate-subtitle">Failed to load migration steps.</p>
+        </div>
+        <div className="migrate-banner error">
+          <AlertCircle size={16} />
+          <span>{fetchError}</span>
+        </div>
+        <div className="migrate-actions">
+          <button type="button" className="migrate-btn secondary" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="migrate-page">
       {/* Header */}
@@ -214,7 +276,7 @@ export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
 
       {/* Step Groups */}
       <div className="migrate-groups">
-        {STEP_GROUPS.map(group => {
+        {groups.map(group => {
           const GroupIcon = group.icon
           const groupSteps = group.steps
           if (groupSteps.length === 0) return null
@@ -230,7 +292,7 @@ export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
                 {groupSteps.map(step => (
                   <div key={step.id} className="migrate-step-card">
                     <label
-                      className={`migrate-step ${step.alwaysChecked ? 'disabled' : ''}`}
+                      className={`migrate-step ${step.mandatory ? 'disabled' : ''}`}
                       onClick={(e) => {
                         if ((e.target as HTMLElement).tagName !== 'INPUT') {
                           e.preventDefault()
@@ -242,7 +304,7 @@ export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
                         type="checkbox"
                         checked={selectedSteps.has(step.id)}
                         onChange={() => toggleStep(step.id)}
-                        disabled={step.alwaysChecked || isMigrating}
+                        disabled={step.mandatory || isMigrating}
                       />
                       <div className="migrate-step-content">
                         <div className="migrate-step-title-row">

@@ -38,6 +38,20 @@
   line-height: 1.5;
 }
 
+/* ---- Loading ---- */
+
+.migrate-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl);
+  color: var(--text-muted);
+}
+
+.migrate-loading .spin {
+  animation: spin 1s linear infinite;
+}
+
 /* ---- Step Groups ---- */
 
 .migrate-groups {
