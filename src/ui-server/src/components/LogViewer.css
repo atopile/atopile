@@ -3,6 +3,36 @@
  * Uses Atopile Design System variables for consistency
  */
 
+/* Column width constants */
+.lv-container {
+  --lv-col-time: 58px;
+  --lv-col-time-compact: 48px;
+  --lv-col-level: 55px;
+  --lv-col-level-compact: 24px;
+  --lv-col-source: var(--lv-source-width, 100px);
+  --lv-col-stage: 70px;
+}
+
+/* Shared grid template using column width vars */
+.lv-column-headers,
+.lv-entry-row,
+.lv-tree-row {
+  grid-template-columns:
+    var(--lv-col-time)
+    var(--lv-col-level)
+    var(--lv-col-source)
+    var(--lv-col-stage)
+    1fr;
+}
+
+.lv-time-compact {
+  --lv-col-time: var(--lv-col-time-compact);
+}
+
+.lv-level-compact {
+  --lv-col-level: var(--lv-col-level-compact);
+}
+
 /* Main container - full viewport */
 .lv-container {
   display: flex;
@@ -409,26 +439,12 @@
 /* Column Headers - CSS Grid for static positioning */
 .lv-column-headers {
   display: grid;
-  grid-template-columns: 58px 55px var(--lv-source-width, 100px) 1fr;
   gap: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-sm);
   background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
   align-items: center;
-}
-
-/* Compact modes for column headers */
-.lv-column-headers.lv-time-compact {
-  grid-template-columns: 48px 55px var(--lv-source-width, 100px) 1fr;
-}
-
-.lv-column-headers.lv-level-compact {
-  grid-template-columns: 58px 24px var(--lv-source-width, 100px) 1fr;
-}
-
-.lv-column-headers.lv-time-compact.lv-level-compact {
-  grid-template-columns: 48px 24px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-col-header {
@@ -643,22 +659,8 @@
 
 .lv-entry-row {
   display: grid;
-  grid-template-columns: 58px 55px var(--lv-source-width, 100px) 1fr;
   gap: var(--spacing-sm);
   align-items: flex-start;
-}
-
-/* Compact modes for entry rows - must match header */
-.lv-entry-row.lv-time-compact {
-  grid-template-columns: 48px 55px var(--lv-source-width, 100px) 1fr;
-}
-
-.lv-entry-row.lv-level-compact {
-  grid-template-columns: 58px 24px var(--lv-source-width, 100px) 1fr;
-}
-
-.lv-entry-row.lv-time-compact.lv-level-compact {
-  grid-template-columns: 48px 24px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-ts {
@@ -755,6 +757,8 @@
   color: var(--text-muted);
   flex-shrink: 0;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Test Badge - truncates from front, shows popup on hover */
@@ -890,25 +894,11 @@
 /* Tree row - uses same grid as regular entries */
 .lv-tree-row {
   display: grid;
-  grid-template-columns: 58px 55px var(--lv-source-width, 100px) 1fr;
   gap: var(--spacing-sm);
   padding: 2px var(--spacing-sm);
   font-size: var(--font-size-sm);
   line-height: 1.4;
   align-items: flex-start;
-}
-
-/* Compact modes for tree rows - must match header */
-.lv-tree-row.lv-time-compact {
-  grid-template-columns: 48px 55px var(--lv-source-width, 100px) 1fr;
-}
-
-.lv-tree-row.lv-level-compact {
-  grid-template-columns: 58px 24px var(--lv-source-width, 100px) 1fr;
-}
-
-.lv-tree-row.lv-time-compact.lv-level-compact {
-  grid-template-columns: 48px 24px var(--lv-source-width, 100px) 1fr;
 }
 
 .lv-tree-row:hover {

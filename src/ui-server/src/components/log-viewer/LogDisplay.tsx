@@ -155,6 +155,9 @@ function TreeNodeRow({
         >
           {sourceDisplayValue}
         </span>
+        <span className="lv-stage-badge" title={entry.stage || ''}>
+          {entry.stage || '—'}
+        </span>
         <div className="lv-tree-message-cell">
           {/* Space indentation for nested levels */}
           {indentLevel > 0 && (
@@ -311,6 +314,9 @@ function StandaloneLogRow({
           style={sourceColor ? { color: sourceColor, borderColor: sourceColor } : undefined}
         >
           {sourceDisplayValue}
+        </span>
+        <span className="lv-stage-badge" title={entry.stage || ''}>
+          {entry.stage || '—'}
         </span>
         <div className="lv-message-cell">
           {sepInfo.isSeparator ? (

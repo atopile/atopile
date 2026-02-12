@@ -263,6 +263,7 @@ export function LogViewer() {
     [logs, sourceMode]
   );
 
+
   return (
     <div
       className="lv-container"
@@ -470,6 +471,9 @@ export function LogViewer() {
               .*
             </button>
           </div>
+        </div>
+        <div className="lv-col-header lv-col-stage" title="Build stage">
+          <span className="lv-col-btn" style={{ cursor: 'default' }}>Stage</span>
         </div>
         <div className="lv-col-header lv-col-message">
           <div className={`lv-search-wrapper lv-search-wrapper-message ${searchRegexError ? 'lv-search-error' : ''}`}>
