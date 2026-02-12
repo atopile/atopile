@@ -106,7 +106,11 @@ class MigrationStep(ABC):
             # Clean up the temp file on any failure
             try:
                 os.unlink(tmp_path)
-            except OSError:
+            except OSError as cleanup_err:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Failed to clean up temp file %s: %s", tmp_path, cleanup_err
+                )
                 pass
             raise
 
