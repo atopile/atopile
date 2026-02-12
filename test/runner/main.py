@@ -156,13 +156,17 @@ class ReportTimer:
             self._thread.join(timeout=1.0)
 
 
-def get_free_port(start_port: int = 50000, max_attempts: int = 100) -> int:
+def get_free_port(
+    start_port: int = 50000, fallback_port: int = 51000, max_attempts: int = 100
+) -> int:
     """
     Find a free port starting from start_port.
 
     First tries to kill any stale process on the preferred port to ensure
     consistent port usage across test runs. This prevents issues where old
     browser tabs connect to stale servers on different ports.
+
+    If the preferred port can't be freed, searches from fallback_port.
     """
     from atopile.server.server import is_port_in_use, kill_process_on_port
 
@@ -180,13 +184,14 @@ def get_free_port(start_port: int = 50000, max_attempts: int = 100) -> int:
     if not is_port_in_use(start_port):
         return start_port
 
-    # Fall back to finding any free port
+    # Fall back to finding any free port starting from fallback_port
+    _print(f"Port {start_port} still in use, searching from {fallback_port}...")
     for attempt in range(max_attempts):
-        port = start_port + attempt
+        port = fallback_port + attempt
         if not is_port_in_use(port):
             return port
     raise RuntimeError(
-        f"No free port found in range {start_port}-{start_port + max_attempts}"
+        f"No free port found in range {fallback_port}-{fallback_port + max_attempts}"
     )
 
 
