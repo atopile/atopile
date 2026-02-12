@@ -26,7 +26,7 @@ import { UsageCard } from './UsageCard'
 import { validateName } from '../utils/nameValidation'
 import { compareVersionsDesc, isInstalledInProject } from '../utils/packageUtils'
 import { generateImportStatement, generateUsageExample } from '../utils/codeHighlight'
-import { sendAction, sendActionWithResponse } from '../api/websocket'
+import { sendActionWithResponse } from '../api/websocket'
 import { useStore } from '../store'
 import type { BuildTarget as ProjectBuildTarget, PackageDetails } from '../types/build'
 import type {
@@ -358,8 +358,6 @@ export const ProjectCard = memo(function ProjectCard({
   // Migration state from store
   const migratingProjectRoots = useStore((state) => state.migratingProjectRoots)
   const migrationErrors = useStore((state) => state.migrationErrors)
-  const addMigratingProject = useStore((state) => state.addMigratingProject)
-  const setMigrationError = useStore((state) => state.setMigrationError)
   const isMigrating = migratingProjectRoots.includes(project.root)
   const migrationError = migrationErrors[project.root]
 
@@ -658,25 +656,15 @@ export const ProjectCard = memo(function ProjectCard({
               </button>
             ) : (
               <button
-                className={`project-build-btn-icon${project.needsMigration ? ' needs-migration' : ''}${isMigrating ? ' migrating' : ''}${migrationError ? ' has-error' : ''}`}
+                className={`project-build-btn-icon${isMigrating ? ' migrating' : ''}${migrationError ? ' has-error' : ''}`}
                 onClick={(e) => {
                   e.stopPropagation()
-                  if (project.needsMigration) {
-                    // Clear any previous error and start migration
-                    if (migrationError) {
-                      setMigrationError(project.root, null)
-                    }
-                    // Add to migrating list and fire-and-forget
-                    addMigratingProject(project.root)
-                    sendAction('migrateProject', {
-                      projectRoot: project.root,
-                    })
-                  } else {
+                  if (!project.needsMigration) {
                     onBuild('project', project.id, project.name)
                   }
                 }}
-                disabled={isMigrating}
-                title={migrationError ? `Migration failed: ${migrationError}` : (isMigrating ? 'Migrating...' : (project.needsMigration ? 'Your project and dependencies are incompatible with this version of atopile. Use this button to download the latest compatible dependencies. You might need to manually make some minor changes in your project afterwards.' : `Build all targets in ${project.name}`))}
+                disabled={isMigrating || project.needsMigration}
+                title={migrationError ? `Migration failed: ${migrationError}` : (isMigrating ? 'Migrating...' : (project.needsMigration ? 'Use the migrate flow before building your project!' : `Build all targets in ${project.name}`))}
               >
                 {isMigrating ? <Loader2 size={14} className="spin" /> : <Play size={14} fill="currentColor" />}
               </button>

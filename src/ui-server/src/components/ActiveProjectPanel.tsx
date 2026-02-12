@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2 } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
 import { postMessage } from '../api/vscodeApi'
-import { sendAction } from '../api/websocket'
 import { useStore } from '../store'
 import './ActiveProjectPanel.css'
 
@@ -866,7 +865,6 @@ export function ActiveProjectPanel({
   // Migration state from store
   const migratingProjectRoots = useStore((state) => state.migratingProjectRoots)
   const migrationErrors = useStore((state) => state.migrationErrors)
-  const addMigratingProject = useStore((state) => state.addMigratingProject)
   const setMigrationError = useStore((state) => state.setMigrationError)
 
   // Compute isMigrating based on selected project
@@ -1028,31 +1026,33 @@ export function ActiveProjectPanel({
 
         {/* Action buttons - single row: Build | KiCad | 3D | Layout | Manufacture */}
         <div className="build-actions-row">
-          <button
-            className={`action-btn primary${activeProject?.needsMigration ? ' needs-migration' : ''}`}
-            onClick={() => {
-              if (!activeProject) return
-              if (activeProject.needsMigration && !isMigrating) {
-                // Clear any previous error and start migration
-                if (migrationError) {
-                  setMigrationError(activeProject.root, null)
-                }
-                // Add to migrating list and fire-and-forget
-                addMigratingProject(activeProject.root)
-                sendAction('migrateProject', {
-                  projectRoot: activeProject.root,
-                })
-              } else if (!isMigrating) {
-                if (!activeTargetName) return
+          {activeProject?.needsMigration ? (
+            <button
+              className="action-btn primary"
+              onClick={() => {
+                if (!activeProject) return
+                postMessage({ type: 'openMigrateTab', projectRoot: activeProject.root })
+              }}
+              disabled={!activeProject || isMigrating}
+              title="Your project needs migration. Click to open the migration helper."
+            >
+              {isMigrating ? <Loader2 size={12} className="spin" /> : <AlertCircle size={12} />}
+              <span className="action-label">{isMigrating ? 'Migrating...' : 'Migrate Help'}</span>
+            </button>
+          ) : (
+            <button
+              className="action-btn primary"
+              onClick={() => {
+                if (!activeProject || !activeTargetName || isMigrating) return
                 onBuildTarget(activeProject.root, activeTargetName)
-              }
-            }}
-            disabled={!activeProject || isMigrating || (!activeProject.needsMigration && !activeTargetName)}
-            title={isMigrating ? 'Migrating...' : (activeProject?.needsMigration ? 'Your project and dependencies are incompatible with this version of atopile. Use this button to download the latest compatible dependencies. You might need to manually make some minor changes in your project afterwards.' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first'))}
-          >
-            {isMigrating ? <Loader2 size={12} className="spin" /> : <Play size={12} />}
-            <span className="action-label">{isMigrating ? 'Migrating...' : (activeProject?.needsMigration ? 'Migrate' : 'Build')}</span>
-          </button>
+              }}
+              disabled={!activeProject || isMigrating || !activeTargetName}
+              title={isMigrating ? 'Migrating...' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first')}
+            >
+              {isMigrating ? <Loader2 size={12} className="spin" /> : <Play size={12} />}
+              <span className="action-label">{isMigrating ? 'Migrating...' : 'Build'}</span>
+            </button>
+          )}
 
           <div className="action-divider" />
 
