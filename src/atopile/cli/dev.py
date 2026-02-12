@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import webbrowser
 from collections import Counter
@@ -193,11 +194,21 @@ def install(
 @dev_app.command()
 @capture("cli:dev_worktree_start", "cli:dev_worktree_end")
 def worktree(
-    name: str = typer.Argument(..., help="Branch/worktree name to create."),
+    name_suffix: str = typer.Argument(
+        ...,
+        help="Worktree name suffix. Defaults to <repo>_<suffix> for the path.",
+    ),
+    branch_name: str | None = typer.Option(
+        None,
+        "--branch",
+        "-b",
+        help="Branch to use. Defaults to the suffix. "
+        "If it exists on origin, a local tracking branch is created.",
+    ),
     path: Path | None = typer.Option(
         None,
         "--path",
-        help="Explicit worktree path. Defaults to <parent-of-main-worktree>/<name>.",
+        help="Explicit worktree path. Defaults to <parent>/<repo>_<suffix>.",
     ),
     start_point: str = typer.Option(
         "HEAD",
@@ -222,6 +233,11 @@ def worktree(
         "--skip-editable-install",
         help="Skip editable install step in the cloned worktree venv.",
     ),
+    cd: bool = typer.Option(
+        True,
+        "--cd/--no-cd",
+        help="Enter a shell in the new worktree after creation.",
+    ),
 ):
     """
     Create a fast development worktree with cloned `.venv` and Zig artifacts.
@@ -229,8 +245,9 @@ def worktree(
     from atopile.worktree import create_worktree
 
     try:
-        create_worktree(
-            name,
+        worktree_path = create_worktree(
+            name_suffix,
+            branch_name=branch_name,
             path=path,
             start_point=start_point,
             base_dir=base_dir,
@@ -240,6 +257,28 @@ def worktree(
         )
     except (RuntimeError, FileExistsError, FileNotFoundError) as e:
         raise typer.BadParameter(str(e))
+
+    if not cd:
+        return
+
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        typer.echo(
+            f"Skipping shell handoff (non-interactive). "
+            f"Use: cd {worktree_path} && source .venv/bin/activate"
+        )
+        return
+
+    shell = os.environ.get("SHELL")
+    if not shell:
+        typer.echo(
+            f"SHELL is not set. Use: cd {worktree_path} && source .venv/bin/activate"
+        )
+        return
+
+    typer.echo(
+        f"\nStarting a shell in {worktree_path}. Exit that shell to return here."
+    )
+    subprocess.run([shell, "-i"], cwd=worktree_path, check=False)
 
 
 def _env_truthy(name: str) -> bool | None:
