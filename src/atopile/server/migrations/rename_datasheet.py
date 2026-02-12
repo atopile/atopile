@@ -23,6 +23,7 @@ class RenameDatasheet(MigrationStep):
 
     async def run(self, project_path: Path) -> None:
         def _do():
+            failed: list[tuple[Path, str]] = []
             for ato_file in project_path.rglob("*.ato"):
                 try:
                     content = ato_file.read_text()
@@ -39,6 +40,10 @@ class RenameDatasheet(MigrationStep):
                             ato_file,
                         )
                 except Exception as exc:
+                    failed.append((ato_file, str(exc)))
                     log.warning("[migrate] Failed to process %s: %s", ato_file, exc)
+            if failed:
+                names = ", ".join(str(f) for f, _ in failed)
+                raise RuntimeError(f"Failed to migrate {len(failed)} file(s): {names}")
 
         await asyncio.to_thread(_do)

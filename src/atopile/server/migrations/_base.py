@@ -56,6 +56,9 @@ class MigrationStep(ABC):
 
     The ``id`` is auto-generated from ``label`` (lowercased, spaces → underscores,
     non-alphanumeric stripped).  Override ``id`` explicitly if needed.
+
+    Note: subclasses are instantiated once at discovery time (import).
+    Keep ``__init__`` cheap and side-effect-free.
     """
 
     label: str
