@@ -17,6 +17,10 @@ telemetry.client.disabled = True
 
 
 def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "max_parallel(n): limit concurrent execution to n tests in this group",
+    )
     worker_id = os.environ.get("PYTEST_XDIST_WORKER")
     if worker_id is not None:
         logging.basicConfig(
@@ -24,6 +28,23 @@ def pytest_configure(config):
             filename=Path("artifacts") / f"tests_{worker_id}.log",
             level=config.getini("log_file_level"),
         )
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    """Emit @max_parallel lines during --collect-only for the orchestrator."""
+    if not config.option.collectonly:
+        return
+    seen: set[str] = set()
+    for item in items:
+        marker = item.get_closest_marker("max_parallel")
+        if marker and marker.args:
+            # Use file nodeid prefix as the group key
+            prefix = item.nodeid.split("::", 1)[0] + "::"
+            if prefix not in seen:
+                seen.add(prefix)
+                print(f"@max_parallel:{prefix}{marker.args[0]}")
 
 
 @pytest.fixture()
