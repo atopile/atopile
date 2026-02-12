@@ -43,7 +43,7 @@
 .migrate-groups {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-lg);
+  gap: var(--spacing-md);
   flex: 1 1 auto;
 }
 
@@ -76,28 +76,23 @@
 .migrate-group-steps {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
-}
-
-/* ---- Step Card ---- */
-
-.migrate-step-card {
   border-radius: var(--radius-md);
   border: 1px solid var(--border-primary);
   background: var(--bg-secondary);
   overflow: hidden;
-  transition: border-color var(--transition-fast);
 }
 
-.migrate-step-card:hover {
-  border-color: var(--border-secondary);
+/* ---- Step Card ---- */
+
+.migrate-step-card + .migrate-step-card {
+  border-top: 1px solid var(--border-primary);
 }
 
 .migrate-step {
   display: flex;
   align-items: flex-start;
   gap: var(--spacing-sm);
-  padding: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
   cursor: pointer;
   user-select: none;
 }
@@ -177,13 +172,11 @@
 }
 
 .migrate-step-error {
-  padding: var(--spacing-xs) var(--spacing-md) var(--spacing-sm) calc(var(--spacing-md) + 22px);
+  padding: 2px var(--spacing-md) var(--spacing-xs) calc(var(--spacing-md) + 22px);
   font-size: var(--font-size-xxs);
   color: var(--ctp-red);
   line-height: 1.3;
   word-break: break-word;
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--border-primary);
 }
 
 /* ---- Banners ---- */

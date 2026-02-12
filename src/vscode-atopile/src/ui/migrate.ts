@@ -25,7 +25,7 @@ export function openMigratePreview(extensionUri: vscode.Uri, projectRoot: string
   const isDev = isDevelopmentMode(extensionPath);
 
   if (panel) {
-    panel.reveal(vscode.ViewColumn.One);
+    panel.reveal(vscode.ViewColumn.Beside);
     return;
   }
 
@@ -39,7 +39,7 @@ export function openMigratePreview(extensionUri: vscode.Uri, projectRoot: string
   panel = vscode.window.createWebviewPanel(
     'atopile.migrate',
     'Migrate Project',
-    vscode.ViewColumn.One,
+    vscode.ViewColumn.Beside,
     webviewOptions,
   );
 
