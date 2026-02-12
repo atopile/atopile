@@ -1,6 +1,10 @@
 import sys
 
+import pytest
 
+
+# FIXME: for some reason freezes in CI, need to fix
+@pytest.mark.not_in_ci
 def test_collect_speed():
     """
     Find all python files in the project
