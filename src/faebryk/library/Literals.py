@@ -682,6 +682,10 @@ class Numeric(fabll.Node[NumericAttributes]):
         if value in [math.inf, -math.inf]:
             return value
         multiplier = 10**digits
+        if digits > 0 and abs(value) > 1e30:
+            raise ValueError(
+                f"Value {value} is too large to round reliably with digits={digits}"
+            )
         # Use floor(x + 0.5) for traditional rounding
         return math.floor(value * multiplier + 0.5) / multiplier
 
@@ -705,6 +709,15 @@ class TestNumeric:
         expected_value = 1.0
         numeric = Numeric.create_instance(g=g, tg=tg, value=expected_value)
         assert numeric.get_value() == expected_value
+
+    def test_round_except_too_big_number(self):
+        x = -1.32906894805911924079677428209e31
+        with pytest.raises(ValueError):
+            Numeric.float_round(x, 1)
+
+    def test_round_ok_too_big_number(self):
+        x = -1.32906894805911924079677428209e31
+        Numeric.float_round(x)
 
 
 class NumericInterval(fabll.Node):
