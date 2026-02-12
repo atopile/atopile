@@ -7,23 +7,23 @@ on:
 jobs:
   vsx-extension:
     runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.14"
     defaults:
       run:
+        shell: bash
         working-directory: src/vscode-atopile
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
+          fetch-depth: 100
+          fetch-tags: true
           submodules: true
 
-      # Required due to a bug in the checkout action
-      # https://github.com/actions/checkout/issues/1471
-      - run: git fetch --prune --unshallow --tags
-
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
-          version: "0.8.11"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
@@ -33,42 +33,60 @@ jobs:
 
       - run: npm ci
 
-      # Set the version in package.json from a workflow dispatch input
+      - name: Compute version
+        id: version
+        run: |
+          set -o pipefail
+          SEMVER=$(uv run ato --semver)
+          echo "semver=$SEMVER" >> "$GITHUB_OUTPUT"
+          echo "semver: $SEMVER"
+
+      # Set the version in package.json
       - name: Pre-release version
         if: github.event_name == 'release' && (github.event.release.prerelease || github.event.release.draft)
         # The pre-release version adds 1000 to the patch version to get around the lack of proper semver support
         # https://code.visualstudio.com/api/working-with-extensions/publishing-extension#prerelease-extensions
         run: |
-          PUBLISH_VERSION=$(uv run ato --semver | cut -d- -f1 | awk -F. '{$NF+=1000;OFS=".";$1=$1}1')
-          npm version --no-git-tag-version $PUBLISH_VERSION
+          PUBLISH_VERSION=$(echo "${{ steps.version.outputs.semver }}" | cut -d- -f1 | awk -F. '{$NF+=1000;OFS=".";$1=$1}1')
+          echo "Publishing pre-release version: $PUBLISH_VERSION"
+          npm version --no-git-tag-version "$PUBLISH_VERSION"
 
       - name: Release version
         if: github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft
         run: |
-          npm version --no-git-tag-version $(uv run ato --semver)
+          echo "Publishing release version: ${{ steps.version.outputs.semver }}"
+          npm version --no-git-tag-version "${{ steps.version.outputs.semver }}"
+
+      - name: Verify version was set
+        if: github.event_name == 'release'
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "package.json version: $VERSION"
+          if [ "$VERSION" = "0.0.0" ]; then
+            echo "::error::Version was not set — still 0.0.0"
+            exit 1
+          fi
 
       - name: Publish release to VS Code Marketplace
         if: github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft
-        # Skip duplicate here to allow manual triggering
-        run: npx vsce publish --skip-duplicate
+        run: npx vsce publish
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
       - name: Publish pre-release to VS Code Marketplace
         if: github.event_name == 'release' && (github.event.release.prerelease || github.event.release.draft)
-        # Skip duplicate here to allow manual triggering
-        run: npx vsce publish --skip-duplicate --pre-release
+        run: npx vsce publish --pre-release
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
       - name: Publish release to Open VSX
         if: github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft
-        run: npx ovsx publish --skip-duplicate
+        run: npx ovsx publish
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
       - name: Publish pre-release to Open VSX
         if: github.event_name == 'release' && (github.event.release.prerelease || github.event.release.draft)
-        run: npx ovsx publish --skip-duplicate --pre-release
+        run: npx ovsx publish --pre-release
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
