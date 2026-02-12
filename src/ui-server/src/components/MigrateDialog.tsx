@@ -287,7 +287,7 @@ export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
       {!isMigrating && (
         <div className="migrate-banner warning">
           <AlertCircle size={16} />
-          <span>We recommend committing your changes to git before migrating. Rollback is not automatic.</span>
+          <span>We recommend committing your changes to git before migrating.</span>
         </div>
       )}
 
