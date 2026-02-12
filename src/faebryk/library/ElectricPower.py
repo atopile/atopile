@@ -133,3 +133,46 @@ class ElectricPower(fabll.Node):
                     f"Deprecated ElectricPower aliases used in {self.pretty_repr()}: "
                     f"{', '.join(aliases_used)}. Use hv/lv instead."
                 )
+
+        self._check_voltage_compatibility()
+
+    def _check_voltage_compatibility(self):
+        from faebryk.core.solver.utils import ContradictionByLiteral
+        from faebryk.libs.app.erc import ERCFaultElectricPowerVoltageIncompatible
+
+        # Skip if this EP's voltage has no explicit constraint
+        voltage_param = self.voltage.get()
+        if voltage_param.try_extract_superset() is None:
+            return
+
+        try:
+            solver = self.design_check.get().get_solver()
+        except RuntimeError:
+            return
+        param = voltage_param.is_parameter.get()
+
+        try:
+            solver.simplify_and_extract_superset(param)
+        except ContradictionByLiteral:
+            # Solver found non-overlapping voltage ranges on this bus.
+            # Collect pre-solver ranges for a clear error message.
+            connected = self._is_interface.get().get_connected(include_self=True)
+            bus_eps = [
+                ep
+                for node in connected.keys()
+                if (ep := node.try_cast(ElectricPower)) is not None
+            ]
+            ep_descriptions = []
+            for ep in bus_eps:
+                ep_lit = ep.voltage.get().try_extract_superset()
+                if ep_lit is not None:
+                    ep_descriptions.append(
+                        f"  {ep.pretty_repr()}: "
+                        f"[{ep_lit.get_min_value():.3g}V, "
+                        f"{ep_lit.get_max_value():.3g}V]"
+                    )
+            raise ERCFaultElectricPowerVoltageIncompatible(
+                "Incompatible voltage ranges on connected power rails:\n"
+                + "\n".join(sorted(ep_descriptions)),
+                bus_eps,
+            )
