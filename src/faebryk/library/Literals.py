@@ -710,15 +710,6 @@ class TestNumeric:
         numeric = Numeric.create_instance(g=g, tg=tg, value=expected_value)
         assert numeric.get_value() == expected_value
 
-    def test_round_except_too_big_number(self):
-        x = -1.32906894805911924079677428209e31
-        with pytest.raises(ValueError):
-            Numeric.float_round(x, 1)
-
-    def test_round_ok_too_big_number(self):
-        x = -1.32906894805911924079677428209e31
-        Numeric.float_round(x)
-
 
 class NumericInterval(fabll.Node):
     min_numeric_ptr = F.Collections.Pointer.MakeChild()
@@ -1807,6 +1798,27 @@ class TestNumericInterval:
         result = numeric_interval.op_round(g=g, tg=tg, ndigits=3)
         assert result.get_min_value() == 1.952
         assert result.get_max_value() == 2.498
+
+    def test_round_except_too_big_number(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        x = -1.32906894805911924079677428209e31
+        numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+        numeric_interval.setup_from_singleton(value=x)
+
+        with pytest.raises(ValueError):
+            numeric_interval.op_round(g=g, tg=tg, ndigits=1)
+
+    def test_round_ok_too_big_number(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        x = -1.32906894805911924079677428209e31
+        numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+        numeric_interval.setup_from_singleton(value=x)
+
+        result = numeric_interval.op_round(g=g, tg=tg)
+        assert result.get_min_value() == x
+        assert result.get_max_value() == x
 
     def test_op_abs(self):
         g = graph.GraphView.create()
