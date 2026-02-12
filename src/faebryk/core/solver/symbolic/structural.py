@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import logging
 from itertools import combinations
 
 import faebryk.core.node as fabll
@@ -13,8 +12,6 @@ from faebryk.core.solver.symbolic.pure_literal import (
 )
 from faebryk.core.solver.utils import Contradiction, MutatorUtils
 from faebryk.libs.util import OrderedSet
-
-logger = logging.getLogger(__name__)
 
 Add = F.Expressions.Add
 GreaterOrEqual = F.Expressions.GreaterOrEqual
@@ -219,6 +216,7 @@ def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
         if mapped_operands == operands:
             continue
 
+        is_pred = expr.has_trait(F.Expressions.is_predicate)
         expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
         from_ops = [expr_po]
 
@@ -234,6 +232,13 @@ def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
                 mapped_operands,
             )
         else:
+            # Skip mixed estimation for predicates: _no_predicate_operands
+            # invariant normalizes the predicate operand to True, creating
+            # IsSubset(True, R) links that can't be deduplicated across
+            # algorithm boundaries, causing solver convergence loops.
+            # Pure-literal fold above still catches contradictions.
+            if is_pred:
+                continue
             # Make new expr with subset literals
             res = mutator.create_check_and_insert_expression(
                 mutator.utils.hack_get_expr_type(expr_e),

@@ -838,6 +838,22 @@ class is_unit(fabll.Node):
 
         return out
 
+    # Fallback map from basis vector to pint-compatible API name.
+    # Used when unit symbols are not available in the current graph
+    # (e.g. solver working graph for inherited modules).
+    _BASIS_VECTOR_TO_API_NAME: ClassVar[dict[BasisVector, str]] = {
+        BasisVector(kilogram=-1, meter=-2, second=4, ampere=2): "farad",
+        BasisVector(kilogram=1, meter=2, second=-3, ampere=-2): "ohm",
+        BasisVector(kilogram=1, meter=2, second=-2, ampere=-2): "henry",
+        BasisVector(kilogram=1, meter=2, second=-3, ampere=-1): "volt",
+        BasisVector(kilogram=1, meter=2, second=-3): "watt",
+        BasisVector(ampere=1): "ampere",
+        BasisVector(second=1): "second",
+        BasisVector(meter=1): "meter",
+        BasisVector(kilogram=1): "kilogram",
+        BasisVector(kelvin=1): "kelvin",
+    }
+
     def serialize_for_api(self: "is_unit | None") -> str | dict | None:
         """
         Serialize unit for the component API backend.
@@ -859,13 +875,20 @@ class is_unit(fabll.Node):
             # Fallback to first symbol if no lowercase name found
             return symbols[0]
 
-        # For anonymous/complex units, return the full structure
-        out = {}
+        # Symbols may be absent when the unit was copied into a solver
+        # working graph (e.g. for inherited modules). Fall back to a
+        # static lookup from the basis vector.
         basis_vector = is_unit._extract_basis_vector(self)
         multiplier = is_unit._extract_multiplier(self)
         offset = is_unit._extract_offset(self)
 
-        out["symbols"] = symbols
+        if multiplier == 1.0 and offset == 0.0:
+            if name := is_unit._BASIS_VECTOR_TO_API_NAME.get(basis_vector):
+                return name
+
+        # For truly anonymous/complex units, return the full structure
+        out: dict = {}
+        out["symbols"] = []
         out["basis_vector"] = basis_vector.to_dict()
         out["multiplier"] = multiplier
         out["offset"] = offset
