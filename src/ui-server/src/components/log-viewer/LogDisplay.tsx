@@ -27,6 +27,13 @@ import {
 } from './logUtils';
 import { filterByLoggers } from './LoggerFilter';
 
+interface RowToggleHandlers {
+  toggleTimeMode: () => void;
+  toggleLevelWidth: () => void;
+  toggleSourceMode: () => void;
+  toggleStageWidth: () => void;
+}
+
 // Chevron icon component
 function ChevronDown({ className }: { className?: string }) {
   return (
@@ -95,6 +102,38 @@ function CollapsibleStackTrace({
   );
 }
 
+function TracebacksInline({
+  entry,
+}: {
+  entry: LogEntry;
+}) {
+  if (!entry.ato_traceback && !entry.python_traceback) return null;
+
+  const structuredTb = tryParseStructuredTraceback(entry.python_traceback);
+
+  return (
+    <div className="lv-tracebacks lv-tracebacks-inline">
+      {entry.ato_traceback && (
+        <TraceDetails
+          label="ato traceback"
+          content={entry.ato_traceback}
+          className="lv-trace-ato"
+          defaultOpen
+        />
+      )}
+      {structuredTb && structuredTb.frames.length > 0 ? (
+        <CollapsibleStackTrace traceback={structuredTb} />
+      ) : entry.python_traceback ? (
+        <TraceDetails
+          label="python traceback"
+          content={entry.python_traceback}
+          className="lv-trace-python"
+        />
+      ) : null}
+    </div>
+  );
+}
+
 // Recursive tree node component for nested folding
 function TreeNodeRow({
   node,
@@ -106,8 +145,7 @@ function TreeNodeRow({
   firstTimestamp,
   indentLevel,
   defaultExpanded,
-  setLevelFull,
-  setTimeMode,
+  rowToggleHandlers,
 }: {
   node: TreeNode;
   search: string;
@@ -118,8 +156,7 @@ function TreeNodeRow({
   firstTimestamp: number;
   indentLevel: number;
   defaultExpanded: boolean;
-  setLevelFull: (value: boolean) => void;
-  setTimeMode: (value: TimeMode) => void;
+  rowToggleHandlers: RowToggleHandlers;
 }) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const hasChildren = node.children.length > 0;
@@ -143,65 +180,44 @@ function TreeNodeRow({
 
   return (
     <>
-      <div className={`lv-tree-row ${entry.level.toLowerCase()} ${indentLevel === 0 ? 'lv-tree-root' : 'lv-tree-child'} ${!levelFull ? 'lv-level-compact' : ''} ${timeMode === 'delta' ? 'lv-time-compact' : ''}`}>
-        <span className="lv-ts" onClick={() => setTimeMode(timeMode === 'delta' ? 'wall' : 'delta')} title={TOOLTIPS.timestamp}>{ts}</span>
-        <span className={`lv-level-badge ${entry.level.toLowerCase()} ${levelFull ? '' : 'short'}`} onClick={() => setLevelFull(!levelFull)} title={TOOLTIPS.level}>
+      <div className={`lv-tree-row ${entry.level.toLowerCase()} ${indentLevel === 0 ? 'lv-tree-root' : 'lv-tree-child'}`}>
+        <span className="lv-ts" onClick={rowToggleHandlers.toggleTimeMode} title={TOOLTIPS.timestamp}>{ts}</span>
+        <span className={`lv-level-badge ${entry.level.toLowerCase()} ${levelFull ? '' : 'short'}`} onClick={rowToggleHandlers.toggleLevelWidth} title={TOOLTIPS.level}>
           {levelFull ? entry.level : LEVEL_SHORT[entry.level]}
         </span>
         <span
           className="lv-source-badge"
           title={sourceTooltip}
+          onClick={rowToggleHandlers.toggleSourceMode}
           style={sourceColor ? { color: sourceColor, borderColor: sourceColor } : undefined}
         >
           {sourceDisplayValue}
         </span>
-        <span className="lv-stage-badge" title={entry.stage || ''}>
+        <span className="lv-stage-badge" title={entry.stage || ''} onClick={rowToggleHandlers.toggleStageWidth}>
           {entry.stage || '—'}
         </span>
         <div className="lv-tree-message-cell">
-          {/* Space indentation for nested levels */}
-          {indentLevel > 0 && (
-            <span className="lv-tree-indent" style={{ width: `${indentLevel * 1.2}em` }} />
-          )}
-          {/* Toggle button if has children */}
-          {hasChildren && (
-            <button
-              className={`lv-tree-toggle ${isExpanded ? 'expanded' : 'collapsed'}`}
-              onClick={() => setIsExpanded(!isExpanded)}
-              title={isExpanded ? 'Collapse' : 'Expand'}
-            >
-              <span className="lv-tree-toggle-icon">▸</span>
-              {!isExpanded && <span className="lv-tree-child-count">{descendantCount}</span>}
-            </button>
-          )}
-          <pre className="lv-message" dangerouslySetInnerHTML={{ __html: html }} />
+          <div className="lv-tree-message-main">
+            {/* Space indentation for nested levels */}
+            {indentLevel > 0 && (
+              <span className="lv-tree-indent" style={{ width: `${indentLevel * 1.2}em` }} />
+            )}
+            {/* Toggle button if has children */}
+            {hasChildren && (
+              <button
+                className={`lv-tree-toggle ${isExpanded ? 'expanded' : 'collapsed'}`}
+                onClick={() => setIsExpanded(!isExpanded)}
+                title={isExpanded ? 'Collapse' : 'Expand'}
+              >
+                <span className="lv-tree-toggle-icon">▸</span>
+                {!isExpanded && <span className="lv-tree-child-count">{descendantCount}</span>}
+              </button>
+            )}
+            <pre className="lv-message" dangerouslySetInnerHTML={{ __html: html }} />
+          </div>
+          <TracebacksInline entry={entry} />
         </div>
       </div>
-      {/* Tracebacks */}
-      {(entry.ato_traceback || entry.python_traceback) && (() => {
-        const structuredTb = tryParseStructuredTraceback(entry.python_traceback);
-        return (
-          <div className="lv-tracebacks" style={{ marginLeft: `${indentLevel * 1.2}em` }}>
-            {entry.ato_traceback && (
-              <TraceDetails
-                label="ato traceback"
-                content={entry.ato_traceback}
-                className="lv-trace-ato"
-                defaultOpen
-              />
-            )}
-            {structuredTb && structuredTb.frames.length > 0 ? (
-              <CollapsibleStackTrace traceback={structuredTb} />
-            ) : entry.python_traceback ? (
-              <TraceDetails
-                label="python traceback"
-                content={entry.python_traceback}
-                className="lv-trace-python"
-              />
-            ) : null}
-          </div>
-        );
-      })()}
       {/* Render children recursively */}
       {hasChildren && isExpanded && node.children.map((child, idx) => (
         <TreeNodeRow
@@ -215,8 +231,7 @@ function TreeNodeRow({
           firstTimestamp={firstTimestamp}
           indentLevel={indentLevel + 1}
           defaultExpanded={defaultExpanded}
-          setLevelFull={setLevelFull}
-          setTimeMode={setTimeMode}
+          rowToggleHandlers={rowToggleHandlers}
         />
       ))}
     </>
@@ -233,8 +248,7 @@ function TreeLogGroup({
   sourceMode,
   firstTimestamp,
   defaultExpanded,
-  setLevelFull,
-  setTimeMode,
+  rowToggleHandlers,
 }: {
   group: LogTreeGroup;
   search: string;
@@ -244,25 +258,21 @@ function TreeLogGroup({
   sourceMode: SourceMode;
   firstTimestamp: number;
   defaultExpanded: boolean;
-  setLevelFull: (value: boolean) => void;
-  setTimeMode: (value: TimeMode) => void;
+  rowToggleHandlers: RowToggleHandlers;
 }) {
   return (
-    <div className="lv-tree-group">
-      <TreeNodeRow
-        node={group.root}
-        search={search}
-        searchOptions={searchOptions}
-        levelFull={levelFull}
-        timeMode={timeMode}
-        sourceMode={sourceMode}
-        firstTimestamp={firstTimestamp}
-        indentLevel={0}
-        defaultExpanded={defaultExpanded}
-        setLevelFull={setLevelFull}
-        setTimeMode={setTimeMode}
-      />
-    </div>
+    <TreeNodeRow
+      node={group.root}
+      search={search}
+      searchOptions={searchOptions}
+      levelFull={levelFull}
+      timeMode={timeMode}
+      sourceMode={sourceMode}
+      firstTimestamp={firstTimestamp}
+      indentLevel={0}
+      defaultExpanded={defaultExpanded}
+      rowToggleHandlers={rowToggleHandlers}
+    />
   );
 }
 
@@ -276,8 +286,7 @@ function StandaloneLogRow({
   timeMode,
   sourceMode,
   firstTimestamp,
-  setLevelFull,
-  setTimeMode,
+  rowToggleHandlers,
 }: {
   entry: LogEntry;
   content: string;
@@ -287,8 +296,7 @@ function StandaloneLogRow({
   timeMode: TimeMode;
   sourceMode: SourceMode;
   firstTimestamp: number;
-  setLevelFull: (value: boolean) => void;
-  setTimeMode: (value: TimeMode) => void;
+  rowToggleHandlers: RowToggleHandlers;
 }) {
   const ts = formatTs(entry.timestamp, timeMode, firstTimestamp);
   const html = highlightText(ansiConverter.toHtml(content), search, searchOptions);
@@ -302,20 +310,21 @@ function StandaloneLogRow({
   const sepInfo = isSeparatorLine(entry.message);
 
   return (
-    <div className={`lv-entry lv-entry-standalone ${entry.level.toLowerCase()}`}>
-      <div className={`lv-entry-row ${!levelFull ? 'lv-level-compact' : ''} ${timeMode === 'delta' ? 'lv-time-compact' : ''}`}>
-        <span className="lv-ts" onClick={() => setTimeMode(timeMode === 'delta' ? 'wall' : 'delta')} title={TOOLTIPS.timestamp}>{ts}</span>
-        <span className={`lv-level-badge ${entry.level.toLowerCase()} ${levelFull ? '' : 'short'}`} onClick={() => setLevelFull(!levelFull)} title={TOOLTIPS.level}>
+    <>
+      <div className={`lv-entry-row lv-entry-standalone ${entry.level.toLowerCase()}`}>
+        <span className="lv-ts" onClick={rowToggleHandlers.toggleTimeMode} title={TOOLTIPS.timestamp}>{ts}</span>
+        <span className={`lv-level-badge ${entry.level.toLowerCase()} ${levelFull ? '' : 'short'}`} onClick={rowToggleHandlers.toggleLevelWidth} title={TOOLTIPS.level}>
           {levelFull ? entry.level : LEVEL_SHORT[entry.level]}
         </span>
         <span
           className="lv-source-badge"
           title={sourceTooltip}
+          onClick={rowToggleHandlers.toggleSourceMode}
           style={sourceColor ? { color: sourceColor, borderColor: sourceColor } : undefined}
         >
           {sourceDisplayValue}
         </span>
-        <span className="lv-stage-badge" title={entry.stage || ''}>
+        <span className="lv-stage-badge" title={entry.stage || ''} onClick={rowToggleHandlers.toggleStageWidth}>
           {entry.stage || '—'}
         </span>
         <div className="lv-message-cell">
@@ -328,33 +337,10 @@ function StandaloneLogRow({
           ) : (
             <pre className="lv-message" dangerouslySetInnerHTML={{ __html: html }} />
           )}
+          <TracebacksInline entry={entry} />
         </div>
       </div>
-      {(entry.ato_traceback || entry.python_traceback) && (() => {
-        const structuredTb = tryParseStructuredTraceback(entry.python_traceback);
-        return (
-          <div className="lv-tracebacks">
-            {entry.ato_traceback && (
-              <TraceDetails
-                label="ato traceback"
-                content={entry.ato_traceback}
-                className="lv-trace-ato"
-                defaultOpen
-              />
-            )}
-            {structuredTb && structuredTb.frames.length > 0 ? (
-              <CollapsibleStackTrace traceback={structuredTb} />
-            ) : entry.python_traceback ? (
-              <TraceDetails
-                label="python traceback"
-                content={entry.python_traceback}
-                className="lv-trace-python"
-              />
-            ) : null}
-          </div>
-        );
-      })()}
-    </div>
+    </>
   );
 }
 
@@ -366,6 +352,7 @@ export interface LogDisplayProps {
   sourceOptions?: SearchOptions;
   enabledLoggers?: Set<string> | null;
   levelFull: boolean;
+  stageFull: boolean;
   timeMode: TimeMode;
   sourceMode: SourceMode;
   autoScroll: boolean;
@@ -373,6 +360,8 @@ export interface LogDisplayProps {
   onAutoScrollChange: (value: boolean) => void;
   setLevelFull: (value: boolean) => void;
   setTimeMode: (value: TimeMode) => void;
+  setSourceMode: (value: SourceMode) => void;
+  setStageFull: (value: boolean) => void;
   // Expansion control
   allExpanded: boolean;
   expandKey: number;
@@ -388,6 +377,7 @@ export function LogDisplay({
   sourceOptions = { isRegex: false },
   enabledLoggers,
   levelFull,
+  stageFull,
   timeMode,
   sourceMode,
   autoScroll,
@@ -395,6 +385,8 @@ export function LogDisplay({
   onAutoScrollChange,
   setLevelFull,
   setTimeMode,
+  setSourceMode,
+  setStageFull,
   allExpanded,
   expandKey,
   onExpandAll,
@@ -443,6 +435,12 @@ export function LogDisplay({
 
   // Count how many groups have children (foldable)
   const foldableCount = groups.filter(g => g.type === 'tree' && g.root.children.length > 0).length;
+  const rowToggleHandlers = useMemo<RowToggleHandlers>(() => ({
+    toggleTimeMode: () => setTimeMode(timeMode === 'delta' ? 'wall' : 'delta'),
+    toggleLevelWidth: () => setLevelFull(!levelFull),
+    toggleSourceMode: () => setSourceMode(sourceMode === 'source' ? 'logger' : 'source'),
+    toggleStageWidth: () => setStageFull(!stageFull),
+  }), [setTimeMode, timeMode, setLevelFull, levelFull, setSourceMode, sourceMode, setStageFull, stageFull]);
 
   return (
     <div className="lv-display-container">
@@ -491,8 +489,7 @@ export function LogDisplay({
                   sourceMode={sourceMode}
                   firstTimestamp={firstTimestamp}
                   defaultExpanded={allExpanded}
-                  setLevelFull={setLevelFull}
-                  setTimeMode={setTimeMode}
+                  rowToggleHandlers={rowToggleHandlers}
                 />
               );
             }
@@ -509,8 +506,7 @@ export function LogDisplay({
                 timeMode={timeMode}
                 sourceMode={sourceMode}
                 firstTimestamp={firstTimestamp}
-                setLevelFull={setLevelFull}
-                setTimeMode={setTimeMode}
+                rowToggleHandlers={rowToggleHandlers}
               />
             );
           })

@@ -53,6 +53,9 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
   const [levelFull, setLevelFull] = useState(() =>
     getStoredSetting('lv-levelFull', false)
   );
+  const [stageFull, setStageFull] = useState(() =>
+    getStoredSetting('lv-stageFull', false)
+  );
   const [timeMode, setTimeMode] = useState<TimeMode>(() =>
     getStoredSetting('lv-timeMode', 'delta' as TimeMode, v => v === 'delta' || v === 'wall')
   );
@@ -99,6 +102,9 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
   useEffect(() => {
     localStorage.setItem('lv-sourceMode', sourceMode);
   }, [sourceMode]);
+  useEffect(() => {
+    localStorage.setItem('lv-stageFull', String(stageFull));
+  }, [stageFull]);
   useEffect(() => {
     localStorage.setItem('lv-logLevels', JSON.stringify(logLevels));
   }, [logLevels]);
@@ -181,11 +187,24 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
     () => calculateSourceColumnWidth(logs, sourceMode),
     [logs, sourceMode]
   );
+  const gridTemplateColumns = useMemo(
+    () => [
+      timeMode === 'delta' ? 'var(--lv-col-time-compact)' : 'var(--lv-col-time)',
+      levelFull ? 'max-content' : '3ch',
+      'var(--lv-source-width)',
+      stageFull ? 'max-content' : '12ch',
+      'minmax(0, 1fr)',
+    ].join(' '),
+    [timeMode, levelFull, stageFull]
+  );
 
   return (
     <div
       className="lv-container"
-      style={{ '--lv-source-width': `${sourceColumnWidth}px` } as React.CSSProperties}
+      style={{
+        '--lv-source-width': `${sourceColumnWidth}ch`,
+        '--lv-grid-template-columns': gridTemplateColumns,
+      } as React.CSSProperties}
     >
       {/* Toolbar */}
       <div className="lv-toolbar">
@@ -292,62 +311,55 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
         )}
       </div>
 
-      {/* Column Headers */}
-      <div className={`lv-column-headers ${!levelFull ? 'lv-level-compact' : ''} ${timeMode === 'delta' ? 'lv-time-compact' : ''}`}>
-        <div className="lv-col-header lv-col-ts">
-          <button
-            className="lv-col-btn"
-            onClick={() => setTimeMode(m => m === 'wall' ? 'delta' : 'wall')}
-          >
-            {timeMode === 'wall' ? 'Time' : 'Δ'}
-          </button>
+      <div className="lv-log-grid">
+        {/* Column Headers */}
+        <div className="lv-column-headers">
+          <div className="lv-col-header lv-col-ts">
+            <span className="lv-col-label">Time</span>
+          </div>
+          <div className="lv-col-header lv-col-level">
+            <span className="lv-col-label">Level</span>
+          </div>
+          <div className="lv-col-header lv-col-source">
+            <span className="lv-col-label">{sourceMode === 'source' ? 'Src' : 'Log'}</span>
+          </div>
+          <div className="lv-col-header lv-col-stage">
+            <span className="lv-col-label">Stage</span>
+          </div>
+          <div className="lv-col-header lv-col-message">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Message"
+              className="lv-col-search lv-col-search-message"
+            />
+          </div>
         </div>
-        <div className="lv-col-header lv-col-level">
-          <button
-            className="lv-col-btn"
-            onClick={() => setLevelFull(f => !f)}
-          >
-            {levelFull ? 'Level' : 'Lv'}
-          </button>
-        </div>
-        <div className="lv-col-header lv-col-source">
-          <button
-            className="lv-col-btn"
-            onClick={() => setSourceMode(m => m === 'source' ? 'logger' : 'source')}
-          >
-            {sourceMode === 'source' ? 'Src' : 'Log'}
-          </button>
-        </div>
-        <div className="lv-col-header lv-col-message">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Message"
-            className="lv-col-search lv-col-search-message"
-          />
-        </div>
-      </div>
 
-      {/* Log Display */}
-      <LogDisplay
-        logs={logs}
-        search={search}
-        sourceFilter={sourceFilter}
-        enabledLoggers={enabledLoggers}
-        levelFull={levelFull}
-        timeMode={timeMode}
-        sourceMode={sourceMode}
-        autoScroll={autoScroll}
-        streaming={streaming}
-        onAutoScrollChange={handleAutoScrollChange}
-        setLevelFull={setLevelFull}
-        setTimeMode={setTimeMode}
-        allExpanded={allExpanded}
-        expandKey={expandKey}
-        onExpandAll={handleExpandAll}
-        onCollapseAll={handleCollapseAll}
-      />
+        {/* Log Display */}
+        <LogDisplay
+          logs={logs}
+          search={search}
+          sourceFilter={sourceFilter}
+          enabledLoggers={enabledLoggers}
+          levelFull={levelFull}
+          stageFull={stageFull}
+          timeMode={timeMode}
+          sourceMode={sourceMode}
+          autoScroll={autoScroll}
+          streaming={streaming}
+          onAutoScrollChange={handleAutoScrollChange}
+          setLevelFull={setLevelFull}
+          setTimeMode={setTimeMode}
+          setSourceMode={setSourceMode}
+          setStageFull={setStageFull}
+          allExpanded={allExpanded}
+          expandKey={expandKey}
+          onExpandAll={handleExpandAll}
+          onCollapseAll={handleCollapseAll}
+        />
+      </div>
     </div>
   );
 }

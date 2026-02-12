@@ -5,32 +5,22 @@
 
 /* Column width constants */
 .lv-container {
-  --lv-col-time: 58px;
-  --lv-col-time-compact: 48px;
-  --lv-col-level: 55px;
-  --lv-col-level-compact: 24px;
+  --lv-col-time: 72px;
+  --lv-col-time-compact: 60px;
   --lv-col-source: var(--lv-source-width, 100px);
-  --lv-col-stage: 70px;
+  --lv-grid-template-columns:
+    var(--lv-col-time)
+    3ch
+    var(--lv-col-source)
+    12ch
+    minmax(0, 1fr);
 }
 
 /* Shared grid template using column width vars */
 .lv-column-headers,
 .lv-entry-row,
 .lv-tree-row {
-  grid-template-columns:
-    var(--lv-col-time)
-    var(--lv-col-level)
-    var(--lv-col-source)
-    var(--lv-col-stage)
-    1fr;
-}
-
-.lv-time-compact {
-  --lv-col-time: var(--lv-col-time-compact);
-}
-
-.lv-level-compact {
-  --lv-col-level: var(--lv-col-level-compact);
+  grid-template-columns: var(--lv-grid-template-columns);
 }
 
 /* Main container - full viewport */
@@ -439,6 +429,8 @@
 /* Column Headers - CSS Grid for static positioning */
 .lv-column-headers {
   display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
   gap: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-sm);
   background: var(--bg-tertiary);
@@ -471,6 +463,15 @@
 .lv-col-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.lv-col-label {
+  padding: 2px var(--spacing-xs);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  white-space: nowrap;
 }
 
 .lv-col-search {
@@ -566,14 +567,17 @@
 
 /* Display container wraps expand toolbar + content */
 .lv-display-container {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-template-rows: auto 1fr;
+  grid-column: 1 / -1;
   overflow: hidden;
+  min-height: 0;
 }
 
 /* Expand/Collapse toolbar */
 .lv-expand-toolbar {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -617,50 +621,46 @@
 
 /* Scrollable log content */
 .lv-content {
+  grid-column: 1 / -1;
   flex: 1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-content: start;
   overflow-y: auto;
   overflow-x: hidden;
   background: var(--bg-primary);
 }
 
 .lv-empty {
+  grid-column: 1 / -1;
   padding: var(--spacing-xl);
   text-align: center;
   color: var(--text-muted);
   font-size: var(--font-size-base);
 }
 
-/* Log Entry */
-.lv-entry {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.lv-entry-row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  gap: var(--spacing-sm);
   padding: 2px var(--spacing-sm);
   font-size: var(--font-size-sm);
   line-height: 1.4;
+  align-items: flex-start;
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.lv-entry:hover {
+.lv-entry-row:hover {
   background: var(--bg-secondary);
 }
 
-.lv-entry:last-child {
-  border-bottom: none;
-}
-
-.lv-entry.error {
+.lv-entry-row.error {
   background: rgba(var(--ctp-red-rgb), 0.08);
 }
 
-.lv-entry.error:hover {
+.lv-entry-row.error:hover {
   background: rgba(var(--ctp-red-rgb), 0.12);
-}
-
-.lv-entry-row {
-  display: grid;
-  gap: var(--spacing-sm);
-  align-items: flex-start;
 }
 
 .lv-ts {
@@ -759,6 +759,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  cursor: pointer;
 }
 
 /* Test Badge - truncates from front, shows popup on hover */
@@ -811,8 +812,8 @@
 /* Message cell - contains optional stage/test badges + message */
 .lv-message-cell {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: stretch;
   gap: var(--spacing-xs);
   min-width: 0;
 }
@@ -882,23 +883,25 @@
 
 /* Tree structure visualization */
 
-/* Tree group container */
-.lv-tree-group {
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.lv-tree-group:last-child {
-  border-bottom: none;
-}
-
 /* Tree row - uses same grid as regular entries */
 .lv-tree-row {
   display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
   gap: var(--spacing-sm);
   padding: 2px var(--spacing-sm);
   font-size: var(--font-size-sm);
   line-height: 1.4;
   align-items: flex-start;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.lv-log-grid {
+  display: grid;
+  grid-template-columns: var(--lv-grid-template-columns);
+  grid-template-rows: auto 1fr;
+  flex: 1;
+  min-height: 0;
 }
 
 .lv-tree-row:hover {
@@ -980,12 +983,20 @@
 /* Tree message cell */
 .lv-tree-message-cell {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+}
+
+.lv-tree-message-main {
+  display: flex;
   align-items: baseline;
   gap: 0;
   min-width: 0;
 }
 
-.lv-tree-message-cell .lv-message {
+.lv-tree-message-main .lv-message {
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -993,10 +1004,15 @@
 /* Tracebacks */
 .lv-tracebacks {
   display: flex;
-  flex-direction: row;
-  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
   margin-top: 2px;
-  margin-left: 60px;
+}
+
+.lv-tracebacks-inline {
+  margin-left: 2px;
+  padding-left: var(--spacing-sm);
+  border-left: 2px solid var(--border-subtle);
 }
 
 .lv-trace {

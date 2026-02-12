@@ -248,45 +248,47 @@ export function getStoredSetting<T>(key: string, defaultValue: T, validator?: (v
   return defaultValue;
 }
 
-// Character width estimation for monospace font at font-size-xs (~11px)
-const CHAR_WIDTH_PX = 6.2;
-const SOURCE_BADGE_PADDING_PX = 8; // padding + border
-const MIN_SOURCE_WIDTH_PX = 60;
-const MAX_SOURCE_WIDTH_PX = 200;
-
 /**
- * Calculate the pixel width needed to fit a string in the source column.
- * Uses monospace font width estimation.
+ * Find the longest string length in a set of values.
+ * Returns `compactCh` when collapsed, otherwise max length + padding clamped to maxCh.
+ * Result is in `ch` units — the browser handles the actual pixel sizing via the monospace font.
  */
-export function estimateTextWidth(text: string): number {
-  return text.length * CHAR_WIDTH_PX + SOURCE_BADGE_PADDING_PX;
+export function fitColumnCh(
+  values: Iterable<string>,
+  expanded: boolean,
+  compactCh: number,
+  maxCh: number,
+): number {
+  if (!expanded) return compactCh;
+
+  let longest = 0;
+  for (const v of values) {
+    if (v.length > longest) longest = v.length;
+  }
+  return Math.min(Math.max(longest + 2, compactCh), maxCh);
 }
 
-/**
- * Calculate the maximum source column width needed for a set of logs.
- * Considers both source mode (filename:line) and logger mode (short logger name).
- */
-export function calculateSourceColumnWidth(
-  logs: LogEntry[],
-  mode: SourceMode
-): number {
-  let maxWidth = MIN_SOURCE_WIDTH_PX;
+export function calculateSourceColumnWidth(logs: LogEntry[], mode: SourceMode): number {
+  return fitColumnCh(
+    logs.map(log =>
+      mode === 'source'
+        ? (formatSource(log.source_file, log.source_line) || '—')
+        : (log.logger_name?.split('.').pop() || '—')
+    ),
+    true, 10, 30,
+  );
+}
 
-  for (const log of logs) {
-    let text: string;
-    if (mode === 'source') {
-      // filename:line format
-      const source = formatSource(log.source_file, log.source_line);
-      text = source || '—';
-    } else {
-      // Short logger name (last segment)
-      text = log.logger_name?.split('.').pop() || '—';
-    }
-    const width = estimateTextWidth(text);
-    if (width > maxWidth) {
-      maxWidth = width;
-    }
-  }
+export function calculateLevelColumnWidth(logs: LogEntry[], levelFull: boolean): number {
+  return fitColumnCh(
+    new Set(logs.map(log => log.level)),
+    levelFull, 3, 12,
+  );
+}
 
-  return Math.min(maxWidth, MAX_SOURCE_WIDTH_PX);
+export function calculateStageColumnWidth(logs: LogEntry[], stageFull: boolean): number {
+  return fitColumnCh(
+    new Set(logs.map(log => log.stage || '—')),
+    stageFull, 7, 30,
+  );
 }
