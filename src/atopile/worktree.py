@@ -96,6 +96,41 @@ def _rewrite_venv_paths(source_root: Path, worktree_path: Path) -> None:
             _log(f"rewrote: {pyvenv_cfg}")
 
 
+def _remote_branch_exists(
+    source_root: Path,
+    branch_name: str,
+    *,
+    timeout_seconds: int = 5,
+) -> bool:
+    """
+    Check whether origin has the exact branch name.
+
+    We probe refs/heads/<branch> explicitly (not a tail-match pattern), and bound
+    the network call with a timeout so worktree creation does not hang indefinitely
+    on unreachable remotes.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(source_root),
+                "ls-remote",
+                "--exit-code",
+                "--heads",
+                "origin",
+                f"refs/heads/{branch_name}",
+            ],
+            capture_output=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        _log("timed out checking origin branch; treating as non-existent")
+        return False
+
+    return result.returncode == 0
+
+
 def create_worktree(
     name_suffix: str,
     *,
@@ -164,22 +199,7 @@ def create_worktree(
         == 0
     )
 
-    branch_exists_remote = (
-        subprocess.run(
-            [
-                "git",
-                "-C",
-                str(source_root),
-                "ls-remote",
-                "--exit-code",
-                "--heads",
-                "origin",
-                resolved_branch_name,
-            ],
-            capture_output=True,
-        ).returncode
-        == 0
-    )
+    branch_exists_remote = False
 
     if branch_exists_local:
         _log(
@@ -198,7 +218,10 @@ def create_worktree(
             ],
             check=True,
         )
-    elif branch_exists_remote:
+    else:
+        branch_exists_remote = _remote_branch_exists(source_root, resolved_branch_name)
+
+    if not branch_exists_local and branch_exists_remote:
         _log(
             f"branch '{resolved_branch_name}' exists on origin; "
             "creating local tracking branch"
@@ -218,7 +241,7 @@ def create_worktree(
             ],
             check=True,
         )
-    else:
+    elif not branch_exists_local:
         _log(f"creating branch '{resolved_branch_name}' from '{start_point}'")
         subprocess.run(
             [
