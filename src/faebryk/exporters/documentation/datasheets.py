@@ -6,6 +6,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+import httpx
 from httpx import HTTPStatusError, RequestError, TimeoutException
 
 import faebryk.core.faebrykpy as fbrk
@@ -99,27 +100,36 @@ def export_datasheets(
     if not to_download:
         return
 
-    # Download in parallel — I/O-bound, independent tasks
+    # Download in parallel — I/O-bound, independent tasks.
+    # Share a single httpx.Client for connection reuse (thread-safe).
     max_workers = min(8, len(to_download))
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_url = {
-            executor.submit(_download_datasheet, url, fp): (url, fp)
-            for url, fp in to_download
-        }
-        for future in as_completed(future_to_url):
-            url, fp = future_to_url[future]
-            if progress:
-                progress.advance()
-            try:
-                future.result()
-                logger.debug(f"Downloaded datasheet {fp.name}")
-            except DatasheetDownloadException as e:
-                logger.error(f"Failed to download datasheet {fp.name}: {e}")
+    user_agent_headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36"
+    }
+    with http_client(headers=user_agent_headers) as client:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_url = {
+                executor.submit(_download_datasheet, url, fp, client): (url, fp)
+                for url, fp in to_download
+            }
+            for future in as_completed(future_to_url):
+                url, fp = future_to_url[future]
+                if progress:
+                    progress.advance()
+                try:
+                    future.result()
+                    logger.debug(f"Downloaded datasheet {fp.name}")
+                except DatasheetDownloadException as e:
+                    logger.error(f"Failed to download datasheet {fp.name}: {e}")
 
 
-def _download_datasheet(url: str, path: Path):
+def _download_datasheet(url: str, path: Path, client: httpx.Client | None = None):
     """
     Download the datasheet of the given module and save it to the given path.
+
+    If *client* is provided it will be used directly (for connection reuse);
+    otherwise a fresh client is created via ``http_client()``.
     """
     TIMEOUT_S = 15  # datasheet download timeout
     if not url.endswith(".pdf"):
@@ -130,33 +140,39 @@ def _download_datasheet(url: str, path: Path):
         )
 
     try:
-        user_agent_headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36"
-        }
-        with http_client(headers=user_agent_headers) as client:
+        if client is not None:
             response = client.get(url, timeout=TIMEOUT_S, follow_redirects=False)
+        else:
+            user_agent_headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/50.0.2661.102 Safari/537.36"
+            }
+            with http_client(headers=user_agent_headers) as _client:
+                response = _client.get(url, timeout=TIMEOUT_S, follow_redirects=False)
 
-            # Handle redirects explicitly (httpx doesn't treat 3xx as errors).
-            if response.status_code == 301:
-                # Some LCSC datasheets are moved; map to the stable wmsc URL.
-                if "lcsc.com" in url:
-                    lcsc_id_regex = r"_(C\d{4,8})"
-                    match = re.search(lcsc_id_regex, url)
-                    if match:
-                        lcsc_id = match.group(1)
-                        redirected_url = f"https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/{lcsc_id}.pdf"
-                        logger.info(f"LCSC 301 redirect: {url} -> {redirected_url}")
-                        _download_datasheet(redirected_url, path)
-                        return  # Exit after successful recursive download
+        # Handle redirects explicitly (httpx doesn't treat 3xx as errors).
+        if response.status_code == 301:
+            # Some LCSC datasheets are moved; map to the stable wmsc URL.
+            if "lcsc.com" in url:
+                lcsc_id_regex = r"_(C\d{4,8})"
+                match = re.search(lcsc_id_regex, url)
+                if match:
+                    lcsc_id = match.group(1)
+                    redirected_url = (
+                        f"https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/{lcsc_id}.pdf"
+                    )
+                    logger.info(f"LCSC 301 redirect: {url} -> {redirected_url}")
+                    _download_datasheet(redirected_url, path, client)
+                    return  # Exit after successful recursive download
 
-                # Otherwise, follow the Location header if present.
-                location = response.headers.get("location")
-                if location:
-                    _download_datasheet(location, path)
-                    return
+            # Otherwise, follow the Location header if present.
+            location = response.headers.get("location")
+            if location:
+                _download_datasheet(location, path, client)
+                return
 
-            response.raise_for_status()
+        response.raise_for_status()
     except HTTPStatusError as e:
         raise DatasheetDownloadException(
             f"HTTP error downloading datasheet from {url}: {e}"
