@@ -1,142 +1,233 @@
 ---
 name: ato-language
-description: "LLM-focused reference for the `ato` declarative DSL: mental model, syntax surface, experiments/feature flags, and common pitfalls when editing `.ato` and `ato.yaml`."
+description: "Reference for the `.ato` declarative DSL: type system, connection semantics, constraint model, and standard library. Use when authoring or reviewing `.ato` code."
 ---
 
-# ATO Language
+# The Ato Language
 
-`ato` is a **declarative** DSL for electronics design in the atopile ecosystem. It is intentionally “Python-shaped”, but it is **not** Python: there is no procedural execution model and (most importantly) no user-defined side effects.
+Ato is a **declarative, constraint-based DSL** for describing electronic circuits. There is no control flow, no mutation, and no execution order — you declare *what* a circuit is, and the compiler + solver resolve it into a valid design.
 
-This skill is the canonical repo-local language guide (replacing various editor/assistant-specific duplicates).
+## Core Concepts
 
-## Quick Start
+### 1. Everything is a Node in a Graph
 
-- When changing `.ato` files: keep everything **declarative** (no “do X then Y” assumptions).
-- If you need syntax gated behind experiments, enable it with `#pragma experiment("<NAME>")` (see below).
-- To validate a change quickly in-repo:
-  - `ato build` (project-level build)
-  - `ato dev test --llm -k ato` (if you’re touching compiler/lsp behavior; adjust `-k`)
+Every entity (a resistor, a power rail, an I2C bus, a voltage parameter) is a **node** in a typed graph. Nodes relate to each other through **edges**: composition (parent–child), connection (same-net), and traits (behavioral metadata). The `.ato` language is a surface syntax for constructing this graph declaratively.
 
-## Mental Model (What ATO “Is”)
+### 2. Three Block Types
 
-- **Blocks**: `module`, `interface`, `component`
-  - `module`: a type that can be instantiated (`new ...`)
-  - `interface`: a connectable interface type (electrical, buses, etc.)
-  - `component`: “code-as-data” (often used for reusable fragments)
-- **Instances**: created with `new`, can be single or container-sized (`new M[10]`).
-- **Connections**: wiring between interfaces using `~` (direct) and `~>` (bridge/series) when enabled.
-- **Parameters + constraints**: values constrained with `assert ...`, used for picking/validation.
+Ato has exactly three ways to define a new type:
 
-## Experiments (Feature Flags)
+| Keyword | Semantics | Typical Use |
+|-----------|-----------|-------------|
+| `module` | A design unit that contains children and connections | Circuit blocks, subsystems |
+| `interface` | A connectable boundary; can be wired with `~` | Buses, power rails, signals |
+| `component` | A physical part with footprint/symbol | Vendor ICs, connectors |
 
-Some syntax is gated behind `#pragma experiment(...)`. The authoritative list lives in `src/atopile/compiler/ast_visitor.py` (`ASTVisitor._Experiment`).
+All three compile to graph nodes. The distinction controls which **traits** the compiler attaches (`is_module`, `is_interface`) and what operations are legal (only interfaces can appear on both sides of `~`).
 
-Currently:
-- `BRIDGE_CONNECT`: enables `a ~> bridge ~> b` style “bridge operator” chains.
-- `FOR_LOOP`: enables `for item in container:` syntax.
-- `TRAITS`: enables `trait ...` syntax in ATO.
-- `MODULE_TEMPLATING`: enables `new MyModule<param_=literal>` style instantiation templating.
-- `INSTANCE_TRAITS`: enables instance-level trait constructs (see compiler implementation).
+Inheritance uses `from`:
 
-Enable example:
 ```ato
-#pragma experiment("FOR_LOOP")
+module MyRegulator from Regulator:
+    ...
 ```
 
-## Syntax Reference (Representative Examples)
+### 3. Composition — Children and Instantiation
 
-### Imports
+Types contain children. Inside a block body, `new` instantiates a child:
+
 ```ato
-import ModuleName
-import Module1, Module2.Submodule
-
-from "path/to/source.ato" import SpecificModule
-import AnotherModule; from "another/source.ato" import AnotherSpecific
+module Board:
+    power = new ElectricPower      # interface child
+    sensor = new BME280            # module child
+    caps = new Capacitor[4]        # array of 4 capacitors
 ```
 
-### Top-level statements
+Children are accessed via **dot-notation**: `sensor.power.voltage`, `caps[0].capacitance`.
+
+### 4. Connection — Declaring Electrical Identity
+
+The **wire operator `~`** declares that two interfaces *are the same net/bus*. It is bidirectional and requires matching types:
+
 ```ato
-pass
-"docstring-like statement"
-top_level_var = 123
-pass; another_var = 456; "another docstring"
+power_3v3 ~ sensor.power          # ElectricPower ~ ElectricPower
+i2c_bus ~ sensor.i2c              # I2C ~ I2C
 ```
 
-### Block definitions
+The **bridge operator `~>`** (requires `#pragma experiment("BRIDGE_CONNECT")`) inserts a component in series. The component must carry the `can_bridge` trait which defines its in/out mapping:
+
 ```ato
-component MyComponent:
-    pass
-    pass; internal_flag = True
-
-module AnotherBaseModule:
-    pin base_pin
-    base_param = 10
-
-interface MyInterface:
-    pin io
-
-module DemoModule from AnotherBaseModule:
-    pin p1
-    signal my_signal
-    a_field: AnotherBaseModule
+power_5v ~> regulator ~> power_3v3
+i2c.scl.line ~> pullup ~> power.hv
 ```
 
-### Assignments
+### 5. Constraints — Physical Quantities and Assertions
+
+Values in ato carry **units** and **tolerances**. The solver uses these to select real parts.
+
+**Assignment** binds a value to a parameter:
+
 ```ato
-value = 1
-value += 1; value -= 1
-flags |= 1; flags &= 2
+power.voltage = 3.3V +/- 5%
+resistor.resistance = 10kohm +/- 10%
+i2c.frequency = 400kHz
+i2c.address = 0x48
 ```
 
-### Connections
+**Assertions** declare constraints the solver must satisfy:
+
 ```ato
-p1 ~ base_pin
-iface_a ~ iface_b
-iface_a ~> bridge ~> iface_b     # requires BRIDGE_CONNECT
+assert power.voltage within 3.0V to 3.6V
+assert i2c.frequency <= 400kHz
+assert sensor.i2c.address is 0x50
 ```
 
-### Instantiation (and templating)
-```ato
-instance = new MyComponent
-container = new MyComponent[10]
+Three value forms exist:
+- **Exact**: `3.3V`
+- **Bilateral tolerance**: `10kohm +/- 5%`
+- **Bounded range**: `3.0V to 3.6V`
 
-templated_instance = new MyComponent<int_=1, float_=2.5>  # requires MODULE_TEMPLATING
+### 6. Traits — Behavioral Metadata
+
+Traits attach capabilities or metadata to nodes. They are not children — they use trait edges in the graph.
+
+```ato
+#pragma experiment("TRAITS")
+trait has_part_removed          # mark as non-physical placeholder
+trait is_atomic_part            # user-defined part with footprint
 ```
 
-### Assertions / constraints
+Key built-in traits:
+
+| Trait | Effect |
+|-------|--------|
+| `can_bridge` | Enables use with `~>` operator (defines in/out pin mapping) |
+| `has_part_removed` | No physical part placed (symbolic node) |
+| `is_atomic_part` | User-defined part with `manufacturer`, `partnumber`, `footprint` |
+| `has_datasheet` | Attaches a datasheet reference |
+| `has_designator_prefix` | Sets PCB designator (R, C, U, etc.) |
+
+### 7. Import System
+
+**Bare imports** resolve to standard library types:
+
 ```ato
-assert x > 5V
-assert 5V < x < 10V
-assert current within 1A +/- 10mA
-assert resistance is 1kohm to 1.1kohm
+import ElectricPower, I2C, Resistor
 ```
 
-### Loops (syntactic sugar)
+**Path imports** resolve to types defined in other `.ato` files:
+
 ```ato
-for item in container:
-    item ~ p1
+from "atopile/vendor-part/vendor-part.ato" import Vendor_Part
 ```
 
-## What Is *Not* In ATO
+### 8. Pragma Feature Flags
 
-Do not write (or assume) any of these exist:
-- `if` statements
-- `while` loops
-- user-defined functions (calls or defs)
-- user-defined classes/objects
-- exceptions/generators
+Experimental syntax is gated behind pragmas (file top, before imports):
+
+```ato
+#pragma experiment("BRIDGE_CONNECT")     # ~> operator
+#pragma experiment("FOR_LOOP")           # for loops
+#pragma experiment("TRAITS")             # trait keyword
+#pragma experiment("MODULE_TEMPLATING")  # new Foo<p=v>
+```
+
+Using gated syntax without the pragma is a compile error.
+
+## Statement Reference
+
+Every statement inside a block body is one of:
+
+| Statement | Syntax | Purpose |
+|-----------|--------|---------|
+| `assign` | `name = value` or `name = new Type` | Bind a value or instantiate a child |
+| `connect` | `a ~ b` | Wire two interfaces together |
+| `bridge` | `a ~> b ~> c` | Insert bridgeable components in series |
+| `assert` | `assert expr <op> expr` | Declare a constraint |
+| `retype` | `name -> NewType` | Replace an inherited child's type |
+| `pin` | `pin VCC` | Declare a physical pin |
+| `signal` | `signal reset` | Declare an electrical signal |
+| `trait` | `trait TraitName` | Attach a trait |
+| `import` | `import Type` | Import a type |
+| `for` | `for x in arr:` | Iterate over an array (pragma-gated) |
+| `string` | `"""..."""` | Documentation string |
+| `pass` | `pass` | Empty placeholder |
+
+Statements within a block are **order-independent** — the compiler resolves the full graph, not a sequence of operations.
+
+## Type System
+
+### Interfaces (connectable with `~` or `~>`)
+
+| Type | Children / Parameters | Purpose |
+|------|----------------------|---------|
+| `Electrical` | *(single node)* | Raw electrical connection point |
+| `ElectricPower` | `.hv`, `.lv` (Electrical); `.voltage`, `.max_current` | Power rails |
+| `ElectricLogic` | `.line` (Electrical), `.reference` (ElectricPower) | Digital signals with voltage context |
+| `ElectricSignal` | `.line` (Electrical), `.reference` (ElectricPower) | Analog signals |
+| `I2C` | `.scl`, `.sda` (ElectricLogic); `.frequency`, `.address` | I2C bus |
+| `SPI` | `.sclk`, `.mosi`, `.miso` (ElectricLogic); `.frequency` | SPI bus |
+| `UART` / `UART_Base` | `.tx`, `.rx` (ElectricLogic); flow control lines | Serial |
+| `I2S` | audio data bus lines | Digital audio |
+| `DifferentialPair` | `.p`, `.n` | Differential signals |
+| `USB2_0` / `USB3` / `USB2_0_IF` | USB data + power | USB interfaces |
+| `CAN_TTL` | CAN bus lines | CAN bus |
+| `SWD` / `JTAG` | debug lines | Debug interfaces |
+| `Ethernet` / `HDMI` / `RS232` / `PDM` / `XtalIF` / `MultiSPI` | protocol-specific | Other protocols |
+
+### Modules (instantiable with `new`)
+
+| Type | Children / Parameters | Designator |
+|------|----------------------|------------|
+| `Resistor` | `.unnamed[0..1]`; `.resistance`, `.max_power` | R |
+| `Capacitor` | `.unnamed[0..1]`, `.power`; `.capacitance`, `.max_voltage`, `.temperature_coefficient` | C |
+| `CapacitorPolarized` | polarized variant of Capacitor | C |
+| `Inductor` | `.unnamed[0..1]`; `.inductance` | L |
+| `Fuse` | `.unnamed[0..1]`; `.trip_current`, `.fuse_type` | F |
+| `Diode` | `.anode`, `.cathode`; `.forward_voltage`, `.current` | D |
+| `LED` | `.diode`; `.brightness`, `.color` | D |
+| `MOSFET` | `.source`, `.gate`, `.drain`; `.channel_type`, `.gate_source_threshold_voltage` | Q |
+| `BJT` | `.emitter`, `.base`, `.collector`; `.doping_type` | Q |
+| `Regulator` / `AdjustableRegulator` | `.power_in`, `.power_out` | — |
+| `Crystal` | `.unnamed[0..1]`, `.gnd`; `.frequency`, `.load_capacitance` | XTAL |
+| `Crystal_Oscillator` | oscillator module | — |
+| `ResistorVoltageDivider` | voltage divider circuit | — |
+| `FilterElectricalRC` | RC filter | — |
+| `Net` | `.part_of` (Electrical) | — |
+| `TestPoint` | `.contact`; `.pad_size`, `.pad_type` | TP |
+| `MountingHole` / `NetTie` | mechanical | — |
+| `SPIFlash` | SPI flash memory | — |
+
+### Traits (attachable with `trait`)
+
+`has_part_removed`, `is_atomic_part`, `can_bridge`, `can_bridge_by_name`, `has_datasheet`, `has_designator_prefix`, `has_doc_string`, `has_net_name_affix`, `has_net_name_suggestion`, `has_package_requirements`, `has_single_electric_reference`, `is_auto_generated`, `requires_external_usage`
+
+## Units and Literals
+
+**SI-prefixed units**: `V`, `mV` | `A`, `mA` | `ohm`, `kohm`, `Mohm` | `F`, `uF`, `nF`, `pF` | `Hz`, `kHz`, `MHz`, `GHz` | `s`, `ms` | `W`, `mW`
+
+**Number formats**: decimal (`3.3`), scientific (`1e-6`), hex (`0x48`), binary (`0b1010`), underscore-separated (`1_000_000`)
+
+**Booleans**: `True`, `False`
+
+## Invariants
+
+1. **Type-safe connections**: `~` and `~>` require matching interface types. `ElectricPower ~ I2C` is a compile error.
+2. **Pragma gates syntax**: using `~>`, `for`, `trait`, or `<>` without the matching pragma is a compile error.
+3. **Tolerances on passives**: `resistance = 10kohm` (zero tolerance) matches no real parts. Always use `+/- N%`.
+4. **ElectricLogic needs a reference**: logic signals require a power reference for voltage context. Set `signal.reference ~ power_rail`.
+5. **Order independence**: statements within a block are not sequentially executed. The solver resolves the full graph.
+6. **No procedural logic**: no `if`, `while`, `return`, functions, classes, or exceptions.
 
 ## Relevant Files
 
-- Compiler/visitor (experiments + syntax gating): `src/atopile/compiler/ast_visitor.py`
-- Lexer/parser (grammar): `src/atopile/compiler/parser/` (ANTLR artifacts)
-- LSP implementation (pragma parsing, editor features): `src/atopile/lsp/lsp_server.py`
-- Codegen that emits experiment pragmas: `src/faebryk/libs/codegen/atocodegen.py`
-- VSCode extension rule templates (editor-facing guidance): `src/vscode-atopile/resources/templates/rules/`
+- **Grammar**: `src/atopile/compiler/parser/AtoParser.g4`, `AtoLexer.g4`
+- **AST types**: `src/atopile/compiler/ast_types.py`
+- **Compiler pipeline**: `src/atopile/compiler/` (ANTLR → AST → TypeGraph → Linker → DeferredExecutor)
+- **Standard library**: `src/faebryk/library/` (Python implementations of all stdlib types)
+- **Stdlib allowlist**: `src/atopile/compiler/ast_visitor.py:62-130` (`STDLIB_ALLOWLIST`)
+- **Package usage files**: `packages/*/usage.ato`
 
-## Common Pitfalls (LLM Checklist)
+## Quick Start
 
-- Don’t “invent” runtime semantics: ATO is declarative; ordering is not an execution model.
-- Prefer constraints with tolerances when they drive selection (exact values can make picking impossible).
-- If you introduce gated syntax, add the matching `#pragma experiment("...")` near the top of the file.
-- When editing `.ato`, verify the change through the compiler surface (`ato build` / targeted tests), not by eyeballing.
+Validate any `.ato` file by running `ato build` from the package directory.
