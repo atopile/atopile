@@ -42,15 +42,13 @@ jobs:
           echo "semver=$SEMVER" >> "$GITHUB_OUTPUT"
           echo "semver: $SEMVER"
 
-      # Set the version in package.json
+      # Set the version in package.json (runs on all triggers to validate versioning in dry-runs)
       - name: Set version
-        if: github.event_name == 'release'
         run: |
-          echo "Publishing version: ${{ steps.version.outputs.semver }}"
+          echo "Setting version: ${{ steps.version.outputs.semver }}"
           npm version --no-git-tag-version "${{ steps.version.outputs.semver }}"
 
       - name: Verify version was set
-        if: github.event_name == 'release'
         run: |
           VERSION=$(node -p "require('./package.json').version")
           echo "package.json version: $VERSION"
