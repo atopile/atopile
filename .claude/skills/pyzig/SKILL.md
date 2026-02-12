@@ -1,6 +1,6 @@
 ---
-name: Pyzig
-description: "How the Zig↔Python binding layer works (pyzig), including build-on-import, wrapper generation patterns, ownership rules, and where to add new exported APIs."
+name: pyzig
+description: "How the Zig↔Python binding layer works (pyzig), including build-on-import, wrapper generation patterns, ownership rules, and where to add new exported APIs. Use when adding Zig-Python bindings, modifying native extensions, or debugging C-API interactions."
 ---
 
 # Pyzig Module

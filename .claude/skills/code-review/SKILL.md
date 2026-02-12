@@ -1,5 +1,5 @@
 ---
-name: Code Review
+name: code-review
 description: "LLM-focused code review process for this repo: what to check, how to ground feedback in invariants/tests, and how to verify changes efficiently (including test-report.json)."
 ---
 
