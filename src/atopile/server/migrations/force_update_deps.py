@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from ._base import MigrationStep, Topic
+from ._base import MigrationStep, Topics
 
 
 class ForceUpdateDeps(MigrationStep):
@@ -14,7 +14,7 @@ class ForceUpdateDeps(MigrationStep):
         "Downloads the latest compatible versions of all project dependencies. "
         "This can take a few minutes depending on the number of packages."
     )
-    topic = Topic.mandatory
+    topic = Topics.mandatory
     mandatory = True
     order = 0
 

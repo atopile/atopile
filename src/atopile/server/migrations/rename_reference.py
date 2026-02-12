@@ -7,7 +7,7 @@ import logging
 import re
 from pathlib import Path
 
-from ._base import MigrationStep, Topic
+from ._base import MigrationStep, Topics
 
 log = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class RenameReference(MigrationStep):
         "Renames the deprecated has_single_electric_reference_shared trait "
         "to match the updated API."
     )
-    topic = Topic.ato_language
+    topic = Topics.ato_language
     order = 10
 
     async def run(self, project_path: Path) -> None:

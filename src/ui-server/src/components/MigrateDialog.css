@@ -211,6 +211,12 @@
   color: var(--ctp-green);
 }
 
+.migrate-banner.warning {
+  background: rgba(249, 226, 175, 0.1);
+  border: 1px solid var(--ctp-yellow);
+  color: var(--ctp-yellow);
+}
+
 .migrate-banner.error {
   background: rgba(243, 139, 168, 0.1);
   border: 1px solid var(--ctp-red);

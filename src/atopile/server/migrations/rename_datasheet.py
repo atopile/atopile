@@ -7,7 +7,7 @@ import logging
 import re
 from pathlib import Path
 
-from ._base import MigrationStep, Topic
+from ._base import MigrationStep, Topics
 
 log = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class RenameDatasheet(MigrationStep):
         "Renames the deprecated has_datasheet_defined trait to the new naming "
         "convention used in the latest standard library."
     )
-    topic = Topic.ato_language
+    topic = Topics.ato_language
     order = 0
 
     async def run(self, project_path: Path) -> None:

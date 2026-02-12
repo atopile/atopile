@@ -16,6 +16,7 @@ from ._base import (
     EVENT_MIGRATION_STEP_RESULT,
     MigrationStep,
     Topic,
+    Topics,
 )
 
 __all__ = [
@@ -23,9 +24,10 @@ __all__ = [
     "EVENT_MIGRATION_STEP_RESULT",
     "MigrationStep",
     "Topic",
+    "Topics",
     "get_all_steps",
     "get_step",
-    "get_topic_order",
+    "get_topics",
 ]
 
 # ---- Auto-discovery ----
@@ -70,9 +72,11 @@ def _ensure() -> dict[str, MigrationStep]:
 
 def get_all_steps() -> list[MigrationStep]:
     """Return all steps sorted by topic order then step order."""
-    topic_order = list(Topic)
+    topic_order = Topics.ordered()
     steps = list(_ensure().values())
-    steps.sort(key=lambda s: (topic_order.index(s.topic), s.order))
+    # Steps with unknown topics sort to the end
+    topic_index = {t: i for i, t in enumerate(topic_order)}
+    steps.sort(key=lambda s: (topic_index.get(s.topic, len(topic_order)), s.order))
     return steps
 
 
@@ -81,6 +85,6 @@ def get_step(step_id: str) -> MigrationStep:
     return _ensure()[step_id]
 
 
-def get_topic_order() -> list[str]:
-    """Return topic values in their display order."""
-    return [t.value for t in Topic]
+def get_topics() -> list[dict[str, str]]:
+    """Return topics in display order with id, label, and icon."""
+    return [t.to_dict() for t in Topics.ordered()]

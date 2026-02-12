@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Loader2, Check, AlertCircle, Package, FileCode, Settings } from 'lucide-react'
+import { Loader2, Check, AlertCircle, Package, FileCode, Settings, FolderTree } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { sendAction, sendActionWithResponse } from '../api/websocket'
 import { useStore } from '../store'
 import './MigrateDialog.css'
@@ -18,7 +19,7 @@ interface MigrationStep {
 interface StepGroup {
   key: string
   label: string
-  icon: typeof Package
+  icon: LucideIcon
   steps: MigrationStep[]
 }
 
@@ -26,17 +27,18 @@ interface StepGroup {
 // the "migration_step_result" backend event (underscore → hyphen).
 const WS_EVENT_MIGRATION_STEP_RESULT = 'migration-step-result'
 
-const TOPIC_META: Record<string, { label: string; icon: typeof Package }> = {
-  mandatory: { label: 'Mandatory', icon: Package },
-  ato_language: { label: 'Ato Language Renames', icon: FileCode },
-  project_config: { label: 'Project Config', icon: Settings },
+// Maps Lucide icon names (from backend) to components
+const ICON_MAP: Record<string, LucideIcon> = {
+  Package, FileCode, Settings, FolderTree, AlertCircle,
 }
 
-function toTitleCase(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+interface TopicInfo {
+  id: string
+  label: string
+  icon: string
 }
 
-function buildGroups(steps: MigrationStep[], topicOrder: string[]): StepGroup[] {
+function buildGroups(steps: MigrationStep[], topics: TopicInfo[]): StepGroup[] {
   const byTopic: Record<string, MigrationStep[]> = {}
   for (const step of steps) {
     if (!byTopic[step.topic]) byTopic[step.topic] = []
@@ -44,25 +46,23 @@ function buildGroups(steps: MigrationStep[], topicOrder: string[]): StepGroup[] 
   }
 
   const groups: StepGroup[] = []
-  // Topics in the order defined by the backend
-  for (const topic of topicOrder) {
-    if (byTopic[topic] && byTopic[topic].length > 0) {
-      const meta = TOPIC_META[topic] || { label: toTitleCase(topic), icon: Package }
+  for (const topic of topics) {
+    if (byTopic[topic.id] && byTopic[topic.id].length > 0) {
       groups.push({
-        key: topic,
-        label: meta.label,
-        icon: meta.icon,
-        steps: byTopic[topic],
+        key: topic.id,
+        label: topic.label,
+        icon: ICON_MAP[topic.icon] || Package,
+        steps: byTopic[topic.id],
       })
-      delete byTopic[topic]
+      delete byTopic[topic.id]
     }
   }
-  // Any topics not in the backend order (shouldn't happen, but safe)
-  for (const [topic, topicSteps] of Object.entries(byTopic)) {
+  // Any topics not in the backend list (shouldn't happen, but safe)
+  for (const [topicId, topicSteps] of Object.entries(byTopic)) {
     if (topicSteps.length > 0) {
       groups.push({
-        key: topic,
-        label: toTitleCase(topic),
+        key: topicId,
+        label: topicId,
         icon: Package,
         steps: topicSteps,
       })
@@ -101,9 +101,9 @@ export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
         const response = await sendActionWithResponse('getMigrationSteps', {}, { timeoutMs: 15000 })
         if (cancelled) return
         const fetched: MigrationStep[] = (response.result?.steps as MigrationStep[]) || []
-        const topicOrder: string[] = (response.result?.topic_order as string[]) || []
+        const topics: TopicInfo[] = (response.result?.topics as TopicInfo[]) || []
         setSteps(fetched)
-        setGroups(buildGroups(fetched, topicOrder))
+        setGroups(buildGroups(fetched, topics))
         setSelectedSteps(new Set(fetched.map(s => s.id)))
         setLoading(false)
       } catch (err) {
@@ -282,6 +282,14 @@ export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
           Don't worry, this guide will make sure your project will be mostly automatically migrated to the latest standard!
         </p>
       </div>
+
+      {/* Git warning */}
+      {!isMigrating && (
+        <div className="migrate-banner warning">
+          <AlertCircle size={16} />
+          <span>We recommend committing your changes to git before migrating. Rollback is not automatic.</span>
+        </div>
+      )}
 
       {/* Step Groups */}
       <div className="migrate-groups">

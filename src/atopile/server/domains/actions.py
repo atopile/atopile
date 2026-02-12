@@ -1352,12 +1352,12 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             }
 
         if action == "getMigrationSteps":
-            from atopile.server.migrations import get_all_steps, get_topic_order
+            from atopile.server.migrations import get_all_steps, get_topics
 
             return {
                 "success": True,
                 "steps": [step.to_dict() for step in get_all_steps()],
-                "topic_order": get_topic_order(),
+                "topics": get_topics(),
             }
 
         if action == "migrateProjectSteps":

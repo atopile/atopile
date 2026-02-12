@@ -6,7 +6,7 @@ import asyncio
 import logging
 from pathlib import Path
 
-from ._base import MigrationStep, Topic
+from ._base import MigrationStep, Topics
 
 log = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ class BumpRequiresAtopile(MigrationStep):
         "Updates the requires-atopile field in your ato.yaml to match "
         "the current atopile version."
     )
-    topic = Topic.project_config
+    topic = Topics.project_config
     order = 0
 
     async def run(self, project_path: Path) -> None:

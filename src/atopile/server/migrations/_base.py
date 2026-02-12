@@ -6,20 +6,39 @@ import os
 import re
 import tempfile
 from abc import ABC, abstractmethod
-from enum import StrEnum
+from dataclasses import dataclass
 from pathlib import Path
 
 
-class Topic(StrEnum):
-    """Migration step categories shown as groups in the UI.
+@dataclass(frozen=True)
+class Topic:
+    """Migration step category shown as a group in the UI.
 
-    Order here determines display order in the frontend.
+    Each instance defines an id (used as the wire key), a display label,
+    and a Lucide icon name rendered by the frontend.
     """
 
-    mandatory = "mandatory"
-    ato_language = "ato_language"
-    project_config = "project_config"
-    project_structure = "project_structure"
+    id: str
+    label: str
+    icon: str  # Lucide icon name, e.g. "Package", "FileCode"
+
+    def to_dict(self) -> dict:
+        return {"id": self.id, "label": self.label, "icon": self.icon}
+
+
+class Topics:
+    """All known migration topics, in display order."""
+
+    mandatory = Topic("mandatory", "Mandatory", "Package")
+    ato_language = Topic("ato_language", "Language", "FileCode")
+    project_config = Topic("project_config", "Config", "Settings")
+    project_structure = Topic("project_structure", "Structure", "FolderTree")
+
+    _all: list[Topic] = [mandatory, ato_language, project_config, project_structure]
+
+    @classmethod
+    def ordered(cls) -> list[Topic]:
+        return list(cls._all)
 
 
 # WebSocket event names — keep in sync with frontend constants
@@ -94,7 +113,7 @@ class MigrationStep(ABC):
             "id": self.get_id(),
             "label": self.label,
             "description": self.description,
-            "topic": str(self.topic),
+            "topic": self.topic.id,
             "mandatory": self.mandatory,
             "order": self.order,
         }
