@@ -3283,9 +3283,7 @@ class Numbers(fabll.Node):
         unit: type[fabll.Node] | None = None,
     ) -> fabll._ChildField[Self]:
         delta = abs(rel * center)
-        return cls.MakeChild(
-            min=center - delta, max=center + delta, unit=unit
-        )
+        return cls.MakeChild(min=center - delta, max=center + delta, unit=unit)
 
     @classmethod
     def MakeChild_SetSuperset(
