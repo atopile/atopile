@@ -9,6 +9,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
+import { traceVerbose } from '../common/log/logging';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 
 const PROD_LOCAL_RESOURCE_ROOTS = ['resources/webviews', 'webviews/dist'];
@@ -49,8 +50,13 @@ export function openMigratePreview(extensionUri: vscode.Uri, projectRoot: string
 
   // Handle messages from the migrate webview
   panel.webview.onDidReceiveMessage((message) => {
-    if (message.type === 'closeMigrateTab') {
-      panel?.dispose();
+    switch (message.type) {
+      case 'closeMigrateTab':
+        panel?.dispose();
+        break;
+      default:
+        traceVerbose(`[MigrateWebview] Unknown message type: ${message.type}`);
+        break;
     }
   });
 

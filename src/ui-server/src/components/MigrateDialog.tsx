@@ -22,7 +22,8 @@ interface StepGroup {
   steps: MigrationStep[]
 }
 
-// WebSocket event name — keep in sync with _base.py
+// DOM CustomEvent name dispatched by websocket.ts when it receives
+// the "migration_step_result" backend event (underscore → hyphen).
 const WS_EVENT_MIGRATION_STEP_RESULT = 'migration-step-result'
 
 const TOPIC_META: Record<string, { label: string; icon: typeof Package }> = {
@@ -92,6 +93,8 @@ export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
   useEffect(() => {
     let cancelled = false
     let retryTimeout: ReturnType<typeof setTimeout>
+    let retryCount = 0
+    const MAX_RETRIES = 30 // 15 seconds at 500ms intervals
 
     async function fetchSteps() {
       try {
@@ -106,7 +109,8 @@ export function MigrateDialog({ projectRoot, onClose }: MigrateDialogProps) {
       } catch (err) {
         if (cancelled) return
         // Retry if WebSocket isn't connected yet
-        if (String(err).includes('not connected')) {
+        if (String(err).includes('not connected') && retryCount < MAX_RETRIES) {
+          retryCount++
           retryTimeout = setTimeout(fetchSteps, 500)
         } else {
           setFetchError(String(err))

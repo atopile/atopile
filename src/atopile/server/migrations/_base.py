@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+import tempfile
 from abc import ABC, abstractmethod
 from enum import StrEnum
 from pathlib import Path
@@ -67,6 +69,24 @@ class MigrationStep(ABC):
         Raise any exception to signal failure — the runner will catch it and
         report the error to the UI.
         """
+
+    @staticmethod
+    def atomic_write(file_path: Path, content: str) -> None:
+        """Write content to file atomically via tempfile + os.replace."""
+        fd, tmp_path = tempfile.mkstemp(dir=file_path.parent, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as tmp:
+                tmp.write(content)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            os.replace(tmp_path, file_path)
+        except BaseException:
+            # Clean up the temp file on any failure
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     # Convenience: make instances serialisable for the frontend
     def to_dict(self) -> dict:

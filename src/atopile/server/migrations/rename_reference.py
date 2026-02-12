@@ -37,7 +37,7 @@ class RenameReference(MigrationStep):
                         new_content,
                     )
                     if new_content != content:
-                        ato_file.write_text(new_content)
+                        self.atomic_write(ato_file, new_content)
                         log.info(
                             "[migrate] Updated %s: reference trait renames",
                             ato_file,

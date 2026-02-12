@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib
 import pkgutil
+import threading
 from pathlib import Path
 
 from ._base import (
@@ -30,6 +31,7 @@ __all__ = [
 # ---- Auto-discovery ----
 
 _steps: dict[str, MigrationStep] | None = None
+_steps_lock = threading.Lock()
 
 
 def _discover() -> dict[str, MigrationStep]:
@@ -57,7 +59,9 @@ def _discover() -> dict[str, MigrationStep]:
 def _ensure() -> dict[str, MigrationStep]:
     global _steps
     if _steps is None:
-        _steps = _discover()
+        with _steps_lock:
+            if _steps is None:
+                _steps = _discover()
     return _steps
 
 
