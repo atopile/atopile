@@ -11,11 +11,6 @@ from faebryk.libs.util import debug_perf, repo_root
 
 ZIG_COMMAND = [sys.executable, "-m", "ziglang"]
 
-# Global lock path to serialize Zig compilation across parallel test workers.
-# Zig compilation is resource-intensive and multiple simultaneous compilations
-# cause resource contention (memory, disk I/O) leading to hangs on CI.
-ZIG_COMPILE_LOCK_PATH = Path("/tmp/zig_compile.lock")
-
 ZIG_SRC_DIR = repo_root() / "src" / "faebryk" / "core" / "zig"
 
 TEST_NAME_PATTERN = re.compile(r'^test "([^"]+)"', re.MULTILINE)
