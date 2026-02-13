@@ -31,6 +31,122 @@ _npm = shutil.which("npm") or "npm"
 
 
 @dev_app.command()
+@capture("cli:dev_extension_start", "cli:dev_extension_end")
+def extension(
+    skip_install: bool = typer.Option(
+        False, "--skip-install", help="Skip npm install checks."
+    ),
+    launch: bool = typer.Option(
+        True,
+        "--launch/--no-launch",
+        help="Launch VS Code Extension Development Host.",
+    ),
+):
+    """
+    Start the fast VS Code extension development loop.
+
+    Runs:
+    - `npm run build -- --watch --outDir
+    ../vscode-atopile/resources/webviews` in `src/ui-server`
+    - `npm run watch` in `src/vscode-atopile` (extension bundle watch)
+    """
+    import time
+
+    repo_root = Path(__file__).resolve().parents[3]
+    ui_server_dir = repo_root / "src" / "ui-server"
+    vscode_dir = repo_root / "src" / "vscode-atopile"
+
+    if not ui_server_dir.exists():
+        raise FileNotFoundError(f"ui-server directory not found: {ui_server_dir}")
+    if not vscode_dir.exists():
+        raise FileNotFoundError(f"vscode extension directory not found: {vscode_dir}")
+
+    if not skip_install:
+        if not (ui_server_dir / "node_modules").exists():
+            print("installing ui-server dependencies")
+            subprocess.run([_npm, "install"], cwd=ui_server_dir, check=True)
+        if not (vscode_dir / "node_modules").exists():
+            print("installing vscode-atopile dependencies")
+            subprocess.run([_npm, "install"], cwd=vscode_dir, check=True)
+
+    print("starting ui-server webview build watch")
+    ui_watch = subprocess.Popen(
+        [
+            _npm,
+            "run",
+            "build",
+            "--",
+            "--watch",
+            "--outDir",
+            "../vscode-atopile/resources/webviews",
+        ],
+        cwd=ui_server_dir,
+    )
+    print("starting vscode extension webpack watch")
+    ext_watch = subprocess.Popen([_npm, "run", "watch"], cwd=vscode_dir)
+
+    if launch:
+        vscode_cli = shutil.which("code") or "code"
+        try:
+            launch_env = os.environ.copy()
+            launch_env["ATOPILE_EXTENSION_DEV_UI"] = "1"
+            subprocess.Popen(
+                [
+                    vscode_cli,
+                    "--new-window",
+                    "--extensionDevelopmentPath",
+                    str(vscode_dir),
+                    str(Path.cwd()),
+                ],
+                env=launch_env,
+            )
+        except FileNotFoundError:
+            typer.secho(
+                "Could not find 'code' CLI. Install it from VS Code command palette.",
+                fg=typer.colors.YELLOW,
+            )
+
+    print("\nExtension dev loop is running.")
+    print("Press Ctrl+C to stop.")
+
+    exit_code = 0
+    try:
+        while True:
+            for name, process in (
+                ("ui-server", ui_watch),
+                ("vscode-atopile", ext_watch),
+            ):
+                code = process.poll()
+                if code is not None:
+                    typer.secho(
+                        f"{name} exited with code {code}. Stopping other processes.",
+                        fg=typer.colors.RED if code != 0 else typer.colors.YELLOW,
+                    )
+                    exit_code = code
+                    break
+            else:
+                time.sleep(0.5)
+                continue
+            break
+    except KeyboardInterrupt:
+        pass
+    finally:
+        for process in (ui_watch, ext_watch):
+            if process.poll() is None:
+                process.terminate()
+        for process in (ui_watch, ext_watch):
+            if process.poll() is None:
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+
+    if exit_code != 0:
+        raise typer.Exit(exit_code)
+
+
+@dev_app.command()
 @capture("cli:dev_compile_start", "cli:dev_compile_end")
 def compile(
     target: str = typer.Argument(
