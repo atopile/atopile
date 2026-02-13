@@ -1712,22 +1712,27 @@ def run_live(
 
     # Keep reading until both streams hit EOF (not just until process exits)
     # This ensures we capture all buffered output even after process termination
-    process_exit_time = None
     while reads:
         # Use a timeout so we can check for EOF after process exits
         readable, _, _ = select.select(reads, [], [], 0.1)
 
-        # Check if process has exited and we've waited long enough
-        if process.poll() is not None:
-            if process_exit_time is None:
-                process_exit_time = time.time()
-            # Give background threads 5 seconds to close pipes, then force exit
-            # This handles cases where libraries (e.g., Posthog telemetry)
-            # spawn threads that inherit stdout/stderr and don't close them
-            elif time.time() - process_exit_time > 5:
-                break
-
         if not readable:
+            # No data available - if process has exited, try one more read
+            # to drain any remaining buffered data
+            if process.poll() is not None:
+                for stream in list(reads):
+                    remaining = stream.read()
+                    if remaining:
+                        for line in remaining.splitlines(keepends=True):
+                            if stream == process.stdout:
+                                stdout_lines.append(line)
+                                if stdout:
+                                    stdout(line.rstrip())
+                            elif stream == process.stderr:
+                                stderr_lines.append(line)
+                                if stderr:
+                                    stderr(line.rstrip())
+                    reads.remove(stream)
             continue
 
         for stream in readable:
@@ -1759,28 +1764,36 @@ def run_live(
 
 @contextmanager
 def global_lock(lock_file_path: Path, timeout_s: float | None = None):
-    """
-    Cross-process lock using filelock library.
-
-    This automatically releases the lock when:
-    - The process exits normally
-    - The process crashes
-    - The process is killed (even with SIGKILL)
-
-    Works on Linux, macOS, and Windows.
-    """
-    from filelock import FileLock, Timeout
+    # TODO consider using filelock instead
 
     lock_file_path.parent.mkdir(parents=True, exist_ok=True)
 
-    lock = FileLock(lock_file_path, timeout=timeout_s if timeout_s else -1)
+    start_time = time.time()
+    while try_or(
+        lambda: bool(lock_file_path.touch(exist_ok=False)),
+        default=True,
+        catch=FileExistsError,
+    ):
+        # check if pid still alive
+        try:
+            pid = int(lock_file_path.read_text(encoding="utf-8"))
+        except ValueError:
+            lock_file_path.unlink(missing_ok=True)
+            continue
+        assert pid != os.getpid()
+        if not psutil.pid_exists(pid):
+            lock_file_path.unlink(missing_ok=True)
+            continue
+        if timeout_s and time.time() - start_time > timeout_s:
+            raise TimeoutError()
+        time.sleep(0.1)
+
+    # write our pid to the lock file
+    lock_file_path.write_text(str(os.getpid()), encoding="utf-8")
     try:
-        lock.acquire()
         yield
-    except Timeout:
-        raise TimeoutError(f"Timed out waiting for lock: {lock_file_path}")
     finally:
-        lock.release()
+        lock_file_path.unlink(missing_ok=True)
 
 
 def consume(iter: Iterable, n: int) -> list:
