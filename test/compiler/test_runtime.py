@@ -1743,6 +1743,46 @@ def test_slice_non_list():
         )
 
 
+def test_for_loop_nonexistent_field():
+    """Iterating over a field that doesn't exist raises a source-attributed error."""
+    with pytest.raises(
+        DslRichException,
+        match="path could not be resolved",
+    ):
+        build_instance(
+            """
+            #pragma experiment("FOR_LOOP")
+            import Resistor
+
+            module App:
+                r = new Resistor
+                for x in r.nonexistent:
+                    pass
+            """,
+            "App",
+        )
+
+
+def test_for_loop_nonexistent_parent():
+    """
+    Iterating over a path whose parent doesn't exist raises a source-attributed error.
+    """
+    with pytest.raises(
+        DslRichException,
+        match="path could not be resolved",
+    ):
+        build_instance(
+            """
+            #pragma experiment("FOR_LOOP")
+
+            module App:
+                for x in invented.items:
+                    pass
+            """,
+            "App",
+        )
+
+
 def test_slice_invalid_step():
     with pytest.raises(DslException, match="Slice step cannot be zero"):
         build_instance(

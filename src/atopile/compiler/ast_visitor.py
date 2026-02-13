@@ -614,27 +614,30 @@ class ASTVisitor:
         """
         (*parent_path, container_id) = loop.container_path
 
-        owning_type = (
-            self._tg.resolve_child_path(start_type=type_node, path=list(parent_path))
-            if parent_path
-            else type_node
-        )
-
-        resolved_node = fbrk.Linker.get_resolved_type(
-            type_reference=not_none(
-                self._tg.get_make_child_type_reference_by_identifier(
-                    type_node=not_none(owning_type), identifier=container_id
+        if (
+            # parent path doesn't exist
+            (
+                owning_type := self._tg.resolve_child_path(
+                    start_type=type_node, path=list(parent_path)
+                )
+                if parent_path
+                else type_node
+            )
+            is None
+            # final segment not found on parent
+            or (
+                type_ref := self._tg.get_make_child_type_reference_by_identifier(
+                    type_node=owning_type, identifier=container_id
                 )
             )
-        )
-
-        if owning_type is None:
-            raise CompilerException(f"Cannot resolve type for path {parent_path}")
-
-        if resolved_node is None:
-            # Incomplete linking
-            raise CompilerException(
-                f"Cannot resolve type for path {loop.container_path}"
+            is None
+            # linker couldn't resolve type reference
+            or (resolved_node := fbrk.Linker.get_resolved_type(type_reference=type_ref))
+            is None
+        ):
+            raise DslTypeError(
+                f"Cannot iterate over `{'.'.join(loop.container_path)}`: "
+                f"path could not be resolved"
             )
 
         if (
@@ -673,7 +676,14 @@ class ASTVisitor:
         self, type_node: graph.BoundNode, type_identifier: str, loop: DeferredForLoop
     ) -> None:
         """Execute a single deferred for-loop."""
-        element_paths = self._collect_sequence_element_paths(type_node, loop)
+        try:
+            element_paths = self._collect_sequence_element_paths(type_node, loop)
+        except DslException as ex:
+            raise DslRichException(
+                str(ex),
+                original=ex,
+                source_node=loop.source_node,
+            ) from ex
 
         start, stop, step = loop.slice_spec
         if start is not None or stop is not None or step is not None:
@@ -1844,6 +1854,7 @@ class ASTVisitor:
                     slice_spec=slice_spec,
                     body=node.scope.get(),
                     source_order=len(self._state.pending_execution),
+                    source_node=iterable_node,
                 )
             )
 

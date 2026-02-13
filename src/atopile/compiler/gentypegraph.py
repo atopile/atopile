@@ -678,3 +678,4 @@ class DeferredForLoop:
     slice_spec: tuple[int | None, int | None, int | None]
     body: AST.Scope
     source_order: int
+    source_node: fabll.Node | None = None
