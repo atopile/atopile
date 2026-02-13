@@ -240,7 +240,7 @@ def _test_zig_embedded(
         pytest.fail(f"Zig test '{test_name}' failed")
 
 
-@pytest.mark.max_parallel(16)
+# @pytest.mark.max_parallel(16)
 @pytest.mark.worker_affinity(separator=":")
 @pytest.mark.parametrize("zig_test", discover_zig_tests(), ids=zig_test_id)
 def test_zig_embedded(zig_test: tuple[Path, str]):
