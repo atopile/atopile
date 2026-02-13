@@ -2,7 +2,7 @@
 
 ## Overview
 
-- Implements a fast S‑expression engine in Zig and typed KiCad file models (PCB, footprint, netlist, symbol, schematic, fp_lib_table).
+- Implements a fast S‑expression engine in Zig and typed KiCad file models (PCB, footprint, netlist, symbol, schematic, fp_lib_table, dru).
 - Exposes Zig types and I/O helpers to Python as a compiled extension module `pyzig` with generated `.pyi` stubs.
 - Focuses on round‑tripping KiCad’s text formats with correct formatting and helpful error context.
 
@@ -13,7 +13,7 @@
   - `ast.zig` — SExp tree, parser, pretty printer (KiCad‑compatible layout), helpers.
   - `structure.zig` — Generic decode/encode using Zig type introspection + per‑field metadata; error context capture and free helpers.
   - `kicad/*.zig` — Typed models for KiCad files, each with `File` wrapper exposing `loads/dumps/free`:
-    - `pcb.zig`, `footprint.zig`, `netlist.zig`, `symbol.zig`, `schematic.zig`, `fp_lib_table.zig`.
+    - `pcb.zig`, `footprint.zig`, `netlist.zig`, `symbol.zig`, `schematic.zig`, `fp_lib_table.zig`, `dru.zig`.
     - Versioned variants under `kicad/v5` and `kicad/v6` where needed.
   - `py.zig` — Builds the `pyzig` Python extension and submodules (pcb, footprint, …), wiring loads/dumps to Python.
   - `pyi.zig` — Generates `.pyi` stubs for all submodules at build time.
@@ -28,7 +28,7 @@
 ## Python API (quick start)
 
 - Import modules from the built extension:
-  - `from faebryk.core.zig import pcb, footprint, netlist, symbol, schematic, fp_lib_table`
+  - `from faebryk.core.zig import pcb, footprint, netlist, symbol, schematic, fp_lib_table, dru`
 - Parse/dump KiCad S‑expression files:
   - `pcb_file = pcb.loads(path_or_text)`
   - `text = pcb.dumps(pcb_file)`
@@ -53,7 +53,7 @@
   - `loads(allocator, input)` — parse from path/string/sexp; validates the top‑level symbol.
   - `dumps(allocator, output)` — serialize to string or path with KiCad‑style formatting.
   - `free(allocator)` — release allocated memory.
-- See the generated stubs in this folder: `pcb.pyi`, `footprint.pyi`, `netlist.pyi`, `symbol.pyi`, `schematic.pyi`, `fp_lib_table.pyi`, plus versioned `*_v5.pyi`/`*_v6.pyi`.
+- See the generated stubs in this folder: `pcb.pyi`, `footprint.pyi`, `netlist.pyi`, `symbol.pyi`, `schematic.pyi`, `fp_lib_table.pyi`, `dru.pyi`, plus versioned `*_v5.pyi`/`*_v6.pyi`.
 
 ## Python bindings details
 
