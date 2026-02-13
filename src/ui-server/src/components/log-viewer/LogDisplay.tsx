@@ -2,7 +2,7 @@
  * Shared log display component for rendering log entries with tree grouping
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, type CSSProperties } from 'react';
 import { StackInspector } from '../StackInspector';
 import {
   LogEntry,
@@ -31,7 +31,6 @@ interface RowToggleHandlers {
   toggleTimeMode: () => void;
   toggleLevelWidth: () => void;
   toggleSourceMode: () => void;
-  toggleStageWidth: () => void;
 }
 
 // Chevron icon component
@@ -168,6 +167,9 @@ function TreeNodeRow({
   const sourceColor = sourceMode === 'source'
     ? (entry.source_file ? hashStringToColor(entry.source_file) : undefined)
     : (entry.logger_name ? hashStringToColor(entry.logger_name) : undefined);
+  const sourceStyle: CSSProperties | undefined = sourceColor
+    ? ({ '--lv-source-accent': sourceColor } as CSSProperties)
+    : undefined;
   const loggerShort = entry.logger_name?.split('.').pop() || '';
   const sourceDisplayValue = sourceMode === 'source' ? (sourceLabel || '—') : (loggerShort || '—');
   const sourceTooltip = sourceMode === 'source' ? (entry.source_file || '') : (entry.logger_name || '');
@@ -189,11 +191,11 @@ function TreeNodeRow({
           className="lv-source-badge"
           title={sourceTooltip}
           onClick={rowToggleHandlers.toggleSourceMode}
-          style={sourceColor ? { color: sourceColor, borderColor: sourceColor } : undefined}
+          style={sourceStyle}
         >
           {sourceDisplayValue}
         </span>
-        <span className="lv-stage-badge" title={entry.stage || ''} onClick={rowToggleHandlers.toggleStageWidth}>
+        <span className="lv-stage-badge" title={entry.stage || ''}>
           {entry.stage || '—'}
         </span>
         <div className="lv-tree-message-cell">
@@ -304,6 +306,9 @@ function StandaloneLogRow({
   const sourceColor = sourceMode === 'source'
     ? (entry.source_file ? hashStringToColor(entry.source_file) : undefined)
     : (entry.logger_name ? hashStringToColor(entry.logger_name) : undefined);
+  const sourceStyle: CSSProperties | undefined = sourceColor
+    ? ({ '--lv-source-accent': sourceColor } as CSSProperties)
+    : undefined;
   const loggerShort = entry.logger_name?.split('.').pop() || '';
   const sourceDisplayValue = sourceMode === 'source' ? (sourceLabel || '—') : (loggerShort || '—');
   const sourceTooltip = sourceMode === 'source' ? (entry.source_file || '') : (entry.logger_name || '');
@@ -320,11 +325,11 @@ function StandaloneLogRow({
           className="lv-source-badge"
           title={sourceTooltip}
           onClick={rowToggleHandlers.toggleSourceMode}
-          style={sourceColor ? { color: sourceColor, borderColor: sourceColor } : undefined}
+          style={sourceStyle}
         >
           {sourceDisplayValue}
         </span>
-        <span className="lv-stage-badge" title={entry.stage || ''} onClick={rowToggleHandlers.toggleStageWidth}>
+        <span className="lv-stage-badge" title={entry.stage || ''}>
           {entry.stage || '—'}
         </span>
         <div className="lv-message-cell">
@@ -352,7 +357,6 @@ export interface LogDisplayProps {
   sourceOptions?: SearchOptions;
   enabledLoggers?: Set<string> | null;
   levelFull: boolean;
-  stageFull: boolean;
   timeMode: TimeMode;
   sourceMode: SourceMode;
   autoScroll: boolean;
@@ -361,7 +365,6 @@ export interface LogDisplayProps {
   setLevelFull: (value: boolean) => void;
   setTimeMode: (value: TimeMode) => void;
   setSourceMode: (value: SourceMode) => void;
-  setStageFull: (value: boolean) => void;
   // Expansion control
   allExpanded: boolean;
   expandKey: number;
@@ -377,7 +380,6 @@ export function LogDisplay({
   sourceOptions = { isRegex: false },
   enabledLoggers,
   levelFull,
-  stageFull,
   timeMode,
   sourceMode,
   autoScroll,
@@ -386,7 +388,6 @@ export function LogDisplay({
   setLevelFull,
   setTimeMode,
   setSourceMode,
-  setStageFull,
   allExpanded,
   expandKey,
   onExpandAll,
@@ -436,11 +437,10 @@ export function LogDisplay({
   // Count how many groups have children (foldable)
   const foldableCount = groups.filter(g => g.type === 'tree' && g.root.children.length > 0).length;
   const rowToggleHandlers = useMemo<RowToggleHandlers>(() => ({
-    toggleTimeMode: () => setTimeMode(m => m === 'delta' ? 'wall' : 'delta'),
-    toggleLevelWidth: () => setLevelFull(v => !v),
-    toggleSourceMode: () => setSourceMode(m => m === 'source' ? 'logger' : 'source'),
-    toggleStageWidth: () => setStageFull(v => !v),
-  }), []);
+    toggleTimeMode: () => setTimeMode(timeMode === 'delta' ? 'wall' : 'delta'),
+    toggleLevelWidth: () => setLevelFull(!levelFull),
+    toggleSourceMode: () => setSourceMode(sourceMode === 'source' ? 'logger' : 'source'),
+  }), [setTimeMode, setLevelFull, setSourceMode, timeMode, levelFull, sourceMode]);
 
   return (
     <div className="lv-display-container">

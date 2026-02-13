@@ -27,8 +27,11 @@ import {
   LoggerFilter,
   loadEnabledLoggers,
   calculateSourceColumnWidth,
+  calculateStageColumnWidth,
 } from './log-viewer';
 import './LogViewer.css';
+
+type ResizableColumnKey = 'source' | 'stage';
 
 // Get initial values from URL query params
 function getInitialParams(): { mode: LogMode; testRunId: string; buildId: string; testName: string } {
@@ -109,9 +112,6 @@ export function LogViewer() {
   const [levelFull, setLevelFull] = useState(() =>
     getStoredSetting('lv-levelFull', true)
   );
-  const [stageFull, setStageFull] = useState(() =>
-    getStoredSetting('lv-stageFull', false)
-  );
   const [timeMode, setTimeMode] = useState<TimeMode>(() =>
     getStoredSetting('lv-timeMode', 'delta' as TimeMode, v => v === 'delta' || v === 'wall')
   );
@@ -127,6 +127,12 @@ export function LogViewer() {
   // Level dropdown state
   const [levelDropdownOpen, setLevelDropdownOpen] = useState(false);
   const levelDropdownRef = useRef<HTMLDivElement>(null);
+  const resizingColumnRef = useRef<{
+    column: ResizableColumnKey;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
+  const [manualColumnWidths, setManualColumnWidths] = useState<Partial<Record<ResizableColumnKey, number>>>({});
 
   // Status tooltip state
   const [showStatusTooltip, setShowStatusTooltip] = useState(false);
@@ -160,9 +166,6 @@ export function LogViewer() {
   useEffect(() => {
     localStorage.setItem('lv-sourceMode', sourceMode);
   }, [sourceMode]);
-  useEffect(() => {
-    localStorage.setItem('lv-stageFull', String(stageFull));
-  }, [stageFull]);
   useEffect(() => {
     localStorage.setItem('lv-logLevels', JSON.stringify(logLevels));
   }, [logLevels]);
@@ -269,22 +272,94 @@ export function LogViewer() {
     () => calculateSourceColumnWidth(logs, sourceMode),
     [logs, sourceMode]
   );
+  const stageColumnWidth = useMemo(
+    () => calculateStageColumnWidth(logs),
+    [logs]
+  );
+  const defaultColumnWidths = useMemo<Record<ResizableColumnKey, number>>(
+    () => ({
+      source: Math.max(96, Math.min(360, Math.round(sourceColumnWidth * 8))),
+      stage: Math.max(84, Math.min(420, Math.round(stageColumnWidth * 8))),
+    }),
+    [sourceColumnWidth, stageColumnWidth]
+  );
+  const resolvedColumnWidths = useMemo<Record<ResizableColumnKey, number>>(
+    () => ({
+      source: manualColumnWidths.source ?? defaultColumnWidths.source,
+      stage: manualColumnWidths.stage ?? defaultColumnWidths.stage,
+    }),
+    [manualColumnWidths, defaultColumnWidths]
+  );
   const gridTemplateColumns = useMemo(
     () => [
-      timeMode === 'delta' ? 'var(--lv-col-time-compact)' : 'var(--lv-col-time)',
+      timeMode === 'delta' ? '60px' : '72px',
       levelFull ? 'max-content' : '3ch',
-      'var(--lv-source-width)',
-      stageFull ? 'max-content' : '12ch',
+      `${resolvedColumnWidths.source}px`,
+      `${resolvedColumnWidths.stage}px`,
       'minmax(0, 1fr)',
     ].join(' '),
-    [timeMode, levelFull, stageFull]
+    [timeMode, levelFull, resolvedColumnWidths]
   );
+
+  const onResizeMouseMove = useCallback((event: MouseEvent) => {
+    const resizeState = resizingColumnRef.current;
+    if (!resizeState) return;
+
+    const MIN_WIDTHS: Record<ResizableColumnKey, number> = {
+      source: 84,
+      stage: 84,
+    };
+    const MAX_WIDTH = 600;
+
+    const deltaX = event.clientX - resizeState.startX;
+    const newWidth = Math.max(
+      MIN_WIDTHS[resizeState.column],
+      Math.min(MAX_WIDTH, resizeState.startWidth + deltaX)
+    );
+
+    setManualColumnWidths(prev => ({
+      ...prev,
+      [resizeState.column]: newWidth,
+    }));
+  }, []);
+
+  const stopColumnResize = useCallback(() => {
+    if (!resizingColumnRef.current) return;
+    resizingColumnRef.current = null;
+    document.body.classList.remove('lv-is-resizing');
+    document.removeEventListener('mousemove', onResizeMouseMove);
+    document.removeEventListener('mouseup', stopColumnResize);
+  }, [onResizeMouseMove]);
+
+  const startColumnResize = useCallback((column: ResizableColumnKey, event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    resizingColumnRef.current = {
+      column,
+      startX: event.clientX,
+      startWidth: resolvedColumnWidths[column],
+    };
+    document.body.classList.add('lv-is-resizing');
+    document.addEventListener('mousemove', onResizeMouseMove);
+    document.addEventListener('mouseup', stopColumnResize);
+  }, [resolvedColumnWidths, onResizeMouseMove, stopColumnResize]);
+
+  const autoFitColumn = useCallback((column: ResizableColumnKey, event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setManualColumnWidths(prev => ({
+      ...prev,
+      [column]: defaultColumnWidths[column],
+    }));
+  }, [defaultColumnWidths]);
+
+  useEffect(() => () => stopColumnResize(), [stopColumnResize]);
 
   return (
     <div
       className="lv-container"
       style={{
-        '--lv-source-width': `${sourceColumnWidth}ch`,
         '--lv-grid-template-columns': gridTemplateColumns,
       } as React.CSSProperties}
     >
@@ -427,7 +502,7 @@ export function LogViewer() {
           <div className="lv-col-header lv-col-level">
             <span className="lv-col-label">Level</span>
           </div>
-          <div className="lv-col-header lv-col-source">
+          <div className="lv-col-header lv-col-source lv-col-header-resizable">
             <HeaderSearchBox
               value={sourceFilter}
               onChange={setSourceFilter}
@@ -438,14 +513,26 @@ export function LogViewer() {
               regex={sourceRegex}
               onToggleRegex={() => setSourceRegex(!sourceRegex)}
             />
+            <div
+              className="lv-column-resize-handle"
+              onMouseDown={(e) => startColumnResize('source', e)}
+              onDoubleClick={(e) => autoFitColumn('source', e)}
+              title="Drag to resize column. Double-click to auto-fit."
+            />
           </div>
-          <div className="lv-col-header lv-col-stage">
+          <div className="lv-col-header lv-col-stage lv-col-header-resizable">
             <HeaderSearchBox
               value={mode === 'build' ? stage : testName}
               onChange={(value) => (mode === 'build' ? setStage(value) : setTestName(value))}
               placeholder={mode === 'build' ? 'Stage' : 'Test Name'}
               title={mode === 'build' ? 'Filter by build stage' : 'Filter by test name'}
               inputClassName="lv-col-search-stage"
+            />
+            <div
+              className="lv-column-resize-handle"
+              onMouseDown={(e) => startColumnResize('stage', e)}
+              onDoubleClick={(e) => autoFitColumn('stage', e)}
+              title="Drag to resize column. Double-click to auto-fit."
             />
           </div>
           <div className="lv-col-header lv-col-message">
@@ -473,7 +560,6 @@ export function LogViewer() {
           sourceOptions={sourceOptions}
           enabledLoggers={enabledLoggers}
           levelFull={levelFull}
-          stageFull={stageFull}
           timeMode={timeMode}
           sourceMode={sourceMode}
           autoScroll={autoScroll}
@@ -482,7 +568,6 @@ export function LogViewer() {
           setLevelFull={setLevelFull}
           setTimeMode={setTimeMode}
           setSourceMode={setSourceMode}
-          setStageFull={setStageFull}
           allExpanded={allExpanded}
           expandKey={expandKey}
           onExpandAll={handleExpandAll}

@@ -5,14 +5,15 @@
 
 /* Column width constants */
 .lv-container {
-  --lv-col-time: 72px;
-  --lv-col-time-compact: 60px;
-  --lv-col-source: var(--lv-source-width, 100px);
+  --lv-col-time: 60px;
+  --lv-col-level: 34px;
+  --lv-col-source: 100px;
+  --lv-col-stage: 110px;
   --lv-grid-template-columns:
     var(--lv-col-time)
-    3ch
+    var(--lv-col-level)
     var(--lv-col-source)
-    12ch
+    var(--lv-col-stage)
     minmax(0, 1fr);
 }
 
@@ -440,10 +441,55 @@
 }
 
 .lv-col-header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
   min-width: 0;
+}
+
+.lv-col-header-resizable {
+  padding-right: 10px;
+}
+
+.lv-column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  transform: translateX(50%);
+  width: 18px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 3;
+}
+
+.lv-column-resize-handle::before,
+.lv-column-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 18%;
+  bottom: 18%;
+  width: 1px;
+  background: var(--border-subtle);
+  transition: background-color var(--transition-fast);
+}
+
+.lv-column-resize-handle::before {
+  left: 7px;
+}
+
+.lv-column-resize-handle::after {
+  left: 10px;
+}
+
+.lv-column-resize-handle:hover::before,
+.lv-column-resize-handle:hover::after {
+  background: var(--accent);
+}
+
+body.lv-is-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 .lv-col-label {
@@ -718,19 +764,20 @@
   padding: 1px 5px;
   border-radius: var(--radius-sm);
   font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-weight: 600;
   background: transparent;
-  border: 1px solid currentColor;
-  color: var(--text-muted);
+  border: 1px solid var(--lv-source-accent, var(--border-subtle));
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  opacity: 0.8;
+  opacity: 1;
   cursor: pointer;
-  transition: opacity var(--transition-fast);
+  transition: opacity var(--transition-fast), background-color var(--transition-fast);
 }
 
 .lv-source-badge:hover {
+  background: var(--bg-secondary);
   opacity: 1;
 }
 
@@ -746,7 +793,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  cursor: pointer;
 }
 
 /* Test Badge - truncates from front, shows popup on hover */

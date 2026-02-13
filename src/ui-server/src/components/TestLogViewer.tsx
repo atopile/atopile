@@ -54,9 +54,6 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
   const [levelFull, setLevelFull] = useState(() =>
     getStoredSetting('lv-levelFull', false)
   );
-  const [stageFull, setStageFull] = useState(() =>
-    getStoredSetting('lv-stageFull', false)
-  );
   const [timeMode, setTimeMode] = useState<TimeMode>(() =>
     getStoredSetting('lv-timeMode', 'delta' as TimeMode, v => v === 'delta' || v === 'wall')
   );
@@ -103,9 +100,6 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
   useEffect(() => {
     localStorage.setItem('lv-sourceMode', sourceMode);
   }, [sourceMode]);
-  useEffect(() => {
-    localStorage.setItem('lv-stageFull', String(stageFull));
-  }, [stageFull]);
   useEffect(() => {
     localStorage.setItem('lv-logLevels', JSON.stringify(logLevels));
   }, [logLevels]);
@@ -193,10 +187,10 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
       timeMode === 'delta' ? 'var(--lv-col-time-compact)' : 'var(--lv-col-time)',
       levelFull ? 'max-content' : '3ch',
       'var(--lv-source-width)',
-      stageFull ? 'max-content' : '12ch',
+      '12ch',
       'minmax(0, 1fr)',
     ].join(' '),
-    [timeMode, levelFull, stageFull]
+    [timeMode, levelFull]
   );
 
   return (
@@ -338,7 +332,6 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
           sourceFilter={sourceFilter}
           enabledLoggers={enabledLoggers}
           levelFull={levelFull}
-          stageFull={stageFull}
           timeMode={timeMode}
           sourceMode={sourceMode}
           autoScroll={autoScroll}
@@ -347,7 +340,6 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
           setLevelFull={setLevelFull}
           setTimeMode={setTimeMode}
           setSourceMode={setSourceMode}
-          setStageFull={setStageFull}
           allExpanded={allExpanded}
           expandKey={expandKey}
           onExpandAll={handleExpandAll}

@@ -266,3 +266,10 @@ export function calculateSourceColumnWidth(logs: LogEntry[], mode: SourceMode): 
     10, 30,
   );
 }
+
+export function calculateStageColumnWidth(logs: LogEntry[]): number {
+  return fitColumnCh(
+    logs.map(log => log.stage || '—'),
+    12, 40,
+  );
+}
