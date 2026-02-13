@@ -1,8 +1,5 @@
 /**
  * Migrate Webview — opens the migration UI as a VS Code editor tab.
- *
- * In development: Loads from Vite dev server (http://localhost:5173)
- * In production: Loads from compiled assets
  */
 
 import * as vscode from 'vscode';
@@ -14,16 +11,10 @@ import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 
 const PROD_LOCAL_RESOURCE_ROOTS = ['resources/webviews', 'webviews/dist'];
 
-function isDevelopmentMode(extensionPath: string): boolean {
-  const prodPath = path.join(extensionPath, 'resources', 'webviews', 'migrate.js');
-  return !fs.existsSync(prodPath);
-}
-
 let panel: vscode.WebviewPanel | undefined;
 
 export function openMigratePreview(extensionUri: vscode.Uri, projectRoot: string): void {
   const extensionPath = extensionUri.fsPath;
-  const isDev = isDevelopmentMode(extensionPath);
 
   if (panel) {
     panel.reveal(vscode.ViewColumn.Beside);
@@ -31,7 +22,6 @@ export function openMigratePreview(extensionUri: vscode.Uri, projectRoot: string
   }
 
   const webviewOptions = createWebviewOptions({
-    isDev,
     extensionPath,
     port: backendServer.port,
     prodLocalResourceRoots: PROD_LOCAL_RESOURCE_ROOTS,
@@ -44,9 +34,7 @@ export function openMigratePreview(extensionUri: vscode.Uri, projectRoot: string
     webviewOptions,
   );
 
-  panel.webview.html = isDev
-    ? getDevHtml(projectRoot)
-    : getProdHtml(panel.webview, extensionPath, projectRoot);
+  panel.webview.html = getProdHtml(panel.webview, extensionPath, projectRoot);
 
   // Handle messages from the migrate webview
   panel.webview.onDidReceiveMessage((message) => {
@@ -68,64 +56,6 @@ export function openMigratePreview(extensionUri: vscode.Uri, projectRoot: string
 export function closeMigratePreview(): void {
   panel?.dispose();
   panel = undefined;
-}
-
-function getDevHtml(projectRoot: string): string {
-  const viteDevServer = 'http://localhost:5173';
-  const apiUrl = backendServer.apiUrl;
-  const wsUrl = backendServer.wsUrl;
-  const wsOrigin = getWsOrigin(wsUrl);
-
-  const projectParam = projectRoot
-    ? `?projectRoot=${encodeURIComponent(projectRoot)}`
-    : '';
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="
-    default-src 'none';
-    frame-src ${viteDevServer};
-    style-src 'unsafe-inline';
-    script-src 'unsafe-inline';
-    img-src https: http: data:;
-    connect-src ${viteDevServer} ${apiUrl} ${wsOrigin};
-  ">
-  <title>Migrate Project</title>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-    }
-    iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-    }
-    .dev-banner {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      background: #ff6b35;
-      color: white;
-      padding: 2px 8px;
-      font-size: 10px;
-      text-align: center;
-      z-index: 1000;
-    }
-  </style>
-</head>
-<body>
-  <div class="dev-banner">DEV MODE - Loading from Vite</div>
-  <iframe src="${viteDevServer}/migrate.html${projectParam}"></iframe>
-</body>
-</html>`;
 }
 
 function getProdHtml(webview: vscode.Webview, extensionPath: string, projectRoot: string): string {
