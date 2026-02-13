@@ -67,6 +67,10 @@ log = logging.getLogger(__name__)
 
 # Build queue configuration
 MAX_CONCURRENT_BUILDS = 4
+COMPLETED_BUILD_RETENTION_S = float(
+    os.getenv("ATO_BUILD_COMPLETED_RETENTION_S", "30")
+)
+STALE_BUILD_THRESHOLD_S = float(os.getenv("ATO_BUILD_STALE_SECONDS", "600"))
 
 
 def _build_subprocess_command(build: Build) -> list[str]:
@@ -683,6 +687,7 @@ class BuildQueue:
         """
         while self._running:
             self._apply_results()
+            self._cleanup_completed_builds()
             self._dispatch_next()
             time.sleep(0.05)
 
@@ -971,13 +976,14 @@ class BuildQueue:
         Remove completed/stale builds from tracked builds.
 
         - Completed builds are kept for 30 seconds, then removed
-        - Builds stuck in "building" status for >1 hour are considered stale
+        - Builds stuck in "building" status for a long time are considered stale
         """
         now = time.time()
-        cleanup_delay = 30.0
-        stale_threshold = 3600.0
+        cleanup_delay = COMPLETED_BUILD_RETENTION_S
+        stale_threshold = STALE_BUILD_THRESHOLD_S
 
         to_remove: list[str] = []
+        stale_marked_failed: list[str] = []
         with self._builds_lock:
             for build in self._builds.values():
                 status = build.status
@@ -994,6 +1000,7 @@ class BuildQueue:
                         to_remove.append(build.build_id)
                 else:
                     if started_at and (now - started_at) > stale_threshold:
+                        elapsed = max(0.0, now - started_at)
                         log.warning(
                             "Build %s stuck in '%s' for >%ss, marking as failed",
                             build.build_id,
@@ -1002,6 +1009,24 @@ class BuildQueue:
                         )
                         build.status = BuildStatus.FAILED
                         build.error = "Build timed out or server restarted"
+                        build.elapsed_seconds = elapsed
+                        BuildHistory.set(
+                            Build(
+                                build_id=build.build_id,
+                                project_root=build.project_root or "",
+                                target=build.target or "default",
+                                entry=build.entry,
+                                status=BuildStatus.FAILED,
+                                return_code=build.return_code or 1,
+                                error=build.error,
+                                started_at=started_at,
+                                elapsed_seconds=elapsed,
+                                stages=build.stages,
+                                warnings=build.warnings,
+                                errors=build.errors,
+                            )
+                        )
+                        stale_marked_failed.append(build.build_id)
                         to_remove.append(build.build_id)
 
             for build_id in to_remove:
@@ -1014,6 +1039,13 @@ class BuildQueue:
                 with self._cancel_lock:
                     self._cancel_flags.pop(build_id, None)
                 log.debug("Cleaned up build %s", build_id)
+
+        if stale_marked_failed and self.on_change:
+            for build_id in stale_marked_failed:
+                try:
+                    self.on_change(build_id, "stale_failed")
+                except Exception:
+                    log.exception("BuildQueue: on_change callback failed")
 
 
 # Get the default max concurrent (CPU count)

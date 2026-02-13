@@ -553,6 +553,9 @@ def create_app(
         return {"status": "ok"}
 
     from atopile.server.routes import (
+        agent as agent_routes,
+    )
+    from atopile.server.routes import (
         artifacts as artifacts_routes,
     )
     from atopile.server.routes import (
@@ -591,6 +594,7 @@ def create_app(
 
     app.include_router(ws_routes.router)
     app.include_router(logs_routes.router)
+    app.include_router(agent_routes.router)
     app.include_router(projects_routes.router)
     app.include_router(builds_routes.router)
     app.include_router(artifacts_routes.router)

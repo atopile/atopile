@@ -166,6 +166,8 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
                     entry=request.entry,
                     standalone=request.standalone,
                     frozen=request.frozen,
+                    include_targets=list(request.include_targets),
+                    exclude_targets=list(request.exclude_targets),
                     status=BuildStatus.QUEUED,
                     started_at=time.time(),
                 )

@@ -109,6 +109,14 @@ export interface OpenInSimpleBrowserMessage {
   url: string;
 }
 
+export interface OpenDiffMessage {
+  type: 'openDiff';
+  path: string;
+  beforeContent: string;
+  afterContent: string;
+  title?: string;
+}
+
 export interface ListFilesMessage {
   type: 'listFiles';
   projectRoot: string;
@@ -169,6 +177,7 @@ export type ExtensionMessage =
   | ShowBuildLogsMessage
   | ShowBackendMenuMessage
   | OpenInSimpleBrowserMessage
+  | OpenDiffMessage
   | ListFilesMessage
   | LoadDirectoryMessage
   | BrowseExportDirectoryMessage

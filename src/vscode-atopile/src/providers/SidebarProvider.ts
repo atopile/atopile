@@ -106,6 +106,14 @@ interface OpenInSimpleBrowserMessage {
   url: string;
 }
 
+interface OpenDiffMessage {
+  type: 'openDiff';
+  path: string;
+  beforeContent: string;
+  afterContent: string;
+  title?: string;
+}
+
 interface RevealInFinderMessage {
   type: 'revealInFinder';
   path: string;
@@ -187,6 +195,7 @@ type WebviewMessage =
   | ShowBuildLogsMessage
   | ShowBackendMenuMessage
   | OpenInSimpleBrowserMessage
+  | OpenDiffMessage
   | RevealInFinderMessage
   | RenameFileMessage
   | DeleteFileMessage
@@ -548,6 +557,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       case 'openInSimpleBrowser':
         void vscode.commands.executeCommand('simpleBrowser.show', message.url);
         break;
+      case 'openDiff':
+        void this._openDiffView(message).catch((error) => {
+          traceError(`[SidebarProvider] Error opening diff view: ${error}`);
+          vscode.window.showErrorMessage(`Failed to open diff view: ${error instanceof Error ? error.message : String(error)}`);
+        });
+        break;
       case 'revealInFinder':
         // Reveal file in OS file explorer (Finder on Mac, Explorer on Windows)
         void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(message.path));
@@ -787,6 +802,43 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       (err) => {
         traceError(`[SidebarProvider] Failed to open file ${filePath}: ${err}`);
       }
+    );
+  }
+
+  private _languageForPath(filePath: string): string | undefined {
+    const ext = path.extname(filePath).toLowerCase();
+    if (ext === '.py' || ext === '.pyi') return 'python';
+    if (ext === '.ato') return 'plaintext';
+    if (ext === '.ts') return 'typescript';
+    if (ext === '.tsx') return 'typescriptreact';
+    if (ext === '.js') return 'javascript';
+    if (ext === '.jsx') return 'javascriptreact';
+    if (ext === '.json') return 'json';
+    if (ext === '.md') return 'markdown';
+    if (ext === '.yaml' || ext === '.yml') return 'yaml';
+    if (ext === '.toml') return 'toml';
+    if (ext === '.css') return 'css';
+    if (ext === '.sh') return 'shellscript';
+    return undefined;
+  }
+
+  private async _openDiffView(message: OpenDiffMessage): Promise<void> {
+    const language = this._languageForPath(message.path);
+    const beforeDocument = await vscode.workspace.openTextDocument({
+      content: message.beforeContent,
+      language,
+    });
+    const afterDocument = await vscode.workspace.openTextDocument({
+      content: message.afterContent,
+      language,
+    });
+    const title = message.title ?? `Agent diff: ${path.basename(message.path)}`;
+    await vscode.commands.executeCommand(
+      'vscode.diff',
+      beforeDocument.uri,
+      afterDocument.uri,
+      title,
+      { preview: true },
     );
   }
 

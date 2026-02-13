@@ -4,6 +4,7 @@
 import logging
 import re
 from pathlib import Path
+from typing import Any, Iterable
 
 from httpx import HTTPStatusError, RequestError, TimeoutException
 
@@ -23,6 +24,54 @@ MAX_FILE_NAME_CHARACTERS = 100
 
 class DatasheetDownloadException(Exception):
     pass
+
+
+_LCSC_ID_RE = re.compile(r"(C\d{4,10})", re.IGNORECASE)
+
+
+def _normalize_lcsc_id(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    token = raw.strip().upper()
+    if not token:
+        return None
+    if token.startswith("C"):
+        number = token[1:]
+    else:
+        number = token
+        token = f"C{token}"
+    if not number.isdigit():
+        return None
+    return token
+
+
+def _extract_lcsc_id_from_url(url: str) -> str | None:
+    match = _LCSC_ID_RE.search(url)
+    if not match:
+        return None
+    return _normalize_lcsc_id(match.group(1))
+
+
+def _lcsc_wmsc_url(url: str) -> str | None:
+    if "lcsc.com" not in url.lower() or "wmsc.lcsc.com" in url.lower():
+        return None
+    lcsc_id = _extract_lcsc_id_from_url(url)
+    if not lcsc_id:
+        return None
+    return f"https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/{lcsc_id}.pdf"
+
+
+def _extract_lcsc_id_from_node(node: fabll.Node) -> str | None:
+    trait = node.try_get_trait(F.Pickable.has_part_picked)
+    if trait is None:
+        return None
+    try:
+        picked = trait.try_get_part()
+    except Exception:
+        return None
+    if picked is None:
+        return None
+    return _normalize_lcsc_id(getattr(picked, "supplier_partno", None))
 
 
 def _extract_filename_from_url(url: str) -> str:
@@ -51,7 +100,8 @@ def export_datasheets(
     path: Path = Path("build/documentation/datasheets"),
     overwrite: bool = False,
     progress: Advancable | None = None,
-):
+    lcsc_ids: Iterable[str] | None = None,
+) -> list[dict[str, Any]]:
     """
     Export all datasheets of all modules (that have a datasheet defined)
     of the given application.
@@ -62,8 +112,13 @@ def export_datasheets(
     # Create directories if they don't exist
     path.mkdir(parents=True, exist_ok=True)
 
-    # Collect unique datasheet URLs
-    unique_urls: set[str] = set()
+    # Collect unique datasheet URLs (optionally filtered by supplier part numbers).
+    requested_lcsc_ids = {
+        normalized
+        for normalized in (_normalize_lcsc_id(value) for value in (lcsc_ids or []))
+        if normalized
+    }
+    by_url: dict[str, dict[str, Any]] = {}
     logger.info(f"Exporting datasheets to: {path}")
 
     for m in fabll.Traits.get_implementor_objects(
@@ -77,25 +132,67 @@ def export_datasheets(
         if not url:
             logger.warning(f"Missing datasheet URL for {m.get_name()}")
             continue
-        unique_urls.add(url)
+        lcsc_id = _extract_lcsc_id_from_node(m)
+        if requested_lcsc_ids and lcsc_id not in requested_lcsc_ids:
+            continue
+
+        row = by_url.setdefault(
+            url,
+            {
+                "url": url,
+                "lcsc_ids": set(),
+                "modules": set(),
+            },
+        )
+        if lcsc_id:
+            row["lcsc_ids"].add(lcsc_id)
+        row["modules"].add(m.get_name())
 
     # Download each unique URL, using a cleaned filename from the URL
+    rows = list(by_url.values())
+    rows.sort(key=lambda value: str(value["url"]))
     if progress:
-        progress.set_total(len(unique_urls))
-    for url in unique_urls:
+        progress.set_total(len(rows))
+
+    exported: list[dict[str, Any]] = []
+    for row in rows:
+        url = str(row["url"])
         filename = _extract_filename_from_url(url)
         file_path = path / filename
         if progress:
             progress.advance()
+
+        record = {
+            "url": url,
+            "filename": filename,
+            "path": str(file_path),
+            "lcsc_ids": sorted(row["lcsc_ids"]),
+            "modules": sorted(row["modules"]),
+            "downloaded": False,
+            "skipped_existing": False,
+            "success": False,
+            "error": None,
+        }
         if file_path.exists() and not overwrite:
             logger.debug(f"Datasheet {filename} already exists, skipping download")
+            record["skipped_existing"] = True
+            record["success"] = True
+            exported.append(record)
             continue
         try:
             _download_datasheet(url, file_path)
         except DatasheetDownloadException as e:
             logger.error(f"Failed to download datasheet {filename}: {e}")
+            record["error"] = str(e)
+            exported.append(record)
             continue
+
+        record["downloaded"] = True
+        record["success"] = True
+        exported.append(record)
         logger.debug(f"Downloaded datasheet {filename}")
+
+    return exported
 
 
 def _download_datasheet(url: str, path: Path):
@@ -119,17 +216,12 @@ def _download_datasheet(url: str, path: Path):
             response = client.get(url, timeout=TIMEOUT_S, follow_redirects=False)
 
             # Handle redirects explicitly (httpx doesn't treat 3xx as errors).
-            if response.status_code == 301:
+            if response.status_code in {301, 302, 303, 307, 308}:
                 # Some LCSC datasheets are moved; map to the stable wmsc URL.
-                if "lcsc.com" in url:
-                    lcsc_id_regex = r"_(C\d{4,8})"
-                    match = re.search(lcsc_id_regex, url)
-                    if match:
-                        lcsc_id = match.group(1)
-                        redirected_url = f"https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/{lcsc_id}.pdf"
-                        logger.info(f"LCSC 301 redirect: {url} -> {redirected_url}")
-                        _download_datasheet(redirected_url, path)
-                        return  # Exit after successful recursive download
+                if redirected_url := _lcsc_wmsc_url(url):
+                    logger.info(f"LCSC redirect fallback: {url} -> {redirected_url}")
+                    _download_datasheet(redirected_url, path)
+                    return
 
                 # Otherwise, follow the Location header if present.
                 location = response.headers.get("location")
@@ -153,6 +245,12 @@ def _download_datasheet(url: str, path: Path):
 
     # check if content is pdf
     if not response.content.startswith(b"%PDF"):
+        if redirected_url := _lcsc_wmsc_url(url):
+            logger.info(
+                f"LCSC non-PDF fallback: {url} -> {redirected_url}"
+            )
+            _download_datasheet(redirected_url, path)
+            return
         raise DatasheetDownloadException(
             f"Downloaded content is not a PDF: {response.content[:100]}"
         )
@@ -168,15 +266,27 @@ def _download_datasheet(url: str, path: Path):
 def _create_app_with_datasheet(url: str):
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=graph.GraphView.create())
+    suffix = abs(hash(url)) % 1_000_000
 
-    class _ModuleWithDatasheet(fabll.Node):
-        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
-        datasheet = fabll.Traits.MakeEdge(F.has_datasheet.MakeChild(datasheet=url))
+    module_cls = type(
+        f"_ModuleWithDatasheet_{suffix}",
+        (fabll.Node,),
+        {
+            "_is_module": fabll.Traits.MakeEdge(fabll.is_module.MakeChild()),
+            "datasheet": fabll.Traits.MakeEdge(
+                F.has_datasheet.MakeChild(datasheet=url)
+            ),
+        },
+    )
+    app_cls = type(
+        f"_AppWithDatasheet_{suffix}",
+        (fabll.Node,),
+        {
+            "modules_with_datasheet": [module_cls.MakeChild() for _ in range(2)],
+        },
+    )
 
-    class _App(fabll.Node):
-        modules_with_datasheet = [_ModuleWithDatasheet.MakeChild() for _ in range(2)]
-
-    return _App.bind_typegraph(tg=tg).create_instance(g=g)
+    return app_cls.bind_typegraph(tg=tg).create_instance(g=g)
 
 
 def test_download_datasheet(caplog, tmp_path):
@@ -226,3 +336,66 @@ def test_download_datasheet_failure(caplog, tmp_path):
         f"Expected DatasheetDownloadException to be logged, "
         f"got: {[r.message for r in caplog.records]}"
     )
+
+
+def _create_app_with_lcsc_datasheets(entries: list[tuple[str, str]]):
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=graph.GraphView.create())
+    suffix = abs(hash(tuple(entries))) % 1_000_000
+
+    modules = []
+    for index, (url, lcsc_id) in enumerate(entries):
+        cls_name = f"_ModuleWithDatasheet{suffix}_{index}"
+        module_cls = type(
+            cls_name,
+            (fabll.Node,),
+            {
+                "_is_module": fabll.Traits.MakeEdge(fabll.is_module.MakeChild()),
+                "datasheet": fabll.Traits.MakeEdge(
+                    F.has_datasheet.MakeChild(datasheet=url)
+                ),
+                "picked": fabll.Traits.MakeEdge(
+                    F.Pickable.has_part_picked.MakeChild(
+                        supplier_id="lcsc",
+                        supplier_partno=lcsc_id,
+                        manufacturer=f"MFG{index}",
+                        partno=f"PN{index}",
+                    )
+                ),
+            },
+        )
+        modules.append(module_cls.MakeChild())
+    app_cls = type(
+        f"_AppWithDatasheets_{suffix}",
+        (fabll.Node,),
+        {"modules_with_datasheet": modules},
+    )
+    return app_cls.bind_typegraph(tg=tg).create_instance(g=g)
+
+
+def test_export_datasheets_filters_by_lcsc_id(monkeypatch, tmp_path):
+    app = _create_app_with_lcsc_datasheets(
+        [
+            ("https://example.com/a_C11111.pdf", "C11111"),
+            ("https://example.com/b_C22222.pdf", "C22222"),
+        ]
+    )
+
+    def _fake_download(url: str, path: Path):
+        _ = url
+        path.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(
+        "faebryk.exporters.documentation.datasheets._download_datasheet",
+        _fake_download,
+    )
+
+    exported = export_datasheets(
+        app,
+        path=tmp_path / "datasheets",
+        lcsc_ids=["C22222"],
+    )
+
+    assert len(exported) == 1
+    assert exported[0]["success"] is True
+    assert exported[0]["lcsc_ids"] == ["C22222"]
