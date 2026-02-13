@@ -446,25 +446,6 @@
   min-width: 0;
 }
 
-.lv-col-btn {
-  padding: 2px var(--spacing-xs);
-  background: transparent;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  font-family: var(--font-mono);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  white-space: nowrap;
-}
-
-.lv-col-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
 .lv-col-label {
   padding: 2px var(--spacing-xs);
   color: var(--text-muted);
@@ -563,6 +544,10 @@
 
 .lv-search-error .lv-search-toggle {
   border-color: var(--ctp-red);
+}
+
+.lv-col-search-stage {
+  width: 100%;
 }
 
 /* Display container wraps expand toolbar + content */

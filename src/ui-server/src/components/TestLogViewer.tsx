@@ -15,6 +15,7 @@ import {
   buildTestLogRequest,
   LogDisplay,
   ChevronDown,
+  HeaderSearchBox,
   getStoredSetting,
   LoggerFilter,
   loadEnabledLoggers,
@@ -262,17 +263,6 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
           </div>
 
           <div className="lv-controls-right">
-            {/* Source filter */}
-            <input
-              type="text"
-              className="lv-input lv-input-search"
-              placeholder={sourceMode === 'source' ? 'file:line' : 'logger'}
-              value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value)}
-            />
-
-            <span className="lv-separator" />
-
             {/* Source/Logger toggle */}
             <button
               className="lv-btn lv-btn-small"
@@ -321,18 +311,22 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
             <span className="lv-col-label">Level</span>
           </div>
           <div className="lv-col-header lv-col-source">
-            <span className="lv-col-label">{sourceMode === 'source' ? 'Src' : 'Log'}</span>
+            <HeaderSearchBox
+              value={sourceFilter}
+              onChange={setSourceFilter}
+              placeholder={sourceMode === 'source' ? 'file:line' : 'logger'}
+            />
           </div>
           <div className="lv-col-header lv-col-stage">
             <span className="lv-col-label">Stage</span>
           </div>
           <div className="lv-col-header lv-col-message">
-            <input
-              type="text"
+            <HeaderSearchBox
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={setSearch}
               placeholder="Message"
-              className="lv-col-search lv-col-search-message"
+              inputClassName="lv-col-search-message"
+              wrapperClassName="lv-search-wrapper-message"
             />
           </div>
         </div>

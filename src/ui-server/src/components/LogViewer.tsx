@@ -23,6 +23,7 @@ import {
   getStoredSetting,
   isValidRegex,
   SearchOptions,
+  HeaderSearchBox,
   LoggerFilter,
   loadEnabledLoggers,
   calculateSourceColumnWidth,
@@ -355,29 +356,6 @@ export function LogViewer() {
 
           {/* Right section: Filters */}
           <div className="lv-controls-right">
-            {/* Stage/Test name filter */}
-            {mode === 'build' ? (
-              <input
-                type="text"
-                value={stage}
-                onChange={(e) => setStage(e.target.value)}
-                placeholder="Stage"
-                className="lv-input lv-input-search"
-                title="Filter by build stage"
-              />
-            ) : (
-              <input
-                type="text"
-                value={testName}
-                onChange={(e) => setTestName(e.target.value)}
-                placeholder="Test Name"
-                className="lv-input lv-input-search"
-                title="Filter by test name"
-              />
-            )}
-
-            <span className="lv-separator" />
-
             {/* Level dropdown */}
             <div className="lv-dropdown" ref={levelDropdownRef}>
               <button
@@ -450,60 +428,39 @@ export function LogViewer() {
             <span className="lv-col-label">Level</span>
           </div>
           <div className="lv-col-header lv-col-source">
-            <span className="lv-col-label">{sourceMode === 'source' ? 'Src' : 'Log'}</span>
-            <div className={`lv-search-wrapper ${sourceRegexError ? 'lv-search-error' : ''}`}>
-              <input
-                type="text"
-                value={sourceFilter}
-                onChange={(e) => setSourceFilter(e.target.value)}
-                placeholder={sourceMode === 'source' ? 'file:line' : 'logger'}
-                className="lv-col-search"
-                title={sourceRegexError || ''}
-              />
-              <button
-                className={`lv-search-toggle ${sourceCaseSensitive ? 'active' : ''}`}
-                onClick={() => setSourceCaseSensitive(!sourceCaseSensitive)}
-                title={sourceCaseSensitive ? 'Case sensitive' : 'Case insensitive'}
-              >
-                Aa
-              </button>
-              <button
-                className={`lv-search-toggle lv-search-toggle-last ${sourceRegex ? 'active' : ''}`}
-                onClick={() => setSourceRegex(!sourceRegex)}
-                title={sourceRegex ? 'Regex enabled' : 'Enable regex'}
-              >
-                .*
-              </button>
-            </div>
+            <HeaderSearchBox
+              value={sourceFilter}
+              onChange={setSourceFilter}
+              placeholder={sourceMode === 'source' ? 'file:line' : 'logger'}
+              error={sourceRegexError}
+              caseSensitive={sourceCaseSensitive}
+              onToggleCaseSensitive={() => setSourceCaseSensitive(!sourceCaseSensitive)}
+              regex={sourceRegex}
+              onToggleRegex={() => setSourceRegex(!sourceRegex)}
+            />
           </div>
           <div className="lv-col-header lv-col-stage">
-            <span className="lv-col-label">Stage</span>
+            <HeaderSearchBox
+              value={mode === 'build' ? stage : testName}
+              onChange={(value) => (mode === 'build' ? setStage(value) : setTestName(value))}
+              placeholder={mode === 'build' ? 'Stage' : 'Test Name'}
+              title={mode === 'build' ? 'Filter by build stage' : 'Filter by test name'}
+              inputClassName="lv-col-search-stage"
+            />
           </div>
           <div className="lv-col-header lv-col-message">
-            <div className={`lv-search-wrapper lv-search-wrapper-message ${searchRegexError ? 'lv-search-error' : ''}`}>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Message"
-                className="lv-col-search lv-col-search-message"
-                title={searchRegexError || ''}
-              />
-              <button
-                className={`lv-search-toggle ${searchCaseSensitive ? 'active' : ''}`}
-                onClick={() => setSearchCaseSensitive(!searchCaseSensitive)}
-                title={searchCaseSensitive ? 'Case sensitive' : 'Case insensitive'}
-              >
-                Aa
-              </button>
-              <button
-                className={`lv-search-toggle lv-search-toggle-last ${searchRegex ? 'active' : ''}`}
-                onClick={() => setSearchRegex(!searchRegex)}
-                title={searchRegex ? 'Regex enabled' : 'Enable regex'}
-              >
-                .*
-              </button>
-            </div>
+            <HeaderSearchBox
+              value={search}
+              onChange={setSearch}
+              placeholder="Message"
+              error={searchRegexError}
+              caseSensitive={searchCaseSensitive}
+              onToggleCaseSensitive={() => setSearchCaseSensitive(!searchCaseSensitive)}
+              regex={searchRegex}
+              onToggleRegex={() => setSearchRegex(!searchRegex)}
+              inputClassName="lv-col-search-message"
+              wrapperClassName="lv-search-wrapper-message"
+            />
           </div>
         </div>
 
