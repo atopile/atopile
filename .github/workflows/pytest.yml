@@ -93,14 +93,14 @@ jobs:
           FBRK_TEST_REPORT_INTERVAL: 10
           FBRK_TEST_LONG_THRESHOLD: 30
           FBRK_TEST_SHOW_PYTEST_OUTPUT: 0
-          FBRK_TEST_WORKERS: -1 # 96 threads/48 cpus ->  48workers
+          FBRK_TEST_WORKERS: -2 # 124 threads/62 cpus ->  124 workers
           FBRK_TEST_PERIODIC_HTML: 0
           FBRK_TEST_GENERATE_HTML: 1
           # threshold for worker to restart after exceeding after a test run
           FBRK_TEST_WORKER_MEMORY_LIMIT_MB: 1024
           PYTHON_UNBUFFERED: 1
           FBRK_TEST_LOG_VIEWER: 0
-          
+
       - name: Upload test report json artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -108,7 +108,7 @@ jobs:
           name: test-report.json
           path: artifacts/test-report.json
           if-no-files-found: error
-          
+
       - name: Upload test report html artifact
         uses: actions/upload-artifact@v4
         with:
