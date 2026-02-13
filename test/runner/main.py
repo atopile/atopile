@@ -197,10 +197,10 @@ def get_free_port(
 
 def collect_tests(
     pytest_args: list[str],
-) -> tuple[list[str], dict[str, str], dict[str, int]]:
+) -> tuple[list[str], dict[str, str], dict[str, int], dict[str, str]]:
     """Collects tests using pytest --collect-only.
 
-    Returns (test_nodeids, collection_errors, max_parallel_groups).
+    Returns (test_nodeids, collection_errors, max_parallel_groups, affinity_membership).
     """
     # Filter out empty strings if any
     pytest_args = [arg for arg in pytest_args if arg]
@@ -254,9 +254,10 @@ def collect_tests(
             if current_file and current_error:
                 errors_clean[current_file] = "\n".join(current_error)
 
-    # Parse tests and max_parallel markers from stdout
+    # Parse tests, max_parallel markers, and worker_affinity from stdout
     tests = []
     max_parallel: dict[str, int] = {}
+    affinity_membership: dict[str, str] = {}
     for line in stdout.strip().split("\n"):
         line = line.strip()
         # Skip empty lines and summary lines (but not test names containing 'error')
@@ -271,11 +272,20 @@ def collect_tests(
                 prefix = rest[: idx + 1]
                 max_parallel[prefix] = int(rest[idx + 1 :])
             continue
+        # Parse "@worker_affinity:<group_key>|<nodeid>" lines emitted by conftest
+        if line.startswith("@worker_affinity:"):
+            rest = line[len("@worker_affinity:") :]
+            sep_idx = rest.find("|")
+            if sep_idx > 0:
+                group_key = rest[:sep_idx]
+                nodeid = rest[sep_idx + 1 :]
+                affinity_membership[nodeid] = group_key
+            continue
         # Test nodeids contain "::" - skip actual error messages which don't
         if "::" in line:
             tests.append(line)
 
-    return tests, errors_clean, max_parallel
+    return tests, errors_clean, max_parallel, affinity_membership
 
 
 def start_server(port) -> uvicorn.Server:
@@ -353,7 +363,7 @@ def main(
     pytest_args = args if args is not None else sys.argv[1:]
 
     # 1. Collect tests
-    tests, errors, max_parallel = collect_tests(pytest_args)
+    tests, errors, max_parallel, affinity_membership = collect_tests(pytest_args)
     tests_total = len(tests)
     _print(f"Collected {tests_total} tests")
 
@@ -454,7 +464,7 @@ def main(
     )
 
     # Set up orchestrator and UI globals
-    set_orchestrator_globals(test_queue, aggregator, max_parallel)
+    set_orchestrator_globals(test_queue, aggregator, max_parallel, affinity_membership)
     set_ui_globals(aggregator, REPORT_HTML_PATH, REMOTE_BASELINES_DIR)
 
     for error_key, error_value in errors.items():

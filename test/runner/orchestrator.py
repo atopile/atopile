@@ -34,6 +34,11 @@ _max_parallel: dict[str, int] = {}
 _group_active: dict[str, int] = {}
 _group_lock = threading.Lock()
 
+# Worker affinity: route tests from same group to same worker
+_affinity_membership: dict[str, str] = {}  # nodeid → group_key
+_affinity_bindings: dict[str, int] = {}  # group_key → worker PID
+_affinity_lock = threading.Lock()
+
 
 def _get_group(nodeid: str) -> str | None:
     """Return group prefix if nodeid belongs to a concurrency-limited group."""
@@ -43,17 +48,41 @@ def _get_group(nodeid: str) -> str | None:
     return None
 
 
+def _check_affinity(nodeid: str, pid: int) -> bool:
+    """Check if this test can run on this worker given affinity constraints."""
+    group = _affinity_membership.get(nodeid)
+    if group is None:
+        return True
+    with _affinity_lock:
+        bound_pid = _affinity_bindings.get(group)
+        if bound_pid is None:
+            _affinity_bindings[group] = pid
+            return True
+        return bound_pid == pid
+
+
+def _unbind_affinity_for_pid(pid: int) -> None:
+    """Remove all affinity bindings for a worker that exited."""
+    with _affinity_lock:
+        to_remove = [g for g, p in _affinity_bindings.items() if p == pid]
+        for g in to_remove:
+            del _affinity_bindings[g]
+
+
 def set_globals(
     queue_ref: queue.Queue[str],
     agg_ref: TestAggregator | None,
     max_parallel: dict[str, int] | None = None,
+    affinity_membership: dict[str, str] | None = None,
 ) -> None:
     """Set global references from main module."""
-    global test_queue, aggregator, _max_parallel
+    global test_queue, aggregator, _max_parallel, _affinity_membership
     test_queue = queue_ref
     aggregator = agg_ref
     if max_parallel is not None:
         _max_parallel = max_parallel
+    if affinity_membership is not None:
+        _affinity_membership = affinity_membership
 
 
 def get_aggregator() -> TestAggregator | None:
@@ -77,6 +106,11 @@ async def claim(request: ClaimRequest) -> ClaimResponse:
     try:
         while True:
             candidate = test_queue.get_nowait()
+            # Check worker affinity first (hard constraint)
+            if not _check_affinity(candidate, request.pid):
+                skipped.append(candidate)
+                continue
+            # Then check max_parallel (soft constraint)
             group = _get_group(candidate)
             if group is None:
                 nodeid = candidate
@@ -113,6 +147,9 @@ async def event(request: EventRequest) -> dict[str, str]:
             if group:
                 with _group_lock:
                     _group_active[group] = max(0, _group_active.get(group, 0) - 1)
+        # Release affinity bindings when worker exits
+        if request.type == EventType.EXIT:
+            _unbind_affinity_for_pid(request.pid)
     if aggregator:
         aggregator.handle_event(request)
     return {"status": "ok"}
