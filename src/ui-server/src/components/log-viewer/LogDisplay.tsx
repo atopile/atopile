@@ -436,11 +436,11 @@ export function LogDisplay({
   // Count how many groups have children (foldable)
   const foldableCount = groups.filter(g => g.type === 'tree' && g.root.children.length > 0).length;
   const rowToggleHandlers = useMemo<RowToggleHandlers>(() => ({
-    toggleTimeMode: () => setTimeMode(timeMode === 'delta' ? 'wall' : 'delta'),
-    toggleLevelWidth: () => setLevelFull(!levelFull),
-    toggleSourceMode: () => setSourceMode(sourceMode === 'source' ? 'logger' : 'source'),
-    toggleStageWidth: () => setStageFull(!stageFull),
-  }), [setTimeMode, timeMode, setLevelFull, levelFull, setSourceMode, sourceMode, setStageFull, stageFull]);
+    toggleTimeMode: () => setTimeMode(m => m === 'delta' ? 'wall' : 'delta'),
+    toggleLevelWidth: () => setLevelFull(v => !v),
+    toggleSourceMode: () => setSourceMode(m => m === 'source' ? 'logger' : 'source'),
+    toggleStageWidth: () => setStageFull(v => !v),
+  }), []);
 
   return (
     <div className="lv-display-container">
