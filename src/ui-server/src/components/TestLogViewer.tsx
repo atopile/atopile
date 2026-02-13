@@ -182,22 +182,25 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
     () => calculateSourceColumnWidth(logs, sourceMode),
     [logs, sourceMode]
   );
+  const sourceColumnWidthPx = useMemo(
+    () => Math.max(96, Math.min(360, Math.round(sourceColumnWidth * 8))),
+    [sourceColumnWidth]
+  );
   const gridTemplateColumns = useMemo(
     () => [
-      timeMode === 'delta' ? 'var(--lv-col-time-compact)' : 'var(--lv-col-time)',
+      timeMode === 'delta' ? '60px' : '72px',
       levelFull ? 'max-content' : '3ch',
-      'var(--lv-source-width)',
+      `${sourceColumnWidthPx}px`,
       '12ch',
       'minmax(0, 1fr)',
     ].join(' '),
-    [timeMode, levelFull]
+    [timeMode, levelFull, sourceColumnWidthPx]
   );
 
   return (
     <div
       className="lv-container"
       style={{
-        '--lv-source-width': `${sourceColumnWidth}ch`,
         '--lv-grid-template-columns': gridTemplateColumns,
       } as React.CSSProperties}
     >
