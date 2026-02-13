@@ -117,6 +117,31 @@ def test_project_rename_and_delete_path_execute(tmp_path: Path) -> None:
     assert not (tmp_path / "docs" / "notes.md").exists()
 
 
+def test_parts_install_returns_datasheet_followup_hint(monkeypatch) -> None:
+    def fake_install_part(lcsc_id: str, project_root: str) -> dict[str, str]:
+        assert lcsc_id == "C521608"
+        assert project_root == "/tmp/project"
+        return {
+            "identifier": "STMicroelectronics_STM32G474RET6_package",
+            "path": "/tmp/project/elec/src/parts/stm32g4/stm32g4.ato",
+        }
+
+    monkeypatch.setattr(tools.parts_domain, "handle_install_part", fake_install_part)
+
+    result = _run(
+        tools.execute_tool(
+            name="parts_install",
+            arguments={"lcsc_id": "c521608"},
+            project_root=Path("/tmp/project"),
+            ctx=AppContext(),
+        )
+    )
+
+    assert result["success"] is True
+    assert result["lcsc_id"] == "C521608"
+    assert "datasheet_read" in result["implementation_hint"]
+
+
 def test_datasheet_read_uploads_pdf_and_returns_file_id(
     monkeypatch,
     tmp_path: Path,
@@ -218,6 +243,94 @@ def test_datasheet_read_uploads_pdf_and_returns_file_id(
     assert result["filename"] == "tps7a02.pdf"
     assert result["lcsc_id"] == "C521608"
     assert result["resolution"]["mode"] == "project_graph"
+
+
+def test_datasheet_read_falls_back_when_graph_resolution_fails(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    def fake_collect_project_datasheets(
+        project_root: str,
+        *,
+        build_target: str | None = None,
+        lcsc_ids: list[str] | None = None,
+        overwrite: bool = False,
+    ) -> dict:
+        _ = project_root, build_target, lcsc_ids, overwrite
+        raise AssertionError("simulated graph failure")
+
+    def fake_get_part_details(lcsc_id: str) -> dict | None:
+        assert lcsc_id == "C521608"
+        return {
+            "datasheet_url": "https://example.com/stm32g4.pdf",
+            "manufacturer": "STMicroelectronics",
+            "part_number": "STM32G474RET6",
+            "description": "MCU",
+        }
+
+    def fake_read_datasheet_file(
+        project_root: Path,
+        *,
+        path: str | None = None,
+        url: str | None = None,
+    ) -> tuple[bytes, dict[str, object]]:
+        assert project_root == tmp_path
+        assert path is None
+        assert url == "https://example.com/stm32g4.pdf"
+        return (
+            b"%PDF-1.7\n",
+            {
+                "source_kind": "url",
+                "source": "https://example.com/stm32g4.pdf",
+                "format": "pdf",
+                "content_type": "application/pdf",
+                "filename": "stm32g4.pdf",
+                "sha256": "feedface",
+                "size_bytes": 9,
+            },
+        )
+
+    async def fake_upload_openai_user_file(
+        *,
+        filename: str,
+        content: bytes,
+        cache_key: str,
+    ) -> tuple[str, bool]:
+        assert filename == "stm32g4.pdf"
+        assert content.startswith(b"%PDF-")
+        assert cache_key == "feedface"
+        return ("file-test-fallback", False)
+
+    monkeypatch.setattr(
+        tools.datasheets_domain,
+        "handle_collect_project_datasheets",
+        fake_collect_project_datasheets,
+    )
+    monkeypatch.setattr(
+        tools.parts_domain,
+        "handle_get_part_details",
+        fake_get_part_details,
+    )
+    monkeypatch.setattr(policy, "read_datasheet_file", fake_read_datasheet_file)
+    monkeypatch.setattr(
+        tools,
+        "_upload_openai_user_file",
+        fake_upload_openai_user_file,
+    )
+
+    result = _run(
+        tools.execute_tool(
+            name="datasheet_read",
+            arguments={"lcsc_id": "C521608", "target": "default"},
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+
+    assert result["found"] is True
+    assert result["openai_file_id"] == "file-test-fallback"
+    assert result["resolution"]["mode"] == "parts_api_fallback"
+    assert result["resolution"]["graph_error"]["type"] == "AssertionError"
 
 
 def test_datasheet_read_uses_cached_reference_for_repeat_calls(

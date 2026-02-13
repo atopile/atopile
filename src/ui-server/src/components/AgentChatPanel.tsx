@@ -1,5 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
-import { ArrowUp, CheckCircle2, AlertCircle, ChevronDown, Loader2, Square, Plus, Minimize2, Maximize2 } from 'lucide-react';
+import {
+  ArrowUp,
+  CheckCircle2,
+  AlertCircle,
+  ChevronDown,
+  Loader2,
+  Square,
+  Plus,
+  Minimize2,
+  Maximize2,
+  MessageSquareText,
+  X,
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -15,7 +27,7 @@ import './AgentChatPanel.css';
 
 type MessageRole = 'user' | 'assistant' | 'system';
 
-type AgentProgressPhase = 'tool_start' | 'tool_end' | 'done' | 'stopped' | 'error';
+type AgentProgressPhase = 'thinking' | 'tool_start' | 'tool_end' | 'done' | 'stopped' | 'error';
 
 interface AgentProgressPayload {
   session_id?: unknown;
@@ -25,6 +37,8 @@ interface AgentProgressPayload {
   name?: unknown;
   args?: unknown;
   trace?: unknown;
+  status_text?: unknown;
+  detail_text?: unknown;
 }
 
 interface AgentTraceView extends AgentToolTrace {
@@ -87,12 +101,27 @@ interface MentionItem {
   subtitle?: string;
 }
 
+interface AgentChatSnapshot {
+  id: string;
+  projectRoot: string;
+  title: string;
+  sessionId: string | null;
+  isSessionLoading: boolean;
+  messages: AgentMessage[];
+  input: string;
+  error: string | null;
+  activityLabel: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 interface AgentChatPanelProps {
   projectRoot: string | null;
   selectedTargets: string[];
 }
 
 const RUN_CANCELLED_MARKER = '__ATOPILE_AGENT_RUN_CANCELLED__';
+const DEFAULT_CHAT_TITLE = 'New chat';
 const TRACE_DETAIL_LIMIT = 5;
 const TRACE_INPUT_PREFERRED_KEYS = [
   'path',
@@ -145,6 +174,46 @@ function shortProjectName(projectRoot: string | null): string {
   if (!projectRoot) return 'No project selected';
   const parts = projectRoot.split('/').filter(Boolean);
   return parts[parts.length - 1] || projectRoot;
+}
+
+function createChatId(): string {
+  return `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function deriveChatTitle(messages: AgentMessage[]): string {
+  const firstUser = messages.find((message) => message.role === 'user' && message.content.trim().length > 0);
+  if (!firstUser) return DEFAULT_CHAT_TITLE;
+  const compact = firstUser.content
+    .replace(/[#>*_`~[\]()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!compact) return DEFAULT_CHAT_TITLE;
+  return trimSingleLine(compact, 44);
+}
+
+function summarizeChatPreview(messages: AgentMessage[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    const compact = message.content.replace(/\s+/g, ' ').trim();
+    if (!compact) continue;
+    if (message.role === 'user') return `You: ${trimSingleLine(compact, 58)}`;
+    if (message.role === 'assistant') return trimSingleLine(compact, 62);
+  }
+  return 'No messages yet';
+}
+
+function formatChatTimestamp(timestamp: number): string {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return '';
+  try {
+    return new Date(timestamp).toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  } catch {
+    return '';
+  }
 }
 
 function normalizeAssistantText(text: string): string {
@@ -352,6 +421,8 @@ function readProgressPayload(detail: unknown): {
   trace: AgentToolTrace | null;
   name: string | null;
   args: Record<string, unknown>;
+  statusText: string | null;
+  detailText: string | null;
 } {
   if (!detail || typeof detail !== 'object') {
     return {
@@ -362,6 +433,8 @@ function readProgressPayload(detail: unknown): {
       trace: null,
       name: null,
       args: {},
+      statusText: null,
+      detailText: null,
     };
   }
 
@@ -374,12 +447,14 @@ function readProgressPayload(detail: unknown): {
   const args = payload.args && typeof payload.args === 'object'
     ? payload.args as Record<string, unknown>
     : {};
+  const statusText = typeof payload.status_text === 'string' ? payload.status_text : null;
+  const detailText = typeof payload.detail_text === 'string' ? payload.detail_text : null;
 
   const trace = payload.trace && typeof payload.trace === 'object'
     ? payload.trace as AgentToolTrace
     : null;
 
-  return { sessionId, runId, phase, callId, trace, name, args };
+  return { sessionId, runId, phase, callId, trace, name, args, statusText, detailText };
 }
 
 function readTraceDiff(trace: AgentTraceView): { added: number; removed: number } | null {
@@ -527,6 +602,108 @@ function summarizeToolTraceGroup(traces: AgentTraceView[]): string {
   return `${formatCount(completed, 'completed', 'completed')}`;
 }
 
+function asNonEmptyString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function asStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function compactPath(path: string): string {
+  const normalized = path.replace(/\\/g, '/').replace(/^\.?\//, '');
+  if (normalized.length <= 44) return normalized;
+  const segments = normalized.split('/').filter(Boolean);
+  if (segments.length <= 2) {
+    return `...${normalized.slice(-41)}`;
+  }
+  return `.../${segments.slice(-2).join('/')}`;
+}
+
+function describeArgsTarget(args: Record<string, unknown>): string | null {
+  const target = asNonEmptyString(args.target);
+  if (target) return target;
+  const targets = asStringList(args.targets);
+  if (targets.length === 0) return null;
+  if (targets.length === 1) return targets[0];
+  return `${targets[0]} +${targets.length - 1}`;
+}
+
+function inferToolActivityDetail(toolName: string | null, args: Record<string, unknown>): string {
+  if (!toolName) return 'Working';
+  const path = asNonEmptyString(args.path);
+
+  if (toolName === 'project_read_file') {
+    return path ? `Reading ${compactPath(path)}` : 'Reading file';
+  }
+  if (toolName === 'project_edit_file') {
+    return path ? `Editing ${compactPath(path)}` : 'Editing file';
+  }
+  if (toolName === 'project_search') {
+    const query = asNonEmptyString(args.query);
+    return query ? `Searching "${trimSingleLine(query, 30)}"` : 'Searching project';
+  }
+  if (toolName === 'project_list_modules') {
+    return 'Scanning modules';
+  }
+  if (toolName === 'project_module_children') {
+    const entry = asNonEmptyString(args.entry);
+    return entry ? `Inspecting ${trimSingleLine(entry, 36)}` : 'Inspecting module';
+  }
+  if (toolName === 'project_rename_path') {
+    const oldPath = asNonEmptyString(args.old_path);
+    const newPath = asNonEmptyString(args.new_path);
+    if (oldPath && newPath) {
+      return `Renaming ${compactPath(oldPath)} -> ${compactPath(newPath)}`;
+    }
+    return 'Renaming path';
+  }
+  if (toolName === 'project_delete_path') {
+    return path ? `Deleting ${compactPath(path)}` : 'Deleting path';
+  }
+  if (toolName === 'build_run') {
+    const target = describeArgsTarget(args);
+    return target ? `Running build ${trimSingleLine(target, 28)}` : 'Running build';
+  }
+  if (toolName === 'build_logs_search') {
+    const buildId = asNonEmptyString(args.queued_build_id) ?? asNonEmptyString(args.build_id);
+    return buildId ? `Checking logs ${trimSingleLine(buildId, 22)}` : 'Checking build logs';
+  }
+  if (toolName === 'report_bom') {
+    const target = describeArgsTarget(args);
+    return target ? `Loading BOM ${trimSingleLine(target, 28)}` : 'Loading BOM';
+  }
+  if (toolName === 'report_variables') {
+    const target = describeArgsTarget(args);
+    return target ? `Loading variables ${trimSingleLine(target, 28)}` : 'Loading variables';
+  }
+  if (toolName === 'design_diagnostics') {
+    return 'Running diagnostics';
+  }
+  if (toolName === 'parts_search' || toolName === 'packages_search') {
+    const query = asNonEmptyString(args.query);
+    return query ? `Searching "${trimSingleLine(query, 30)}"` : inferActivityFromTool(toolName);
+  }
+  if (toolName === 'parts_install' || toolName === 'packages_install') {
+    const name = asNonEmptyString(args.name) ?? asNonEmptyString(args.identifier);
+    return name ? `Installing ${trimSingleLine(name, 30)}` : inferActivityFromTool(toolName);
+  }
+  if (toolName === 'datasheet_read') {
+    const lcscId = asNonEmptyString(args.lcsc_id);
+    if (lcscId) return `Reading datasheet ${lcscId}`;
+    const query = asNonEmptyString(args.query);
+    return query ? `Reading datasheet "${trimSingleLine(query, 26)}"` : 'Reading datasheet';
+  }
+
+  return inferActivityFromTool(toolName);
+}
+
 function inferActivityFromTool(toolName: string | null): string {
   if (!toolName) return 'Working';
   if (toolName.startsWith('project_') || toolName.startsWith('stdlib_')) {
@@ -548,6 +725,66 @@ function inferActivityFromTool(toolName: string | null): string {
     return 'Reviewing';
   }
   return 'Working';
+}
+
+function inferActivityFromProgress(
+  payload: {
+    phase: AgentProgressPhase | null;
+    name: string | null;
+    args: Record<string, unknown>;
+    trace: AgentToolTrace | null;
+    statusText: string | null;
+    detailText: string | null;
+  },
+): string | null {
+  if (payload.phase === 'thinking') {
+    const status = payload.statusText || 'Thinking';
+    if (payload.detailText) {
+      return `${status}: ${trimSingleLine(payload.detailText, 36)}`;
+    }
+    return status;
+  }
+  if (payload.phase === 'tool_start') {
+    return inferToolActivityDetail(payload.name, payload.args);
+  }
+  if (payload.phase === 'tool_end' && payload.trace) {
+    if (!payload.trace.ok) {
+      const error = asNonEmptyString(payload.trace.result.error);
+      if (error) {
+        return `Failed: ${trimSingleLine(error, 42)}`;
+      }
+      return `Failed ${payload.trace.name}`;
+    }
+    if (payload.trace.name === 'project_edit_file') {
+      const pathFromArgs = asNonEmptyString(payload.trace.args.path);
+      const pathFromResult = asNonEmptyString(payload.trace.result.path);
+      const path = pathFromArgs || pathFromResult;
+      const diff = payload.trace.result.diff;
+      if (path) {
+        if (diff && typeof diff === 'object') {
+          const added = typeof (diff as Record<string, unknown>).added_lines === 'number'
+            ? (diff as Record<string, unknown>).added_lines as number
+            : null;
+          const removed = typeof (diff as Record<string, unknown>).removed_lines === 'number'
+            ? (diff as Record<string, unknown>).removed_lines as number
+            : null;
+          if (added !== null && removed !== null) {
+            return `Edited ${compactPath(path)} (+${added}/-${removed})`;
+          }
+        }
+        return `Edited ${compactPath(path)}`;
+      }
+    }
+    const resultMessage = asNonEmptyString(payload.trace.result.message);
+    if (resultMessage) {
+      return trimSingleLine(resultMessage, 46);
+    }
+    return inferToolActivityDetail(payload.trace.name, payload.trace.args);
+  }
+  if (payload.phase === 'error') return 'Errored';
+  if (payload.phase === 'done') return 'Complete';
+  if (payload.phase === 'stopped') return 'Stopped';
+  return null;
 }
 
 function suggestNextAction(traces: AgentTraceView[]): string | null {
@@ -811,6 +1048,9 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     const maxHeight = Math.floor(window.innerHeight * 0.78);
     return Math.max(320, Math.min(520, maxHeight));
   }, []);
+  const [chatSnapshots, setChatSnapshots] = useState<AgentChatSnapshot[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [isChatsPanelOpen, setIsChatsPanelOpen] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [input, setInput] = useState('');
@@ -820,8 +1060,8 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   const [isSessionLoading, setIsSessionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activityLabel, setActivityLabel] = useState<string>('Idle');
+  const [activityElapsedSeconds, setActivityElapsedSeconds] = useState(0);
   const [dockHeight, setDockHeight] = useState<number>(defaultDockHeight);
-  const [sessionResetToken, setSessionResetToken] = useState(0);
   const [isMinimized, setIsMinimized] = useState(false);
   const [changesExpanded, setChangesExpanded] = useState(false);
   const [expandedTraceGroups, setExpandedTraceGroups] = useState<Set<string>>(new Set());
@@ -829,8 +1069,13 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   const [resizingDock, setResizingDock] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const chatsPanelRef = useRef<HTMLDivElement | null>(null);
+  const chatsPanelToggleRef = useRef<HTMLButtonElement | null>(null);
+  const chatSnapshotsRef = useRef<AgentChatSnapshot[]>([]);
+  const loadingChatIdRef = useRef<string | null>(null);
   const pendingAssistantIdRef = useRef<string | null>(null);
   const pendingRunIdRef = useRef<string | null>(null);
+  const activityStartedAtRef = useRef<number | null>(null);
   const cancelRequestedRef = useRef(false);
   const resizeStartRef = useRef<{ y: number; height: number } | null>(null);
   const [mentionToken, setMentionToken] = useState<MentionToken | null>(null);
@@ -846,7 +1091,25 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   const setProjectModules = useStore((state) => state.setProjectModules);
   const setProjectFiles = useStore((state) => state.setProjectFiles);
 
-  const isReady = Boolean(projectRoot && sessionId);
+  const projectChats = useMemo(() => (
+    chatSnapshots
+      .filter((chat) => projectRoot !== null && chat.projectRoot === projectRoot)
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+  ), [chatSnapshots, projectRoot]);
+  const activeChatSnapshot = useMemo(() => {
+    if (!activeChatId || !projectRoot) return null;
+    return chatSnapshots.find((chat) => chat.id === activeChatId && chat.projectRoot === projectRoot) ?? null;
+  }, [activeChatId, chatSnapshots, projectRoot]);
+  const chatTabs = useMemo(() => {
+    if (projectChats.length <= 4) return projectChats;
+    if (!activeChatSnapshot) return projectChats.slice(0, 4);
+    const top = projectChats.slice(0, 4);
+    if (top.some((chat) => chat.id === activeChatSnapshot.id)) {
+      return top;
+    }
+    return [activeChatSnapshot, ...top.slice(0, 3)];
+  }, [activeChatSnapshot, projectChats]);
+  const isReady = Boolean(projectRoot && sessionId && !isSessionLoading);
   const isWorking = isSending || isStopping;
   const headerTitle = useMemo(() => shortProjectName(projectRoot), [projectRoot]);
   const projectFiles = useMemo(() => flattenFileNodes(projectFileNodes), [projectFileNodes]);
@@ -879,6 +1142,205 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
 
     return null;
   }, [messages, projectQueuedBuilds, projectRoot]);
+
+  useEffect(() => {
+    chatSnapshotsRef.current = chatSnapshots;
+  }, [chatSnapshots]);
+
+  const resetChatUiState = useCallback(() => {
+    setMentionToken(null);
+    setMentionIndex(0);
+    setChangesExpanded(false);
+    setExpandedTraceGroups(new Set());
+    setExpandedTraceKeys(new Set());
+    pendingAssistantIdRef.current = null;
+    pendingRunIdRef.current = null;
+    cancelRequestedRef.current = false;
+    activityStartedAtRef.current = null;
+    setActivityElapsedSeconds(0);
+    setIsSending(false);
+    setIsStopping(false);
+    setActiveRunId(null);
+  }, []);
+
+  const loadSnapshotIntoView = useCallback((snapshot: AgentChatSnapshot) => {
+    setSessionId(snapshot.sessionId);
+    setMessages(snapshot.messages);
+    setInput(snapshot.input);
+    setError(snapshot.error);
+    setActivityLabel(snapshot.activityLabel || (snapshot.sessionId ? 'Ready' : 'Idle'));
+    setIsSessionLoading(snapshot.isSessionLoading);
+    resetChatUiState();
+  }, [resetChatUiState]);
+
+  const upsertSnapshot = useCallback((snapshot: AgentChatSnapshot) => {
+    setChatSnapshots((previous) => {
+      const index = previous.findIndex((chat) => chat.id === snapshot.id);
+      if (index < 0) {
+        return [snapshot, ...previous];
+      }
+      const next = [...previous];
+      next[index] = {
+        ...previous[index],
+        ...snapshot,
+        createdAt: previous[index].createdAt,
+      };
+      return next;
+    });
+  }, []);
+
+  const startChatSession = useCallback(async (chatId: string, root: string) => {
+    loadingChatIdRef.current = chatId;
+    setIsSessionLoading(true);
+    setError(null);
+    setActivityLabel('Starting');
+    try {
+      const response = await agentApi.createSession(root);
+      if (loadingChatIdRef.current !== chatId) return;
+
+      const readyMessage: AgentMessage = {
+        id: `${chatId}-welcome-${response.sessionId}`,
+        role: 'system',
+        content: `Session ready for ${shortProjectName(root)}. Ask me to inspect, edit, build, or install.`,
+      };
+      setSessionId(response.sessionId);
+      setMessages([readyMessage]);
+      setActivityLabel('Ready');
+      setIsSessionLoading(false);
+      loadingChatIdRef.current = null;
+      upsertSnapshot({
+        id: chatId,
+        projectRoot: root,
+        title: DEFAULT_CHAT_TITLE,
+        sessionId: response.sessionId,
+        isSessionLoading: false,
+        messages: [readyMessage],
+        input: '',
+        error: null,
+        activityLabel: 'Ready',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    } catch (sessionError: unknown) {
+      if (loadingChatIdRef.current !== chatId) return;
+      const message = sessionError instanceof Error ? sessionError.message : 'Failed to start session.';
+      const errorMessage: AgentMessage = {
+        id: `${chatId}-session-error`,
+        role: 'system',
+        content: `Unable to start agent: ${message}`,
+      };
+      setSessionId(null);
+      setMessages([errorMessage]);
+      setError(message);
+      setActivityLabel('Idle');
+      setIsSessionLoading(false);
+      loadingChatIdRef.current = null;
+      upsertSnapshot({
+        id: chatId,
+        projectRoot: root,
+        title: DEFAULT_CHAT_TITLE,
+        sessionId: null,
+        isSessionLoading: false,
+        messages: [errorMessage],
+        input: '',
+        error: message,
+        activityLabel: 'Idle',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    }
+  }, [upsertSnapshot]);
+
+  const createAndActivateChat = useCallback((root: string) => {
+    const chatId = createChatId();
+    const bootMessage: AgentMessage = {
+      id: `${chatId}-boot`,
+      role: 'system',
+      content: `Starting session for ${shortProjectName(root)}...`,
+    };
+    loadingChatIdRef.current = chatId;
+    setActiveChatId(chatId);
+    setSessionId(null);
+    setMessages([bootMessage]);
+    setInput('');
+    setError(null);
+    setActivityLabel('Starting');
+    setIsSessionLoading(true);
+    resetChatUiState();
+    upsertSnapshot({
+      id: chatId,
+      projectRoot: root,
+      title: DEFAULT_CHAT_TITLE,
+      sessionId: null,
+      isSessionLoading: true,
+      messages: [bootMessage],
+      input: '',
+      error: null,
+      activityLabel: 'Starting',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    void startChatSession(chatId, root);
+  }, [resetChatUiState, startChatSession, upsertSnapshot]);
+
+  const activateChat = useCallback((chatId: string) => {
+    if (isSending || isStopping || isSessionLoading) return;
+    const snapshot = chatSnapshotsRef.current.find((chat) => chat.id === chatId);
+    if (!snapshot) return;
+    setActiveChatId(chatId);
+    loadSnapshotIntoView(snapshot);
+    setIsChatsPanelOpen(false);
+  }, [isSending, isSessionLoading, isStopping, loadSnapshotIntoView]);
+
+  useEffect(() => {
+    if (!activeChatId || !projectRoot) return;
+    const liveSnapshot = chatSnapshotsRef.current.find((chat) => chat.id === activeChatId);
+    if (liveSnapshot && liveSnapshot.projectRoot !== projectRoot) return;
+    const nextTitle = deriveChatTitle(messages);
+    setChatSnapshots((previous) => {
+      const index = previous.findIndex((chat) => chat.id === activeChatId);
+      const now = Date.now();
+      if (index < 0) {
+        return [
+          {
+            id: activeChatId,
+            projectRoot,
+            title: nextTitle,
+            sessionId,
+            isSessionLoading,
+            messages,
+            input,
+            error,
+            activityLabel,
+            createdAt: now,
+            updatedAt: now,
+          },
+          ...previous,
+        ];
+      }
+
+      const current = previous[index];
+      const updated: AgentChatSnapshot = {
+        ...current,
+        title: nextTitle,
+        sessionId,
+        isSessionLoading,
+        messages,
+        input,
+        error,
+        activityLabel,
+        updatedAt: now,
+      };
+
+      const next = [...previous];
+      next[index] = updated;
+      return next;
+    });
+  }, [activeChatId, activityLabel, error, input, isSessionLoading, messages, projectRoot, sessionId]);
+
+  useEffect(() => {
+    setIsChatsPanelOpen(false);
+  }, [activeChatId, projectRoot]);
 
   useEffect(() => {
     if (!changedFilesSummary) {
@@ -971,7 +1433,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     setMentionIndex(0);
     setExpandedTraceGroups(new Set());
     setExpandedTraceKeys(new Set());
-  }, [projectRoot, sessionResetToken]);
+  }, [activeChatId, projectRoot]);
 
   useEffect(() => {
     const activeTraceGroupKeys = new Set<string>();
@@ -1080,6 +1542,32 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   }, [isSessionLoading, isSending, isStopping, projectRoot, sessionId]);
 
   useEffect(() => {
+    if (!isWorking) {
+      activityStartedAtRef.current = null;
+      setActivityElapsedSeconds(0);
+      return;
+    }
+
+    if (activityStartedAtRef.current == null) {
+      activityStartedAtRef.current = Date.now();
+    }
+
+    const updateElapsed = () => {
+      const startedAt = activityStartedAtRef.current;
+      if (!startedAt) {
+        setActivityElapsedSeconds(0);
+        return;
+      }
+      const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+      setActivityElapsedSeconds(elapsed);
+    };
+
+    updateElapsed();
+    const timerId = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timerId);
+  }, [isWorking]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return;
     const key = 'atopile.agentChatDockHeight';
     const raw = window.sessionStorage.getItem(key);
@@ -1105,6 +1593,21 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     if (typeof window === 'undefined') return;
     window.sessionStorage.setItem('atopile.agentChatMinimized', isMinimized ? '1' : '0');
   }, [isMinimized]);
+
+  useEffect(() => {
+    if (!isChatsPanelOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (chatsPanelRef.current?.contains(target)) return;
+      if (chatsPanelToggleRef.current?.contains(target)) return;
+      setIsChatsPanelOpen(false);
+    };
+    window.addEventListener('mousedown', onPointerDown);
+    return () => {
+      window.removeEventListener('mousedown', onPointerDown);
+    };
+  }, [isChatsPanelOpen]);
 
   useEffect(() => {
     if (!resizingDock) return;
@@ -1145,18 +1648,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
       }
       const pendingId = pendingAssistantIdRef.current;
       if (!pendingId) return;
-      let nextActivity: string | null = null;
-      if (parsed.phase === 'tool_start') {
-        nextActivity = inferActivityFromTool(parsed.name);
-      } else if (parsed.phase === 'tool_end' && parsed.trace) {
-        nextActivity = inferActivityFromTool(parsed.trace.name);
-      } else if (parsed.phase === 'error') {
-        nextActivity = 'Errored';
-      } else if (parsed.phase === 'done') {
-        nextActivity = 'Complete';
-      } else if (parsed.phase === 'stopped') {
-        nextActivity = 'Stopped';
-      }
+      const nextActivity = inferActivityFromProgress(parsed);
       if (nextActivity) {
         setActivityLabel(nextActivity);
       }
@@ -1185,8 +1677,10 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
             } else {
               traces.push(runningTrace);
             }
+            const nextContent = nextActivity ? `${nextActivity}...` : message.content;
             return {
               ...message,
+              content: nextContent,
               activity: nextActivity ?? message.activity,
               toolTraces: traces,
             };
@@ -1209,8 +1703,10 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
             } else {
               traces.push(finishedTrace);
             }
+            const nextContent = nextActivity ? `${nextActivity}...` : message.content;
             return {
               ...message,
+              content: nextContent,
               activity: nextActivity ?? message.activity,
               toolTraces: traces,
             };
@@ -1220,6 +1716,15 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
             return {
               ...message,
               pending: false,
+            };
+          }
+
+          if (parsed.phase === 'thinking') {
+            const nextContent = nextActivity ? `${nextActivity}...` : message.content;
+            return {
+              ...message,
+              content: nextContent,
+              activity: nextActivity ?? message.activity,
             };
           }
 
@@ -1242,15 +1747,9 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   }, [sessionId]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    pendingAssistantIdRef.current = null;
-    pendingRunIdRef.current = null;
-    cancelRequestedRef.current = false;
-    setIsStopping(false);
-    setActiveRunId(null);
-
     if (!projectRoot) {
+      loadingChatIdRef.current = null;
+      setActiveChatId(null);
       setSessionId(null);
       setMessages([
         {
@@ -1259,48 +1758,31 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
           content: 'Select a project to start an agent session.',
         },
       ]);
+      setInput('');
+      setError(null);
+      setActivityLabel('Idle');
+      setIsSessionLoading(false);
+      resetChatUiState();
       return;
     }
 
-    setIsSessionLoading(true);
-    setError(null);
+    const chatsForProject = chatSnapshotsRef.current
+      .filter((chat) => chat.projectRoot === projectRoot)
+      .sort((left, right) => right.updatedAt - left.updatedAt);
+    if (chatsForProject.length === 0) {
+      createAndActivateChat(projectRoot);
+      return;
+    }
 
-    agentApi
-      .createSession(projectRoot)
-      .then((response) => {
-        if (cancelled) return;
-        setSessionId(response.sessionId);
-        setMessages([
-          {
-            id: `agent-welcome-${response.sessionId}`,
-            role: 'system',
-            content: `Session ready for ${shortProjectName(projectRoot)}. Ask me to inspect, edit, build, or install.`,
-          },
-        ]);
-      })
-      .catch((sessionError: unknown) => {
-        if (cancelled) return;
-        const message = sessionError instanceof Error ? sessionError.message : 'Failed to start session.';
-        setSessionId(null);
-        setError(message);
-        setMessages([
-          {
-            id: 'agent-session-error',
-            role: 'system',
-            content: `Unable to start agent: ${message}`,
-          },
-        ]);
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsSessionLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [projectRoot]);
+    const currentChat = activeChatId
+      ? chatsForProject.find((chat) => chat.id === activeChatId) ?? null
+      : null;
+    const target = currentChat ?? chatsForProject[0];
+    if (activeChatId !== target.id) {
+      setActiveChatId(target.id);
+    }
+    loadSnapshotIntoView(target);
+  }, [activeChatId, createAndActivateChat, loadSnapshotIntoView, projectRoot, resetChatUiState]);
 
   const waitForRunCompletion = useCallback(async (currentSessionId: string, runId: string) => {
     const timeoutAt = Date.now() + 10 * 60 * 1000;
@@ -1358,14 +1840,9 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
 
   const startNewChat = useCallback(() => {
     if (!projectRoot || isSending || isSessionLoading) return;
-    setMentionToken(null);
-    setMentionIndex(0);
-    setExpandedTraceGroups(new Set());
-    setExpandedTraceKeys(new Set());
-    setChangesExpanded(false);
-    setError(null);
-    setSessionResetToken((current) => current + 1);
-  }, [isSending, isSessionLoading, projectRoot]);
+    createAndActivateChat(projectRoot);
+    setIsChatsPanelOpen(false);
+  }, [createAndActivateChat, isSending, isSessionLoading, projectRoot]);
 
   const toggleMinimized = useCallback(() => {
     setIsMinimized((current) => !current);
@@ -1439,18 +1916,19 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   const sendMessage = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed || !projectRoot || !sessionId || isSending) return;
+    const chatPrefix = activeChatId ?? 'chat';
 
     const userMessage: AgentMessage = {
-      id: `user-${Date.now()}`,
+      id: `${chatPrefix}-user-${Date.now()}`,
       role: 'user',
       content: trimmed,
     };
-    const pendingAssistantId = `assistant-pending-${Date.now()}`;
+    const pendingAssistantId = `${chatPrefix}-assistant-pending-${Date.now()}`;
     const pendingAssistantMessage: AgentMessage = {
       id: pendingAssistantId,
       role: 'assistant',
       content: 'Thinking...',
-      activity: 'Thinking',
+      activity: 'Planning',
       pending: true,
       toolTraces: [],
     };
@@ -1466,7 +1944,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     setIsStopping(false);
     setIsSending(true);
     setError(null);
-    setActivityLabel('Thinking');
+    setActivityLabel('Planning');
 
     try {
       const run = await agentApi.createRun(sessionId, {
@@ -1484,7 +1962,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
       const finalizedTraces = response.toolTraces.map((trace) => ({ ...trace, running: false }));
 
       const assistantMessage: AgentMessage = {
-        id: `assistant-${Date.now()}`,
+        id: `${chatPrefix}-assistant-${Date.now()}`,
         role: 'assistant',
         content: withCompletionNudge(
           normalizeAssistantText(response.assistantMessage),
@@ -1511,7 +1989,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
         previous.map((entry) =>
           entry.id === pendingAssistantId
             ? {
-                id: cancelled ? `assistant-stopped-${Date.now()}` : `assistant-error-${Date.now()}`,
+                id: cancelled ? `${chatPrefix}-assistant-stopped-${Date.now()}` : `${chatPrefix}-assistant-error-${Date.now()}`,
                 role: 'assistant',
                 content: cancelled ? `Stopped: ${message}` : `Request failed: ${message}`,
                 activity: cancelled ? 'Stopped' : 'Errored',
@@ -1528,10 +2006,16 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
       setIsStopping(false);
       setIsSending(false);
     }
-  }, [input, isSending, projectRoot, selectedTargets, sessionId, waitForRunCompletion]);
+  }, [activeChatId, input, isSending, projectRoot, selectedTargets, sessionId, waitForRunCompletion]);
 
   const statusClass = isSessionLoading || isWorking ? 'working' : isReady ? 'ready' : 'idle';
-  const statusText = isSessionLoading ? 'Starting' : isWorking ? activityLabel : isReady ? 'Ready' : 'Idle';
+  const statusText = isSessionLoading
+    ? 'Starting'
+    : isWorking
+      ? `${activityLabel}${activityElapsedSeconds >= 8 ? ` ${activityElapsedSeconds}s` : ''}`
+      : isReady
+        ? 'Ready'
+        : 'Idle';
 
   return (
     <div className={`agent-chat-dock ${isMinimized ? 'minimized' : ''}`} style={{ height: `${isMinimized ? minimizedDockHeight : dockHeight}px`, maxHeight: '88vh' }}>
@@ -1566,6 +2050,17 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
               <span>New chat</span>
             </button>
             <button
+              ref={chatsPanelToggleRef}
+              type="button"
+              className="agent-chat-action"
+              onClick={() => setIsChatsPanelOpen((current) => !current)}
+              disabled={!projectRoot || isSending || isSessionLoading}
+              title="Show chat history for this project"
+            >
+              <MessageSquareText size={12} />
+              <span>Chats</span>
+            </button>
+            <button
               type="button"
               className="agent-chat-action icon-only"
               onClick={toggleMinimized}
@@ -1577,6 +2072,63 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
           </div>
         </div>
       </div>
+
+      {!isMinimized && projectRoot && projectChats.length > 0 && (
+        <div className="agent-chat-tabs-bar">
+          <div className="agent-chat-tabs" role="tablist" aria-label="Project chats">
+            {chatTabs.map((chat) => (
+              <button
+                key={chat.id}
+                type="button"
+                role="tab"
+                aria-selected={chat.id === activeChatId}
+                className={`agent-chat-tab ${chat.id === activeChatId ? 'active' : ''}`}
+                onClick={() => activateChat(chat.id)}
+                disabled={isSending || isStopping || isSessionLoading}
+                title={chat.title}
+              >
+                <span className="agent-chat-tab-label">{chat.title}</span>
+              </button>
+            ))}
+          </div>
+          {projectChats.length > chatTabs.length && (
+            <span className="agent-chat-tabs-overflow">+{projectChats.length - chatTabs.length}</span>
+          )}
+        </div>
+      )}
+
+      {!isMinimized && isChatsPanelOpen && (
+        <div className="agent-chat-history-popover" ref={chatsPanelRef}>
+          <div className="agent-chat-history-head">
+            <span className="agent-chat-history-title">
+              {shortProjectName(projectRoot)} chats
+            </span>
+            <button
+              type="button"
+              className="agent-chat-history-close"
+              onClick={() => setIsChatsPanelOpen(false)}
+              aria-label="Close chat history"
+            >
+              <X size={12} />
+            </button>
+          </div>
+          <div className="agent-chat-history-list">
+            {projectChats.map((chat) => (
+              <button
+                key={`history-${chat.id}`}
+                type="button"
+                className={`agent-chat-history-item ${chat.id === activeChatId ? 'active' : ''}`}
+                onClick={() => activateChat(chat.id)}
+                disabled={isSending || isStopping || isSessionLoading}
+              >
+                <span className="agent-chat-history-item-title">{chat.title}</span>
+                <span className="agent-chat-history-item-preview">{summarizeChatPreview(chat.messages)}</span>
+                <span className="agent-chat-history-item-time">{formatChatTimestamp(chat.updatedAt)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {!isMinimized && (
         <>

@@ -49,6 +49,7 @@ def test_build_session_primer_contains_core_orientation() -> None:
     assert "stdlib_list and stdlib_get_item" in primer
     assert "report_bom" in primer
     assert "report_variables" in primer
+    assert "manufacturing_generate" in primer
 
 
 def test_build_function_call_outputs_attaches_datasheet_file() -> None:
@@ -72,3 +73,23 @@ def test_build_function_call_outputs_attaches_datasheet_file() -> None:
         "type": "input_file",
         "file_id": "file-abc123",
     }
+
+
+def test_build_function_call_outputs_nudges_after_parts_install() -> None:
+    outputs = _build_function_call_outputs_for_model(
+        call_id="call_456",
+        tool_name="parts_install",
+        result_payload={
+            "success": True,
+            "lcsc_id": "C521608",
+            "identifier": "STM32G474RET6",
+        },
+    )
+
+    assert len(outputs) == 2
+    assert outputs[0]["type"] == "function_call_output"
+    assert outputs[0]["call_id"] == "call_456"
+    assert outputs[1]["role"] == "user"
+    text = outputs[1]["content"][0]["text"]
+    assert "parts_install completed" in text
+    assert "datasheet_read next" in text

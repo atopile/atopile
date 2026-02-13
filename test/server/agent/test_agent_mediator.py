@@ -23,6 +23,7 @@ def test_get_tool_directory_includes_core_tools() -> None:
     assert "project_delete_path" in names
     assert "build_logs_search" in names
     assert "design_diagnostics" in names
+    assert "manufacturing_generate" in names
 
 
 def test_suggest_tools_prefills_build_logs_from_message() -> None:
@@ -211,3 +212,27 @@ def test_suggest_tools_prefills_module_children_from_entry_point() -> None:
     )
     assert module_children is not None
     assert module_children["prefilled_args"]["entry_point"] == "src/main.ato:App"
+
+
+def test_suggest_tools_surfaces_manufacturing_generate_for_generation_intent() -> None:
+    suggestions = mediator.suggest_tools(
+        message=(
+            "generate manufacturing files (gerber + pick and place) "
+            "for target default"
+        ),
+        history=[],
+        selected_targets=[],
+        tool_memory={},
+    )
+
+    generate = next(
+        (
+            suggestion
+            for suggestion in suggestions
+            if suggestion["name"] == "manufacturing_generate"
+        ),
+        None,
+    )
+    assert generate is not None
+    assert generate["prefilled_args"]["target"] == "default"
+    assert generate["prefilled_args"]["include_targets"] == ["mfg-data"]

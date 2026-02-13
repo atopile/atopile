@@ -1219,12 +1219,21 @@ async def execute_tool(
         return {"parts": parts, "total": len(parts), "error": error}
 
     if name == "parts_install":
+        lcsc_id = str(arguments.get("lcsc_id", "")).strip().upper()
         result = await asyncio.to_thread(
             parts_domain.handle_install_part,
-            str(arguments.get("lcsc_id", "")),
+            lcsc_id,
             str(project_root),
         )
-        return {"success": True, **result}
+        return {
+            "success": True,
+            "lcsc_id": lcsc_id,
+            "implementation_hint": (
+                "For complex parts (MCUs/sensors/PMICs/radios), call "
+                "datasheet_read next and verify required support circuitry."
+            ),
+            **result,
+        }
 
     if name == "datasheet_read":
         raw_lcsc_id = arguments.get("lcsc_id")
@@ -1284,33 +1293,42 @@ async def execute_tool(
         source_meta: dict[str, Any] = {}
         resolution: dict[str, Any] = {}
         if lcsc_id:
-            graph_result = await asyncio.to_thread(
-                datasheets_domain.handle_collect_project_datasheets,
-                str(project_root),
-                build_target=target,
-                lcsc_ids=[lcsc_id],
-            )
+            graph_result: dict[str, Any] | None = None
+            graph_error: dict[str, str] | None = None
+            try:
+                graph_result = await asyncio.to_thread(
+                    datasheets_domain.handle_collect_project_datasheets,
+                    str(project_root),
+                    build_target=target,
+                    lcsc_ids=[lcsc_id],
+                )
+            except Exception as exc:
+                graph_error = {
+                    "type": type(exc).__name__,
+                    "message": _trim_message(str(exc), 420),
+                }
 
-            matches = graph_result.get("matches", [])
-            match = matches[0] if isinstance(matches, list) and matches else None
-            if isinstance(match, dict):
-                candidate_path = str(match.get("path") or "").strip()
-                if candidate_path:
-                    source_path = candidate_path
-                    source_url = None
-                    resolution = {
-                        "mode": "project_graph",
-                        "build_target": graph_result.get("build_target"),
-                        "directory": graph_result.get("directory"),
-                        "record": {
-                            "url": match.get("url"),
-                            "filename": match.get("filename"),
-                            "lcsc_ids": match.get("lcsc_ids"),
-                            "modules": match.get("modules"),
-                            "downloaded": match.get("downloaded"),
-                            "skipped_existing": match.get("skipped_existing"),
-                        },
-                    }
+            if graph_result is not None:
+                matches = graph_result.get("matches", [])
+                match = matches[0] if isinstance(matches, list) and matches else None
+                if isinstance(match, dict):
+                    candidate_path = str(match.get("path") or "").strip()
+                    if candidate_path:
+                        source_path = candidate_path
+                        source_url = None
+                        resolution = {
+                            "mode": "project_graph",
+                            "build_target": graph_result.get("build_target"),
+                            "directory": graph_result.get("directory"),
+                            "record": {
+                                "url": match.get("url"),
+                                "filename": match.get("filename"),
+                                "lcsc_ids": match.get("lcsc_ids"),
+                                "modules": match.get("modules"),
+                                "downloaded": match.get("downloaded"),
+                                "skipped_existing": match.get("skipped_existing"),
+                            },
+                        }
 
             if not source_path:
                 details = await asyncio.to_thread(
@@ -1335,12 +1353,18 @@ async def execute_tool(
                 source_path = None
                 resolution = {
                     "mode": "parts_api_fallback",
-                    "build_target": graph_result.get("build_target"),
+                    "build_target": (
+                        graph_result.get("build_target")
+                        if isinstance(graph_result, dict)
+                        else target
+                    ),
                     "reason": (
-                        "No datasheet match for the requested lcsc_id was found "
-                        "in the instantiated project graph."
+                        "No datasheet match for the requested lcsc_id was found in "
+                        "the instantiated project graph."
                     ),
                 }
+                if graph_error is not None:
+                    resolution["graph_error"] = graph_error
                 source_meta["part"] = {
                     "manufacturer": details.get("manufacturer"),
                     "part_number": details.get("part_number"),

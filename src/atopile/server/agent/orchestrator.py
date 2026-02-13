@@ -168,6 +168,14 @@ class AgentOrchestrator:
         )
 
         tool_defs = tools.get_tool_definitions()
+        await _emit_progress(
+            progress_callback,
+            {
+                "phase": "thinking",
+                "status_text": "Planning",
+                "detail_text": "Reviewing request and project context",
+            },
+        )
         response = await self._responses_create(
             {
                 "model": self.model,
@@ -186,6 +194,13 @@ class AgentOrchestrator:
                 text = _extract_text(response)
                 if not text:
                     text = "No assistant response produced."
+                await _emit_progress(
+                    progress_callback,
+                    {
+                        "phase": "thinking",
+                        "status_text": "Composing response",
+                    },
+                )
                 await _emit_progress(
                     progress_callback,
                     {
@@ -291,6 +306,16 @@ class AgentOrchestrator:
                     )
                 )
 
+            await _emit_progress(
+                progress_callback,
+                {
+                    "phase": "thinking",
+                    "status_text": "Reviewing tool results",
+                    "detail_text": "Choosing next step",
+                    "loop": loops,
+                    "tool_calls_total": len(traces),
+                },
+            )
             response = await self._responses_create(
                 {
                     "model": self.model,
@@ -575,6 +600,35 @@ def _build_function_call_outputs_for_model(
             "output": json.dumps(result_payload),
         }
     ]
+
+    if tool_name == "parts_install":
+        if not bool(result_payload.get("success", False)):
+            return outputs
+
+        lcsc_id = result_payload.get("lcsc_id")
+        lcsc_suffix = (
+            f" lcsc_id={lcsc_id};"
+            if isinstance(lcsc_id, str) and lcsc_id
+            else ""
+        )
+        outputs.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "parts_install completed."
+                            f"{lcsc_suffix} "
+                            "If this is a complex part (MCU/sensor/PMIC/radio), "
+                            "call datasheet_read next to verify recommended "
+                            "application circuitry and pin constraints."
+                        ),
+                    }
+                ],
+            }
+        )
+        return outputs
 
     if tool_name != "datasheet_read":
         return outputs
