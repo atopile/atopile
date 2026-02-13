@@ -248,19 +248,7 @@ export function getStoredSetting<T>(key: string, defaultValue: T, validator?: (v
   return defaultValue;
 }
 
-/**
- * Find the longest string length in a set of values.
- * Returns `compactCh` when collapsed, otherwise max length + padding clamped to maxCh.
- * Result is in `ch` units — the browser handles the actual pixel sizing via the monospace font.
- */
-export function fitColumnCh(
-  values: Iterable<string>,
-  expanded: boolean,
-  compactCh: number,
-  maxCh: number,
-): number {
-  if (!expanded) return compactCh;
-
+function fitColumnCh(values: Iterable<string>, compactCh: number, maxCh: number): number {
   let longest = 0;
   for (const v of values) {
     if (v.length > longest) longest = v.length;
@@ -275,20 +263,6 @@ export function calculateSourceColumnWidth(logs: LogEntry[], mode: SourceMode): 
         ? (formatSource(log.source_file, log.source_line) || '—')
         : (log.logger_name?.split('.').pop() || '—')
     ),
-    true, 10, 30,
-  );
-}
-
-export function calculateLevelColumnWidth(logs: LogEntry[], levelFull: boolean): number {
-  return fitColumnCh(
-    new Set(logs.map(log => log.level)),
-    levelFull, 3, 12,
-  );
-}
-
-export function calculateStageColumnWidth(logs: LogEntry[], stageFull: boolean): number {
-  return fitColumnCh(
-    new Set(logs.map(log => log.stage || '—')),
-    stageFull, 7, 30,
+    10, 30,
   );
 }

@@ -69,7 +69,7 @@ export function HeaderSearchBox({
       )}
       {hasRegexToggle && (
         <button
-          className={`lv-search-toggle lv-search-toggle-last ${regex ? 'active' : ''}`}
+          className={`lv-search-toggle ${regex ? 'active' : ''}`}
           onClick={onToggleRegex}
           title={regex ? 'Regex enabled' : 'Enable regex'}
         >

@@ -486,32 +486,42 @@
 .lv-search-wrapper {
   display: flex;
   align-items: center;
-  gap: 2px;
   flex: 1;
   min-width: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
 }
 
 .lv-search-wrapper-message {
   width: 100%;
 }
 
-.lv-search-wrapper .lv-col-search {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-  border-right: none;
+.lv-search-wrapper > .lv-col-search {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
 }
 
-.lv-search-error .lv-col-search {
+.lv-search-wrapper:focus-within {
+  border-color: var(--accent);
+}
+
+.lv-search-error {
   border-color: var(--ctp-red);
   background: rgba(var(--ctp-red-rgb), 0.1);
 }
 
-.lv-search-toggle {
+.lv-search-wrapper > .lv-search-toggle {
   padding: 2px 4px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-subtle);
-  border-left: none;
-  border-radius: 0;
+  background: transparent;
+  border: 0;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  box-shadow: none;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   font-family: var(--font-mono);
@@ -523,27 +533,19 @@
   align-items: center;
 }
 
-.lv-search-toggle-last {
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-}
-
-.lv-search-toggle:hover {
+.lv-search-wrapper > .lv-search-toggle:hover {
   background: var(--bg-secondary);
   color: var(--text-secondary);
 }
 
-.lv-search-toggle.active {
+.lv-search-wrapper > .lv-search-toggle.active {
   background: var(--accent);
   color: var(--bg-primary);
-  border-color: var(--accent);
+  border: 0;
 }
 
-.lv-search-toggle.active:hover {
+.lv-search-wrapper > .lv-search-toggle.active:hover {
   opacity: 0.9;
-}
-
-.lv-search-error .lv-search-toggle {
-  border-color: var(--ctp-red);
 }
 
 .lv-col-search-stage {
@@ -997,7 +999,6 @@
 .lv-tracebacks-inline {
   margin-left: 2px;
   padding-left: var(--spacing-sm);
-  border-left: 2px solid var(--border-subtle);
 }
 
 .lv-trace {
