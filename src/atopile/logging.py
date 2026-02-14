@@ -139,6 +139,7 @@ class AtoLogger(logging.Logger):
     ) -> None:
         if self.isEnabledFor(logging.DEBUG):
             self._pack_extra(kwargs, audience, objects)
+            kwargs["stacklevel"] = kwargs.get("stacklevel", 1) + 1
             self._log(logging.DEBUG, msg, args, **kwargs)
 
     def info(  # type: ignore[override]
@@ -151,6 +152,7 @@ class AtoLogger(logging.Logger):
     ) -> None:
         if self.isEnabledFor(logging.INFO):
             self._pack_extra(kwargs, audience, objects)
+            kwargs["stacklevel"] = kwargs.get("stacklevel", 1) + 1
             self._log(logging.INFO, msg, args, **kwargs)
 
     def warning(  # type: ignore[override]
@@ -163,6 +165,7 @@ class AtoLogger(logging.Logger):
     ) -> None:
         if self.isEnabledFor(logging.WARNING):
             self._pack_extra(kwargs, audience, objects)
+            kwargs["stacklevel"] = kwargs.get("stacklevel", 1) + 1
             self._log(logging.WARNING, msg, args, **kwargs)
 
     def error(  # type: ignore[override]
@@ -175,6 +178,7 @@ class AtoLogger(logging.Logger):
     ) -> None:
         if self.isEnabledFor(logging.ERROR):
             self._pack_extra(kwargs, audience, objects)
+            kwargs["stacklevel"] = kwargs.get("stacklevel", 1) + 1
             self._log(logging.ERROR, msg, args, **kwargs)
 
     def alert(
@@ -187,6 +191,7 @@ class AtoLogger(logging.Logger):
         """Log at ALERT level (between WARNING and ERROR)."""
         if self.isEnabledFor(ALERT):
             self._pack_extra(kwargs, Log.Audience.USER, objects)
+            kwargs["stacklevel"] = kwargs.get("stacklevel", 1) + 1
             self._log(ALERT, msg, args, **kwargs)
 
     # -----------------------------------------------------------------
