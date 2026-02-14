@@ -6,6 +6,7 @@ import asyncio
 import inspect
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -18,6 +19,10 @@ from atopile.server.agent import policy, tools
 from atopile.server.domains import artifacts as artifacts_domain
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
+_RETRY_AFTER_TEXT_PATTERN = re.compile(
+    r"Please try again in\s*(\d+(?:\.\d+)?)\s*(ms|s)\b",
+    re.IGNORECASE,
+)
 
 _SYSTEM_PROMPT = """You are the atopile agent inside the sidebar.
 
@@ -117,6 +122,13 @@ class AgentOrchestrator:
         )
         self.timeout_s = float(os.getenv("ATOPILE_AGENT_TIMEOUT_S", "120"))
         self.max_tool_loops = int(os.getenv("ATOPILE_AGENT_MAX_TOOL_LOOPS", "1000"))
+        self.api_retries = int(os.getenv("ATOPILE_AGENT_API_RETRIES", "4"))
+        self.api_retry_base_delay_s = float(
+            os.getenv("ATOPILE_AGENT_API_RETRY_BASE_DELAY_S", "0.5")
+        )
+        self.api_retry_max_delay_s = float(
+            os.getenv("ATOPILE_AGENT_API_RETRY_MAX_DELAY_S", "8.0")
+        )
         self._client: AsyncOpenAI | None = None
 
     async def run_turn(
@@ -464,16 +476,28 @@ class AgentOrchestrator:
 
     async def _responses_create(self, payload: dict[str, Any]) -> dict[str, Any]:
         client = self._get_client()
-        try:
-            response = await client.responses.create(**payload)
-        except APIStatusError as exc:
-            status_code = getattr(exc, "status_code", "unknown")
-            snippet = _extract_sdk_error_text(exc)[:500]
-            raise RuntimeError(
-                f"Model API request failed ({status_code}): {snippet}"
-            ) from exc
-        except (APIConnectionError, APITimeoutError) as exc:
-            raise RuntimeError(f"Model API request failed: {exc}") from exc
+        for attempt in range(self.api_retries + 1):
+            try:
+                response = await client.responses.create(**payload)
+                break
+            except APIStatusError as exc:
+                status_code = getattr(exc, "status_code", "unknown")
+                should_retry = status_code == 429 and attempt < self.api_retries
+                if should_retry:
+                    delay_s = _compute_rate_limit_retry_delay_s(
+                        exc=exc,
+                        attempt=attempt,
+                        base_delay_s=self.api_retry_base_delay_s,
+                        max_delay_s=self.api_retry_max_delay_s,
+                    )
+                    await asyncio.sleep(delay_s)
+                    continue
+                snippet = _extract_sdk_error_text(exc)[:500]
+                raise RuntimeError(
+                    f"Model API request failed ({status_code}): {snippet}"
+                ) from exc
+            except (APIConnectionError, APITimeoutError) as exc:
+                raise RuntimeError(f"Model API request failed: {exc}") from exc
 
         body = _response_model_to_dict(response)
         if not isinstance(body, dict):
@@ -520,6 +544,61 @@ def _extract_sdk_error_text(exc: APIStatusError) -> str:
             return str(body)
 
     return str(exc)
+
+
+def _compute_rate_limit_retry_delay_s(
+    *,
+    exc: APIStatusError,
+    attempt: int,
+    base_delay_s: float,
+    max_delay_s: float,
+) -> float:
+    hinted_delay_s = _extract_retry_after_delay_s(exc)
+    if hinted_delay_s is not None:
+        return min(max_delay_s, max(0.05, hinted_delay_s))
+    backoff_delay_s = max(0.05, base_delay_s) * (2**max(0, attempt))
+    return min(max_delay_s, backoff_delay_s)
+
+
+def _extract_retry_after_delay_s(exc: APIStatusError) -> float | None:
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is not None:
+        retry_after_ms_raw = headers.get("retry-after-ms")
+        retry_after_ms = _parse_positive_float(retry_after_ms_raw)
+        if retry_after_ms is not None:
+            return retry_after_ms / 1000.0
+
+        retry_after_raw = headers.get("retry-after")
+        retry_after_s = _parse_positive_float(retry_after_raw)
+        if retry_after_s is not None:
+            return retry_after_s
+
+    message = _extract_sdk_error_text(exc)
+    match = _RETRY_AFTER_TEXT_PATTERN.search(message)
+    if match is None:
+        return None
+
+    value = _parse_positive_float(match.group(1))
+    if value is None:
+        return None
+
+    unit = (match.group(2) or "").lower()
+    if unit == "ms":
+        return value / 1000.0
+    return value
+
+
+def _parse_positive_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        parsed = float(str(value).strip())
+    except ValueError:
+        return None
+    if parsed <= 0:
+        return None
+    return parsed
 
 
 def _extract_function_calls(response: dict[str, Any]) -> list[dict[str, Any]]:

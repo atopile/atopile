@@ -826,16 +826,11 @@
 
 .agent-build-status-panel {
   width: 100%;
-  margin-top: 4px;
-  padding: 7px 8px;
-  border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--agent-accent) 22%, var(--border-subtle));
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--bg-secondary) 74%, transparent) 0%,
-      color-mix(in srgb, var(--bg-primary) 92%, transparent) 100%
-    );
+  margin-top: 3px;
+  padding: 4px 2px 0;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 68%, transparent);
+  background: transparent;
 }
 
 .agent-build-status-head {
@@ -843,7 +838,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 3px;
 }
 
 .agent-build-status-title {
@@ -862,11 +857,60 @@
 .agent-build-status-list {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 0;
 }
 
 .agent-build-status-list .build-queue-item {
   margin: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.agent-build-status-list .build-queue-item.expanded {
+  background: transparent;
+}
+
+.agent-build-status-list .build-queue-item.success,
+.agent-build-status-list .build-queue-item.failed,
+.agent-build-status-list .build-queue-item.warning,
+.agent-build-status-list .build-queue-item.cancelled {
+  background: transparent;
+  opacity: 1;
+}
+
+.agent-build-status-list .build-queue-item + .build-queue-item {
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 54%, transparent);
+}
+
+.agent-build-status-list .build-queue-item .build-queue-header {
+  padding: 4px 2px;
+  border-radius: 0;
+  background: transparent;
+}
+
+.agent-build-status-list .build-queue-item .build-queue-header:hover,
+.agent-build-status-list .build-queue-item.expanded .build-queue-header:hover {
+  background: color-mix(in srgb, var(--bg-hover) 42%, transparent);
+}
+
+.agent-build-status-list .build-queue-item.building .build-queue-header {
+  background: color-mix(in srgb, var(--agent-accent) 6%, transparent);
+}
+
+.agent-build-status-list .build-stages {
+  margin-top: 1px;
+  padding: 3px 2px 4px 18px;
+  border-top: 1px dashed color-mix(in srgb, var(--border-subtle) 62%, transparent);
+  background: transparent;
+}
+
+.agent-build-status-list .build-stage {
+  border-radius: 0;
+}
+
+.agent-build-status-list .build-stage:hover {
+  background: color-mix(in srgb, var(--bg-hover) 44%, transparent);
 }
 
 .agent-build-status-empty {
@@ -876,7 +920,7 @@
 }
 
 .agent-build-status-pending {
-  margin-top: 6px;
+  margin-top: 4px;
   font-size: 10px;
   color: var(--text-muted);
   line-height: 1.35;
