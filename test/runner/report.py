@@ -13,6 +13,7 @@ import platform
 import socket
 import sys
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -113,7 +114,7 @@ class TestState:
     start_time: datetime.datetime | None
     outcome: Outcome | None = None
     finish_time: datetime.datetime | None = None
-    claim_time: datetime.datetime | None = None
+    claim_time: float | None = None
     claim_to_start_s: float | None = None
     claim_to_finish_s: float | None = None
     worker_runtime_s: float | None = None
@@ -217,7 +218,7 @@ class TestAggregator:
         return None
 
     def handle_claim(self, pid: int, nodeid: str) -> None:
-        claim_time = datetime.datetime.now()
+        claim_time = time.time()
         with self._lock:
             self._active_pids.add(pid)
             claims = self._claimed_by_pid.setdefault(pid, set())
@@ -301,6 +302,7 @@ class TestAggregator:
                     test = self._tests.get(claimed)
                     if test and test.outcome is None and test.start_time is None:
                         test.pid = None
+                        test.claim_time = None
                         test.requeues += 1
                         test_queue.put(claimed)
                 self._active_pids.remove(pid)
@@ -314,10 +316,11 @@ class TestAggregator:
                     start_time = datetime.datetime.now()
                     test.pid = pid
                     test.start_time = start_time
-                    if test.claim_time:
-                        test.claim_to_start_s = max(
-                            (start_time - test.claim_time).total_seconds(), 0.0
-                        )
+                    if test.claim_time is not None:
+                        test.claim_to_start_s = max(time.time() - test.claim_time, 0.0)
+                    # Keep START semantics from main: once started, this is no longer
+                    # a claim-stage test.
+                    test.claim_time = None
                 # START implies the claim is no longer "in limbo"
                 claims = self._claimed_by_pid.get(pid)
                 if nodeid and claims and nodeid in claims:
@@ -341,12 +344,16 @@ class TestAggregator:
                         # If START was missed (e.g. transient HTTP issue), ensure
                         if test.start_time is None:
                             test.start_time = test.finish_time
-                        if test.claim_time:
-                            test.claim_to_finish_s = max(
-                                (finish_time - test.claim_time).total_seconds(), 0.0
-                            )
-                            if test.claim_to_start_s is None:
-                                test.claim_to_start_s = test.claim_to_finish_s
+                        runtime_s = max(
+                            (test.finish_time - test.start_time).total_seconds(), 0.0
+                        )
+                        if test.claim_to_start_s is not None:
+                            test.claim_to_finish_s = test.claim_to_start_s + runtime_s
+                        elif test.claim_time is not None:
+                            claim_to_finish = max(time.time() - test.claim_time, 0.0)
+                            test.claim_to_finish_s = claim_to_finish
+                            test.claim_to_start_s = claim_to_finish
+                        test.claim_time = None
                         if output:
                             test.output = output
                         if error_message:
@@ -386,6 +393,7 @@ class TestAggregator:
                 test = self._tests.get(claimed)
                 if test and test.outcome is None and test.start_time is None:
                     test.pid = None
+                    test.claim_time = None
                     test.requeues += 1
                     test_queue.put(claimed)
 
@@ -404,12 +412,13 @@ class TestAggregator:
                         pass
                     t.outcome = Outcome.CRASHED
                     t.finish_time = datetime.datetime.now()
-                    if t.claim_time:
-                        t.claim_to_finish_s = max(
-                            (t.finish_time - t.claim_time).total_seconds(), 0.0
-                        )
-                        if t.claim_to_start_s is None:
-                            t.claim_to_start_s = t.claim_to_finish_s
+                    runtime_s = max((t.finish_time - t.start_time).total_seconds(), 0.0)
+                    if t.claim_to_start_s is not None:
+                        t.claim_to_finish_s = t.claim_to_start_s + runtime_s
+                    elif t.claim_time is not None:
+                        claim_to_finish = max(time.time() - t.claim_time, 0.0)
+                        t.claim_to_finish_s = claim_to_finish
+                        t.claim_to_start_s = claim_to_finish
                     t.output = {
                         "error": f"Worker process {pid} crashed while running this test.\n\n{output}"  # noqa: E501
                     }
@@ -459,12 +468,15 @@ class TestAggregator:
 
             test.outcome = Outcome.TIMEOUT
             test.finish_time = datetime.datetime.now()
-            if test.claim_time:
-                test.claim_to_finish_s = max(
-                    (test.finish_time - test.claim_time).total_seconds(), 0.0
-                )
-                if test.claim_to_start_s is None:
-                    test.claim_to_start_s = test.claim_to_finish_s
+            if test.start_time is None:
+                test.start_time = test.finish_time
+            runtime_s = max((test.finish_time - test.start_time).total_seconds(), 0.0)
+            if test.claim_to_start_s is not None:
+                test.claim_to_finish_s = test.claim_to_start_s + runtime_s
+            elif test.claim_time is not None:
+                claim_to_finish = max(time.time() - test.claim_time, 0.0)
+                test.claim_to_finish_s = claim_to_finish
+                test.claim_to_start_s = claim_to_finish
             test.error_message = (
                 f"Test exceeded orchestrator timeout "
                 f"({(test.finish_time - test.start_time).total_seconds():.0f}s)"
@@ -506,6 +518,33 @@ class TestAggregator:
                 and t.start_time is None
                 and t.nodeid not in claimed
             ]
+
+    def recover_stale_claims(self, timeout_s: float) -> list[str]:
+        """Find claims older than *timeout_s* without a START, reset their
+        state and return their nodeids for requeueing."""
+        now = time.time()
+        stale: list[str] = []
+        with self._lock:
+            for t in self._tests.values():
+                if (
+                    t.claim_time is not None
+                    and t.outcome is None
+                    and t.start_time is None
+                    and (now - t.claim_time) > timeout_s
+                ):
+                    # Clean up _claimed_by_pid so handle_claim doesn't
+                    # double-requeue this test when the same PID claims again.
+                    if t.pid is not None:
+                        claims = self._claimed_by_pid.get(t.pid)
+                        if claims and t.nodeid in claims:
+                            claims.discard(t.nodeid)
+                            if not claims:
+                                del self._claimed_by_pid[t.pid]
+                    t.pid = None
+                    t.claim_time = None
+                    t.requeues += 1
+                    stale.append(t.nodeid)
+        return stale
 
     def get_report(self) -> str:
         now = datetime.datetime.now()

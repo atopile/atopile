@@ -79,6 +79,10 @@ ORCHESTRATOR_REPORT_HOST = os.getenv("FBRK_TEST_REPORT_HOST", ORCHESTRATOR_BIND_
 # Set via FBRK_TEST_TEST_TIMEOUT (seconds). 0 or unset = disabled.
 ORCHESTRATOR_TIMEOUT = float(os.getenv("FBRK_TEST_TEST_TIMEOUT", "0"))
 
+# How long a test can stay "claimed" (dequeued but no START received) before
+# the orchestrator considers it stale and requeues it.
+CLAIM_TIMEOUT = float(os.getenv("FBRK_TEST_CLAIM_TIMEOUT", "30"))
+
 # Local baselines config
 BASELINES_DIR = Path("artifacts/baselines")
 BASELINES_INDEX = BASELINES_DIR / "index.json"
@@ -610,15 +614,29 @@ def main(
                 if not test_queue.empty() or (aggregator.pending_count() > 0):
                     start_worker()
 
-            # If the queue is empty but we still have pending tests, it means
-            # some tests were claimed but we never received START/FINISH for them
-            # (or a worker died before we noticed). Requeue them and keep going.
+            # Recover tests that were claimed but never started within the
+            # timeout.  This runs every iteration so stale claims are caught
+            # even while the queue still has work.
+            stale = aggregator.recover_stale_claims(CLAIM_TIMEOUT)
+            if stale:
+                _print(f"WARNING: {len(stale)} stale claims recovered; requeueing.")
+                for nodeid in stale:
+                    test_queue.put(nodeid)
+
+            # Fallback: if the queue is drained but unstarted tests remain
+            # (and they are not freshly claimed by a live worker), requeue.
             if test_queue.empty():
                 pending_unstarted = aggregator.unstarted_pending_nodeids()
-                if pending_unstarted and aggregator.pending_count() > 0:
-                    n = len(pending_unstarted)
-                    _print(f"WARNING: {n} pending unstarted tests; requeueing.")
-                    for nodeid in pending_unstarted:
+                # Filter out tests that were just claimed (pid is set) —
+                # those are handled by the stale-claim path above.
+                lost = [
+                    nid
+                    for nid in pending_unstarted
+                    if aggregator._tests[nid].pid is None
+                ]
+                if lost and aggregator.pending_count() > 0:
+                    _print(f"WARNING: {len(lost)} pending unstarted tests; requeueing.")
+                    for nodeid in lost:
                         test_queue.put(nodeid)
 
             # Ensure we keep enough workers around while work remains.

@@ -86,12 +86,18 @@ class HttpClient:
             memory_peak_mb=memory_peak_mb,
         )
 
-        try:
-            self.client.post(f"{self.base_url}/event", content=event.model_dump_json())
-        except Exception:
-            # We fail silently here to avoid breaking the test execution if the
-            # orchestrator is gone, but ideally we should log this.
-            pass
+        payload = event.model_dump_json()
+        backoff = 0.1
+        for attempt in range(4):
+            try:
+                self.client.post(f"{self.base_url}/event", content=payload)
+                return
+            except Exception:
+                if attempt < 3:
+                    time.sleep(backoff)
+                    backoff *= 3
+        # All attempts failed — log but never raise to avoid breaking tests
+        logger.warning("send_event failed after 4 attempts: %s %s", event_type, nodeid)
 
     def close(self):
         try:
