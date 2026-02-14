@@ -33,6 +33,11 @@ FBRK_TEST_WORKER_MEMORY_LIMIT = (
 
 FBRK_TEST_TEST_TIMEOUT = int(os.environ.get("FBRK_TEST_TEST_TIMEOUT", 0))
 FBRK_TEST_BATCH_SIZE = max(int(os.environ.get("FBRK_TEST_BATCH_SIZE", "1")), 1)
+FBRK_TEST_BATCH_EXEC_MODE = os.environ.get(
+    "FBRK_TEST_BATCH_EXEC_MODE", "session"
+).lower()
+if FBRK_TEST_BATCH_EXEC_MODE not in {"session", "prefetch"}:
+    FBRK_TEST_BATCH_EXEC_MODE = "session"
 
 
 def run_pytest(nodeids: list[str]):
@@ -188,6 +193,33 @@ def emit_worker_runtime_event(
         pass
 
 
+def run_claimed_tests(
+    client: httpx.Client, pid: int, claimed_nodeids: list[str]
+) -> None:
+    if FBRK_TEST_BATCH_EXEC_MODE == "prefetch" or len(claimed_nodeids) == 1:
+        for nodeid in claimed_nodeids:
+            LoggerForTest.update_test_name(nodeid)
+            run_started = time.perf_counter()
+            try:
+                run_pytest_with_timeout([nodeid])
+            finally:
+                LoggerForTest.flush_all()
+                worker_runtime_s = time.perf_counter() - run_started
+                emit_worker_runtime_event(client, pid, nodeid, worker_runtime_s)
+        return
+
+    LoggerForTest.update_test_name(claimed_nodeids[0])
+    run_started = time.perf_counter()
+    try:
+        run_pytest_with_timeout(claimed_nodeids)
+    finally:
+        LoggerForTest.flush_all()
+        worker_runtime_s = time.perf_counter() - run_started
+        per_test_runtime = worker_runtime_s / len(claimed_nodeids)
+        for nodeid in claimed_nodeids:
+            emit_worker_runtime_event(client, pid, nodeid, per_test_runtime)
+
+
 def main():
     if not ORCHESTRATOR_URL:
         print(f"{ORCHESTRATOR_URL_ENV} not set", file=sys.stderr)
@@ -197,7 +229,7 @@ def main():
     pid = os.getpid()
     print(
         f"Worker {pid} started against {ORCHESTRATOR_URL}"
-        f" (batch_size={FBRK_TEST_BATCH_SIZE}, mode=prefetch)"
+        f" (batch_size={FBRK_TEST_BATCH_SIZE}, mode={FBRK_TEST_BATCH_EXEC_MODE})"
     )
 
     # Keep session separate? Pytest reuses sys.modules.
@@ -225,19 +257,7 @@ def main():
                 # We inject our http adapter plugin
                 # Set terminal width for better debug output formatting
                 os.environ["COLUMNS"] = "120"
-                # Plugin hooks keep per-test logger context fresh.
-                LoggerForTest.update_test_name(claimed_nodeids[0])
-                # Prefetch only: claim multiple tests, execute one pytest session
-                # per test to preserve existing isolation expectations.
-                for nodeid in claimed_nodeids:
-                    LoggerForTest.update_test_name(nodeid)
-                    run_started = time.perf_counter()
-                    try:
-                        run_pytest_with_timeout([nodeid])
-                    finally:
-                        LoggerForTest.flush_all()
-                        worker_runtime_s = time.perf_counter() - run_started
-                        emit_worker_runtime_event(client, pid, nodeid, worker_runtime_s)
+                run_claimed_tests(client, pid, claimed_nodeids)
 
                 # always exit
                 # break

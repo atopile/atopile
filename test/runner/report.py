@@ -525,6 +525,14 @@ class TestAggregator:
         now = time.time()
         stale: list[str] = []
         with self._lock:
+            # In batch mode, a worker can legitimately hold multiple claims while
+            # only one test has started. Don't stale-recover those queued claims
+            # while the worker is actively running another test.
+            running_pids = {
+                t.pid
+                for t in self._tests.values()
+                if t.pid is not None and t.outcome is None and t.start_time is not None
+            }
             for t in self._tests.values():
                 if (
                     t.claim_time is not None
@@ -532,6 +540,8 @@ class TestAggregator:
                     and t.start_time is None
                     and (now - t.claim_time) > timeout_s
                 ):
+                    if t.pid is not None and t.pid in running_pids:
+                        continue
                     # Clean up _claimed_by_pid so handle_claim doesn't
                     # double-requeue this test when the same PID claims again.
                     if t.pid is not None:
