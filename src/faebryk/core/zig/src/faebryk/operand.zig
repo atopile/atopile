@@ -315,7 +315,7 @@ test "edge operand basic" {
     try std.testing.expect(rhs_lookup.?.node.is_same(operand_b));
 
     const CollectOperands = struct {
-        edges: std.ArrayList(graph.BoundEdgeReference),
+        edges: std.array_list.Managed(graph.BoundEdgeReference),
 
         pub fn visit(ctx: *anyopaque, operand_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
             const self: *@This() = @ptrCast(@alignCast(ctx));
@@ -326,7 +326,7 @@ test "edge operand basic" {
         }
     };
 
-    var collector = CollectOperands{ .edges = std.ArrayList(graph.BoundEdgeReference).init(a) };
+    var collector = CollectOperands{ .edges = std.array_list.Managed(graph.BoundEdgeReference).init(a) };
     defer collector.edges.deinit();
     // Pass the operands container node directly (e.g., OperandSequence, OperandPointer)
     const visit_result = EdgeOperand.visit_operand_edges(b_operands, void, &collector, CollectOperands.visit);

@@ -35,7 +35,7 @@ pub fn main() void {
         .root_name = "Test",
         .estimated_total_items = test_fn_list.len,
     });
-    const have_tty = std.io.getStdErr().isTty();
+    const have_tty = std.fs.File.stderr().isTty();
 
     var leaks: usize = 0;
     for (test_fn_list, 0..) |test_fn, i| {

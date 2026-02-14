@@ -228,8 +228,8 @@ pub const EdgeComposition = struct {
         return true;
     }
 
-    pub fn get_children_query(node: graph.BoundNodeReference, query: ChildQuery, allocator: std.mem.Allocator) std.ArrayList(graph.NodeReference) {
-        var out = std.ArrayList(graph.NodeReference).init(allocator);
+    pub fn get_children_query(node: graph.BoundNodeReference, query: ChildQuery, allocator: std.mem.Allocator) std.array_list.Managed(graph.NodeReference) {
+        var out = std.array_list.Managed(graph.NodeReference).init(allocator);
 
         const ChildEntry = struct {
             node: graph.NodeReference,
@@ -237,11 +237,11 @@ pub const EdgeComposition = struct {
         };
 
         // First, collect ALL direct children (without filtering)
-        var direct_children = std.ArrayList(ChildEntry).init(allocator);
+        var direct_children = std.array_list.Managed(ChildEntry).init(allocator);
         defer direct_children.deinit();
 
         const CollectAllChildren = struct {
-            children: *std.ArrayList(ChildEntry),
+            children: *std.array_list.Managed(ChildEntry),
 
             pub fn visit_edge(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
@@ -320,7 +320,7 @@ test "basic" {
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(parent_edge_bn3.?.edge), "child2"));
 
     const CollectChildren = struct {
-        child_edges: std.ArrayList(graph.BoundEdgeReference),
+        child_edges: std.array_list.Managed(graph.BoundEdgeReference),
 
         pub fn visit(ctx: *anyopaque, child_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
             const self: *@This() = @ptrCast(@alignCast(ctx));
@@ -331,7 +331,7 @@ test "basic" {
         }
     };
 
-    var visit = CollectChildren{ .child_edges = std.ArrayList(graph.BoundEdgeReference).init(a) };
+    var visit = CollectChildren{ .child_edges = std.array_list.Managed(graph.BoundEdgeReference).init(a) };
     defer visit.child_edges.deinit();
     const result = EdgeComposition.visit_children_edges(bn1, void, &visit, CollectChildren.visit);
 
