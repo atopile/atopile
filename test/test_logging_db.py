@@ -83,7 +83,17 @@ def test_non_db_logger_routes_to_active_db_context():
     assert row.message == "from third-party logger"
 
 
-def test_db_handler_raises_without_active_context():
+def test_db_handler_defaults_to_unscoped_without_active_context():
+    captured: list[LogRow] = []
+    default_unscoped = AtoLogger._make_db_logger(
+        identifier="",
+        context="",
+        writer=lambda rows: captured.extend(rows),
+        row_class=LogRow,
+        id_field="build_id",
+        context_field="stage",
+        logger_name=f"atopile.db.test.default.{uuid.uuid4().hex}",
+    )
     root = logging.getLogger()
     prev_level = root.level
     db_handler = DBLogHandler(level=logging.DEBUG)
@@ -96,19 +106,22 @@ def test_db_handler_raises_without_active_context():
     root.addHandler(db_handler)
     root.setLevel(logging.DEBUG)
     try:
-        failing_logger = logging.getLogger(f"noctx.test.{uuid.uuid4().hex}")
-        failing_logger.setLevel(logging.INFO)
-        try:
-            failing_logger.info("should fail")
-            raise AssertionError("Expected RuntimeError for missing active context")
-        except RuntimeError:
-            pass
+        with patch.object(AtoLogger, "_get_unscoped", return_value=default_unscoped):
+            source_logger = logging.getLogger(f"noctx.test.{uuid.uuid4().hex}")
+            source_logger.setLevel(logging.INFO)
+            source_logger.info("should route to default unscoped")
+        default_unscoped.db_flush()
     finally:
         root.removeHandler(db_handler)
         root.setLevel(prev_level)
         AtoLogger._active_build_logger = prev_active_build
         AtoLogger._active_test_logger = prev_active_test
         AtoLogger._active_unscoped_logger = prev_active_unscoped
+
+    assert len(captured) >= 1
+    row = captured[-1]
+    assert row.build_id == ""
+    assert row.message == "should route to default unscoped"
 
 
 def test_db_handler_raises_with_multiple_active_contexts():
@@ -131,6 +144,15 @@ def test_db_handler_raises_with_multiple_active_contexts():
         context_field="stage",
         logger_name=f"atopile.db.test.multictx.unscoped.{uuid.uuid4().hex}",
     )
+    test_logger = AtoLogger._make_db_logger(
+        identifier="test-x",
+        context="test-stage",
+        writer=lambda rows: captured.extend(rows),
+        row_class=LogRow,
+        id_field="build_id",
+        context_field="stage",
+        logger_name=f"atopile.db.test.multictx.test.{uuid.uuid4().hex}",
+    )
 
     root = logging.getLogger()
     prev_level = root.level
@@ -139,7 +161,7 @@ def test_db_handler_raises_with_multiple_active_contexts():
     prev_active_test = AtoLogger._active_test_logger
     prev_active_unscoped = AtoLogger._active_unscoped_logger
     AtoLogger._active_build_logger = build_logger
-    AtoLogger._active_test_logger = None
+    AtoLogger._active_test_logger = test_logger
     AtoLogger._active_unscoped_logger = unscoped_logger
     root.addHandler(db_handler)
     root.setLevel(logging.DEBUG)

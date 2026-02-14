@@ -694,11 +694,6 @@ class DashboardServer:
 
     def start(self) -> None:
         """Start the server in a background thread."""
-        from atopile.logging import AtoLogger
-
-        # Establish server-wide unscoped logging context before uvicorn/asyncio emit
-        AtoLogger.get_unscoped(channel="server", stage="")
-
         config = uvicorn.Config(
             self.app,
             host="127.0.0.1",
