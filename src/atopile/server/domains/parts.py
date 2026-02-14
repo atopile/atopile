@@ -8,7 +8,7 @@ from collections.abc import Callable
 from typing import Iterable, Optional
 
 from atopile.dataclasses import Log
-from atopile.logging import BuildLogger
+from atopile.logging import AtoLogger
 from atopile.model import build_history
 from faebryk.libs.picker.api.api import get_api_client
 from faebryk.libs.picker.api.models import Component, LCSCParams
@@ -110,7 +110,7 @@ def _log_out_of_stock(
     if last_logged and now - last_logged < _OUT_OF_STOCK_TTL_S:
         return False
 
-    logger = BuildLogger.get(
+    logger = AtoLogger.get_build(
         project_root,
         target or "default",
         stage="bom",

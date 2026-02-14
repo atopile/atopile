@@ -1,3 +1,4 @@
+import traceback
 from pathlib import Path
 
 from atopile import buildutil
@@ -9,7 +10,7 @@ from atopile.dataclasses import (
     InstallPackageResult,
     PackageVerifyResult,
 )
-from atopile.logging import BaseLogger, get_logger
+from atopile.logging import get_logger
 from atopile.mcp.util import MCPTools
 
 cli_tools = MCPTools()
@@ -33,21 +34,22 @@ def build_project(
     config.interactive = False
 
     success = True
+    logs = ""
 
-    with config.select_build(target_name_from_yaml), BaseLogger.capture_logs() as logs:
+    with config.select_build(target_name_from_yaml):
         logger.info("Building target '%s'", config.build.name)
 
         try:
-            with BaseLogger.log_exceptions(logs):
-                buildutil.build()
+            buildutil.build()
         except Exception:
             success = False
+            logs = traceback.format_exc()
 
     return BuildResult(
         success=success,
         project_dir=str(absolute_project_dir),
         target=target_name_from_yaml,
-        logs=logs.getvalue(),
+        logs=logs,
     )
 
 
@@ -139,16 +141,17 @@ def verify_package(absolute_project_dir: Path) -> PackageVerifyResult:
     config.apply_options(entry=str(absolute_project_dir))
 
     success = True
-    with BaseLogger.capture_logs() as logs:
-        logger.info("Verifying package at '%s'", absolute_project_dir)
-        try:
-            with BaseLogger.log_exceptions(logs):
-                _verify_package(config)
-        except Exception:
-            success = False
+    logs = ""
+
+    logger.info("Verifying package at '%s'", absolute_project_dir)
+    try:
+        _verify_package(config)
+    except Exception:
+        success = False
+        logs = traceback.format_exc()
 
     return PackageVerifyResult(
         success=success,
         project_dir=str(absolute_project_dir),
-        logs=logs.getvalue(),
+        logs=logs,
     )
