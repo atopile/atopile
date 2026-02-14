@@ -234,16 +234,13 @@ pub fn build(b: *std.Build) void {
     const test_file_opt = b.option([]const u8, "test-file", "Zig source file to compile as test binary (e.g. src/faebryk/composition.zig)");
     if (test_file_opt) |test_file_path| {
         const test_name_opt = b.option([]const u8, "test-name", "Output binary name") orelse "test";
-        const test_filter_opt = b.option([]const u8, "test-filter", "Only include tests matching this name");
-
-        const filters: []const []const u8 = if (test_filter_opt) |f| &.{f} else &.{};
 
         const test_comp = b.addTest(.{
             .name = test_name_opt,
             .root_source_file = b.path(test_file_path),
             .target = target,
             .optimize = optimize,
-            .filters = filters,
+            .test_runner = .{ .path = b.path("src/test_runner.zig"), .mode = .simple },
         });
 
         // Add all known modules — zig's lazy compilation skips unused ones

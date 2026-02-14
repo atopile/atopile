@@ -64,7 +64,6 @@ def zig_test_id(param: tuple[Path, str]) -> str:
 @debug_perf
 def compile_zig_test_binary(
     zig_file: Path,
-    test_name: str | None = None,
     release_mode: str = "ReleaseFast",
 ) -> tuple[Path, subprocess.CompletedProcess[bytes]]:
     """Compile a zig test binary via build.zig. Returns (binary_path, result)."""
@@ -78,8 +77,6 @@ def compile_zig_test_binary(
         f"-Dtest-name={bin_name}",
         f"-Doptimize={release_mode}",
     ]
-    if test_name is not None:
-        cmd.append(f"-Dtest-filter={_test_filter_name(zig_file, test_name)}")
     result = subprocess.run(cmd, cwd=ZIG_SRC_DIR, capture_output=True)
     test_bin = ZIG_SRC_DIR / "zig-out" / "bin" / bin_name
     return test_bin, result
@@ -98,11 +95,11 @@ def run_zig_binary(
 def _test_zig_embedded(
     zig_test: tuple[Path, str], release_mode: str = "ReleaseFast"
 ) -> None:
-    """Compile and run a single zig embedded test."""
+    """Compile (cached by zig) and run a single zig test."""
     zig_file, test_name = zig_test
 
     test_bin, compile_result = compile_zig_test_binary(
-        zig_file, test_name=test_name, release_mode=release_mode
+        zig_file, release_mode=release_mode
     )
 
     if compile_result.returncode != 0:
@@ -110,7 +107,8 @@ def _test_zig_embedded(
         print(stderr)
         pytest.fail(f"Compile error for {zig_file.name}:\n{stderr}")
 
-    run_result = run_zig_binary(test_bin)
+    qualified = _test_filter_name(zig_file, test_name)
+    run_result = run_zig_binary(test_bin, args=["--test-filter", qualified])
     stderr = run_result.stderr.decode(errors="replace")
     print(stderr)
 
