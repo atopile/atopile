@@ -203,7 +203,7 @@ fn init_test_types(tg: *TypeGraph) !TestTypes {
 
 fn add_is_interface_recursive(tg: *TypeGraph, root: BoundNodeReference) !void {
     const trait_type = try ensure_is_interface_type(tg);
-    var stack = std.ArrayList(BoundNodeReference).init(a);
+    var stack = std.array_list.Managed(BoundNodeReference).init(a);
     defer stack.deinit();
     try stack.append(root);
 
@@ -212,7 +212,7 @@ fn add_is_interface_recursive(tg: *TypeGraph, root: BoundNodeReference) !void {
         _ = try Trait.add_trait_to(node, trait_type);
 
         const CollectChildren = struct {
-            stack: *std.ArrayList(BoundNodeReference),
+            stack: *std.array_list.Managed(BoundNodeReference),
             g: *GraphView,
 
             pub fn visit_edge(ctx_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
@@ -298,7 +298,7 @@ test "basic" {
 
     // define visitor that visits all edges connected to n1 in g and saves the EdgeReferences to a list (connected_edges)
     const CollectConnectedEdges = struct {
-        connected_edges: std.ArrayList(graph.BoundEdgeReference),
+        connected_edges: std.array_list.Managed(graph.BoundEdgeReference),
 
         pub fn visit(self_ptr: *anyopaque, connected_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
             const self: *@This() = @ptrCast(@alignCast(self_ptr));
@@ -312,7 +312,7 @@ test "basic" {
     };
 
     // instantiate visitor
-    var visit = CollectConnectedEdges{ .connected_edges = std.ArrayList(graph.BoundEdgeReference).init(a) };
+    var visit = CollectConnectedEdges{ .connected_edges = std.array_list.Managed(graph.BoundEdgeReference).init(a) };
     defer visit.connected_edges.deinit();
     // call visitor
     const result = EdgeInterfaceConnection.visit_connected_edges(bn1, &visit, CollectConnectedEdges.visit);
@@ -868,7 +868,7 @@ test "loooooong_chain" {
     const test_types = try init_test_types(&tg);
 
     const chain_length = 1000;
-    var nodes = std.ArrayList(graph.BoundNodeReference).init(allocator);
+    var nodes = std.array_list.Managed(graph.BoundNodeReference).init(allocator);
     defer nodes.deinit();
 
     // Pre-allocate capacity to avoid repeated reallocations

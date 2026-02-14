@@ -37,6 +37,7 @@ from test.runner.common import (
 from test.runner.git_info import (
     collect_env_subset,
     get_git_info,
+    get_system_resources,
 )
 from test.runner.report_utils import (
     ansi_to_html,
@@ -509,9 +510,15 @@ class TestAggregator:
         # Calculate remaining based on total enqueued
         remaining = queued
 
+        # Get system resource utilization
+        sys_res = get_system_resources()
+        cpu_pct = sys_res.get("cpu_percent", 0)
+        mem_pct = sys_res.get("memory_percent", 0)
+
         out = (
             f"WA:{workers:2} WE:{exited_workers:2}|"
             f" ✓{passed:4} ✗{failed:4} E{errored:4} C{crashed:4} T{timed_out:4} S{skipped:4} R{running:4} Q{remaining:4}"  # noqa: E501
+            f" | CPU:{cpu_pct:5.1f}% MEM:{mem_pct:5.1f}%"
         )
 
         # Long-running tests
@@ -957,6 +964,7 @@ class TestAggregator:
                 "baseline_requested": baseline_requested,
                 "env": collect_env_subset(),
                 "git": get_git_info(),
+                "system": get_system_resources(),
                 "orchestrator_bind": ORCHESTRATOR_BIND_HOST,
                 "orchestrator_url": self._orchestrator_url,
                 "orchestrator_report_url": self._orchestrator_report_url,
