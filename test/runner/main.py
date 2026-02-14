@@ -74,6 +74,10 @@ elif WORKER_COUNT < 0:
 ORCHESTRATOR_BIND_HOST = os.getenv("FBRK_TEST_BIND_HOST", "0.0.0.0")
 ORCHESTRATOR_REPORT_HOST = os.getenv("FBRK_TEST_REPORT_HOST", ORCHESTRATOR_BIND_HOST)
 
+# Orchestrator-level test timeout (hard backstop — kills worker via SIGKILL).
+# Set via FBRK_TEST_TEST_TIMEOUT (seconds). 0 or unset = disabled.
+ORCHESTRATOR_TIMEOUT = float(os.getenv("FBRK_TEST_TEST_TIMEOUT", "0"))
+
 # Local baselines config
 BASELINES_DIR = Path("artifacts/baselines")
 BASELINES_INDEX = BASELINES_DIR / "index.json"
@@ -554,8 +558,25 @@ def main(
     timer = ReportTimer(aggregator, REPORT_INTERVAL_SECONDS)
     timer.start()
 
+    if ORCHESTRATOR_TIMEOUT > 0:
+        _print(f"Orchestrator timeout: {ORCHESTRATOR_TIMEOUT}s")
+
     try:
         while True:
+            # Kill workers that have exceeded the orchestrator timeout
+            if ORCHESTRATOR_TIMEOUT > 0:
+                timed_out = aggregator.get_timed_out_workers(ORCHESTRATOR_TIMEOUT)
+                for pid, nodeid in timed_out:
+                    _print(
+                        f"TIMEOUT: {nodeid} exceeded {ORCHESTRATOR_TIMEOUT}s"
+                        f" — killing worker {pid}"
+                    )
+                    if aggregator.handle_worker_timeout(pid, nodeid):
+                        for i, p in list(workers.items()):
+                            if p.pid == pid:
+                                p.kill()
+                                break
+
             # Check if workers are alive
             for i, p in list(workers.items()):
                 if p.poll() is None:

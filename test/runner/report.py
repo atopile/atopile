@@ -266,9 +266,17 @@ class TestAggregator:
             test.compare_status = CompareStatus.NEW
         elif current == baseline:
             test.compare_status = CompareStatus.SAME
-        elif baseline == "passed" and current in ("failed", "error", "crashed"):
+        elif baseline == "passed" and current in (
+            "failed",
+            "error",
+            "crashed",
+            "timeout",
+        ):
             test.compare_status = CompareStatus.REGRESSION
-        elif baseline in ("failed", "error", "crashed") and current == "passed":
+        elif (
+            baseline in ("failed", "error", "crashed", "timeout")
+            and current == "passed"
+        ):
             test.compare_status = CompareStatus.FIXED
         else:
             # Other changes (e.g., skipped <-> failed)
@@ -369,6 +377,69 @@ class TestAggregator:
                     if pid in self._active_pids:
                         self._active_pids.remove(pid)
 
+    def get_timed_out_workers(self, timeout_seconds: float) -> list[tuple[int, str]]:
+        """Return list of (pid, nodeid) for running tests that exceeded the timeout."""
+        now = datetime.datetime.now()
+        cutoff = datetime.timedelta(seconds=timeout_seconds)
+        result: list[tuple[int, str]] = []
+        with self._lock:
+            for t in self._tests.values():
+                if (
+                    t.outcome is None
+                    and t.start_time is not None
+                    and t.pid is not None
+                    and (now - t.start_time) > cutoff
+                ):
+                    result.append((t.pid, t.nodeid))
+        return result
+
+    def handle_worker_timeout(self, pid: int, nodeid: str) -> bool:
+        """Mark a test as TIMEOUT. Returns True if timeout was applied.
+
+        Guards against race with normal completion: only applies if
+        the test still has outcome=None under the lock.
+        """
+        with self._lock:
+            test = self._tests.get(nodeid)
+            if test is None or test.outcome is not None:
+                return False
+
+            # Capture worker log before marking
+            worker_id = self._pid_to_worker_id.get(pid)
+            worker_log = ""
+            if worker_id is not None:
+                log_file = get_log_file(worker_id)
+                if log_file.exists():
+                    try:
+                        worker_log = log_file.read_text(
+                            encoding="utf-8", errors="replace"
+                        )
+                    except Exception:
+                        pass
+
+            test.outcome = Outcome.TIMEOUT
+            test.finish_time = datetime.datetime.now()
+            test.error_message = (
+                f"Test exceeded orchestrator timeout "
+                f"({(test.finish_time - test.start_time).total_seconds():.0f}s)"
+                if test.start_time
+                else "Test exceeded orchestrator timeout"
+            )
+            test.output = {
+                "error": (
+                    f"Worker process {pid} killed by orchestrator timeout.\n\n"
+                    f"{worker_log}"
+                )
+            }
+
+            # Clean up tracking state
+            self._claimed_by_pid.pop(pid, None)
+            self._exited_pids.add(pid)
+            if pid in self._active_pids:
+                self._active_pids.remove(pid)
+
+            return True
+
     def pending_count(self) -> int:
         with self._lock:
             return sum(1 for t in self._tests.values() if t.outcome is None)
@@ -396,6 +467,7 @@ class TestAggregator:
         failed = _count(Outcome.FAILED)
         errored = _count(Outcome.ERROR)
         crashed = _count(Outcome.CRASHED)
+        timed_out = _count(Outcome.TIMEOUT)
         skipped = _count(Outcome.SKIPPED)
         running = sum(
             1 for t in tests if t.start_time is not None and t.outcome is None
@@ -407,7 +479,7 @@ class TestAggregator:
 
         out = (
             f"WA:{workers:2} WE:{exited_workers:2}|"
-            f" ✓{passed:4} ✗{failed:4} E{errored:4} C{crashed:4} S{skipped:4} R{running:4} Q{remaining:4}"  # noqa: E501
+            f" ✓{passed:4} ✗{failed:4} E{errored:4} C{crashed:4} T{timed_out:4} S{skipped:4} R{running:4} Q{remaining:4}"  # noqa: E501
         )
 
         # Long-running tests
@@ -432,7 +504,8 @@ class TestAggregator:
     def has_failures(self) -> bool:
         with self._lock:
             return any(
-                t.outcome in (Outcome.FAILED, Outcome.ERROR, Outcome.CRASHED)
+                t.outcome
+                in (Outcome.FAILED, Outcome.ERROR, Outcome.CRASHED, Outcome.TIMEOUT)
                 for t in self._tests.values()
             )
 
@@ -467,7 +540,7 @@ class TestAggregator:
             collection_errors = dict(self._collection_errors)
             start_time = self.start_time
 
-        passed = failed = errors = crashed = skipped = 0
+        passed = failed = errors = crashed = timeout = skipped = 0
         running = queued = 0
         regressions = fixed = new_tests = 0
         perf_regressions = 0
@@ -502,6 +575,8 @@ class TestAggregator:
                 errors += 1
             elif outcome == "crashed":
                 crashed += 1
+            elif outcome == "timeout":
+                timeout += 1
             elif outcome == "skipped":
                 skipped += 1
             elif state == "running":
@@ -677,7 +752,7 @@ class TestAggregator:
         total_memory_mb = sum(t["memory_usage_mb"] for t in test_entries)
         workers_used = workers_active + workers_exited
 
-        total_finished = passed + failed + errors + crashed + skipped
+        total_finished = passed + failed + errors + crashed + timeout + skipped
         progress_percent = (
             int((total_finished / total_tests) * 100) if total_tests > 0 else 0
         )
@@ -721,7 +796,7 @@ class TestAggregator:
                     "baseline_outcome": t["baseline_outcome"],
                 }
                 for t in test_entries
-                if t["status"] in {"failed", "error", "crashed"}
+                if t["status"] in {"failed", "error", "crashed", "timeout"}
             ],
             "regressions": [
                 {
@@ -868,6 +943,7 @@ class TestAggregator:
                 "failed": failed,
                 "errors": errors,
                 "crashed": crashed,
+                "timeout": timeout,
                 "skipped": skipped,
                 "running": running,
                 "queued": queued,
@@ -1303,6 +1379,7 @@ class TestAggregator:
                 failed=summary["failed"],
                 errors=summary["errors"],
                 crashed=summary["crashed"],
+                timeout=summary.get("timeout", 0),
                 skipped=summary["skipped"],
                 running=summary["running"],
                 remaining=summary["queued"],
@@ -1362,7 +1439,7 @@ def _rebuild_report_with_baseline(
         selection_applied = bool(run.get("pytest_args"))
         run["selection_applied"] = selection_applied
 
-    passed = failed = errors = crashed = skipped = 0
+    passed = failed = errors = crashed = timeout = skipped = 0
     running = queued = 0
     regressions = fixed = new_tests = 0
     perf_regressions = 0
@@ -1386,6 +1463,8 @@ def _rebuild_report_with_baseline(
             errors += 1
         elif status == "crashed":
             crashed += 1
+        elif status == "timeout":
+            timeout += 1
         elif status == "skipped":
             skipped += 1
         elif status == "running":
@@ -1501,7 +1580,7 @@ def _rebuild_report_with_baseline(
     total_memory_mb = sum(t.get("memory_usage_mb", 0.0) for t in tests)
 
     total_tests = len(tests)
-    total_finished = passed + failed + errors + crashed + skipped
+    total_finished = passed + failed + errors + crashed + timeout + skipped
     progress_percent = int((total_finished / total_tests) * 100) if total_tests else 0
 
     report["generated_at"] = safe_iso(now)
@@ -1510,6 +1589,7 @@ def _rebuild_report_with_baseline(
         "failed": failed,
         "errors": errors,
         "crashed": crashed,
+        "timeout": timeout,
         "skipped": skipped,
         "running": running,
         "queued": queued,
@@ -1573,7 +1653,7 @@ def _rebuild_report_with_baseline(
                 "baseline_outcome": t.get("baseline_outcome"),
             }
             for t in tests
-            if t.get("status") in {"failed", "error", "crashed"}
+            if t.get("status") in {"failed", "error", "crashed", "timeout"}
         ],
         "regressions": [
             {
