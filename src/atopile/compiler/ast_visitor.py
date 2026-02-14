@@ -222,7 +222,7 @@ class _ScopeStack:
 
         current_state.symbols[symbol.name] = symbol
 
-        logger.info(f"Added symbol {symbol} to scope")
+        logger.debug(f"Added symbol {symbol} to scope")
 
     def try_resolve_symbol(self, name: str) -> Symbol | None:
         for state in reversed(self.stack):
