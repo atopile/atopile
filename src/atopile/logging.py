@@ -128,8 +128,9 @@ def _get_pretty_repr(value: object, max_len: int = 200) -> str:
             result = f"{type_name}({', '.join(rich_repr_parts)})"
             return result[:max_len] + "..." if len(result) > max_len else result
 
-        # Fallback to repr
-        result = repr(value)
+        # Fallback to repr (use object.__repr__ to avoid segfaults from
+        # zig-backed objects with freed memory during error handling)
+        result = object.__repr__(value)
         return result[:max_len] + "..." if len(result) > max_len else result
     except Exception:
         return "<unable to represent>"
