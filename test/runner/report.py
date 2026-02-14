@@ -13,6 +13,7 @@ import platform
 import socket
 import sys
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -113,6 +114,7 @@ class TestState:
     start_time: datetime.datetime | None
     outcome: Outcome | None = None
     finish_time: datetime.datetime | None = None
+    claim_time: float | None = None
     claim_attempts: int = 0
     requeues: int = 0
     output: dict | None = None
@@ -218,6 +220,7 @@ class TestAggregator:
                     and prev_state.start_time is None
                 ):
                     prev_state.pid = None
+                    prev_state.claim_time = None
                     prev_state.requeues += 1
                     test_queue.put(prev)
 
@@ -225,6 +228,7 @@ class TestAggregator:
             state = self._tests.get(nodeid)
             if state:
                 state.pid = pid
+                state.claim_time = time.time()
                 state.claim_attempts += 1
 
     def set_baseline(self, baseline: RemoteBaseline) -> None:
@@ -297,6 +301,7 @@ class TestAggregator:
                     test = self._tests.get(claimed)
                     if test and test.outcome is None and test.start_time is None:
                         test.pid = None
+                        test.claim_time = None
                         test.requeues += 1
                         test_queue.put(claimed)
                 self._active_pids.remove(pid)
@@ -308,6 +313,7 @@ class TestAggregator:
                 if nodeid and nodeid in self._tests:
                     self._tests[nodeid].pid = pid
                     self._tests[nodeid].start_time = datetime.datetime.now()
+                    self._tests[nodeid].claim_time = None
                 # START implies the claim is no longer "in limbo"
                 if self._claimed_by_pid.get(pid) == nodeid:
                     self._claimed_by_pid.pop(pid, None)
@@ -323,6 +329,7 @@ class TestAggregator:
                     try:
                         test = self._tests[nodeid]
                         test.outcome = outcome_str
+                        test.claim_time = None
                         test.finish_time = datetime.datetime.now()
                         # If START was missed (e.g. transient HTTP issue), ensure
                         if test.start_time is None:
@@ -352,6 +359,7 @@ class TestAggregator:
                 test = self._tests.get(claimed)
                 if test and test.outcome is None and test.start_time is None:
                     test.pid = None
+                    test.claim_time = None
                     test.requeues += 1
                     test_queue.put(claimed)
 
@@ -451,6 +459,30 @@ class TestAggregator:
                 for t in self._tests.values()
                 if t.outcome is None and t.start_time is None
             ]
+
+    def recover_stale_claims(self, timeout_s: float) -> list[str]:
+        """Find claims older than *timeout_s* without a START, reset their
+        state and return their nodeids for requeueing."""
+        now = time.time()
+        stale: list[str] = []
+        with self._lock:
+            for t in self._tests.values():
+                if (
+                    t.claim_time is not None
+                    and t.outcome is None
+                    and t.start_time is None
+                    and (now - t.claim_time) > timeout_s
+                ):
+                    # Clean up _claimed_by_pid so handle_claim doesn't
+                    # double-requeue this test when the same PID claims again.
+                    if t.pid is not None:
+                        if self._claimed_by_pid.get(t.pid) == t.nodeid:
+                            del self._claimed_by_pid[t.pid]
+                    t.pid = None
+                    t.claim_time = None
+                    t.requeues += 1
+                    stale.append(t.nodeid)
+        return stale
 
     def get_report(self) -> str:
         now = datetime.datetime.now()
