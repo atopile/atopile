@@ -19,8 +19,8 @@ import {
   getStoredSetting,
   LoggerFilter,
   loadEnabledLoggers,
-  calculateSourceColumnWidth,
 } from './log-viewer';
+import { LOG_COL_WIDTHS } from './LogViewer';
 import './LogViewer.css';
 
 export interface TestLogViewerProps {
@@ -177,24 +177,15 @@ export function TestLogViewer({ testRunId, testName, autoStream = false }: TestL
     setExpandKey(k => k + 1);
   }, []);
 
-  // Calculate dynamic source column width based on content
-  const sourceColumnWidth = useMemo(
-    () => calculateSourceColumnWidth(logs, sourceMode),
-    [logs, sourceMode]
-  );
-  const sourceColumnWidthPx = useMemo(
-    () => Math.max(96, Math.min(360, Math.round(sourceColumnWidth * 8))),
-    [sourceColumnWidth]
-  );
   const gridTemplateColumns = useMemo(
     () => [
       timeMode === 'delta' ? '60px' : '72px',
       levelFull ? 'max-content' : '3ch',
-      `${sourceColumnWidthPx}px`,
-      '12ch',
+      `${LOG_COL_WIDTHS.source}px`,
+      `${LOG_COL_WIDTHS.stage}px`,
       'minmax(0, 1fr)',
     ].join(' '),
-    [timeMode, levelFull, sourceColumnWidthPx]
+    [timeMode, levelFull]
   );
 
   return (

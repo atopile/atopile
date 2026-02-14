@@ -26,12 +26,15 @@ import {
   HeaderSearchBox,
   LoggerFilter,
   loadEnabledLoggers,
-  calculateSourceColumnWidth,
-  calculateStageColumnWidth,
 } from './log-viewer';
 import './LogViewer.css';
 
 type ResizableColumnKey = 'source' | 'stage';
+
+export const LOG_COL_WIDTHS: Record<ResizableColumnKey, number> = {
+  source: 96,
+  stage: 96,
+};
 
 // Get initial values from URL query params
 function getInitialParams(): { mode: LogMode; testRunId: string; buildId: string; testName: string } {
@@ -267,21 +270,9 @@ export function LogViewer() {
   const searchRegexError = searchRegex ? isValidRegex(search).error : undefined;
   const sourceRegexError = sourceRegex ? isValidRegex(sourceFilter).error : undefined;
 
-  // Calculate dynamic column widths based on content
-  const sourceColumnWidth = useMemo(
-    () => calculateSourceColumnWidth(logs, sourceMode),
-    [logs, sourceMode]
-  );
-  const stageColumnWidth = useMemo(
-    () => calculateStageColumnWidth(logs),
-    [logs]
-  );
   const defaultColumnWidths = useMemo<Record<ResizableColumnKey, number>>(
-    () => ({
-      source: Math.max(96, Math.min(360, Math.round(sourceColumnWidth * 8))),
-      stage: Math.max(84, Math.min(420, Math.round(stageColumnWidth * 8))),
-    }),
-    [sourceColumnWidth, stageColumnWidth]
+    () => LOG_COL_WIDTHS,
+    []
   );
   const resolvedColumnWidths = useMemo<Record<ResizableColumnKey, number>>(
     () => ({
@@ -305,15 +296,11 @@ export function LogViewer() {
     const resizeState = resizingColumnRef.current;
     if (!resizeState) return;
 
-    const MIN_WIDTHS: Record<ResizableColumnKey, number> = {
-      source: 84,
-      stage: 84,
-    };
     const MAX_WIDTH = 600;
 
     const deltaX = event.clientX - resizeState.startX;
     const newWidth = Math.max(
-      MIN_WIDTHS[resizeState.column],
+      LOG_COL_WIDTHS[resizeState.column],
       Math.min(MAX_WIDTH, resizeState.startWidth + deltaX)
     );
 
