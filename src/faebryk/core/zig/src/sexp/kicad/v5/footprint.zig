@@ -1,11 +1,12 @@
 const std = @import("std");
+const compat = @import("compat");
 const structure = @import("../../structure.zig");
 const pcb = @import("../pcb.zig");
 
 const str = []const u8;
 
 fn list(comptime T: type) type {
-    return std.DoublyLinkedList(T);
+    return compat.DoublyLinkedList(T);
 }
 
 pub const Line = struct {
