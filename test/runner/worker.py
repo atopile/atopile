@@ -170,6 +170,24 @@ def claim_tests(client: httpx.Client, pid: int, batch_size: int) -> list[str]:
     return claimed
 
 
+def emit_worker_runtime_event(
+    client: httpx.Client, pid: int, nodeid: str, runtime_s: float
+):
+    try:
+        client.post(
+            f"{ORCHESTRATOR_URL}/event",
+            content=EventRequest(
+                type=EventType.WORKER_FINISH,
+                pid=pid,
+                timestamp=time.time(),
+                nodeid=nodeid,
+                worker_runtime_s=runtime_s,
+            ).model_dump_json(),
+        )
+    except Exception:
+        pass
+
+
 def main():
     if not ORCHESTRATOR_URL:
         print(f"{ORCHESTRATOR_URL_ENV} not set", file=sys.stderr)
@@ -179,7 +197,7 @@ def main():
     pid = os.getpid()
     print(
         f"Worker {pid} started against {ORCHESTRATOR_URL}"
-        f" (batch_size={FBRK_TEST_BATCH_SIZE})"
+        f" (batch_size={FBRK_TEST_BATCH_SIZE}, mode=prefetch)"
     )
 
     # Keep session separate? Pytest reuses sys.modules.
@@ -209,28 +227,17 @@ def main():
                 os.environ["COLUMNS"] = "120"
                 # Plugin hooks keep per-test logger context fresh.
                 LoggerForTest.update_test_name(claimed_nodeids[0])
-                run_started = time.perf_counter()
-                try:
-                    run_pytest_with_timeout(claimed_nodeids)
-                finally:
-                    # Flush logs after each test to ensure they're written to DB
-                    LoggerForTest.flush_all()
-                    worker_runtime_s = time.perf_counter() - run_started
-                    per_test_runtime = worker_runtime_s / len(claimed_nodeids)
-                    for nodeid in claimed_nodeids:
-                        try:
-                            client.post(
-                                f"{ORCHESTRATOR_URL}/event",
-                                content=EventRequest(
-                                    type=EventType.WORKER_FINISH,
-                                    pid=pid,
-                                    timestamp=time.time(),
-                                    nodeid=nodeid,
-                                    worker_runtime_s=per_test_runtime,
-                                ).model_dump_json(),
-                            )
-                        except Exception:
-                            pass
+                # Prefetch only: claim multiple tests, execute one pytest session
+                # per test to preserve existing isolation expectations.
+                for nodeid in claimed_nodeids:
+                    LoggerForTest.update_test_name(nodeid)
+                    run_started = time.perf_counter()
+                    try:
+                        run_pytest_with_timeout([nodeid])
+                    finally:
+                        LoggerForTest.flush_all()
+                        worker_runtime_s = time.perf_counter() - run_started
+                        emit_worker_runtime_event(client, pid, nodeid, worker_runtime_s)
 
                 # always exit
                 # break
