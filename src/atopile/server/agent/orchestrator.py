@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
 import json
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -16,6 +17,7 @@ from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpe
 from atopile.dataclasses import AppContext
 from atopile.model import builds as builds_domain
 from atopile.server.agent import policy, tools
+from atopile.server.agent import skills as skills_domain
 from atopile.server.domains import artifacts as artifacts_domain
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
@@ -46,10 +48,14 @@ Rules:
   packages_search/packages_install for atopile registry dependencies.
 - Use stdlib_list and stdlib_get_item when selecting/understanding standard
   library modules, interfaces, and traits.
+- Use examples_list/examples_search/examples_read_ato for curated reference
+  `.ato` examples when authoring or explaining DSL patterns.
 - Use datasheet_read when a component datasheet is needed; it attaches a PDF
   file for native model reading. Prefer lcsc_id to resolve via project graph.
 - Use project_list_modules and project_module_children for quick structure
   discovery before deep file reads.
+- Package source files live under `.ato/modules/...` (legacy `.ato/deps/...`
+  paths may appear; prefer `.ato/modules`).
 - If asked for design structure/architecture, call project_list_modules before
   answering and use project_module_children for any key entry points.
 - If asked for BOM/parts list/procurement summary, call report_bom first (do
@@ -88,6 +94,8 @@ def _build_session_primer(
         "- diagnostics: on build failures, prefer build_logs_search (INFO first)\n"
         "  and design_diagnostics before broad retries.\n"
         "- stdlib: use stdlib_list and stdlib_get_item for module/interface lookup.\n"
+        "- examples: use examples_list/examples_search/examples_read_ato for\n"
+        "  curated reference `.ato` code patterns.\n"
         "- reports: for BOM/parts lists use report_bom; for computed parameters\n"
         "  and constraints use report_variables.\n"
         "- manufacturing: use manufacturing_generate to create artifacts, then\n"
@@ -111,6 +119,9 @@ class AgentTurnResult:
     text: str
     tool_traces: list[ToolTrace]
     model: str
+    response_id: str | None = None
+    skill_state: dict[str, Any] = field(default_factory=dict)
+    context_metrics: dict[str, Any] = field(default_factory=dict)
 
 
 class AgentOrchestrator:
@@ -129,6 +140,43 @@ class AgentOrchestrator:
         self.api_retry_max_delay_s = float(
             os.getenv("ATOPILE_AGENT_API_RETRY_MAX_DELAY_S", "8.0")
         )
+        self.skills_dir = Path(
+            os.getenv(
+                "ATOPILE_AGENT_SKILLS_DIR",
+                "/Users/narayanpowderly/projects/atopile/.claude/skills",
+            )
+        ).expanduser()
+        self.skill_top_k = int(os.getenv("ATOPILE_AGENT_SKILL_TOP_K", "3"))
+        self.skill_card_max_chars = int(
+            os.getenv("ATOPILE_AGENT_SKILL_CARD_MAX_CHARS", "1800")
+        )
+        self.skill_total_max_chars = int(
+            os.getenv("ATOPILE_AGENT_SKILL_TOTAL_MAX_CHARS", "6000")
+        )
+        self.skill_index_ttl_s = float(
+            os.getenv("ATOPILE_AGENT_SKILL_INDEX_TTL_S", "10")
+        )
+        self.prefix_max_chars = int(
+            os.getenv("ATOPILE_AGENT_PREFIX_MAX_CHARS", "18000")
+        )
+        self.context_summary_max_chars = int(
+            os.getenv("ATOPILE_AGENT_CONTEXT_SUMMARY_MAX_CHARS", "8000")
+        )
+        self.user_message_max_chars = int(
+            os.getenv("ATOPILE_AGENT_USER_MESSAGE_MAX_CHARS", "12000")
+        )
+        self.tool_output_max_chars = int(
+            os.getenv("ATOPILE_AGENT_TOOL_OUTPUT_MAX_CHARS", "10000")
+        )
+        self.context_compact_threshold = int(
+            os.getenv("ATOPILE_AGENT_CONTEXT_COMPACT_THRESHOLD", "120000")
+        )
+        self.context_hard_max_tokens = int(
+            os.getenv("ATOPILE_AGENT_CONTEXT_HARD_MAX_TOKENS", "170000")
+        )
+        self.prompt_cache_retention = os.getenv(
+            "ATOPILE_AGENT_PROMPT_CACHE_RETENTION", "24h"
+        )
         self._client: AsyncOpenAI | None = None
 
     async def run_turn(
@@ -139,6 +187,8 @@ class AgentOrchestrator:
         history: list[dict[str, str]],
         user_message: str,
         selected_targets: list[str] | None = None,
+        previous_response_id: str | None = None,
+        tool_memory: dict[str, dict[str, Any]] | None = None,
         progress_callback: ProgressCallback | None = None,
     ) -> AgentTurnResult:
         if not self.api_key:
@@ -147,26 +197,47 @@ class AgentOrchestrator:
             )
 
         project_path = tools.validate_tool_scope(project_root, ctx)
-        include_session_primer = len(history) == 0
+        include_session_primer = (
+            previous_response_id is None and len(history) == 0
+        )
         context_text = await self._build_context(
             project_root=project_path,
             selected_targets=selected_targets or [],
         )
+        context_text = _truncate_middle(
+            context_text,
+            self.context_summary_max_chars,
+        )
+        trimmed_user_message = _trim_user_message(
+            user_message,
+            self.user_message_max_chars,
+        )
 
-        request_input: list[dict[str, Any]] = [
-            {"role": "system", "content": _SYSTEM_PROMPT}
-        ]
-        if include_session_primer:
-            request_input.append(
-                {
-                    "role": "system",
-                    "content": _build_session_primer(
-                        project_root=project_path,
-                        selected_targets=selected_targets or [],
-                    ),
-                }
-            )
-        request_input.extend(history)
+        skill_selection = skills_domain.select_skills_for_turn(
+            skills_dir=self.skills_dir,
+            user_message=trimmed_user_message,
+            selected_targets=selected_targets or [],
+            history=history,
+            tool_memory=tool_memory or {},
+            top_k=self.skill_top_k,
+            per_card_max_chars=self.skill_card_max_chars,
+            total_max_chars=self.skill_total_max_chars,
+            ttl_s=self.skill_index_ttl_s,
+        )
+        skill_state = skills_domain.build_skill_state(skill_selection)
+        skill_block = skills_domain.render_active_skills_block(skill_selection)
+
+        instructions = _build_turn_instructions(
+            include_session_primer=include_session_primer,
+            project_root=project_path,
+            selected_targets=selected_targets or [],
+            skill_block=skill_block,
+            max_chars=self.prefix_max_chars,
+        )
+
+        history_for_model = history if previous_response_id is None else []
+
+        request_input: list[dict[str, Any]] = list(history_for_model)
         request_input.append(
             {
                 "role": "user",
@@ -174,12 +245,42 @@ class AgentOrchestrator:
                     f"Project root: {project_path}\n"
                     f"Selected targets: {selected_targets or []}\n"
                     f"Context:\n{context_text}\n\n"
-                    f"Request:\n{user_message}"
+                    f"Request:\n{trimmed_user_message}"
                 ),
             }
         )
 
         tool_defs = tools.get_tool_definitions()
+        request_payload: dict[str, Any] = {
+            "model": self.model,
+            "input": request_input,
+            "instructions": instructions,
+            "tools": tool_defs,
+            "tool_choice": "auto",
+            "context_management": [
+                {
+                    "type": "compaction",
+                    "compact_threshold": self.context_compact_threshold,
+                }
+            ],
+            "truncation": "disabled",
+            "prompt_cache_key": _build_prompt_cache_key(
+                project_path=project_path,
+                tool_defs=tool_defs,
+                skill_state=skill_state,
+                model=self.model,
+            ),
+            "prompt_cache_retention": self.prompt_cache_retention,
+        }
+        if previous_response_id:
+            request_payload["previous_response_id"] = previous_response_id
+
+        telemetry: dict[str, Any] = {
+            "api_retry_count": 0,
+            "compaction_events": [],
+            "preflight_input_tokens": None,
+        }
+
         await _emit_progress(
             progress_callback,
             {
@@ -188,17 +289,15 @@ class AgentOrchestrator:
                 "detail_text": "Reviewing request and project context",
             },
         )
-        response = await self._responses_create(
-            {
-                "model": self.model,
-                "input": request_input,
-                "tools": tool_defs,
-                "tool_choice": "auto",
-            }
+        response = await self._responses_create_with_context_control(
+            payload=request_payload,
+            telemetry=telemetry,
+            progress_callback=progress_callback,
         )
 
         traces: list[ToolTrace] = []
         loops = 0
+        last_response_id: str | None = response.get("id")
         while loops < self.max_tool_loops:
             loops += 1
             function_calls = _extract_function_calls(response)
@@ -221,7 +320,14 @@ class AgentOrchestrator:
                         "tool_calls_total": len(traces),
                     },
                 )
-                return AgentTurnResult(text=text, tool_traces=traces, model=self.model)
+                return AgentTurnResult(
+                    text=text,
+                    tool_traces=traces,
+                    model=self.model,
+                    response_id=last_response_id,
+                    skill_state=skill_state,
+                    context_metrics=telemetry,
+                )
 
             outputs: list[dict[str, Any]] = []
             tool_count = len(function_calls)
@@ -314,7 +420,10 @@ class AgentOrchestrator:
                     _build_function_call_outputs_for_model(
                         call_id=str(call_id),
                         tool_name=tool_name,
-                        result_payload=_sanitize_tool_output_for_model(result_payload),
+                        result_payload=_limit_tool_output_for_model(
+                            _sanitize_tool_output_for_model(result_payload),
+                            max_chars=self.tool_output_max_chars,
+                        ),
                     )
                 )
 
@@ -328,15 +437,34 @@ class AgentOrchestrator:
                     "tool_calls_total": len(traces),
                 },
             )
-            response = await self._responses_create(
-                {
+            response = await self._responses_create_with_context_control(
+                payload={
                     "model": self.model,
                     "previous_response_id": response.get("id"),
                     "input": outputs,
+                    "instructions": instructions,
                     "tools": tool_defs,
                     "tool_choice": "auto",
-                }
+                    "context_management": [
+                        {
+                            "type": "compaction",
+                            "compact_threshold": self.context_compact_threshold,
+                        }
+                    ],
+                    "truncation": "disabled",
+                    "prompt_cache_key": _build_prompt_cache_key(
+                        project_path=project_path,
+                        tool_defs=tool_defs,
+                        skill_state=skill_state,
+                        model=self.model,
+                    ),
+                    "prompt_cache_retention": self.prompt_cache_retention,
+                },
+                telemetry=telemetry,
+                progress_callback=progress_callback,
+                enable_preflight=False,
             )
+            last_response_id = response.get("id") or last_response_id
 
         await _emit_progress(
             progress_callback,
@@ -351,6 +479,9 @@ class AgentOrchestrator:
             text="Stopped after too many tool iterations.",
             tool_traces=traces,
             model=self.model,
+            response_id=last_response_id,
+            skill_state=skill_state,
+            context_metrics=telemetry,
         )
 
     async def _build_context(
@@ -474,16 +605,77 @@ class AgentOrchestrator:
             return []
         return [str(target) for target in targets if isinstance(target, str)]
 
-    async def _responses_create(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def _responses_create_with_context_control(
+        self,
+        *,
+        payload: dict[str, Any],
+        telemetry: dict[str, Any],
+        progress_callback: ProgressCallback | None,
+        enable_preflight: bool = True,
+    ) -> dict[str, Any]:
+        if enable_preflight:
+            preflight_tokens = await self._count_input_tokens(payload)
+            telemetry["preflight_input_tokens"] = preflight_tokens
+            if (
+                isinstance(preflight_tokens, int)
+                and preflight_tokens > self.context_hard_max_tokens
+            ):
+                previous_response_id = payload.get("previous_response_id")
+                if isinstance(previous_response_id, str) and previous_response_id:
+                    await _emit_progress(
+                        progress_callback,
+                        {
+                            "phase": "compacting",
+                            "status_text": "Compacting context",
+                            "detail_text": "Input token budget exceeded",
+                        },
+                    )
+                    compacted_id = await self._compact_previous_response(
+                        previous_response_id=previous_response_id,
+                        telemetry=telemetry,
+                    )
+                    if compacted_id:
+                        payload = dict(payload)
+                        payload["previous_response_id"] = compacted_id
+                        preflight_tokens_after = await self._count_input_tokens(payload)
+                        telemetry["preflight_input_tokens"] = preflight_tokens_after
+                        if (
+                            isinstance(preflight_tokens_after, int)
+                            and preflight_tokens_after > self.context_hard_max_tokens
+                        ):
+                            raise RuntimeError(
+                                "Request context remains too large after compaction. "
+                                "Try a narrower request."
+                            )
+                else:
+                    raise RuntimeError(
+                        "Request context is too large for the model context window. "
+                        "Please try a narrower request."
+                    )
+
+        return await self._responses_create(payload, telemetry=telemetry)
+
+    async def _responses_create(
+        self,
+        payload: dict[str, Any],
+        *,
+        telemetry: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         client = self._get_client()
+        working_payload = dict(payload)
+        compacted_once = False
         for attempt in range(self.api_retries + 1):
             try:
-                response = await client.responses.create(**payload)
+                response = await client.responses.create(**working_payload)
                 break
             except APIStatusError as exc:
                 status_code = getattr(exc, "status_code", "unknown")
                 should_retry = status_code == 429 and attempt < self.api_retries
                 if should_retry:
+                    if telemetry is not None:
+                        telemetry["api_retry_count"] = int(
+                            telemetry.get("api_retry_count", 0)
+                        ) + 1
                     delay_s = _compute_rate_limit_retry_delay_s(
                         exc=exc,
                         attempt=attempt,
@@ -492,6 +684,23 @@ class AgentOrchestrator:
                     )
                     await asyncio.sleep(delay_s)
                     continue
+
+                if (
+                    _is_context_length_exceeded(exc)
+                    and not compacted_once
+                    and isinstance(working_payload.get("previous_response_id"), str)
+                    and working_payload.get("previous_response_id")
+                ):
+                    compacted_once = True
+                    compacted_id = await self._compact_previous_response(
+                        previous_response_id=str(
+                            working_payload["previous_response_id"]
+                        ),
+                        telemetry=telemetry,
+                    )
+                    if compacted_id:
+                        working_payload["previous_response_id"] = compacted_id
+                        continue
                 snippet = _extract_sdk_error_text(exc)[:500]
                 raise RuntimeError(
                     f"Model API request failed ({status_code}): {snippet}"
@@ -503,6 +712,58 @@ class AgentOrchestrator:
         if not isinstance(body, dict):
             raise RuntimeError("Model API returned non-object response")
         return body
+
+    async def _count_input_tokens(self, payload: dict[str, Any]) -> int | None:
+        client = self._get_client()
+        count_payload = {
+            "model": payload.get("model", self.model),
+            "input": payload.get("input"),
+            "instructions": payload.get("instructions"),
+            "previous_response_id": payload.get("previous_response_id"),
+            "tools": payload.get("tools"),
+            "tool_choice": payload.get("tool_choice"),
+            "truncation": payload.get("truncation", "disabled"),
+        }
+        try:
+            counted = await client.responses.input_tokens.count(**count_payload)
+        except Exception:
+            return None
+        body = _response_model_to_dict(counted)
+        tokens = body.get("input_tokens")
+        if isinstance(tokens, int):
+            return tokens
+        return None
+
+    async def _compact_previous_response(
+        self,
+        *,
+        previous_response_id: str,
+        telemetry: dict[str, Any] | None = None,
+    ) -> str | None:
+        client = self._get_client()
+        try:
+            compacted = await client.responses.compact(
+                model=self.model,
+                previous_response_id=previous_response_id,
+            )
+        except APIStatusError:
+            return None
+        except (APIConnectionError, APITimeoutError):
+            return None
+        body = _response_model_to_dict(compacted)
+        compacted_id = body.get("id")
+        if isinstance(compacted_id, str) and compacted_id:
+            if telemetry is not None:
+                events = telemetry.setdefault("compaction_events", [])
+                if isinstance(events, list):
+                    events.append(
+                        {
+                            "from_response_id": previous_response_id,
+                            "compacted_response_id": compacted_id,
+                        }
+                    )
+            return compacted_id
+        return None
 
     def _get_client(self) -> AsyncOpenAI:
         if self._client is None:
@@ -599,6 +860,139 @@ def _parse_positive_float(value: Any) -> float | None:
     if parsed <= 0:
         return None
     return parsed
+
+
+def _is_context_length_exceeded(exc: APIStatusError) -> bool:
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict):
+            code = error.get("code")
+            if code == "context_length_exceeded":
+                return True
+    text = _extract_sdk_error_text(exc).lower()
+    return "context_length_exceeded" in text or "context window" in text
+
+
+def _build_turn_instructions(
+    *,
+    include_session_primer: bool,
+    project_root: Path,
+    selected_targets: list[str],
+    skill_block: str,
+    max_chars: int,
+) -> str:
+    chunks = [_SYSTEM_PROMPT]
+    if include_session_primer:
+        chunks.append(
+            _build_session_primer(
+                project_root=project_root,
+                selected_targets=selected_targets,
+            )
+        )
+    if skill_block.strip():
+        chunks.append(skill_block)
+    joined = "\n\n".join(chunks)
+    return _truncate_middle(joined, max_chars)
+
+
+def _build_prompt_cache_key(
+    *,
+    project_path: Path,
+    tool_defs: list[dict[str, Any]],
+    skill_state: dict[str, Any],
+    model: str,
+) -> str:
+    tool_names = ",".join(
+        sorted(
+            str(tool.get("name", ""))
+            for tool in tool_defs
+            if isinstance(tool, dict)
+        )
+    )
+    skill_ids = ",".join(
+        str(value)
+        for value in skill_state.get("selected_skill_ids", [])
+        if isinstance(value, str)
+    )
+    digest_input = f"{project_path}|{model}|{tool_names}|{skill_ids}"
+    digest = hashlib.sha256(digest_input.encode("utf-8")).hexdigest()[:24]
+    return f"atopile-agent:{digest}"
+
+
+def _trim_user_message(message: str, max_chars: int) -> str:
+    stripped = message.strip()
+    if len(stripped) <= max_chars:
+        return stripped
+    if max_chars < 64:
+        return stripped[:max_chars]
+    head_chars = int(max_chars * 0.7)
+    tail_chars = max_chars - head_chars - 17
+    tail_chars = max(tail_chars, 32)
+    return (
+        stripped[:head_chars].rstrip()
+        + "\n\n...[message truncated]...\n\n"
+        + stripped[-tail_chars:].lstrip()
+    )
+
+
+def _truncate_middle(text: str, max_chars: int) -> str:
+    if max_chars <= 0:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    if max_chars < 64:
+        return text[:max_chars]
+    head_chars = int(max_chars * 0.65)
+    tail_chars = max_chars - head_chars - 17
+    tail_chars = max(tail_chars, 24)
+    return (
+        text[:head_chars].rstrip()
+        + "\n\n...[truncated]...\n\n"
+        + text[-tail_chars:].lstrip()
+    )
+
+
+def _limit_tool_output_for_model(
+    value: dict[str, Any],
+    *,
+    max_chars: int,
+) -> dict[str, Any]:
+    try:
+        serialized = json.dumps(value, ensure_ascii=False, default=str)
+    except Exception:
+        return value
+
+    if len(serialized) <= max_chars:
+        return value
+
+    keep_keys = {
+        "error",
+        "error_type",
+        "success",
+        "message",
+        "path",
+        "build_id",
+        "target",
+        "found",
+        "openai_file_id",
+        "lcsc_id",
+        "operations_applied",
+        "first_changed_line",
+        "total",
+        "count",
+    }
+    compact: dict[str, Any] = {
+        key: value[key]
+        for key in keep_keys
+        if key in value
+    }
+    compact["truncated"] = True
+    compact["truncated_reason"] = "tool_output_budget_exceeded"
+    compact["original_size_chars"] = len(serialized)
+    compact["top_level_keys"] = list(value.keys())[:30]
+    compact["preview"] = serialized[: min(1200, max(200, max_chars // 2))]
+    return compact
 
 
 def _extract_function_calls(response: dict[str, Any]) -> list[dict[str, Any]]:

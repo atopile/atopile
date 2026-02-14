@@ -24,6 +24,9 @@ def test_get_tool_directory_includes_core_tools() -> None:
     assert "build_logs_search" in names
     assert "design_diagnostics" in names
     assert "manufacturing_generate" in names
+    assert "examples_list" in names
+    assert "examples_search" in names
+    assert "examples_read_ato" in names
 
 
 def test_suggest_tools_prefills_build_logs_from_message() -> None:
@@ -236,3 +239,23 @@ def test_suggest_tools_surfaces_manufacturing_generate_for_generation_intent() -
     assert generate is not None
     assert generate["prefilled_args"]["target"] == "default"
     assert generate["prefilled_args"]["include_targets"] == ["mfg-data"]
+
+
+def test_suggest_tools_prefills_examples_search_for_reference_intent() -> None:
+    suggestions = mediator.suggest_tools(
+        message="show an example of i2c module templating in ato",
+        history=[],
+        selected_targets=[],
+        tool_memory={},
+    )
+
+    examples_search = next(
+        (
+            suggestion
+            for suggestion in suggestions
+            if suggestion["name"] == "examples_search"
+        ),
+        None,
+    )
+    assert examples_search is not None
+    assert "query" in examples_search["prefilled_args"]

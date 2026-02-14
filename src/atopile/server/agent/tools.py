@@ -485,6 +485,147 @@ def _stdlib_matches_parameter_query(item: Any, query: str) -> bool:
     return False
 
 
+def _resolve_examples_root(project_root: Path) -> Path:
+    """Resolve the curated examples directory used for reference `.ato` code."""
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+
+    def add_candidate(path: Path) -> None:
+        resolved = path.resolve()
+        if resolved in seen:
+            return
+        seen.add(resolved)
+        candidates.append(resolved)
+
+    # Prefer workspace-relative discovery first.
+    for parent in (project_root, *project_root.parents):
+        add_candidate(parent / "examples")
+
+    # Fallback to repository-relative discovery from this source file.
+    try:
+        repo_root = Path(__file__).resolve().parents[4]
+    except IndexError:
+        repo_root = Path(__file__).resolve().parent
+    add_candidate(repo_root / "examples")
+
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_dir():
+            return candidate
+
+    raise ValueError(
+        "Reference examples directory not found. Expected an 'examples/' folder."
+    )
+
+
+def _collect_example_projects(
+    examples_root: Path,
+    *,
+    include_without_ato_yaml: bool = False,
+) -> list[dict[str, Any]]:
+    projects: list[dict[str, Any]] = []
+    for child in sorted(examples_root.iterdir(), key=lambda p: p.name.lower()):
+        if not child.is_dir() or child.name.startswith("."):
+            continue
+        ato_yaml = child / "ato.yaml"
+        has_ato_yaml = ato_yaml.exists()
+        if not has_ato_yaml and not include_without_ato_yaml:
+            continue
+
+        ato_files = sorted(
+            str(path.relative_to(child))
+            for path in child.rglob("*.ato")
+            if path.is_file()
+        )
+        projects.append(
+            {
+                "name": child.name,
+                "path": str(child),
+                "has_ato_yaml": has_ato_yaml,
+                "ato_files": ato_files,
+            }
+        )
+    return projects
+
+
+def _resolve_example_project(example_root: Path, example_name: str) -> Path:
+    cleaned = str(example_name).strip()
+    if not cleaned:
+        raise ValueError("example is required")
+    if "/" in cleaned or "\\" in cleaned:
+        raise ValueError("example must be a top-level example directory name")
+
+    candidate = (example_root / cleaned).resolve()
+    if not candidate.is_relative_to(example_root.resolve()):
+        raise ValueError("example path escapes examples root")
+    if not candidate.exists() or not candidate.is_dir():
+        raise ValueError(f"Unknown example: {cleaned}")
+    return candidate
+
+
+def _resolve_example_ato_file(example_project_root: Path, path: str | None) -> Path:
+    if isinstance(path, str) and path.strip():
+        candidate = (example_project_root / path.strip()).resolve()
+        if not candidate.is_relative_to(example_project_root.resolve()):
+            raise ValueError("path escapes selected example root")
+        if not candidate.exists() or not candidate.is_file():
+            raise ValueError(f"Example file does not exist: {path}")
+        if candidate.suffix.lower() != ".ato":
+            raise ValueError("Only .ato files are supported by examples_read_ato")
+        return candidate
+
+    ato_files = sorted(
+        candidate
+        for candidate in example_project_root.rglob("*.ato")
+        if candidate.is_file()
+    )
+    if not ato_files:
+        raise ValueError("No .ato files found in selected example")
+    return ato_files[0]
+
+
+def _search_example_ato_files(
+    *,
+    examples_root: Path,
+    query: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    needle = query.strip().lower()
+    if not needle:
+        return []
+
+    matches: list[dict[str, Any]] = []
+    projects = _collect_example_projects(
+        examples_root,
+        include_without_ato_yaml=True,
+    )
+    for project in projects:
+        example_name = str(project["name"])
+        project_dir = examples_root / example_name
+        for rel_path in project.get("ato_files", []):
+            if not isinstance(rel_path, str) or not rel_path:
+                continue
+            file_path = project_dir / rel_path
+            try:
+                text = file_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+
+            for line_no, line in enumerate(text.splitlines(), start=1):
+                if needle not in line.lower():
+                    continue
+                matches.append(
+                    {
+                        "example": example_name,
+                        "path": f"{example_name}/{rel_path}",
+                        "line": line_no,
+                        "text": line.strip()[:260],
+                    }
+                )
+                if len(matches) >= limit:
+                    return matches
+    return matches
+
+
 def get_tool_definitions() -> list[dict[str, Any]]:
     """OpenAI Responses API function-tool definitions."""
     return [
@@ -508,7 +649,10 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         {
             "type": "function",
             "name": "project_read_file",
-            "description": "Read a file chunk from the selected project.",
+            "description": (
+                "Read a file chunk from the selected project (including package"
+                " files under .ato/modules)."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -541,6 +685,73 @@ def get_tool_definitions() -> list[dict[str, Any]]:
                     },
                 },
                 "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "examples_list",
+            "description": (
+                "List curated atopile reference examples with available .ato files."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 200,
+                        "default": 60,
+                    },
+                    "include_without_ato_yaml": {
+                        "type": "boolean",
+                        "default": False,
+                    },
+                },
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "examples_search",
+            "description": (
+                "Search across curated example .ato files by substring."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 400,
+                        "default": 100,
+                    },
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "examples_read_ato",
+            "description": (
+                "Read a curated example .ato file by example name."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "example": {"type": "string"},
+                    "path": {"type": ["string", "null"]},
+                    "start_line": {"type": "integer", "minimum": 1, "default": 1},
+                    "max_lines": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 400,
+                        "default": 220,
+                    },
+                },
+                "required": ["example"],
                 "additionalProperties": False,
             },
         },
@@ -1058,6 +1269,66 @@ async def execute_tool(
             "total": len(matches),
         }
 
+    if name == "examples_list":
+        limit = int(arguments.get("limit", 60))
+        include_without_ato_yaml = bool(
+            arguments.get("include_without_ato_yaml", False)
+        )
+        examples_root = _resolve_examples_root(project_root)
+        projects = _collect_example_projects(
+            examples_root,
+            include_without_ato_yaml=include_without_ato_yaml,
+        )
+        returned = projects[:limit]
+        return {
+            "examples_root": str(examples_root),
+            "examples": returned,
+            "total": len(projects),
+            "returned": len(returned),
+        }
+
+    if name == "examples_search":
+        query = str(arguments.get("query", "")).strip()
+        if not query:
+            raise ValueError("query is required")
+        limit = int(arguments.get("limit", 100))
+        examples_root = _resolve_examples_root(project_root)
+        matches = _search_example_ato_files(
+            examples_root=examples_root,
+            query=query,
+            limit=limit,
+        )
+        return {
+            "examples_root": str(examples_root),
+            "query": query,
+            "matches": matches,
+            "total": len(matches),
+        }
+
+    if name == "examples_read_ato":
+        example = str(arguments.get("example", "")).strip()
+        examples_root = _resolve_examples_root(project_root)
+        example_project_root = _resolve_example_project(examples_root, example)
+        example_file = _resolve_example_ato_file(
+            example_project_root,
+            arguments.get("path")
+            if isinstance(arguments.get("path"), str)
+            else None,
+        )
+        relative_path = str(example_file.relative_to(example_project_root))
+        chunk = await asyncio.to_thread(
+            policy.read_file_chunk,
+            example_project_root,
+            relative_path,
+            start_line=int(arguments.get("start_line", 1)),
+            max_lines=int(arguments.get("max_lines", 220)),
+        )
+        return {
+            "example": example,
+            "example_root": str(example_project_root),
+            **chunk,
+        }
+
     if name == "project_list_modules":
         type_filter = arguments.get("type_filter")
         limit = int(arguments.get("limit", 200))
@@ -1292,6 +1563,7 @@ async def execute_tool(
         source_path = path
         source_meta: dict[str, Any] = {}
         resolution: dict[str, Any] = {}
+        fallback_sources: list[dict[str, Any]] = []
         if lcsc_id:
             graph_result: dict[str, Any] | None = None
             graph_error: dict[str, str] | None = None
@@ -1370,18 +1642,122 @@ async def execute_tool(
                     "part_number": details.get("part_number"),
                     "description": details.get("description"),
                 }
+                fallback_sources.append(
+                    {
+                        "source": "parts_api",
+                        "url": datasheet_url,
+                    }
+                )
 
             source_meta = {
                 "lcsc_id": lcsc_id.upper(),
                 **source_meta,
             }
 
-        datasheet_bytes, metadata = await asyncio.to_thread(
-            policy.read_datasheet_file,
-            project_root,
-            path=source_path,
-            url=source_url,
-        )
+        datasheet_bytes: bytes
+        metadata: dict[str, Any]
+        if source_path:
+            datasheet_bytes, metadata = await asyncio.to_thread(
+                policy.read_datasheet_file,
+                project_root,
+                path=source_path,
+                url=None,
+            )
+        else:
+            candidate_urls: list[str] = []
+            if source_url:
+                candidate_urls.append(source_url)
+
+            if lcsc_id:
+                try:
+                    jlc_candidates, jlc_error = await asyncio.to_thread(
+                        parts_domain.search_jlc_parts,
+                        lcsc_id,
+                        limit=6,
+                    )
+                    if isinstance(jlc_error, str) and jlc_error.strip():
+                        fallback_sources.append(
+                            {
+                                "source": "jlc_search_error",
+                                "error": _trim_message(jlc_error, 220),
+                            }
+                        )
+                    for item in jlc_candidates or []:
+                        if not isinstance(item, dict):
+                            continue
+                        candidate_url = str(item.get("datasheet_url") or "").strip()
+                        if not candidate_url:
+                            continue
+                        candidate_urls.append(candidate_url)
+                        fallback_sources.append(
+                            {
+                                "source": "jlc_search",
+                                "url": candidate_url,
+                                "lcsc": item.get("lcsc"),
+                                "mpn": item.get("mpn"),
+                            }
+                        )
+                except Exception as exc:
+                    fallback_sources.append(
+                        {
+                            "source": "jlc_search_error",
+                            "error": _trim_message(
+                                f"{type(exc).__name__}: {exc}",
+                                220,
+                            ),
+                        }
+                    )
+
+            deduped_urls: list[str] = []
+            for candidate_url in candidate_urls:
+                if candidate_url and candidate_url not in deduped_urls:
+                    deduped_urls.append(candidate_url)
+
+            if not deduped_urls:
+                raise policy.ScopeError(
+                    "No datasheet URL could be resolved for this request."
+                )
+
+            last_error: Exception | None = None
+            selected_url: str | None = None
+            attempted_errors: list[str] = []
+            for candidate_url in deduped_urls:
+                try:
+                    datasheet_bytes, metadata = await asyncio.to_thread(
+                        policy.read_datasheet_file,
+                        project_root,
+                        path=None,
+                        url=candidate_url,
+                    )
+                    selected_url = candidate_url
+                    break
+                except Exception as exc:
+                    last_error = exc
+                    attempted_errors.append(
+                        _trim_message(f"{candidate_url} -> {exc}", 320)
+                    )
+            else:
+                details = "; ".join(attempted_errors[:3]) or "unknown"
+                raise policy.ScopeError(
+                    "Failed to fetch datasheet from all resolved URLs "
+                    f"({details})"
+                ) from last_error
+
+            if selected_url and source_url and selected_url != source_url:
+                resolution = {
+                    **resolution,
+                    "url_fallback": {
+                        "selected_url": selected_url,
+                        "primary_url": source_url,
+                        "attempted_urls": len(deduped_urls),
+                    },
+                }
+
+        if fallback_sources:
+            resolution = {
+                **resolution,
+                "fallback_sources": fallback_sources[:8],
+            }
         cache_key = str(
             metadata.get("sha256")
             or f"{metadata.get('source_kind')}:{metadata.get('source')}"

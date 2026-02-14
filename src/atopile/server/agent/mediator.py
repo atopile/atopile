@@ -35,10 +35,20 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         name="project_read_file",
         category="project",
         purpose="Read file chunks with hashline anchors.",
-        tooltip="Fetch file contents with LINE:HASH anchors for safe edits.",
+        tooltip=(
+            "Fetch file contents with LINE:HASH anchors "
+            "(including .ato/modules package files)."
+        ),
         inputs=["path", "start_line", "max_lines"],
         typical_output="path, content, start_line, end_line, total_lines",
-        keywords=["read file", "open file", "inspect file", "show file"],
+        keywords=[
+            "read file",
+            "open file",
+            "inspect file",
+            "show file",
+            "package file",
+            ".ato/modules",
+        ],
     ),
     "project_search": ToolDirectoryItem(
         name="project_search",
@@ -48,6 +58,33 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         inputs=["query", "limit"],
         typical_output="matches, total",
         keywords=["search", "find", "grep", "look for", "where is"],
+    ),
+    "examples_list": ToolDirectoryItem(
+        name="examples_list",
+        category="examples",
+        purpose="List curated example projects and their .ato files.",
+        tooltip="Browse reference examples that can be used for .ato authoring.",
+        inputs=["limit", "include_without_ato_yaml"],
+        typical_output="examples_root, examples, total, returned",
+        keywords=["examples", "reference", "sample projects", "templates"],
+    ),
+    "examples_search": ToolDirectoryItem(
+        name="examples_search",
+        category="examples",
+        purpose="Search across curated example .ato files.",
+        tooltip="Find matching patterns/snippets from example .ato files.",
+        inputs=["query", "limit"],
+        typical_output="query, matches, total",
+        keywords=["example code", "reference code", "sample .ato", "search examples"],
+    ),
+    "examples_read_ato": ToolDirectoryItem(
+        name="examples_read_ato",
+        category="examples",
+        purpose="Read an example .ato file by example name.",
+        tooltip="Open a specific reference example .ato file.",
+        inputs=["example", "path", "start_line", "max_lines"],
+        typical_output="example, path, content, start_line, end_line, total_lines",
+        keywords=["read example", "open example", "example ato", "reference ato"],
     ),
     "project_list_modules": ToolDirectoryItem(
         name="project_list_modules",
@@ -515,6 +552,22 @@ def suggest_tools(
             "project_module_children",
         }:
             score += 1.3
+        example_terms = (
+            "example",
+            "examples",
+            "reference",
+            "sample",
+            "template",
+            "how to write ato",
+            "ato snippet",
+            "similar design",
+        )
+        if any(term in search_blob for term in example_terms) and name in {
+            "examples_list",
+            "examples_search",
+            "examples_read_ato",
+        }:
+            score += 1.9
         bom_terms = (
             "bom",
             "bill of materials",
@@ -710,6 +763,17 @@ def _infer_prefilled_args(
 ) -> dict[str, Any]:
     text = message.strip()
     lower = text.lower()
+    known_examples = {
+        "quickstart",
+        "passives",
+        "equations",
+        "pick_parts",
+        "i2c",
+        "esp32_minimal",
+        "layout_reuse",
+        "led_badge",
+        "fabll_minimal",
+    }
 
     if tool_name == "project_search":
         quoted = re.search(r"['\"]([^'\"]+)['\"]", text)
@@ -720,6 +784,36 @@ def _infer_prefilled_args(
             query = find_for.group(1).strip().strip(".")
             if query:
                 return {"query": query}
+
+    if tool_name == "examples_list":
+        return {"limit": 20}
+
+    if tool_name == "examples_search":
+        quoted = re.search(r"['\"]([^'\"]+)['\"]", text)
+        if quoted:
+            return {"query": quoted.group(1), "limit": 80}
+
+        cleaned = re.sub(
+            r"\b(example|examples|reference|sample|snippet|ato|show|find|search)\b",
+            " ",
+            lower,
+        )
+        query = " ".join(cleaned.split()).strip(".")
+        if query:
+            return {"query": query, "limit": 80}
+        return {"query": "module", "limit": 80}
+
+    if tool_name == "examples_read_ato":
+        example_match = re.search(r"\bexamples/([a-z0-9_.-]+)\b", lower)
+        if example_match:
+            return {
+                "example": example_match.group(1),
+                "start_line": 1,
+                "max_lines": 220,
+            }
+        for example_name in known_examples:
+            if re.search(rf"\b{re.escape(example_name)}\b", lower):
+                return {"example": example_name, "start_line": 1, "max_lines": 220}
 
     if tool_name == "project_read_file":
         file_match = _FILE_RE.search(text)

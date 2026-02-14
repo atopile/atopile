@@ -27,6 +27,9 @@ def test_tool_definitions_advertise_hashline_editor() -> None:
     assert "project_edit_file" in names
     assert "project_list_modules" in names
     assert "project_module_children" in names
+    assert "examples_list" in names
+    assert "examples_search" in names
+    assert "examples_read_ato" in names
     assert "stdlib_list" in names
     assert "stdlib_get_item" in names
     assert "datasheet_read" in names
@@ -36,6 +39,59 @@ def test_tool_definitions_advertise_hashline_editor() -> None:
     assert "manufacturing_generate" in names
     assert "project_write_file" not in names
     assert "project_replace_text" not in names
+
+
+def test_examples_tools_list_search_and_read(monkeypatch, tmp_path: Path) -> None:
+    examples_root = tmp_path / "examples"
+    quickstart = examples_root / "quickstart"
+    quickstart.mkdir(parents=True)
+    (quickstart / "ato.yaml").write_text("builds: {}\n", encoding="utf-8")
+    (quickstart / "quickstart.ato").write_text(
+        "import Resistor\n\nmodule App:\n    r1 = new Resistor\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        tools,
+        "_resolve_examples_root",
+        lambda _project_root: examples_root,
+    )
+
+    listed = _run(
+        tools.execute_tool(
+            name="examples_list",
+            arguments={},
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+    assert listed["total"] == 1
+    assert listed["examples"][0]["name"] == "quickstart"
+    assert listed["examples"][0]["ato_files"] == ["quickstart.ato"]
+
+    searched = _run(
+        tools.execute_tool(
+            name="examples_search",
+            arguments={"query": "new Resistor"},
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+    assert searched["total"] == 1
+    assert searched["matches"][0]["example"] == "quickstart"
+    assert searched["matches"][0]["line"] == 4
+
+    read = _run(
+        tools.execute_tool(
+            name="examples_read_ato",
+            arguments={"example": "quickstart", "start_line": 1, "max_lines": 20},
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+    assert read["example"] == "quickstart"
+    assert read["path"] == "quickstart.ato"
+    assert "module App:" in read["content"]
 
 
 def test_project_read_file_returns_hashline_content(tmp_path: Path) -> None:
@@ -452,6 +508,132 @@ def test_datasheet_read_uses_cached_reference_for_repeat_calls(
     assert second["openai_file_cached"] is True
     assert second["query"] == "second query"
     assert counters == {"collect": 1, "read": 1, "upload": 1}
+
+
+def test_datasheet_read_tries_jlc_fallback_urls_when_primary_url_fails(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    read_attempts: list[str] = []
+
+    def fake_collect_project_datasheets(
+        project_root: str,
+        *,
+        build_target: str | None = None,
+        lcsc_ids: list[str] | None = None,
+        overwrite: bool = False,
+    ) -> dict:
+        _ = project_root, build_target, lcsc_ids, overwrite
+        return {
+            "build_target": "default",
+            "directory": str(tmp_path / "build" / "documentation" / "datasheets"),
+            "matches": [],
+        }
+
+    def fake_get_part_details(lcsc_id: str) -> dict | None:
+        assert lcsc_id == "C5360602"
+        return {
+            "datasheet_url": "https://example.com/dead.pdf",
+            "manufacturer": "Sensirion",
+            "part_number": "SHT4x",
+            "description": "Humidity sensor",
+        }
+
+    def fake_search_jlc_parts(
+        query: str,
+        *,
+        limit: int = 50,
+    ) -> tuple[list[dict], str | None]:
+        assert query == "C5360602"
+        assert limit == 6
+        return (
+            [
+                {
+                    "lcsc": "C5360602",
+                    "mpn": "SHT40-AD1B-R2",
+                    "datasheet_url": "https://example.com/working.pdf",
+                }
+            ],
+            None,
+        )
+
+    def fake_read_datasheet_file(
+        project_root: Path,
+        *,
+        path: str | None = None,
+        url: str | None = None,
+    ) -> tuple[bytes, dict[str, object]]:
+        assert project_root == tmp_path
+        assert path is None
+        assert url is not None
+        read_attempts.append(url)
+        if url.endswith("/dead.pdf"):
+            raise policy.ScopeError("Failed to fetch datasheet url: dead")
+        assert url.endswith("/working.pdf")
+        return (
+            b"%PDF-1.7\n",
+            {
+                "source_kind": "url",
+                "source": url,
+                "format": "pdf",
+                "content_type": "application/pdf",
+                "filename": "sht4x.pdf",
+                "sha256": "11223344",
+                "size_bytes": 9,
+            },
+        )
+
+    async def fake_upload_openai_user_file(
+        *,
+        filename: str,
+        content: bytes,
+        cache_key: str,
+    ) -> tuple[str, bool]:
+        assert filename == "sht4x.pdf"
+        assert content.startswith(b"%PDF-")
+        assert cache_key == "11223344"
+        return ("file-sht4x", False)
+
+    monkeypatch.setattr(
+        tools.datasheets_domain,
+        "handle_collect_project_datasheets",
+        fake_collect_project_datasheets,
+    )
+    monkeypatch.setattr(
+        tools.parts_domain,
+        "handle_get_part_details",
+        fake_get_part_details,
+    )
+    monkeypatch.setattr(
+        tools.parts_domain,
+        "search_jlc_parts",
+        fake_search_jlc_parts,
+    )
+    monkeypatch.setattr(policy, "read_datasheet_file", fake_read_datasheet_file)
+    monkeypatch.setattr(
+        tools,
+        "_upload_openai_user_file",
+        fake_upload_openai_user_file,
+    )
+
+    result = _run(
+        tools.execute_tool(
+            name="datasheet_read",
+            arguments={"lcsc_id": "C5360602", "target": "default"},
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+
+    assert result["found"] is True
+    assert result["openai_file_id"] == "file-sht4x"
+    assert read_attempts == [
+        "https://example.com/dead.pdf",
+        "https://example.com/working.pdf",
+    ]
+    assert result["resolution"]["url_fallback"]["selected_url"].endswith(
+        "/working.pdf"
+    )
 
 
 def test_build_run_forwards_include_and_exclude_targets(monkeypatch) -> None:

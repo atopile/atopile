@@ -83,7 +83,7 @@ interface ToolSuggestionsResponse {
   toolMemory: AgentToolMemoryEntry[];
 }
 
-class AgentApiError extends Error {
+export class AgentApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
     this.name = 'AgentApiError';

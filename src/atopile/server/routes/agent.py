@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from atopile.dataclasses import AppContext
 from atopile.server.agent import AgentOrchestrator, mediator
+from atopile.server.agent import skills as skills_domain
 from atopile.server.domains.deps import get_ctx
 from atopile.server.events import get_event_bus
 from faebryk.libs.paths import get_log_dir
@@ -35,6 +36,9 @@ class AgentSession:
     tool_memory: dict[str, dict[str, Any]] = field(default_factory=dict)
     recent_selected_targets: list[str] = field(default_factory=list)
     active_run_id: str | None = None
+    last_response_id: str | None = None
+    conversation_id: str | None = None
+    skill_state: dict[str, Any] = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -126,6 +130,24 @@ class ToolSuggestionsResponse(BaseModel):
         populate_by_name = True
 
 
+class SessionSkillsResponse(BaseModel):
+    session_id: str = Field(alias="sessionId")
+    project_root: str = Field(alias="projectRoot")
+    skills_dir: str = Field(alias="skillsDir")
+    selected_skill_ids: list[str] = Field(
+        default_factory=list,
+        alias="selectedSkillIds",
+    )
+    selected_skills: list[dict] = Field(default_factory=list, alias="selectedSkills")
+    reasoning: list[str] = Field(default_factory=list)
+    total_chars: int = Field(default=0, alias="totalChars")
+    generated_at: float | None = Field(default=None, alias="generatedAt")
+    loaded_skills_count: int = Field(default=0, alias="loadedSkillsCount")
+
+    class Config:
+        populate_by_name = True
+
+
 class CreateRunRequest(BaseModel):
     message: str
     project_root: str = Field(alias="projectRoot")
@@ -168,6 +190,7 @@ _runs: dict[str, AgentRun] = {}
 _runs_lock = threading.Lock()
 _session_log_lock = threading.Lock()
 _orchestrator = AgentOrchestrator()
+_SESSION_STATE_VERSION = 1
 
 
 def _get_agent_session_log_path() -> Path:
@@ -175,6 +198,193 @@ def _get_agent_session_log_path() -> Path:
     if override and override.strip():
         return Path(override).expanduser()
     return get_log_dir() / "agent_sessions.jsonl"
+
+
+def _get_agent_session_state_path() -> Path:
+    override = os.getenv("ATOPILE_AGENT_SESSION_STATE_PATH")
+    if override and override.strip():
+        return Path(override).expanduser()
+    return get_log_dir() / "agent_sessions_state.json"
+
+
+def _get_max_persisted_history_entries() -> int:
+    default_value = 160
+    raw = os.getenv("ATOPILE_AGENT_MAX_PERSISTED_HISTORY", str(default_value))
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return default_value
+    return max(20, min(parsed, 2_000))
+
+
+def _normalize_history_entries(
+    value: Any, *, max_entries: int | None = None
+) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    normalized: list[dict[str, str]] = []
+    for entry in value:
+        if not isinstance(entry, dict):
+            continue
+        role = entry.get("role")
+        content = entry.get("content")
+        if not isinstance(role, str) or not isinstance(content, str):
+            continue
+        normalized.append({"role": role, "content": content})
+    if max_entries is not None and max_entries > 0 and len(normalized) > max_entries:
+        return normalized[-max_entries:]
+    return normalized
+
+
+def _normalize_tool_memory(value: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, dict[str, Any]] = {}
+    for key, entry in value.items():
+        if not isinstance(key, str) or not isinstance(entry, dict):
+            continue
+        normalized[key] = dict(entry)
+    return normalized
+
+
+def _normalize_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _serialize_session_state(session: AgentSession) -> dict[str, Any]:
+    max_history = _get_max_persisted_history_entries()
+    return {
+        "session_id": session.session_id,
+        "project_root": session.project_root,
+        "history": _normalize_history_entries(session.history, max_entries=max_history),
+        "tool_memory": _normalize_tool_memory(session.tool_memory),
+        "recent_selected_targets": _normalize_string_list(
+            session.recent_selected_targets
+        ),
+        "last_response_id": (
+            session.last_response_id
+            if isinstance(session.last_response_id, str)
+            else None
+        ),
+        "conversation_id": (
+            session.conversation_id
+            if isinstance(session.conversation_id, str)
+            else None
+        ),
+        "skill_state": dict(session.skill_state)
+        if isinstance(session.skill_state, dict)
+        else {},
+        "created_at": float(session.created_at),
+        "updated_at": float(session.updated_at),
+    }
+
+
+def _deserialize_session_state(value: Any) -> AgentSession | None:
+    if not isinstance(value, dict):
+        return None
+    session_id = value.get("session_id")
+    project_root = value.get("project_root")
+    if not isinstance(session_id, str) or not session_id:
+        return None
+    if not isinstance(project_root, str) or not project_root:
+        return None
+
+    created_at_raw = value.get("created_at")
+    updated_at_raw = value.get("updated_at")
+    created_at = (
+        float(created_at_raw)
+        if isinstance(created_at_raw, (int, float))
+        else time.time()
+    )
+    updated_at = (
+        float(updated_at_raw)
+        if isinstance(updated_at_raw, (int, float))
+        else created_at
+    )
+    session = AgentSession(
+        session_id=session_id,
+        project_root=project_root,
+        created_at=created_at,
+        updated_at=updated_at,
+    )
+    session.history = _normalize_history_entries(value.get("history"))
+    session.tool_memory = _normalize_tool_memory(value.get("tool_memory"))
+    session.recent_selected_targets = _normalize_string_list(
+        value.get("recent_selected_targets")
+    )
+    if isinstance(value.get("last_response_id"), str):
+        session.last_response_id = value["last_response_id"]
+    if isinstance(value.get("conversation_id"), str):
+        session.conversation_id = value["conversation_id"]
+    if isinstance(value.get("skill_state"), dict):
+        session.skill_state = dict(value["skill_state"])
+    return session
+
+
+def _persist_sessions_state() -> None:
+    with _sessions_lock:
+        serialized_sessions = [
+            _serialize_session_state(session) for session in _sessions.values()
+        ]
+
+    payload = {
+        "version": _SESSION_STATE_VERSION,
+        "saved_at": time.time(),
+        "sessions": serialized_sessions,
+    }
+    state_path = _get_agent_session_state_path()
+    tmp_path = state_path.with_suffix(f"{state_path.suffix}.tmp")
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        with tmp_path.open("w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, separators=(",", ":"))
+        tmp_path.replace(state_path)
+    except Exception:
+        log.exception("Failed to persist agent session state")
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except Exception:
+            pass
+
+
+def _load_sessions_state() -> None:
+    state_path = _get_agent_session_state_path()
+    if not state_path.exists():
+        return
+    try:
+        raw_payload = json.loads(state_path.read_text(encoding="utf-8"))
+    except Exception:
+        log.exception("Failed to read persisted agent session state")
+        return
+
+    raw_sessions: Any = []
+    if isinstance(raw_payload, dict):
+        raw_sessions = raw_payload.get("sessions", [])
+    elif isinstance(raw_payload, list):
+        raw_sessions = raw_payload
+    if not isinstance(raw_sessions, list):
+        return
+
+    restored: dict[str, AgentSession] = {}
+    for raw_session in raw_sessions:
+        session = _deserialize_session_state(raw_session)
+        if session is None:
+            continue
+        # In-flight run state is always runtime-only.
+        session.active_run_id = None
+        restored[session.session_id] = session
+
+    if not restored:
+        return
+
+    with _sessions_lock:
+        _sessions.clear()
+        _sessions.update(restored)
+
+    log.info("Restored %d persisted agent sessions", len(restored))
 
 
 def _log_session_event(event: str, payload: dict[str, Any]) -> None:
@@ -194,6 +404,9 @@ def _log_session_event(event: str, payload: dict[str, Any]) -> None:
         log.exception("Failed to append agent session log event")
 
 
+_load_sessions_state()
+
+
 def _build_send_message_response(
     *,
     session: AgentSession,
@@ -208,6 +421,9 @@ def _build_send_message_response(
         session.tool_memory,
         result.tool_traces,
     )
+    session.last_response_id = result.response_id or session.last_response_id
+    if isinstance(result.skill_state, dict):
+        session.skill_state = dict(result.skill_state)
     session.updated_at = time.time()
 
     suggestions = mediator.suggest_tools(
@@ -245,6 +461,9 @@ def _build_send_message_response(
             "model": result.model,
             "tool_trace_count": len(response.tool_traces),
             "tool_traces": [trace.model_dump() for trace in response.tool_traces],
+            "last_response_id": session.last_response_id,
+            "skill_state": session.skill_state,
+            "context_metrics": getattr(result, "context_metrics", {}),
         },
     )
     return response
@@ -279,6 +498,29 @@ def _cleanup_finished_runs(max_age_seconds: float = 3_600.0) -> None:
             to_delete.append(run_id)
         for run_id in to_delete:
             _runs.pop(run_id, None)
+
+
+def _normalize_running_run_state(run: AgentRun) -> AgentRun:
+    """Repair stale running runs when their task is already done."""
+    if run.status != "running":
+        return run
+    task = run.task
+    if task is None or not task.done():
+        return run
+
+    run.status = "failed"
+    run.error = "Run task ended unexpectedly"
+    run.updated_at = time.time()
+    if task.cancelled():
+        run.error = "Cancelled"
+    else:
+        try:
+            exc = task.exception()
+        except Exception as task_error:
+            exc = task_error
+        if exc is not None:
+            run.error = f"Run task failed: {exc}"
+    return run
 
 
 async def _run_turn_in_background(
@@ -326,6 +568,8 @@ async def _run_turn_in_background(
             history=list(session.history),
             user_message=run.message,
             selected_targets=run.selected_targets,
+            previous_response_id=session.last_response_id,
+            tool_memory=session.tool_memory,
             progress_callback=emit_progress,
         )
     except asyncio.CancelledError:
@@ -339,6 +583,7 @@ async def _run_turn_in_background(
             current = _sessions.get(session_id)
             if current and current.active_run_id == run_id:
                 current.active_run_id = None
+        _persist_sessions_state()
         return
     except Exception as exc:
         await emit_progress({"phase": "error", "error": str(exc)})
@@ -352,6 +597,7 @@ async def _run_turn_in_background(
             current = _sessions.get(session_id)
             if current and current.active_run_id == run_id:
                 current.active_run_id = None
+        _persist_sessions_state()
         _log_session_event(
             "run_failed",
             {
@@ -397,6 +643,7 @@ async def _run_turn_in_background(
         )
         if active_session.active_run_id == run_id:
             active_session.active_run_id = None
+    _persist_sessions_state()
 
     with _runs_lock:
         completed = _runs.get(run_id)
@@ -434,6 +681,7 @@ async def create_session(
 
     with _sessions_lock:
         _sessions[session_id] = session
+    _persist_sessions_state()
     _log_session_event(
         "session_created",
         {
@@ -472,11 +720,20 @@ async def send_message(
 
     with _runs_lock:
         active_run = _runs.get(session.active_run_id or "")
+        if active_run:
+            active_run = _normalize_running_run_state(active_run)
         if active_run and active_run.status == "running":
             raise HTTPException(
                 status_code=409,
-                detail="Another agent run is already active for this session.",
+                detail=(
+                    "Another agent run is already active for this session "
+                    f"(run_id={active_run.run_id})."
+                ),
             )
+    if session.active_run_id and (
+        active_run is None or active_run.status != "running"
+    ):
+        session.active_run_id = None
 
     if session.project_root != request.project_root:
         # Keep scope strict per selected project.
@@ -493,6 +750,10 @@ async def send_message(
         session.history = []
         session.tool_memory = {}
         session.active_run_id = None
+        session.last_response_id = None
+        session.conversation_id = None
+        session.skill_state = {}
+        _persist_sessions_state()
 
     session.recent_selected_targets = list(request.selected_targets)
     run_id = uuid.uuid4().hex
@@ -523,6 +784,8 @@ async def send_message(
             history=list(session.history),
             user_message=request.message,
             selected_targets=request.selected_targets,
+            previous_response_id=session.last_response_id,
+            tool_memory=session.tool_memory,
             progress_callback=emit_progress,
         )
     except Exception as exc:
@@ -544,13 +807,15 @@ async def send_message(
         )
         raise HTTPException(status_code=500, detail=str(exc))
 
-    return _build_send_message_response(
+    response = _build_send_message_response(
         session=session,
         user_message=request.message,
         result=result,
         mode="sync",
         run_id=run_id,
     )
+    _persist_sessions_state()
+    return response
 
 
 @router.post("/session/{session_id}/message", response_model=SendMessageResponse)
@@ -592,14 +857,27 @@ async def create_run(
         session.history = []
         session.tool_memory = {}
         session.active_run_id = None
+        session.last_response_id = None
+        session.conversation_id = None
+        session.skill_state = {}
+        _persist_sessions_state()
 
     with _runs_lock:
         active_run = _runs.get(session.active_run_id or "")
+        if active_run:
+            active_run = _normalize_running_run_state(active_run)
         if active_run and active_run.status == "running":
             raise HTTPException(
                 status_code=409,
-                detail="Another agent run is already active for this session.",
+                detail=(
+                    "Another agent run is already active for this session "
+                    f"(run_id={active_run.run_id})."
+                ),
             )
+    if session.active_run_id and (
+        active_run is None or active_run.status != "running"
+    ):
+        session.active_run_id = None
 
     run_id = uuid.uuid4().hex
     run = AgentRun(
@@ -618,6 +896,7 @@ async def create_run(
         if current:
             current.recent_selected_targets = list(request.selected_targets)
             current.active_run_id = run_id
+    _persist_sessions_state()
     _log_session_event(
         "run_created",
         {
@@ -688,6 +967,7 @@ async def cancel_run(
         session = _sessions.get(session_id)
         if session and session.active_run_id == run_id:
             session.active_run_id = None
+    _persist_sessions_state()
 
     if task and not task.done():
         task.cancel()
@@ -789,4 +1069,51 @@ async def get_tool_suggestions(
     return ToolSuggestionsResponse(
         suggestions=suggestions,
         toolMemory=memory_view,
+    )
+
+
+@router.get(
+    "/sessions/{session_id}/skills",
+    response_model=SessionSkillsResponse,
+)
+async def get_session_skills(
+    session_id: str,
+):
+    with _sessions_lock:
+        session = _sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+
+    skills_dir = _orchestrator.skills_dir
+    docs = skills_domain.load_skill_docs(
+        skills_dir=skills_dir,
+        ttl_s=_orchestrator.skill_index_ttl_s,
+    )
+    state = dict(session.skill_state)
+    return SessionSkillsResponse(
+        sessionId=session.session_id,
+        projectRoot=session.project_root,
+        skillsDir=str(skills_dir),
+        selectedSkillIds=[
+            str(value)
+            for value in state.get("selected_skill_ids", [])
+            if isinstance(value, str)
+        ],
+        selectedSkills=[
+            item
+            for item in state.get("selected_skills", [])
+            if isinstance(item, dict)
+        ],
+        reasoning=[
+            str(value)
+            for value in state.get("reasoning", [])
+            if isinstance(value, str)
+        ],
+        totalChars=int(state.get("total_chars", 0) or 0),
+        generatedAt=(
+            float(state["generated_at"])
+            if isinstance(state.get("generated_at"), (int, float))
+            else None
+        ),
+        loadedSkillsCount=len(docs),
     )

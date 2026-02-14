@@ -167,6 +167,79 @@ def resolve_scoped_path(project_root: Path, path: str) -> Path:
     return candidate
 
 
+def _package_path_aliases(path: str) -> list[str]:
+    """Return compatible package path aliases for historical layouts."""
+    raw = Path(path)
+    parts = raw.parts
+    aliases: list[str] = []
+
+    if len(parts) >= 3 and parts[0] == ".ato" and parts[1] in {"deps", "packages"}:
+        aliases.append(str(Path(".ato", "modules", *parts[2:])))
+
+    # Let callers pass package-relative paths directly.
+    if parts and parts[0] != ".ato":
+        aliases.append(str(Path(".ato", "modules", *parts)))
+
+    deduped: list[str] = []
+    for alias in aliases:
+        if alias != path and alias not in deduped:
+            deduped.append(alias)
+    return deduped
+
+
+def _resolve_readable_file_path(
+    project_root: Path,
+    path: str,
+) -> tuple[Path, str]:
+    """Resolve a readable in-scope file path with package-path compatibility."""
+    candidates = [path, *_package_path_aliases(path)]
+    resolved_attempts: list[tuple[str, Path]] = []
+    for candidate_path in candidates:
+        candidate = resolve_scoped_path(project_root, candidate_path)
+        resolved_attempts.append((candidate_path, candidate))
+        if candidate.exists() and candidate.is_file():
+            return candidate, candidate_path
+
+    # If the parent folder exists and contains one .ato file, treat that as
+    # the package entry file. This handles stale guesses like `sht45.ato` vs
+    # `sensirion-sht45.ato`.
+    for candidate_path, candidate in resolved_attempts:
+        parent = candidate.parent
+        if candidate.suffix.lower() != ".ato":
+            continue
+        if not parent.exists() or not parent.is_dir():
+            continue
+        ato_files = sorted(p for p in parent.glob("*.ato") if p.is_file())
+        if len(ato_files) == 1:
+            return ato_files[0], candidate_path
+
+    suggestion_candidates: list[str] = []
+    for candidate_path, candidate in resolved_attempts:
+        if candidate_path != path:
+            suggestion_candidates.append(candidate_path)
+
+        parent = candidate.parent
+        if parent.exists() and parent.is_dir():
+            for ato_file in sorted(parent.glob("*.ato"))[:3]:
+                if not ato_file.is_file():
+                    continue
+                rel = str(ato_file.relative_to(project_root))
+                suggestion_candidates.append(rel)
+
+    seen: set[str] = set()
+    suggestions: list[str] = []
+    for suggestion in suggestion_candidates:
+        if suggestion in seen:
+            continue
+        seen.add(suggestion)
+        suggestions.append(suggestion)
+
+    if suggestions:
+        hint = ", ".join(suggestions[:4])
+        raise ScopeError(f"File does not exist: {path}. Try: {hint}")
+    raise ScopeError(f"File does not exist: {path}")
+
+
 def _is_excluded(path: Path, project_root: Path) -> bool:
     try:
         rel = path.relative_to(project_root)
@@ -260,9 +333,7 @@ def read_file_chunk(
     if max_lines < 1:
         raise ScopeError("max_lines must be >= 1")
 
-    file_path = resolve_scoped_path(project_root, path)
-    if not file_path.exists() or not file_path.is_file():
-        raise ScopeError(f"File does not exist: {path}")
+    file_path, resolved_input = _resolve_readable_file_path(project_root, path)
 
     data = file_path.read_text(encoding="utf-8")
     lines = _normalize_newlines(data).splitlines()
@@ -271,13 +342,16 @@ def read_file_chunk(
 
     chunk_lines = lines[start_idx:end_idx]
     chunk = format_hashline_content(chunk_lines, start_line=start_line)
-    return {
+    response: dict[str, str | int] = {
         "path": str(file_path.relative_to(project_root)),
         "start_line": start_line,
         "end_line": end_idx,
         "total_lines": len(lines),
         "content": chunk,
     }
+    if resolved_input != path:
+        response["resolved_from"] = resolved_input
+    return response
 
 
 def read_datasheet_file(

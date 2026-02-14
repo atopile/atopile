@@ -10,9 +10,11 @@ from openai import APIStatusError
 from atopile.server.agent.orchestrator import (
     AgentOrchestrator,
     _build_function_call_outputs_for_model,
+    _build_prompt_cache_key,
     _build_session_primer,
     _extract_retry_after_delay_s,
     _sanitize_tool_output_for_model,
+    _trim_user_message,
 )
 
 
@@ -182,3 +184,84 @@ def test_responses_create_retries_on_429(monkeypatch) -> None:
     assert result["id"] == "resp_ok"
     assert stub_client.responses.calls == 2
     assert sleep_calls == [0.25]
+
+
+def test_responses_create_compacts_and_retries_on_context_overflow() -> None:
+    orchestrator = AgentOrchestrator()
+    telemetry: dict[str, object] = {"api_retry_count": 0, "compaction_events": []}
+
+    class StubResponses:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.last_previous_response_id: str | None = None
+            self.compact_calls = 0
+
+        async def create(self, **kwargs: object) -> dict:
+            self.calls += 1
+            self.last_previous_response_id = str(kwargs.get("previous_response_id"))
+            if self.calls == 1:
+                raise _make_api_status_error(
+                    status_code=400,
+                    body={
+                        "error": {
+                            "message": "input exceeds context window",
+                            "code": "context_length_exceeded",
+                        }
+                    },
+                )
+            return {"id": "resp_ok", "output": [], "output_text": "ok"}
+
+        async def compact(self, **_: object) -> dict:
+            self.compact_calls += 1
+            return {"id": "resp_compact", "output": []}
+
+    class StubClient:
+        def __init__(self) -> None:
+            self.responses = StubResponses()
+
+    stub_client = StubClient()
+    orchestrator._client = stub_client  # type: ignore[assignment]
+    result = asyncio.run(
+        orchestrator._responses_create(
+            {
+                "model": "gpt-5-codex",
+                "previous_response_id": "resp_old",
+                "input": [{"role": "user", "content": "hello"}],
+            },
+            telemetry=telemetry,
+        )
+    )
+
+    assert result["id"] == "resp_ok"
+    assert stub_client.responses.calls == 2
+    assert stub_client.responses.compact_calls == 1
+    assert stub_client.responses.last_previous_response_id == "resp_compact"
+    events = telemetry.get("compaction_events")
+    assert isinstance(events, list)
+    assert len(events) == 1
+
+
+def test_prompt_cache_key_is_stable_for_same_inputs() -> None:
+    key_a = _build_prompt_cache_key(
+        project_path=Path("/tmp/demo"),
+        tool_defs=[{"name": "project_read_file"}, {"name": "build_run"}],
+        skill_state={"selected_skill_ids": ["dev", "domain-layer"]},
+        model="gpt-5-codex",
+    )
+    key_b = _build_prompt_cache_key(
+        project_path=Path("/tmp/demo"),
+        tool_defs=[{"name": "build_run"}, {"name": "project_read_file"}],
+        skill_state={"selected_skill_ids": ["dev", "domain-layer"]},
+        model="gpt-5-codex",
+    )
+    assert key_a == key_b
+    assert key_a.startswith("atopile-agent:")
+
+
+def test_trim_user_message_preserves_head_and_tail() -> None:
+    message = "A" * 120 + "B" * 120
+    trimmed = _trim_user_message(message, max_chars=120)
+    assert len(trimmed) <= 150
+    assert "truncated" in trimmed.lower()
+    assert trimmed.startswith("A")
+    assert trimmed.endswith("B")

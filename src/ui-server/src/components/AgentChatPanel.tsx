@@ -15,6 +15,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
+  AgentApiError,
   agentApi,
   type AgentToolTrace,
 } from '../api/agent';
@@ -164,6 +165,121 @@ const TRACE_OUTPUT_PREFERRED_KEYS = [
 ];
 const TRACE_RESULT_EXCLUDED_KEYS = new Set<string>(['_ui']);
 const TOOL_TRACE_PREVIEW_COUNT = 5;
+const CHAT_SNAPSHOTS_STORAGE_KEY = 'atopile.agentChatSnapshots.v1';
+const ACTIVE_CHAT_STORAGE_KEY = 'atopile.agentActiveChatByProject.v1';
+const MAX_PERSISTED_CHATS = 48;
+const MAX_PERSISTED_MESSAGES_PER_CHAT = 120;
+const MAX_PERSISTED_MESSAGE_CHARS = 12_000;
+const MAX_PERSISTED_INPUT_CHARS = 4_000;
+
+function isSessionNotFoundError(error: unknown): boolean {
+  return error instanceof AgentApiError
+    && error.status === 404
+    && error.message.includes('Session not found:');
+}
+
+function isValidMessageRole(value: unknown): value is MessageRole {
+  return value === 'user' || value === 'assistant' || value === 'system';
+}
+
+function normalizeMessageForPersistence(value: unknown): AgentMessage | null {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as Partial<AgentMessage>;
+  if (!isValidMessageRole(candidate.role)) return null;
+  if (typeof candidate.id !== 'string' || !candidate.id) return null;
+  if (typeof candidate.content !== 'string') return null;
+  const content = candidate.content.length > MAX_PERSISTED_MESSAGE_CHARS
+    ? `${candidate.content.slice(0, MAX_PERSISTED_MESSAGE_CHARS)}...`
+    : candidate.content;
+  return {
+    id: candidate.id,
+    role: candidate.role,
+    content,
+  };
+}
+
+function normalizeSnapshotForPersistence(value: unknown): AgentChatSnapshot | null {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as Partial<AgentChatSnapshot>;
+  if (typeof candidate.id !== 'string' || !candidate.id) return null;
+  if (typeof candidate.projectRoot !== 'string' || !candidate.projectRoot) return null;
+
+  const rawMessages = Array.isArray(candidate.messages) ? candidate.messages : [];
+  const messages = rawMessages
+    .map((message) => normalizeMessageForPersistence(message))
+    .filter((message): message is AgentMessage => Boolean(message))
+    .slice(-MAX_PERSISTED_MESSAGES_PER_CHAT);
+
+  const createdAt = typeof candidate.createdAt === 'number' && Number.isFinite(candidate.createdAt)
+    ? candidate.createdAt
+    : Date.now();
+  const updatedAt = typeof candidate.updatedAt === 'number' && Number.isFinite(candidate.updatedAt)
+    ? candidate.updatedAt
+    : createdAt;
+
+  const input = typeof candidate.input === 'string'
+    ? candidate.input.slice(0, MAX_PERSISTED_INPUT_CHARS)
+    : '';
+  const title = typeof candidate.title === 'string' && candidate.title.trim()
+    ? candidate.title
+    : deriveChatTitle(messages);
+
+  const resumedWithSession = typeof candidate.sessionId === 'string' && candidate.sessionId.length > 0;
+  return {
+    id: candidate.id,
+    projectRoot: candidate.projectRoot,
+    title: title || DEFAULT_CHAT_TITLE,
+    sessionId: resumedWithSession ? String(candidate.sessionId) : null,
+    isSessionLoading: false,
+    isSending: false,
+    isStopping: false,
+    activeRunId: null,
+    pendingRunId: null,
+    pendingAssistantId: null,
+    cancelRequested: false,
+    activityElapsedSeconds: 0,
+    messages,
+    input,
+    error: typeof candidate.error === 'string' ? candidate.error : null,
+    activityLabel: resumedWithSession ? 'Ready' : 'Idle',
+    createdAt,
+    updatedAt,
+  };
+}
+
+function parseStoredSnapshots(raw: string | null): AgentChatSnapshot[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as { chats?: unknown };
+    const rawChats = Array.isArray(parsed?.chats) ? parsed.chats : [];
+    const chats = rawChats
+      .map((chat) => normalizeSnapshotForPersistence(chat))
+      .filter((chat): chat is AgentChatSnapshot => Boolean(chat))
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .slice(0, MAX_PERSISTED_CHATS);
+    return chats;
+  } catch {
+    return [];
+  }
+}
+
+function parseStoredActiveChats(raw: string | null): Record<string, string> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    const entries = Object.entries(parsed as Record<string, unknown>);
+    const out: Record<string, string> = {};
+    for (const [project, chatId] of entries) {
+      if (typeof project !== 'string' || !project) continue;
+      if (typeof chatId !== 'string' || !chatId) continue;
+      out[project] = chatId;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 interface TraceDetailsSummary {
   statusText: string;
@@ -1147,6 +1263,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     return Math.max(320, Math.min(520, maxHeight));
   }, []);
   const [chatSnapshots, setChatSnapshots] = useState<AgentChatSnapshot[]>([]);
+  const [isSnapshotsHydrated, setIsSnapshotsHydrated] = useState(false);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [isChatsPanelOpen, setIsChatsPanelOpen] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -1171,6 +1288,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   const chatsPanelToggleRef = useRef<HTMLButtonElement | null>(null);
   const chatSnapshotsRef = useRef<AgentChatSnapshot[]>([]);
   const activeChatIdRef = useRef<string | null>(null);
+  const activeChatByProjectRef = useRef<Record<string, string>>({});
   const activityStartedAtRef = useRef<number | null>(null);
   const resizeStartRef = useRef<{ y: number; height: number } | null>(null);
   const [mentionToken, setMentionToken] = useState<MentionToken | null>(null);
@@ -1195,18 +1313,10 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     if (!activeChatId || !projectRoot) return null;
     return chatSnapshots.find((chat) => chat.id === activeChatId && chat.projectRoot === projectRoot) ?? null;
   }, [activeChatId, chatSnapshots, projectRoot]);
-  const chatTabs = useMemo(() => {
-    if (projectChats.length <= 4) return projectChats;
-    if (!activeChatSnapshot) return projectChats.slice(0, 4);
-    const top = projectChats.slice(0, 4);
-    if (top.some((chat) => chat.id === activeChatSnapshot.id)) {
-      return top;
-    }
-    return [activeChatSnapshot, ...top.slice(0, 3)];
-  }, [activeChatSnapshot, projectChats]);
   const isReady = Boolean(projectRoot && sessionId && !isSessionLoading);
   const isWorking = isSending || isStopping;
   const headerTitle = useMemo(() => shortProjectName(projectRoot), [projectRoot]);
+  const activeChatTitle = activeChatSnapshot?.title ?? DEFAULT_CHAT_TITLE;
   const projectFiles = useMemo(() => flattenFileNodes(projectFileNodes), [projectFileNodes]);
   const changedFilesSummary = useMemo(() => collectChangedFilesSummary(messages), [messages]);
   const projectQueuedBuilds = useMemo(() => {
@@ -1245,6 +1355,95 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
   }, [activeChatId]);
+
+  useEffect(() => {
+    if (!isSnapshotsHydrated || !projectRoot || !activeChatId) return;
+    const activeSnapshot = chatSnapshotsRef.current.find((chat) => chat.id === activeChatId);
+    if (!activeSnapshot || activeSnapshot.projectRoot !== projectRoot) return;
+    activeChatByProjectRef.current = {
+      ...activeChatByProjectRef.current,
+      [projectRoot]: activeChatId,
+    };
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(
+        ACTIVE_CHAT_STORAGE_KEY,
+        JSON.stringify(activeChatByProjectRef.current),
+      );
+    } catch {
+      // Ignore storage failures; active chat defaults to most recent.
+    }
+  }, [activeChatId, isSnapshotsHydrated, projectRoot]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      setIsSnapshotsHydrated(true);
+      return;
+    }
+    const restoredChats = parseStoredSnapshots(
+      window.localStorage.getItem(CHAT_SNAPSHOTS_STORAGE_KEY),
+    );
+    const restoredActiveByProject = parseStoredActiveChats(
+      window.localStorage.getItem(ACTIVE_CHAT_STORAGE_KEY),
+    );
+    setChatSnapshots(restoredChats);
+    activeChatByProjectRef.current = restoredActiveByProject;
+    setIsSnapshotsHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isSnapshotsHydrated || typeof window === 'undefined') return;
+
+    const persistedChats = chatSnapshots
+      .map((chat) => normalizeSnapshotForPersistence(chat))
+      .filter((chat): chat is AgentChatSnapshot => Boolean(chat))
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .slice(0, MAX_PERSISTED_CHATS);
+    const payload = {
+      version: 1,
+      chats: persistedChats,
+    };
+
+    try {
+      window.localStorage.setItem(
+        CHAT_SNAPSHOTS_STORAGE_KEY,
+        JSON.stringify(payload),
+      );
+    } catch {
+      const trimmedPayload = {
+        version: 1,
+        chats: persistedChats.slice(0, 16).map((chat) => ({
+          ...chat,
+          messages: chat.messages.slice(-40),
+        })),
+      };
+      try {
+        window.localStorage.setItem(
+          CHAT_SNAPSHOTS_STORAGE_KEY,
+          JSON.stringify(trimmedPayload),
+        );
+      } catch {
+        // Ignore storage failures; chat remains fully functional in-memory.
+      }
+    }
+
+    const activeMap = { ...activeChatByProjectRef.current };
+    const validProjectRoots = new Set(persistedChats.map((chat) => chat.projectRoot));
+    Object.keys(activeMap).forEach((root) => {
+      if (!validProjectRoots.has(root)) {
+        delete activeMap[root];
+      }
+    });
+    activeChatByProjectRef.current = activeMap;
+    try {
+      window.localStorage.setItem(
+        ACTIVE_CHAT_STORAGE_KEY,
+        JSON.stringify(activeMap),
+      );
+    } catch {
+      // Ignore storage failures; active chat defaults to most recent.
+    }
+  }, [chatSnapshots, isSnapshotsHydrated]);
 
   const resetChatUiState = useCallback(() => {
     setMentionToken(null);
@@ -1879,6 +2078,9 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
       resetChatUiState();
       return;
     }
+    if (!isSnapshotsHydrated) {
+      return;
+    }
 
     const chatsForProject = chatSnapshotsRef.current
       .filter((chat) => chat.projectRoot === projectRoot)
@@ -1891,31 +2093,68 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     const currentChat = activeChatId
       ? chatsForProject.find((chat) => chat.id === activeChatId) ?? null
       : null;
-    const target = currentChat ?? chatsForProject[0];
+    const preferredChatId = activeChatByProjectRef.current[projectRoot];
+    const preferredChat = preferredChatId
+      ? chatsForProject.find((chat) => chat.id === preferredChatId) ?? null
+      : null;
+    const target = currentChat ?? preferredChat ?? chatsForProject[0];
     if (activeChatId !== target.id) {
       setActiveChatId(target.id);
     }
     loadSnapshotIntoView(target);
-  }, [activeChatId, createAndActivateChat, loadSnapshotIntoView, projectRoot, resetChatUiState]);
+  }, [
+    activeChatId,
+    createAndActivateChat,
+    isSnapshotsHydrated,
+    loadSnapshotIntoView,
+    projectRoot,
+    resetChatUiState,
+  ]);
 
   const waitForRunCompletion = useCallback(async (currentSessionId: string, runId: string) => {
-    const timeoutAt = Date.now() + 10 * 60 * 1000;
-    while (Date.now() < timeoutAt) {
-      const runStatus = await agentApi.getRunStatus(currentSessionId, runId);
-      if (runStatus.status === 'completed' && runStatus.response) {
-        return runStatus.response;
+    const startedAt = Date.now();
+    const hardTimeoutMs = 2 * 60 * 60 * 1000;
+    let pollErrorCount = 0;
+
+    while ((Date.now() - startedAt) < hardTimeoutMs) {
+      try {
+        const runStatus = await agentApi.getRunStatus(currentSessionId, runId);
+        pollErrorCount = 0;
+        if (runStatus.status === 'completed' && runStatus.response) {
+          return runStatus.response;
+        }
+        if (runStatus.status === 'cancelled') {
+          throw new Error(`${RUN_CANCELLED_MARKER}:${runStatus.error ?? 'Cancelled'}`);
+        }
+        if (runStatus.status === 'failed') {
+          throw new Error(runStatus.error ?? 'Agent run failed.');
+        }
+      } catch (pollError: unknown) {
+        pollErrorCount += 1;
+        if (pollError instanceof Error && pollError.message.startsWith(RUN_CANCELLED_MARKER)) {
+          throw pollError;
+        }
+        if (pollErrorCount >= 20) {
+          const message = pollError instanceof Error
+            ? pollError.message
+            : 'Unable to poll agent run status.';
+          throw new Error(
+            `Lost contact while waiting for the active run. ${message}`,
+          );
+        }
       }
-      if (runStatus.status === 'cancelled') {
-        throw new Error(`${RUN_CANCELLED_MARKER}:${runStatus.error ?? 'Cancelled'}`);
-      }
-      if (runStatus.status === 'failed') {
-        throw new Error(runStatus.error ?? 'Agent run failed.');
-      }
+
+      const delayMs = pollErrorCount > 0
+        ? Math.min(2500, 350 * (2 ** Math.min(5, pollErrorCount - 1)))
+        : 350;
       await new Promise<void>((resolve) => {
-        window.setTimeout(() => resolve(), 350);
+        window.setTimeout(() => resolve(), delayMs);
       });
     }
-    throw new Error('Timed out waiting for agent run completion.');
+
+    throw new Error(
+      'Agent run is still in progress after a long wait. Stop it or keep waiting.',
+    );
   }, []);
 
   const openFileDiff = useCallback((file: AgentChangedFile) => {
@@ -2090,11 +2329,40 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     setActivityLabel('Planning');
 
     try {
-      const run = await agentApi.createRun(sessionId, {
-        message: trimmed,
-        projectRoot,
-        selectedTargets,
-      });
+      let currentSessionId = sessionId;
+      let run: { runId: string; status: string };
+      try {
+        run = await agentApi.createRun(currentSessionId, {
+          message: trimmed,
+          projectRoot,
+          selectedTargets,
+        });
+      } catch (runStartError: unknown) {
+        if (!isSessionNotFoundError(runStartError)) {
+          throw runStartError;
+        }
+        const recoveredSession = await agentApi.createSession(projectRoot);
+        currentSessionId = recoveredSession.sessionId;
+        const recoveredNotice: AgentMessage = {
+          id: `${chatPrefix}-session-recovered-${Date.now()}`,
+          role: 'system',
+          content: 'Previous agent session expired. Reconnected with a new session and retrying.',
+        };
+        updateChatSnapshot(chatId, (chat) => ({
+          ...chat,
+          sessionId: currentSessionId,
+          messages: [...chat.messages, recoveredNotice],
+        }));
+        if (activeChatIdRef.current === chatId) {
+          setSessionId(currentSessionId);
+          setMessages((previous) => [...previous, recoveredNotice]);
+        }
+        run = await agentApi.createRun(currentSessionId, {
+          message: trimmed,
+          projectRoot,
+          selectedTargets,
+        });
+      }
       updateChatSnapshot(chatId, (chat) => ({
         ...chat,
         pendingRunId: run.runId,
@@ -2106,9 +2374,9 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
         if (activeChatIdRef.current === chatId) {
           setIsStopping(true);
         }
-        await agentApi.cancelRun(sessionId, run.runId);
+        await agentApi.cancelRun(currentSessionId, run.runId);
       }
-      const response = await waitForRunCompletion(sessionId, run.runId);
+      const response = await waitForRunCompletion(currentSessionId, run.runId);
       const finalizedTraces = response.toolTraces.map((trace) => ({ ...trace, running: false }));
 
       const assistantMessage: AgentMessage = {
@@ -2213,6 +2481,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
       : isReady
         ? 'Ready'
         : 'Idle';
+  const showStatusText = isSessionLoading || isWorking;
 
   return (
     <div className={`agent-chat-dock ${isMinimized ? 'minimized' : ''}`} style={{ height: `${isMinimized ? minimizedDockHeight : dockHeight}px`, maxHeight: '88vh' }}>
@@ -2226,466 +2495,469 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
         />
       )}
       <div className="agent-chat-header">
-        <div className="agent-chat-title">
-          <span className="agent-title-label">Agent</span>
-          <span className="agent-title-project">{headerTitle}</span>
+        <div className="agent-chat-header-main">
+          <button
+            ref={chatsPanelToggleRef}
+            type="button"
+            className={`agent-chat-nav-toggle ${isChatsPanelOpen ? 'active' : ''}`}
+            onClick={() => setIsChatsPanelOpen((current) => !current)}
+            disabled={!projectRoot}
+            title="Show chat history for this project"
+            aria-label="Toggle chat history panel"
+          >
+            <MessageSquareText size={13} />
+          </button>
+          <div className="agent-chat-title">
+            <div className="agent-chat-title-row">
+              <span className="agent-title-project">{headerTitle}</span>
+            </div>
+            <div className="agent-chat-thread-row">
+              <span className="agent-chat-thread-title" title={activeChatTitle}>
+                {activeChatTitle}
+              </span>
+              <span
+                className={`agent-chat-thread-status ${statusClass}`}
+                aria-label={`Status: ${statusText}`}
+                title={`Status: ${statusText}`}
+              >
+                {(isSessionLoading || isWorking) && <Loader2 size={10} className="agent-tool-spin" />}
+                <span className="agent-chat-thread-dot" />
+                {showStatusText && <span className="agent-chat-thread-status-text">{statusText}</span>}
+              </span>
+            </div>
+          </div>
         </div>
-        <div className="agent-chat-header-right">
-          <span className={`agent-status-pill ${statusClass}`}>
-            {(isSessionLoading || isWorking) && <Loader2 size={10} className="agent-tool-spin" />}
-            {statusText}
-          </span>
-          <div className="agent-chat-actions">
+        <div className="agent-chat-actions">
+          <button
+            type="button"
+            className="agent-chat-action icon-only"
+            onClick={startNewChat}
+            disabled={!projectRoot}
+            title="Start a new chat session"
+            aria-label="Start a new chat session"
+          >
+            <Plus size={12} />
+          </button>
+          <button
+            type="button"
+            className="agent-chat-action icon-only"
+            onClick={toggleMinimized}
+            title={isMinimized ? 'Expand agent panel' : 'Minimize agent panel'}
+            aria-label={isMinimized ? 'Expand agent panel' : 'Minimize agent panel'}
+          >
+            {isMinimized ? <Maximize2 size={12} /> : <Minimize2 size={12} />}
+          </button>
+        </div>
+      </div>
+
+      {!isMinimized && (
+        <div className={`agent-chat-shell ${isChatsPanelOpen ? 'chats-open' : ''}`}>
+          <aside className={`agent-chat-history-drawer ${isChatsPanelOpen ? 'open' : ''}`} ref={chatsPanelRef}>
+            <div className="agent-chat-history-head">
+              <span className="agent-chat-history-title">
+                {shortProjectName(projectRoot)} chats
+              </span>
+              <button
+                type="button"
+                className="agent-chat-history-close"
+                onClick={() => setIsChatsPanelOpen(false)}
+                aria-label="Close chat history"
+              >
+                <X size={12} />
+              </button>
+            </div>
             <button
               type="button"
-              className="agent-chat-action"
+              className="agent-chat-history-new"
               onClick={startNewChat}
               disabled={!projectRoot}
-              title="Start a new chat session"
             >
               <Plus size={12} />
               <span>New chat</span>
             </button>
-            <button
-              ref={chatsPanelToggleRef}
-              type="button"
-              className="agent-chat-action"
-              onClick={() => setIsChatsPanelOpen((current) => !current)}
-              disabled={!projectRoot}
-              title="Show chat history for this project"
-            >
-              <MessageSquareText size={12} />
-              <span>Chats</span>
-            </button>
-            <button
-              type="button"
-              className="agent-chat-action icon-only"
-              onClick={toggleMinimized}
-              title={isMinimized ? 'Expand agent panel' : 'Minimize agent panel'}
-              aria-label={isMinimized ? 'Expand agent panel' : 'Minimize agent panel'}
-            >
-              {isMinimized ? <Maximize2 size={12} /> : <Minimize2 size={12} />}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {!isMinimized && projectRoot && projectChats.length > 0 && (
-        <div className="agent-chat-tabs-bar">
-          <div className="agent-chat-tabs" role="tablist" aria-label="Project chats">
-            {chatTabs.map((chat) => (
-              <button
-                key={chat.id}
-                type="button"
-                role="tab"
-                aria-selected={chat.id === activeChatId}
-                className={`agent-chat-tab ${chat.id === activeChatId ? 'active' : ''}`}
-                onClick={() => activateChat(chat.id)}
-                title={chat.title}
-              >
-                <span className="agent-chat-tab-label">{chat.title}</span>
-              </button>
-            ))}
-          </div>
-          {projectChats.length > chatTabs.length && (
-            <span className="agent-chat-tabs-overflow">+{projectChats.length - chatTabs.length}</span>
-          )}
-        </div>
-      )}
-
-      {!isMinimized && isChatsPanelOpen && (
-        <div className="agent-chat-history-popover" ref={chatsPanelRef}>
-          <div className="agent-chat-history-head">
-            <span className="agent-chat-history-title">
-              {shortProjectName(projectRoot)} chats
-            </span>
-            <button
-              type="button"
-              className="agent-chat-history-close"
-              onClick={() => setIsChatsPanelOpen(false)}
-              aria-label="Close chat history"
-            >
-              <X size={12} />
-            </button>
-          </div>
-          <div className="agent-chat-history-list">
-            {projectChats.map((chat) => (
-              <button
-                key={`history-${chat.id}`}
-                type="button"
-                className={`agent-chat-history-item ${chat.id === activeChatId ? 'active' : ''}`}
-                onClick={() => activateChat(chat.id)}
-              >
-                <span className="agent-chat-history-item-title">{chat.title}</span>
-                <span className="agent-chat-history-item-preview">{summarizeChatPreview(chat.messages)}</span>
-                <span className="agent-chat-history-item-time">{formatChatTimestamp(chat.updatedAt)}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {!isMinimized && (
-        <>
-      <div className="agent-chat-messages" ref={messagesRef}>
-        {messages.map((message) => {
-          const allTraceEntries = (message.toolTraces ?? []).map((trace, index) => ({ trace, index }));
-          const hasToolTraces = allTraceEntries.length > 0;
-          const canCollapseToolGroup = allTraceEntries.length > TOOL_TRACE_PREVIEW_COUNT;
-          const isToolGroupExpanded = !canCollapseToolGroup || expandedTraceGroups.has(message.id);
-          const visibleTraceEntries = isToolGroupExpanded
-            ? allTraceEntries
-            : allTraceEntries.slice(-TOOL_TRACE_PREVIEW_COUNT);
-          const hiddenTraceCount = Math.max(0, allTraceEntries.length - visibleTraceEntries.length);
-
-          const toolTraceSection = hasToolTraces ? (
-            <div className={`agent-tool-group ${isToolGroupExpanded ? 'expanded' : 'collapsed'}`}>
-              <button
-                type="button"
-                className={`agent-tool-group-toggle ${canCollapseToolGroup ? 'collapsible' : 'static'}`}
-                onClick={() => {
-                  if (canCollapseToolGroup) {
-                    toggleTraceGroupExpanded(message.id);
-                  }
-                }}
-                disabled={!canCollapseToolGroup}
-                aria-expanded={isToolGroupExpanded}
-              >
-                <ChevronDown
-                  size={11}
-                  className={`agent-tool-group-chevron ${isToolGroupExpanded ? 'open' : ''} ${!canCollapseToolGroup ? 'hidden' : ''}`}
-                />
-                <span className="agent-tool-group-title">Tool use</span>
-                <span className="agent-tool-group-summary">{summarizeToolTraceGroup(allTraceEntries.map((entry) => entry.trace))}</span>
-                {canCollapseToolGroup && (
-                  <span className="agent-tool-group-count">
-                    {isToolGroupExpanded
-                      ? `show latest ${TOOL_TRACE_PREVIEW_COUNT}`
-                      : `show all ${allTraceEntries.length}`}
-                  </span>
-                )}
-              </button>
-              <div className="agent-tool-traces">
-                {visibleTraceEntries.map(({ trace, index }) => {
-                  const currentTraceKey = traceExpansionKey(message.id, trace, index);
-                  const expanded = expandedTraceKeys.has(currentTraceKey);
-                  const details = summarizeTraceDetails(trace);
-                  const traceDiff = readTraceDiff(trace);
-
-                  return (
-                    <div
-                      key={`${message.id}-trace-${trace.callId ?? index}`}
-                      className={`agent-tool-trace ${trace.running ? 'running' : trace.ok ? 'ok' : 'error'} ${expanded ? 'expanded' : ''}`}
-                    >
-                      <div className="agent-tool-trace-head">
-                        <button
-                          type="button"
-                          className="agent-tool-trace-toggle"
-                          onClick={() => toggleTraceExpanded(currentTraceKey)}
-                          aria-expanded={expanded}
-                        >
-                          {trace.running
-                            ? <Loader2 size={11} className="agent-tool-spin" />
-                            : trace.ok
-                              ? <CheckCircle2 size={11} />
-                              : <AlertCircle size={11} />}
-                          <span className="agent-tool-name">{trace.name}</span>
-                          <span className="agent-tool-summary">{summarizeToolTrace(trace)}</span>
-                          {traceDiff && renderLineDelta(traceDiff.added, traceDiff.removed, 'agent-line-delta-compact')}
-                          <ChevronDown size={11} className={`agent-tool-chevron ${expanded ? 'open' : ''}`} />
-                        </button>
-                      </div>
-                      {expanded && (
-                        <div className="agent-tool-details">
-                          <div className="agent-tool-detail-row">
-                            <span className="agent-tool-detail-label">status</span>
-                            <span className={`agent-tool-detail-value ${!trace.ok && !trace.running ? 'error' : ''}`}>
-                              {details.statusText}
-                            </span>
-                          </div>
-                          {trace.callId && (
-                            <div className="agent-tool-detail-row">
-                              <span className="agent-tool-detail-label">call</span>
-                              <span className="agent-tool-detail-value agent-tool-detail-mono">
-                                {trace.callId}
-                              </span>
-                            </div>
-                          )}
-                          {details.input.text && (
-                            <div className="agent-tool-detail-row">
-                              <span className="agent-tool-detail-label">input</span>
-                              <span className="agent-tool-detail-value">
-                                {details.input.text}
-                              </span>
-                            </div>
-                          )}
-                          {details.input.hiddenCount > 0 && (
-                            <div className="agent-tool-detail-row">
-                              <span className="agent-tool-detail-label">input+</span>
-                              <span className="agent-tool-detail-value agent-tool-detail-muted">
-                                +{details.input.hiddenCount} more fields
-                              </span>
-                            </div>
-                          )}
-                          {traceDiff && (
-                            <div className="agent-tool-detail-row">
-                              <span className="agent-tool-detail-label">lines</span>
-                              {renderLineDelta(traceDiff.added, traceDiff.removed)}
-                            </div>
-                          )}
-                          {details.output.text && (
-                            <div className="agent-tool-detail-row">
-                              <span className="agent-tool-detail-label">
-                                {trace.ok || trace.running ? 'output' : 'error'}
-                              </span>
-                              <span className={`agent-tool-detail-value ${!trace.ok && !trace.running ? 'error' : ''}`}>
-                                {details.output.text}
-                              </span>
-                            </div>
-                          )}
-                          {details.output.hiddenCount > 0 && (
-                            <div className="agent-tool-detail-row">
-                              <span className="agent-tool-detail-label">
-                                {trace.ok || trace.running ? 'output+' : 'error+'}
-                              </span>
-                              <span className="agent-tool-detail-value agent-tool-detail-muted">
-                                +{details.output.hiddenCount} more fields
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {!isToolGroupExpanded && hiddenTraceCount > 0 && (
+            <div className="agent-chat-history-list">
+              {projectChats.map((chat) => (
                 <button
+                  key={`history-${chat.id}`}
                   type="button"
-                  className="agent-tool-group-more"
-                  onClick={() => toggleTraceGroupExpanded(message.id)}
+                  className={`agent-chat-history-item ${chat.id === activeChatId ? 'active' : ''}`}
+                  onClick={() => activateChat(chat.id)}
                 >
-                  showing latest {visibleTraceEntries.length} of {allTraceEntries.length}
-                </button>
-              )}
-            </div>
-          ) : null;
-
-          return (
-            <div key={message.id} className={`agent-message-row ${message.role} ${message.pending ? 'pending' : ''}`}>
-              {message.pending && (
-                <div className="agent-message-meta">
-                  <Loader2 size={11} className="agent-tool-spin" />
-                  {message.activity && (
-                    <span className="agent-message-activity">{message.activity}</span>
-                  )}
-                </div>
-              )}
-              {message.role === 'assistant' && toolTraceSection}
-              <div className="agent-message-bubble">
-                <div className="agent-message-content agent-markdown">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {message.content}
-                  </ReactMarkdown>
-                </div>
-              </div>
-              {message.role !== 'assistant' && toolTraceSection}
-              {latestBuildStatus && latestBuildStatus.messageId === message.id && (
-                <div className="agent-build-status-panel">
-                  <div className="agent-build-status-head">
-                    <span className="agent-build-status-title">Build status</span>
-                    <span className="agent-build-status-meta">
-                      {latestBuildStatus.builds.length > 0
-                        ? formatCount(latestBuildStatus.builds.length, 'build', 'builds')
-                        : 'waiting'}
-                    </span>
-                  </div>
-
-                  {latestBuildStatus.builds.length > 0 ? (
-                    <div className="agent-build-status-list">
-                      {latestBuildStatus.builds.map((build) => (
-                        <BuildQueueItem key={`agent-build-${build.buildId}`} build={build} />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="agent-build-status-empty">
-                      Waiting for build status updates...
-                    </div>
-                  )}
-
-                  {latestBuildStatus.pendingBuildIds.length > 0 && (
-                    <div className="agent-build-status-pending">
-                      Tracking {latestBuildStatus.pendingBuildIds.map(compactBuildId).join(', ')}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {changedFilesSummary && (
-        <div className={`agent-changes-summary ${changesExpanded ? 'expanded' : ''}`}>
-          <button
-            type="button"
-            className="agent-changes-toggle"
-            onClick={() => setChangesExpanded((value) => !value)}
-            title="Toggle changed files"
-          >
-            <ChevronDown size={12} className={`agent-changes-chevron ${changesExpanded ? 'open' : ''}`} />
-            <span className="agent-changes-title">
-              {formatCount(changedFilesSummary.files.length, 'file', 'files')} changed
-            </span>
-            <span className="agent-changes-stats">
-              {renderLineDelta(changedFilesSummary.totalAdded, changedFilesSummary.totalRemoved)}
-            </span>
-          </button>
-          {changesExpanded && (
-            <div className="agent-changes-list">
-              {changedFilesSummary.files.map((file) => (
-                <button
-                  key={`${changedFilesSummary.messageId}:${file.path}`}
-                  type="button"
-                  className="agent-changes-file"
-                  onClick={() => openFileDiff(file)}
-                  title={`Open diff for ${file.path}`}
-                >
-                  <span className="agent-changes-file-path">{file.path}</span>
-                  <span className="agent-changes-file-stats">
-                    {renderLineDelta(file.added, file.removed)}
-                  </span>
+                  <span className="agent-chat-history-item-title">{chat.title}</span>
+                  <span className="agent-chat-history-item-preview">{summarizeChatPreview(chat.messages)}</span>
+                  <span className="agent-chat-history-item-time">{formatChatTimestamp(chat.updatedAt)}</span>
                 </button>
               ))}
             </div>
-          )}
-        </div>
-      )}
-
-      <div className="agent-chat-composer-wrap">
-        {mentionToken && mentionItems.length > 0 && (
-          <div className="agent-mention-menu" role="listbox" aria-label="Mention suggestions">
-            {mentionItems.map((item, index) => (
-              <button
-                key={`${item.kind}:${item.token}`}
-                type="button"
-                className={`agent-mention-item ${index === mentionIndex ? 'active' : ''}`}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => insertMention(item)}
-              >
-                <span className={`agent-mention-kind ${item.kind}`}>{item.kind}</span>
-                <span className="agent-mention-label">{item.label}</span>
-                {item.subtitle && (
-                  <span className="agent-mention-subtitle">{item.subtitle}</span>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="agent-chat-input-shell">
-          <textarea
-            ref={composerInputRef}
-            className="agent-chat-input"
-            value={input}
-            onChange={(event) => {
-              const nextValue = event.target.value;
-              setInput(nextValue);
-              refreshMentionFromInput(
-                nextValue,
-                event.target.selectionStart ?? nextValue.length,
-              );
-            }}
-            onClick={(event) => {
-              refreshMentionFromInput(
-                event.currentTarget.value,
-                event.currentTarget.selectionStart ?? event.currentTarget.value.length,
-              );
-            }}
-            onKeyUp={(event) => {
-              if (
-                mentionToken
-                && mentionItems.length > 0
-                && (
-                  event.key === 'ArrowDown'
-                  || event.key === 'ArrowUp'
-                  || event.key === 'Enter'
-                  || event.key === 'Tab'
-                  || event.key === 'Escape'
-                )
-              ) {
-                return;
-              }
-              refreshMentionFromInput(
-                event.currentTarget.value,
-                event.currentTarget.selectionStart ?? event.currentTarget.value.length,
-              );
-            }}
-            placeholder={
-              projectRoot
-                ? 'Ask to inspect files, edit code, install packages/parts, or run builds...'
-                : 'Select a project to chat with the agent...'
-            }
-            disabled={!isReady}
-            rows={4}
-            onKeyDown={(event) => {
-              if (mentionToken && mentionItems.length > 0) {
-                if (event.key === 'ArrowDown') {
-                  event.preventDefault();
-                  setMentionIndex((current) => (current + 1) % mentionItems.length);
-                  return;
-                }
-                if (event.key === 'ArrowUp') {
-                  event.preventDefault();
-                  setMentionIndex((current) => (
-                    (current - 1 + mentionItems.length) % mentionItems.length
-                  ));
-                  return;
-                }
-                if (event.key === 'Enter' || event.key === 'Tab') {
-                  event.preventDefault();
-                  insertMention(mentionItems[mentionIndex]);
-                  return;
-                }
-                if (event.key === 'Escape') {
-                  event.preventDefault();
-                  setMentionToken(null);
-                  setMentionIndex(0);
-                  return;
-                }
-              }
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                if (isSending) {
-                  void stopRun();
-                } else {
-                  void sendMessage();
-                }
-              }
-            }}
-          />
+          </aside>
           <button
-            className={`agent-chat-send ${isSending ? 'stop' : ''}`}
-            onClick={() => {
-              if (isSending) {
-                void stopRun();
-              } else {
-                void sendMessage();
-              }
-            }}
-            disabled={!isReady || (!isSending && input.trim().length === 0) || (isSending && isStopping)}
-            aria-label={isSending ? 'Stop agent run' : 'Send message'}
-            title={isSending ? 'Stop' : 'Send'}
-          >
-            {isSending
-              ? (isStopping ? <Loader2 size={14} className="agent-tool-spin" /> : <Square size={13} />)
-              : <ArrowUp size={14} />}
-          </button>
-        </div>
-      </div>
+            type="button"
+            className={`agent-chat-history-scrim ${isChatsPanelOpen ? 'open' : ''}`}
+            onClick={() => setIsChatsPanelOpen(false)}
+            aria-label="Close chat history panel"
+            tabIndex={isChatsPanelOpen ? 0 : -1}
+          />
+          <div className="agent-chat-main">
+            <div className="agent-chat-messages" ref={messagesRef}>
+              {messages.map((message) => {
+                const allTraceEntries = (message.toolTraces ?? []).map((trace, index) => ({ trace, index }));
+                const hasToolTraces = allTraceEntries.length > 0;
+                const canCollapseToolGroup = allTraceEntries.length > TOOL_TRACE_PREVIEW_COUNT;
+                const isToolGroupExpanded = !canCollapseToolGroup || expandedTraceGroups.has(message.id);
+                const visibleTraceEntries = isToolGroupExpanded
+                  ? allTraceEntries
+                  : allTraceEntries.slice(-TOOL_TRACE_PREVIEW_COUNT);
+                const hiddenTraceCount = Math.max(0, allTraceEntries.length - visibleTraceEntries.length);
 
-      {error && <div className="agent-chat-error">{error}</div>}
-        </>
+                const toolTraceSection = hasToolTraces ? (
+                  <div className={`agent-tool-group ${isToolGroupExpanded ? 'expanded' : 'collapsed'}`}>
+                    <button
+                      type="button"
+                      className={`agent-tool-group-toggle ${canCollapseToolGroup ? 'collapsible' : 'static'}`}
+                      onClick={() => {
+                        if (canCollapseToolGroup) {
+                          toggleTraceGroupExpanded(message.id);
+                        }
+                      }}
+                      disabled={!canCollapseToolGroup}
+                      aria-expanded={isToolGroupExpanded}
+                    >
+                      <ChevronDown
+                        size={11}
+                        className={`agent-tool-group-chevron ${isToolGroupExpanded ? 'open' : ''} ${!canCollapseToolGroup ? 'hidden' : ''}`}
+                      />
+                      <span className="agent-tool-group-title">Tool use</span>
+                      <span className="agent-tool-group-summary">{summarizeToolTraceGroup(allTraceEntries.map((entry) => entry.trace))}</span>
+                      {canCollapseToolGroup && (
+                        <span className="agent-tool-group-count">
+                          {isToolGroupExpanded
+                            ? `show latest ${TOOL_TRACE_PREVIEW_COUNT}`
+                            : `show all ${allTraceEntries.length}`}
+                        </span>
+                      )}
+                    </button>
+                    <div className="agent-tool-traces">
+                      {visibleTraceEntries.map(({ trace, index }) => {
+                        const currentTraceKey = traceExpansionKey(message.id, trace, index);
+                        const expanded = expandedTraceKeys.has(currentTraceKey);
+                        const details = summarizeTraceDetails(trace);
+                        const traceDiff = readTraceDiff(trace);
+
+                        return (
+                          <div
+                            key={`${message.id}-trace-${trace.callId ?? index}`}
+                            className={`agent-tool-trace ${trace.running ? 'running' : trace.ok ? 'ok' : 'error'} ${expanded ? 'expanded' : ''}`}
+                          >
+                            <div className="agent-tool-trace-head">
+                              <button
+                                type="button"
+                                className="agent-tool-trace-toggle"
+                                onClick={() => toggleTraceExpanded(currentTraceKey)}
+                                aria-expanded={expanded}
+                              >
+                                {trace.running
+                                  ? <Loader2 size={11} className="agent-tool-spin" />
+                                  : trace.ok
+                                    ? <CheckCircle2 size={11} />
+                                    : <AlertCircle size={11} />}
+                                <span className="agent-tool-name">{trace.name}</span>
+                                <span className="agent-tool-summary">{summarizeToolTrace(trace)}</span>
+                                {traceDiff && renderLineDelta(traceDiff.added, traceDiff.removed, 'agent-line-delta-compact')}
+                                <ChevronDown size={11} className={`agent-tool-chevron ${expanded ? 'open' : ''}`} />
+                              </button>
+                            </div>
+                            {expanded && (
+                              <div className="agent-tool-details">
+                                <div className="agent-tool-detail-row">
+                                  <span className="agent-tool-detail-label">status</span>
+                                  <span className={`agent-tool-detail-value ${!trace.ok && !trace.running ? 'error' : ''}`}>
+                                    {details.statusText}
+                                  </span>
+                                </div>
+                                {trace.callId && (
+                                  <div className="agent-tool-detail-row">
+                                    <span className="agent-tool-detail-label">call</span>
+                                    <span className="agent-tool-detail-value agent-tool-detail-mono">
+                                      {trace.callId}
+                                    </span>
+                                  </div>
+                                )}
+                                {details.input.text && (
+                                  <div className="agent-tool-detail-row">
+                                    <span className="agent-tool-detail-label">input</span>
+                                    <span className="agent-tool-detail-value">
+                                      {details.input.text}
+                                    </span>
+                                  </div>
+                                )}
+                                {details.input.hiddenCount > 0 && (
+                                  <div className="agent-tool-detail-row">
+                                    <span className="agent-tool-detail-label">input+</span>
+                                    <span className="agent-tool-detail-value agent-tool-detail-muted">
+                                      +{details.input.hiddenCount} more fields
+                                    </span>
+                                  </div>
+                                )}
+                                {traceDiff && (
+                                  <div className="agent-tool-detail-row">
+                                    <span className="agent-tool-detail-label">lines</span>
+                                    {renderLineDelta(traceDiff.added, traceDiff.removed)}
+                                  </div>
+                                )}
+                                {details.output.text && (
+                                  <div className="agent-tool-detail-row">
+                                    <span className="agent-tool-detail-label">
+                                      {trace.ok || trace.running ? 'output' : 'error'}
+                                    </span>
+                                    <span className={`agent-tool-detail-value ${!trace.ok && !trace.running ? 'error' : ''}`}>
+                                      {details.output.text}
+                                    </span>
+                                  </div>
+                                )}
+                                {details.output.hiddenCount > 0 && (
+                                  <div className="agent-tool-detail-row">
+                                    <span className="agent-tool-detail-label">
+                                      {trace.ok || trace.running ? 'output+' : 'error+'}
+                                    </span>
+                                    <span className="agent-tool-detail-value agent-tool-detail-muted">
+                                      +{details.output.hiddenCount} more fields
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {!isToolGroupExpanded && hiddenTraceCount > 0 && (
+                      <button
+                        type="button"
+                        className="agent-tool-group-more"
+                        onClick={() => toggleTraceGroupExpanded(message.id)}
+                      >
+                        showing latest {visibleTraceEntries.length} of {allTraceEntries.length}
+                      </button>
+                    )}
+                  </div>
+                ) : null;
+
+                return (
+                  <div key={message.id} className={`agent-message-row ${message.role} ${message.pending ? 'pending' : ''}`}>
+                    {message.pending && (
+                      <div className="agent-message-meta">
+                        <Loader2 size={11} className="agent-tool-spin" />
+                        {message.activity && (
+                          <span className="agent-message-activity">{message.activity}</span>
+                        )}
+                      </div>
+                    )}
+                    {message.role === 'assistant' && toolTraceSection}
+                    <div className="agent-message-bubble">
+                      <div className="agent-message-content agent-markdown">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {message.content}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
+                    {message.role !== 'assistant' && toolTraceSection}
+                    {latestBuildStatus && latestBuildStatus.messageId === message.id && (
+                      <div className="agent-build-status-panel">
+                        <div className="agent-build-status-head">
+                          <span className="agent-build-status-title">Build status</span>
+                          <span className="agent-build-status-meta">
+                            {latestBuildStatus.builds.length > 0
+                              ? formatCount(latestBuildStatus.builds.length, 'build', 'builds')
+                              : 'waiting'}
+                          </span>
+                        </div>
+
+                        {latestBuildStatus.builds.length > 0 ? (
+                          <div className="agent-build-status-list">
+                            {latestBuildStatus.builds.map((build) => (
+                              <BuildQueueItem key={`agent-build-${build.buildId}`} build={build} />
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="agent-build-status-empty">
+                            Waiting for build status updates...
+                          </div>
+                        )}
+
+                        {latestBuildStatus.pendingBuildIds.length > 0 && (
+                          <div className="agent-build-status-pending">
+                            Tracking {latestBuildStatus.pendingBuildIds.map(compactBuildId).join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {changedFilesSummary && (
+              <div className={`agent-changes-summary ${changesExpanded ? 'expanded' : ''}`}>
+                <button
+                  type="button"
+                  className="agent-changes-toggle"
+                  onClick={() => setChangesExpanded((value) => !value)}
+                  title="Toggle changed files"
+                >
+                  <ChevronDown size={12} className={`agent-changes-chevron ${changesExpanded ? 'open' : ''}`} />
+                  <span className="agent-changes-title">
+                    {formatCount(changedFilesSummary.files.length, 'file', 'files')} changed
+                  </span>
+                  <span className="agent-changes-stats">
+                    {renderLineDelta(changedFilesSummary.totalAdded, changedFilesSummary.totalRemoved)}
+                  </span>
+                </button>
+                {changesExpanded && (
+                  <div className="agent-changes-list">
+                    {changedFilesSummary.files.map((file) => (
+                      <button
+                        key={`${changedFilesSummary.messageId}:${file.path}`}
+                        type="button"
+                        className="agent-changes-file"
+                        onClick={() => openFileDiff(file)}
+                        title={`Open diff for ${file.path}`}
+                      >
+                        <span className="agent-changes-file-path">{file.path}</span>
+                        <span className="agent-changes-file-stats">
+                          {renderLineDelta(file.added, file.removed)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="agent-chat-composer-wrap">
+              {mentionToken && mentionItems.length > 0 && (
+                <div className="agent-mention-menu" role="listbox" aria-label="Mention suggestions">
+                  {mentionItems.map((item, index) => (
+                    <button
+                      key={`${item.kind}:${item.token}`}
+                      type="button"
+                      className={`agent-mention-item ${index === mentionIndex ? 'active' : ''}`}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => insertMention(item)}
+                    >
+                      <span className={`agent-mention-kind ${item.kind}`}>{item.kind}</span>
+                      <span className="agent-mention-label">{item.label}</span>
+                      {item.subtitle && (
+                        <span className="agent-mention-subtitle">{item.subtitle}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="agent-chat-input-shell">
+                <textarea
+                  ref={composerInputRef}
+                  className="agent-chat-input"
+                  value={input}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setInput(nextValue);
+                    refreshMentionFromInput(
+                      nextValue,
+                      event.target.selectionStart ?? nextValue.length,
+                    );
+                  }}
+                  onClick={(event) => {
+                    refreshMentionFromInput(
+                      event.currentTarget.value,
+                      event.currentTarget.selectionStart ?? event.currentTarget.value.length,
+                    );
+                  }}
+                  onKeyUp={(event) => {
+                    if (
+                      mentionToken
+                      && mentionItems.length > 0
+                      && (
+                        event.key === 'ArrowDown'
+                        || event.key === 'ArrowUp'
+                        || event.key === 'Enter'
+                        || event.key === 'Tab'
+                        || event.key === 'Escape'
+                      )
+                    ) {
+                      return;
+                    }
+                    refreshMentionFromInput(
+                      event.currentTarget.value,
+                      event.currentTarget.selectionStart ?? event.currentTarget.value.length,
+                    );
+                  }}
+                  placeholder={
+                    projectRoot
+                      ? 'Ask to inspect files, edit code, install packages/parts, or run builds...'
+                      : 'Select a project to chat with the agent...'
+                  }
+                  disabled={!isReady}
+                  rows={4}
+                  onKeyDown={(event) => {
+                    if (mentionToken && mentionItems.length > 0) {
+                      if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        setMentionIndex((current) => (current + 1) % mentionItems.length);
+                        return;
+                      }
+                      if (event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        setMentionIndex((current) => (
+                          (current - 1 + mentionItems.length) % mentionItems.length
+                        ));
+                        return;
+                      }
+                      if (event.key === 'Enter' || event.key === 'Tab') {
+                        event.preventDefault();
+                        insertMention(mentionItems[mentionIndex]);
+                        return;
+                      }
+                      if (event.key === 'Escape') {
+                        event.preventDefault();
+                        setMentionToken(null);
+                        setMentionIndex(0);
+                        return;
+                      }
+                    }
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault();
+                      if (isSending) {
+                        void stopRun();
+                      } else {
+                        void sendMessage();
+                      }
+                    }
+                  }}
+                />
+                <button
+                  className={`agent-chat-send ${isSending ? 'stop' : ''}`}
+                  onClick={() => {
+                    if (isSending) {
+                      void stopRun();
+                    } else {
+                      void sendMessage();
+                    }
+                  }}
+                  disabled={!isReady || (!isSending && input.trim().length === 0) || (isSending && isStopping)}
+                  aria-label={isSending ? 'Stop agent run' : 'Send message'}
+                  title={isSending ? 'Stop' : 'Send'}
+                >
+                  {isSending
+                    ? (isStopping ? <Loader2 size={14} className="agent-tool-spin" /> : <Square size={13} />)
+                    : <ArrowUp size={14} />}
+                </button>
+              </div>
+            </div>
+
+            {error && <div className="agent-chat-error">{error}</div>}
+          </div>
+        </div>
       )}
     </div>
   );

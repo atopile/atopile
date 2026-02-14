@@ -178,6 +178,50 @@ def test_apply_hashline_mismatch_includes_remap_hints(tmp_path: Path) -> None:
     assert f"2:dead -> 2:{actual}" in message
 
 
+def test_read_file_chunk_resolves_legacy_deps_path(tmp_path: Path) -> None:
+    package_file = (
+        tmp_path
+        / ".ato"
+        / "modules"
+        / "atopile"
+        / "sensirion-sht45"
+        / "sensirion-sht45.ato"
+    )
+    package_file.parent.mkdir(parents=True, exist_ok=True)
+    _write(package_file, "module Sensor:\n")
+
+    result = policy.read_file_chunk(
+        tmp_path,
+        ".ato/deps/atopile/sensirion-sht45/sht45.ato",
+        start_line=1,
+        max_lines=20,
+    )
+
+    assert result["path"] == ".ato/modules/atopile/sensirion-sht45/sensirion-sht45.ato"
+    assert result["resolved_from"] == ".ato/modules/atopile/sensirion-sht45/sht45.ato"
+    assert "1:" in result["content"]
+
+
+def test_read_file_chunk_missing_path_includes_package_suggestions(
+    tmp_path: Path,
+) -> None:
+    package_dir = tmp_path / ".ato" / "modules" / "atopile" / "foo-sensor"
+    package_dir.mkdir(parents=True, exist_ok=True)
+    _write(package_dir / "foo-sensor.ato", "module Foo:\n")
+    _write(package_dir / "foo-sensor-alt.ato", "module FooAlt:\n")
+
+    with pytest.raises(
+        policy.ScopeError,
+        match=r"Try: .*\.ato/modules/atopile/foo-sensor/foo-sensor\.ato",
+    ):
+        policy.read_file_chunk(
+            tmp_path,
+            ".ato/deps/atopile/foo-sensor/missing.ato",
+            start_line=1,
+            max_lines=20,
+        )
+
+
 def test_detect_datasheet_format_does_not_trust_pdf_suffix_for_html() -> None:
     detected = policy._detect_datasheet_format(
         source_value="https://example.com/datasheet.pdf",
