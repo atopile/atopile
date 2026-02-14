@@ -624,11 +624,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             clean_version = version if version and version != "unknown" else None
             pkg_spec = f"{package_id}@{clean_version}" if clean_version else package_id
 
-            # Create a logger for this action - logs to central SQLite DB
-            action_logger = AtoLogger.get_unscoped(
-                channel="package-install",
-                stage="install",
-            )
+            action_logger = log
 
             action_logger.info(
                 f"Installing {pkg_spec}...",
@@ -710,7 +706,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                             loop,
                         )
                 finally:
-                    action_logger.flush()
+                    AtoLogger.flush_all()
 
             threading.Thread(target=run_install, daemon=True).start()
 
@@ -777,10 +773,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 }
 
             # Run remove + install sequentially in background
-            action_logger = AtoLogger.get_unscoped(
-                channel="package-version",
-                stage="install",
-            )
+            action_logger = log
             action_logger.info(
                 f"Changing {package_id} to {version}...",
                 audience=Log.Audience.USER,
@@ -838,7 +831,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                             loop,
                         )
                 finally:
-                    action_logger.flush()
+                    AtoLogger.flush_all()
 
             threading.Thread(target=run_change, daemon=True).start()
 

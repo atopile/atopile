@@ -92,9 +92,9 @@ class AtoLogger(logging.Logger):
     # Class-level registries for DB-writing instances
     _build_loggers: dict[str, "AtoLogger"] = {}
     _unscoped_loggers: dict[str, "AtoLogger"] = {}
-    _active_build_logger: "AtoLogger | None" = None
-    _active_test_logger: "AtoLogger | None" = None
-    _active_unscoped_logger: "AtoLogger | None" = None
+    _active_build_logger = None
+    _active_test_logger = None
+    _active_unscoped_logger = None
 
     def __init__(self, name: str, level: int = logging.NOTSET) -> None:
         super().__init__(name, level)
@@ -341,7 +341,7 @@ class AtoLogger(logging.Logger):
         return bl
 
     @classmethod
-    def get_unscoped(cls, channel: str, stage: str = "") -> "AtoLogger":
+    def _get_unscoped(cls, channel: str, stage: str = "") -> "AtoLogger":
         """Get or create a DB-writing logger that persists with empty build_id."""
         from atopile.model.sqlite import Logs
 
@@ -729,25 +729,26 @@ class ConsoleLogHandler(RichHandler):
 
 
 class DBLogHandler(logging.Handler):
-    """Persist records into exactly one exclusive DB logger context."""
+    """Persist records into build/test context, else default unscoped context."""
 
-    @staticmethod
-    def _resolve_db_target() -> AtoLogger:
-        candidates = [
+    @classmethod
+    def _resolve_db_target(cls) -> AtoLogger:
+        active = [
             c
             for c in (
                 AtoLogger._active_test_logger,
                 AtoLogger._active_build_logger,
                 AtoLogger._active_unscoped_logger,
             )
-            if c is not None and c._db_writer is not None and not c._db_closed
+            if c and c._db_writer and not c._db_closed
         ]
-        if len(candidates) != 1:
-            raise RuntimeError(
-                "Expected exactly one active DB logging context; "
-                f"found {len(candidates)}."
-            )
-        return candidates[0]
+
+        if len(active) > 1:
+            raise RuntimeError("Multiple DB logging contexts active simultaneously")
+
+        if active:
+            return active[0]
+        return AtoLogger._get_unscoped(channel="default", stage="")
 
     def emit(self, record: logging.LogRecord) -> None:
         db_logger = self._resolve_db_target()
