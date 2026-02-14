@@ -165,6 +165,11 @@ export interface WebviewReadyMessage {
   type: 'webviewReady';
 }
 
+export interface OpenMigrateTabMessage {
+  type: 'openMigrateTab';
+  projectRoot: string;
+}
+
 export type ExtensionMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -187,7 +192,8 @@ export type ExtensionMessage =
   | ShowErrorMessage
   | GetAtopileSettingsMessage
   | ThreeDModelBuildResultMessage
-  | WebviewReadyMessage;
+  | WebviewReadyMessage
+  | OpenMigrateTabMessage;
 
 /**
  * Type-safe helper to post messages to the extension.

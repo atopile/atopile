@@ -19,22 +19,19 @@ export function getWsOrigin(wsUrl: string): string {
 }
 
 export function createWebviewOptions(params: {
-  isDev: boolean;
   extensionPath: string;
   port: number;
   prodLocalResourceRoots: string[];
 }): vscode.WebviewOptions & { retainContextWhenHidden?: boolean } {
-  const { isDev, extensionPath, port, prodLocalResourceRoots } = params;
+  const { extensionPath, port, prodLocalResourceRoots } = params;
   return {
     enableScripts: true,
     retainContextWhenHidden: true,
     portMapping: port > 0
       ? [{ webviewPort: port, extensionHostPort: port }]
       : [],
-    localResourceRoots: isDev
-      ? []
-      : prodLocalResourceRoots.map((relativePath) =>
-          vscode.Uri.file(path.join(extensionPath, relativePath))
-        ),
+    localResourceRoots: prodLocalResourceRoots.map((relativePath) =>
+      vscode.Uri.file(path.join(extensionPath, relativePath))
+    ),
   };
 }

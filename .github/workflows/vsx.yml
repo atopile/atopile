@@ -2,6 +2,7 @@ on:
   release:
     types:
       - published
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -41,24 +42,13 @@ jobs:
           echo "semver=$SEMVER" >> "$GITHUB_OUTPUT"
           echo "semver: $SEMVER"
 
-      # Set the version in package.json
-      - name: Pre-release version
-        if: github.event_name == 'release' && (github.event.release.prerelease || github.event.release.draft)
-        # The pre-release version adds 1000 to the patch version to get around the lack of proper semver support
-        # https://code.visualstudio.com/api/working-with-extensions/publishing-extension#prerelease-extensions
+      # Set the version in package.json (runs on all triggers to validate versioning in dry-runs)
+      - name: Set version
         run: |
-          PUBLISH_VERSION=$(echo "${{ steps.version.outputs.semver }}" | cut -d- -f1 | awk -F. '{$NF+=1000;OFS=".";$1=$1}1')
-          echo "Publishing pre-release version: $PUBLISH_VERSION"
-          npm version --no-git-tag-version "$PUBLISH_VERSION"
-
-      - name: Release version
-        if: github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft
-        run: |
-          echo "Publishing release version: ${{ steps.version.outputs.semver }}"
+          echo "Setting version: ${{ steps.version.outputs.semver }}"
           npm version --no-git-tag-version "${{ steps.version.outputs.semver }}"
 
       - name: Verify version was set
-        if: github.event_name == 'release'
         run: |
           VERSION=$(node -p "require('./package.json').version")
           echo "package.json version: $VERSION"
@@ -66,6 +56,11 @@ jobs:
             echo "::error::Version was not set — still 0.0.0"
             exit 1
           fi
+
+      # Dry-run: build the VSIX without publishing to validate packaging
+      - name: Dry-run package
+        if: github.event_name != 'release'
+        run: npx vsce package
 
       - name: Publish release to VS Code Marketplace
         if: github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft

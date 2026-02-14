@@ -1,6 +1,6 @@
 ---
-name: Domain Layer
-description: "Instructions for electronics-specific logic and build processes: netlists, PCBs, build steps, and exporters."
+name: domain-layer
+description: "Instructions for electronics-specific logic and build processes: netlists, PCBs, build steps, and exporters. Use when implementing or modifying build steps, exporters, PCB generation, or BOM/netlist output."
 ---
 
 # Domain Layer Module
