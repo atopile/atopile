@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,23 @@ dev_app = typer.Typer(rich_markup_mode="rich")
 # On Windows, npm/npx are .cmd wrappers, not .exe files.
 # shutil.which() resolves the full path so subprocess can find them.
 _npm = shutil.which("npm") or "npm"
+
+
+def _spawn_shell_with_venv(worktree_path: Path) -> None:
+    """Start an interactive shell in worktree_path with .venv activated."""
+    shell = os.environ.get("SHELL")
+    if not shell:
+        raise ValueError("SHELL is not set")
+
+    venv_path = worktree_path / ".venv"
+    venv_bin = venv_path / "bin"
+
+    activate = venv_bin / "activate"
+    if not activate.is_file():
+        raise ValueError(f"activate script not found: {activate}")
+
+    cmd = f". {shlex.quote(str(activate))} && exec {shlex.quote(shell)} -i"
+    subprocess.run([shell, "-i", "-c", cmd], cwd=worktree_path, check=False)
 
 
 @dev_app.command()
@@ -384,17 +402,19 @@ def worktree(
         )
         return
 
-    shell = os.environ.get("SHELL")
-    if not shell:
-        typer.echo(
-            f"SHELL is not set. Use: cd {worktree_path} && source .venv/bin/activate"
-        )
-        return
-
     typer.echo(
-        f"\nStarting a shell in {worktree_path}. Exit that shell to return here."
+        f"\nStarting a shell in {worktree_path} with .venv activated. "
+        "Exit that shell to return here."
     )
-    subprocess.run([shell, "-i"], cwd=worktree_path, check=False)
+    try:
+        _spawn_shell_with_venv(worktree_path)
+    except Exception as e:
+        typer.secho(
+            f"Error spawning shell: {e}. "
+            f"Use: cd {worktree_path} && source .venv/bin/activate",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
 
 
 def _env_truthy(name: str) -> bool | None:
