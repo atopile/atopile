@@ -39,6 +39,35 @@ _affinity_membership: dict[str, str] = {}  # nodeid → group_key
 _affinity_bindings: dict[str, int] = {}  # group_key → worker PID
 _affinity_lock = threading.Lock()
 
+# Scheduler instrumentation counters.
+_scheduler_lock = threading.Lock()
+_scheduler_stats: dict[str, int] = {
+    "claim_requests": 0,
+    "claims_granted": 0,
+    "claims_empty": 0,
+    "claims_empty_with_pending": 0,
+    "claims_empty_pending_sum": 0,
+    "claims_empty_pending_max": 0,
+    "claims_empty_with_queue": 0,
+    "claims_empty_queue_sum": 0,
+    "claims_empty_queue_max": 0,
+    "scan_candidates": 0,
+    "scan_max_depth": 0,
+    "skipped_affinity": 0,
+    "skipped_max_parallel": 0,
+}
+
+
+def _reset_scheduler_stats() -> None:
+    with _scheduler_lock:
+        for key in _scheduler_stats:
+            _scheduler_stats[key] = 0
+
+
+def get_scheduler_stats() -> dict[str, int]:
+    with _scheduler_lock:
+        return dict(_scheduler_stats)
+
 
 def _get_group(nodeid: str) -> str | None:
     """Return group prefix if nodeid belongs to a concurrency-limited group."""
@@ -83,6 +112,11 @@ def set_globals(
         _max_parallel = max_parallel
     if affinity_membership is not None:
         _affinity_membership = affinity_membership
+    with _group_lock:
+        _group_active.clear()
+    with _affinity_lock:
+        _affinity_bindings.clear()
+    _reset_scheduler_stats()
 
 
 def get_aggregator() -> TestAggregator | None:
@@ -103,12 +137,17 @@ async def claim(request: ClaimRequest) -> ClaimResponse:
 
     skipped: list[str] = []
     nodeid: str | None = None
+    scanned = 0
+    skipped_affinity = 0
+    skipped_max_parallel = 0
     try:
         while True:
             candidate = test_queue.get_nowait()
+            scanned += 1
             # Check worker affinity first (hard constraint)
             if not _check_affinity(candidate, request.pid):
                 skipped.append(candidate)
+                skipped_affinity += 1
                 continue
             # Then check max_parallel (soft constraint)
             group = _get_group(candidate)
@@ -122,14 +161,43 @@ async def claim(request: ClaimRequest) -> ClaimResponse:
                     break
                 else:
                     skipped.append(candidate)
+                    skipped_max_parallel += 1
     except queue.Empty:
         pass
     finally:
         for s in skipped:
             test_queue.put(s)
 
+    with _scheduler_lock:
+        _scheduler_stats["claim_requests"] += 1
+        _scheduler_stats["scan_candidates"] += scanned
+        _scheduler_stats["scan_max_depth"] = max(
+            _scheduler_stats["scan_max_depth"], scanned
+        )
+        _scheduler_stats["skipped_affinity"] += skipped_affinity
+        _scheduler_stats["skipped_max_parallel"] += skipped_max_parallel
+
     if aggregator and nodeid is not None:
         aggregator.handle_claim(request.pid, nodeid)
+        with _scheduler_lock:
+            _scheduler_stats["claims_granted"] += 1
+    elif nodeid is None:
+        pending = aggregator.pending_count() if aggregator else 0
+        queued = test_queue.qsize()
+        with _scheduler_lock:
+            _scheduler_stats["claims_empty"] += 1
+            if pending > 0:
+                _scheduler_stats["claims_empty_with_pending"] += 1
+                _scheduler_stats["claims_empty_pending_sum"] += pending
+                _scheduler_stats["claims_empty_pending_max"] = max(
+                    _scheduler_stats["claims_empty_pending_max"], pending
+                )
+            if queued > 0:
+                _scheduler_stats["claims_empty_with_queue"] += 1
+                _scheduler_stats["claims_empty_queue_sum"] += queued
+                _scheduler_stats["claims_empty_queue_max"] = max(
+                    _scheduler_stats["claims_empty_queue_max"], queued
+                )
     return ClaimResponse(nodeid=nodeid)
 
 
@@ -137,12 +205,14 @@ async def claim(request: ClaimRequest) -> ClaimResponse:
 async def event(request: EventRequest) -> dict[str, str]:
     """Report a test event (start, finish, etc.)."""
     if request.type in (EventType.FINISH, EventType.EXIT):
-        nodeid = request.nodeid
-        # For EXIT events, the nodeid on the request may be None.
-        # Look up what the crashing worker had claimed via the aggregator.
-        if nodeid is None and request.type == EventType.EXIT and aggregator:
-            nodeid = aggregator._claimed_by_pid.get(request.pid)
-        if nodeid:
+        nodeids: list[str] = []
+        if request.nodeid:
+            nodeids = [request.nodeid]
+        elif request.type == EventType.EXIT and aggregator:
+            # EXIT may have no explicit nodeid; release all outstanding claims.
+            nodeids = aggregator.get_claimed_nodeids(request.pid)
+
+        for nodeid in nodeids:
             group = _get_group(nodeid)
             if group:
                 with _group_lock:

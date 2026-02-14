@@ -75,6 +75,7 @@ Useful test-runner environment variables (see `test/runner/main.py`):
 - `FBRK_TEST_REPORT_INTERVAL` (seconds; report refresh cadence)
 - `FBRK_TEST_LONG_THRESHOLD` (seconds; “long test” threshold)
 - `FBRK_TEST_WORKERS` (`0` = cpu count, negative scales workers)
+- `FBRK_TEST_BATCH_SIZE` (experimental; worker claim batch size, default `1`; values >1 may reduce isolation)
 - `FBRK_TEST_GENERATE_HTML` (`1/0`)
 - `FBRK_TEST_PERIODIC_HTML` (`1/0`)
 - `FBRK_TEST_OUTPUT_MAX_BYTES` (truncate preview output used by HTML; `tests[].output_full` remains complete)

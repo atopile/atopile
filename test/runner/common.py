@@ -20,6 +20,7 @@ class Outcome(StrEnum):
 class EventType(StrEnum):
     START = auto()
     FINISH = auto()
+    WORKER_FINISH = auto()
     EXIT = auto()
 
 
@@ -41,6 +42,7 @@ class EventRequest(BaseModel):
     error_message: Optional[str] = None
     memory_usage_mb: Optional[float] = None
     memory_peak_mb: Optional[float] = None
+    worker_runtime_s: Optional[float] = None
 
 
 @dataclass
@@ -73,6 +75,7 @@ class Report(DataClassJsonMixin):
         orchestrator_bind: Optional[str] = None
         orchestrator_url: Optional[str] = None
         orchestrator_report_url: Optional[str] = None
+        scheduler: Dict[str, Any] = field(default_factory=dict)
         output_limits: Dict[str, Any] = field(default_factory=dict)
         perf: Dict[str, Any] = field(default_factory=dict)
 
@@ -102,6 +105,19 @@ class Report(DataClassJsonMixin):
         progress_percent: int = 0
         total_duration_s: float = 0.0
         total_summed_duration_s: float = 0.0
+        total_claim_to_finish_s: float = 0.0
+        claim_runtime_overhead_s: float = 0.0
+        avg_parallelism_test_runtime: float = 0.0
+        avg_parallelism_claim_runtime: float = 0.0
+        avg_parallelism_worker_runtime: float = 0.0
+        claim_to_start_samples: int = 0
+        claim_to_finish_samples: int = 0
+        worker_runtime_samples: int = 0
+        claim_to_start_percentiles_s: Dict[str, float] = field(default_factory=dict)
+        claim_to_finish_percentiles_s: Dict[str, float] = field(default_factory=dict)
+        worker_runtime_percentiles_s: Dict[str, float] = field(default_factory=dict)
+        total_worker_runtime_s: float = 0.0
+        worker_runtime_overhead_s: float = 0.0
         total_memory_mb: float = 0.0
         workers_used: int = 0
         duration_percentiles_s: Dict[str, float] = field(default_factory=dict)
@@ -161,6 +177,9 @@ class Report(DataClassJsonMixin):
         duration_human: Optional[str] = None
         start_time: Optional[str] = None
         finish_time: Optional[str] = None
+        claim_to_start_s: Optional[float] = None
+        claim_to_finish_s: Optional[float] = None
+        worker_runtime_s: Optional[float] = None
         error_message: Optional[str] = None
         error_type: Optional[str] = None
         error_summary: Optional[str] = None

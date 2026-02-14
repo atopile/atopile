@@ -32,12 +32,18 @@ FBRK_TEST_WORKER_MEMORY_LIMIT = (
 )
 
 FBRK_TEST_TEST_TIMEOUT = int(os.environ.get("FBRK_TEST_TEST_TIMEOUT", 0))
+FBRK_TEST_BATCH_SIZE = max(int(os.environ.get("FBRK_TEST_BATCH_SIZE", "4")), 1)
+FBRK_TEST_BATCH_EXEC_MODE = os.environ.get(
+    "FBRK_TEST_BATCH_EXEC_MODE", "session"
+).lower()
+if FBRK_TEST_BATCH_EXEC_MODE not in {"session", "prefetch"}:
+    FBRK_TEST_BATCH_EXEC_MODE = "session"
 
 
-def run_pytest(nodeid: str):
+def run_pytest(nodeids: list[str]):
     pytest.main(
         [
-            nodeid,
+            *nodeids,
             "-vv",
             "-p",
             "test.runner.plugin",
@@ -52,13 +58,16 @@ def run_pytest(nodeid: str):
     )
 
 
-def run_pytest_with_timeout(nodeid: str):
+def run_pytest_with_timeout(nodeids: list[str]):
     import ctypes
     import threading
 
     timeout = FBRK_TEST_TEST_TIMEOUT
+    batch_label = (
+        nodeids[0] if len(nodeids) == 1 else f"{nodeids[0]} (+{len(nodeids) - 1})"
+    )
     if timeout == 0:
-        run_pytest(nodeid)
+        run_pytest(nodeids)
         return
 
     main_thread_id = threading.current_thread().ident
@@ -103,7 +112,7 @@ def run_pytest_with_timeout(nodeid: str):
                 + f".{int((t % 1) * 1000):03d}"
             )
             print(
-                f"{time_s}: Test {nodeid} timed out - injecting exception"
+                f"{time_s}: Test {batch_label} timed out - injecting exception"
                 f" (waiting {wait_time:.2f}s)"
             )
             # Capture stack before injecting exception to see what's blocking
@@ -132,14 +141,83 @@ def run_pytest_with_timeout(nodeid: str):
     watchdog_thread.start()
 
     try:
-        run_pytest(nodeid)
+        run_pytest(nodeids)
         stop_watchdog.set()
     except ExceptionTestTimeout:
         stop_watchdog.set()
-        pytest.fail(f"Test timed out after {timeout:.2f}s", pytrace=False)
+        pytest.fail(
+            f"Test timed out after {timeout:.2f}s: {batch_label}", pytrace=False
+        )
     finally:
         stop_watchdog.set()
         watchdog_thread.join(timeout=0.1)
+
+
+def claim_tests(client: httpx.Client, pid: int, batch_size: int) -> list[str]:
+    claimed: list[str] = []
+    for _ in range(batch_size):
+        request = ClaimRequest(pid=pid)
+        resp = client.post(
+            f"{ORCHESTRATOR_URL}/claim",
+            content=request.model_dump_json(),
+        )
+        if resp.status_code != 200:
+            print(
+                f"Worker {pid} failed to claim test: {resp.status_code}",
+                file=sys.stderr,
+            )
+            break
+        response = ClaimResponse.model_validate_json(resp.content)
+        nodeid = response.nodeid
+        if not nodeid:
+            break
+        claimed.append(nodeid)
+    return claimed
+
+
+def emit_worker_runtime_event(
+    client: httpx.Client, pid: int, nodeid: str, runtime_s: float
+):
+    try:
+        client.post(
+            f"{ORCHESTRATOR_URL}/event",
+            content=EventRequest(
+                type=EventType.WORKER_FINISH,
+                pid=pid,
+                timestamp=time.time(),
+                nodeid=nodeid,
+                worker_runtime_s=runtime_s,
+            ).model_dump_json(),
+        )
+    except Exception:
+        pass
+
+
+def run_claimed_tests(
+    client: httpx.Client, pid: int, claimed_nodeids: list[str]
+) -> None:
+    if FBRK_TEST_BATCH_EXEC_MODE == "prefetch" or len(claimed_nodeids) == 1:
+        for nodeid in claimed_nodeids:
+            LoggerForTest.update_test_name(nodeid)
+            run_started = time.perf_counter()
+            try:
+                run_pytest_with_timeout([nodeid])
+            finally:
+                LoggerForTest.flush_all()
+                worker_runtime_s = time.perf_counter() - run_started
+                emit_worker_runtime_event(client, pid, nodeid, worker_runtime_s)
+        return
+
+    LoggerForTest.update_test_name(claimed_nodeids[0])
+    run_started = time.perf_counter()
+    try:
+        run_pytest_with_timeout(claimed_nodeids)
+    finally:
+        LoggerForTest.flush_all()
+        worker_runtime_s = time.perf_counter() - run_started
+        per_test_runtime = worker_runtime_s / len(claimed_nodeids)
+        for nodeid in claimed_nodeids:
+            emit_worker_runtime_event(client, pid, nodeid, per_test_runtime)
 
 
 def main():
@@ -149,7 +227,10 @@ def main():
 
     client = httpx.Client(timeout=10.0)
     pid = os.getpid()
-    print(f"Worker {pid} started against {ORCHESTRATOR_URL}")
+    print(
+        f"Worker {pid} started against {ORCHESTRATOR_URL}"
+        f" (batch_size={FBRK_TEST_BATCH_SIZE}, mode={FBRK_TEST_BATCH_EXEC_MODE})"
+    )
 
     # Keep session separate? Pytest reuses sys.modules.
 
@@ -166,36 +247,17 @@ def main():
                 )
                 return
             try:
-                request = ClaimRequest(pid=pid)
-                resp = client.post(
-                    f"{ORCHESTRATOR_URL}/claim", content=request.model_dump_json()
-                )
-                if resp.status_code != 200:
-                    print(
-                        f"Worker {pid} failed to claim test: {resp.status_code}",
-                        file=sys.stderr,
-                    )
-                    time.sleep(1)
-                    continue
-
-                response = ClaimResponse.model_validate_json(resp.content)
-                nodeid = response.nodeid
-
-                if not nodeid:
+                claimed_nodeids = claim_tests(client, pid, FBRK_TEST_BATCH_SIZE)
+                if not claimed_nodeids:
                     print(f"Worker {pid} received no work, sleeping.")
                     time.sleep(1)
                     continue
 
-                # Run pytest for this nodeid
+                # Run pytest for this claimed batch.
                 # We inject our http adapter plugin
                 # Set terminal width for better debug output formatting
                 os.environ["COLUMNS"] = "120"
-                # Update the test name in the test logger for proper tracking
-                LoggerForTest.update_test_name(nodeid)
-                run_pytest_with_timeout(nodeid)
-
-                # Flush logs after each test to ensure they're written to DB
-                LoggerForTest.flush_all()
+                run_claimed_tests(client, pid, claimed_nodeids)
 
                 # always exit
                 # break

@@ -60,6 +60,23 @@ def test_requeues_claimed_but_unstarted_on_worker_crash():
     assert state.start_time is None
     assert state.outcome is None
     assert state.pid is None
+    assert 111 not in agg._active_pids
+    assert 111 in agg._exited_pids
+
+
+def test_worker_crash_clears_active_pid_even_without_running_test():
+    import test.runner.main as runner_main
+    from test.runner.report import set_globals as set_report_globals
+
+    test_q = queue.Queue()
+    set_report_globals(test_q, {}, runner_main.commit_info, runner_main.ci_info)
+    agg = runner_main.TestAggregator([], runner_main.RemoteBaseline())
+
+    agg._active_pids.add(222)
+    agg.handle_worker_crash(pid=222)
+
+    assert 222 not in agg._active_pids
+    assert 222 in agg._exited_pids
 
 
 def test_finish_event_sets_start_time_if_missing():
