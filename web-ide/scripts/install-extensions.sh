@@ -32,6 +32,15 @@ ${OVSCODE} --install-extension ms-python.python --force --extensions-dir "${EXT_
     echo "Warning: Failed to install Python extension, continuing..."
 }
 
+# Remove debug extensions to disable debug/run functionality in the web IDE.
+# Can't use --uninstall-extension for built-ins; must delete directories directly.
+# Built-in extensions have no version suffix (e.g. "debug-auto-launch"),
+# while installed extensions do (e.g. "ms-python.debugpy-2025.18.0-linux-x64").
+echo "Removing debug extensions (security hardening)..."
+rm -rf "${EXT_DIR}"/ms-python.debugpy*
+rm -rf "${EXT_DIR}"/debug-auto-launch
+rm -rf "${EXT_DIR}"/debug-server-ready
+
 echo ""
 echo "=== Installed extensions ==="
 ${OVSCODE} --list-extensions --extensions-dir "${EXT_DIR}"

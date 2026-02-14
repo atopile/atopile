@@ -19,8 +19,12 @@ services:
     container_name: atopile-web-ide
     ports:
       - "3000:3000"
-      - "6080:6080"
-      - "8501:8501"
+      # Ports 6080 (VNC) and 8501 (backend) are internal only —
+      # accessed via the VS Code extension, not exposed to the host.
+    # Note: read_only: true is not used because the entrypoint needs to write
+    # KiCad config (~/.config/kicad) and the uv tools live at ~/.local/share/uv.
+    # For production, use Docker --pids-limit, --memory, --cpus, and network
+    # policies for additional isolation.
     volumes:
       # Persist workspace between restarts (seeded by entrypoint on first run)
       - workspace-data:/home/openvscode-server/workspace

@@ -56,9 +56,30 @@ if [ -f "${PRODUCT_JSON}" ]; then
     "${OPENVSCODE_SERVER_ROOT}/node" -e "
 const fs = require('fs');
 const p = JSON.parse(fs.readFileSync('${PRODUCT_JSON}', 'utf8'));
+
+// Disable workspace trust prompt (cloud dev environment)
 p.disableWorkspaceTrust = true;
+
+// Remove extension marketplace — users cannot install extensions
+delete p.extensionsGallery;
+
+// Security: lock down terminal, debug, and task features via configurationDefaults
+p.configurationDefaults = Object.assign(p.configurationDefaults || {}, {
+    // Disable integrated terminal
+    'terminal.integrated.profiles.linux': {},
+    'terminal.integrated.defaultProfile.linux': null,
+    'terminal.integrated.allowChords': false,
+    'terminal.integrated.sendKeybindingsToShell': false,
+
+    // Disable debug/run features
+    'debug.allowBreakpointsEverywhere': false,
+    'debug.showInlineBreakpointCandidates': false,
+    'debug.showInStatusBar': 'never',
+    'debug.toolBarLocation': 'hidden',
+});
+
 fs.writeFileSync('${PRODUCT_JSON}', JSON.stringify(p, null, '\t'));
-console.log('Patched product.json: disableWorkspaceTrust=true');
+console.log('Patched product.json: security hardening applied');
 "
 fi
 

@@ -69,13 +69,14 @@ ENV PYTHONUNBUFFERED=1
 ENV HOME=/home/openvscode-server
 ENV OPENVSCODE_SERVER_ROOT=/home/.openvscode-server
 ENV PATH=${OPENVSCODE_SERVER_ROOT}/bin:${HOME}/.local/bin:$PATH
-# Backend server: bind to all interfaces on fixed port for Docker port mapping
-ENV ATOPILE_BACKEND_HOST=0.0.0.0
+# Backend server: bind to localhost only (accessed via extension, not exposed externally)
+ENV ATOPILE_BACKEND_HOST=127.0.0.1
 ENV ATOPILE_BACKEND_PORT=8501
 
 # Install runtime + build dependencies + VNC stack for PCBnew viewer
+# Note: build-essential/cmake are needed because pynng (transitive dep) compiles from source
+# Note: curl and xdotool removed — not needed at runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
     git \
     ca-certificates \
     build-essential \
@@ -86,11 +87,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openbox \
     websockify \
     novnc \
-    xdotool \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN useradd -m -s /bin/bash -d ${HOME} openvscode-server && \
+# Install restricted shell (disables terminal access for the user)
+COPY web-ide/scripts/restricted-shell.sh /usr/local/bin/restricted-shell.sh
+RUN chmod +x /usr/local/bin/restricted-shell.sh
+
+# Create non-root user with restricted shell (extension commands use /bin/bash explicitly)
+RUN useradd -m -s /usr/local/bin/restricted-shell.sh -d ${HOME} openvscode-server && \
     mkdir -p ${OPENVSCODE_SERVER_ROOT} && \
     chown -R openvscode-server:openvscode-server ${HOME} ${OPENVSCODE_SERVER_ROOT}
 
@@ -147,12 +151,12 @@ RUN mkdir -p ${HOME}/workspace
 # Clean up build artifacts (keep default-workspace for entrypoint seeding)
 RUN rm -rf /tmp/artifacts /tmp/scripts /tmp/branding
 
-# Expose OpenVSCode Server port + backend server + websockify (VNC)
-EXPOSE 3000 6080 8501
+# Expose only the OpenVSCode Server port (backend and VNC are internal only)
+EXPOSE 3000
 
-# Health check
+# Health check (uses Python since curl is not installed)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:3000/ || exit 1
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:3000/')" || exit 1
 
 # Entrypoint seeds workspace on first run, then starts server
 ENTRYPOINT ["entrypoint.sh"]
