@@ -47,6 +47,7 @@ from test.runner.git_info import (
 )
 from test.runner.orchestrator import router as orchestrator_router
 from test.runner.orchestrator import set_globals as set_orchestrator_globals
+from test.runner.orchestrator import unbind_affinity_for_pid
 from test.runner.report import (
     REPORT_HTML_PATH,
     TestAggregator,
@@ -595,6 +596,8 @@ def main(
                 # Worker died.
                 # Handle crash in aggregator
                 aggregator.handle_worker_crash(p.pid)
+                # Release affinity bindings so respawned worker can claim those tests
+                unbind_affinity_for_pid(p.pid)
 
                 # Close old file
                 try:

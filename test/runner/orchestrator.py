@@ -61,7 +61,7 @@ def _check_affinity(nodeid: str, pid: int) -> bool:
         return bound_pid == pid
 
 
-def _unbind_affinity_for_pid(pid: int) -> None:
+def unbind_affinity_for_pid(pid: int) -> None:
     """Remove all affinity bindings for a worker that exited."""
     with _affinity_lock:
         to_remove = [g for g, p in _affinity_bindings.items() if p == pid]
@@ -149,7 +149,7 @@ async def event(request: EventRequest) -> dict[str, str]:
                     _group_active[group] = max(0, _group_active.get(group, 0) - 1)
         # Release affinity bindings when worker exits
         if request.type == EventType.EXIT:
-            _unbind_affinity_for_pid(request.pid)
+            unbind_affinity_for_pid(request.pid)
     if aggregator:
         aggregator.handle_event(request)
     return {"status": "ok"}
