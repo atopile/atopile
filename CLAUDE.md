@@ -37,6 +37,8 @@ Skills are located in `.claude/skills/`.
 
 ```
 .claude/skills
+├── agent
+│ └── SKILL.md
 ├── ato-language
 │ ├── EXTENSION.md
 │ └── SKILL.md

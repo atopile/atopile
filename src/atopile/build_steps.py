@@ -1158,6 +1158,18 @@ def generate_datasheets(ctx: BuildStepContext) -> None:
     )
 
 
+@muster.register(
+    "datasheets-lite",
+    dependencies=[post_instantiation_setup],
+    produces_artifact=True,
+)
+def generate_datasheets_lite(ctx: BuildStepContext) -> None:
+    app = ctx.require_app()
+    export_datasheets(
+        app, config.build.paths.documentation / "datasheets", progress=None
+    )
+
+
 # @muster.register(
 #     "i2c-tree",
 #     dependencies=[build_design],

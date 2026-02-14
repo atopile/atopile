@@ -619,6 +619,16 @@ function handleEventMessage(message: EventMessage): void {
     return;
   }
 
+  // Handle agent progress streaming event (not in EventType enum)
+  if ((message.event as string) === 'agent_progress') {
+    window.dispatchEvent(
+      new CustomEvent('atopile:agent_progress', {
+        detail: data,
+      })
+    );
+    return;
+  }
+
   switch (message.event) {
     case EventType.OpenLayout: {
       const path = typeof data.path === 'string' ? data.path : null;

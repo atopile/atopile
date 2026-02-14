@@ -671,8 +671,8 @@
   min-height: 0;
 }
 
-/* Build queue panel - fixed at bottom, ~15-20% height */
-.panel-sections > .build-queue-panel-container {
+/* Agent chat dock - fixed at bottom */
+.panel-sections > .agent-chat-dock {
   flex: 0 0 auto;
 }
 

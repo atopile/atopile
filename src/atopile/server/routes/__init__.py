@@ -12,8 +12,10 @@ This module contains all FastAPI routers organized by domain:
 - websocket: Real-time state updates
 - logs: Build log querying
 - tests: Test discovery and execution
+- agent: Sidebar agent chat and tool orchestration
 """
 
+from .agent import router as agent_router
 from .artifacts import router as artifacts_router
 from .builds import router as builds_router
 from .logs import router as logs_router
@@ -26,6 +28,7 @@ from .tests import router as tests_router
 from .websocket import router as websocket_router
 
 __all__ = [
+    "agent_router",
     "artifacts_router",
     "builds_router",
     "parts_search_router",
