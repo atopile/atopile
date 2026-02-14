@@ -56,6 +56,7 @@ class AgentRun:
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     task: asyncio.Task[Any] | None = field(default=None, repr=False)
+    steer_messages: list[str] = field(default_factory=list)
 
 
 class CreateSessionRequest(BaseModel):
@@ -179,6 +180,19 @@ class CancelRunResponse(BaseModel):
     run_id: str = Field(alias="runId")
     status: str
     error: str | None = None
+
+    class Config:
+        populate_by_name = True
+
+
+class SteerRunRequest(BaseModel):
+    message: str
+
+
+class SteerRunResponse(BaseModel):
+    run_id: str = Field(alias="runId")
+    status: str
+    queued_messages: int = Field(alias="queuedMessages")
 
     class Config:
         populate_by_name = True
@@ -523,6 +537,17 @@ def _normalize_running_run_state(run: AgentRun) -> AgentRun:
     return run
 
 
+def _consume_run_steer_messages(run_id: str) -> list[str]:
+    with _runs_lock:
+        run = _runs.get(run_id)
+        if run is None or not run.steer_messages:
+            return []
+        queued = list(run.steer_messages)
+        run.steer_messages.clear()
+        run.updated_at = time.time()
+    return queued
+
+
 async def _run_turn_in_background(
     *,
     run_id: str,
@@ -561,6 +586,20 @@ async def _run_turn_in_background(
             payload=payload,
         )
 
+    def consume_steering_messages() -> list[str]:
+        queued = _consume_run_steer_messages(run_id)
+        if queued:
+            _log_session_event(
+                "run_steer_consumed",
+                {
+                    "run_id": run_id,
+                    "session_id": session_id,
+                    "project_root": run.project_root,
+                    "count": len(queued),
+                },
+            )
+        return queued
+
     try:
         result = await _orchestrator.run_turn(
             ctx=ctx,
@@ -571,6 +610,7 @@ async def _run_turn_in_background(
             previous_response_id=session.last_response_id,
             tool_memory=session.tool_memory,
             progress_callback=emit_progress,
+            consume_steering_messages=consume_steering_messages,
         )
     except asyncio.CancelledError:
         with _runs_lock:
@@ -730,9 +770,7 @@ async def send_message(
                     f"(run_id={active_run.run_id})."
                 ),
             )
-    if session.active_run_id and (
-        active_run is None or active_run.status != "running"
-    ):
+    if session.active_run_id and (active_run is None or active_run.status != "running"):
         session.active_run_id = None
 
     if session.project_root != request.project_root:
@@ -874,9 +912,7 @@ async def create_run(
                     f"(run_id={active_run.run_id})."
                 ),
             )
-    if session.active_run_id and (
-        active_run is None or active_run.status != "running"
-    ):
+    if session.active_run_id and (active_run is None or active_run.status != "running"):
         session.active_run_id = None
 
     run_id = uuid.uuid4().hex
@@ -937,6 +973,76 @@ async def get_run(
         status=run.status,
         response=response,
         error=run.error,
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/runs/{run_id}/steer",
+    response_model=SteerRunResponse,
+)
+async def steer_run(
+    session_id: str,
+    run_id: str,
+    request: SteerRunRequest,
+):
+    message = request.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message must not be empty")
+
+    with _runs_lock:
+        run = _runs.get(run_id)
+        if run:
+            run = _normalize_running_run_state(run)
+    if not run or run.session_id != session_id:
+        raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+
+    if run.status != "running":
+        return SteerRunResponse(
+            runId=run_id,
+            status=run.status,
+            queuedMessages=0,
+        )
+
+    with _runs_lock:
+        current = _runs.get(run_id)
+        if current is None:
+            raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+        current = _normalize_running_run_state(current)
+        if current.status != "running":
+            return SteerRunResponse(
+                runId=run_id,
+                status=current.status,
+                queuedMessages=0,
+            )
+        current.steer_messages.append(message)
+        current.updated_at = time.time()
+        queued_count = len(current.steer_messages)
+        run_project_root = current.project_root
+
+    await _emit_agent_progress(
+        session_id=session_id,
+        project_root=run_project_root,
+        run_id=run_id,
+        payload={
+            "phase": "thinking",
+            "status_text": "Steering",
+            "detail_text": "Applying latest user guidance",
+        },
+    )
+    _log_session_event(
+        "run_steer_queued",
+        {
+            "run_id": run_id,
+            "session_id": session_id,
+            "project_root": run_project_root,
+            "queued_messages": queued_count,
+            "message": message,
+        },
+    )
+    return SteerRunResponse(
+        runId=run_id,
+        status="running",
+        queuedMessages=queued_count,
     )
 
 
@@ -1100,14 +1206,10 @@ async def get_session_skills(
             if isinstance(value, str)
         ],
         selectedSkills=[
-            item
-            for item in state.get("selected_skills", [])
-            if isinstance(item, dict)
+            item for item in state.get("selected_skills", []) if isinstance(item, dict)
         ],
         reasoning=[
-            str(value)
-            for value in state.get("reasoning", [])
-            if isinstance(value, str)
+            str(value) for value in state.get("reasoning", []) if isinstance(value, str)
         ],
         totalChars=int(state.get("total_chars", 0) or 0),
         generatedAt=(

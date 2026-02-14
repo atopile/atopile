@@ -66,6 +66,12 @@ export interface AgentRunCancelResponse {
   error?: string | null;
 }
 
+export interface AgentRunSteerResponse {
+  runId: string;
+  status: string;
+  queuedMessages: number;
+}
+
 interface CreateSessionResponse {
   sessionId: string;
   projectRoot: string;
@@ -200,6 +206,22 @@ export const agentApi = {
       `/api/agent/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/cancel`,
       {
         method: 'POST',
+      }
+    );
+  },
+
+  async steerRun(
+    sessionId: string,
+    runId: string,
+    payload: { message: string }
+  ): Promise<AgentRunSteerResponse> {
+    return request<AgentRunSteerResponse>(
+      `/api/agent/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/steer`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          message: payload.message,
+        }),
       }
     );
   },

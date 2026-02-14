@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import time
 import zipfile
 from dataclasses import dataclass
@@ -26,12 +27,13 @@ from atopile.server.domains.autolayout.models import (
     SubmitResult,
 )
 from atopile.server.domains.autolayout.providers.base import AutolayoutProvider
+from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.util import ConfigFlagFloat, ConfigFlagString
 
 _DEEPPCB_BASE_URL = ConfigFlagString(
     "DEEPPCB_BASE_URL", "https://api.deeppcb.ai", "Base URL for DeepPCB API"
 )
-_DEEPPCB_API_KEY = ConfigFlagString("DEEPPCB_API_KEY", "", "API key for DeepPCB API")
 _DEEPPCB_UPLOAD_PATH = ConfigFlagString(
     "DEEPPCB_UPLOAD_PATH",
     "/api/v1/files/uploads/board-file",
@@ -174,12 +176,7 @@ class DeepPCBConfig:
 
     @classmethod
     def from_env(cls) -> "DeepPCBConfig":
-        api_key = (
-            os.getenv("ATO_DEEPPCB_API_KEY")
-            or os.getenv("DEEPPCB_API_KEY")
-            or os.getenv("FBRK_DEEPPCB_API_KEY")
-            or _DEEPPCB_API_KEY.get()
-        )
+        api_key = os.getenv("ATO_DEEPPCB_API_KEY") or ""
         bearer_token = (
             os.getenv("ATO_DEEPPCB_BEARER_TOKEN")
             or os.getenv("DEEPPCB_BEARER_TOKEN")
@@ -337,16 +334,27 @@ class DeepPCBProvider(AutolayoutProvider):
         external_job_id: str,
         candidate_id: str,
         out_dir: Path,
+        target_layout_path: Path | None = None,
     ) -> DownloadResult:
         self._validate_api_key()
         out_dir.mkdir(parents=True, exist_ok=True)
 
         candidate = self._candidate_by_id(external_job_id, candidate_id)
+        revision: str | None = None
         download_url = None
         if candidate is not None:
             download_url = self._extract_string(
                 candidate.metadata,
                 keys=("fileUrl", "file_url", "download_url", "downloadUrl", "url"),
+            )
+            revision = self._extract_string(
+                candidate.metadata,
+                keys=(
+                    "revision",
+                    "revisionNumber",
+                    "runningNumberOfRevisions",
+                    "candidate_id",
+                ),
             )
 
         if download_url:
@@ -357,17 +365,8 @@ class DeepPCBProvider(AutolayoutProvider):
                 include_auth_headers=False,
             )
         else:
-            revision = None
-            if candidate is not None:
-                revision = self._extract_string(
-                    candidate.metadata,
-                    keys=(
-                        "revision",
-                        "revisionNumber",
-                        "runningNumberOfRevisions",
-                        "candidate_id",
-                    ),
-                )
+            if revision is None and candidate_id.isdigit():
+                revision = candidate_id
 
             params: dict[str, str] = {"type": "JsonFile"}
             if revision:
@@ -402,34 +401,52 @@ class DeepPCBProvider(AutolayoutProvider):
 
         if "application/json" in content_type:
             payload = _parse_json_or_text(response.text)
-            direct_url = self._extract_string(
-                payload,
-                keys=("url", "download_url", "downloadUrl", "fileUrl"),
-            )
-            if not direct_url:
-                raise RuntimeError(
-                    "DeepPCB candidate download response did not include binary "
-                    "content nor a download URL"
+            direct_url = None
+            if isinstance(payload, str):
+                raw_url = payload.strip().strip('"')
+                if raw_url.startswith(("https://", "http://")):
+                    direct_url = raw_url
+            elif isinstance(payload, dict):
+                raw_url = self._extract_string(
+                    payload,
+                    keys=("url", "download_url", "downloadUrl", "fileUrl"),
                 )
-            response = self._request_raw(
-                "GET",
-                direct_url,
-                is_absolute_url=True,
-                include_auth_headers=False,
-            )
-            content_type = response.headers.get("content-type", "").lower()
+                if isinstance(raw_url, str) and raw_url.startswith(
+                    ("https://", "http://")
+                ):
+                    direct_url = raw_url
+
+            if direct_url:
+                response = self._request_raw(
+                    "GET",
+                    direct_url,
+                    is_absolute_url=True,
+                    include_auth_headers=False,
+                )
+                content_type = response.headers.get("content-type", "").lower()
 
         output_path = self._persist_downloaded_layout(
             content=response.content,
             content_type=content_type,
             out_dir=out_dir,
             candidate_id=candidate_id,
+            target_layout_path=target_layout_path,
+        )
+
+        files: dict[str, str] = {"kicad_pcb": str(output_path)}
+        files.update(
+            self._download_supplemental_artifacts(
+                external_job_id=external_job_id,
+                candidate_id=candidate_id,
+                out_dir=out_dir,
+                revision=revision,
+            )
         )
 
         return DownloadResult(
             candidate_id=candidate_id,
             layout_path=output_path,
-            files={"kicad_pcb": str(output_path)},
+            files=files,
         )
 
     def cancel(self, external_job_id: str) -> None:
@@ -929,7 +946,10 @@ class DeepPCBProvider(AutolayoutProvider):
         content_type: str,
         out_dir: Path,
         candidate_id: str,
+        target_layout_path: Path | None = None,
     ) -> Path:
+        out_dir.mkdir(parents=True, exist_ok=True)
+
         if "zip" in content_type or _is_zip_bytes(content):
             archive_path = out_dir / f"{candidate_id}.zip"
             archive_path.write_bytes(content)
@@ -942,14 +962,248 @@ class DeepPCBProvider(AutolayoutProvider):
 
         head = content[:256].lstrip()
         if head.startswith(b"{") or head.startswith(b"["):
-            raise RuntimeError(
-                "DeepPCB returned JSON artifact. Automatic apply requires a "
-                ".kicad_pcb candidate. Provide a download URL that returns KiCad PCB."
+            json_path = out_dir / f"{candidate_id}.json"
+            json_path.write_bytes(content)
+            if target_layout_path is None:
+                raise RuntimeError(
+                    "DeepPCB returned JSON artifact. Automatic apply requires a "
+                    "target layout path for JSON->KiCad transformation."
+                )
+            payload = _parse_json_or_text(content.decode("utf-8", errors="replace"))
+            if not isinstance(payload, dict):
+                raise RuntimeError(
+                    "DeepPCB JSON artifact is not an object payload and cannot be "
+                    "applied to a KiCad board."
+                )
+            return self._apply_json_artifact_to_kicad(
+                payload=payload,
+                target_layout_path=target_layout_path,
+                out_dir=out_dir,
+                candidate_id=candidate_id,
             )
 
         output_path = out_dir / f"{candidate_id}.kicad_pcb"
         output_path.write_bytes(content)
         return output_path
+
+    def _download_supplemental_artifacts(
+        self,
+        *,
+        external_job_id: str,
+        candidate_id: str,
+        out_dir: Path,
+        revision: str | None,
+    ) -> dict[str, str]:
+        files: dict[str, str] = {}
+
+        for label, artifact_type, suffix in (
+            ("ses", "SesFile", ".ses"),
+            ("dsn", "DsnFile", ".dsn"),
+        ):
+            params: dict[str, str] = {"type": artifact_type}
+            if revision:
+                params["revision"] = revision
+
+            response = None
+            for template in (
+                self.config.download_path_template,
+                self.config.alt_download_path_template,
+            ):
+                try:
+                    path = template.format(
+                        task_id=external_job_id,
+                        candidate_id=candidate_id,
+                    )
+                    response = self._request_raw("GET", path, params=params)
+                    break
+                except RuntimeError:
+                    continue
+
+            if response is None:
+                continue
+
+            body = response.content
+            if not body:
+                continue
+
+            output = out_dir / f"{candidate_id}{suffix}"
+            output.write_bytes(body)
+            files[label] = str(output)
+
+        json_path = out_dir / f"{candidate_id}.json"
+        if json_path.exists():
+            files["json"] = str(json_path)
+
+        return files
+
+    def _apply_json_artifact_to_kicad(
+        self,
+        payload: dict[str, Any],
+        target_layout_path: Path,
+        out_dir: Path,
+        candidate_id: str,
+    ) -> Path:
+        if not target_layout_path.exists():
+            raise FileNotFoundError(
+                "Cannot apply DeepPCB JSON artifact. Target KiCad layout missing: "
+                f"{target_layout_path}"
+            )
+
+        output_path = out_dir / f"{candidate_id}.kicad_pcb"
+        shutil.copy2(target_layout_path, output_path)
+
+        if hasattr(kicad.loads, "cache"):
+            kicad.loads.cache.pop(output_path, None)
+
+        pcb_file = kicad.loads(kicad.pcb.PcbFile, output_path)
+        pcb = pcb_file.kicad_pcb
+
+        footprints_by_ref: dict[str, kicad.pcb.Footprint] = {}
+        for footprint in pcb.footprints:
+            reference = Property.try_get_property(footprint.propertys, "Reference")
+            if isinstance(reference, str) and reference.strip():
+                footprints_by_ref[reference.strip().upper()] = footprint
+
+        transform = _infer_json_to_kicad_transform(payload, pcb)
+
+        placement_updates = _transform_component_updates(
+            _extract_component_updates(payload),
+            transform,
+        )
+        self._apply_deeppcb_placements(footprints_by_ref, placement_updates)
+
+        net_name_lookup = _extract_payload_net_name_lookup(payload)
+        wire_updates = _transform_wire_updates(
+            _extract_wire_updates(payload),
+            transform,
+        )
+        via_updates = _transform_via_updates(_extract_via_updates(payload), transform)
+        self._apply_deeppcb_routing(
+            pcb=pcb,
+            wire_updates=wire_updates,
+            via_updates=via_updates,
+            net_name_lookup=net_name_lookup,
+        )
+
+        kicad.dumps(pcb_file, output_path)
+        return output_path
+
+    def _apply_deeppcb_placements(
+        self,
+        footprints_by_ref: dict[str, kicad.pcb.Footprint],
+        placement_updates: list[dict[str, Any]],
+    ) -> int:
+        applied = 0
+        for update in placement_updates:
+            reference = str(update.get("reference") or "").strip()
+            if not reference:
+                continue
+            footprint = footprints_by_ref.get(reference.upper())
+            if footprint is None:
+                continue
+
+            x = _to_float(update.get("x"))
+            y = _to_float(update.get("y"))
+            if x is None or y is None:
+                continue
+
+            rotation = _to_float(update.get("rotation"))
+            target_layer = _normalize_footprint_layer(
+                update.get("side"),
+                fallback_layer=footprint.layer,
+            )
+            target_coord = kicad.pcb.Xyr(
+                x=x,
+                y=y,
+                r=rotation if rotation is not None else footprint.at.r,
+            )
+            PCB_Transformer.move_fp(footprint, target_coord, target_layer)
+            applied += 1
+        return applied
+
+    def _apply_deeppcb_routing(
+        self,
+        pcb: kicad.pcb.KicadPcb,
+        wire_updates: list[dict[str, Any]],
+        via_updates: list[dict[str, Any]],
+        net_name_lookup: dict[str, str],
+    ) -> tuple[int, int]:
+        if not wire_updates and not via_updates:
+            return (0, 0)
+
+        # DeepPCB routing artifacts represent a full revision candidate.
+        pcb.segments.clear()
+        pcb.arcs.clear()
+        pcb.vias.clear()
+
+        route_transformer = object.__new__(PCB_Transformer)
+        route_transformer.pcb = pcb
+
+        nets_by_name, nets_by_number, next_net_number = _build_kicad_net_lookup(pcb)
+        state = {
+            "nets_by_name": nets_by_name,
+            "nets_by_number": nets_by_number,
+            "next_net_number": next_net_number,
+        }
+
+        applied_wires = 0
+        for wire in wire_updates:
+            points = wire.get("points")
+            if not isinstance(points, list) or len(points) < 2:
+                continue
+
+            net_token = wire.get("net")
+            net_number = _resolve_or_create_net_number(
+                pcb=pcb,
+                net_token=net_token,
+                net_name_lookup=net_name_lookup,
+                state=state,
+            )
+            if net_number <= 0:
+                continue
+
+            width = _to_float(wire.get("width")) or 0.2
+            layer = _normalize_copper_layer(wire.get("layer"))
+            arc = bool(wire.get("arc")) and len(points) >= 3
+            route_transformer.insert_track(
+                net_id=net_number,
+                points=points,
+                width=width,
+                layer=layer,
+                arc=arc,
+            )
+            applied_wires += 1
+
+        applied_vias = 0
+        for via in via_updates:
+            x = _to_float(via.get("x"))
+            y = _to_float(via.get("y"))
+            if x is None or y is None:
+                continue
+
+            net_token = via.get("net")
+            net_number = _resolve_or_create_net_number(
+                pcb=pcb,
+                net_token=net_token,
+                net_name_lookup=net_name_lookup,
+                state=state,
+            )
+            if net_number <= 0:
+                continue
+
+            diameter = _to_float(via.get("diameter")) or 0.6
+            drill = _to_float(via.get("drill")) or min(diameter * 0.5, 0.3)
+            if drill >= diameter:
+                drill = max(0.1, diameter * 0.5)
+
+            route_transformer.insert_via(
+                coord=(x, y),
+                net=net_number,
+                size_drill=(diameter, drill),
+            )
+            applied_vias += 1
+
+        return (applied_wires, applied_vias)
 
     def _parse_board_candidates(
         self,
@@ -1280,6 +1534,579 @@ class DeepPCBProvider(AutolayoutProvider):
             if not any(_is_running_workflow_status(status) for status in statuses):
                 return
             time.sleep(1.0)
+
+
+def _extract_component_updates(payload: Any) -> list[dict[str, Any]]:
+    updates: list[dict[str, Any]] = []
+    scale = _coordinate_scale(payload)
+    component_lists = _extract_named_dict_lists(
+        payload,
+        keys=(
+            "components",
+            "placements",
+            "componentPlacements",
+            "componentPlacement",
+        ),
+    )
+    for values in component_lists:
+        for item in values:
+            reference = _first_string(
+                item,
+                keys=(
+                    "reference",
+                    "ref",
+                    "refDes",
+                    "designator",
+                    "id",
+                    "componentId",
+                    "componentName",
+                ),
+            )
+            x, y = _extract_xy(item)
+            if not reference or x is None or y is None:
+                continue
+
+            updates.append(
+                {
+                    "reference": reference,
+                    "x": x * scale,
+                    "y": y * scale,
+                    "rotation": _first_float(
+                        item,
+                        keys=("rotation", "angle", "rotationDeg", "orientation"),
+                    ),
+                    "side": _first_value(
+                        item,
+                        keys=("side", "boardSide", "layer", "layerName"),
+                    ),
+                }
+            )
+    return updates
+
+
+def _extract_wire_updates(payload: Any) -> list[dict[str, Any]]:
+    updates: list[dict[str, Any]] = []
+    scale = _coordinate_scale(payload)
+    wire_lists = _extract_named_dict_lists(
+        payload,
+        keys=("wires", "tracks", "routes", "segments"),
+    )
+    for values in wire_lists:
+        for item in values:
+            points = _extract_points(item, scale=scale)
+            if len(points) < 2:
+                continue
+            updates.append(
+                {
+                    "points": points,
+                    "net": _extract_net_token(
+                        _first_value(
+                            item,
+                            keys=("net", "netId", "netName", "signal", "signalName"),
+                        )
+                    ),
+                    "layer": _first_value(
+                        item,
+                        keys=("layer", "layerName", "side", "boardSide"),
+                    ),
+                    "width": _first_float(
+                        item,
+                        keys=("width", "traceWidth", "lineWidth", "thickness"),
+                    ),
+                    "arc": _first_bool(
+                        item,
+                        keys=("arc", "isArc", "curve", "isCurve"),
+                    ),
+                }
+            )
+            width = updates[-1]["width"]
+            if isinstance(width, float):
+                updates[-1]["width"] = width * scale
+    return updates
+
+
+def _extract_via_updates(payload: Any) -> list[dict[str, Any]]:
+    updates: list[dict[str, Any]] = []
+    scale = _coordinate_scale(payload)
+    via_lists = _extract_named_dict_lists(payload, keys=("vias",))
+    for values in via_lists:
+        for item in values:
+            x, y = _extract_xy(item)
+            if x is None or y is None:
+                continue
+            diameter = _first_float(
+                item,
+                keys=("diameter", "size", "outerDiameter"),
+            )
+            drill = _first_float(item, keys=("drill", "drillDiameter"))
+            updates.append(
+                {
+                    "x": x * scale,
+                    "y": y * scale,
+                    "net": _extract_net_token(
+                        _first_value(
+                            item,
+                            keys=("net", "netId", "netName", "signal", "signalName"),
+                        )
+                    ),
+                    "diameter": (
+                        diameter * scale if isinstance(diameter, float) else None
+                    ),
+                    "drill": drill * scale if isinstance(drill, float) else None,
+                }
+            )
+    return updates
+
+
+def _extract_payload_net_name_lookup(payload: Any) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    net_lists = _extract_named_dict_lists(payload, keys=("nets", "signals"))
+    for values in net_lists:
+        for item in values:
+            net_name = _first_string(item, keys=("name", "netName", "signalName"))
+            if not net_name:
+                continue
+            for key in ("id", "netId", "net_id", "number", "index", "name"):
+                token = _extract_net_token(item.get(key))
+                if token:
+                    lookup[token.lower()] = net_name
+    return lookup
+
+
+def _build_kicad_net_lookup(
+    pcb: kicad.pcb.KicadPcb,
+) -> tuple[dict[str, int], dict[str, int], int]:
+    nets_by_name: dict[str, int] = {}
+    nets_by_number: dict[str, int] = {}
+    next_number = 1
+    for net in pcb.nets:
+        nets_by_number[str(net.number)] = net.number
+        if isinstance(net.name, str) and net.name.strip():
+            nets_by_name[net.name.strip().lower()] = net.number
+        if net.number >= next_number:
+            next_number = net.number + 1
+    return nets_by_name, nets_by_number, next_number
+
+
+def _resolve_or_create_net_number(
+    pcb: kicad.pcb.KicadPcb,
+    net_token: Any,
+    net_name_lookup: dict[str, str],
+    state: dict[str, Any],
+) -> int:
+    raw_token = _extract_net_token(net_token)
+    if not raw_token:
+        return 0
+
+    token_key = raw_token.lower()
+    mapped_name = net_name_lookup.get(token_key)
+    if mapped_name:
+        raw_token = mapped_name
+        token_key = raw_token.lower()
+
+    nets_by_name = state["nets_by_name"]
+    nets_by_number = state["nets_by_number"]
+    if token_key in nets_by_name:
+        return int(nets_by_name[token_key])
+    if raw_token in nets_by_number:
+        return int(nets_by_number[raw_token])
+
+    preferred_number: int | None = None
+    token_float = _to_float(raw_token)
+    if token_float is not None and float(token_float).is_integer():
+        token_int = int(token_float)
+        if token_int > 0:
+            if str(token_int) in nets_by_number:
+                return int(nets_by_number[str(token_int)])
+            preferred_number = token_int
+
+    number = preferred_number or int(state["next_net_number"])
+    while str(number) in nets_by_number or number <= 0:
+        number += 1
+
+    name = mapped_name or raw_token
+    if not isinstance(name, str) or not name.strip():
+        name = f"N{number}"
+    name = name.strip()
+
+    pcb.nets.append(kicad.pcb.Net(number=number, name=name))
+    nets_by_number[str(number)] = number
+    nets_by_name[name.lower()] = number
+    state["next_net_number"] = max(int(state["next_net_number"]), number + 1)
+    return number
+
+
+def _extract_named_dict_lists(payload: Any, keys: tuple[str, ...]) -> list[list[dict]]:
+    out: list[list[dict]] = []
+    lookup = {key.lower() for key in keys}
+    for key, value in _walk(payload):
+        if key.lower() not in lookup:
+            continue
+        if not isinstance(value, list):
+            continue
+        if not value or not all(isinstance(item, dict) for item in value):
+            continue
+        out.append(value)
+    return out
+
+
+def _extract_xy(payload: dict[str, Any]) -> tuple[float | None, float | None]:
+    for key in ("position", "at", "location", "point", "center"):
+        value = payload.get(key)
+        x, y = _xy_from_value(value)
+        if x is not None and y is not None:
+            return x, y
+
+    x = _first_float(payload, keys=("x", "posX", "positionX", "cx"))
+    y = _first_float(payload, keys=("y", "posY", "positionY", "cy"))
+    return x, y
+
+
+def _extract_points(
+    payload: dict[str, Any],
+    *,
+    scale: float = 1.0,
+) -> list[tuple[float, float]]:
+    for key in ("points", "path", "polyline", "vertices", "route"):
+        value = payload.get(key)
+        if not isinstance(value, list):
+            continue
+        points: list[tuple[float, float]] = []
+        for point in value:
+            x, y = _xy_from_value(point)
+            if x is None or y is None:
+                continue
+            points.append((x * scale, y * scale))
+        if len(points) >= 2:
+            return points
+
+    start = _xy_from_value(payload.get("start"))
+    end = _xy_from_value(payload.get("end"))
+    if (
+        start[0] is not None
+        and start[1] is not None
+        and end[0] is not None
+        and end[1] is not None
+    ):
+        return [  # type: ignore[list-item]
+            (start[0] * scale, start[1] * scale),
+            (end[0] * scale, end[1] * scale),
+        ]
+
+    return []
+
+
+def _coordinate_scale(payload: Any) -> float:
+    if not isinstance(payload, dict):
+        return 1.0
+
+    resolution = payload.get("resolution")
+    if not isinstance(resolution, dict):
+        return 1.0
+
+    unit_raw = resolution.get("unit")
+    value_raw = resolution.get("value")
+    if not isinstance(unit_raw, str):
+        return 1.0
+    value = _to_float(value_raw)
+    if value is None or value <= 0:
+        return 1.0
+
+    unit = unit_raw.strip().lower()
+    if unit in {"mm", "millimeter", "millimetre", "millimeters", "millimetres"}:
+        return 1.0 / value
+    return 1.0
+
+
+def _xy_from_value(value: Any) -> tuple[float | None, float | None]:
+    if isinstance(value, dict):
+        x = _to_float(value.get("x"))
+        y = _to_float(value.get("y"))
+        return x, y
+    if isinstance(value, list | tuple) and len(value) >= 2:
+        x = _to_float(value[0])
+        y = _to_float(value[1])
+        return x, y
+    return None, None
+
+
+def _extract_net_token(value: Any) -> str | None:
+    if isinstance(value, dict):
+        for key in ("name", "netName", "signalName", "id", "netId", "number"):
+            token = _extract_net_token(value.get(key))
+            if token:
+                return token
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        if isinstance(value, float) and not value.is_integer():
+            return str(value)
+        return str(int(value))
+    if isinstance(value, str):
+        token = value.strip().strip('"')
+        return token or None
+    return None
+
+
+def _normalize_footprint_layer(side_token: Any, fallback_layer: str) -> str:
+    token = _extract_net_token(side_token)
+    if not token:
+        return "B.Cu" if fallback_layer == "B.Cu" else "F.Cu"
+
+    normalized = token.strip().lower()
+    if normalized in {"f.cu", "front", "top", "0", "f", "topside"}:
+        return "F.Cu"
+    if normalized in {"b.cu", "back", "bottom", "1", "b", "bottomside"}:
+        return "B.Cu"
+    if token.endswith(".Cu"):
+        return "B.Cu" if token.startswith("B.") else "F.Cu"
+    return "B.Cu" if fallback_layer == "B.Cu" else "F.Cu"
+
+
+def _normalize_copper_layer(layer_token: Any) -> str:
+    token = _extract_net_token(layer_token)
+    if not token:
+        return "F.Cu"
+
+    normalized = token.strip().lower()
+    if normalized in {"front", "top", "0", "f"}:
+        return "F.Cu"
+    if normalized in {"back", "bottom", "1", "b"}:
+        return "B.Cu"
+
+    if token.endswith(".Cu"):
+        return token
+    return "F.Cu"
+
+
+def _first_value(payload: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    lookup = {key.lower() for key in keys}
+    for key, value in payload.items():
+        if key.lower() in lookup:
+            return value
+    return None
+
+
+def _first_string(payload: dict[str, Any], keys: tuple[str, ...]) -> str | None:
+    raw = _first_value(payload, keys)
+    if isinstance(raw, str):
+        stripped = raw.strip()
+        return stripped or None
+    if isinstance(raw, int | float):
+        return str(raw)
+    return None
+
+
+def _first_float(payload: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+    return _to_float(_first_value(payload, keys))
+
+
+def _first_bool(payload: dict[str, Any], keys: tuple[str, ...]) -> bool:
+    raw = _first_value(payload, keys)
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        normalized = raw.strip().lower()
+        if normalized in {"1", "true", "yes"}:
+            return True
+        if normalized in {"0", "false", "no"}:
+            return False
+    return False
+
+
+def _to_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return float(stripped)
+        except ValueError:
+            return None
+    return None
+
+
+def _infer_json_to_kicad_transform(
+    payload: dict[str, Any],
+    pcb: kicad.pcb.KicadPcb,
+) -> tuple[float, float, float, float]:
+    boundary_points = _extract_boundary_points(payload)
+    target_bbox = _extract_edge_cuts_bbox(pcb)
+    if not boundary_points or target_bbox is None:
+        return (1.0, 0.0, 1.0, 0.0)
+
+    source_bbox = _bbox_from_points(boundary_points)
+    if source_bbox is None:
+        return (1.0, 0.0, 1.0, 0.0)
+
+    sx_min, sy_min, sx_max, sy_max = source_bbox
+    tx_min, ty_min, tx_max, ty_max = target_bbox
+    ax, bx, x_err = _fit_axis_to_target(sx_min, sx_max, tx_min, tx_max)
+    ay, by, y_err = _fit_axis_to_target(sy_min, sy_max, ty_min, ty_max)
+
+    # If boundary fit is clearly bad, avoid applying a destructive transform.
+    if x_err > 5.0 or y_err > 5.0:
+        return (1.0, 0.0, 1.0, 0.0)
+
+    return (ax, bx, ay, by)
+
+
+def _transform_component_updates(
+    updates: list[dict[str, Any]],
+    transform: tuple[float, float, float, float],
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for update in updates:
+        x = _to_float(update.get("x"))
+        y = _to_float(update.get("y"))
+        if x is None or y is None:
+            out.append(dict(update))
+            continue
+        tx, ty = _transform_xy(x, y, transform)
+        mapped = dict(update)
+        mapped["x"] = tx
+        mapped["y"] = ty
+        out.append(mapped)
+    return out
+
+
+def _transform_wire_updates(
+    updates: list[dict[str, Any]],
+    transform: tuple[float, float, float, float],
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for update in updates:
+        mapped = dict(update)
+        points = update.get("points")
+        if isinstance(points, list):
+            transformed_points: list[tuple[float, float]] = []
+            for point in points:
+                if not isinstance(point, tuple | list) or len(point) < 2:
+                    continue
+                x = _to_float(point[0])
+                y = _to_float(point[1])
+                if x is None or y is None:
+                    continue
+                transformed_points.append(_transform_xy(x, y, transform))
+            mapped["points"] = transformed_points
+        out.append(mapped)
+    return out
+
+
+def _transform_via_updates(
+    updates: list[dict[str, Any]],
+    transform: tuple[float, float, float, float],
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for update in updates:
+        mapped = dict(update)
+        x = _to_float(update.get("x"))
+        y = _to_float(update.get("y"))
+        if x is not None and y is not None:
+            tx, ty = _transform_xy(x, y, transform)
+            mapped["x"] = tx
+            mapped["y"] = ty
+        out.append(mapped)
+    return out
+
+
+def _transform_xy(
+    x: float,
+    y: float,
+    transform: tuple[float, float, float, float],
+) -> tuple[float, float]:
+    ax, bx, ay, by = transform
+    return (ax * x + bx, ay * y + by)
+
+
+def _extract_boundary_points(payload: dict[str, Any]) -> list[tuple[float, float]]:
+    resolution_scale = _coordinate_scale(payload)
+    boundary = payload.get("boundary")
+    if not isinstance(boundary, dict):
+        return []
+
+    shape = boundary.get("shape")
+    if isinstance(shape, dict):
+        points = _extract_points(shape, scale=resolution_scale)
+        if points:
+            return points
+
+    return []
+
+
+def _extract_edge_cuts_bbox(
+    pcb: kicad.pcb.KicadPcb,
+) -> tuple[float, float, float, float] | None:
+    points: list[tuple[float, float]] = []
+
+    for line in pcb.gr_lines:
+        if line.layer == "Edge.Cuts":
+            points.append((line.start.x, line.start.y))
+            points.append((line.end.x, line.end.y))
+
+    for arc in pcb.gr_arcs:
+        if arc.layer == "Edge.Cuts":
+            points.append((arc.start.x, arc.start.y))
+            points.append((arc.mid.x, arc.mid.y))
+            points.append((arc.end.x, arc.end.y))
+
+    for rect in pcb.gr_rects:
+        if rect.layer == "Edge.Cuts":
+            points.append((rect.start.x, rect.start.y))
+            points.append((rect.end.x, rect.end.y))
+
+    for circle in pcb.gr_circles:
+        if circle.layer == "Edge.Cuts":
+            points.append((circle.center.x, circle.center.y))
+            points.append((circle.end.x, circle.end.y))
+
+    for poly in pcb.gr_polys:
+        if poly.layer == "Edge.Cuts":
+            for point in poly.pts.xys:
+                points.append((point.x, point.y))
+
+    return _bbox_from_points(points)
+
+
+def _bbox_from_points(
+    points: list[tuple[float, float]],
+) -> tuple[float, float, float, float] | None:
+    if not points:
+        return None
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _fit_axis_to_target(
+    source_min: float,
+    source_max: float,
+    target_min: float,
+    target_max: float,
+) -> tuple[float, float, float]:
+    source_center = (source_min + source_max) / 2.0
+    target_center = (target_min + target_max) / 2.0
+
+    candidates = [
+        (1.0, target_center - source_center),
+        (-1.0, target_center + source_center),
+    ]
+
+    best = (1.0, target_center - source_center, float("inf"))
+    for a, b in candidates:
+        mapped = sorted([a * source_min + b, a * source_max + b])
+        error = abs(mapped[0] - target_min) + abs(mapped[1] - target_max)
+        better_error = error < (best[2] - 1e-9)
+        tie_break = abs(error - best[2]) <= 1e-9 and abs(b) < abs(best[1])
+        if better_error or tie_break:
+            best = (a, b, error)
+
+    return best
 
 
 def _join_url(base_url: str, path: str) -> str:

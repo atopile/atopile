@@ -705,6 +705,9 @@ export interface EventMessage {
  */
 export enum EventType {
     AtopileConfigChanged = "atopile_config_changed",
+    AutolayoutCandidateReady = "autolayout_candidate_ready",
+    AutolayoutChanged = "autolayout_changed",
+    AutolayoutFailed = "autolayout_failed",
     BOMChanged = "bom_changed",
     BuildsChanged = "builds_changed",
     LogViewCurrentIDChanged = "log_view_current_id_changed",

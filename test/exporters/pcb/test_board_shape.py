@@ -42,13 +42,24 @@ def _new_transformer(
 
 
 class TestBoardShapeExporter(unittest.TestCase):
+    @staticmethod
+    def _get_board_shape_footprint(transformer: PCB_Transformer) -> kicad.pcb.Footprint:
+        board_shape = transformer.app.board.get()
+        graph_fp = board_shape.get_trait(F.Footprints.has_associated_footprint)
+        return (
+            graph_fp.get_footprint()
+            .get_trait(F.KiCadFootprints.has_associated_kicad_pcb_footprint)
+            .get_footprint()
+        )
+
     def test_generates_rectangular_outline(self):
         transformer = _new_transformer(width_m=0.020, height_m=0.030)
         apply_rectangular_board_shape(transformer)
 
+        board_shape_fp = self._get_board_shape_footprint(transformer)
         edge_geos = [
             geo
-            for geo in get_all_geos(transformer.pcb)
+            for geo in get_all_geos(board_shape_fp)
             if "Edge.Cuts" in kicad.geo.get_layers(geo)
         ]
         lines = [geo for geo in edge_geos if isinstance(geo, kicad.pcb.Line)]
@@ -68,9 +79,10 @@ class TestBoardShapeExporter(unittest.TestCase):
         )
         apply_rectangular_board_shape(transformer)
 
+        board_shape_fp = self._get_board_shape_footprint(transformer)
         edge_geos = [
             geo
-            for geo in get_all_geos(transformer.pcb)
+            for geo in get_all_geos(board_shape_fp)
             if "Edge.Cuts" in kicad.geo.get_layers(geo)
         ]
         arcs = [geo for geo in edge_geos if isinstance(geo, kicad.pcb.Arc)]

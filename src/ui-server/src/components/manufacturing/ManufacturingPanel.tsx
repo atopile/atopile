@@ -170,25 +170,6 @@ function getActionError(result: unknown, fallback: string): string {
   return fallback;
 }
 
-function formatAutolayoutState(state: AutolayoutJob['state']): string {
-  switch (state) {
-    case 'queued':
-      return 'Queued';
-    case 'running':
-      return 'Running';
-    case 'awaiting_selection':
-      return 'Awaiting Candidate Selection';
-    case 'completed':
-      return 'Completed';
-    case 'failed':
-      return 'Failed';
-    case 'cancelled':
-      return 'Cancelled';
-    default:
-      return state;
-  }
-}
-
 export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps) {
   const wizard = useStore((s) => s.manufacturingWizard);
   const queuedBuilds = useStore((s) => s.queuedBuilds);
@@ -226,11 +207,10 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
   const [detailedCostEstimate, setDetailedCostEstimate] = useState<DetailedCostEstimate | null>(null);
   const [isLoadingBoardSummary, setIsLoadingBoardSummary] = useState(false);
   const [autolayoutJob, setAutolayoutJob] = useState<AutolayoutJob | null>(null);
-  const [autolayoutCandidates, setAutolayoutCandidates] = useState<AutolayoutCandidate[]>([]);
-  const [selectedAutolayoutCandidateId, setSelectedAutolayoutCandidateId] = useState<string | null>(null);
-  const [autolayoutLoading, setAutolayoutLoading] = useState(false);
-  const [autolayoutApplying, setAutolayoutApplying] = useState(false);
-  const [autolayoutError, setAutolayoutError] = useState<string | null>(null);
+  const [, setAutolayoutCandidates] = useState<AutolayoutCandidate[]>([]);
+  const [, setSelectedAutolayoutCandidateId] = useState<string | null>(null);
+  const [, setAutolayoutLoading] = useState(false);
+  const [, setAutolayoutError] = useState<string | null>(null);
 
   const selectedBuilds = wizard?.selectedBuilds || [];
   const selectedBuild = selectedBuilds[0];
@@ -677,8 +657,9 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
         throw new Error(getActionError(response.result, 'Failed to fetch autolayout candidates'));
       }
 
-      const rawCandidates = Array.isArray((response.result as { candidates?: unknown[] }).candidates)
-        ? ((response.result as { candidates: unknown[] }).candidates as Record<string, unknown>[])
+      const result = response.result as { candidates?: unknown[] } | undefined;
+      const rawCandidates = Array.isArray(result?.candidates)
+        ? (result.candidates as Record<string, unknown>[])
         : [];
       const candidates = rawCandidates
         .map((candidate) => normalizeAutolayoutCandidate(candidate))
@@ -726,138 +707,6 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
     [autolayoutJob, handleRefreshAutolayoutCandidates, syncAutolayoutJob]
   );
 
-  const handleStartAutolayout = useCallback(async () => {
-    if (!selectedBuild) return;
-
-    setAutolayoutLoading(true);
-    setAutolayoutError(null);
-
-    try {
-      const response = await sendActionWithResponse('startAutolayout', {
-        projectRoot: selectedBuild.projectRoot,
-        target: selectedBuild.targetName,
-      });
-
-      if (!response.result?.success) {
-        throw new Error(getActionError(response.result, 'Failed to start autolayout'));
-      }
-
-      const jobPayload = (response.result as { job?: Record<string, unknown> }).job;
-      if (!jobPayload) {
-        throw new Error('Autolayout start response missing job payload');
-      }
-
-      syncAutolayoutJob(jobPayload);
-    } catch (error) {
-      setAutolayoutError(error instanceof Error ? error.message : 'Failed to start autolayout');
-    } finally {
-      setAutolayoutLoading(false);
-    }
-  }, [selectedBuild, syncAutolayoutJob]);
-
-  const handleSelectAutolayoutCandidate = useCallback(
-    async (candidateId: string) => {
-      if (!autolayoutJob) return;
-
-      setSelectedAutolayoutCandidateId(candidateId);
-      try {
-        const response = await sendActionWithResponse('selectAutolayoutCandidate', {
-          jobId: autolayoutJob.job_id,
-          candidateId,
-        });
-
-        if (!response.result?.success) {
-          throw new Error(getActionError(response.result, 'Failed to select candidate'));
-        }
-
-        const jobPayload = (response.result as { job?: Record<string, unknown> }).job;
-        if (jobPayload) {
-          syncAutolayoutJob(jobPayload);
-        }
-      } catch (error) {
-        setAutolayoutError(error instanceof Error ? error.message : 'Failed to select candidate');
-      }
-    },
-    [autolayoutJob, syncAutolayoutJob]
-  );
-
-  const handleApplyAutolayout = useCallback(async () => {
-    if (!autolayoutJob || !selectedBuild) return;
-
-    const candidateId =
-      selectedAutolayoutCandidateId ??
-      autolayoutJob.selected_candidate_id ??
-      autolayoutCandidates[0]?.candidate_id;
-    if (!candidateId) {
-      setAutolayoutError('Select a candidate before applying');
-      return;
-    }
-
-    setAutolayoutApplying(true);
-    setAutolayoutError(null);
-
-    try {
-      const response = await sendActionWithResponse('applyAutolayoutCandidate', {
-        jobId: autolayoutJob.job_id,
-        candidateId,
-        runMfgDataBuild: true,
-      });
-
-      if (!response.result?.success) {
-        throw new Error(getActionError(response.result, 'Failed to apply autolayout candidate'));
-      }
-
-      const jobPayload = (response.result as { job?: Record<string, unknown> }).job;
-      if (!jobPayload) {
-        throw new Error('Autolayout apply response missing job payload');
-      }
-
-      syncAutolayoutJob(jobPayload);
-      setReviewedItems(new Set());
-      setReviewSectionCollapsed(false);
-      setActiveVisualTab('gerbers');
-
-      const buildResult = (response.result as { build?: { success?: boolean } }).build;
-      if (buildResult?.success) {
-        updateBuild(selectedBuild.targetName, { status: 'building', error: null });
-      }
-    } catch (error) {
-      setAutolayoutError(error instanceof Error ? error.message : 'Failed to apply candidate');
-    } finally {
-      setAutolayoutApplying(false);
-    }
-  }, [
-    autolayoutJob,
-    selectedBuild,
-    selectedAutolayoutCandidateId,
-    autolayoutCandidates,
-    syncAutolayoutJob,
-    updateBuild,
-  ]);
-
-  const handleCancelAutolayout = useCallback(async () => {
-    if (!autolayoutJob) return;
-
-    setAutolayoutLoading(true);
-    setAutolayoutError(null);
-    try {
-      const response = await sendActionWithResponse('cancelAutolayout', {
-        jobId: autolayoutJob.job_id,
-      });
-      if (!response.result?.success) {
-        throw new Error(getActionError(response.result, 'Failed to cancel autolayout'));
-      }
-      const jobPayload = (response.result as { job?: Record<string, unknown> }).job;
-      if (jobPayload) {
-        syncAutolayoutJob(jobPayload);
-      }
-    } catch (error) {
-      setAutolayoutError(error instanceof Error ? error.message : 'Failed to cancel autolayout');
-    } finally {
-      setAutolayoutLoading(false);
-    }
-  }, [autolayoutJob, syncAutolayoutJob]);
-
   useEffect(() => {
     if (!selectedBuild) return;
 
@@ -874,8 +723,9 @@ export function ManufacturingPanel({ project, onClose }: ManufacturingPanelProps
           throw new Error(getActionError(response.result, 'Failed to load autolayout jobs'));
         }
 
-        const rawJobs = Array.isArray((response.result as { jobs?: unknown[] }).jobs)
-          ? ((response.result as { jobs: unknown[] }).jobs as Record<string, unknown>[])
+        const result = response.result as { jobs?: unknown[] } | undefined;
+        const rawJobs = Array.isArray(result?.jobs)
+          ? (result.jobs as Record<string, unknown>[])
           : [];
         const jobs = rawJobs
           .map((job) => normalizeAutolayoutJob(job))

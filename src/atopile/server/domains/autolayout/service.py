@@ -269,6 +269,7 @@ class AutolayoutService:
                 provider_job_ref,
                 selected_candidate_id,
                 out_dir=Path(job.work_dir or ".") / "downloads",
+                target_layout_path=layout_path,
             )
             downloaded_layout = download_result.layout_path
             chosen_candidate = selected_candidate_id

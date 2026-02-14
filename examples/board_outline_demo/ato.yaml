@@ -1,12 +1,25 @@
 requires-atopile: ^0.14.0
-
 paths:
   src: ./
   layout: ./layout
-
 builds:
   default:
     entry: board_outline_demo.ato:App
+    autolayout:
+      constraints:
+        plane_intent:
+          enabled: true
+          nets:
+          - GND
+          mode: solid
+          min_clearance_mm: 0.25
+        stackup_intent:
+          layer_count: 2
+          board_thickness_mm: 1.6
+          outer_copper_oz: 1.0
+          dielectric_er: 4.4
+          notes: Initial automated placement/routing run for board_outline_demo.
+        preserve_existing_routing: false
 dependencies:
 - type: registry
   identifier: atopile/usb-connectors

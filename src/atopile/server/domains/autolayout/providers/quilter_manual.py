@@ -50,6 +50,7 @@ class QuilterManualProvider(AutolayoutProvider):
         external_job_id: str,
         candidate_id: str,
         out_dir: Path,
+        target_layout_path: Path | None = None,
     ) -> DownloadResult:
         raise RuntimeError(
             "Quilter manual provider does not support candidate download."

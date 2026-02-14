@@ -10,7 +10,7 @@ from "atopile/usb-connectors/usb-connectors.ato" import USB2_0TypeCHorizontalCon
 from "atopile/sensirion-sht45/sensirion-sht45.ato" import Sensirion_SHT45
 from "parts/Texas_Instruments_TLV75733PDBVR/Texas_Instruments_TLV75733PDBVR.ato" import Texas_Instruments_TLV75733PDBVR_package
 from "parts/Espressif_Systems_ESP32_C6_WROOM_1_N8/Espressif_Systems_ESP32_C6_WROOM_1_N8.ato" import Espressif_Systems_ESP32_C6_WROOM_1_N8_package
-from "atopile/programming-headers/parts/Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical/Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical.ato" import Tag_Connect_TC2030_IDC_NL_2x03_P1_27mm_Vertical_package
+from "parts/BOOMELE_1_27_2_5PLTM/BOOMELE_1_27_2_5PLTM.ato" import BOOMELE_1_27_2_5PLTM_package
 
 
 module TLV75733Regulator:
@@ -33,45 +33,49 @@ module TLV75733Regulator:
 
     input_caps = new Capacitor[2]
     input_caps[0].capacitance = 10uF +/- 20%
-    input_caps[0].max_voltage = 10V
+    assert input_caps[0].max_voltage >= 10V
     # input_caps[0] tempco X7R
     input_caps[0].package = "0603"
     input_caps[1].capacitance = 100nF +/- 10%
-    input_caps[1].max_voltage = 10V
+    assert input_caps[1].max_voltage >= 10V
     # input_caps[1] tempco X7R
     input_caps[1].package = "0402"
-    for cap in input_caps:
-        input.hv ~> cap ~> input.lv
+    input.hv ~> input_caps[0] ~> input.lv
+    input.hv ~> input_caps[1] ~> input.lv
 
     output_caps = new Capacitor[2]
     output_caps[0].capacitance = 10uF +/- 20%
-    output_caps[0].max_voltage = 10V
+    assert output_caps[0].max_voltage >= 10V
     # output_caps[0] tempco X7R
     output_caps[0].package = "0603"
     output_caps[1].capacitance = 1uF +/- 10%
-    output_caps[1].max_voltage = 10V
+    assert output_caps[1].max_voltage >= 10V
     # output_caps[1] tempco X7R
     output_caps[1].package = "0402"
-    for cap in output_caps:
-        output.hv ~> cap ~> output.lv
+    output.hv ~> output_caps[0] ~> output.lv
+    output.hv ~> output_caps[1] ~> output.lv
 
 
 module ESP32C6_ProgHeader:
-    """Tag-Connect 6-pin header wired for ESP32-C6 esptool UART/boot control."""
+    """10-pin 1.27mm header wired for ESP32-C6 esptool UART/boot control."""
     power = new ElectricPower
     tx = new ElectricLogic
     rx = new ElectricLogic
     boot = new ElectricLogic
     reset = new ElectricLogic
 
-    connector = new Tag_Connect_TC2030_IDC_NL_2x03_P1_27mm_Vertical_package
+    connector = new BOOMELE_1_27_2_5PLTM_package
 
     power.hv ~ connector.1
-    tx.line ~ connector.2
-    rx.line ~ connector.3
-    boot.line ~ connector.4
-    reset.line ~ connector.5
+    power.lv ~ connector.2
+    tx.line ~ connector.3
+    power.lv ~ connector.4
+    rx.line ~ connector.5
     power.lv ~ connector.6
+    boot.line ~ connector.7
+    power.lv ~ connector.8
+    reset.line ~ connector.9
+    power.lv ~ connector.10
 
     tx.reference ~ power
     rx.reference ~ power
@@ -108,15 +112,15 @@ module App:
 
     bulk_caps = new Capacitor[2]
     bulk_caps[0].capacitance = 22uF +/- 20%
-    bulk_caps[0].max_voltage = 10V
+    assert bulk_caps[0].max_voltage >= 10V
     # bulk_caps[0] tempco X7R
     bulk_caps[0].package = "0805"
     bulk_caps[1].capacitance = 100nF +/- 10%
-    bulk_caps[1].max_voltage = 10V
+    assert bulk_caps[1].max_voltage >= 10V
     # bulk_caps[1] tempco X7R
     bulk_caps[1].package = "0402"
-    for cap in bulk_caps:
-        power_3v3.hv ~> cap ~> power_3v3.lv
+    power_3v3.hv ~> bulk_caps[0] ~> power_3v3.lv
+    power_3v3.hv ~> bulk_caps[1] ~> power_3v3.lv
 
     en_signal = new ElectricLogic
     en_signal.reference ~ power_3v3
@@ -129,7 +133,7 @@ module App:
 
     en_rc = new Capacitor
     en_rc.capacitance = 1uF +/- 10%
-    en_rc.max_voltage = 10V
+    assert en_rc.max_voltage >= 10V
     # en_rc tempco X7R
     en_rc.package = "0402"
     en_signal.line ~> en_rc ~> power_3v3.lv
@@ -162,10 +166,8 @@ module App:
     status_signal.line ~ esp.IO18
 
     status_led = new LED
-    status_led.forward_voltage = 2.1V +/- 10%
-    status_led.current = 5mA +/- 20%
-    status_led.max_current = 20mA
-    status_led.color = LED.Color.BLUE
+    # Configure LED parameters once part is selected
+    status_led.color = "BLUE"
     status_led.package = "0603"
 
     status_res = new Resistor
@@ -175,10 +177,8 @@ module App:
     status_signal.line ~> status_res ~> status_led ~> power_3v3.lv
 
     power_led = new LED
-    power_led.forward_voltage = 2.0V +/- 10%
-    power_led.current = 2mA +/- 20%
-    power_led.max_current = 20mA
-    power_led.color = LED.Color.GREEN
+    # Configure LED parameters once part is selected
+    power_led.color = "GREEN"
     power_led.package = "0603"
 
     power_led_res = new Resistor

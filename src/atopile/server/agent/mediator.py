@@ -352,8 +352,9 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         category="autolayout",
         purpose="Apply selected routed/placed candidate into layouts/ with archive.",
         tooltip=(
-            "Fetch candidate, apply to layout file, and archive an iteration copy "
-            "under layouts/autolayout_iterations."
+            "Fetch candidate, apply to layout file, archive an iteration copy "
+            "under layouts/autolayout_iterations, and report downloaded provider "
+            "artifacts (JSON/SES/DSN when available)."
         ),
         inputs=["job_id", "candidate_id", "archive_iteration"],
         typical_output=(
@@ -371,10 +372,13 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
     "autolayout_request_screenshot": ToolDirectoryItem(
         name="autolayout_request_screenshot",
         category="autolayout",
-        purpose="Queue 2D/3D screenshot render for current placed/routed layout.",
-        tooltip="Queue background build targets to render board screenshots.",
-        inputs=["target", "view", "frozen"],
-        typical_output="queued_build_id, expected_outputs",
+        purpose="Render 2D/3D screenshot files for current placed/routed layout.",
+        tooltip=(
+            "Generate board screenshots immediately, with optional 2D layer "
+            "filters and drawing sheet excluded by default."
+        ),
+        inputs=["target", "view", "side", "layers"],
+        typical_output="screenshot_paths, layers, drawing_sheet_excluded",
         keywords=[
             "screenshot",
             "render board",
@@ -942,8 +946,8 @@ def _summarize_result(name: str, ok: bool, result: dict[str, Any]) -> str:
     if name == "autolayout_request_screenshot":
         view = result.get("view")
         if isinstance(view, str) and view:
-            return f"{view} screenshot build queued"
-        return "screenshot build queued"
+            return f"{view} screenshot rendered"
+        return "screenshot rendered"
     if name == "autolayout_configure_board_intent":
         target = result.get("build_target")
         if isinstance(target, str) and target:
@@ -1155,6 +1159,12 @@ def _infer_prefilled_args(
             args["view"] = "3d"
         elif "both" in lower:
             args["view"] = "both"
+        if "bottom" in lower or "back side" in lower or "backside" in lower:
+            args["side"] = "bottom"
+        elif "both sides" in lower:
+            args["side"] = "both"
+        else:
+            args["side"] = "top"
 
         if selected_targets:
             args["target"] = selected_targets[0]

@@ -561,6 +561,46 @@ def _archive_autolayout_iteration(
     return archive_path
 
 
+def _discover_downloaded_artifacts(
+    *,
+    downloads_dir: Path,
+    candidate_id: str,
+) -> dict[str, str]:
+    if not downloads_dir.exists():
+        return {}
+
+    artifacts: dict[str, str] = {}
+
+    # Prefer candidate-id-prefixed artifacts, then fallback to the newest file
+    # by suffix for provider responses that do not preserve candidate_id in name.
+    def _pick_path(suffix: str) -> Path | None:
+        preferred = downloads_dir / f"{candidate_id}{suffix}"
+        if preferred.exists():
+            return preferred
+
+        matches = sorted(
+            downloads_dir.glob(f"*{suffix}"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        if matches:
+            return matches[0]
+        return None
+
+    for key, suffix in (
+        ("kicad_pcb", ".kicad_pcb"),
+        ("json", ".json"),
+        ("ses", ".ses"),
+        ("dsn", ".dsn"),
+        ("zip", ".zip"),
+    ):
+        chosen = _pick_path(suffix)
+        if chosen is not None:
+            artifacts[key] = str(chosen)
+
+    return artifacts
+
+
 def _expected_screenshot_outputs(
     *,
     project_root: Path,
@@ -588,6 +628,48 @@ def _expected_screenshot_outputs(
         outputs["paths"]["3d"] = str(three_d)
         outputs["exists"]["3d"] = three_d.exists()
     return outputs
+
+
+def _normalize_screenshot_layers(raw_layers: Any) -> list[str] | None:
+    if raw_layers is None:
+        return None
+
+    tokens: list[str] = []
+    if isinstance(raw_layers, str):
+        tokens = [part.strip() for part in raw_layers.split(",")]
+    elif isinstance(raw_layers, list):
+        for entry in raw_layers:
+            if not isinstance(entry, str):
+                raise ValueError("layers entries must be strings")
+            tokens.append(entry.strip())
+    else:
+        raise ValueError("layers must be an array of KiCad layer names")
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for token in tokens:
+        if not token:
+            continue
+        if not all(char.isalnum() or char in {".", "_", "-"} for char in token):
+            raise ValueError(
+                "layers entries may contain only letters, digits, '.', '_' and '-'"
+            )
+        if token in seen:
+            continue
+        seen.add(token)
+        cleaned.append(token)
+
+    if not cleaned:
+        raise ValueError("layers cannot be empty when provided")
+    return cleaned
+
+
+def _default_screenshot_layers(side: str) -> list[str]:
+    if side == "bottom":
+        return ["B.Cu", "B.Paste", "B.Mask", "Edge.Cuts"]
+    if side == "both":
+        return ["F.Cu", "B.Cu", "F.Mask", "B.Mask", "Edge.Cuts"]
+    return ["F.Cu", "F.Paste", "F.Mask", "Edge.Cuts"]
 
 
 def _estimate_layout_component_count(layout_path: Path) -> int | None:
@@ -1460,8 +1542,9 @@ def get_tool_definitions() -> list[dict[str, Any]]:
             "type": "function",
             "name": "autolayout_fetch_to_layout",
             "description": (
-                "Fetch one autolayout candidate into layouts/, apply it, and archive "
-                "an iteration snapshot."
+                "Fetch one autolayout candidate into layouts/, apply it, archive "
+                "an iteration snapshot, and return downloaded artifact paths "
+                "(.kicad_pcb/.json/.ses/.dsn when available)."
             ),
             "parameters": {
                 "type": "object",
@@ -1478,8 +1561,9 @@ def get_tool_definitions() -> list[dict[str, Any]]:
             "type": "function",
             "name": "autolayout_request_screenshot",
             "description": (
-                "Queue screenshot render(s) of the current board layout (2D/3D) "
-                "as a background build."
+                "Render screenshot(s) of the current board layout (2D/3D) and "
+                "return artifact paths. 2D rendering excludes the drawing sheet "
+                "by default."
             ),
             "parameters": {
                 "type": "object",
@@ -1490,7 +1574,15 @@ def get_tool_definitions() -> list[dict[str, Any]]:
                         "enum": ["2d", "3d", "both"],
                         "default": "2d",
                     },
-                    "frozen": {"type": "boolean", "default": False},
+                    "side": {
+                        "type": "string",
+                        "enum": ["top", "bottom", "both"],
+                        "default": "top",
+                    },
+                    "layers": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string"},
+                    },
                 },
                 "additionalProperties": False,
             },
@@ -2696,13 +2788,17 @@ async def execute_tool(
         )
 
         downloaded_candidate_path: str | None = None
+        downloaded_artifacts: dict[str, str] = {}
         archived_iteration_path: str | None = None
         work_dir_str = str(applied.work_dir or "").strip()
         if work_dir_str:
             work_dir = Path(work_dir_str)
-            downloaded = work_dir / "downloads" / f"{selected_candidate_id}.kicad_pcb"
-            if downloaded.exists():
-                downloaded_candidate_path = str(downloaded)
+            downloads_dir = work_dir / "downloads"
+            downloaded_artifacts = _discover_downloaded_artifacts(
+                downloads_dir=downloads_dir,
+                candidate_id=selected_candidate_id,
+            )
+            downloaded_candidate_path = downloaded_artifacts.get("kicad_pcb")
 
         applied_layout_str = str(
             applied.applied_layout_path or applied.layout_path or ""
@@ -2739,55 +2835,73 @@ async def execute_tool(
             "applied_layout_path": applied.applied_layout_path,
             "backup_layout_path": applied.backup_layout_path,
             "downloaded_candidate_path": downloaded_candidate_path,
+            "downloaded_artifacts": downloaded_artifacts,
             "archived_iteration_path": archived_iteration_path,
             "job": applied.to_dict(),
         }
 
     if name == "autolayout_request_screenshot":
+        from faebryk.exporters.pcb.kicad.artifacts import (
+            KicadCliExportError,
+            export_3d_board_render,
+            export_svg,
+        )
+
         target = str(arguments.get("target", "default")).strip() or "default"
         view = str(arguments.get("view", "2d")).strip().lower() or "2d"
         if view not in {"2d", "3d", "both"}:
             raise ValueError("view must be one of: 2d, 3d, both")
-        frozen = bool(arguments.get("frozen", False))
+        side = str(arguments.get("side", "top")).strip().lower() or "top"
+        if side not in {"top", "bottom", "both"}:
+            raise ValueError("side must be one of: top, bottom, both")
 
-        include_targets: list[str] = []
-        if view in {"2d", "both"}:
-            include_targets.append("2d-image")
-        if view in {"3d", "both"}:
-            include_targets.append("3d-image")
+        explicit_layers = _normalize_screenshot_layers(arguments.get("layers"))
+        layers = explicit_layers or _default_screenshot_layers(side)
 
-        request = BuildRequest(
-            project_root=str(project_root),
-            targets=[target],
-            frozen=frozen,
-            include_targets=include_targets,
-            exclude_targets=[],
-        )
-        response = await asyncio.to_thread(builds_domain.handle_start_build, request)
-        build_targets = [
-            {"target": entry.target, "build_id": entry.build_id}
-            for entry in response.build_targets
-        ]
-        queued_build_id = build_targets[0]["build_id"] if build_targets else None
+        build_cfg = _resolve_build_target(project_root, target)
+        layout_path = build_cfg.paths.layout
+        if not layout_path.exists():
+            raise ValueError(f"Layout file does not exist: {layout_path}")
+
+        timestamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
+        output_dir = build_cfg.paths.output_base.parent / "autolayout" / "screenshots"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        output_paths: dict[str, str] = {}
+        try:
+            if view in {"2d", "both"}:
+                two_d = output_dir / f"{target}.{timestamp}.2d.svg"
+                await asyncio.to_thread(
+                    export_svg,
+                    pcb_file=layout_path,
+                    svg_file=two_d,
+                    project_dir=layout_path.parent,
+                    layers=",".join(layers),
+                )
+                output_paths["2d"] = str(two_d)
+
+            if view in {"3d", "both"}:
+                three_d = output_dir / f"{target}.{timestamp}.3d.png"
+                await asyncio.to_thread(
+                    export_3d_board_render,
+                    pcb_file=layout_path,
+                    image_file=three_d,
+                    project_dir=layout_path.parent,
+                )
+                output_paths["3d"] = str(three_d)
+        except KicadCliExportError as exc:
+            raise RuntimeError(f"Failed to render screenshot: {exc}") from exc
 
         return {
-            "success": response.success,
-            "message": response.message,
+            "success": True,
             "target": target,
             "view": view,
-            "frozen": frozen,
-            "include_targets": include_targets,
-            "build_targets": build_targets,
-            "queued_build_id": queued_build_id,
-            "expected_outputs": _expected_screenshot_outputs(
-                project_root=project_root,
-                target=target,
-                view=view,
-            ),
-            "next_step": (
-                "Use build_logs_search with queued_build_id until complete, then "
-                "read expected_outputs.paths for the generated image files."
-            ),
+            "side": side,
+            "layout_path": str(layout_path),
+            "output_dir": str(output_dir),
+            "layers": layers if view in {"2d", "both"} else None,
+            "drawing_sheet_excluded": True,
+            "screenshot_paths": output_paths,
         }
 
     if name == "autolayout_configure_board_intent":

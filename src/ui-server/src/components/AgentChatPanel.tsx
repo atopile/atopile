@@ -28,7 +28,7 @@ import './AgentChatPanel.css';
 
 type MessageRole = 'user' | 'assistant' | 'system';
 
-type AgentProgressPhase = 'thinking' | 'tool_start' | 'tool_end' | 'done' | 'stopped' | 'error';
+type AgentProgressPhase = 'thinking' | 'tool_start' | 'tool_end' | 'done' | 'stopped' | 'error' | 'compacting';
 
 interface AgentProgressPayload {
   session_id?: unknown;
@@ -40,6 +40,13 @@ interface AgentProgressPayload {
   trace?: unknown;
   status_text?: unknown;
   detail_text?: unknown;
+  loop?: unknown;
+  tool_index?: unknown;
+  tool_count?: unknown;
+  input_tokens?: unknown;
+  output_tokens?: unknown;
+  total_tokens?: unknown;
+  usage?: unknown;
 }
 
 interface AgentTraceView extends AgentToolTrace {
@@ -123,12 +130,30 @@ interface AgentChatSnapshot {
   updatedAt: number;
 }
 
+interface AgentLiveProgressState {
+  phase: AgentProgressPhase | null;
+  statusText: string | null;
+  detailText: string | null;
+  loop: number | null;
+  toolIndex: number | null;
+  toolCount: number | null;
+  totalTokens: number | null;
+}
+
+interface ThinkingMeterSignal {
+  percent: number;
+  tokenText: string;
+  description: string;
+  isApproximate: boolean;
+}
+
 interface AgentChatPanelProps {
   projectRoot: string | null;
   selectedTargets: string[];
 }
 
 const RUN_CANCELLED_MARKER = '__ATOPILE_AGENT_RUN_CANCELLED__';
+const RUN_LOST_MARKER = '__ATOPILE_AGENT_RUN_LOST__';
 const DEFAULT_CHAT_TITLE = 'New chat';
 const TRACE_DETAIL_LIMIT = 5;
 const TRACE_INPUT_PREFERRED_KEYS = [
@@ -171,11 +196,29 @@ const MAX_PERSISTED_CHATS = 48;
 const MAX_PERSISTED_MESSAGES_PER_CHAT = 120;
 const MAX_PERSISTED_MESSAGE_CHARS = 12_000;
 const MAX_PERSISTED_INPUT_CHARS = 4_000;
+const THINKING_STREAM_MAX_ITEMS = 6;
+const THINKING_PROXY_TOKEN_BUDGET = 6_000;
+const PROGRESS_QUIET_THRESHOLD_SECONDS = 12;
+const DEFAULT_LIVE_PROGRESS_STATE: AgentLiveProgressState = {
+  phase: null,
+  statusText: null,
+  detailText: null,
+  loop: null,
+  toolIndex: null,
+  toolCount: null,
+  totalTokens: null,
+};
 
 function isSessionNotFoundError(error: unknown): boolean {
   return error instanceof AgentApiError
     && error.status === 404
     && error.message.includes('Session not found:');
+}
+
+function isRunNotFoundError(error: unknown): boolean {
+  return error instanceof AgentApiError
+    && error.status === 404
+    && error.message.includes('Run not found:');
 }
 
 function isValidMessageRole(value: unknown): value is MessageRole {
@@ -546,6 +589,10 @@ function readProgressPayload(detail: unknown): {
   args: Record<string, unknown>;
   statusText: string | null;
   detailText: string | null;
+  loop: number | null;
+  toolIndex: number | null;
+  toolCount: number | null;
+  totalTokens: number | null;
 } {
   if (!detail || typeof detail !== 'object') {
     return {
@@ -558,11 +605,15 @@ function readProgressPayload(detail: unknown): {
       args: {},
       statusText: null,
       detailText: null,
+      loop: null,
+      toolIndex: null,
+      toolCount: null,
+      totalTokens: null,
     };
   }
 
   const payload = detail as AgentProgressPayload;
-  const phase = typeof payload.phase === 'string' ? payload.phase as AgentProgressPhase : null;
+  const phase = normalizeProgressPhase(payload.phase);
   const sessionId = typeof payload.session_id === 'string' ? payload.session_id : null;
   const runId = typeof payload.run_id === 'string' ? payload.run_id : null;
   const callId = typeof payload.call_id === 'string' ? payload.call_id : null;
@@ -572,12 +623,46 @@ function readProgressPayload(detail: unknown): {
     : {};
   const statusText = typeof payload.status_text === 'string' ? payload.status_text : null;
   const detailText = typeof payload.detail_text === 'string' ? payload.detail_text : null;
+  const loop = toFiniteNumber(payload.loop);
+  const toolIndex = toFiniteNumber(payload.tool_index);
+  const toolCount = toFiniteNumber(payload.tool_count);
+
+  const usage = payload.usage && typeof payload.usage === 'object'
+    ? payload.usage as Record<string, unknown>
+    : null;
+  const totalTokens = toFiniteNumber(payload.total_tokens)
+    ?? (usage ? toFiniteNumber(usage.total_tokens) : null)
+    ?? (usage ? toFiniteNumber(usage.totalTokens) : null)
+    ?? ((() => {
+      const input = toFiniteNumber(payload.input_tokens)
+        ?? (usage ? toFiniteNumber(usage.input_tokens) : null)
+        ?? (usage ? toFiniteNumber(usage.inputTokens) : null);
+      const output = toFiniteNumber(payload.output_tokens)
+        ?? (usage ? toFiniteNumber(usage.output_tokens) : null)
+        ?? (usage ? toFiniteNumber(usage.outputTokens) : null);
+      if (input === null && output === null) return null;
+      return (input ?? 0) + (output ?? 0);
+    })());
 
   const trace = payload.trace && typeof payload.trace === 'object'
     ? payload.trace as AgentToolTrace
     : null;
 
-  return { sessionId, runId, phase, callId, trace, name, args, statusText, detailText };
+  return {
+    sessionId,
+    runId,
+    phase,
+    callId,
+    trace,
+    name,
+    args,
+    statusText,
+    detailText,
+    loop,
+    toolIndex,
+    toolCount,
+    totalTokens,
+  };
 }
 
 function readTraceDiff(trace: AgentTraceView): { added: number; removed: number } | null {
@@ -697,6 +782,181 @@ function mentionPathDepth(path: string): number {
 
 function formatCount(value: number, singular: string, plural: string): string {
   return `${value} ${value === 1 ? singular : plural}`;
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return value;
+}
+
+function normalizeProgressPhase(value: unknown): AgentProgressPhase | null {
+  if (
+    value === 'thinking'
+    || value === 'tool_start'
+    || value === 'tool_end'
+    || value === 'done'
+    || value === 'stopped'
+    || value === 'error'
+    || value === 'compacting'
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function formatCompactTokenValue(value: number): string {
+  if (value >= 10_000) return `${Math.round(value / 1_000)}k`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+  return String(Math.round(value));
+}
+
+function summarizePendingTraceActivity(trace: AgentTraceView): string {
+  if (trace.running) {
+    return inferToolActivityDetail(trace.name, trace.args);
+  }
+  if (!trace.ok) {
+    const errorText = asNonEmptyString(trace.result.error);
+    if (errorText) return `Failed: ${trimSingleLine(errorText, 46)}`;
+    return `Failed ${trace.name}`;
+  }
+  if (trace.name === 'project_edit_file') {
+    const path = asNonEmptyString(trace.result.path) ?? asNonEmptyString(trace.args.path);
+    if (path) return `Edited ${compactPath(path)}`;
+  }
+  const message = asNonEmptyString(trace.result.message);
+  if (message) return trimSingleLine(message, 46);
+  return inferToolActivityDetail(trace.name, trace.args);
+}
+
+function buildThinkingThoughts(
+  {
+    isSessionLoading,
+    isWorking,
+    activityLabel,
+    activityElapsedSeconds,
+    progress,
+    pendingTraces,
+  }: {
+    isSessionLoading: boolean;
+    isWorking: boolean;
+    activityLabel: string;
+    activityElapsedSeconds: number;
+    progress: AgentLiveProgressState;
+    pendingTraces: AgentTraceView[];
+  },
+): string[] {
+  if (!isSessionLoading && !isWorking) return [];
+  const thoughts: string[] = [];
+
+  if (isSessionLoading) {
+    thoughts.push('Starting agent session');
+  }
+
+  if (progress.statusText || progress.detailText) {
+    const status = progress.statusText
+      ?? (progress.phase === 'compacting' ? 'Compacting context' : null)
+      ?? 'Thinking';
+    if (progress.detailText) {
+      thoughts.push(`${status}: ${trimSingleLine(progress.detailText, 56)}`);
+    } else {
+      thoughts.push(status);
+    }
+  } else if (isWorking) {
+    thoughts.push(activityLabel || 'Thinking');
+  }
+
+  if (progress.loop !== null) {
+    const stepSummary = progress.toolCount !== null
+      ? `Loop ${progress.loop} • tool ${Math.max(1, progress.toolIndex ?? 1)}/${Math.max(1, progress.toolCount)}`
+      : `Loop ${progress.loop}`;
+    thoughts.push(stepSummary);
+  }
+
+  pendingTraces
+    .slice()
+    .reverse()
+    .slice(0, 3)
+    .forEach((trace) => thoughts.push(summarizePendingTraceActivity(trace)));
+
+  if (isWorking && activityElapsedSeconds > 0) {
+    thoughts.push(`Working ${activityElapsedSeconds}s`);
+  }
+
+  const deduped = new Set<string>();
+  const ordered: string[] = [];
+  for (const thought of thoughts) {
+    const compact = trimSingleLine(thought, 72);
+    if (!compact || deduped.has(compact)) continue;
+    deduped.add(compact);
+    ordered.push(compact);
+    if (ordered.length >= THINKING_STREAM_MAX_ITEMS) break;
+  }
+  return ordered.length > 0 ? ordered : ['Thinking...'];
+}
+
+function estimateThinkingMeterSignal(
+  {
+    isWorking,
+    progress,
+    pendingMessage,
+    pendingTraces,
+    activityElapsedSeconds,
+  }: {
+    isWorking: boolean;
+    progress: AgentLiveProgressState;
+    pendingMessage: AgentMessage | null;
+    pendingTraces: AgentTraceView[];
+    activityElapsedSeconds: number;
+  },
+): ThinkingMeterSignal {
+  if (!isWorking) {
+    return {
+      percent: 0,
+      tokenText: '0',
+      description: 'Idle',
+      isApproximate: true,
+    };
+  }
+
+  if (progress.totalTokens !== null && progress.totalTokens > 0) {
+    const budget = Math.max(THINKING_PROXY_TOKEN_BUDGET, Math.ceil(progress.totalTokens * 1.2));
+    const percent = Math.max(6, Math.min(98, Math.round((progress.totalTokens / budget) * 100)));
+    return {
+      percent,
+      tokenText: formatCompactTokenValue(progress.totalTokens),
+      description: `${formatCompactTokenValue(progress.totalTokens)} tokens`,
+      isApproximate: false,
+    };
+  }
+
+  const messageChars = pendingMessage?.content.length ?? 0;
+  const running = pendingTraces.filter((trace) => trace.running).length;
+  const completed = pendingTraces.filter((trace) => !trace.running && trace.ok).length;
+  const failed = pendingTraces.filter((trace) => !trace.running && !trace.ok).length;
+  const loopBoost = progress.loop !== null ? Math.max(0, progress.loop - 1) * 190 : 0;
+  const toolBoost =
+    progress.toolCount !== null && progress.toolIndex !== null
+      ? Math.max(0, Math.min(progress.toolCount, progress.toolIndex)) * 52
+      : 0;
+
+  const approximateTokens = Math.round(
+    180
+    + (messageChars * 0.38)
+    + (activityElapsedSeconds * 6.5)
+    + (running * 210)
+    + (completed * 130)
+    + (failed * 95)
+    + loopBoost
+    + toolBoost
+  );
+  const clamped = Math.max(72, Math.min(THINKING_PROXY_TOKEN_BUDGET, approximateTokens));
+  const percent = Math.max(6, Math.min(98, Math.round((clamped / THINKING_PROXY_TOKEN_BUDGET) * 100)));
+  return {
+    percent,
+    tokenText: `~${formatCompactTokenValue(clamped)}`,
+    description: `~${formatCompactTokenValue(clamped)} token effort`,
+    isApproximate: true,
+  };
 }
 
 function renderLineDelta(added: number, removed: number, className?: string): JSX.Element {
@@ -862,6 +1122,13 @@ function inferActivityFromProgress(
 ): string | null {
   if (payload.phase === 'thinking') {
     const status = payload.statusText || 'Thinking';
+    if (payload.detailText) {
+      return `${status}: ${trimSingleLine(payload.detailText, 36)}`;
+    }
+    return status;
+  }
+  if (payload.phase === 'compacting') {
+    const status = payload.statusText || 'Compacting context';
     if (payload.detailText) {
       return `${status}: ${trimSingleLine(payload.detailText, 36)}`;
     }
@@ -1276,6 +1543,8 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   const [error, setError] = useState<string | null>(null);
   const [activityLabel, setActivityLabel] = useState<string>('Idle');
   const [activityElapsedSeconds, setActivityElapsedSeconds] = useState(0);
+  const [liveProgress, setLiveProgress] = useState<AgentLiveProgressState>(DEFAULT_LIVE_PROGRESS_STATE);
+  const [lastProgressAt, setLastProgressAt] = useState<number | null>(null);
   const [dockHeight, setDockHeight] = useState<number>(defaultDockHeight);
   const [isMinimized, setIsMinimized] = useState(false);
   const [changesExpanded, setChangesExpanded] = useState(false);
@@ -1315,6 +1584,55 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
   }, [activeChatId, chatSnapshots, projectRoot]);
   const isReady = Boolean(projectRoot && sessionId && !isSessionLoading);
   const isWorking = isSending || isStopping;
+  const pendingAssistantMessage = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role === 'assistant' && message.pending) {
+        return message;
+      }
+    }
+    return null;
+  }, [messages]);
+  const pendingTraces = pendingAssistantMessage?.toolTraces ?? [];
+  const thinkingThoughts = useMemo(
+    () => buildThinkingThoughts({
+      isSessionLoading,
+      isWorking,
+      activityLabel,
+      activityElapsedSeconds,
+      progress: liveProgress,
+      pendingTraces,
+    }),
+    [
+      activityElapsedSeconds,
+      activityLabel,
+      isSessionLoading,
+      isWorking,
+      liveProgress,
+      pendingTraces,
+    ],
+  );
+  const thinkingMeterSignal = useMemo(
+    () => estimateThinkingMeterSignal({
+      isWorking: isSessionLoading || isWorking,
+      progress: liveProgress,
+      pendingMessage: pendingAssistantMessage,
+      pendingTraces,
+      activityElapsedSeconds,
+    }),
+    [
+      activityElapsedSeconds,
+      isSessionLoading,
+      isWorking,
+      liveProgress,
+      pendingAssistantMessage,
+      pendingTraces,
+    ],
+  );
+  const progressSilenceSeconds = (isSessionLoading || isWorking) && lastProgressAt
+    ? Math.max(0, Math.floor((Date.now() - lastProgressAt) / 1000))
+    : 0;
+  const isProgressQuiet = progressSilenceSeconds >= PROGRESS_QUIET_THRESHOLD_SECONDS;
   const headerTitle = useMemo(() => shortProjectName(projectRoot), [projectRoot]);
   const activeChatTitle = activeChatSnapshot?.title ?? DEFAULT_CHAT_TITLE;
   const projectFiles = useMemo(() => flattenFileNodes(projectFileNodes), [projectFileNodes]);
@@ -1451,6 +1769,8 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     setChangesExpanded(false);
     setExpandedTraceGroups(new Set());
     setExpandedTraceKeys(new Set());
+    setLiveProgress(DEFAULT_LIVE_PROGRESS_STATE);
+    setLastProgressAt(null);
     activityStartedAtRef.current = null;
   }, []);
 
@@ -1468,6 +1788,12 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     resetChatUiState();
     if (snapshot.isSending || snapshot.isStopping) {
       activityStartedAtRef.current = Date.now() - (snapshot.activityElapsedSeconds * 1000);
+      setLastProgressAt(Date.now());
+      setLiveProgress({
+        ...DEFAULT_LIVE_PROGRESS_STATE,
+        phase: 'thinking',
+        statusText: snapshot.activityLabel || 'Thinking',
+      });
     }
   }, [resetChatUiState]);
 
@@ -1914,6 +2240,8 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     if (!isWorking) {
       activityStartedAtRef.current = null;
       setActivityElapsedSeconds(0);
+      setLiveProgress(DEFAULT_LIVE_PROGRESS_STATE);
+      setLastProgressAt(null);
       return;
     }
 
@@ -2038,6 +2366,16 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
       });
 
       if (activeChatIdRef.current === targetChat.id) {
+        setLastProgressAt(Date.now());
+        setLiveProgress((previous) => ({
+          phase: parsed.phase ?? previous.phase,
+          statusText: parsed.statusText ?? previous.statusText,
+          detailText: parsed.detailText ?? previous.detailText,
+          loop: parsed.loop ?? previous.loop,
+          toolIndex: parsed.toolIndex ?? previous.toolIndex,
+          toolCount: parsed.toolCount ?? previous.toolCount,
+          totalTokens: parsed.totalTokens ?? previous.totalTokens,
+        }));
         if (nextActivity) {
           setActivityLabel(nextActivity);
         }
@@ -2133,6 +2471,11 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
         pollErrorCount += 1;
         if (pollError instanceof Error && pollError.message.startsWith(RUN_CANCELLED_MARKER)) {
           throw pollError;
+        }
+        if (isRunNotFoundError(pollError)) {
+          throw new Error(
+            `${RUN_LOST_MARKER}:Active run was lost (the backend likely restarted). Please resend your message.`,
+          );
         }
         if (pollErrorCount >= 20) {
           const message = pollError instanceof Error
@@ -2241,6 +2584,13 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     if (!activeChatId || !sessionId || !isSending) return;
     setIsStopping(true);
     setActivityLabel('Stopping');
+    setLastProgressAt(Date.now());
+    setLiveProgress({
+      ...DEFAULT_LIVE_PROGRESS_STATE,
+      phase: 'thinking',
+      statusText: 'Stopping',
+      detailText: 'Cancelling active run',
+    });
     const pendingId = activeChatSnapshot?.pendingAssistantId ?? null;
     updateChatSnapshot(activeChatId, (chat) => ({
       ...chat,
@@ -2273,6 +2623,25 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     try {
       await agentApi.cancelRun(sessionId, runId);
     } catch (stopError: unknown) {
+      if (isRunNotFoundError(stopError)) {
+        updateChatSnapshot(activeChatId, (chat) => ({
+          ...chat,
+          isSending: false,
+          isStopping: false,
+          activeRunId: null,
+          pendingRunId: null,
+          pendingAssistantId: null,
+          cancelRequested: false,
+          activityLabel: 'Stopped',
+          error: null,
+        }));
+        setIsSending(false);
+        setIsStopping(false);
+        setActiveRunId(null);
+        setError(null);
+        setActivityLabel('Stopped');
+        return;
+      }
       const message = stopError instanceof Error ? stopError.message : 'Unable to stop the active run.';
       setError(message);
       updateChatSnapshot(activeChatId, (chat) => ({
@@ -2281,6 +2650,113 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
       }));
     }
   }, [activeChatId, activeChatSnapshot, activeRunId, isSending, sessionId, updateChatSnapshot]);
+
+  const sendSteeringMessage = useCallback(async () => {
+    const trimmed = input.trim();
+    if (!trimmed || !projectRoot || !sessionId || !activeChatId || !isSending) return;
+    const chatId = activeChatId;
+    const chatPrefix = chatId;
+    const pendingAssistantId = activeChatSnapshot?.pendingAssistantId ?? null;
+    const userMessage: AgentMessage = {
+      id: `${chatPrefix}-user-steer-${Date.now()}`,
+      role: 'user',
+      content: trimmed,
+    };
+
+    const applySteerPendingState = (messages: AgentMessage[]): AgentMessage[] => {
+      const withUser = [...messages, userMessage];
+      if (!pendingAssistantId) {
+        return withUser;
+      }
+      return withUser.map((message) => (
+        message.id === pendingAssistantId
+          ? {
+            ...message,
+            content: 'Incorporating latest guidance...',
+            activity: 'Steering',
+          }
+          : message
+      ));
+    };
+
+    updateChatSnapshot(chatId, (chat) => ({
+      ...chat,
+      messages: applySteerPendingState(chat.messages),
+      input: '',
+      error: null,
+      activityLabel: 'Steering',
+    }));
+
+    if (activeChatIdRef.current === chatId) {
+      setMessages((previous) => applySteerPendingState(previous));
+      setActivityLabel('Steering');
+      setLastProgressAt(Date.now());
+      setLiveProgress({
+        ...DEFAULT_LIVE_PROGRESS_STATE,
+        phase: 'thinking',
+        statusText: 'Steering',
+        detailText: 'Applying latest user guidance',
+      });
+      setError(null);
+    }
+    setInput('');
+    setMentionToken(null);
+    setMentionIndex(0);
+
+    const runId = activeRunId ?? activeChatSnapshot?.pendingRunId ?? null;
+    if (!runId) {
+      const message = 'No active run found to steer. Please send your request again.';
+      const steerErrorMessage: AgentMessage = {
+        id: `${chatPrefix}-steer-error-${Date.now()}`,
+        role: 'system',
+        content: message,
+      };
+      updateChatSnapshot(chatId, (chat) => ({
+        ...chat,
+        messages: [...chat.messages, steerErrorMessage],
+        error: message,
+      }));
+      if (activeChatIdRef.current === chatId) {
+        setMessages((previous) => [...previous, steerErrorMessage]);
+        setError(message);
+      }
+      return;
+    }
+
+    try {
+      const steerResult = await agentApi.steerRun(sessionId, runId, {
+        message: trimmed,
+      });
+      if (steerResult.status !== 'running') {
+        throw new Error('Active run is no longer running. Please resend your request.');
+      }
+    } catch (steerError: unknown) {
+      const message = steerError instanceof Error ? steerError.message : 'Unable to send steering guidance.';
+      const steerErrorMessage: AgentMessage = {
+        id: `${chatPrefix}-steer-error-${Date.now()}`,
+        role: 'system',
+        content: `Steering failed: ${message}`,
+      };
+      updateChatSnapshot(chatId, (chat) => ({
+        ...chat,
+        messages: [...chat.messages, steerErrorMessage],
+        error: message,
+      }));
+      if (activeChatIdRef.current === chatId) {
+        setMessages((previous) => [...previous, steerErrorMessage]);
+        setError(message);
+      }
+    }
+  }, [
+    activeChatId,
+    activeChatSnapshot,
+    activeRunId,
+    input,
+    isSending,
+    projectRoot,
+    sessionId,
+    updateChatSnapshot,
+  ]);
 
   const sendMessage = useCallback(async () => {
     const trimmed = input.trim();
@@ -2327,6 +2803,13 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     setIsSending(true);
     setError(null);
     setActivityLabel('Planning');
+    setLastProgressAt(Date.now());
+    setLiveProgress({
+      ...DEFAULT_LIVE_PROGRESS_STATE,
+      phase: 'thinking',
+      statusText: 'Planning',
+      detailText: 'Reviewing request and project context',
+    });
 
     try {
       let currentSessionId = sessionId;
@@ -2413,18 +2896,27 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
     } catch (sendError: unknown) {
       const rawMessage = sendError instanceof Error ? sendError.message : 'Agent request failed.';
       const cancelled = rawMessage.startsWith(RUN_CANCELLED_MARKER);
+      const runLost = rawMessage.startsWith(RUN_LOST_MARKER);
       const message = cancelled
         ? rawMessage.split(':').slice(1).join(':').trim() || 'Cancelled by user'
+        : runLost
+          ? rawMessage.split(':').slice(1).join(':').trim() || 'Active run was lost. Please resend your message.'
         : rawMessage;
       updateChatSnapshot(chatId, (chat) => ({
         ...chat,
         messages: chat.messages.map((entry) =>
           entry.id === pendingAssistantId
             ? {
-              id: cancelled ? `${chatPrefix}-assistant-stopped-${Date.now()}` : `${chatPrefix}-assistant-error-${Date.now()}`,
+              id: cancelled
+                ? `${chatPrefix}-assistant-stopped-${Date.now()}`
+                : `${chatPrefix}-assistant-error-${Date.now()}`,
               role: 'assistant',
-              content: cancelled ? `Stopped: ${message}` : `Request failed: ${message}`,
-              activity: cancelled ? 'Stopped' : 'Errored',
+              content: cancelled
+                ? `Stopped: ${message}`
+                : runLost
+                  ? `Request interrupted: ${message}`
+                  : `Request failed: ${message}`,
+              activity: cancelled ? 'Stopped' : runLost ? 'Interrupted' : 'Errored',
             }
             : entry
         ),
@@ -2434,7 +2926,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
         pendingRunId: null,
         pendingAssistantId: null,
         cancelRequested: false,
-        activityLabel: cancelled ? 'Stopped' : 'Errored',
+        activityLabel: cancelled ? 'Stopped' : runLost ? 'Interrupted' : 'Errored',
         error: cancelled ? null : message,
       }));
       if (activeChatIdRef.current === chatId) {
@@ -2445,15 +2937,21 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
           previous.map((entry) =>
             entry.id === pendingAssistantId
               ? {
-                id: cancelled ? `${chatPrefix}-assistant-stopped-${Date.now()}` : `${chatPrefix}-assistant-error-${Date.now()}`,
+                id: cancelled
+                  ? `${chatPrefix}-assistant-stopped-${Date.now()}`
+                  : `${chatPrefix}-assistant-error-${Date.now()}`,
                 role: 'assistant',
-                content: cancelled ? `Stopped: ${message}` : `Request failed: ${message}`,
-                activity: cancelled ? 'Stopped' : 'Errored',
+                content: cancelled
+                  ? `Stopped: ${message}`
+                  : runLost
+                    ? `Request interrupted: ${message}`
+                    : `Request failed: ${message}`,
+                activity: cancelled ? 'Stopped' : runLost ? 'Interrupted' : 'Errored',
               }
               : entry
           )
         );
-        setActivityLabel(cancelled ? 'Stopped' : 'Errored');
+        setActivityLabel(cancelled ? 'Stopped' : runLost ? 'Interrupted' : 'Errored');
       }
     } finally {
       if (activeChatIdRef.current === chatId) {
@@ -2549,6 +3047,41 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
           </button>
         </div>
       </div>
+
+      {!isMinimized && (isSessionLoading || isWorking) && (
+        <div className="agent-chat-working-strip" role="status" aria-live="polite">
+          <div
+            className="agent-chat-thoughts"
+            title={thinkingThoughts.join(' • ')}
+          >
+            <div className="agent-chat-thoughts-track">
+              {[...thinkingThoughts, ...thinkingThoughts].map((thought, index) => (
+                <span key={`thought-${index}`} className="agent-chat-thought-chip">
+                  {thought}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="agent-chat-thinking-proxy">
+            <span className="agent-chat-thinking-label">{thinkingMeterSignal.tokenText}</span>
+            <div
+              className="agent-chat-thinking-meter"
+              title={thinkingMeterSignal.isApproximate ? 'Estimated from live activity and elapsed time.' : 'Reported token usage.'}
+            >
+              <div
+                className={`agent-chat-thinking-meter-fill ${isProgressQuiet ? 'quiet' : 'live'}`}
+                style={{ width: `${thinkingMeterSignal.percent}%` }}
+              />
+            </div>
+            <span
+              className={`agent-chat-thinking-heartbeat ${isProgressQuiet ? 'quiet' : 'live'}`}
+              title={thinkingMeterSignal.description}
+            >
+              {isProgressQuiet ? `waiting ${progressSilenceSeconds}s` : 'live'}
+            </span>
+          </div>
+        </div>
+      )}
 
       {!isMinimized && (
         <div className={`agent-chat-shell ${isChatsPanelOpen ? 'chats-open' : ''}`}>
@@ -2928,7 +3461,7 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
                     if (event.key === 'Enter' && !event.shiftKey) {
                       event.preventDefault();
                       if (isSending) {
-                        void stopRun();
+                        void sendSteeringMessage();
                       } else {
                         void sendMessage();
                       }
@@ -2936,22 +3469,33 @@ export function AgentChatPanel({ projectRoot, selectedTargets }: AgentChatPanelP
                   }}
                 />
                 <button
-                  className={`agent-chat-send ${isSending ? 'stop' : ''}`}
+                  className="agent-chat-send"
                   onClick={() => {
                     if (isSending) {
-                      void stopRun();
+                      void sendSteeringMessage();
                     } else {
                       void sendMessage();
                     }
                   }}
-                  disabled={!isReady || (!isSending && input.trim().length === 0) || (isSending && isStopping)}
-                  aria-label={isSending ? 'Stop agent run' : 'Send message'}
-                  title={isSending ? 'Stop' : 'Send'}
+                  disabled={!isReady || input.trim().length === 0 || isStopping}
+                  aria-label={isSending ? 'Send steering guidance' : 'Send message'}
+                  title={isSending ? 'Send steering guidance' : 'Send'}
                 >
-                  {isSending
-                    ? (isStopping ? <Loader2 size={14} className="agent-tool-spin" /> : <Square size={13} />)
-                    : <ArrowUp size={14} />}
+                  <ArrowUp size={14} />
                 </button>
+                {isSending && (
+                  <button
+                    className="agent-chat-stop"
+                    onClick={() => {
+                      void stopRun();
+                    }}
+                    disabled={isStopping}
+                    aria-label="Stop agent run"
+                    title="Stop"
+                  >
+                    {isStopping ? <Loader2 size={14} className="agent-tool-spin" /> : <Square size={13} />}
+                  </button>
+                )}
               </div>
             </div>
 

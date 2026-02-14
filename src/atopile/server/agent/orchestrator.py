@@ -8,7 +8,9 @@ import inspect
 import json
 import os
 import re
-from dataclasses import dataclass, field
+import time
+import uuid
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -21,6 +23,8 @@ from atopile.server.agent import skills as skills_domain
 from atopile.server.domains import artifacts as artifacts_domain
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
+MessageCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
+SteeringMessagesCallback = Callable[[], list[str]]
 _RETRY_AFTER_TEXT_PATTERN = re.compile(
     r"Please try again in\s*(\d+(?:\.\d+)?)\s*(ms|s)\b",
     re.IGNORECASE,
@@ -88,6 +92,50 @@ Rules:
 - After editing, explain exactly which files changed.
 """
 
+_MANAGER_PLANNER_PROMPT = """You are the conversation manager for atopile.
+
+Your job:
+- Track and preserve user intent exactly.
+- Convert user request into a crisp worker brief.
+- Define acceptance criteria.
+- Keep scope and constraints explicit.
+
+Return JSON only with this shape:
+{
+  "intent_summary": string,
+  "objective": string,
+  "constraints": [string, ...],
+  "acceptance_criteria": [string, ...],
+  "worker_brief": string,
+  "checkpoints": [string, ...]
+}
+
+Rules:
+- Keep worker_brief concrete and implementation-focused.
+- Do not include markdown in JSON fields.
+- If uncertain, encode uncertainty as constraints/checkpoints rather than asking
+  for a user clarification immediately.
+"""
+
+_MANAGER_REVIEW_PROMPT = """You are the conversation manager for atopile.
+
+Review the worker's output and decide whether to accept or refine.
+
+Return JSON only with this shape:
+{
+  "decision": "accept" | "refine",
+  "refinement_brief": string,
+  "final_response": string,
+  "completion_summary": string
+}
+
+Rules:
+- Use "accept" when acceptance criteria are satisfied.
+- Use "refine" only when there is a concrete, actionable gap.
+- Keep refinement_brief implementation-focused.
+- final_response must be suitable to show the user directly.
+"""
+
 
 def _build_session_primer(
     *,
@@ -140,6 +188,23 @@ class ToolTrace:
 
 
 @dataclass
+class AgentPeerMessage:
+    message_id: str
+    thread_id: str
+    from_agent: str
+    to_agent: str
+    kind: str
+    summary: str
+    payload: dict[str, Any] = field(default_factory=dict)
+    visibility: str = "internal"
+    priority: str = "normal"
+    requires_ack: bool = False
+    correlation_id: str | None = None
+    parent_id: str | None = None
+    created_at: float = field(default_factory=time.time)
+
+
+@dataclass
 class AgentTurnResult:
     text: str
     tool_traces: list[ToolTrace]
@@ -147,6 +212,7 @@ class AgentTurnResult:
     response_id: str | None = None
     skill_state: dict[str, Any] = field(default_factory=dict)
     context_metrics: dict[str, Any] = field(default_factory=dict)
+    agent_messages: list[dict[str, Any]] = field(default_factory=list)
 
 
 class AgentOrchestrator:
@@ -202,6 +268,14 @@ class AgentOrchestrator:
         self.prompt_cache_retention = os.getenv(
             "ATOPILE_AGENT_PROMPT_CACHE_RETENTION", "24h"
         )
+        self.manager_model = os.getenv("ATOPILE_AGENT_MANAGER_MODEL", self.model)
+        self.enable_duo_agents = os.getenv(
+            "ATOPILE_AGENT_ENABLE_DUO", "1"
+        ).strip().lower() not in {"0", "false", "no"}
+        self.manager_refine_rounds = int(
+            os.getenv("ATOPILE_AGENT_MANAGER_REFINE_ROUNDS", "1")
+        )
+        self.manager_refine_rounds = max(0, min(self.manager_refine_rounds, 3))
         self._client: AsyncOpenAI | None = None
 
     async def run_turn(
@@ -215,6 +289,47 @@ class AgentOrchestrator:
         previous_response_id: str | None = None,
         tool_memory: dict[str, dict[str, Any]] | None = None,
         progress_callback: ProgressCallback | None = None,
+        consume_steering_messages: SteeringMessagesCallback | None = None,
+        message_callback: MessageCallback | None = None,
+    ) -> AgentTurnResult:
+        if self.enable_duo_agents:
+            return await self._run_duo_turn(
+                ctx=ctx,
+                project_root=project_root,
+                history=history,
+                user_message=user_message,
+                selected_targets=selected_targets,
+                previous_response_id=previous_response_id,
+                tool_memory=tool_memory,
+                progress_callback=progress_callback,
+                consume_steering_messages=consume_steering_messages,
+                message_callback=message_callback,
+            )
+        return await self._run_worker_turn(
+            ctx=ctx,
+            project_root=project_root,
+            history=history,
+            user_message=user_message,
+            selected_targets=selected_targets,
+            previous_response_id=previous_response_id,
+            tool_memory=tool_memory,
+            progress_callback=progress_callback,
+            consume_steering_messages=consume_steering_messages,
+        )
+
+    async def _run_worker_turn(
+        self,
+        *,
+        ctx: AppContext,
+        project_root: str,
+        history: list[dict[str, str]],
+        user_message: str,
+        selected_targets: list[str] | None = None,
+        previous_response_id: str | None = None,
+        tool_memory: dict[str, dict[str, Any]] | None = None,
+        progress_callback: ProgressCallback | None = None,
+        consume_steering_messages: SteeringMessagesCallback | None = None,
+        actor: str = "worker",
     ) -> AgentTurnResult:
         if not self.api_key:
             raise RuntimeError(
@@ -272,8 +387,13 @@ class AgentOrchestrator:
                 ),
             }
         )
+        request_input.extend(
+            _build_steering_inputs_for_model(
+                _consume_steering_updates(consume_steering_messages)
+            )
+        )
 
-        tool_defs = tools.get_tool_definitions()
+        tool_defs = tools.get_tool_definitions_for_actor(actor)
         request_payload: dict[str, Any] = {
             "model": self.model,
             "input": request_input,
@@ -325,6 +445,47 @@ class AgentOrchestrator:
             loops += 1
             function_calls = _extract_function_calls(response)
             if not function_calls:
+                steering_inputs = _build_steering_inputs_for_model(
+                    _consume_steering_updates(consume_steering_messages)
+                )
+                if steering_inputs:
+                    await _emit_progress(
+                        progress_callback,
+                        {
+                            "phase": "thinking",
+                            "status_text": "Steering",
+                            "detail_text": "Applying latest user guidance",
+                        },
+                    )
+                    response = await self._responses_create_with_context_control(
+                        payload={
+                            "model": self.model,
+                            "previous_response_id": response.get("id"),
+                            "input": steering_inputs,
+                            "instructions": instructions,
+                            "tools": tool_defs,
+                            "tool_choice": "auto",
+                            "context_management": [
+                                {
+                                    "type": "compaction",
+                                    "compact_threshold": self.context_compact_threshold,
+                                }
+                            ],
+                            "truncation": "disabled",
+                            "prompt_cache_key": _build_prompt_cache_key(
+                                project_path=project_path,
+                                tool_defs=tool_defs,
+                                skill_state=skill_state,
+                                model=self.model,
+                            ),
+                            "prompt_cache_retention": self.prompt_cache_retention,
+                        },
+                        telemetry=telemetry,
+                        progress_callback=progress_callback,
+                        enable_preflight=False,
+                    )
+                    last_response_id = response.get("id") or last_response_id
+                    continue
                 text = _extract_text(response)
                 if not text:
                     text = "No assistant response produced."
@@ -393,6 +554,7 @@ class AgentOrchestrator:
                         arguments=args,
                         project_root=project_path,
                         ctx=ctx,
+                        actor=actor,
                     )
                 except Exception as exc:
                     args = parsed_args if parsed_args is not None else {}
@@ -450,16 +612,32 @@ class AgentOrchestrator:
                     )
                 )
 
-            await _emit_progress(
-                progress_callback,
-                {
-                    "phase": "thinking",
-                    "status_text": "Reviewing tool results",
-                    "detail_text": "Choosing next step",
-                    "loop": loops,
-                    "tool_calls_total": len(traces),
-                },
+            steering_inputs = _build_steering_inputs_for_model(
+                _consume_steering_updates(consume_steering_messages)
             )
+            if steering_inputs:
+                outputs.extend(steering_inputs)
+                await _emit_progress(
+                    progress_callback,
+                    {
+                        "phase": "thinking",
+                        "status_text": "Steering",
+                        "detail_text": "Applying latest user guidance",
+                        "loop": loops,
+                        "tool_calls_total": len(traces),
+                    },
+                )
+            else:
+                await _emit_progress(
+                    progress_callback,
+                    {
+                        "phase": "thinking",
+                        "status_text": "Reviewing tool results",
+                        "detail_text": "Choosing next step",
+                        "loop": loops,
+                        "tool_calls_total": len(traces),
+                    },
+                )
             response = await self._responses_create_with_context_control(
                 payload={
                     "model": self.model,
@@ -506,6 +684,427 @@ class AgentOrchestrator:
             skill_state=skill_state,
             context_metrics=telemetry,
         )
+
+    async def _run_duo_turn(
+        self,
+        *,
+        ctx: AppContext,
+        project_root: str,
+        history: list[dict[str, str]],
+        user_message: str,
+        selected_targets: list[str] | None = None,
+        previous_response_id: str | None = None,
+        tool_memory: dict[str, dict[str, Any]] | None = None,
+        progress_callback: ProgressCallback | None = None,
+        consume_steering_messages: SteeringMessagesCallback | None = None,
+        message_callback: MessageCallback | None = None,
+    ) -> AgentTurnResult:
+        selected_targets = selected_targets or []
+        project_path = tools.validate_tool_scope(project_root, ctx)
+        intent_snapshot = await self._manager_build_plan(
+            project_path=project_path,
+            selected_targets=selected_targets,
+            user_message=user_message,
+            history=history,
+            progress_callback=progress_callback,
+        )
+
+        thread_id = f"agent-thread-{uuid.uuid4().hex[:10]}"
+        emitted_messages: list[dict[str, Any]] = []
+
+        async def emit_message(
+            *,
+            from_agent: str,
+            to_agent: str,
+            kind: str,
+            summary: str,
+            payload: dict[str, Any] | None = None,
+            visibility: str = "internal",
+            priority: str = "normal",
+            requires_ack: bool = False,
+            correlation_id: str | None = None,
+            parent_id: str | None = None,
+        ) -> dict[str, Any]:
+            message = self._new_peer_message(
+                thread_id=thread_id,
+                from_agent=from_agent,
+                to_agent=to_agent,
+                kind=kind,
+                summary=summary,
+                payload=payload or {},
+                visibility=visibility,
+                priority=priority,
+                requires_ack=requires_ack,
+                correlation_id=correlation_id,
+                parent_id=parent_id,
+            )
+            data = asdict(message)
+            emitted_messages.append(data)
+            maybe_awaitable = (
+                message_callback(data) if message_callback is not None else None
+            )
+            if inspect.isawaitable(maybe_awaitable):
+                await maybe_awaitable
+            return data
+
+        intent_message = await emit_message(
+            from_agent="manager",
+            to_agent="worker",
+            kind="intent_brief",
+            summary=intent_snapshot.get("intent_summary", "Prepared worker brief."),
+            payload=intent_snapshot,
+            visibility="internal",
+            requires_ack=True,
+        )
+
+        await emit_message(
+            from_agent="worker",
+            to_agent="manager",
+            kind="ack",
+            summary="Worker accepted intent brief.",
+            payload={"message_id": intent_message["message_id"]},
+            visibility="internal",
+            parent_id=intent_message["message_id"],
+        )
+
+        all_traces: list[ToolTrace] = []
+        context_metrics: dict[str, Any] = {"intent_snapshot": intent_snapshot}
+        worker_response_id: str | None = previous_response_id
+        worker_skill_state: dict[str, Any] = {}
+        worker_latest_text = ""
+        final_text = ""
+
+        async def worker_progress(payload: dict[str, Any]) -> None:
+            enriched = {**payload, "agent": "worker"}
+            await _emit_progress(progress_callback, enriched)
+
+            phase = str(payload.get("phase") or "")
+            if phase == "tool_start":
+                tool_name = str(payload.get("name") or "tool")
+                await emit_message(
+                    from_agent="worker",
+                    to_agent="manager",
+                    kind="tool_intent",
+                    summary=f"Starting tool: {tool_name}",
+                    payload={
+                        "name": tool_name,
+                        "args": payload.get("args", {}),
+                        "call_id": payload.get("call_id"),
+                    },
+                    visibility="user_visible",
+                )
+            elif phase == "tool_end":
+                trace = payload.get("trace")
+                if isinstance(trace, dict):
+                    ok = bool(trace.get("ok", False))
+                    tool_name = str(trace.get("name") or "tool")
+                    await emit_message(
+                        from_agent="worker",
+                        to_agent="manager",
+                        kind="tool_result",
+                        summary=(
+                            f"Completed tool: {tool_name}"
+                            if ok
+                            else f"Tool failed: {tool_name}"
+                        ),
+                        payload={
+                            "trace": trace,
+                            "call_id": payload.get("call_id"),
+                        },
+                        visibility="user_visible",
+                        priority="high" if not ok else "normal",
+                    )
+            elif phase == "thinking":
+                status_text = str(payload.get("status_text") or "").strip()
+                if status_text:
+                    await emit_message(
+                        from_agent="worker",
+                        to_agent="manager",
+                        kind="plan_update",
+                        summary=status_text,
+                        payload={
+                            "detail_text": payload.get("detail_text"),
+                            "loop": payload.get("loop"),
+                        },
+                        visibility="internal",
+                    )
+            elif phase in {"error", "stopped"}:
+                await emit_message(
+                    from_agent="worker",
+                    to_agent="manager",
+                    kind="blocker",
+                    summary=(
+                        str(payload.get("error") or "")
+                        or str(payload.get("reason") or "Worker halted.")
+                    ),
+                    payload=payload,
+                    visibility="user_visible",
+                    priority="urgent",
+                )
+
+        worker_brief = str(intent_snapshot.get("worker_brief") or user_message).strip()
+        worker_brief = worker_brief or user_message
+        max_rounds = 1 + self.manager_refine_rounds
+        for round_index in range(max_rounds):
+            await emit_message(
+                from_agent="manager",
+                to_agent="worker",
+                kind="decision",
+                summary=(
+                    "Execute initial brief."
+                    if round_index == 0
+                    else f"Refinement cycle {round_index}: execute updated brief."
+                ),
+                payload={
+                    "round": round_index + 1,
+                    "worker_brief": worker_brief,
+                    "acceptance_criteria": intent_snapshot.get(
+                        "acceptance_criteria", []
+                    ),
+                },
+                visibility="internal",
+            )
+
+            worker_result = await self._run_worker_turn(
+                ctx=ctx,
+                project_root=str(project_path),
+                history=history,
+                user_message=worker_brief,
+                selected_targets=selected_targets,
+                previous_response_id=worker_response_id,
+                tool_memory=tool_memory,
+                progress_callback=worker_progress,
+                consume_steering_messages=consume_steering_messages,
+                actor="worker",
+            )
+            all_traces.extend(worker_result.tool_traces)
+            worker_response_id = worker_result.response_id or worker_response_id
+            worker_skill_state = dict(worker_result.skill_state)
+            worker_latest_text = worker_result.text
+            context_metrics[f"worker_round_{round_index + 1}"] = (
+                worker_result.context_metrics
+            )
+
+            await emit_message(
+                from_agent="worker",
+                to_agent="manager",
+                kind="result_bundle",
+                summary=trim_single_line(worker_result.text, 140),
+                payload={
+                    "round": round_index + 1,
+                    "text": worker_result.text,
+                    "tool_trace_count": len(worker_result.tool_traces),
+                },
+                visibility="internal",
+            )
+
+            manager_review = await self._manager_review_result(
+                user_message=user_message,
+                intent_snapshot=intent_snapshot,
+                worker_text=worker_result.text,
+                tool_traces=worker_result.tool_traces,
+                progress_callback=progress_callback,
+            )
+            final_text = str(manager_review.get("final_response") or "").strip()
+            decision = str(manager_review.get("decision") or "accept").lower().strip()
+            refinement_brief = str(
+                manager_review.get("refinement_brief") or ""
+            ).strip()
+
+            await emit_message(
+                from_agent="manager",
+                to_agent="worker",
+                kind="decision",
+                summary=(
+                    "Accepted worker output."
+                    if decision != "refine"
+                    else "Requested refinement."
+                ),
+                payload={
+                    "decision": decision,
+                    "refinement_brief": refinement_brief,
+                    "completion_summary": manager_review.get("completion_summary"),
+                    "round": round_index + 1,
+                },
+                visibility="internal",
+            )
+
+            if decision != "refine":
+                break
+            if not refinement_brief:
+                break
+            worker_brief = refinement_brief
+        else:
+            final_text = worker_latest_text
+
+        if not final_text:
+            final_text = worker_latest_text or "Completed."
+
+        await emit_message(
+            from_agent="manager",
+            to_agent="user",
+            kind="final_response",
+            summary=trim_single_line(final_text, 140),
+            payload={"text": final_text},
+            visibility="user_visible",
+            priority="high",
+        )
+
+        return AgentTurnResult(
+            text=final_text,
+            tool_traces=all_traces,
+            model=f"{self.manager_model}+{self.model}",
+            response_id=worker_response_id,
+            skill_state=worker_skill_state,
+            context_metrics=context_metrics,
+            agent_messages=emitted_messages,
+        )
+
+    def _new_peer_message(
+        self,
+        *,
+        thread_id: str,
+        from_agent: str,
+        to_agent: str,
+        kind: str,
+        summary: str,
+        payload: dict[str, Any],
+        visibility: str = "internal",
+        priority: str = "normal",
+        requires_ack: bool = False,
+        correlation_id: str | None = None,
+        parent_id: str | None = None,
+    ) -> AgentPeerMessage:
+        return AgentPeerMessage(
+            message_id=f"msg-{uuid.uuid4().hex[:16]}",
+            thread_id=thread_id,
+            from_agent=from_agent,
+            to_agent=to_agent,
+            kind=kind,
+            summary=summary,
+            payload=payload,
+            visibility=visibility,
+            priority=priority,
+            requires_ack=requires_ack,
+            correlation_id=correlation_id,
+            parent_id=parent_id,
+        )
+
+    async def _manager_build_plan(
+        self,
+        *,
+        project_path: Path,
+        selected_targets: list[str],
+        user_message: str,
+        history: list[dict[str, str]],
+        progress_callback: ProgressCallback | None,
+    ) -> dict[str, Any]:
+        await _emit_progress(
+            progress_callback,
+            {
+                "phase": "thinking",
+                "status_text": "Manager planning",
+                "detail_text": "Converting user request into worker brief",
+                "agent": "manager",
+            },
+        )
+        history_summary = _summarize_history_for_manager(history)
+        payload = {
+            "model": self.manager_model,
+            "input": [
+                {
+                    "role": "user",
+                    "content": (
+                        f"Project root: {project_path}\n"
+                        f"Selected targets: {selected_targets or []}\n"
+                        f"Recent history:\n{history_summary}\n\n"
+                        f"User request:\n{_trim_user_message(user_message, 6000)}"
+                    ),
+                }
+            ],
+            "instructions": _MANAGER_PLANNER_PROMPT,
+            "truncation": "auto",
+        }
+        response = await self._responses_create(
+            payload,
+            telemetry={"api_retry_count": 0},
+            progress_callback=progress_callback,
+        )
+        text = _extract_text(response)
+        parsed = _extract_json_object(text)
+        constraints = _normalize_string_list(parsed.get("constraints"))
+        acceptance_criteria = _normalize_string_list(
+            parsed.get("acceptance_criteria")
+        )
+        checkpoints = _normalize_string_list(parsed.get("checkpoints"))
+        intent_summary = str(parsed.get("intent_summary") or "").strip()
+        objective = str(parsed.get("objective") or "").strip()
+        worker_brief = str(parsed.get("worker_brief") or "").strip()
+
+        fallback_brief = _trim_user_message(user_message, 6000)
+        return {
+            "intent_summary": intent_summary or "Prepared execution brief.",
+            "objective": objective or fallback_brief,
+            "constraints": constraints,
+            "acceptance_criteria": acceptance_criteria,
+            "worker_brief": worker_brief or fallback_brief,
+            "checkpoints": checkpoints,
+            "selected_targets": selected_targets,
+            "project_root": str(project_path),
+        }
+
+    async def _manager_review_result(
+        self,
+        *,
+        user_message: str,
+        intent_snapshot: dict[str, Any],
+        worker_text: str,
+        tool_traces: list[ToolTrace],
+        progress_callback: ProgressCallback | None,
+    ) -> dict[str, Any]:
+        await _emit_progress(
+            progress_callback,
+            {
+                "phase": "thinking",
+                "status_text": "Manager review",
+                "detail_text": "Validating worker output against acceptance criteria",
+                "agent": "manager",
+            },
+        )
+        traces_summary = _summarize_tool_traces_for_manager(tool_traces, limit=24)
+        payload = {
+            "model": self.manager_model,
+            "input": [
+                {
+                    "role": "user",
+                    "content": (
+                        f"Original user request:\n{_trim_user_message(user_message, 4000)}\n\n"
+                        f"Intent snapshot:\n{json.dumps(intent_snapshot, ensure_ascii=False)}\n\n"
+                        f"Worker output:\n{_trim_user_message(worker_text, 6000)}\n\n"
+                        f"Tool trace summary:\n{traces_summary}"
+                    ),
+                }
+            ],
+            "instructions": _MANAGER_REVIEW_PROMPT,
+            "truncation": "auto",
+        }
+        response = await self._responses_create(
+            payload,
+            telemetry={"api_retry_count": 0},
+            progress_callback=progress_callback,
+        )
+        text = _extract_text(response)
+        parsed = _extract_json_object(text)
+        decision = str(parsed.get("decision") or "accept").strip().lower()
+        if decision not in {"accept", "refine"}:
+            decision = "accept"
+        return {
+            "decision": decision,
+            "refinement_brief": str(parsed.get("refinement_brief") or "").strip(),
+            "final_response": str(parsed.get("final_response") or "").strip()
+            or worker_text,
+            "completion_summary": str(parsed.get("completion_summary") or "").strip(),
+        }
 
     async def _build_context(
         self,
@@ -674,17 +1273,24 @@ class AgentOrchestrator:
                         "Please try a narrower request."
                     )
 
-        return await self._responses_create(payload, telemetry=telemetry)
+        return await self._responses_create(
+            payload,
+            telemetry=telemetry,
+            progress_callback=progress_callback,
+        )
 
     async def _responses_create(
         self,
         payload: dict[str, Any],
         *,
         telemetry: dict[str, Any] | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> dict[str, Any]:
         client = self._get_client()
         working_payload = dict(payload)
         compacted_once = False
+        function_output_shrink_steps = (5000, 2500, 1200, 600, 300)
+        function_output_shrink_index = 0
         for attempt in range(self.api_retries + 1):
             try:
                 response = await client.responses.create(**working_payload)
@@ -703,8 +1309,46 @@ class AgentOrchestrator:
                         base_delay_s=self.api_retry_base_delay_s,
                         max_delay_s=self.api_retry_max_delay_s,
                     )
+                    await _emit_progress(
+                        progress_callback,
+                        {
+                            "phase": "thinking",
+                            "status_text": "Retrying model request",
+                            "detail_text": f"Rate limited, retrying in {delay_s:.1f}s",
+                        },
+                    )
                     await asyncio.sleep(delay_s)
                     continue
+
+                if _is_context_length_exceeded(
+                    exc
+                ) and _payload_has_function_call_outputs(working_payload):
+                    if function_output_shrink_index < len(function_output_shrink_steps):
+                        max_chars = function_output_shrink_steps[
+                            function_output_shrink_index
+                        ]
+                        function_output_shrink_index += 1
+                        reduced_payload = _shrink_function_call_outputs_payload(
+                            working_payload,
+                            max_chars=max_chars,
+                        )
+                        if reduced_payload is not None:
+                            await _emit_progress(
+                                progress_callback,
+                                {
+                                    "phase": "compacting",
+                                    "status_text": "Compacting tool results",
+                                    "detail_text": (
+                                        "Reducing tool output size to continue"
+                                    ),
+                                },
+                            )
+                            working_payload = reduced_payload
+                            continue
+                    raise RuntimeError(
+                        "Tool outputs are too large for the model context window. "
+                        "Try a narrower request or fewer high-volume tools."
+                    ) from exc
 
                 if (
                     _is_context_length_exceeded(exc)
@@ -727,6 +1371,28 @@ class AgentOrchestrator:
                     f"Model API request failed ({status_code}): {snippet}"
                 ) from exc
             except (APIConnectionError, APITimeoutError) as exc:
+                if attempt < self.api_retries:
+                    if telemetry is not None:
+                        telemetry["api_retry_count"] = (
+                            int(telemetry.get("api_retry_count", 0)) + 1
+                        )
+                    delay_s = _compute_network_retry_delay_s(
+                        attempt=attempt,
+                        base_delay_s=self.api_retry_base_delay_s,
+                        max_delay_s=self.api_retry_max_delay_s,
+                    )
+                    await _emit_progress(
+                        progress_callback,
+                        {
+                            "phase": "thinking",
+                            "status_text": "Retrying model request",
+                            "detail_text": (
+                                f"Connection issue, retrying in {delay_s:.1f}s"
+                            ),
+                        },
+                    )
+                    await asyncio.sleep(delay_s)
+                    continue
                 raise RuntimeError(f"Model API request failed: {exc}") from exc
 
         body = _response_model_to_dict(response)
@@ -842,6 +1508,16 @@ def _compute_rate_limit_retry_delay_s(
     return min(max_delay_s, backoff_delay_s)
 
 
+def _compute_network_retry_delay_s(
+    *,
+    attempt: int,
+    base_delay_s: float,
+    max_delay_s: float,
+) -> float:
+    backoff_delay_s = max(0.05, base_delay_s) * (2 ** max(0, attempt))
+    return min(max_delay_s, backoff_delay_s)
+
+
 def _extract_retry_after_delay_s(exc: APIStatusError) -> float | None:
     response = getattr(exc, "response", None)
     headers = getattr(response, "headers", None)
@@ -953,6 +1629,45 @@ def _trim_user_message(message: str, max_chars: int) -> str:
         + "\n\n...[message truncated]...\n\n"
         + stripped[-tail_chars:].lstrip()
     )
+
+
+def _consume_steering_updates(
+    consume_steering_messages: SteeringMessagesCallback | None,
+) -> list[str]:
+    if consume_steering_messages is None:
+        return []
+    try:
+        raw_messages = consume_steering_messages()
+    except Exception:
+        return []
+    if not isinstance(raw_messages, list):
+        return []
+
+    normalized: list[str] = []
+    for raw_message in raw_messages:
+        if not isinstance(raw_message, str):
+            continue
+        stripped = raw_message.strip()
+        if not stripped:
+            continue
+        normalized.append(_trim_user_message(stripped, 2000))
+    return normalized
+
+
+def _build_steering_inputs_for_model(messages: list[str]) -> list[dict[str, Any]]:
+    if not messages:
+        return []
+    bullets = "\n".join(f"- {message}" for message in messages)
+    return [
+        {
+            "role": "user",
+            "content": (
+                "Steering update while you are working. Keep progress so far, "
+                "but adapt your plan using this guidance when feasible:\n"
+                f"{bullets}"
+            ),
+        }
+    ]
 
 
 def _truncate_middle(text: str, max_chars: int) -> str:
@@ -1155,3 +1870,80 @@ def _build_function_call_outputs_for_model(
         }
     )
     return outputs
+
+
+def _payload_has_function_call_outputs(payload: dict[str, Any]) -> bool:
+    raw_input = payload.get("input")
+    if not isinstance(raw_input, list):
+        return False
+    return any(
+        isinstance(item, dict) and item.get("type") == "function_call_output"
+        for item in raw_input
+    )
+
+
+def _shrink_function_call_outputs_payload(
+    payload: dict[str, Any],
+    *,
+    max_chars: int,
+) -> dict[str, Any] | None:
+    raw_input = payload.get("input")
+    if not isinstance(raw_input, list):
+        return None
+
+    changed = False
+    next_input: list[Any] = []
+    for item in raw_input:
+        if not (isinstance(item, dict) and item.get("type") == "function_call_output"):
+            next_input.append(item)
+            continue
+
+        output = item.get("output")
+        if not isinstance(output, str):
+            next_input.append(item)
+            continue
+
+        shrunk_output = _shrink_function_call_output_string(
+            output,
+            max_chars=max_chars,
+        )
+        if shrunk_output != output:
+            changed = True
+            next_item = dict(item)
+            next_item["output"] = shrunk_output
+            next_input.append(next_item)
+        else:
+            next_input.append(item)
+
+    if not changed:
+        return None
+
+    next_payload = dict(payload)
+    next_payload["input"] = next_input
+    return next_payload
+
+
+def _shrink_function_call_output_string(
+    output: str,
+    *,
+    max_chars: int,
+) -> str:
+    if len(output) <= max_chars:
+        return output
+
+    try:
+        parsed = json.loads(output)
+    except Exception:
+        return _truncate_middle(output, max_chars)
+
+    if isinstance(parsed, dict):
+        compacted = _limit_tool_output_for_model(parsed, max_chars=max_chars)
+        try:
+            compacted_text = json.dumps(compacted, ensure_ascii=False, default=str)
+        except Exception:
+            return _truncate_middle(output, max_chars)
+        if len(compacted_text) <= max_chars:
+            return compacted_text
+        return _truncate_middle(compacted_text, max_chars)
+
+    return _truncate_middle(output, max_chars)

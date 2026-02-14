@@ -78,6 +78,7 @@ class MockAutolayoutProvider(AutolayoutProvider):
         external_job_id: str,
         candidate_id: str,
         out_dir: Path,
+        target_layout_path: Path | None = None,
     ) -> DownloadResult:
         job = self._jobs.get(external_job_id)
         if job is None:

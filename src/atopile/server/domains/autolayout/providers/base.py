@@ -40,6 +40,7 @@ class AutolayoutProvider(ABC):
         external_job_id: str,
         candidate_id: str,
         out_dir: Path,
+        target_layout_path: Path | None = None,
     ) -> DownloadResult:
         """Download a selected candidate and return local output paths."""
 

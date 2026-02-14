@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from faebryk.libs.kicad.fileformats import Property, kicad
+
 
 def _reload_deeppcb_module():
     import atopile.server.domains.autolayout.providers.deeppcb as deeppcb_module
@@ -21,7 +23,7 @@ def test_deeppcb_api_key_prefers_ato_prefix(monkeypatch):
     assert cfg.api_key == "ato-key"
 
 
-def test_deeppcb_api_key_falls_back_to_unprefixed_env(monkeypatch):
+def test_deeppcb_api_key_ignores_legacy_env_vars(monkeypatch):
     monkeypatch.delenv("ATO_DEEPPCB_API_KEY", raising=False)
     monkeypatch.setenv("DEEPPCB_API_KEY", "plain-key")
     monkeypatch.setenv("FBRK_DEEPPCB_API_KEY", "fbrk-key")
@@ -29,7 +31,7 @@ def test_deeppcb_api_key_falls_back_to_unprefixed_env(monkeypatch):
     deeppcb_module = _reload_deeppcb_module()
     cfg = deeppcb_module.DeepPCBConfig.from_env()
 
-    assert cfg.api_key == "plain-key"
+    assert cfg.api_key == ""
 
 
 def test_deeppcb_defaults_match_public_api_paths(monkeypatch):
@@ -59,6 +61,7 @@ def test_deeppcb_defaults_match_public_api_paths(monkeypatch):
     assert cfg.confirm_retry_delay_s == 1.5
     assert cfg.board_ready_timeout_s == 90.0
     assert cfg.board_ready_poll_s == 2.0
+    assert cfg.api_key == ""
     assert cfg.bearer_token is None
     assert cfg.webhook_url == "https://example.com/deeppcb-autolayout"
     assert cfg.webhook_token is None
@@ -335,3 +338,171 @@ def test_inject_constraints_validation_failure_raises(tmp_path: Path, monkeypatc
 
     with pytest.raises(RuntimeError, match="constraints validation failed"):
         provider._inject_constraints_file_url(request)
+
+
+def test_json_artifact_transform_applies_placement_and_routing(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    source_layout = Path(
+        "test/common/resources/fileformats/kicad/v9/pcb/test.kicad_pcb"
+    )
+    target_layout = tmp_path / "target.kicad_pcb"
+    target_layout.write_text(
+        source_layout.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    json_payload = {
+        "components": [
+            {
+                "id": "D1",
+                "position": {"x": 70.0, "y": 80.0},
+                "rotation": 90.0,
+                "side": "Bottom",
+            }
+        ],
+        "wires": [
+            {
+                "net": "TEST_NET",
+                "layer": "Top",
+                "width": 0.25,
+                "points": [{"x": 10.0, "y": 10.0}, {"x": 20.0, "y": 20.0}],
+            }
+        ],
+        "vias": [
+            {
+                "net": "TEST_NET",
+                "position": {"x": 20.0, "y": 20.0},
+                "diameter": 0.7,
+                "drill": 0.35,
+            }
+        ],
+    }
+
+    output_path = provider._persist_downloaded_layout(
+        content=deeppcb_module.json.dumps(json_payload).encode("utf-8"),
+        content_type="application/json",
+        out_dir=tmp_path / "downloads",
+        candidate_id="rev-1",
+        target_layout_path=target_layout,
+    )
+
+    pcb_file = kicad.loads(kicad.pcb.PcbFile, output_path)
+    pcb = pcb_file.kicad_pcb
+
+    footprint = next(
+        fp
+        for fp in pcb.footprints
+        if Property.try_get_property(fp.propertys, "Reference") == "D1"
+    )
+    assert footprint.layer == "B.Cu"
+    assert footprint.at.x == pytest.approx(70.0)
+    assert footprint.at.y == pytest.approx(80.0)
+    assert footprint.at.r == pytest.approx(90.0)
+
+    assert any(net.name == "TEST_NET" for net in pcb.nets)
+    assert len(pcb.segments) >= 1
+    assert len(pcb.vias) >= 1
+
+
+def test_json_artifact_requires_target_layout_path(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("ATO_DEEPPCB_API_KEY", "api-key")
+    deeppcb_module = _reload_deeppcb_module()
+    provider = deeppcb_module.DeepPCBProvider()
+
+    with pytest.raises(RuntimeError, match="target layout path"):
+        provider._persist_downloaded_layout(
+            content=b'{"components":[]}',
+            content_type="application/json",
+            out_dir=tmp_path / "downloads",
+            candidate_id="rev-1",
+            target_layout_path=None,
+        )
+
+
+def test_json_extractors_scale_resolution_units():
+    deeppcb_module = _reload_deeppcb_module()
+
+    payload = {
+        "resolution": {"unit": "mm", "value": 1000},
+        "components": [
+            {
+                "id": "U1",
+                "position": [1000, -2500],
+                "rotation": 90,
+                "side": "FRONT",
+            }
+        ],
+        "wires": [
+            {
+                "net": "N1",
+                "layer": "F.Cu",
+                "width": 200,
+                "points": [[1000, -2500], [3000, -2500]],
+            }
+        ],
+        "vias": [
+            {
+                "net": "N1",
+                "position": [3000, -2500],
+                "diameter": 600,
+                "drill": 300,
+            }
+        ],
+    }
+
+    placements = deeppcb_module._extract_component_updates(payload)
+    wires = deeppcb_module._extract_wire_updates(payload)
+    vias = deeppcb_module._extract_via_updates(payload)
+
+    assert placements[0]["x"] == pytest.approx(1.0)
+    assert placements[0]["y"] == pytest.approx(-2.5)
+    assert wires[0]["width"] == pytest.approx(0.2)
+    assert wires[0]["points"][1][0] == pytest.approx(3.0)
+    assert vias[0]["diameter"] == pytest.approx(0.6)
+    assert vias[0]["drill"] == pytest.approx(0.3)
+
+
+def test_infer_transform_uses_boundary_and_edge_cuts():
+    deeppcb_module = _reload_deeppcb_module()
+    pcb = kicad.loads(
+        kicad.pcb.PcbFile,
+        Path("examples/esp32_minimal/layouts/esp32_minimal/esp32_minimal.kicad_pcb"),
+    ).kicad_pcb
+
+    target_bbox = deeppcb_module._extract_edge_cuts_bbox(pcb)
+    assert target_bbox is not None
+    tx_min, ty_min, tx_max, ty_max = target_bbox
+
+    # Build a synthetic DeepPCB boundary:
+    # x shifted by +10mm, y mirrored and shifted by +5mm.
+    sx_min = tx_min + 10.0
+    sx_max = tx_max + 10.0
+    sy_min = -ty_max + 5.0
+    sy_max = -ty_min + 5.0
+    payload = {
+        "resolution": {"unit": "mm", "value": 1},
+        "boundary": {
+            "shape": {
+                "type": "polyline",
+                "points": [
+                    [sx_min, sy_min],
+                    [sx_max, sy_min],
+                    [sx_max, sy_max],
+                    [sx_min, sy_max],
+                    [sx_min, sy_min],
+                ],
+            }
+        },
+    }
+
+    transform = deeppcb_module._infer_json_to_kicad_transform(payload, pcb)
+    ax, bx, ay, by = transform
+    assert ax == pytest.approx(1.0)
+    assert bx == pytest.approx(-10.0)
+    assert ay == pytest.approx(-1.0)
+    assert by == pytest.approx(5.0)

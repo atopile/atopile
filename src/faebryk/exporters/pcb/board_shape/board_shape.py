@@ -8,9 +8,13 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserBadParameterError
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer, get_all_geos
-from faebryk.libs.kicad.fileformats import kicad
+from faebryk.libs.kicad.fileformats import Property, kicad
 
 logger = logging.getLogger(__name__)
+
+_BOARD_SHAPE_FOOTPRINT_NAME = "atopile:RectangularBoardShape"
+_BOARD_SHAPE_KIND_PROPERTY = "atopile_kind"
+_BOARD_SHAPE_KIND_VALUE = "RectangularBoardShape"
 
 
 def _get_rectangular_board_shapes(app: fabll.Node) -> list[F.RectangularBoardShape]:
@@ -180,6 +184,85 @@ def _clear_edge_cuts(transformer: PCB_Transformer) -> None:
             transformer.delete_geo(geo)
 
 
+def _make_property(name: str, value: str) -> kicad.pcb.Property:
+    return kicad.pcb.Property(
+        name=name,
+        value=value,
+        at=kicad.pcb.Xyr(x=0, y=0, r=0),
+        layer="User.9",
+        uuid=PCB_Transformer.gen_uuid(mark=True),
+        unlocked=None,
+        hide=True,
+        effects=None,
+    )
+
+
+def _is_board_shape_footprint(fp: kicad.pcb.Footprint) -> bool:
+    if Property.try_get_property(fp.propertys, _BOARD_SHAPE_KIND_PROPERTY) == (
+        _BOARD_SHAPE_KIND_VALUE
+    ):
+        return True
+    return fp.name == _BOARD_SHAPE_FOOTPRINT_NAME
+
+
+def _clear_board_shape_footprints(transformer: PCB_Transformer) -> None:
+    for fp in list(transformer.pcb.footprints):
+        if _is_board_shape_footprint(fp):
+            transformer.remove_footprint(fp)
+
+
+def _ensure_associated_footprint(
+    shape: F.RectangularBoardShape,
+) -> F.Footprints.has_associated_footprint:
+    if associated := shape.try_get_trait(F.Footprints.has_associated_footprint):
+        return associated
+
+    if not shape.has_trait(F.Footprints.can_attach_to_footprint):
+        raise UserBadParameterError(
+            f"`{shape.get_full_name()}` must support attaching to a footprint."
+        )
+
+    fp_node = fabll.Node.bind_typegraph_from_instance(shape.instance).create_instance(
+        g=shape.instance.g()
+    )
+    fp_trait = fabll.Traits.create_and_add_instance_to(
+        node=fp_node, trait=F.Footprints.is_footprint
+    )
+    return fabll.Traits.create_and_add_instance_to(
+        node=shape, trait=F.Footprints.has_associated_footprint
+    ).setup(fp_trait)
+
+
+def _build_board_shape_footprint(
+    shape: F.RectangularBoardShape,
+    geometry: list[kicad.pcb.Line | kicad.pcb.Arc | kicad.pcb.Circle],
+) -> kicad.pcb.Footprint:
+    shape_address = shape.get_full_name(include_uuid=False)
+    return kicad.pcb.Footprint(
+        name=_BOARD_SHAPE_FOOTPRINT_NAME,
+        layer="F.Cu",
+        uuid=PCB_Transformer.gen_uuid(mark=True),
+        at=kicad.pcb.Xyr(x=0, y=0, r=0),
+        path=None,
+        propertys=[
+            _make_property("Reference", "BS1"),
+            _make_property("Value", _BOARD_SHAPE_KIND_VALUE),
+            _make_property("atopile_address", shape_address),
+            _make_property(_BOARD_SHAPE_KIND_PROPERTY, _BOARD_SHAPE_KIND_VALUE),
+        ],
+        attr=["board_only", "exclude_from_pos_files", "exclude_from_bom"],
+        fp_lines=[geo for geo in geometry if isinstance(geo, kicad.pcb.Line)],
+        fp_arcs=[geo for geo in geometry if isinstance(geo, kicad.pcb.Arc)],
+        fp_circles=[geo for geo in geometry if isinstance(geo, kicad.pcb.Circle)],
+        fp_rects=[],
+        fp_poly=[],
+        fp_texts=[],
+        pads=[],
+        embedded_fonts=None,
+        models=[],
+    )
+
+
 def apply_rectangular_board_shape(transformer: PCB_Transformer) -> None:
     shapes = _get_rectangular_board_shapes(transformer.app)
     if not shapes:
@@ -238,11 +321,25 @@ def apply_rectangular_board_shape(transformer: PCB_Transformer) -> None:
         )
 
     _clear_edge_cuts(transformer)
-    for geo in geometry:
-        transformer.insert_geo(geo)
+    _clear_board_shape_footprints(transformer)
+    footprint = _build_board_shape_footprint(shape, geometry)
+    pcb_fp = kicad.insert(
+        transformer.pcb,
+        "footprints",
+        transformer.pcb.footprints,
+        footprint,
+    )
+
+    graph_fp = _ensure_associated_footprint(shape).get_footprint()
+    if kicad_fp_trait := graph_fp.try_get_trait(
+        F.KiCadFootprints.has_associated_kicad_pcb_footprint
+    ):
+        kicad_fp_trait.setup(pcb_fp, transformer)
+    else:
+        transformer.bind_footprint(pcb_fp, shape)
 
     logger.info(
-        "Applied RectangularBoardShape: %.3fmm x %.3fmm, corner radius %.3fmm, "
+        "Applied RectangularBoardShape footprint: %.3fmm x %.3fmm, corner radius %.3fmm, "
         "mounting hole diameter %.3fmm",
         width_mm,
         height_mm,

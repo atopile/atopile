@@ -10,7 +10,7 @@ class RectangularBoardShape(fabll.Node):
     Parameterized rectangular PCB outline.
 
     This module defines a rectangular board shape in the PCB export pipeline.
-    The outline is generated directly on the Edge.Cuts layer from:
+    The outline is generated as a dedicated footprint on the Edge.Cuts layer from:
     - width
     - height
     - corner_radius
@@ -19,6 +19,9 @@ class RectangularBoardShape(fabll.Node):
 
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
     _has_part_removed = fabll.Traits.MakeEdge(F.has_part_removed.MakeChild())
+    _can_attach_to_footprint = fabll.Traits.MakeEdge(
+        F.Footprints.can_attach_to_footprint.MakeChild()
+    )
 
     width = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Meter)
     height = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Meter)

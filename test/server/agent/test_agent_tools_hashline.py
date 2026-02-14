@@ -9,9 +9,7 @@ import pytest
 
 from atopile.dataclasses import (
     AppContext,
-    BuildResponse,
     BuildStatus,
-    BuildTargetInfo,
 )
 from atopile.server.agent import policy, tools
 from atopile.server.domains.autolayout.models import (
@@ -291,6 +289,8 @@ def test_autolayout_fetch_to_layout_archives_iteration(
     downloads_dir = work_dir / "downloads"
     downloads_dir.mkdir(parents=True)
     (downloads_dir / "cand-1.kicad_pcb").write_text("new-board", encoding="utf-8")
+    (downloads_dir / "cand-1.json").write_text("{}", encoding="utf-8")
+    (downloads_dir / "cand-1.ses").write_text('(session "")', encoding="utf-8")
 
     base_job = AutolayoutJob(
         job_id="al-123456789abc",
@@ -360,53 +360,140 @@ def test_autolayout_fetch_to_layout_archives_iteration(
 
     assert result["selected_candidate_id"] == "cand-1"
     assert result["downloaded_candidate_path"]
+    artifacts = result["downloaded_artifacts"]
+    assert isinstance(artifacts, dict)
+    assert artifacts["kicad_pcb"].endswith("cand-1.kicad_pcb")
+    assert artifacts["json"].endswith("cand-1.json")
+    assert artifacts["ses"].endswith("cand-1.ses")
     archived = result["archived_iteration_path"]
     assert isinstance(archived, str)
     assert "autolayout_iterations" in archived
     assert Path(archived).exists()
 
 
-def test_autolayout_request_screenshot_queues_render_build(
+def test_autolayout_request_screenshot_renders_images(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    def fake_start_build(request):
-        assert request.targets == ["default"]
-        assert set(request.include_targets) == {"2d-image", "3d-image"}
-        return BuildResponse(
-            success=True,
-            message="Build queued",
-            build_targets=[BuildTargetInfo(target="default", build_id="b123")],
-        )
+    (tmp_path / "layouts" / "default").mkdir(parents=True)
+    (tmp_path / "layouts" / "default" / "default.kicad_pcb").write_text(
+        "(kicad_pcb (version 20221018) (generator test))\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "ato.yaml").write_text(
+        (
+            "paths:\n"
+            "  src: ./\n"
+            "  layout: ./layouts\n"
+            "builds:\n"
+            "  default:\n"
+            "    entry: main.ato:App\n"
+        ),
+        encoding="utf-8",
+    )
 
-    monkeypatch.setattr(tools.builds_domain, "handle_start_build", fake_start_build)
+    calls: dict[str, object] = {}
+
+    def fake_export_svg(
+        pcb_file: Path,
+        svg_file: Path,
+        flip_board: bool = False,
+        project_dir: Path | None = None,
+        layers: str | None = None,
+    ) -> None:
+        calls["svg_layers"] = layers
+        calls["svg_pcb_file"] = str(pcb_file)
+        svg_file.write_text("<svg />\n", encoding="utf-8")
+
+    def fake_export_3d_board_render(
+        pcb_file: Path,
+        image_file: Path,
+        project_dir: Path | None = None,
+    ) -> None:
+        calls["render_pcb_file"] = str(pcb_file)
+        image_file.write_bytes(b"PNG")
+
     monkeypatch.setattr(
-        tools,
-        "_expected_screenshot_outputs",
-        lambda **_: {
-            "view": "both",
-            "target": "default",
-            "paths": {
-                "2d": "/tmp/default.pcba.svg",
-                "3d": "/tmp/default.pcba.png",
-            },
-            "exists": {"2d": False, "3d": False},
-        },
+        "faebryk.exporters.pcb.kicad.artifacts.export_svg",
+        fake_export_svg,
+    )
+    monkeypatch.setattr(
+        "faebryk.exporters.pcb.kicad.artifacts.export_3d_board_render",
+        fake_export_3d_board_render,
     )
 
     result = _run(
         tools.execute_tool(
             name="autolayout_request_screenshot",
-            arguments={"target": "default", "view": "both"},
+            arguments={
+                "target": "default",
+                "view": "both",
+                "side": "top",
+                "layers": ["F.Cu", "Edge.Cuts"],
+            },
             project_root=tmp_path,
             ctx=AppContext(workspace_paths=[tmp_path]),
         )
     )
 
     assert result["success"] is True
-    assert result["queued_build_id"] == "b123"
-    assert set(result["include_targets"]) == {"2d-image", "3d-image"}
-    assert result["expected_outputs"]["view"] == "both"
+    assert result["view"] == "both"
+    assert result["drawing_sheet_excluded"] is True
+    assert result["layers"] == ["F.Cu", "Edge.Cuts"]
+    assert calls["svg_layers"] == "F.Cu,Edge.Cuts"
+    assert Path(result["screenshot_paths"]["2d"]).exists()
+    assert Path(result["screenshot_paths"]["3d"]).exists()
+
+
+def test_autolayout_request_screenshot_uses_default_bottom_layers(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "layouts" / "default").mkdir(parents=True)
+    (tmp_path / "layouts" / "default" / "default.kicad_pcb").write_text(
+        "(kicad_pcb (version 20221018) (generator test))\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "ato.yaml").write_text(
+        (
+            "paths:\n"
+            "  src: ./\n"
+            "  layout: ./layouts\n"
+            "builds:\n"
+            "  default:\n"
+            "    entry: main.ato:App\n"
+        ),
+        encoding="utf-8",
+    )
+
+    captured: dict[str, object] = {}
+
+    def fake_export_svg(
+        pcb_file: Path,
+        svg_file: Path,
+        flip_board: bool = False,
+        project_dir: Path | None = None,
+        layers: str | None = None,
+    ) -> None:
+        captured["layers"] = layers
+        svg_file.write_text("<svg />\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "faebryk.exporters.pcb.kicad.artifacts.export_svg",
+        fake_export_svg,
+    )
+
+    result = _run(
+        tools.execute_tool(
+            name="autolayout_request_screenshot",
+            arguments={"target": "default", "view": "2d", "side": "bottom"},
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+
+    assert result["layers"] == ["B.Cu", "B.Paste", "B.Mask", "Edge.Cuts"]
+    assert captured["layers"] == "B.Cu,B.Paste,B.Mask,Edge.Cuts"
 
 
 def test_autolayout_configure_board_intent_updates_ato_yaml(tmp_path: Path) -> None:
