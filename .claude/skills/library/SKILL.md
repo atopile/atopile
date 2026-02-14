@@ -1,6 +1,6 @@
 ---
-name: Library
-description: "How the Faebryk component library is structured, how `_F.py` is generated, and the conventions/invariants for adding new library modules."
+name: library
+description: "How the Faebryk component library is structured, how `_F.py` is generated, and the conventions/invariants for adding new library modules. Use when adding or modifying library components, traits, or module definitions."
 ---
 
 # Library Module

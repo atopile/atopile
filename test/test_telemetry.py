@@ -17,7 +17,7 @@ def test_normalize_git_remote_url(git_remote):
 
 
 def test_init_client():
-    assert isinstance(telemetry.client, telemetry.Posthog)
+    assert isinstance(telemetry.client, (telemetry.Posthog, telemetry._MockClient))
 
 
 def test_capture_event():

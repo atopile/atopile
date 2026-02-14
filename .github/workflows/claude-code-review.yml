@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
@@ -30,34 +30,14 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
-          # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4)
-          # claude_args: --model "claude-opus-4-20250514"
-
           prompt: |
-            Please review this pull request and provide feedback on:
+            Review this PR following `.claude/skills/code-review/SKILL.md`.
+            Use the "PR Review Output Format" section for the exact comment structure.
+            Also read `.claude/skills/atopile-skills/SKILL.md` and follow relevant skills for touched areas.
 
-            PR Format:
-            - Verify the PR title and description follow the requirements in .github/pull_request_template.md
-
-            Code Review:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
-
-            Use the repository skill docs for guidance. Start with:
-            - `.claude/skills/code_review/SKILL.md` (review process and repo-specific expectations)
-            - `.claude/skills/skills/SKILL.md` (how skills are structured; follow relevant skills for the touched areas)
-
-            Be constructive and helpful in your feedback.
-
-            Use `gh pr comment --edit-last --create-if-none` with your Bash tool so the review stays in a single updated comment on the PR.
-
-          # Optional: Use sticky comments to make Claude reuse the same comment on subsequent pushes to the same PR
           use_sticky_comment: true
 
           track_progress: true
 
           claude_args: |
-            --allowed-tools "mcp__github_inline_comment__create_inline_comment,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(pre-commit run --all-files),Bash(uv run pytest*)"
+            --model claude-opus-4-6 --allowed-tools "mcp__github_inline_comment__create_inline_comment,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(pre-commit run --all-files),Bash(uv run pytest*)"

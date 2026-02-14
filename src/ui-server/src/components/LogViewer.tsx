@@ -23,11 +23,18 @@ import {
   getStoredSetting,
   isValidRegex,
   SearchOptions,
+  HeaderSearchBox,
   LoggerFilter,
   loadEnabledLoggers,
-  calculateSourceColumnWidth,
 } from './log-viewer';
 import './LogViewer.css';
+
+type ResizableColumnKey = 'source' | 'stage';
+
+export const LOG_COL_WIDTHS: Record<ResizableColumnKey, number> = {
+  source: 96,
+  stage: 96,
+};
 
 // Get initial values from URL query params
 function getInitialParams(): { mode: LogMode; testRunId: string; buildId: string; testName: string } {
@@ -123,6 +130,12 @@ export function LogViewer() {
   // Level dropdown state
   const [levelDropdownOpen, setLevelDropdownOpen] = useState(false);
   const levelDropdownRef = useRef<HTMLDivElement>(null);
+  const resizingColumnRef = useRef<{
+    column: ResizableColumnKey;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
+  const [manualColumnWidths, setManualColumnWidths] = useState<Partial<Record<ResizableColumnKey, number>>>({});
 
   // Status tooltip state
   const [showStatusTooltip, setShowStatusTooltip] = useState(false);
@@ -257,16 +270,85 @@ export function LogViewer() {
   const searchRegexError = searchRegex ? isValidRegex(search).error : undefined;
   const sourceRegexError = sourceRegex ? isValidRegex(sourceFilter).error : undefined;
 
-  // Calculate dynamic source column width based on content
-  const sourceColumnWidth = useMemo(
-    () => calculateSourceColumnWidth(logs, sourceMode),
-    [logs, sourceMode]
+  const defaultColumnWidths = useMemo<Record<ResizableColumnKey, number>>(
+    () => LOG_COL_WIDTHS,
+    []
   );
+  const resolvedColumnWidths = useMemo<Record<ResizableColumnKey, number>>(
+    () => ({
+      source: manualColumnWidths.source ?? defaultColumnWidths.source,
+      stage: manualColumnWidths.stage ?? defaultColumnWidths.stage,
+    }),
+    [manualColumnWidths, defaultColumnWidths]
+  );
+  const gridTemplateColumns = useMemo(
+    () => [
+      timeMode === 'delta' ? '60px' : '72px',
+      levelFull ? 'max-content' : '3ch',
+      `${resolvedColumnWidths.source}px`,
+      `${resolvedColumnWidths.stage}px`,
+      'minmax(0, 1fr)',
+    ].join(' '),
+    [timeMode, levelFull, resolvedColumnWidths]
+  );
+
+  const onResizeMouseMove = useCallback((event: MouseEvent) => {
+    const resizeState = resizingColumnRef.current;
+    if (!resizeState) return;
+
+    const MAX_WIDTH = 600;
+
+    const deltaX = event.clientX - resizeState.startX;
+    const newWidth = Math.max(
+      LOG_COL_WIDTHS[resizeState.column],
+      Math.min(MAX_WIDTH, resizeState.startWidth + deltaX)
+    );
+
+    setManualColumnWidths(prev => ({
+      ...prev,
+      [resizeState.column]: newWidth,
+    }));
+  }, []);
+
+  const stopColumnResize = useCallback(() => {
+    if (!resizingColumnRef.current) return;
+    resizingColumnRef.current = null;
+    document.body.classList.remove('lv-is-resizing');
+    document.removeEventListener('mousemove', onResizeMouseMove);
+    document.removeEventListener('mouseup', stopColumnResize);
+  }, [onResizeMouseMove]);
+
+  const startColumnResize = useCallback((column: ResizableColumnKey, event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    resizingColumnRef.current = {
+      column,
+      startX: event.clientX,
+      startWidth: resolvedColumnWidths[column],
+    };
+    document.body.classList.add('lv-is-resizing');
+    document.addEventListener('mousemove', onResizeMouseMove);
+    document.addEventListener('mouseup', stopColumnResize);
+  }, [resolvedColumnWidths, onResizeMouseMove, stopColumnResize]);
+
+  const autoFitColumn = useCallback((column: ResizableColumnKey, event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setManualColumnWidths(prev => ({
+      ...prev,
+      [column]: defaultColumnWidths[column],
+    }));
+  }, [defaultColumnWidths]);
+
+  useEffect(() => () => stopColumnResize(), [stopColumnResize]);
 
   return (
     <div
       className="lv-container"
-      style={{ '--lv-source-width': `${sourceColumnWidth}px` } as React.CSSProperties}
+      style={{
+        '--lv-grid-template-columns': gridTemplateColumns,
+      } as React.CSSProperties}
     >
       {/* Fixed Toolbar */}
       <div className="lv-toolbar">
@@ -336,29 +418,6 @@ export function LogViewer() {
 
           {/* Right section: Filters */}
           <div className="lv-controls-right">
-            {/* Stage/Test name filter */}
-            {mode === 'build' ? (
-              <input
-                type="text"
-                value={stage}
-                onChange={(e) => setStage(e.target.value)}
-                placeholder="Stage"
-                className="lv-input lv-input-search"
-                title="Filter by build stage"
-              />
-            ) : (
-              <input
-                type="text"
-                value={testName}
-                onChange={(e) => setTestName(e.target.value)}
-                placeholder="Test Name"
-                className="lv-input lv-input-search"
-                title="Filter by test name"
-              />
-            )}
-
-            <span className="lv-separator" />
-
             {/* Level dropdown */}
             <div className="lv-dropdown" ref={levelDropdownRef}>
               <button
@@ -421,105 +480,87 @@ export function LogViewer() {
         )}
       </div>
 
-      {/* Column Headers with Search */}
-      <div className={`lv-column-headers ${!levelFull ? 'lv-level-compact' : ''} ${timeMode === 'delta' ? 'lv-time-compact' : ''}`}>
-        <div className="lv-col-header lv-col-ts">
-          <button
-            className="lv-col-btn"
-            onClick={() => setTimeMode(m => m === 'wall' ? 'delta' : 'wall')}
-          >
-            {timeMode === 'wall' ? 'Time' : 'Δ'}
-          </button>
-        </div>
-        <div className="lv-col-header lv-col-level">
-          <button
-            className="lv-col-btn"
-            onClick={() => setLevelFull(f => !f)}
-          >
-            {levelFull ? 'Level' : 'Lv'}
-          </button>
-        </div>
-        <div className="lv-col-header lv-col-source" title="Click label to toggle source/logger">
-          <button
-            className="lv-col-btn"
-            onClick={() => setSourceMode(m => m === 'source' ? 'logger' : 'source')}
-          >
-            {sourceMode === 'source' ? 'Src' : 'Log'}
-          </button>
-          <div className={`lv-search-wrapper ${sourceRegexError ? 'lv-search-error' : ''}`}>
-            <input
-              type="text"
+      <div className="lv-log-grid">
+        {/* Column Headers with Search */}
+        <div className="lv-column-headers">
+          <div className="lv-col-header lv-col-ts">
+            <span className="lv-col-label">Time</span>
+          </div>
+          <div className="lv-col-header lv-col-level">
+            <span className="lv-col-label">Level</span>
+          </div>
+          <div className="lv-col-header lv-col-source lv-col-header-resizable">
+            <HeaderSearchBox
               value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value)}
+              onChange={setSourceFilter}
               placeholder={sourceMode === 'source' ? 'file:line' : 'logger'}
-              className="lv-col-search"
-              title={sourceRegexError || ''}
+              error={sourceRegexError}
+              caseSensitive={sourceCaseSensitive}
+              onToggleCaseSensitive={() => setSourceCaseSensitive(!sourceCaseSensitive)}
+              regex={sourceRegex}
+              onToggleRegex={() => setSourceRegex(!sourceRegex)}
             />
-            <button
-              className={`lv-search-toggle ${sourceCaseSensitive ? 'active' : ''}`}
-              onClick={() => setSourceCaseSensitive(!sourceCaseSensitive)}
-              title={sourceCaseSensitive ? 'Case sensitive' : 'Case insensitive'}
-            >
-              Aa
-            </button>
-            <button
-              className={`lv-search-toggle lv-search-toggle-last ${sourceRegex ? 'active' : ''}`}
-              onClick={() => setSourceRegex(!sourceRegex)}
-              title={sourceRegex ? 'Regex enabled' : 'Enable regex'}
-            >
-              .*
-            </button>
+            <div
+              className="lv-column-resize-handle"
+              onMouseDown={(e) => startColumnResize('source', e)}
+              onDoubleClick={(e) => autoFitColumn('source', e)}
+              title="Drag to resize column. Double-click to auto-fit."
+            />
           </div>
-        </div>
-        <div className="lv-col-header lv-col-message">
-          <div className={`lv-search-wrapper lv-search-wrapper-message ${searchRegexError ? 'lv-search-error' : ''}`}>
-            <input
-              type="text"
+          <div className="lv-col-header lv-col-stage lv-col-header-resizable">
+            <HeaderSearchBox
+              value={mode === 'build' ? stage : testName}
+              onChange={(value) => (mode === 'build' ? setStage(value) : setTestName(value))}
+              placeholder={mode === 'build' ? 'Stage' : 'Test Name'}
+              title={mode === 'build' ? 'Filter by build stage' : 'Filter by test name'}
+              inputClassName="lv-col-search-stage"
+            />
+            <div
+              className="lv-column-resize-handle"
+              onMouseDown={(e) => startColumnResize('stage', e)}
+              onDoubleClick={(e) => autoFitColumn('stage', e)}
+              title="Drag to resize column. Double-click to auto-fit."
+            />
+          </div>
+          <div className="lv-col-header lv-col-message">
+            <HeaderSearchBox
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={setSearch}
               placeholder="Message"
-              className="lv-col-search lv-col-search-message"
-              title={searchRegexError || ''}
+              error={searchRegexError}
+              caseSensitive={searchCaseSensitive}
+              onToggleCaseSensitive={() => setSearchCaseSensitive(!searchCaseSensitive)}
+              regex={searchRegex}
+              onToggleRegex={() => setSearchRegex(!searchRegex)}
+              inputClassName="lv-col-search-message"
+              wrapperClassName="lv-search-wrapper-message"
             />
-            <button
-              className={`lv-search-toggle ${searchCaseSensitive ? 'active' : ''}`}
-              onClick={() => setSearchCaseSensitive(!searchCaseSensitive)}
-              title={searchCaseSensitive ? 'Case sensitive' : 'Case insensitive'}
-            >
-              Aa
-            </button>
-            <button
-              className={`lv-search-toggle lv-search-toggle-last ${searchRegex ? 'active' : ''}`}
-              onClick={() => setSearchRegex(!searchRegex)}
-              title={searchRegex ? 'Regex enabled' : 'Enable regex'}
-            >
-              .*
-            </button>
           </div>
         </div>
-      </div>
 
-      {/* Scrollable Log Content */}
-      <LogDisplay
-        logs={logs}
-        search={search}
-        sourceFilter={sourceFilter}
-        searchOptions={searchOptions}
-        sourceOptions={sourceOptions}
-        enabledLoggers={enabledLoggers}
-        levelFull={levelFull}
-        timeMode={timeMode}
-        sourceMode={sourceMode}
-        autoScroll={autoScroll}
-        streaming={streaming}
-        onAutoScrollChange={handleAutoScrollChange}
-        setLevelFull={setLevelFull}
-        setTimeMode={setTimeMode}
-        allExpanded={allExpanded}
-        expandKey={expandKey}
-        onExpandAll={handleExpandAll}
-        onCollapseAll={handleCollapseAll}
-      />
+        {/* Scrollable Log Content */}
+        <LogDisplay
+          logs={logs}
+          search={search}
+          sourceFilter={sourceFilter}
+          searchOptions={searchOptions}
+          sourceOptions={sourceOptions}
+          enabledLoggers={enabledLoggers}
+          levelFull={levelFull}
+          timeMode={timeMode}
+          sourceMode={sourceMode}
+          autoScroll={autoScroll}
+          streaming={streaming}
+          onAutoScrollChange={handleAutoScrollChange}
+          setLevelFull={setLevelFull}
+          setTimeMode={setTimeMode}
+          setSourceMode={setSourceMode}
+          allExpanded={allExpanded}
+          expandKey={expandKey}
+          onExpandAll={handleExpandAll}
+          onCollapseAll={handleCollapseAll}
+        />
+      </div>
     </div>
   );
 }

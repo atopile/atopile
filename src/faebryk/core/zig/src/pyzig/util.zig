@@ -176,7 +176,23 @@ fn isHashMapType(comptime T: type) bool {
 
 fn printString(writer: anytype, slice: []const u8) anyerror!void {
     try writer.writeByte('"');
-    try writer.print("{}", .{std.fmt.fmtSliceEscapeLower(slice)});
+    // Write escaped string manually for Zig 0.15 compatibility
+    for (slice) |c| {
+        switch (c) {
+            '\n' => try writer.writeAll("\\n"),
+            '\r' => try writer.writeAll("\\r"),
+            '\t' => try writer.writeAll("\\t"),
+            '\\' => try writer.writeAll("\\\\"),
+            '"' => try writer.writeAll("\\\""),
+            else => {
+                if (c >= 0x20 and c < 0x7f) {
+                    try writer.writeByte(c);
+                } else {
+                    try writer.print("\\x{x:0>2}", .{c});
+                }
+            },
+        }
+    }
     try writer.writeByte('"');
 }
 

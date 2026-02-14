@@ -24,8 +24,6 @@ from atopile.model.model_state import model_state
 from atopile.server import path_utils
 from atopile.server.client_state import client_state
 from atopile.server.connections import server_state
-from atopile.server.core import packages as core_packages
-from atopile.server.core import projects as core_projects
 from atopile.server.domains import artifacts as artifacts_domain
 from atopile.server.domains import packages as packages_domain
 from atopile.server.domains import parts as parts_domain
@@ -49,6 +47,14 @@ def _handle_build_sync(payload: dict) -> dict:
     frozen = payload.get("frozen", False)
     include_targets = payload.get("includeTargets") or payload.get(
         "include_targets", []
+    )
+    exclude_targets = payload.get("excludeTargets") or payload.get(
+        "exclude_targets", []
+    )
+    log.info(
+        "Build request targets: include=%s exclude=%s",
+        include_targets,
+        exclude_targets,
     )
     level = payload.get("level")
     payload_id = payload.get("id")
@@ -206,6 +212,7 @@ def _handle_build_sync(payload: dict) -> dict:
                                 standalone=standalone,
                                 frozen=frozen,
                                 include_targets=include_targets,
+                                exclude_targets=exclude_targets,
                                 status=BuildStatus.QUEUED,
                                 started_at=time.time(),
                             )
@@ -258,6 +265,7 @@ def _handle_build_sync(payload: dict) -> dict:
                 standalone=standalone,
                 frozen=frozen,
                 include_targets=include_targets,
+                exclude_targets=exclude_targets,
                 status=BuildStatus.QUEUED,
                 started_at=time.time(),
             )
@@ -314,7 +322,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
         if action == "refreshProjects":
             if ctx.workspace_paths:
                 await asyncio.to_thread(
-                    core_projects.discover_projects_in_paths, ctx.workspace_paths
+                    projects_domain.discover_projects_in_paths, ctx.workspace_paths
                 )
                 await server_state.emit_event("projects_changed")
             return {"success": True}
@@ -332,7 +340,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             try:
                 # Run blocking project creation in thread pool
                 project_dir, project_name = await asyncio.to_thread(
-                    core_projects.create_project, Path(parent_directory), name
+                    projects_domain.create_project, Path(parent_directory), name
                 )
             except ValueError as exc:
                 return {"success": False, "error": str(exc)}
@@ -631,7 +639,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             def run_install():
                 try:
                     try:
-                        core_packages.install_package_to_project(
+                        packages_domain.install_package_to_project(
                             project_path, package_id, version
                         )
                         action_logger.info(
@@ -740,7 +748,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             # Ensure dependency is direct (present in ato.yaml)
             try:
-                data, _ = core_projects._load_ato_yaml(project_path)
+                data, _ = projects_domain.load_ato_yaml(project_path)
                 deps = data.get("dependencies", [])
                 is_direct = False
                 if isinstance(deps, list):
@@ -782,8 +790,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             def run_change():
                 try:
-                    core_packages.remove_package_from_project(project_path, package_id)
-                    core_packages.install_package_to_project(
+                    packages_domain.remove_package_from_project(
+                        project_path, package_id
+                    )
+                    packages_domain.install_package_to_project(
                         project_path, package_id, version
                     )
                     action_logger.info(
@@ -901,7 +911,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             def run_remove():
                 try:
                     log.info(f"Removing {package_id} from {project_root}")
-                    core_packages.remove_package_from_project(project_path, package_id)
+                    packages_domain.remove_package_from_project(
+                        project_path, package_id
+                    )
                     log.info("ato remove completed successfully")
                     with packages_domain._package_op_lock:
                         packages_domain._active_package_ops[op_id]["status"] = "success"
@@ -961,7 +973,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             # Run blocking file tree build in thread pool
             file_tree = await asyncio.to_thread(
-                core_projects.build_file_tree, project_path, project_path
+                projects_domain.build_file_tree, project_path, project_path
             )
             return {
                 "success": True,
@@ -998,14 +1010,14 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Project not found: {project_root}",
                 }
 
-            data, _ = core_projects._load_ato_yaml(project_path)
+            data, _ = projects_domain.load_ato_yaml(project_path)
             builds = []
             for name, config in (data.get("builds") or {}).items():
                 if isinstance(config, dict):
                     entry = config.get("entry", "")
                 else:
                     entry = str(config)
-                last_build = core_projects._load_last_build_for_target(
+                last_build = projects_domain.load_last_build_for_target(
                     project_path, name
                 )
                 builds.append(
@@ -1297,7 +1309,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             def run_sync():
                 try:
                     log.info(f"Syncing packages for {project_root}, force={force}")
-                    core_packages.sync_packages_for_project(project_path, force=force)
+                    packages_domain.sync_packages_for_project(project_path, force=force)
                     log.info("Package sync completed successfully")
 
                     # Emit success event
@@ -1339,11 +1351,35 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 "message": f"Syncing packages{' (force)' if force else ''}...",
             }
 
-        if action == "migrateProject":
+        if action == "getMigrationSteps":
+            from atopile.server.migrations import get_all_steps, get_topics
+
+            return {
+                "success": True,
+                "steps": [step.to_dict() for step in get_all_steps()],
+                "topics": get_topics(),
+            }
+
+        if action == "migrateProjectSteps":
+            from atopile.server.migrations import (
+                EVENT_MIGRATION_RESULT,
+                EVENT_MIGRATION_STEP_RESULT,
+                get_step,
+            )
+
+            def _truncate_error(exc: Exception, max_len: int = 500) -> str:
+                msg = str(exc)
+                if not msg:
+                    return type(exc).__name__
+                return msg[:max_len] + ("..." if len(msg) > max_len else "")
+
             project_root = payload.get("projectRoot") or payload.get("project_root", "")
+            steps = payload.get("steps", [])
 
             if not project_root:
                 return {"success": False, "error": "Missing projectRoot"}
+            if not steps:
+                return {"success": False, "error": "No migration steps specified"}
 
             project_path = Path(project_root)
             if not await asyncio.to_thread(project_path.exists):
@@ -1352,87 +1388,91 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Project not found: {project_root}",
                 }
 
-            def run_migration():
-                from atopile import version as ato_version
-                from atopile.config import config
-                from faebryk.libs.project.dependencies import ProjectDependencies
+            async def run_step(step_id: str) -> None:
+                """Run a single migration step and emit its result."""
+                try:
+                    step = get_step(step_id)
+                    await step.run(project_path)
 
-                log.info(f"[migrate] Starting migration for {project_root}")
-
-                # Run ProjectDependencies FIRST to sync packages. This ensures
-                # packages are updated before we mark the project as migrated
-                log.info("[migrate] Applying config options...")
-                config.apply_options(None, working_dir=project_path)
-                log.info("[migrate] Running ProjectDependencies to sync packages...")
-                ProjectDependencies(
-                    sync_versions=True,
-                    install_missing=True,
-                    clean_unmanaged_dirs=True,
-                    update_versions=True,
-                    force_sync=True,
-                )
-                log.info("[migrate] ProjectDependencies completed")
-
-                # Update ato.yaml AFTER package sync completes
-                current_version = ato_version.clean_version(
-                    ato_version.get_installed_atopile_version()
-                )
-                new_requires = f"^{current_version}"
-                data, ato_file = core_projects._load_ato_yaml(project_path)
-                data["requires-atopile"] = new_requires
-                core_projects._save_ato_yaml(ato_file, data)
-                log.info(f"[migrate] Updated requires-atopile to {new_requires}")
+                    await server_state.emit_event(
+                        EVENT_MIGRATION_STEP_RESULT,
+                        {
+                            "project_root": project_root,
+                            "step": step_id,
+                            "success": True,
+                            "error": None,
+                        },
+                    )
+                except KeyError:
+                    error_msg = f"Unknown migration step: {step_id}"
+                    log.error(f"[migrate] {error_msg}")
+                    await server_state.emit_event(
+                        EVENT_MIGRATION_STEP_RESULT,
+                        {
+                            "project_root": project_root,
+                            "step": step_id,
+                            "success": False,
+                            "error": error_msg,
+                        },
+                    )
+                except Exception as exc:
+                    error_msg = _truncate_error(exc)
+                    log.exception(f"[migrate] Step {step_id} failed: {error_msg}")
+                    await server_state.emit_event(
+                        EVENT_MIGRATION_STEP_RESULT,
+                        {
+                            "project_root": project_root,
+                            "step": step_id,
+                            "success": False,
+                            "error": error_msg,
+                        },
+                    )
 
             try:
-                # Run migration synchronously so frontend can show spinner
-                await asyncio.to_thread(run_migration)
+                # Run each step sequentially
+                for step_id in steps:
+                    await run_step(step_id)
 
-                # Emit success events after migration completes
+                # Post-migration cleanup
                 from atopile.server.module_introspection import clear_module_cache
 
                 clear_module_cache()
                 await packages_domain.refresh_packages_state(scan_path=project_path)
 
-                # Re-discover projects to pick up updated needs_migration value
+                # Re-discover projects to pick up updated needs_migration
                 if ctx.workspace_paths:
                     await asyncio.to_thread(
-                        core_projects.discover_projects_in_paths, ctx.workspace_paths
+                        projects_domain.discover_projects_in_paths,
+                        ctx.workspace_paths,
                     )
 
                 await server_state.emit_event("projects_changed")
                 await server_state.emit_event(
-                    "packages_changed",
-                    {"migrated": True, "project_root": project_root},
-                )
-                await server_state.emit_event(
-                    "migration_result",
+                    EVENT_MIGRATION_RESULT,
                     {"project_root": project_root, "success": True},
                 )
 
                 return {
                     "success": True,
-                    "message": "Migration completed successfully",
+                    "message": "Migration steps completed",
                 }
             except Exception as exc:
-                error_msg = str(exc)[:500] or "Unknown error"
-                log.exception(f"Migration failed: {error_msg}")
+                error_msg = _truncate_error(exc)
+                log.exception(f"Migration steps failed: {error_msg}")
 
-                # Re-discover projects even on error to update state
+                # Re-discover projects even on error
                 if ctx.workspace_paths:
                     try:
                         await asyncio.to_thread(
-                            core_projects.discover_projects_in_paths,
+                            projects_domain.discover_projects_in_paths,
                             ctx.workspace_paths,
                         )
                     except Exception:
                         pass
 
+                await server_state.emit_event("projects_changed")
                 await server_state.emit_event(
-                    "projects_changed",
-                    {"error": error_msg, "project_root": project_root},
-                )
-                await server_state.emit_event(
-                    "migration_result",
+                    EVENT_MIGRATION_RESULT,
                     {
                         "project_root": project_root,
                         "success": False,

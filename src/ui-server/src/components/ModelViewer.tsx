@@ -1,4 +1,4 @@
-import { createElement, useEffect, useRef, useState } from 'react'
+import { createElement, useEffect, useRef, useState, useCallback } from 'react'
 
 // Use bundled model-viewer from VS Code extension if available, otherwise fall back to CDN
 const MODEL_VIEWER_SRC =
@@ -10,6 +10,28 @@ interface ModelViewerProps {
   src: string
   className?: string
   style?: React.CSSProperties
+  isOptimizing?: boolean
+}
+
+// Model-viewer material types
+interface PBRMetallicRoughness {
+  baseColorFactor: {
+    r: number
+    g: number
+    b: number
+    a: number
+    setAlpha(alpha: number): void
+  }
+}
+
+interface Material {
+  name: string
+  pbrMetallicRoughness: PBRMetallicRoughness
+  setAlphaMode(mode: 'OPAQUE' | 'BLEND' | 'MASK'): void
+}
+
+interface Model {
+  materials: Material[]
 }
 
 interface ModelViewerElement extends HTMLElement {
@@ -23,13 +45,38 @@ interface ModelViewerElement extends HTMLElement {
   'shadow-softness'?: string
   'ar'?: string
   'ar-modes'?: string
+  model?: Model
 }
 
-export default function ModelViewer({ src, className, style }: ModelViewerProps) {
+export default function ModelViewer({ src, className, style, isOptimizing }: ModelViewerProps) {
   const viewerRef = useRef<ModelViewerElement>(null)
   const [isReady, setIsReady] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [soldermaskOpacity, setSoldermaskOpacity] = useState(1.0)
+  const [modelLoaded, setModelLoaded] = useState(false)
+
+  // Apply soldermask transparency to the model
+  const applySoldermaskOpacity = useCallback((opacity: number) => {
+    const viewer = viewerRef.current
+    if (!viewer?.model) return
+
+    for (const material of viewer.model.materials) {
+      // KiCad GLB exports soldermask with material names containing "Mask"
+      const name = material.name.toLowerCase()
+      if (name.includes('mask') || name.includes('soldermask')) {
+        material.setAlphaMode(opacity < 1.0 ? 'BLEND' : 'OPAQUE')
+        material.pbrMetallicRoughness.baseColorFactor.setAlpha(opacity)
+      }
+    }
+  }, [])
+
+  // Re-apply opacity when slider changes
+  useEffect(() => {
+    if (modelLoaded) {
+      applySoldermaskOpacity(soldermaskOpacity)
+    }
+  }, [soldermaskOpacity, modelLoaded, applySoldermaskOpacity])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -94,13 +141,19 @@ export default function ModelViewer({ src, className, style }: ModelViewerProps)
 
   useEffect(() => {
     setIsLoading(true)
+    setModelLoaded(false)
   }, [src])
 
   useEffect(() => {
     const viewer = viewerRef.current
     if (!viewer || !isReady) return
 
-    const handleLoad = () => setIsLoading(false)
+    const handleLoad = () => {
+      setIsLoading(false)
+      setModelLoaded(true)
+      // Apply initial opacity after model loads
+      applySoldermaskOpacity(soldermaskOpacity)
+    }
     const handleError = () => setIsLoading(false)
 
     viewer.addEventListener('load', handleLoad)
@@ -109,7 +162,7 @@ export default function ModelViewer({ src, className, style }: ModelViewerProps)
       viewer.removeEventListener('load', handleLoad)
       viewer.removeEventListener('error', handleError)
     }
-  }, [isReady])
+  }, [isReady, applySoldermaskOpacity, soldermaskOpacity])
 
   return (
     <div className="detail-visual-frame detail-visual-stack">
@@ -145,6 +198,43 @@ export default function ModelViewer({ src, className, style }: ModelViewerProps)
             <div className="detail-visual-spinner">
               <span className="spinner" />
               <span>Loading 3D...</span>
+            </div>
+          )}
+          {isOptimizing && !isLoading && (
+            <div className="optimization-badge">
+              <span className="spinner" />
+              <span>Optimizing...</span>
+            </div>
+          )}
+          {modelLoaded && !isLoading && (
+            <div
+              style={{
+                position: 'absolute',
+                bottom: '12px',
+                left: '12px',
+                background: 'var(--vscode-editor-background, rgba(30, 30, 46, 0.9))',
+                padding: '8px 12px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '12px',
+                color: 'var(--vscode-foreground, #cdd6f4)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+              }}
+            >
+              <label htmlFor="soldermask-opacity">Soldermask:</label>
+              <input
+                id="soldermask-opacity"
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={soldermaskOpacity}
+                onChange={(e) => setSoldermaskOpacity(parseFloat(e.target.value))}
+                style={{ width: '100px', cursor: 'pointer' }}
+              />
+              <span style={{ minWidth: '36px' }}>{Math.round(soldermaskOpacity * 100)}%</span>
             </div>
           )}
         </>

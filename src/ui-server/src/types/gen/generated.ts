@@ -264,6 +264,43 @@ export interface PackageVersion {
 }
 
 /**
+ * A project dependency with version info.
+ */
+export interface DependencyInfo {
+    hasUpdate?:     boolean;
+    identifier:     string;
+    isDirect?:      boolean;
+    latestVersion?: null | string;
+    name:           string;
+    publisher:      string;
+    repository?:    null | string;
+    status?:        null | string;
+    version:        string;
+    via?:           string[] | null;
+    [property: string]: any;
+}
+
+/**
+ * Request to sync packages for a project.
+ */
+export interface SyncPackagesRequest {
+    force?:      boolean;
+    projectRoot: string;
+    [property: string]: any;
+}
+
+/**
+ * Response from sync packages action.
+ */
+export interface SyncPackagesResponse {
+    message:           string;
+    modifiedPackages?: string[] | null;
+    operationId?:      null | string;
+    success:           boolean;
+    [property: string]: any;
+}
+
+/**
  * A problem (error or warning) from a build log.
  */
 export interface Problem {
@@ -587,23 +624,6 @@ export interface ModuleChild {
 }
 
 /**
- * A project dependency with version info.
- */
-export interface DependencyInfo {
-    hasUpdate?:     boolean;
-    identifier:     string;
-    isDirect?:      boolean;
-    latestVersion?: null | string;
-    name:           string;
-    publisher:      string;
-    repository?:    null | string;
-    status?:        null | string;
-    version:        string;
-    via?:           string[] | null;
-    [property: string]: any;
-}
-
-/**
  * Atopile configuration state.
  */
 export interface AtopileConfig {
@@ -706,24 +726,4 @@ export enum EventType {
 
 export enum EventMessageType {
     Event = "event",
-}
-
-/**
- * Request to sync packages for a project.
- */
-export interface SyncPackagesRequest {
-    force?:      boolean;
-    projectRoot: string;
-    [property: string]: any;
-}
-
-/**
- * Response from sync packages action.
- */
-export interface SyncPackagesResponse {
-    message:           string;
-    modifiedPackages?: string[] | null;
-    operationId?:      null | string;
-    success:           boolean;
-    [property: string]: any;
 }
