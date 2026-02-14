@@ -36,6 +36,7 @@ def test_tool_definitions_advertise_hashline_editor() -> None:
     assert "project_edit_file" in names
     assert "project_list_modules" in names
     assert "project_module_children" in names
+    assert "web_search" in names
     assert "examples_list" in names
     assert "examples_search" in names
     assert "examples_read_ato" in names
@@ -58,10 +59,13 @@ def test_tool_definitions_advertise_hashline_editor() -> None:
 
 
 def test_manager_tool_definitions_exclude_mutating_tools() -> None:
-    names = {tool_def["name"] for tool_def in tools.get_tool_definitions_for_actor("manager")}
+    names = {
+        tool_def["name"] for tool_def in tools.get_tool_definitions_for_actor("manager")
+    }
 
     assert "project_read_file" in names
     assert "project_search" in names
+    assert "web_search" in names
     assert "layout_get_component_position" in names
     assert "autolayout_request_screenshot" in names
     assert "layout_set_component_position" not in names
@@ -115,6 +119,69 @@ def test_execute_tool_allows_manager_read_tool(tmp_path: Path) -> None:
 
     assert result["path"] == "main.ato"
     assert "module App:" in result["content"]
+
+
+def test_web_search_executes_with_exa_adapter(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_exa_web_search(
+        *,
+        query: str,
+        num_results: int,
+        search_type: str,
+        include_domains: list[str],
+        exclude_domains: list[str],
+        include_text: bool,
+        timeout_s: float,
+    ) -> dict[str, object]:
+        captured["query"] = query
+        captured["num_results"] = num_results
+        captured["search_type"] = search_type
+        captured["include_domains"] = include_domains
+        captured["exclude_domains"] = exclude_domains
+        captured["include_text"] = include_text
+        captured["timeout_s"] = timeout_s
+        return {
+            "query": query,
+            "returned_results": 1,
+            "results": [
+                {
+                    "rank": 1,
+                    "title": "Example",
+                    "url": "https://example.com",
+                    "text": "snippet",
+                }
+            ],
+            "source": "exa",
+        }
+
+    monkeypatch.setattr(tools, "_exa_web_search", fake_exa_web_search)
+
+    result = _run(
+        tools.execute_tool(
+            name="web_search",
+            arguments={
+                "query": "stm32 usb bootloader notes",
+                "num_results": 5,
+                "search_type": "neural",
+                "include_domains": ["st.com"],
+                "exclude_domains": ["example.com"],
+                "include_text": True,
+            },
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+            actor="manager",
+        )
+    )
+
+    assert result["source"] == "exa"
+    assert result["returned_results"] == 1
+    assert captured["query"] == "stm32 usb bootloader notes"
+    assert captured["num_results"] == 5
+    assert captured["search_type"] == "neural"
+    assert captured["include_domains"] == ["st.com"]
+    assert captured["exclude_domains"] == ["example.com"]
+    assert captured["include_text"] is True
 
 
 def test_execute_tool_allows_manager_layout_screenshot(
@@ -624,15 +691,13 @@ def test_autolayout_fetch_to_layout_archives_iteration(
     downloads_dir = work_dir / "downloads"
     downloads_dir.mkdir(parents=True)
     (downloads_dir / "cand-1.kicad_pcb").write_text("new-board", encoding="utf-8")
-    (downloads_dir / "cand-1.json").write_text("{}", encoding="utf-8")
-    (downloads_dir / "cand-1.ses").write_text('(session "")', encoding="utf-8")
 
     base_job = AutolayoutJob(
         job_id="al-123456789abc",
         project_root=str(tmp_path),
         build_target="default",
         provider="deeppcb",
-        state=AutolayoutState.RUNNING,
+        state=AutolayoutState.AWAITING_SELECTION,
         created_at=utc_now_iso(),
         updated_at=utc_now_iso(),
         provider_job_ref="board-123",
@@ -698,12 +763,368 @@ def test_autolayout_fetch_to_layout_archives_iteration(
     artifacts = result["downloaded_artifacts"]
     assert isinstance(artifacts, dict)
     assert artifacts["kicad_pcb"].endswith("cand-1.kicad_pcb")
-    assert artifacts["json"].endswith("cand-1.json")
-    assert artifacts["ses"].endswith("cand-1.ses")
     archived = result["archived_iteration_path"]
     assert isinstance(archived, str)
     assert "autolayout_iterations" in archived
     assert Path(archived).exists()
+
+
+def test_autolayout_fetch_to_layout_waits_while_running(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    base_job = AutolayoutJob(
+        job_id="al-123456789abc",
+        project_root=str(tmp_path),
+        build_target="default",
+        provider="deeppcb",
+        state=AutolayoutState.RUNNING,
+        created_at=utc_now_iso(),
+        updated_at=utc_now_iso(),
+        provider_job_ref="board-123",
+    )
+
+    apply_called = False
+    select_called = False
+
+    class FakeService:
+        def refresh_job(self, job_id: str) -> AutolayoutJob:
+            assert job_id == "al-123456789abc"
+            return base_job
+
+        def list_candidates(
+            self,
+            job_id: str,
+            refresh: bool = True,
+        ) -> list[AutolayoutCandidate]:
+            assert job_id == "al-123456789abc"
+            return [AutolayoutCandidate(candidate_id="cand-1", score=0.91)]
+
+        def select_candidate(self, job_id: str, candidate_id: str) -> AutolayoutJob:
+            nonlocal select_called
+            select_called = True
+            return base_job
+
+        def apply_candidate(
+            self,
+            job_id: str,
+            candidate_id: str | None = None,
+            manual_layout_path: str | None = None,
+        ) -> AutolayoutJob:
+            nonlocal apply_called
+            apply_called = True
+            return base_job
+
+    monkeypatch.setattr(tools, "get_autolayout_service", lambda: FakeService())
+
+    result = _run(
+        tools.execute_tool(
+            name="autolayout_fetch_to_layout",
+            arguments={"job_id": "al-123456789abc"},
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+
+    assert result["ready_to_apply"] is False
+    assert result["applied"] is False
+    assert result["state"] == AutolayoutState.RUNNING.value
+    assert result["recommended_wait_seconds"] >= 1
+    assert "do not fetch/apply yet" in result["message"]
+    assert apply_called is False
+    assert select_called is False
+
+
+def test_autolayout_status_without_job_id_returns_project_summary(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    job_recent = AutolayoutJob(
+        job_id="al-new",
+        project_root=str(tmp_path),
+        build_target="default",
+        provider="deeppcb",
+        state=AutolayoutState.AWAITING_SELECTION,
+        created_at="2026-02-14T18:00:00+00:00",
+        updated_at="2026-02-14T18:05:00+00:00",
+        provider_job_ref="board-new",
+        candidates=[AutolayoutCandidate(candidate_id="55")],
+    )
+    job_old = AutolayoutJob(
+        job_id="al-old",
+        project_root=str(tmp_path),
+        build_target="default",
+        provider="deeppcb",
+        state=AutolayoutState.COMPLETED,
+        created_at="2026-02-14T17:00:00+00:00",
+        updated_at="2026-02-14T17:05:00+00:00",
+        provider_job_ref="board-old",
+    )
+
+    class FakeService:
+        def recover_project_jobs(
+            self,
+            project_root: str,
+            limit: int = 20,
+        ) -> list[AutolayoutJob]:
+            _ = (project_root, limit)
+            return [job_recent, job_old]
+
+        def list_jobs(self, project_root: str | None = None) -> list[AutolayoutJob]:
+            _ = project_root
+            return [job_recent, job_old]
+
+    monkeypatch.setattr(tools, "get_autolayout_service", lambda: FakeService())
+
+    result = _run(
+        tools.execute_tool(
+            name="autolayout_status",
+            arguments={},
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+
+    assert result["job_id"] is None
+    assert result["latest_job_id"] == "al-new"
+    assert result["total_jobs"] == 2
+    assert result["jobs"][0]["job_id"] == "al-new"
+    assert result["jobs"][0]["recommended_action"] == "fetch_candidate_to_layout"
+
+
+def test_autolayout_fetch_to_layout_without_job_id_picks_latest_fetchable(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    base_job = AutolayoutJob(
+        job_id="al-new",
+        project_root=str(tmp_path),
+        build_target="default",
+        provider="deeppcb",
+        state=AutolayoutState.AWAITING_SELECTION,
+        created_at=utc_now_iso(),
+        updated_at=utc_now_iso(),
+        provider_job_ref="board-123",
+        layout_path=str(tmp_path / "layouts" / "default" / "default.kicad_pcb"),
+        work_dir=str(tmp_path / "build" / "builds" / "default" / "autolayout" / "al-new"),
+        candidates=[AutolayoutCandidate(candidate_id="cand-1", score=0.91)],
+    )
+    apply_called = False
+
+    class FakeService:
+        def recover_project_jobs(
+            self,
+            project_root: str,
+            limit: int = 20,
+        ) -> list[AutolayoutJob]:
+            _ = (project_root, limit)
+            return [base_job]
+
+        def list_jobs(self, project_root: str | None = None) -> list[AutolayoutJob]:
+            _ = project_root
+            return [base_job]
+
+        def refresh_job(self, job_id: str) -> AutolayoutJob:
+            assert job_id == "al-new"
+            return base_job
+
+        def list_candidates(
+            self,
+            job_id: str,
+            refresh: bool = True,
+        ) -> list[AutolayoutCandidate]:
+            _ = refresh
+            assert job_id == "al-new"
+            return [AutolayoutCandidate(candidate_id="cand-1", score=0.91)]
+
+        def select_candidate(self, job_id: str, candidate_id: str) -> AutolayoutJob:
+            assert job_id == "al-new"
+            assert candidate_id == "cand-1"
+            return base_job
+
+        def apply_candidate(
+            self,
+            job_id: str,
+            candidate_id: str | None = None,
+            manual_layout_path: str | None = None,
+        ) -> AutolayoutJob:
+            nonlocal apply_called
+            apply_called = True
+            _ = manual_layout_path
+            assert job_id == "al-new"
+            assert candidate_id == "cand-1"
+            return AutolayoutJob(
+                job_id=base_job.job_id,
+                project_root=base_job.project_root,
+                build_target=base_job.build_target,
+                provider=base_job.provider,
+                state=AutolayoutState.COMPLETED,
+                created_at=base_job.created_at,
+                updated_at=utc_now_iso(),
+                provider_job_ref=base_job.provider_job_ref,
+                layout_path=base_job.layout_path,
+                work_dir=base_job.work_dir,
+                applied_layout_path=base_job.layout_path,
+                selected_candidate_id="cand-1",
+                applied_candidate_id="cand-1",
+            )
+
+    monkeypatch.setattr(tools, "get_autolayout_service", lambda: FakeService())
+    monkeypatch.setattr(
+        tools,
+        "_discover_downloaded_artifacts",
+        lambda **kwargs: {"kicad_pcb": str(tmp_path / "cand-1.kicad_pcb")},
+    )
+
+    result = _run(
+        tools.execute_tool(
+            name="autolayout_fetch_to_layout",
+            arguments={},
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+
+    assert apply_called is True
+    assert result["job_id"] == "al-new"
+    assert result["selected_candidate_id"] == "cand-1"
+
+
+def test_autolayout_fetch_to_layout_unknown_job_returns_recent_summary(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    recent_job = AutolayoutJob(
+        job_id="al-recent",
+        project_root=str(tmp_path),
+        build_target="default",
+        provider="deeppcb",
+        state=AutolayoutState.AWAITING_SELECTION,
+        created_at=utc_now_iso(),
+        updated_at=utc_now_iso(),
+        provider_job_ref="board-xyz",
+        candidates=[AutolayoutCandidate(candidate_id="cand-9")],
+    )
+
+    class FakeService:
+        def refresh_job(self, job_id: str) -> AutolayoutJob:
+            raise KeyError(f"Unknown autolayout job: {job_id}")
+
+        def recover_job(
+            self,
+            project_root: str,
+            job_id: str,
+            build_target_hint: str | None = None,
+        ) -> AutolayoutJob | None:
+            _ = (project_root, job_id, build_target_hint)
+            return None
+
+        def recover_project_jobs(
+            self,
+            project_root: str,
+            limit: int = 20,
+        ) -> list[AutolayoutJob]:
+            _ = (project_root, limit)
+            return [recent_job]
+
+        def list_jobs(self, project_root: str | None = None) -> list[AutolayoutJob]:
+            _ = project_root
+            return [recent_job]
+
+    monkeypatch.setattr(tools, "get_autolayout_service", lambda: FakeService())
+
+    result = _run(
+        tools.execute_tool(
+            name="autolayout_fetch_to_layout",
+            arguments={"job_id": "al-missing"},
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+
+    assert result["found"] is False
+    assert result["latest_job_id"] == "al-recent"
+    assert result["jobs"][0]["job_id"] == "al-recent"
+
+
+def test_autolayout_status_unknown_job_refreshes_after_recovery(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    recovered = AutolayoutJob(
+        job_id="al-recovered",
+        project_root=str(tmp_path),
+        build_target="default",
+        provider="deeppcb",
+        state=AutolayoutState.AWAITING_SELECTION,
+        created_at=utc_now_iso(),
+        updated_at=utc_now_iso(),
+        provider_job_ref="board-abc",
+        candidates=[AutolayoutCandidate(candidate_id="0")],
+    )
+    refreshed = AutolayoutJob(
+        job_id="al-recovered",
+        project_root=str(tmp_path),
+        build_target="default",
+        provider="deeppcb",
+        state=AutolayoutState.AWAITING_SELECTION,
+        created_at=utc_now_iso(),
+        updated_at=utc_now_iso(),
+        provider_job_ref="board-abc",
+        candidates=[
+            AutolayoutCandidate(candidate_id="10"),
+            AutolayoutCandidate(candidate_id="9"),
+        ],
+    )
+    refresh_calls = 0
+
+    class FakeService:
+        def refresh_job(self, job_id: str) -> AutolayoutJob:
+            nonlocal refresh_calls
+            refresh_calls += 1
+            assert job_id == "al-recovered"
+            if refresh_calls == 1:
+                raise KeyError("Unknown autolayout job: al-recovered")
+            return refreshed
+
+        def recover_job(
+            self,
+            project_root: str,
+            job_id: str,
+            build_target_hint: str | None = None,
+        ) -> AutolayoutJob | None:
+            _ = (project_root, build_target_hint)
+            assert job_id == "al-recovered"
+            return recovered
+
+        def list_candidates(
+            self,
+            job_id: str,
+            refresh: bool = True,
+        ) -> list[AutolayoutCandidate]:
+            _ = refresh
+            assert job_id == "al-recovered"
+            return refreshed.candidates
+
+        def list_jobs(self, project_root: str | None = None) -> list[AutolayoutJob]:
+            _ = project_root
+            return [refreshed]
+
+    monkeypatch.setattr(tools, "get_autolayout_service", lambda: FakeService())
+
+    result = _run(
+        tools.execute_tool(
+            name="autolayout_status",
+            arguments={"job_id": "al-recovered", "refresh": True, "include_candidates": True},
+            project_root=tmp_path,
+            ctx=AppContext(workspace_paths=[tmp_path]),
+        )
+    )
+
+    assert refresh_calls == 2
+    assert result["job_id"] == "al-recovered"
+    assert result["candidate_count"] == 2
+    assert [candidate["candidate_id"] for candidate in result["candidates"]] == ["10", "9"]
 
 
 def test_autolayout_request_screenshot_renders_images(

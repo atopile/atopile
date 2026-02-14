@@ -1116,6 +1116,10 @@ function inferToolActivityDetail(toolName: string | null, args: Record<string, u
     const query = asNonEmptyString(args.query);
     return query ? `Searching "${trimSingleLine(query, 30)}"` : 'Searching project';
   }
+  if (toolName === 'web_search') {
+    const query = asNonEmptyString(args.query);
+    return query ? `Searching web for "${trimSingleLine(query, 26)}"` : 'Searching web';
+  }
   if (toolName === 'project_list_modules') {
     return 'Scanning modules';
   }
@@ -1198,6 +1202,9 @@ function inferActivityFromTool(toolName: string | null): string {
     return toolName === 'build_logs_search' ? 'Reviewing' : 'Building';
   }
   if (toolName === 'parts_search' || toolName === 'packages_search') {
+    return 'Researching';
+  }
+  if (toolName === 'web_search') {
     return 'Researching';
   }
   if (toolName === 'parts_install' || toolName === 'packages_install') {

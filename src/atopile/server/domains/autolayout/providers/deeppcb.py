@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import time
 import zipfile
 from dataclasses import dataclass
@@ -27,8 +26,7 @@ from atopile.server.domains.autolayout.models import (
     SubmitResult,
 )
 from atopile.server.domains.autolayout.providers.base import AutolayoutProvider
-from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
-from faebryk.libs.kicad.fileformats import Property, kicad
+from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.util import ConfigFlagFloat, ConfigFlagString
 
 _DEEPPCB_BASE_URL = ConfigFlagString(
@@ -356,6 +354,12 @@ class DeepPCBProvider(AutolayoutProvider):
                     "candidate_id",
                 ),
             )
+            if revision is None:
+                json_file_path = self._extract_string(
+                    candidate.metadata,
+                    keys=("jsonFilePath", "json_file_path"),
+                )
+                revision = _extract_revision_from_json_path(json_file_path)
 
         if download_url:
             response = self._request_raw(
@@ -367,10 +371,6 @@ class DeepPCBProvider(AutolayoutProvider):
         else:
             if revision is None and candidate_id.isdigit():
                 revision = candidate_id
-
-            params: dict[str, str] = {"type": "JsonFile"}
-            if revision:
-                params["revision"] = revision
 
             response = None
             download_errors: list[str] = []
@@ -384,6 +384,10 @@ class DeepPCBProvider(AutolayoutProvider):
                     candidate_id=candidate_id,
                 ),
             ]
+            params: dict[str, str] = {"type": "KicadFile"}
+            if revision:
+                params["revision"] = revision
+
             for path in download_paths:
                 try:
                     response = self._request_raw("GET", path, params=params)
@@ -434,14 +438,6 @@ class DeepPCBProvider(AutolayoutProvider):
         )
 
         files: dict[str, str] = {"kicad_pcb": str(output_path)}
-        files.update(
-            self._download_supplemental_artifacts(
-                external_job_id=external_job_id,
-                candidate_id=candidate_id,
-                out_dir=out_dir,
-                revision=revision,
-            )
-        )
 
         return DownloadResult(
             candidate_id=candidate_id,
@@ -948,6 +944,7 @@ class DeepPCBProvider(AutolayoutProvider):
         candidate_id: str,
         target_layout_path: Path | None = None,
     ) -> Path:
+        _ = target_layout_path
         out_dir.mkdir(parents=True, exist_ok=True)
 
         if "zip" in content_type or _is_zip_bytes(content):
@@ -962,248 +959,14 @@ class DeepPCBProvider(AutolayoutProvider):
 
         head = content[:256].lstrip()
         if head.startswith(b"{") or head.startswith(b"["):
-            json_path = out_dir / f"{candidate_id}.json"
-            json_path.write_bytes(content)
-            if target_layout_path is None:
-                raise RuntimeError(
-                    "DeepPCB returned JSON artifact. Automatic apply requires a "
-                    "target layout path for JSON->KiCad transformation."
-                )
-            payload = _parse_json_or_text(content.decode("utf-8", errors="replace"))
-            if not isinstance(payload, dict):
-                raise RuntimeError(
-                    "DeepPCB JSON artifact is not an object payload and cannot be "
-                    "applied to a KiCad board."
-                )
-            return self._apply_json_artifact_to_kicad(
-                payload=payload,
-                target_layout_path=target_layout_path,
-                out_dir=out_dir,
-                candidate_id=candidate_id,
+            raise RuntimeError(
+                "DeepPCB returned a JSON artifact for candidate download. "
+                "Only KiCad artifacts are supported for apply."
             )
 
         output_path = out_dir / f"{candidate_id}.kicad_pcb"
         output_path.write_bytes(content)
         return output_path
-
-    def _download_supplemental_artifacts(
-        self,
-        *,
-        external_job_id: str,
-        candidate_id: str,
-        out_dir: Path,
-        revision: str | None,
-    ) -> dict[str, str]:
-        files: dict[str, str] = {}
-
-        for label, artifact_type, suffix in (
-            ("ses", "SesFile", ".ses"),
-            ("dsn", "DsnFile", ".dsn"),
-        ):
-            params: dict[str, str] = {"type": artifact_type}
-            if revision:
-                params["revision"] = revision
-
-            response = None
-            for template in (
-                self.config.download_path_template,
-                self.config.alt_download_path_template,
-            ):
-                try:
-                    path = template.format(
-                        task_id=external_job_id,
-                        candidate_id=candidate_id,
-                    )
-                    response = self._request_raw("GET", path, params=params)
-                    break
-                except RuntimeError:
-                    continue
-
-            if response is None:
-                continue
-
-            body = response.content
-            if not body:
-                continue
-
-            output = out_dir / f"{candidate_id}{suffix}"
-            output.write_bytes(body)
-            files[label] = str(output)
-
-        json_path = out_dir / f"{candidate_id}.json"
-        if json_path.exists():
-            files["json"] = str(json_path)
-
-        return files
-
-    def _apply_json_artifact_to_kicad(
-        self,
-        payload: dict[str, Any],
-        target_layout_path: Path,
-        out_dir: Path,
-        candidate_id: str,
-    ) -> Path:
-        if not target_layout_path.exists():
-            raise FileNotFoundError(
-                "Cannot apply DeepPCB JSON artifact. Target KiCad layout missing: "
-                f"{target_layout_path}"
-            )
-
-        output_path = out_dir / f"{candidate_id}.kicad_pcb"
-        shutil.copy2(target_layout_path, output_path)
-
-        if hasattr(kicad.loads, "cache"):
-            kicad.loads.cache.pop(output_path, None)
-
-        pcb_file = kicad.loads(kicad.pcb.PcbFile, output_path)
-        pcb = pcb_file.kicad_pcb
-
-        footprints_by_ref: dict[str, kicad.pcb.Footprint] = {}
-        for footprint in pcb.footprints:
-            reference = Property.try_get_property(footprint.propertys, "Reference")
-            if isinstance(reference, str) and reference.strip():
-                footprints_by_ref[reference.strip().upper()] = footprint
-
-        transform = _infer_json_to_kicad_transform(payload, pcb)
-
-        placement_updates = _transform_component_updates(
-            _extract_component_updates(payload),
-            transform,
-        )
-        self._apply_deeppcb_placements(footprints_by_ref, placement_updates)
-
-        net_name_lookup = _extract_payload_net_name_lookup(payload)
-        wire_updates = _transform_wire_updates(
-            _extract_wire_updates(payload),
-            transform,
-        )
-        via_updates = _transform_via_updates(_extract_via_updates(payload), transform)
-        self._apply_deeppcb_routing(
-            pcb=pcb,
-            wire_updates=wire_updates,
-            via_updates=via_updates,
-            net_name_lookup=net_name_lookup,
-        )
-
-        kicad.dumps(pcb_file, output_path)
-        return output_path
-
-    def _apply_deeppcb_placements(
-        self,
-        footprints_by_ref: dict[str, kicad.pcb.Footprint],
-        placement_updates: list[dict[str, Any]],
-    ) -> int:
-        applied = 0
-        for update in placement_updates:
-            reference = str(update.get("reference") or "").strip()
-            if not reference:
-                continue
-            footprint = footprints_by_ref.get(reference.upper())
-            if footprint is None:
-                continue
-
-            x = _to_float(update.get("x"))
-            y = _to_float(update.get("y"))
-            if x is None or y is None:
-                continue
-
-            rotation = _to_float(update.get("rotation"))
-            target_layer = _normalize_footprint_layer(
-                update.get("side"),
-                fallback_layer=footprint.layer,
-            )
-            target_coord = kicad.pcb.Xyr(
-                x=x,
-                y=y,
-                r=rotation if rotation is not None else footprint.at.r,
-            )
-            PCB_Transformer.move_fp(footprint, target_coord, target_layer)
-            applied += 1
-        return applied
-
-    def _apply_deeppcb_routing(
-        self,
-        pcb: kicad.pcb.KicadPcb,
-        wire_updates: list[dict[str, Any]],
-        via_updates: list[dict[str, Any]],
-        net_name_lookup: dict[str, str],
-    ) -> tuple[int, int]:
-        if not wire_updates and not via_updates:
-            return (0, 0)
-
-        # DeepPCB routing artifacts represent a full revision candidate.
-        pcb.segments.clear()
-        pcb.arcs.clear()
-        pcb.vias.clear()
-
-        route_transformer = object.__new__(PCB_Transformer)
-        route_transformer.pcb = pcb
-
-        nets_by_name, nets_by_number, next_net_number = _build_kicad_net_lookup(pcb)
-        state = {
-            "nets_by_name": nets_by_name,
-            "nets_by_number": nets_by_number,
-            "next_net_number": next_net_number,
-        }
-
-        applied_wires = 0
-        for wire in wire_updates:
-            points = wire.get("points")
-            if not isinstance(points, list) or len(points) < 2:
-                continue
-
-            net_token = wire.get("net")
-            net_number = _resolve_or_create_net_number(
-                pcb=pcb,
-                net_token=net_token,
-                net_name_lookup=net_name_lookup,
-                state=state,
-            )
-            if net_number <= 0:
-                continue
-
-            width = _to_float(wire.get("width")) or 0.2
-            layer = _normalize_copper_layer(wire.get("layer"))
-            arc = bool(wire.get("arc")) and len(points) >= 3
-            route_transformer.insert_track(
-                net_id=net_number,
-                points=points,
-                width=width,
-                layer=layer,
-                arc=arc,
-            )
-            applied_wires += 1
-
-        applied_vias = 0
-        for via in via_updates:
-            x = _to_float(via.get("x"))
-            y = _to_float(via.get("y"))
-            if x is None or y is None:
-                continue
-
-            net_token = via.get("net")
-            net_number = _resolve_or_create_net_number(
-                pcb=pcb,
-                net_token=net_token,
-                net_name_lookup=net_name_lookup,
-                state=state,
-            )
-            if net_number <= 0:
-                continue
-
-            diameter = _to_float(via.get("diameter")) or 0.6
-            drill = _to_float(via.get("drill")) or min(diameter * 0.5, 0.3)
-            if drill >= diameter:
-                drill = max(0.1, diameter * 0.5)
-
-            route_transformer.insert_via(
-                coord=(x, y),
-                net=net_number,
-                size_drill=(diameter, drill),
-            )
-            applied_vias += 1
-
-        return (applied_wires, applied_vias)
 
     def _parse_board_candidates(
         self,
@@ -1211,39 +974,111 @@ class DeepPCBProvider(AutolayoutProvider):
         board_id: str,
     ) -> list[AutolayoutCandidate]:
         revisions: list[dict[str, Any]] = []
-        for values in _all_lists(payload):
-            if not values or not all(isinstance(item, dict) for item in values):
-                continue
-            for item in values:
-                if self._extract_string(
-                    item,
-                    keys=("fileUrl", "file_url", "downloadUrl", "download_url"),
-                ):
-                    revisions.append(item)
 
-        candidates: list[AutolayoutCandidate] = []
+        # Prefer explicit workflow revisions when available. These carry
+        # revisionNumber/jsonFilePath even when fileUrl is omitted.
+        workflows = payload.get("workflows")
+        if isinstance(workflows, list):
+            for workflow in workflows:
+                if not isinstance(workflow, dict):
+                    continue
+                workflow_id = self._extract_string(
+                    workflow,
+                    keys=("workflowId", "workflow_id", "id"),
+                )
+                workflow_revisions = workflow.get("revisions")
+                if not isinstance(workflow_revisions, list):
+                    continue
+                for item in workflow_revisions:
+                    if not isinstance(item, dict):
+                        continue
+                    revision = dict(item)
+                    if workflow_id and "workflowId" not in revision:
+                        revision["workflowId"] = workflow_id
+                    revisions.append(revision)
+
+        if not revisions:
+            for values in _all_lists(payload):
+                if not values or not all(isinstance(item, dict) for item in values):
+                    continue
+                for item in values:
+                    has_artifact_ref = self._extract_string(
+                        item,
+                        keys=(
+                            "fileUrl",
+                            "file_url",
+                            "downloadUrl",
+                            "download_url",
+                            "jsonFilePath",
+                            "json_file_path",
+                        ),
+                    )
+                    has_revision_ref = self._extract_string(
+                        item,
+                        keys=(
+                            "revision",
+                            "revisionNumber",
+                            "runningNumberOfRevisions",
+                        ),
+                    )
+                    if has_artifact_ref or has_revision_ref:
+                        revisions.append(item)
+
+        ranked_candidates: list[tuple[float, int, AutolayoutCandidate]] = []
+        seen_ids: set[str] = set()
         for index, revision in enumerate(revisions, start=1):
-            revision_id = self._extract_string(
+            revision_number = self._extract_string(
                 revision,
-                keys=("revision", "revisionNumber", "runningNumberOfRevisions", "id"),
-            ) or str(index)
+                keys=("revision", "revisionNumber", "runningNumberOfRevisions"),
+            )
+            revision_id = self._extract_string(revision, keys=("id", "revisionId"))
+            candidate_id = revision_number or revision_id or str(index)
+            if candidate_id in seen_ids:
+                continue
+            seen_ids.add(candidate_id)
+
+            metadata = {"boardId": board_id, **revision}
+            if revision_number and "revision" not in metadata:
+                metadata["revision"] = revision_number
+            if revision_id and "revisionId" not in metadata:
+                metadata["revisionId"] = revision_id
+
+            files: dict[str, str] = {}
+            artifact_url = self._extract_string(
+                revision,
+                keys=("fileUrl", "file_url", "downloadUrl", "download_url", "url"),
+            )
+            if artifact_url:
+                files["deeppcb_artifact_url"] = artifact_url
+
             score = self._candidate_score(revision)
-            candidates.append(
-                AutolayoutCandidate(
-                    candidate_id=revision_id,
-                    label=f"Revision {revision_id}",
-                    score=score,
-                    metadata={"boardId": board_id, **revision},
-                    files={
-                        "deeppcb_artifact_url": self._extract_string(
-                            revision,
-                            keys=("fileUrl", "file_url", "downloadUrl", "download_url"),
-                        )
-                        or ""
-                    },
+            candidate = AutolayoutCandidate(
+                candidate_id=candidate_id,
+                label=f"Revision {revision_number or candidate_id}",
+                score=score,
+                metadata=metadata,
+                files=files,
+            )
+
+            revision_order = self._extract_float(
+                revision,
+                keys=("revision", "revisionNumber", "runningNumberOfRevisions"),
+            )
+            ranked_candidates.append(
+                (
+                    revision_order
+                    if revision_order is not None
+                    else float("-inf"),
+                    index,
+                    candidate,
                 )
             )
-        return candidates
+
+        # Prefer newest revision first when explicit revision numbers are known.
+        if any(order > float("-inf") for order, _, _ in ranked_candidates):
+            ranked_candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+
+        return [candidate for _, _, candidate in ranked_candidates]
 
     def _parse_candidates(self, payload: dict[str, Any]) -> list[AutolayoutCandidate]:
         lists = _all_lists(payload)
@@ -1289,12 +1124,26 @@ class DeepPCBProvider(AutolayoutProvider):
     def _candidate_score(self, revision: dict[str, Any]) -> float | None:
         stats = revision.get("stats")
         if not isinstance(stats, dict):
-            return self._extract_float(revision, keys=("score", "rank"))
+            result = revision.get("result")
+            if isinstance(result, dict):
+                stats = result
 
-        total = self._extract_float(stats, keys=("numConnections", "numNets"))
-        missing = self._extract_float(stats, keys=("numConnectionsMissing",))
+        if not isinstance(stats, dict):
+            return self._extract_float(revision, keys=("score", "rank", "fitnessScore"))
+
+        total = self._extract_float(
+            stats,
+            keys=("numConnections", "numNets", "totalAirWires"),
+        )
+        missing = self._extract_float(
+            stats,
+            keys=("numConnectionsMissing", "airWiresNotConnected"),
+        )
         if total is None or total <= 0 or missing is None:
-            return self._extract_float(revision, keys=("score", "rank"))
+            return self._extract_float(
+                stats,
+                keys=("score", "rank", "fitnessScore"),
+            ) or self._extract_float(revision, keys=("score", "rank", "fitnessScore"))
 
         completed_ratio = max(0.0, min(1.0, (total - missing) / total))
         return round(completed_ratio, 6)
@@ -2107,6 +1956,20 @@ def _fit_axis_to_target(
             best = (a, b, error)
 
     return best
+
+
+def _extract_revision_from_json_path(path: str | None) -> str | None:
+    if not isinstance(path, str) or not path.strip():
+        return None
+
+    parts = [token for token in path.replace("\\", "/").split("/") if token]
+    for index, token in enumerate(parts[:-1]):
+        if token.lower() != "revisions":
+            continue
+        candidate = parts[index + 1].strip()
+        if candidate:
+            return candidate
+    return None
 
 
 def _join_url(base_url: str, path: str) -> str:

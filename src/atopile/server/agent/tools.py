@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
 from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI
 
 from atopile.config import ProjectConfig
@@ -66,6 +67,7 @@ _MANAGER_ALLOWED_TOOL_NAMES: set[str] = {
     "project_list_files",
     "project_read_file",
     "project_search",
+    "web_search",
     "project_list_modules",
     "project_module_children",
     "stdlib_list",
@@ -526,6 +528,84 @@ def _autolayout_state_value(raw: Any) -> str:
     return str(raw or "")
 
 
+def _recommended_autolayout_check_back_seconds(
+    *,
+    state: str,
+    candidate_count: int,
+) -> int:
+    state_clean = state.strip().lower()
+    if state_clean == AutolayoutState.QUEUED.value:
+        return 20
+    if state_clean == AutolayoutState.RUNNING.value and candidate_count <= 0:
+        return 15
+    if state_clean == AutolayoutState.RUNNING.value and candidate_count > 0:
+        return 10
+    return 10
+
+
+def _autolayout_recommended_action(
+    *,
+    state_value: str,
+    candidate_count: int,
+    provider_job_ref: str | None,
+) -> str:
+    if state_value in {AutolayoutState.QUEUED.value, AutolayoutState.RUNNING.value}:
+        return "continue_monitoring"
+    if candidate_count > 0:
+        return "fetch_candidate_to_layout"
+    if state_value == AutolayoutState.FAILED.value:
+        return "retry_or_resume_with_adjusted_options"
+    if provider_job_ref:
+        return "resume_with_additional_timeout"
+    return "inspect_job_details"
+
+
+def _summarize_autolayout_job(job: AutolayoutJob) -> dict[str, Any]:
+    state_value = _autolayout_state_value(job.state)
+    candidate_count = len(job.candidates)
+    return {
+        "job_id": job.job_id,
+        "build_target": job.build_target,
+        "provider": job.provider,
+        "provider_job_ref": job.provider_job_ref,
+        "state": state_value,
+        "updated_at": job.updated_at,
+        "created_at": job.created_at,
+        "candidate_count": candidate_count,
+        "selected_candidate_id": job.selected_candidate_id,
+        "applied_candidate_id": job.applied_candidate_id,
+        "recommended_action": _autolayout_recommended_action(
+            state_value=state_value,
+            candidate_count=candidate_count,
+            provider_job_ref=job.provider_job_ref,
+        ),
+    }
+
+
+def _select_latest_fetchable_job(jobs: list[AutolayoutJob]) -> AutolayoutJob | None:
+    if not jobs:
+        return None
+    preferred_states = {
+        AutolayoutState.AWAITING_SELECTION.value,
+        AutolayoutState.COMPLETED.value,
+    }
+    for job in jobs:
+        state_value = _autolayout_state_value(job.state)
+        if state_value in preferred_states and (
+            job.candidates or isinstance(job.provider_job_ref, str)
+        ):
+            return job
+    for job in jobs:
+        state_value = _autolayout_state_value(job.state)
+        if state_value in {
+            AutolayoutState.QUEUED.value,
+            AutolayoutState.RUNNING.value,
+        }:
+            continue
+        return job
+    return jobs[0]
+
+
 def _choose_autolayout_candidate_id(
     *,
     candidates: list[Any],
@@ -611,9 +691,6 @@ def _discover_downloaded_artifacts(
 
     for key, suffix in (
         ("kicad_pcb", ".kicad_pcb"),
-        ("json", ".json"),
-        ("ses", ".ses"),
-        ("dsn", ".dsn"),
         ("zip", ".zip"),
     ):
         chosen = _pick_path(suffix)
@@ -787,6 +864,164 @@ def _to_int_or_none(value: Any, *, field_name: str) -> int | None:
         return int(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{field_name} must be an integer") from exc
+
+
+def _normalize_domain_filters(raw: Any, *, field_name: str) -> list[str]:
+    if raw is None:
+        return []
+
+    tokens: list[str] = []
+    if isinstance(raw, str):
+        tokens = [part.strip() for part in raw.split(",")]
+    elif isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, str):
+                raise ValueError(f"{field_name} entries must be strings")
+            tokens.append(item.strip())
+    else:
+        raise ValueError(f"{field_name} must be an array of domains")
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for token in tokens:
+        if not token:
+            continue
+        cleaned = token.lower()
+        if cleaned.startswith("https://"):
+            cleaned = cleaned[len("https://") :]
+        elif cleaned.startswith("http://"):
+            cleaned = cleaned[len("http://") :]
+        cleaned = cleaned.strip().strip("/")
+        if not cleaned:
+            continue
+        if any(char.isspace() for char in cleaned):
+            raise ValueError(
+                f"{field_name} entries must not contain whitespace: '{token}'"
+            )
+        if cleaned in seen:
+            continue
+        seen.add(cleaned)
+        normalized.append(cleaned)
+
+    return normalized
+
+
+def _get_exa_api_key() -> str:
+    api_key = os.getenv("ATOPILE_AGENT_EXA_API_KEY") or os.getenv("EXA_API_KEY")
+    if isinstance(api_key, str) and api_key.strip():
+        return api_key.strip()
+    raise RuntimeError(
+        "Missing Exa API key. Set ATOPILE_AGENT_EXA_API_KEY or EXA_API_KEY."
+    )
+
+
+def _extract_http_error_detail(exc: httpx.HTTPStatusError) -> str:
+    response = exc.response
+    if response is None:
+        return str(exc)
+    try:
+        payload = response.json()
+    except Exception:
+        payload = None
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict):
+            message = error.get("message") or error.get("detail")
+            if isinstance(message, str) and message.strip():
+                return message.strip()
+        detail = payload.get("detail")
+        if isinstance(detail, str) and detail.strip():
+            return detail.strip()
+    text = (response.text or "").strip()
+    if text:
+        return _trim_message(text, 280)
+    return str(exc)
+
+
+def _exa_web_search(
+    *,
+    query: str,
+    num_results: int,
+    search_type: str,
+    include_domains: list[str],
+    exclude_domains: list[str],
+    include_text: bool,
+    timeout_s: float,
+) -> dict[str, Any]:
+    api_key = _get_exa_api_key()
+    endpoint = os.getenv("ATOPILE_AGENT_EXA_SEARCH_URL", "https://api.exa.ai/search")
+
+    payload: dict[str, Any] = {
+        "query": query,
+        "numResults": num_results,
+        "type": search_type,
+    }
+    if include_domains:
+        payload["includeDomains"] = include_domains
+    if exclude_domains:
+        payload["excludeDomains"] = exclude_domains
+    if include_text:
+        payload["contents"] = {"text": True}
+
+    headers = {
+        "x-api-key": api_key,
+        "authorization": f"Bearer {api_key}",
+        "accept": "application/json",
+        "content-type": "application/json",
+    }
+    timeout = httpx.Timeout(timeout_s, connect=min(5.0, timeout_s))
+
+    try:
+        with httpx.Client(timeout=timeout, verify=True) as client:
+            response = client.post(endpoint, headers=headers, json=payload)
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        detail = _extract_http_error_detail(exc)
+        raise RuntimeError(
+            f"Exa search failed ({exc.response.status_code}): {detail}"
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise RuntimeError(f"Exa search request failed: {exc}") from exc
+
+    body = response.json()
+    if not isinstance(body, dict):
+        raise RuntimeError("Exa search response was not a JSON object")
+
+    raw_results = body.get("results")
+    if not isinstance(raw_results, list):
+        raw_results = []
+
+    normalized_results: list[dict[str, Any]] = []
+    for index, raw in enumerate(raw_results, start=1):
+        if not isinstance(raw, dict):
+            continue
+        text = raw.get("text")
+        normalized_results.append(
+            {
+                "rank": index,
+                "title": str(raw.get("title", "") or ""),
+                "url": str(raw.get("url", "") or ""),
+                "published_date": raw.get("publishedDate"),
+                "author": raw.get("author"),
+                "score": raw.get("score"),
+                "text": _trim_message(str(text), 2200)
+                if isinstance(text, str) and text
+                else None,
+            }
+        )
+
+    return {
+        "query": query,
+        "search_type": search_type,
+        "requested_results": num_results,
+        "returned_results": len(normalized_results),
+        "include_domains": include_domains,
+        "exclude_domains": exclude_domains,
+        "results": normalized_results,
+        "request_id": body.get("requestId"),
+        "cost_dollars": body.get("costDollars"),
+        "source": "exa",
+    }
 
 
 @dataclass
@@ -1031,7 +1266,9 @@ def _lookup_layout_component(
         raise ValueError("address is required")
 
     address_exact = [
-        record for record in records if record.address_norm and record.address_norm == query_norm
+        record
+        for record in records
+        if record.address_norm and record.address_norm == query_norm
     ]
     if len(address_exact) == 1:
         return _LayoutComponentLookup(
@@ -1119,7 +1356,9 @@ def _layout_get_component_position(
     address: str,
     fuzzy_limit: int,
 ) -> dict[str, Any]:
-    layout_path = _resolve_layout_file_for_tool(project_root=project_root, target=target)
+    layout_path = _resolve_layout_file_for_tool(
+        project_root=project_root, target=target
+    )
     _, records = _load_layout_component_index(layout_path)
     lookup = _lookup_layout_component(
         records=records,
@@ -1164,7 +1403,9 @@ def _layout_set_component_position(
     from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
     from faebryk.libs.kicad.fileformats import kicad
 
-    layout_path = _resolve_layout_file_for_tool(project_root=project_root, target=target)
+    layout_path = _resolve_layout_file_for_tool(
+        project_root=project_root, target=target
+    )
     pcb_file, records = _load_layout_component_index(layout_path)
     lookup = _lookup_layout_component(
         records=records,
@@ -1504,6 +1745,42 @@ def get_tool_definitions() -> list[dict[str, Any]]:
                         "maximum": 200,
                         "default": 60,
                     },
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "web_search",
+            "description": (
+                "Search the public web using Exa and return ranked sources "
+                "for current/unknown external facts."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "num_results": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25,
+                        "default": 8,
+                    },
+                    "search_type": {
+                        "type": "string",
+                        "enum": ["auto", "fast", "neural", "deep", "instant"],
+                        "default": "auto",
+                    },
+                    "include_domains": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string"},
+                    },
+                    "exclude_domains": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string"},
+                    },
+                    "include_text": {"type": "boolean", "default": True},
                 },
                 "required": ["query"],
                 "additionalProperties": False,
@@ -2021,7 +2298,7 @@ def get_tool_definitions() -> list[dict[str, Any]]:
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "job_id": {"type": "string"},
+                    "job_id": {"type": ["string", "null"]},
                     "refresh": {"type": "boolean", "default": True},
                     "include_candidates": {"type": "boolean", "default": True},
                     "wait_seconds": {
@@ -2037,7 +2314,6 @@ def get_tool_definitions() -> list[dict[str, Any]]:
                         "default": 10,
                     },
                 },
-                "required": ["job_id"],
                 "additionalProperties": False,
             },
         },
@@ -2047,16 +2323,17 @@ def get_tool_definitions() -> list[dict[str, Any]]:
             "description": (
                 "Fetch one autolayout candidate into layouts/, apply it, archive "
                 "an iteration snapshot, and return downloaded artifact paths "
-                "(.kicad_pcb/.json/.ses/.dsn when available)."
+                "(.kicad_pcb when available). If the job is "
+                "still queued/running, return a check-back hint instead of "
+                "applying early."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "job_id": {"type": "string"},
+                    "job_id": {"type": ["string", "null"]},
                     "candidate_id": {"type": ["string", "null"]},
                     "archive_iteration": {"type": "boolean", "default": True},
                 },
-                "required": ["job_id"],
                 "additionalProperties": False,
             },
         },
@@ -2305,6 +2582,39 @@ async def execute_tool(
             "matches": [asdict(match) for match in matches],
             "total": len(matches),
         }
+
+    if name == "web_search":
+        query = str(arguments.get("query", "")).strip()
+        if not query:
+            raise ValueError("query is required")
+        num_results = max(1, min(25, int(arguments.get("num_results", 8))))
+        search_type = str(arguments.get("search_type", "auto")).strip().lower()
+        if search_type not in {"auto", "fast", "neural", "deep", "instant"}:
+            raise ValueError(
+                "search_type must be one of: auto, fast, neural, deep, instant"
+            )
+        include_domains = _normalize_domain_filters(
+            arguments.get("include_domains"),
+            field_name="include_domains",
+        )
+        exclude_domains = _normalize_domain_filters(
+            arguments.get("exclude_domains"),
+            field_name="exclude_domains",
+        )
+        include_text = bool(arguments.get("include_text", True))
+        timeout_s = float(os.getenv("ATOPILE_AGENT_EXA_TIMEOUT_S", "30"))
+        timeout_s = max(3.0, min(timeout_s, 120.0))
+
+        return await asyncio.to_thread(
+            _exa_web_search,
+            query=query,
+            num_results=num_results,
+            search_type=search_type,
+            include_domains=include_domains,
+            exclude_domains=exclude_domains,
+            include_text=include_text,
+            timeout_s=timeout_s,
+        )
 
     if name == "examples_list":
         limit = int(arguments.get("limit", 60))
@@ -3227,9 +3537,13 @@ async def execute_tool(
         }
 
     if name == "autolayout_status":
-        job_id = str(arguments.get("job_id", "")).strip()
-        if not job_id:
-            raise ValueError("job_id is required")
+        requested_job_id = arguments.get("job_id")
+        job_id = (
+            str(requested_job_id).strip()
+            if isinstance(requested_job_id, str)
+            and str(requested_job_id).strip()
+            else ""
+        )
         refresh = bool(arguments.get("refresh", True))
         include_candidates = bool(arguments.get("include_candidates", True))
         wait_seconds = max(0, int(arguments.get("wait_seconds", 0)))
@@ -3239,10 +3553,71 @@ async def execute_tool(
         )
 
         service = get_autolayout_service()
-        if refresh:
-            job = await asyncio.to_thread(service.refresh_job, job_id)
-        else:
-            job = await asyncio.to_thread(service.get_job, job_id)
+        if not job_id:
+            await asyncio.to_thread(service.recover_project_jobs, str(project_root), 20)
+            jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
+            summaries = [_summarize_autolayout_job(job) for job in jobs[:20]]
+            latest_job = jobs[0] if jobs else None
+            return {
+                "job_id": None,
+                "project_root": str(project_root),
+                "total_jobs": len(summaries),
+                "latest_job_id": latest_job.job_id if latest_job else None,
+                "latest_build_target": latest_job.build_target if latest_job else None,
+                "recommended_action": (
+                    "inspect_or_fetch_latest_job"
+                    if latest_job is not None
+                    else "run_autolayout"
+                ),
+                "message": (
+                    "No job_id provided; returning recent autolayout history for "
+                    "this project."
+                ),
+                "jobs": summaries,
+            }
+
+        try:
+            if refresh:
+                job = await asyncio.to_thread(service.refresh_job, job_id)
+            else:
+                job = await asyncio.to_thread(service.get_job, job_id)
+        except KeyError:
+            recovered = await asyncio.to_thread(
+                service.recover_job,
+                str(project_root),
+                job_id,
+                None,
+            )
+            if recovered is None:
+                await asyncio.to_thread(
+                    service.recover_project_jobs,
+                    str(project_root),
+                    20,
+                )
+                jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
+                summaries = [_summarize_autolayout_job(item) for item in jobs[:20]]
+                latest_job = jobs[0] if jobs else None
+                return {
+                    "job_id": job_id,
+                    "found": False,
+                    "recommended_action": (
+                        "inspect_or_fetch_latest_job"
+                        if latest_job is not None
+                        else "run_autolayout"
+                    ),
+                    "latest_job_id": latest_job.job_id if latest_job else None,
+                    "message": (
+                        f"Unknown autolayout job '{job_id}'. Returning recent jobs "
+                        "for this project."
+                    ),
+                    "jobs": summaries,
+                }
+            job = recovered
+            if refresh:
+                try:
+                    job = await asyncio.to_thread(service.refresh_job, job_id)
+                except KeyError:
+                    job = recovered
 
         polls = 0
         waited_seconds = 0
@@ -3250,6 +3625,8 @@ async def execute_tool(
             while (
                 _autolayout_state_value(job.state)
                 in {AutolayoutState.QUEUED.value, AutolayoutState.RUNNING.value}
+                and isinstance(job.provider_job_ref, str)
+                and job.provider_job_ref.strip()
                 and waited_seconds < wait_seconds
             ):
                 sleep_for = min(poll_interval_seconds, wait_seconds - waited_seconds)
@@ -3277,17 +3654,17 @@ async def execute_tool(
         candidate_count = (
             len(candidates_payload) if include_candidates else len(job.candidates)
         )
-        recommended_action: str
-        if state_value in {AutolayoutState.QUEUED.value, AutolayoutState.RUNNING.value}:
-            recommended_action = "continue_monitoring"
-        elif candidate_count > 0:
-            recommended_action = "fetch_candidate_to_layout"
-        elif state_value == AutolayoutState.FAILED.value:
-            recommended_action = "retry_or_resume_with_adjusted_options"
-        elif job.provider_job_ref:
-            recommended_action = "resume_with_additional_timeout"
-        else:
-            recommended_action = "inspect_job_details"
+        recommended_action = _autolayout_recommended_action(
+            state_value=state_value,
+            candidate_count=candidate_count,
+            provider_job_ref=job.provider_job_ref,
+        )
+        recent_jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
+        recent_summaries = [
+            _summarize_autolayout_job(item)
+            for item in recent_jobs[:10]
+            if item.job_id != job.job_id
+        ]
 
         return {
             "job_id": job.job_id,
@@ -3306,12 +3683,17 @@ async def execute_tool(
             "recommended_action": recommended_action,
             "job": job.to_dict(),
             "candidates": candidates_payload if include_candidates else None,
+            "recent_jobs": recent_summaries,
         }
 
     if name == "autolayout_fetch_to_layout":
-        job_id = str(arguments.get("job_id", "")).strip()
-        if not job_id:
-            raise ValueError("job_id is required")
+        requested_job_id = arguments.get("job_id")
+        job_id = (
+            str(requested_job_id).strip()
+            if isinstance(requested_job_id, str)
+            and str(requested_job_id).strip()
+            else ""
+        )
         requested_candidate_id = arguments.get("candidate_id")
         candidate_id = (
             str(requested_candidate_id).strip()
@@ -3322,8 +3704,104 @@ async def execute_tool(
         archive_iteration = bool(arguments.get("archive_iteration", True))
 
         service = get_autolayout_service()
-        job = await asyncio.to_thread(service.refresh_job, job_id)
+        if not job_id:
+            await asyncio.to_thread(service.recover_project_jobs, str(project_root), 20)
+            known_jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
+            selected_job = _select_latest_fetchable_job(known_jobs)
+            if selected_job is None:
+                return {
+                    "job_id": None,
+                    "ready_to_apply": False,
+                    "applied": False,
+                    "recommended_action": "run_autolayout",
+                    "message": (
+                        "No autolayout jobs found for this project. Run "
+                        "autolayout_run first."
+                    ),
+                    "jobs": [],
+                }
+            job_id = selected_job.job_id
+
+        try:
+            job = await asyncio.to_thread(service.refresh_job, job_id)
+        except KeyError:
+            recovered = await asyncio.to_thread(
+                service.recover_job,
+                str(project_root),
+                job_id,
+                None,
+            )
+            if recovered is None:
+                await asyncio.to_thread(service.recover_project_jobs, str(project_root), 20)
+                known_jobs = await asyncio.to_thread(service.list_jobs, str(project_root))
+                summaries = [_summarize_autolayout_job(item) for item in known_jobs[:20]]
+                latest_job = known_jobs[0] if known_jobs else None
+                return {
+                    "job_id": job_id,
+                    "ready_to_apply": False,
+                    "applied": False,
+                    "found": False,
+                    "recommended_action": (
+                        "inspect_or_fetch_latest_job"
+                        if latest_job is not None
+                        else "run_autolayout"
+                    ),
+                    "latest_job_id": latest_job.job_id if latest_job else None,
+                    "message": (
+                        f"Unknown autolayout job '{job_id}'. Returning recent jobs "
+                        "for this project."
+                    ),
+                    "jobs": summaries,
+                }
+            job = recovered
+            try:
+                job = await asyncio.to_thread(service.refresh_job, job_id)
+            except KeyError:
+                job = recovered
+
         candidates = await asyncio.to_thread(service.list_candidates, job_id, False)
+        state_value = _autolayout_state_value(job.state)
+        candidate_count = len(candidates)
+
+        if state_value in {AutolayoutState.QUEUED.value, AutolayoutState.RUNNING.value}:
+            recommended_wait_seconds = _recommended_autolayout_check_back_seconds(
+                state=state_value,
+                candidate_count=candidate_count,
+            )
+            return {
+                "job_id": job.job_id,
+                "provider_job_ref": job.provider_job_ref,
+                "state": state_value,
+                "candidate_count": candidate_count,
+                "ready_to_apply": False,
+                "applied": False,
+                "recommended_wait_seconds": recommended_wait_seconds,
+                "recommended_action": "check_status_then_retry_fetch",
+                "message": (
+                    f"Autolayout is still {state_value}; do not fetch/apply yet. "
+                    f"Check back in {recommended_wait_seconds} seconds with "
+                    "autolayout_status, then call autolayout_fetch_to_layout when "
+                    "state is awaiting_selection or completed."
+                ),
+                "job": job.to_dict(),
+            }
+
+        if state_value in {AutolayoutState.FAILED.value, AutolayoutState.CANCELLED.value}:
+            return {
+                "job_id": job.job_id,
+                "provider_job_ref": job.provider_job_ref,
+                "state": state_value,
+                "candidate_count": candidate_count,
+                "ready_to_apply": False,
+                "applied": False,
+                "recommended_action": "retry_or_resume_with_adjusted_options",
+                "message": (
+                    f"Autolayout is {state_value}; no candidate can be applied yet. "
+                    "Use autolayout_status for details, then rerun or resume with "
+                    "autolayout_run."
+                ),
+                "job": job.to_dict(),
+            }
 
         selected_candidate_id = _choose_autolayout_candidate_id(
             candidates=candidates,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import shutil
 import threading
 import uuid
@@ -12,7 +13,6 @@ from typing import Any
 
 from atopile.config import ProjectConfig
 from atopile.server.domains.autolayout.models import (
-    TERMINAL_AUTO_LAYOUT_STATES,
     AutolayoutCandidate,
     AutolayoutJob,
     AutolayoutState,
@@ -26,6 +26,7 @@ from atopile.server.domains.autolayout.providers import (
     QuilterManualProvider,
 )
 from atopile.server.events import event_bus
+from faebryk.libs.paths import get_log_dir
 from faebryk.libs.util import ConfigFlag
 
 _ENABLE_AUTOLAYOUT = ConfigFlag(
@@ -39,10 +40,22 @@ _DEFAULT_PROVIDER = ConfigFlag(
 class AutolayoutService:
     """Coordinates provider submission, polling, candidate selection, and apply."""
 
-    def __init__(self, providers: dict[str, AutolayoutProvider] | None = None) -> None:
+    def __init__(
+        self,
+        providers: dict[str, AutolayoutProvider] | None = None,
+        state_path: str | Path | None = None,
+        max_persisted_jobs: int = 200,
+    ) -> None:
         self._providers = providers or _default_providers()
         self._jobs: dict[str, AutolayoutJob] = {}
         self._lock = threading.RLock()
+        self._state_path = (
+            Path(state_path)
+            if state_path is not None
+            else get_log_dir() / "autolayout_jobs_state.json"
+        )
+        self._max_persisted_jobs = max(20, int(max_persisted_jobs))
+        self._load_jobs_state()
 
     def start_job(
         self,
@@ -101,6 +114,7 @@ class AutolayoutService:
 
         with self._lock:
             self._jobs[job_id] = job
+            self._persist_jobs_state_locked()
 
         try:
             submit_result = provider.submit(
@@ -124,6 +138,7 @@ class AutolayoutService:
                 current.error = str(exc)
                 current.message = str(exc)
                 current.mark_updated()
+                self._persist_jobs_state_locked()
                 self._emit_job_event(current)
                 return copy.deepcopy(current)
 
@@ -136,6 +151,7 @@ class AutolayoutService:
             if current.candidates and current.state == AutolayoutState.COMPLETED:
                 current.state = AutolayoutState.AWAITING_SELECTION
             current.mark_updated()
+            self._persist_jobs_state_locked()
             self._emit_job_event(current)
             return copy.deepcopy(current)
 
@@ -156,19 +172,152 @@ class AutolayoutService:
         values.sort(key=lambda job: job.created_at, reverse=True)
         return [copy.deepcopy(job) for job in values]
 
+    def recover_job(
+        self,
+        project_root: str,
+        job_id: str,
+        build_target_hint: str | None = None,
+    ) -> AutolayoutJob | None:
+        with self._lock:
+            cached = self._jobs.get(job_id)
+            if cached is not None:
+                return copy.deepcopy(cached)
+
+        project_path = Path(project_root).resolve()
+        project_cfg = ProjectConfig.from_path(project_path)
+        if project_cfg is None:
+            return None
+
+        build_order = list(project_cfg.builds.keys())
+        if build_target_hint and build_target_hint in project_cfg.builds:
+            build_order = [build_target_hint] + [
+                target for target in build_order if target != build_target_hint
+            ]
+
+        for build_target in build_order:
+            build_cfg = project_cfg.builds[build_target]
+            work_dir = build_cfg.paths.output_base.parent / "autolayout" / job_id
+            if not work_dir.exists() or not work_dir.is_dir():
+                continue
+
+            provider_name = (
+                build_cfg.autolayout.provider
+                if build_cfg.autolayout is not None
+                else _DEFAULT_PROVIDER.get() or "deeppcb"
+            )
+            if provider_name not in self._providers:
+                provider_name = "deeppcb" if "deeppcb" in self._providers else "mock"
+
+            downloads_dir = work_dir / "downloads"
+            candidates = self._discover_local_candidates(downloads_dir)
+
+            now_iso = utc_now_iso()
+            job = AutolayoutJob(
+                job_id=job_id,
+                project_root=str(project_path),
+                build_target=build_target,
+                provider=provider_name,
+                state=(
+                    AutolayoutState.AWAITING_SELECTION
+                    if candidates
+                    else AutolayoutState.RUNNING
+                ),
+                created_at=now_iso,
+                updated_at=now_iso,
+                input_zip_path=(
+                    str(work_dir / "input_bundle.zip")
+                    if (work_dir / "input_bundle.zip").exists()
+                    else None
+                ),
+                work_dir=str(work_dir),
+                layout_path=str(build_cfg.paths.layout),
+                candidates=candidates,
+                message=(
+                    "Recovered from local autolayout artifacts."
+                    if candidates
+                    else "Recovered autolayout job (no local candidates found)."
+                ),
+            )
+            resolved_provider_ref = self._resolve_provider_job_ref(
+                job=job,
+                provider=self._providers[job.provider],
+            )
+            if isinstance(resolved_provider_ref, str) and resolved_provider_ref.strip():
+                job.provider_job_ref = resolved_provider_ref.strip()
+
+            with self._lock:
+                self._jobs[job_id] = job
+                self._persist_jobs_state_locked()
+                self._emit_job_event(job)
+                return copy.deepcopy(job)
+
+        return None
+
+    def recover_project_jobs(
+        self,
+        project_root: str,
+        limit: int = 20,
+    ) -> list[AutolayoutJob]:
+        project_path = Path(project_root).resolve()
+        project_cfg = ProjectConfig.from_path(project_path)
+        if project_cfg is None:
+            return []
+
+        discovered: list[tuple[float, str, str]] = []
+        for build_target, build_cfg in project_cfg.builds.items():
+            work_root = build_cfg.paths.output_base.parent / "autolayout"
+            if not work_root.exists() or not work_root.is_dir():
+                continue
+            for child in work_root.iterdir():
+                if not child.is_dir() or not child.name.startswith("al-"):
+                    continue
+                try:
+                    mtime = child.stat().st_mtime
+                except OSError:
+                    continue
+                discovered.append((mtime, build_target, child.name))
+
+        discovered.sort(key=lambda item: item[0], reverse=True)
+        recovered: list[AutolayoutJob] = []
+        for _, build_target, job_id in discovered[: max(1, int(limit))]:
+            job = self.recover_job(
+                project_root=str(project_path),
+                job_id=job_id,
+                build_target_hint=build_target,
+            )
+            if job is not None:
+                recovered.append(job)
+
+        recovered.sort(key=lambda job: job.updated_at, reverse=True)
+        return recovered
+
     def refresh_job(self, job_id: str) -> AutolayoutJob:
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
                 raise KeyError(f"Unknown autolayout job: {job_id}")
             if (
-                job.state in TERMINAL_AUTO_LAYOUT_STATES
-                or not job.provider_job_ref
-                or not self._providers[job.provider].capabilities.supports_candidates
+                job.state in {AutolayoutState.FAILED, AutolayoutState.CANCELLED}
             ):
                 return copy.deepcopy(job)
             provider = self._providers[job.provider]
+            if not provider.capabilities.supports_candidates:
+                return copy.deepcopy(job)
             provider_job_ref = job.provider_job_ref
+
+        if not provider_job_ref:
+            recovered_ref = self._resolve_provider_job_ref(job, provider)
+            if not recovered_ref:
+                return copy.deepcopy(job)
+            with self._lock:
+                current = self._jobs.get(job_id)
+                if current is None:
+                    raise KeyError(f"Unknown autolayout job: {job_id}")
+                current.provider_job_ref = recovered_ref
+                current.mark_updated()
+                self._persist_jobs_state_locked()
+                self._emit_job_event(current)
+                provider_job_ref = recovered_ref
 
         try:
             status = provider.status(provider_job_ref)
@@ -179,6 +328,7 @@ class AutolayoutService:
                 current.error = str(exc)
                 current.message = str(exc)
                 current.mark_updated()
+                self._persist_jobs_state_locked()
                 self._emit_job_event(current)
                 return copy.deepcopy(current)
 
@@ -192,6 +342,7 @@ class AutolayoutService:
                 if current.state == AutolayoutState.COMPLETED:
                     current.state = AutolayoutState.AWAITING_SELECTION
             current.mark_updated()
+            self._persist_jobs_state_locked()
             self._emit_job_event(current)
             return copy.deepcopy(current)
 
@@ -217,6 +368,7 @@ class AutolayoutService:
             if current.candidates and current.state == AutolayoutState.COMPLETED:
                 current.state = AutolayoutState.AWAITING_SELECTION
             current.mark_updated()
+            self._persist_jobs_state_locked()
             self._emit_job_event(current)
             return [copy.deepcopy(candidate) for candidate in current.candidates]
 
@@ -233,6 +385,7 @@ class AutolayoutService:
 
             job.selected_candidate_id = candidate_id
             job.mark_updated()
+            self._persist_jobs_state_locked()
             self._emit_job_event(job)
             return copy.deepcopy(job)
 
@@ -264,14 +417,24 @@ class AutolayoutService:
         else:
             assert selected_candidate_id is not None
             if not provider_job_ref:
-                raise RuntimeError("Provider job reference missing")
-            download_result = provider.download_candidate(
-                provider_job_ref,
-                selected_candidate_id,
-                out_dir=Path(job.work_dir or ".") / "downloads",
-                target_layout_path=layout_path,
-            )
-            downloaded_layout = download_result.layout_path
+                local_layout = self._resolve_local_candidate_layout(
+                    job=job,
+                    candidate_id=selected_candidate_id,
+                )
+                if local_layout is None:
+                    raise RuntimeError(
+                        "Provider job reference missing and no local candidate "
+                        f"artifact found for '{selected_candidate_id}'."
+                    )
+                downloaded_layout = local_layout
+            else:
+                download_result = provider.download_candidate(
+                    provider_job_ref,
+                    selected_candidate_id,
+                    out_dir=Path(job.work_dir or ".") / "downloads",
+                    target_layout_path=layout_path,
+                )
+                downloaded_layout = download_result.layout_path
             chosen_candidate = selected_candidate_id
 
         backup_path = self._apply_layout(layout_path, downloaded_layout, job_id)
@@ -286,6 +449,7 @@ class AutolayoutService:
             current.message = "Candidate applied"
             current.error = None
             current.mark_updated()
+            self._persist_jobs_state_locked()
             self._emit_job_event(current)
             return copy.deepcopy(current)
 
@@ -304,6 +468,7 @@ class AutolayoutService:
             current = self._jobs[job_id]
             current.state = AutolayoutState.CANCELLED
             current.mark_updated()
+            self._persist_jobs_state_locked()
             self._emit_job_event(current)
             return copy.deepcopy(current)
 
@@ -433,6 +598,152 @@ class AutolayoutService:
         shutil.copy2(source_layout_path, target_layout_path)
         return backup_path
 
+    def _persist_jobs_state_locked(self) -> None:
+        jobs_sorted = sorted(
+            self._jobs.values(),
+            key=lambda job: job.updated_at,
+            reverse=True,
+        )[: self._max_persisted_jobs]
+        payload = {
+            "version": 1,
+            "saved_at": utc_now_iso(),
+            "jobs": [job.to_dict() for job in jobs_sorted],
+        }
+
+        try:
+            self._state_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = self._state_path.with_suffix(
+                f"{self._state_path.suffix}.tmp"
+            )
+            tmp_path.write_text(_json_dumps(payload), encoding="utf-8")
+            tmp_path.replace(self._state_path)
+        except OSError:
+            # Persistence failures must never break active autolayout jobs.
+            return
+
+    def _load_jobs_state(self) -> None:
+        try:
+            raw = self._state_path.read_text(encoding="utf-8")
+        except OSError:
+            return
+
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return
+        if not isinstance(payload, dict):
+            return
+        raw_jobs = payload.get("jobs")
+        if not isinstance(raw_jobs, list):
+            return
+
+        restored: dict[str, AutolayoutJob] = {}
+        for raw_job in raw_jobs:
+            if not isinstance(raw_job, dict):
+                continue
+            job = _deserialize_autolayout_job(raw_job)
+            if job is None:
+                continue
+            if job.provider not in self._providers:
+                continue
+            restored[job.job_id] = job
+
+        if not restored:
+            return
+
+        with self._lock:
+            self._jobs.update(restored)
+
+    def _discover_local_candidates(self, downloads_dir: Path) -> list[AutolayoutCandidate]:
+        if not downloads_dir.exists() or not downloads_dir.is_dir():
+            return []
+
+        candidates: list[tuple[float, AutolayoutCandidate]] = []
+        for path in downloads_dir.glob("*.kicad_pcb"):
+            if not path.is_file():
+                continue
+            candidate_id = path.stem.strip()
+            if not candidate_id:
+                continue
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                mtime = 0.0
+            candidates.append(
+                (
+                    mtime,
+                    AutolayoutCandidate(
+                        candidate_id=candidate_id,
+                        label=f"Local {candidate_id}",
+                        metadata={"source": "local_download"},
+                        files={"kicad_pcb": str(path)},
+                    ),
+                )
+            )
+
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        return _dedupe_candidates([candidate for _, candidate in candidates])
+
+    def _resolve_local_candidate_layout(
+        self,
+        *,
+        job: AutolayoutJob,
+        candidate_id: str,
+    ) -> Path | None:
+        for candidate in job.candidates:
+            if candidate.candidate_id != candidate_id:
+                continue
+            path_raw = candidate.files.get("kicad_pcb")
+            if isinstance(path_raw, str) and path_raw.strip():
+                path = Path(path_raw)
+                if path.exists():
+                    return path
+
+        work_dir_raw = str(job.work_dir or "").strip()
+        if not work_dir_raw:
+            return None
+        downloads_dir = Path(work_dir_raw) / "downloads"
+        if not downloads_dir.exists():
+            return None
+
+        preferred = downloads_dir / f"{candidate_id}.kicad_pcb"
+        if preferred.exists():
+            return preferred
+
+        matches = sorted(
+            downloads_dir.glob("*.kicad_pcb"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        if matches:
+            return matches[0]
+        return None
+
+    def _resolve_provider_job_ref(
+        self,
+        job: AutolayoutJob,
+        provider: AutolayoutProvider,
+    ) -> str | None:
+        current = str(job.provider_job_ref or "").strip()
+        if current:
+            return current
+
+        resolver = getattr(provider, "_resolve_board_ids_single", None)
+        if not callable(resolver):
+            return None
+
+        try:
+            resolved = resolver(job.job_id)
+        except Exception:
+            return None
+
+        if not isinstance(resolved, list):
+            return None
+        for value in resolved:
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
     def _provider(self, provider_name: str) -> AutolayoutProvider:
         provider = self._providers.get(provider_name)
         if provider is None:
@@ -481,9 +792,122 @@ def _default_providers() -> dict[str, AutolayoutProvider]:
 
 
 def _json_dumps(data: dict[str, Any]) -> str:
-    import json
-
     return json.dumps(data, indent=2, sort_keys=True)
+
+
+def _deserialize_autolayout_job(payload: dict[str, Any]) -> AutolayoutJob | None:
+    job_id = payload.get("job_id")
+    project_root = payload.get("project_root")
+    build_target = payload.get("build_target")
+    provider = payload.get("provider")
+    if not all(isinstance(value, str) and value.strip() for value in (
+        job_id,
+        project_root,
+        build_target,
+        provider,
+    )):
+        return None
+
+    state_raw = payload.get("state")
+    try:
+        state = AutolayoutState(str(state_raw))
+    except ValueError:
+        state = AutolayoutState.QUEUED
+
+    raw_candidates = payload.get("candidates")
+    candidates: list[AutolayoutCandidate] = []
+    if isinstance(raw_candidates, list):
+        for raw_candidate in raw_candidates:
+            if not isinstance(raw_candidate, dict):
+                continue
+            candidate_id = raw_candidate.get("candidate_id")
+            if not isinstance(candidate_id, str) or not candidate_id.strip():
+                continue
+            metadata = raw_candidate.get("metadata")
+            files = raw_candidate.get("files")
+            candidates.append(
+                AutolayoutCandidate(
+                    candidate_id=candidate_id.strip(),
+                    label=(
+                        str(raw_candidate["label"]).strip()
+                        if isinstance(raw_candidate.get("label"), str)
+                        and str(raw_candidate.get("label")).strip()
+                        else None
+                    ),
+                    score=(
+                        float(raw_candidate["score"])
+                        if isinstance(raw_candidate.get("score"), (int, float))
+                        else None
+                    ),
+                    metadata=metadata if isinstance(metadata, dict) else {},
+                    files=files if isinstance(files, dict) else {},
+                )
+            )
+
+    created_at = payload.get("created_at")
+    updated_at = payload.get("updated_at")
+    return AutolayoutJob(
+        job_id=job_id.strip(),
+        project_root=project_root.strip(),
+        build_target=build_target.strip(),
+        provider=provider.strip(),
+        state=state,
+        created_at=(
+            created_at
+            if isinstance(created_at, str) and created_at.strip()
+            else utc_now_iso()
+        ),
+        updated_at=(
+            updated_at
+            if isinstance(updated_at, str) and updated_at.strip()
+            else utc_now_iso()
+        ),
+        provider_job_ref=(
+            payload["provider_job_ref"].strip()
+            if isinstance(payload.get("provider_job_ref"), str)
+            and payload["provider_job_ref"].strip()
+            else None
+        ),
+        progress=(
+            float(payload["progress"])
+            if isinstance(payload.get("progress"), (int, float))
+            else None
+        ),
+        message=payload.get("message")
+        if isinstance(payload.get("message"), str)
+        else None,
+        error=payload.get("error") if isinstance(payload.get("error"), str) else None,
+        constraints=(
+            dict(payload["constraints"])
+            if isinstance(payload.get("constraints"), dict)
+            else {}
+        ),
+        options=(
+            dict(payload["options"]) if isinstance(payload.get("options"), dict) else {}
+        ),
+        input_zip_path=payload.get("input_zip_path")
+        if isinstance(payload.get("input_zip_path"), str)
+        else None,
+        work_dir=payload.get("work_dir")
+        if isinstance(payload.get("work_dir"), str)
+        else None,
+        layout_path=payload.get("layout_path")
+        if isinstance(payload.get("layout_path"), str)
+        else None,
+        selected_candidate_id=payload.get("selected_candidate_id")
+        if isinstance(payload.get("selected_candidate_id"), str)
+        else None,
+        applied_candidate_id=payload.get("applied_candidate_id")
+        if isinstance(payload.get("applied_candidate_id"), str)
+        else None,
+        applied_layout_path=payload.get("applied_layout_path")
+        if isinstance(payload.get("applied_layout_path"), str)
+        else None,
+        backup_layout_path=payload.get("backup_layout_path")
+        if isinstance(payload.get("backup_layout_path"), str)
+        else None,
+        candidates=_dedupe_candidates(candidates),
+    )
 
 
 _AUTOLAYOUT_SERVICE = AutolayoutService()

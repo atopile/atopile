@@ -59,6 +59,33 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         typical_output="matches, total",
         keywords=["search", "find", "grep", "look for", "where is"],
     ),
+    "web_search": ToolDirectoryItem(
+        name="web_search",
+        category="research",
+        purpose="Search the public web using Exa.",
+        tooltip=(
+            "Use web search for current external facts not present in project files."
+        ),
+        inputs=[
+            "query",
+            "num_results",
+            "search_type",
+            "include_domains",
+            "exclude_domains",
+            "include_text",
+        ],
+        typical_output="query, returned_results, results",
+        keywords=[
+            "web search",
+            "search web",
+            "internet",
+            "latest",
+            "news",
+            "look up",
+            "external docs",
+            "release notes",
+        ],
+    ),
     "examples_list": ToolDirectoryItem(
         name="examples_list",
         category="examples",
@@ -354,7 +381,8 @@ _TOOL_DIRECTORY: dict[str, ToolDirectoryItem] = {
         tooltip=(
             "Fetch candidate, apply to layout file, archive an iteration copy "
             "under layouts/autolayout_iterations, and report downloaded provider "
-            "artifacts (JSON/SES/DSN when available)."
+            "artifacts (JSON/SES/DSN when available). If the job is still running, "
+            "it returns a check-back hint instead of applying early."
         ),
         inputs=["job_id", "candidate_id", "archive_iteration"],
         typical_output=(
@@ -694,6 +722,19 @@ def suggest_tools(
 
         if "build" in search_blob and str(item.get("category")) == "build":
             score += 0.7
+        web_terms = (
+            "web",
+            "internet",
+            "latest",
+            "news",
+            "look up",
+            "external",
+            "recent",
+            "what changed",
+            "release notes",
+        )
+        if any(term in search_blob for term in web_terms) and name == "web_search":
+            score += 1.7
         physical_part_terms = (
             "lcsc",
             "jlc",
@@ -1032,6 +1073,14 @@ def _summarize_result(name: str, ok: bool, result: dict[str, Any]) -> str:
         if isinstance(target, str) and target:
             return f"board intent updated for {target}"
         return "board intent updated"
+    if name == "web_search":
+        count = result.get("returned_results")
+        query = result.get("query")
+        if isinstance(count, int):
+            if isinstance(query, str) and query.strip():
+                return f"{count} web results for '{_trim(query.strip(), 30)}'"
+            return f"{count} web results"
+        return "web search complete"
     if name == "layout_get_component_position":
         if bool(result.get("found", False)):
             component = result.get("component")
@@ -1113,6 +1162,20 @@ def _infer_prefilled_args(
             query = find_for.group(1).strip().strip(".")
             if query:
                 return {"query": query}
+
+    if tool_name == "web_search":
+        quoted = re.search(r"['\"]([^'\"]+)['\"]", text)
+        if quoted:
+            return {"query": quoted.group(1), "num_results": 8, "search_type": "auto"}
+        cleaned = re.sub(
+            r"\b(web|internet|latest|news|look up|lookup|search|external)\b",
+            " ",
+            lower,
+        )
+        query = " ".join(cleaned.split()).strip().strip(".")
+        if query:
+            return {"query": query, "num_results": 8, "search_type": "auto"}
+        return {"query": "atopile latest updates", "num_results": 8, "search_type": "auto"}
 
     if tool_name == "examples_list":
         return {"limit": 20}

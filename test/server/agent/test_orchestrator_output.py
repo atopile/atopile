@@ -57,6 +57,9 @@ def test_prompts_enforce_abstraction_first_hardware_authoring() -> None:
     assert "Resistor" in _SYSTEM_PROMPT
     assert "Capacitor" in _SYSTEM_PROMPT
     assert "manual netlist" in _SYSTEM_PROMPT
+    assert "place critical connectors/components manually" in _SYSTEM_PROMPT
+    assert "awaiting_selection" in _SYSTEM_PROMPT
+    assert "completed" in _SYSTEM_PROMPT
     assert "module/interface-oriented architecture" in _MANAGER_PLANNER_PROMPT
 
 
@@ -147,8 +150,7 @@ def test_extract_retry_after_delay_from_message_text() -> None:
         body={
             "error": {
                 "message": (
-                    "Rate limit reached. Please try again in 578ms. "
-                    "Visit dashboard."
+                    "Rate limit reached. Please try again in 578ms. Visit dashboard."
                 ),
                 "code": "rate_limit_exceeded",
             }
@@ -458,10 +460,7 @@ def test_run_turn_duo_mode_manager_direct_response_skips_worker(
         )
     )
 
-    assert (
-        result.text
-        == "Here is the quick answer without engineering handoff."
-    )
+    assert result.text == "Here is the quick answer without engineering handoff."
     assert result.tool_traces == []
     assert result.model == orchestrator.manager_model
     assert any(message.get("kind") == "decision" for message in emitted)

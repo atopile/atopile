@@ -54,6 +54,8 @@ Rules:
   library modules, interfaces, and traits.
 - Use examples_list/examples_search/examples_read_ato for curated reference
   `.ato` examples when authoring or explaining DSL patterns.
+- Use web_search for external/current web facts (vendor docs, standards, news,
+  release changes) when project files do not contain the answer.
 - Use datasheet_read when a component datasheet is needed; it attaches a PDF
   file for native model reading. Prefer lcsc_id to resolve via project graph.
 - Use project_list_modules and project_module_children for quick structure
@@ -69,14 +71,22 @@ Rules:
 - If asked to generate manufacturing outputs, call manufacturing_generate
   first, then track with build_logs_search, then inspect with
   manufacturing_summary.
-- For PCB placement/routing automation, use autolayout_run (background), then
-  autolayout_status to monitor candidates, then autolayout_fetch_to_layout to
-  apply/archive selected results under layouts/.
+- For PCB layout automation, follow this sequence:
+  (1) place critical connectors/components manually with
+  layout_set_component_position, (2) review with
+  autolayout_request_screenshot and iterate until placement is approved,
+  (3) run autolayout_run for placement, (4) monitor with autolayout_status and
+  only call autolayout_fetch_to_layout once state is awaiting_selection or
+  completed, (5) review screenshots again, then (6) run autolayout_run for
+  routing and repeat status->fetch->review.
 - If asked to control ground pours/planes/stackup assumptions, call
   autolayout_configure_board_intent before running placement/routing.
 - Use periodic check-ins for active autolayout jobs (autolayout_status with
   wait_seconds/poll_interval_seconds). If quality is not good enough, resume by
   calling autolayout_run with resume_board_id and additional timeout.
+- Treat autolayout_fetch_to_layout as apply-safe only when the job is ready.
+  If it reports queued/running, wait the suggested seconds and check status
+  again before retrying fetch/apply.
 - Time-budget heuristic: simple boards (<=50 components) start around 2-4 min,
   medium (50-100) around 10-15 min, larger boards often 20+ min with iterative
   resume runs.
@@ -142,6 +152,9 @@ Rules:
 - Always use delegate_worker for design/build/layout requests, part/package
   selection (LCSC/package lookups), BOM/procurement decisions, and any request
   that asks to run, edit, install, verify, or generate project artifacts.
+- For layout/autolayout requests, structure the brief as staged flow:
+  manual critical connector placement + screenshot review first, then
+  autoplacement, screenshot review, then autorouting.
 - For delegated hardware design tasks, the worker brief should explicitly
   request module/interface-oriented architecture and generic constrained
   passives rather than a flat pin-by-pin netlist style.
@@ -191,13 +204,21 @@ def _build_session_primer(
         "- stdlib: use stdlib_list and stdlib_get_item for module/interface lookup.\n"
         "- examples: use examples_list/examples_search/examples_read_ato for\n"
         "  curated reference `.ato` code patterns.\n"
+        "- web research: use web_search for external/current facts when the\n"
+        "  answer is not available in the project files.\n"
         "- reports: for BOM/parts lists use report_bom; for computed parameters\n"
         "  and constraints use report_variables.\n"
         "- manufacturing: use manufacturing_generate to create artifacts, then\n"
         "  build_logs_search to track, then manufacturing_summary to inspect.\n"
-        "- pcb auto layout: use autolayout_run for placement/routing, then\n"
-        "  autolayout_status to monitor, then autolayout_fetch_to_layout to\n"
-        "  apply + archive board iterations.\n"
+        "- pcb layout flow: manually place critical connectors/components first,\n"
+        "  review with autolayout_request_screenshot until approved, then run\n"
+        "  autolayout_run for placement.\n"
+        "- placement/routing apply safety: monitor with autolayout_status and\n"
+        "  call autolayout_fetch_to_layout only when state is\n"
+        "  awaiting_selection/completed; if fetch says queued/running, wait the\n"
+        "  suggested seconds and check status again.\n"
+        "- after placement fetch: review with screenshots, then run\n"
+        "  autolayout_run for routing and repeat status->fetch->review.\n"
         "- planes/stackup: use autolayout_configure_board_intent to encode\n"
         "  ground pour and stackup assumptions in ato.yaml before routing.\n"
         "- time-budget heuristic: <=50 components ~2-4 minutes, 50-100 ~10-15\n"
@@ -306,9 +327,10 @@ class AgentOrchestrator:
             "ATOPILE_AGENT_MANAGER_MODEL",
             "gpt-5.2-chat-latest",
         )
+        # Single-agent is the default runtime mode; duo remains opt-in.
         self.enable_duo_agents = os.getenv(
-            "ATOPILE_AGENT_ENABLE_DUO", "1"
-        ).strip().lower() not in {"0", "false", "no"}
+            "ATOPILE_AGENT_ENABLE_DUO", "0"
+        ).strip().lower() in {"1", "true", "yes", "on"}
         self.manager_refine_rounds = int(
             os.getenv("ATOPILE_AGENT_MANAGER_REFINE_ROUNDS", "0")
         )
@@ -326,7 +348,9 @@ class AgentOrchestrator:
         self.worker_loop_guard_max_hits = int(
             os.getenv("ATOPILE_AGENT_WORKER_LOOP_GUARD_MAX_HITS", "3")
         )
-        self.worker_loop_guard_max_hits = max(1, min(self.worker_loop_guard_max_hits, 8))
+        self.worker_loop_guard_max_hits = max(
+            1, min(self.worker_loop_guard_max_hits, 8)
+        )
         self._client: AsyncOpenAI | None = None
 
     async def run_turn(
@@ -1987,7 +2011,9 @@ def trim_single_line(value: str, max_chars: int) -> str:
     return f"{compact[: max_chars - 1]}..."
 
 
-def _summarize_history_for_manager(history: list[dict[str, str]], limit: int = 8) -> str:
+def _summarize_history_for_manager(
+    history: list[dict[str, str]], limit: int = 8
+) -> str:
     if not history:
         return "- none"
     lines: list[str] = []
@@ -2054,10 +2080,7 @@ def _summarize_tool_traces_for_manager(
             detail = trim_single_line(message, 120)
         elif isinstance(error, str) and error.strip():
             detail = trim_single_line(error, 120)
-        lines.append(
-            f"- {trace.name} [{status}]"
-            + (f": {detail}" if detail else "")
-        )
+        lines.append(f"- {trace.name} [{status}]" + (f": {detail}" if detail else ""))
     if len(traces) > limit:
         lines.append(f"- ... {len(traces) - limit} more tool traces")
     return "\n".join(lines)
@@ -2132,6 +2155,7 @@ def _worker_discovery_tool_names() -> set[str]:
         "examples_list",
         "examples_search",
         "examples_read_ato",
+        "web_search",
         "parts_search",
         "packages_search",
         "build_logs_search",
