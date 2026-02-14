@@ -19,6 +19,7 @@ from atopile.logging import get_logger
 from atopile.logging_utils import BuildPrinter
 from atopile.model.build_queue import BuildQueue
 from atopile.telemetry import capture
+from faebryk.libs.package.dist import DistLoadError, DistValidationError
 from faebryk.libs.package.meta import PackageModifiedError
 
 logger = get_logger(__name__)
@@ -416,6 +417,10 @@ def build(
                             f"Dependency {dep.identifier} already exists at "
                             f"{dep.target_path}"
                         )
+                    except (DistValidationError, DistLoadError) as e:
+                        from atopile.errors import UserException
+
+                        raise UserException(str(e), title="Package Error") from e
         except PackageModifiedError as e:
             logger.error(str(e))
             raise typer.Exit(1)
@@ -471,6 +476,10 @@ def build(
     except PackageModifiedError as e:
         logger.error(str(e))
         raise typer.Exit(1)
+    except (DistValidationError, DistLoadError) as e:
+        from atopile.errors import UserException
+
+        raise UserException(str(e), title="Package Error") from e
 
     if open_layout is not None:
         config.project.open_layout_on_build = open_layout

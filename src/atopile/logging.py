@@ -27,7 +27,6 @@ from typing import Any
 
 from rich.console import Console, ConsoleRenderable
 from rich.logging import RichHandler
-from rich.markdown import Markdown
 from rich.text import Text
 from rich.traceback import Traceback
 
@@ -46,6 +45,7 @@ from atopile.logging_utils import (
     _stdout_console,
     error_console,
     output_lock,
+    safe_markdown,
 )
 
 # Suppress noisy third-party loggers
@@ -978,7 +978,7 @@ class LogHandler(RichHandler):
         use_markdown = getattr(record, "markdown", False)
         use_markup = getattr(record, "markup", self.markup)
         if use_markdown:
-            return Markdown(message)
+            return safe_markdown(message, self.console)
         msg_text = Text.from_markup(message) if use_markup else Text(message)
         if hl := getattr(record, "highlighter", self.highlighter):
             msg_text = hl(msg_text)

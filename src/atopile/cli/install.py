@@ -14,6 +14,7 @@ import typer
 from atopile import errors
 from atopile.logging import get_logger
 from atopile.telemetry import capture
+from faebryk.libs.package.dist import DistLoadError, DistValidationError
 
 logger = get_logger(__name__)
 
@@ -124,6 +125,8 @@ def sync(
 
     except PackageModifiedError as e:
         raise errors.UserException(str(e)) from e
+    except (DistValidationError, DistLoadError) as e:
+        raise errors.UserException(str(e), title="Package Error") from e
     except (
         api.Errors.PackageNotFoundError,
         api.Errors.ReleaseNotFoundError,
@@ -173,6 +176,8 @@ def add(
         deps.add_dependencies(
             *[DependencySpec.from_str(p) for p in package], upgrade=upgrade
         )
+    except (DistValidationError, DistLoadError) as e:
+        raise errors.UserException(str(e), title="Package Error") from e
     except (
         api.Errors.PackageNotFoundError,
         api.Errors.ReleaseNotFoundError,
