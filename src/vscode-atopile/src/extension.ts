@@ -43,6 +43,41 @@ function _setupLogging(context: vscode.ExtensionContext) {
     return outputChannel;
 }
 
+function _registerDevStatusButtons(context: vscode.ExtensionContext): void {
+    const isDevUiEnabled = process.env.ATOPILE_EXTENSION_DEV_UI === '1';
+    if (!isDevUiEnabled) {
+        return;
+    }
+
+    const reloadWebviewsCmd = vscode.commands.registerCommand('atopile.dev.reloadWebviews', async () => {
+        await vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
+    });
+    const restartExtHostCmd = vscode.commands.registerCommand('atopile.dev.restartExtensionHost', async () => {
+        await vscode.commands.executeCommand('workbench.action.restartExtensionHost');
+    });
+
+    const reloadWebviewsItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -100);
+    reloadWebviewsItem.text = '$(refresh)$(window)';
+    reloadWebviewsItem.tooltip = 'Reload Webviews';
+    reloadWebviewsItem.command = 'atopile.dev.reloadWebviews';
+    reloadWebviewsItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+    reloadWebviewsItem.show();
+
+    const restartExtHostItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -101);
+    restartExtHostItem.text = '$(refresh)$(tools)';
+    restartExtHostItem.tooltip = 'Restart Extension Host';
+    restartExtHostItem.command = 'atopile.dev.restartExtensionHost';
+    restartExtHostItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+    restartExtHostItem.show();
+
+    context.subscriptions.push(
+        reloadWebviewsCmd,
+        restartExtHostCmd,
+        reloadWebviewsItem,
+        restartExtHostItem,
+    );
+}
+
 class atopileUriHandler implements vscode.UriHandler {
     handleUri(uri: vscode.Uri): vscode.ProviderResult<void> {
         traceInfo(`handleUri: ${uri.toString()}`);
@@ -91,6 +126,7 @@ async function handleConfigUpdate(event: vscode.ConfigurationChangeEvent) {
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const activationTime = Date.now();
     const outputChannel = _setupLogging(context);
+    _registerDevStatusButtons(context);
     initTimer();
     traceMilestone('activate()');
 

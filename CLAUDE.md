@@ -62,7 +62,7 @@ Skills are located in `.claude/skills/`.
 │ └── SKILL.md
 ├── sexp
 │ └── SKILL.md
-├── skills
+├── atopile-skills
 │ └── SKILL.md
 └── solver
 └── SKILL.md

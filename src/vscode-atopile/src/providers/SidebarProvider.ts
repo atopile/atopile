@@ -3,9 +3,6 @@
  *
  * This provider is minimal - it just opens the webview and loads the UI.
  * All state management and backend communication happens in the React app.
- *
- * In development: Loads from Vite dev server (http://localhost:5173)
- * In production: Loads from compiled assets
  */
 
 import * as vscode from 'vscode';
@@ -23,6 +20,7 @@ import { getBuildTarget, setProjectRoot, setSelectedTargets } from '../common/ta
 import { loadBuilds, getBuilds } from '../common/manifest';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 import { openKiCanvasPreview } from '../ui/kicanvas';
+import { openMigratePreview } from '../ui/migrate';
 import { getAtopileWorkspaceFolders } from '../common/vscodeapi';
 
 // Message types from the webview
@@ -170,6 +168,11 @@ interface WebviewReadyMessage {
   type: 'webviewReady';
 }
 
+interface OpenMigrateTabMessage {
+  type: 'openMigrateTab';
+  projectRoot: string;
+}
+
 type WebviewMessage =
   | OpenSignalsMessage
   | ConnectionStatusMessage
@@ -198,18 +201,8 @@ type WebviewMessage =
   | LoadDirectoryMessage
   | GetAtopileSettingsMessage
   | ThreeDModelBuildResultMessage
-  | WebviewReadyMessage;
-
-/**
- * Check if we're running in development mode.
- * Dev mode is detected by checking if the Vite manifest exists.
- */
-function isDevelopmentMode(extensionPath: string): boolean {
-  // In production, webviews are in resources/webviews/
-  // In development, we use the Vite dev server
-  const prodPath = path.join(extensionPath, 'resources', 'webviews', 'sidebar.js');
-  return !fs.existsSync(prodPath);
-}
+  | WebviewReadyMessage
+  | OpenMigrateTabMessage;
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   // Must match the view ID in package.json "views" section
@@ -223,7 +216,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   private _view?: vscode.WebviewView;
   private _disposables: vscode.Disposable[] = [];
-  private _lastMode: 'dev' | 'prod' | null = null;
   private _hasHtml = false;
   private _lastWorkspaceRoot: string | null = null;
   private _lastApiUrl: string | null = null;
@@ -346,27 +338,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     const extensionPath = this._extensionUri.fsPath;
-    const isDev = isDevelopmentMode(extensionPath);
-    const mode: 'dev' | 'prod' = isDev ? 'dev' : 'prod';
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
 
     // Port changes are always reflected in apiUrl/wsUrl (see backendServer._setPort)
-    if (this._hasHtml && this._lastMode === mode && this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl) {
+    if (this._hasHtml && this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl) {
       return;
     }
 
     this._view.webview.options = createWebviewOptions({
-      isDev,
       extensionPath,
       port: backendServer.port,
       prodLocalResourceRoots: SidebarProvider.PROD_LOCAL_RESOURCE_ROOTS,
     });
-    this._view.webview.html = isDev
-      ? this._getDevHtml()
-      : this._getProdHtml(this._view.webview);
+    this._view.webview.html = this._getProdHtml(this._view.webview);
     this._hasHtml = true;
-    this._lastMode = mode;
     this._lastApiUrl = apiUrl;
     this._lastWsUrl = wsUrl;
   }
@@ -704,6 +690,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         // Handle 3D model build result from webview
         traceInfo(`[SidebarProvider] Received threeDModelBuildResult: success=${message.success}, error="${message.error}"`);
         handleThreeDModelBuildResult(message.success, message.error);
+        break;
+      case 'openMigrateTab':
+        traceInfo(`[SidebarProvider] Opening migrate tab for: ${message.projectRoot}`);
+        openMigratePreview(this._extensionUri, message.projectRoot);
         break;
       default:
         traceInfo(`[SidebarProvider] Unknown message type: ${(message as Record<string, unknown>).type}`);
@@ -1228,81 +1218,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Development HTML - loads from Vite dev server.
-   * The React app connects directly to the Python backend.
-   * Workspace folders are passed via URL query params since iframe can't access parent window.
-   */
-  private _getDevHtml(): string {
-    const viteDevServer = 'http://localhost:5173';
-    const backendUrl = backendServer.apiUrl;
-    const wsUrl = backendServer.wsUrl;
-    const wsOrigin = getWsOrigin(wsUrl);
-    const workspaceRoot = this._getWorkspaceRootSync();
-
-    const workspaceParam = workspaceRoot
-      ? `?workspace=${encodeURIComponent(workspaceRoot)}`
-      : '';
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="
-    default-src 'none';
-    frame-src ${viteDevServer};
-    style-src 'unsafe-inline';
-    script-src 'unsafe-inline';
-    img-src https: http: data:;
-    connect-src ${viteDevServer} ${backendUrl} ${wsOrigin};
-  ">
-  <title>atopile</title>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-    }
-    iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-    }
-    .dev-banner {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      background: #ff6b35;
-      color: white;
-      padding: 2px 8px;
-      font-size: 10px;
-      text-align: center;
-      z-index: 1000;
-    }
-  </style>
-</head>
-<body>
-  <div class="dev-banner">DEV MODE - Loading from Vite</div>
-  <iframe src="${viteDevServer}/sidebar.html${workspaceParam}"></iframe>
-  <script>
-    window.addEventListener('message', (event) => {
-      const data = event && event.data;
-      if (!data || (data.type !== 'workspace-root' && data.type !== 'activeFile')) return;
-      const iframe = document.querySelector('iframe');
-      if (iframe && iframe.contentWindow) {
-        iframe.contentWindow.postMessage(data, '*');
-      }
-    });
-  </script>
-</body>
-</html>`;
-  }
-
-  /**
-   * Production HTML - loads from compiled assets.
+   * Get the webview HTML - loads from compiled assets.
    * The React app connects directly to the Python backend.
    */
   private _getProdHtml(webview: vscode.Webview): string {

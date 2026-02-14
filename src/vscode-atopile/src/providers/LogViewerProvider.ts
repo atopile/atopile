@@ -3,9 +3,6 @@
  *
  * This provider is minimal - it just opens the webview and loads the UI.
  * All state management and backend communication happens in the React app.
- *
- * In development: Loads from Vite dev server (http://localhost:5173)
- * In production: Loads from compiled assets
  */
 
 import * as vscode from 'vscode';
@@ -14,11 +11,6 @@ import * as fs from 'fs';
 import { backendServer } from '../common/backendServer';
 import { createWebviewOptions, getNonce, getWsOrigin } from '../common/webview';
 
-function isDevelopmentMode(extensionPath: string): boolean {
-  const prodPath = path.join(extensionPath, 'resources', 'webviews', 'logViewer.js');
-  return !fs.existsSync(prodPath);
-}
-
 export class LogViewerProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'atopile.logViewer';
   private static readonly PROD_LOCAL_RESOURCE_ROOTS = ['resources/webviews', 'webviews/dist'];
@@ -26,7 +18,6 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private _disposables: vscode.Disposable[] = [];
   private _hasHtml = false;
-  private _lastMode: 'dev' | 'prod' | null = null;
   private _lastApiUrl: string | null = null;
   private _lastWsUrl: string | null = null;
 
@@ -53,27 +44,21 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
     }
 
     const extensionPath = this._extensionUri.fsPath;
-    const isDev = isDevelopmentMode(extensionPath);
-    const mode: 'dev' | 'prod' = isDev ? 'dev' : 'prod';
     const apiUrl = backendServer.apiUrl;
     const wsUrl = backendServer.wsUrl;
 
     // Port changes are always reflected in apiUrl/wsUrl (see backendServer._setPort)
-    if (this._hasHtml && this._lastMode === mode && this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl) {
+    if (this._hasHtml && this._lastApiUrl === apiUrl && this._lastWsUrl === wsUrl) {
       return;
     }
 
     this._view.webview.options = createWebviewOptions({
-      isDev,
       extensionPath,
       port: backendServer.port,
       prodLocalResourceRoots: LogViewerProvider.PROD_LOCAL_RESOURCE_ROOTS,
     });
-    this._view.webview.html = isDev
-      ? this._getDevHtml()
-      : this._getProdHtml(this._view.webview);
+    this._view.webview.html = this._getProdHtml(this._view.webview);
     this._hasHtml = true;
-    this._lastMode = mode;
     this._lastApiUrl = apiUrl;
     this._lastWsUrl = wsUrl;
   }
@@ -88,64 +73,7 @@ export class LogViewerProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Development HTML - loads from Vite dev server.
-   */
-  private _getDevHtml(): string {
-    const viteDevServer = 'http://localhost:5173';
-    const apiUrl = backendServer.apiUrl;
-    const wsUrl = backendServer.wsUrl;
-    const wsOrigin = getWsOrigin(wsUrl);
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="
-    default-src 'none';
-    frame-src ${viteDevServer};
-    style-src 'unsafe-inline';
-    script-src 'unsafe-inline';
-    img-src https: http: data:;
-    connect-src ${viteDevServer} ${apiUrl} ${wsOrigin};
-  ">
-  <title>atopile Logs</title>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-    }
-    iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-    }
-    .dev-banner {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      background: #ff6b35;
-      color: white;
-      padding: 2px 8px;
-      font-size: 10px;
-      text-align: center;
-      z-index: 1000;
-    }
-  </style>
-</head>
-<body>
-  <div class="dev-banner">DEV MODE - Loading from Vite</div>
-  <iframe src="${viteDevServer}/logViewer.html"></iframe>
-</body>
-</html>`;
-  }
-
-  /**
-   * Production HTML - loads from compiled assets.
+   * Get the webview HTML - loads from compiled assets.
    */
   private _getProdHtml(webview: vscode.Webview): string {
     const extensionPath = this._extensionUri.fsPath;
