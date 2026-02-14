@@ -92,20 +92,35 @@ def run_zig_binary(
     return subprocess.run(cmd, capture_output=True)
 
 
+# Per-process cache: skip zig build cache check for already-compiled files
+_compiled: dict[Path, str | None] = {}  # zig_file -> compile_error or None
+
+
+def _ensure_compiled(zig_file: Path, release_mode: str = "ReleaseFast") -> Path:
+    """Compile once per file per process. Returns binary path."""
+    if zig_file not in _compiled:
+        test_bin, result = compile_zig_test_binary(zig_file, release_mode=release_mode)
+        if result.returncode != 0:
+            err = result.stderr.decode(errors="replace")
+            _compiled[zig_file] = err
+        else:
+            _compiled[zig_file] = None
+
+    err = _compiled[zig_file]
+    if err is not None:
+        print(err)
+        pytest.fail(f"Compile error for {zig_file.name}:\n{err}")
+
+    return ZIG_SRC_DIR / "zig-out" / "bin" / _test_binary_name(zig_file)
+
+
 def _test_zig_embedded(
     zig_test: tuple[Path, str], release_mode: str = "ReleaseFast"
 ) -> None:
-    """Compile (cached by zig) and run a single zig test."""
+    """Compile (once per file) and run a single zig test."""
     zig_file, test_name = zig_test
 
-    test_bin, compile_result = compile_zig_test_binary(
-        zig_file, release_mode=release_mode
-    )
-
-    if compile_result.returncode != 0:
-        stderr = compile_result.stderr.decode(errors="replace")
-        print(stderr)
-        pytest.fail(f"Compile error for {zig_file.name}:\n{stderr}")
+    test_bin = _ensure_compiled(zig_file, release_mode)
 
     qualified = _test_filter_name(zig_file, test_name)
     run_result = run_zig_binary(test_bin, args=["--test-filter", qualified])
