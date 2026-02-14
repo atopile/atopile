@@ -192,10 +192,26 @@ def main():
                 os.environ["COLUMNS"] = "120"
                 # Update the test name in the test logger for proper tracking
                 LoggerForTest.update_test_name(nodeid)
-                run_pytest_with_timeout(nodeid)
-
-                # Flush logs after each test to ensure they're written to DB
-                LoggerForTest.flush_all()
+                run_started = time.perf_counter()
+                try:
+                    run_pytest_with_timeout(nodeid)
+                finally:
+                    # Flush logs after each test to ensure they're written to DB
+                    LoggerForTest.flush_all()
+                    worker_runtime_s = time.perf_counter() - run_started
+                    try:
+                        client.post(
+                            f"{ORCHESTRATOR_URL}/event",
+                            content=EventRequest(
+                                type=EventType.WORKER_FINISH,
+                                pid=pid,
+                                timestamp=time.time(),
+                                nodeid=nodeid,
+                                worker_runtime_s=worker_runtime_s,
+                            ).model_dump_json(),
+                        )
+                    except Exception:
+                        pass
 
                 # always exit
                 # break

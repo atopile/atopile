@@ -45,9 +45,9 @@ from test.runner.git_info import (
     get_commit_info,
     get_platform_name,
 )
+from test.runner.orchestrator import get_scheduler_stats, unbind_affinity_for_pid
 from test.runner.orchestrator import router as orchestrator_router
 from test.runner.orchestrator import set_globals as set_orchestrator_globals
-from test.runner.orchestrator import unbind_affinity_for_pid
 from test.runner.report import (
     REPORT_HTML_PATH,
     TestAggregator,
@@ -669,7 +669,26 @@ def main(
     total_duration = (datetime.datetime.now() - aggregator.start_time).total_seconds()
     _print(f"Total time: {format_duration(total_duration)}")
 
+    scheduler_stats = get_scheduler_stats()
+    aggregator.set_scheduler_stats(scheduler_stats)
     report = aggregator.generate_reports(periodic=False)
+    summary = report.get("summary", {})
+    runtime_parallelism = float(summary.get("avg_parallelism_test_runtime", 0.0))
+    claim_parallelism = float(summary.get("avg_parallelism_claim_runtime", 0.0))
+    worker_parallelism = float(summary.get("avg_parallelism_worker_runtime", 0.0))
+    claim_overhead = float(summary.get("claim_runtime_overhead_s", 0.0))
+    worker_overhead = float(summary.get("worker_runtime_overhead_s", 0.0))
+    _print(
+        "Concurrency (avg workers busy): "
+        f"test={runtime_parallelism:.1f}, claim-window={claim_parallelism:.1f}, "
+        f"worker-window={worker_parallelism:.1f}"
+    )
+    _print(
+        "Overhead buckets: "
+        f"claim_pre_start={format_duration(claim_overhead)}, "
+        f"worker_post_finish={format_duration(worker_overhead)}"
+    )
+    _print(f"Scheduler stats: {scheduler_stats}")
 
     # Save as local baseline if requested
     if save_baseline_name:
