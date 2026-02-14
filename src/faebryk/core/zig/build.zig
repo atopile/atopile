@@ -4,6 +4,41 @@ const py_lib_name = "pyzig";
 
 const ModuleMap = std.StringArrayHashMap(*std.Build.Module);
 
+fn sanitizeCEnumValue(comptime E: type) E {
+    if (std.meta.stringToEnum(E, "full")) |value| return value;
+    if (std.meta.stringToEnum(E, "trap")) |value| return value;
+    if (std.meta.stringToEnum(E, "on")) |value| return value;
+    if (std.meta.stringToEnum(E, "true")) |value| return value;
+
+    const info = @typeInfo(E).@"enum";
+    inline for (info.fields) |field| {
+        comptime if (std.mem.eql(u8, field.name, "off")) continue;
+        comptime if (std.mem.eql(u8, field.name, "none")) continue;
+        comptime if (std.mem.eql(u8, field.name, "false")) continue;
+        return @field(E, field.name);
+    }
+    if (info.fields.len > 0) return @field(E, info.fields[0].name);
+
+    @compileError("Unsupported empty sanitize_c enum");
+}
+
+fn sanitizeCCompatValue(comptime T: type) T {
+    return switch (@typeInfo(T)) {
+        .optional => |opt| switch (@typeInfo(opt.child)) {
+            .bool => true,
+            .@"enum" => sanitizeCEnumValue(opt.child),
+            else => null,
+        },
+        .bool => true,
+        .@"enum" => sanitizeCEnumValue(T),
+        else => @compileError("Unsupported sanitize_c field type"),
+    };
+}
+
+fn setSanitizeCCompat(module: *std.Build.Module) void {
+    module.sanitize_c = sanitizeCCompatValue(@TypeOf(module.sanitize_c));
+}
+
 fn build_pyi(
     b: *std.Build,
     modules: ModuleMap,
@@ -288,7 +323,7 @@ pub fn build(b: *std.Build) void {
         test_comp.root_module.addImport("faebryk", faebryk_mod);
 
         // Match existing compile flags
-        test_comp.root_module.sanitize_c = .full;
+        setSanitizeCCompat(test_comp.root_module);
         test_comp.root_module.omit_frame_pointer = false;
         test_comp.root_module.strip = false;
         test_comp.linkLibC();
