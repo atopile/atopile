@@ -3,9 +3,12 @@ import re
 import shutil
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from atopile.cli.package import _PackageValidators
+from atopile.errors import UserBadParameterError
 from faebryk.libs.util import repo_root as _repo_root
 from faebryk.libs.util import run_live
 
@@ -46,3 +49,174 @@ def test_install_package(package: str, tmp_path: Path):
     combined = _strip_ansi(stdout + stderr)
     assert f"+ {package}@" in combined
     assert "Done!" in combined
+
+
+# ---------------------------------------------------------------------------
+# Tests for verify_unused_and_duplicate_imports
+# ---------------------------------------------------------------------------
+
+
+def _make_config(root: Path):
+    """Create a minimal mock config with config.project.paths.root = root."""
+    return SimpleNamespace(project=SimpleNamespace(paths=SimpleNamespace(root=root)))
+
+
+def _write_ato(root: Path, filename: str, content: str) -> Path:
+    f = root / filename
+    f.write_text(content, encoding="utf-8")
+    return f
+
+
+class TestVerifyUnusedAndDuplicateImports:
+    """Tests for _PackageValidators.verify_unused_and_duplicate_imports."""
+
+    def test_used_import_no_error(self, tmp_path: Path):
+        _write_ato(
+            tmp_path,
+            "test.ato",
+            "import Resistor\n\nmodule Test:\n    r = new Resistor\n",
+        )
+        config = _make_config(tmp_path)
+        _PackageValidators.verify_unused_and_duplicate_imports(config)
+
+    def test_unused_import(self, tmp_path: Path):
+        _write_ato(
+            tmp_path,
+            "test.ato",
+            "import Resistor\n\nmodule Test:\n    pass\n",
+        )
+        config = _make_config(tmp_path)
+        with pytest.raises(UserBadParameterError, match="Unused imports"):
+            _PackageValidators.verify_unused_and_duplicate_imports(config)
+
+    def test_duplicate_import(self, tmp_path: Path):
+        _write_ato(
+            tmp_path,
+            "test.ato",
+            "import Resistor\nimport Resistor\n\nmodule Test:\n    r = new Resistor\n",
+        )
+        config = _make_config(tmp_path)
+        with pytest.raises(UserBadParameterError, match="Duplicate imports"):
+            _PackageValidators.verify_unused_and_duplicate_imports(config)
+
+    def test_unused_and_duplicate_import(self, tmp_path: Path):
+        """Two identical imports with no other usage: the name count is 2
+        (one per import line) so it's only flagged as duplicate, not unused."""
+        _write_ato(
+            tmp_path,
+            "test.ato",
+            "import Resistor\nimport Resistor\n\nmodule Test:\n    pass\n",
+        )
+        config = _make_config(tmp_path)
+        with pytest.raises(UserBadParameterError, match="Duplicate imports"):
+            _PackageValidators.verify_unused_and_duplicate_imports(config)
+
+    def test_commented_import_ignored(self, tmp_path: Path):
+        """Imports in comments (# import Foo) should not be detected."""
+        _write_ato(
+            tmp_path,
+            "test.ato",
+            "# import UnusedModule\nimport Resistor\n\nmodule Test:\n    "
+            "r = new Resistor\n",
+        )
+        config = _make_config(tmp_path)
+        _PackageValidators.verify_unused_and_duplicate_imports(config)
+
+    def test_commented_from_import_ignored(self, tmp_path: Path):
+        """from-imports in comments should not be detected."""
+        _write_ato(
+            tmp_path,
+            "test.ato",
+            '# from "lib.ato" import UnusedModule\nimport Resistor\n\nmodule Test:\n'
+            "    r = new Resistor\n",
+        )
+        config = _make_config(tmp_path)
+        _PackageValidators.verify_unused_and_duplicate_imports(config)
+
+    def test_substring_not_counted_as_usage(self, tmp_path: Path):
+        """'Module' should not be considered used because 'ModuleExtended' exists."""
+        _write_ato(
+            tmp_path,
+            "test.ato",
+            "import Module\n\nmodule Test:\n    m = new ModuleExtended\n",
+        )
+        config = _make_config(tmp_path)
+        with pytest.raises(UserBadParameterError, match="Unused imports"):
+            _PackageValidators.verify_unused_and_duplicate_imports(config)
+
+    def test_superstring_not_counted_as_usage(self, tmp_path: Path):
+        """'ModuleExtended' should not be considered used because 'Module' exists."""
+        _write_ato(
+            tmp_path,
+            "test.ato",
+            "import ModuleExtended\n\nmodule Test:\n    m = new Module\n",
+        )
+        config = _make_config(tmp_path)
+        with pytest.raises(UserBadParameterError, match="Unused imports"):
+            _PackageValidators.verify_unused_and_duplicate_imports(config)
+
+    def test_multi_module_import_first_checked(self, tmp_path: Path):
+        """In 'import A, B', at least the first name (A) should be checked."""
+        _write_ato(
+            tmp_path,
+            "test.ato",
+            "import Resistor, Capacitor\n\nmodule Test:\n    pass\n",
+        )
+        config = _make_config(tmp_path)
+        with pytest.raises(UserBadParameterError, match="Unused imports"):
+            _PackageValidators.verify_unused_and_duplicate_imports(config)
+
+    def test_from_import_used_no_error(self, tmp_path: Path):
+        _write_ato(
+            tmp_path,
+            "test.ato",
+            'from "lib.ato" import Resistor\n\nmodule Test:\n    r = new Resistor\n',
+        )
+        config = _make_config(tmp_path)
+        _PackageValidators.verify_unused_and_duplicate_imports(config)
+
+    def test_from_import_unused(self, tmp_path: Path):
+        _write_ato(
+            tmp_path,
+            "test.ato",
+            'from "lib.ato" import Resistor\n\nmodule Test:\n    pass\n',
+        )
+        config = _make_config(tmp_path)
+        with pytest.raises(UserBadParameterError, match="Unused imports"):
+            _PackageValidators.verify_unused_and_duplicate_imports(config)
+
+    def test_from_import_duplicate(self, tmp_path: Path):
+        _write_ato(
+            tmp_path,
+            "test.ato",
+            'from "lib.ato" import Resistor\nfrom "lib.ato" import Resistor\n\nmodule '
+            "Test:\n    r = new Resistor\n",
+        )
+        config = _make_config(tmp_path)
+        with pytest.raises(UserBadParameterError, match="Duplicate imports"):
+            _PackageValidators.verify_unused_and_duplicate_imports(config)
+
+    def test_mixed_import_and_from_import(self, tmp_path: Path):
+        """Both import styles used together, all used — no error."""
+        _write_ato(
+            tmp_path,
+            "test.ato",
+            'import Resistor\nfrom "lib.ato" import Capacitor\n\nmodule Test:\n    '
+            "r = new Resistor\n    c = new Capacitor\n",
+        )
+        config = _make_config(tmp_path)
+        _PackageValidators.verify_unused_and_duplicate_imports(config)
+
+    def test_no_ato_files(self, tmp_path: Path):
+        """No .ato files in the project — should pass without error."""
+        config = _make_config(tmp_path)
+        _PackageValidators.verify_unused_and_duplicate_imports(config)
+
+    def test_no_imports_no_error(self, tmp_path: Path):
+        _write_ato(
+            tmp_path,
+            "test.ato",
+            "module Test:\n    pass\n",
+        )
+        config = _make_config(tmp_path)
+        _PackageValidators.verify_unused_and_duplicate_imports(config)

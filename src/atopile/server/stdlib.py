@@ -547,10 +547,16 @@ def get_standard_library(
             force_refresh = True  # Force refresh when depth changes
 
     if _library_cache is None or force_refresh:
-        log.info("Loading standard library data...")
+        import time
+
         _stdlib_typegraph_cache = None
+        t0 = time.perf_counter()
         _library_cache = introspect_library()
-        log.info(f"Loaded {len(_library_cache)} standard library items")
+        log.info(
+            "[standard library] loaded %d items in %.1fms",
+            len(_library_cache),
+            (time.perf_counter() - t0) * 1000,
+        )
 
     return _library_cache
 

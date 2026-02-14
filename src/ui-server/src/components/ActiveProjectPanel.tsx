@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { FolderOpen, Play, Layers, Cuboid, Layout, Plus, ChevronDown, Check, X, Factory, AlertCircle, Target, Loader2 } from 'lucide-react'
 import type { Project, BuildTarget } from '../types/build'
 import { postMessage } from '../api/vscodeApi'
-import { sendAction } from '../api/websocket'
 import { useStore } from '../store'
 import './ActiveProjectPanel.css'
 
@@ -71,11 +70,13 @@ function fuzzyMatch(text: string, query: string): boolean {
 function ProjectSelector({
   projects,
   activeProject,
+  activeProjectName,
   onSelectProject,
   onCreateProject,
 }: {
   projects: Project[]
   activeProject: Project | null
+  activeProjectName: string | null
   onSelectProject: (projectRoot: string | null) => void
   onCreateProject?: () => void
 }) {
@@ -162,7 +163,8 @@ function ProjectSelector({
   }
 
   // Display value: show search query when typing, otherwise show active project
-  const displayValue = isOpen ? searchQuery : (activeProject?.name || '')
+  const displayName = activeProject?.name || activeProjectName || ''
+  const displayValue = isOpen ? searchQuery : displayName
 
   return (
     <div className="project-combobox" ref={comboboxRef}>
@@ -177,7 +179,7 @@ function ProjectSelector({
           ref={inputRef}
           type="text"
           className="combobox-input"
-          placeholder={activeProject ? activeProject.name : 'Select project...'}
+          placeholder={displayName || 'Select project...'}
           value={displayValue}
           onChange={handleInputChange}
           onFocus={handleInputFocus}
@@ -313,7 +315,7 @@ function TargetSelector({
     setIsOpen(false)
   }
 
-  if (targets.length === 0) {
+  if (targets.length === 0 && !activeTargetName) {
     return (
       <div className="target-selector-empty">
         <span>No builds defined</span>
@@ -333,7 +335,7 @@ function TargetSelector({
         aria-expanded={isOpen}
       >
         <Target size={14} className="target-icon" />
-        <span className="target-trigger-name">{activeTarget?.name || 'Select build'}</span>
+        <span className="target-trigger-name">{activeTarget?.name || activeTargetName || 'Select build'}</span>
         <span className="target-combobox-chevron">
           <ChevronDown size={14} className={`chevron ${isOpen ? 'open' : ''}`} />
         </span>
@@ -857,10 +859,12 @@ export function ActiveProjectPanel({
   const [createProjectError, setCreateProjectError] = useState<string | null>(null)
   const [createTargetError, setCreateTargetError] = useState<string | null>(null)
 
+  // Persisted project name for instant display before project discovery
+  const selectedProjectName = useStore((state) => state.selectedProjectName)
+
   // Migration state from store
   const migratingProjectRoots = useStore((state) => state.migratingProjectRoots)
   const migrationErrors = useStore((state) => state.migrationErrors)
-  const addMigratingProject = useStore((state) => state.addMigratingProject)
   const setMigrationError = useStore((state) => state.setMigrationError)
 
   // Compute isMigrating based on selected project
@@ -904,16 +908,13 @@ export function ActiveProjectPanel({
 
   const activeProject = useMemo(() => {
     if (!projects || projects.length === 0) return null
-    const match = selectedProjectRoot
-      ? projects.find((p) => p.root === selectedProjectRoot)
-      : null
-    return match || projects[0] || null
+    if (!selectedProjectRoot) return null
+    return projects.find((p) => p.root === selectedProjectRoot) ?? null
   }, [projects, selectedProjectRoot])
 
   const activeTargetName = useMemo(() => {
-    if (!activeProject) return null
     if (selectedTargetName) return selectedTargetName
-    return activeProject.targets?.[0]?.name ?? null
+    return activeProject?.targets?.[0]?.name ?? null
   }, [activeProject, selectedTargetName])
 
   const handleCreateTarget = useCallback(async (data: NewTargetData) => {
@@ -932,17 +933,6 @@ export function ActiveProjectPanel({
       setIsCreatingTarget(false)
     }
   }, [onCreateTarget, activeProject])
-
-  useEffect(() => {
-    if (!activeProject) return
-    if (!selectedProjectRoot) {
-      onSelectProject(activeProject.root)
-      return
-    }
-    if (!selectedTargetName && activeTargetName) {
-      onSelectTarget(activeProject.root, activeTargetName)
-    }
-  }, [activeProject, selectedProjectRoot, selectedTargetName, activeTargetName, onSelectProject, onSelectTarget])
 
   // Tooltip text based on state
   const getOutputTooltip = (action: string) => {
@@ -988,6 +978,7 @@ export function ActiveProjectPanel({
           <ProjectSelector
             projects={projects}
             activeProject={activeProject}
+            activeProjectName={selectedProjectName}
             onSelectProject={onSelectProject}
             onCreateProject={onCreateProject ? () => setShowNewProjectForm(true) : undefined}
           />
@@ -1035,31 +1026,33 @@ export function ActiveProjectPanel({
 
         {/* Action buttons - single row: Build | KiCad | 3D | Layout | Manufacture */}
         <div className="build-actions-row">
-          <button
-            className={`action-btn primary${activeProject?.needsMigration ? ' needs-migration' : ''}`}
-            onClick={() => {
-              if (!activeProject) return
-              if (activeProject.needsMigration && !isMigrating) {
-                // Clear any previous error and start migration
-                if (migrationError) {
-                  setMigrationError(activeProject.root, null)
-                }
-                // Add to migrating list and fire-and-forget
-                addMigratingProject(activeProject.root)
-                sendAction('migrateProject', {
-                  projectRoot: activeProject.root,
-                })
-              } else if (!isMigrating) {
-                if (!activeTargetName) return
+          {activeProject?.needsMigration ? (
+            <button
+              className="action-btn primary"
+              onClick={() => {
+                if (!activeProject) return
+                postMessage({ type: 'openMigrateTab', projectRoot: activeProject.root })
+              }}
+              disabled={!activeProject || isMigrating}
+              title="Your project needs migration. Click to open the migration helper."
+            >
+              {isMigrating ? <Loader2 size={12} className="spin" /> : <AlertCircle size={12} />}
+              <span className="action-label">{isMigrating ? 'Migrating...' : 'Migrate Help'}</span>
+            </button>
+          ) : (
+            <button
+              className="action-btn primary"
+              onClick={() => {
+                if (!activeProject || !activeTargetName || isMigrating) return
                 onBuildTarget(activeProject.root, activeTargetName)
-              }
-            }}
-            disabled={!activeProject || isMigrating || (!activeProject.needsMigration && !activeTargetName)}
-            title={isMigrating ? 'Migrating...' : (activeProject?.needsMigration ? 'Your project and dependencies are incompatible with this version of atopile. Use this button to download the latest compatible dependencies. You might need to manually make some minor changes in your project afterwards.' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first'))}
-          >
-            {isMigrating ? <Loader2 size={12} className="spin" /> : <Play size={12} />}
-            <span className="action-label">{isMigrating ? 'Migrating...' : (activeProject?.needsMigration ? 'Migrate' : 'Build')}</span>
-          </button>
+              }}
+              disabled={!activeProject || isMigrating || !activeTargetName}
+              title={isMigrating ? 'Migrating...' : (activeTargetName ? `Build ${activeTargetName}` : 'Select a build first')}
+            >
+              {isMigrating ? <Loader2 size={12} className="spin" /> : <Play size={12} />}
+              <span className="action-label">{isMigrating ? 'Migrating...' : 'Build'}</span>
+            </button>
+          )}
 
           <div className="action-divider" />
 

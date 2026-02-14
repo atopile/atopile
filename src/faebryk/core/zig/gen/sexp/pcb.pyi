@@ -512,12 +512,18 @@ class Curve:
 class Text:
     text: str
     at: Xyr
-    layer: str
+    layer: TextLayer
     uuid: str | None
     effects: Effects
 
     def __init__(
-        self, *, text: str, at: Xyr, layer: str, uuid: str | None, effects: Effects
+        self,
+        *,
+        text: str,
+        at: Xyr,
+        layer: TextLayer,
+        uuid: str | None,
+        effects: Effects,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod

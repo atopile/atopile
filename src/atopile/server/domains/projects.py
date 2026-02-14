@@ -3,22 +3,32 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+import yaml
 
 from atopile import config
 from atopile.dataclasses import (
     AddBuildTargetRequest,
     AddBuildTargetResponse,
     AppContext,
+    Build,
+    BuildStatus,
+    BuildTarget,
+    BuildTargetStatus,
     CreateProjectRequest,
     CreateProjectResponse,
     DeleteBuildTargetRequest,
     DeleteBuildTargetResponse,
     DependenciesResponse,
     DependencyInfo,
+    ModuleDefinition,
     ModulesResponse,
+    Project,
     ProjectsResponse,
     RenameProjectRequest,
     RenameProjectResponse,
@@ -27,11 +37,513 @@ from atopile.dataclasses import (
     UpdateDependencyVersionRequest,
     UpdateDependencyVersionResponse,
 )
-from atopile.server.core import projects as core_projects
+from atopile.model import build_history
 from atopile.server.domains import packages as packages_domain
+from atopile.version import needs_migration
 from faebryk.libs.package.meta import get_package_state
 
 log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Low-level helpers (previously in core/projects.py)
+# ---------------------------------------------------------------------------
+
+
+def load_last_build_for_target(
+    project_root: Path, target_name: str
+) -> Optional[BuildTargetStatus]:
+    """Load the last build status for a target from build history database."""
+    try:
+        build: Optional[Build] = build_history.get_latest_build_for_target(
+            str(project_root), target_name
+        )
+
+        if not build:
+            return None
+
+        # Convert started_at timestamp to ISO format
+        if build.started_at:
+            timestamp = datetime.fromtimestamp(build.started_at).isoformat()
+        else:
+            timestamp = ""
+
+        status = build.status
+
+        # If status is "building" or "queued", the build was interrupted
+        # (server crashed/restarted while build was in progress)
+        # Treat as "failed" so UI doesn't show stale "building" status
+        if status in (BuildStatus.BUILDING, BuildStatus.QUEUED):
+            status = BuildStatus.FAILED
+
+        return BuildTargetStatus(
+            status=status,
+            timestamp=timestamp,
+            elapsed_seconds=build.elapsed_seconds,
+            warnings=build.warnings,
+            errors=build.errors,
+            stages=build.stages,
+            build_id=build.build_id,
+        )
+    except Exception as e:
+        log.debug(f"Failed to load build summary for {target_name}: {e}")
+        return None
+
+
+def extract_modules_from_file(
+    ato_file: Path, project_root: Path
+) -> list[ModuleDefinition]:
+    """
+    Extract all module/interface/component definitions from an .ato file.
+    """
+    from atopile.compiler.parse import parse_file
+    from atopile.compiler.parser.AtoParser import AtoParser
+
+    modules: list[ModuleDefinition] = []
+
+    try:
+        tree = parse_file(ato_file)
+    except Exception as e:
+        log.warning(f"Failed to parse {ato_file}: {e}")
+        return modules
+
+    try:
+        rel_path = ato_file.relative_to(project_root)
+    except ValueError:
+        rel_path = ato_file.name
+
+    def extract_blockdefs(ctx) -> None:
+        if ctx is None:
+            return
+
+        if isinstance(ctx, AtoParser.BlockdefContext):
+            try:
+                blocktype_ctx = ctx.blocktype()
+                if blocktype_ctx:
+                    if blocktype_ctx.MODULE():
+                        block_type = "module"
+                    elif blocktype_ctx.INTERFACE():
+                        block_type = "interface"
+                    elif blocktype_ctx.COMPONENT():
+                        block_type = "component"
+                    else:
+                        block_type = "unknown"
+                else:
+                    block_type = "unknown"
+
+                type_ref_ctx = ctx.type_reference()
+                if type_ref_ctx:
+                    name_ctx = type_ref_ctx.name()
+                    if name_ctx:
+                        name = name_ctx.getText()
+                    else:
+                        name = type_ref_ctx.getText()
+                else:
+                    name = "Unknown"
+
+                super_type = None
+                super_ctx = ctx.blockdef_super()
+                if super_ctx:
+                    super_type_ref = super_ctx.type_reference()
+                    if super_type_ref:
+                        super_type = super_type_ref.getText()
+
+                line = ctx.start.line if ctx.start else None
+                entry = f"{rel_path}:{name}"
+
+                modules.append(
+                    ModuleDefinition(
+                        name=name,
+                        type=block_type,
+                        file=str(rel_path),
+                        entry=entry,
+                        line=line,
+                        super_type=super_type,
+                    )
+                )
+            except Exception as e:
+                log.debug(f"Failed to extract blockdef: {e}")
+
+        if hasattr(ctx, "children") and ctx.children:
+            for child in ctx.children:
+                extract_blockdefs(child)
+
+    extract_blockdefs(tree)
+    return modules
+
+
+def discover_modules_in_project(project_root: Path) -> list[ModuleDefinition]:
+    """
+    Discover all module definitions in a project by scanning .ato files.
+    """
+    all_modules: list[ModuleDefinition] = []
+
+    for ato_file in project_root.rglob("*.ato"):
+        if "build" in ato_file.parts:
+            continue
+        if ".ato" in ato_file.parts:
+            continue
+
+        modules = extract_modules_from_file(ato_file, project_root)
+        all_modules.extend(modules)
+
+    return all_modules
+
+
+def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
+    """
+    Discover all ato projects in the given paths.
+    """
+    projects: list[Project] = []
+    seen_roots: set[str] = set()
+
+    # Directories that never contain projects — skip to avoid
+    # walking potentially huge trees (e.g. .ato/modules dependencies).
+    _SKIP_DIRS = {
+        ".ato",
+        ".git",
+        "build",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+    }
+
+    for root_path in paths:
+        if not root_path.exists():
+            log.warning(f"Path does not exist: {root_path}")
+            continue
+
+        if (root_path / "ato.yaml").exists():
+            ato_files = [root_path / "ato.yaml"]
+        else:
+            ato_files: list[Path] = []
+            for dirpath, dirnames, filenames in os.walk(root_path):
+                # Prune in-place so os.walk doesn't descend
+                dirnames[:] = [
+                    d
+                    for d in dirnames
+                    if d not in _SKIP_DIRS and not d.startswith("{{")
+                ]
+                if "ato.yaml" in filenames:
+                    ato_files.append(Path(dirpath) / "ato.yaml")
+                    # Don't descend into project subdirs — no nested projects
+                    dirnames.clear()
+
+        for ato_file in ato_files:
+            project_root = ato_file.parent
+            root_str = str(project_root)
+
+            if root_str in seen_roots:
+                continue
+            seen_roots.add(root_str)
+
+            try:
+                raw = ato_file.read_bytes()
+
+                # Fast pre-check: skip full YAML parse if no builds section
+                if b"builds:" not in raw and b"builds :" not in raw:
+                    continue
+
+                data = yaml.safe_load(raw)
+
+                if not data or "builds" not in data:
+                    continue
+
+                targets: list[BuildTarget] = []
+                for name, cfg in data.get("builds", {}).items():
+                    if isinstance(cfg, dict):
+                        targets.append(
+                            BuildTarget(
+                                name=name,
+                                entry=cfg.get("entry", ""),
+                                root=root_str,
+                            )
+                        )
+
+                if targets:
+                    try:
+                        rel_path = project_root.relative_to(root_path)
+                        if rel_path == Path("."):
+                            display_path = root_path.name
+                        else:
+                            display_path = f"{root_path.name}/{rel_path}"
+                    except ValueError:
+                        display_path = project_root.name
+
+                    projects.append(
+                        Project(
+                            root=root_str,
+                            name=project_root.name,
+                            display_path=display_path,
+                            targets=targets,
+                            needs_migration=needs_migration(
+                                data.get("requires-atopile")
+                            ),
+                        )
+                    )
+
+            except Exception as e:
+                log.warning(f"Failed to parse {ato_file}: {e}")
+                continue
+
+    projects.sort(key=lambda p: p.root.lower())
+    return projects
+
+
+def create_project(
+    parent_directory: Path, name: Optional[str] = None
+) -> tuple[Path, str]:
+    """
+    Create a new minimal atopile project.
+    """
+    from atopile import version
+
+    if not parent_directory.exists():
+        raise ValueError(f"Parent directory does not exist: {parent_directory}")
+    if not parent_directory.is_dir():
+        raise ValueError(f"Path is not a directory: {parent_directory}")
+
+    if name:
+        project_name = name
+    else:
+        base_name = "new-project"
+        project_name = base_name
+        counter = 2
+        while (parent_directory / project_name).exists():
+            project_name = f"{base_name}-{counter}"
+            counter += 1
+
+    project_dir = parent_directory / project_name
+    if project_dir.exists():
+        raise ValueError(f"Directory already exists: {project_dir}")
+
+    project_dir.mkdir(parents=True)
+    (project_dir / "layouts").mkdir()
+
+    try:
+        ato_version = version.clean_version(version.get_installed_atopile_version())
+    except Exception:
+        ato_version = "0.9.0"
+
+    ato_yaml_content = f"""requires-atopile: "^{ato_version}"
+
+paths:
+  src: ./
+  layout: ./layouts
+
+builds:
+  default:
+    entry: main.ato:App
+"""
+    (project_dir / "ato.yaml").write_text(ato_yaml_content)
+
+    main_ato_content = f'''"""{project_name} - A new atopile project"""
+
+module App:
+    pass
+'''
+    (project_dir / "main.ato").write_text(main_ato_content)
+
+    gitignore_content = """# Build outputs
+build/
+
+# Dependencies
+.ato/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+"""
+    (project_dir / ".gitignore").write_text(gitignore_content)
+
+    return project_dir, project_name
+
+
+def load_ato_yaml(project_root: Path) -> tuple[dict, Path]:
+    """Load and return ato.yaml data and path."""
+    ato_file = project_root / "ato.yaml"
+    if not ato_file.exists():
+        raise ValueError(f"ato.yaml not found in {project_root}")
+
+    with open(ato_file, "r") as f:
+        data = yaml.safe_load(f) or {}
+
+    return data, ato_file
+
+
+def save_ato_yaml(ato_file: Path, data: dict) -> None:
+    """Save ato.yaml preserving structure as much as possible."""
+    with open(ato_file, "w") as f:
+        yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+
+
+def add_build_target(project_root: Path, name: str, entry: str) -> BuildTarget:
+    """
+    Add a new build target to ato.yaml.
+
+    Raises ValueError if target already exists.
+    """
+    data, ato_file = load_ato_yaml(project_root)
+
+    if "builds" not in data:
+        data["builds"] = {}
+
+    if name in data["builds"]:
+        raise ValueError(f"Build target '{name}' already exists")
+
+    data["builds"][name] = {"entry": entry}
+    save_ato_yaml(ato_file, data)
+
+    return BuildTarget(name=name, entry=entry, root=str(project_root))
+
+
+def update_build_target(
+    project_root: Path,
+    old_name: str,
+    new_name: Optional[str] = None,
+    new_entry: Optional[str] = None,
+) -> BuildTarget:
+    """
+    Update a build target in ato.yaml.
+
+    Can rename the target and/or change its entry point.
+    Raises ValueError if target not found or new name already exists.
+    """
+    data, ato_file = load_ato_yaml(project_root)
+
+    if "builds" not in data or old_name not in data["builds"]:
+        raise ValueError(f"Build target '{old_name}' not found")
+
+    target_data = data["builds"][old_name]
+    if not isinstance(target_data, dict):
+        target_data = {"entry": target_data}
+
+    # Update entry if provided
+    if new_entry is not None:
+        target_data["entry"] = new_entry
+
+    # Handle rename
+    final_name = old_name
+    if new_name is not None and new_name != old_name:
+        if new_name in data["builds"]:
+            raise ValueError(f"Build target '{new_name}' already exists")
+
+        # Remove old key and add new one
+        del data["builds"][old_name]
+        final_name = new_name
+
+    data["builds"][final_name] = target_data
+    save_ato_yaml(ato_file, data)
+
+    # Load last build status for the target
+    last_build = load_last_build_for_target(project_root, final_name)
+
+    return BuildTarget(
+        name=final_name,
+        entry=target_data.get("entry", ""),
+        root=str(project_root),
+        last_build=last_build,
+    )
+
+
+def delete_build_target(project_root: Path, name: str) -> bool:
+    """
+    Delete a build target from ato.yaml.
+
+    Raises ValueError if target not found.
+    Returns True on success.
+    """
+    data, ato_file = load_ato_yaml(project_root)
+
+    if "builds" not in data or name not in data["builds"]:
+        raise ValueError(f"Build target '{name}' not found")
+
+    del data["builds"][name]
+    save_ato_yaml(ato_file, data)
+
+    return True
+
+
+def update_dependency_version(
+    project_root: Path, identifier: str, new_version: str
+) -> bool:
+    """
+    Update a dependency's version in ato.yaml.
+
+    The dependencies section in ato.yaml looks like:
+    dependencies:
+      - atopile/resistors@^1.0.0
+      - atopile/capacitors@^1.0.0
+
+    Or can be:
+    dependencies:
+      atopile/resistors: ^1.0.0
+      atopile/capacitors: ^1.0.0
+
+    Raises ValueError if dependency not found.
+    Returns True on success.
+    """
+    data, ato_file = load_ato_yaml(project_root)
+
+    if "dependencies" not in data:
+        raise ValueError(f"No dependencies section in {project_root}")
+
+    deps = data["dependencies"]
+
+    # Handle list format: ["atopile/resistors@^1.0.0", ...] or
+    # [{type: registry, identifier: ..., release: ...}, ...]
+    if isinstance(deps, list):
+        found = False
+        new_deps = []
+        for dep in deps:
+            if isinstance(dep, str):
+                # Parse "identifier@version" format
+                if "@" in dep:
+                    dep_id, _old_version = dep.rsplit("@", 1)
+                else:
+                    dep_id = dep
+
+                if dep_id == identifier:
+                    new_deps.append(f"{identifier}@{new_version}")
+                    found = True
+                else:
+                    new_deps.append(dep)
+            elif isinstance(dep, dict):
+                # Handle registry format:
+                # {type: registry, identifier: ..., release: ...}
+                dep_id = dep.get("identifier")
+                if dep_id == identifier:
+                    dep["release"] = new_version
+                    found = True
+                new_deps.append(dep)
+            else:
+                new_deps.append(dep)
+
+        if not found:
+            raise ValueError(f"Dependency '{identifier}' not found")
+
+        data["dependencies"] = new_deps
+
+    # Handle dict format: {"atopile/resistors": "^1.0.0", ...}
+    elif isinstance(deps, dict):
+        if identifier not in deps:
+            raise ValueError(f"Dependency '{identifier}' not found")
+        deps[identifier] = new_version
+
+    else:
+        raise ValueError(f"Unknown dependencies format in {project_root}")
+
+    save_ato_yaml(ato_file, data)
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Domain-level handlers
+# ---------------------------------------------------------------------------
 
 
 def handle_get_projects(ctx: AppContext) -> ProjectsResponse:
@@ -39,7 +551,7 @@ def handle_get_projects(ctx: AppContext) -> ProjectsResponse:
     if not ctx.workspace_paths:
         return ProjectsResponse(projects=[], total=0)
 
-    projects = core_projects.discover_projects_in_paths(ctx.workspace_paths)
+    projects = discover_projects_in_paths(ctx.workspace_paths)
     return ProjectsResponse(projects=projects, total=len(projects))
 
 
@@ -56,7 +568,7 @@ def handle_get_modules(
     if not project_path.exists():
         return None
 
-    modules = core_projects.discover_modules_in_project(project_path)
+    modules = discover_modules_in_project(project_path)
     if type_filter:
         modules = [m for m in modules if m.type == type_filter]
 
@@ -267,9 +779,7 @@ def handle_create_project(
     parent_dir = Path(request.parent_directory)
     project_dir: Path | None = None
     try:
-        project_dir, project_name = core_projects.create_project(
-            parent_dir, request.name
-        )
+        project_dir, project_name = create_project(parent_dir, request.name)
         return CreateProjectResponse(
             success=True,
             message=f"Created project '{project_name}'",
@@ -338,9 +848,7 @@ def handle_add_build_target(
         raise ValueError(f"Project does not exist: {request.project_root}")
 
     try:
-        target = core_projects.add_build_target(
-            project_path, request.name, request.entry
-        )
+        target = add_build_target(project_path, request.name, request.entry)
         return AddBuildTargetResponse(
             success=True,
             message=f"Added build target '{request.name}'",
@@ -366,7 +874,7 @@ def handle_update_build_target(
         raise ValueError(f"Project does not exist: {request.project_root}")
 
     try:
-        target = core_projects.update_build_target(
+        target = update_build_target(
             project_path,
             request.old_name,
             request.new_name,
@@ -397,7 +905,7 @@ def handle_delete_build_target(
         raise ValueError(f"Project does not exist: {request.project_root}")
 
     try:
-        core_projects.delete_build_target(project_path, request.name)
+        delete_build_target(project_path, request.name)
         return DeleteBuildTargetResponse(
             success=True,
             message=f"Deleted build target '{request.name}'",
@@ -421,9 +929,7 @@ def handle_update_dependency_version(
         raise ValueError(f"Project does not exist: {request.project_root}")
 
     try:
-        core_projects.update_dependency_version(
-            project_path, request.identifier, request.new_version
-        )
+        update_dependency_version(project_path, request.identifier, request.new_version)
         return UpdateDependencyVersionResponse(
             success=True,
             message=f"Updated '{request.identifier}' to version {request.new_version}",

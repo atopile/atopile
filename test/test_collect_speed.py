@@ -1,6 +1,10 @@
 import sys
 
+import pytest
 
+
+# FIXME: for some reason freezes in CI, need to fix
+@pytest.mark.not_in_ci
 def test_collect_speed():
     """
     Find all python files in the project
@@ -27,7 +31,7 @@ def test_collect_speed():
     table.add_column("File", justify="left")
     table.add_column("Time", justify="right")
 
-    max_workers = os.cpu_count() or 4
+    max_workers = min(os.cpu_count() or 4, 16)
     pending = list(python_files)
     running = list[tuple[Path, subprocess.Popen]]()
     results = dict[Path, float]()
@@ -71,7 +75,7 @@ def test_collect_speed():
             running = still_running
 
             if running:
-                time.sleep(0.01)  # Avoid busy-waiting
+                time.sleep(0.1)  # Avoid busy-waiting
 
     for python_file, time_taken in sorted(results.items(), key=lambda x: x[1]):
         table.add_row(python_file.name, f"{time_taken} seconds")

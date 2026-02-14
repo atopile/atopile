@@ -13,7 +13,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import axios from 'axios';
 import * as net from 'net';
-import { traceInfo, traceError, traceVerbose } from './log/logging';
+import { traceInfo, traceError, traceVerbose, traceMilestone } from './log/logging';
 import { resolveAtoBinForWorkspace } from './findbin';
 
 const BACKEND_HOST = '127.0.0.1';
@@ -122,20 +122,12 @@ class BackendServerManager implements vscode.Disposable {
             vscode.StatusBarAlignment.Right,
             100
         );
-        this._statusBarItem.command = 'atopile.backendStatus';
-        this._statusBarItem.tooltip = 'Click to manage atopile backend';
+        this._statusBarItem.command = 'atopile.showMenu';
+        this._statusBarItem.tooltip = 'Click to open atopile menu';
         this._updateStatusBar();
         this._statusBarItem.show();
 
-        // Register the backend status command
-        this._disposables.push(
-            vscode.commands.registerCommand('atopile.backendStatus', () => {
-                this._showBackendStatusMenu();
-            })
-        );
-
-        // Note: Connection state is now updated via postMessage from the webview
-        // (see SidebarProvider._handleWebviewMessage)
+        // Connection state is updated via postMessage from the webview
     }
 
     /**
@@ -337,83 +329,8 @@ class BackendServerManager implements vscode.Disposable {
         }
     }
 
-    /**
-     * Show the backend status quick pick menu.
-     */
-    private async _showBackendStatusMenu(): Promise<void> {
-        let statusText: string;
-        if (this._serverState === 'error') {
-            statusText = `Error: ${this._lastError || 'Unknown error'}`;
-        } else if (this._isConnected) {
-            statusText = `Connected to port ${this.port}`;
-        } else if (this._serverState === 'starting') {
-            statusText = 'Starting...';
-        } else if (this._serverState === 'running') {
-            statusText = 'Connecting...';
-        } else {
-            statusText = 'Disconnected';
-        }
-
-        interface BackendMenuItem extends vscode.QuickPickItem {
-            action: string;
-        }
-
-        const items: BackendMenuItem[] = [
-            {
-                label: `$(info) Status: ${statusText}`,
-                description: this._isConnected ? this.apiUrl : undefined,
-                action: 'none',
-            },
-            { label: '', kind: vscode.QuickPickItemKind.Separator, action: 'none' },
-        ];
-
-        items.push({
-            label: '$(output) Show Server Logs',
-            description: 'Show the backend server output',
-            action: 'show_logs',
-        });
-
-        // Always show troubleshooting section
-        items.push({ label: '', kind: vscode.QuickPickItemKind.Separator, action: 'none' });
-        items.push({
-            label: '$(terminal) Clear Logs',
-            description: 'Run "ato dev clear-logs" in terminal',
-            action: 'clear_logs',
-        });
-        items.push({
-            label: '$(refresh) Restart Extension Host',
-            description: 'Restart VS Code extension host',
-            action: 'restart_extension_host',
-        });
-        items.push({
-            label: '$(comment-discussion) Join Discord',
-            description: 'Get help from the community',
-            action: 'open_discord',
-        });
-
-        const selected = await vscode.window.showQuickPick(items, {
-            placeHolder: 'Backend Server Configuration',
-            title: 'atopile Backend',
-        });
-
-        if (!selected || selected.action === 'none') return;
-
-        switch (selected.action) {
-            case 'show_logs':
-                this.showLogs();
-                break;
-            case 'clear_logs':
-                const terminal = vscode.window.createTerminal('atopile');
-                terminal.show();
-                terminal.sendText('ato dev clear-logs');
-                break;
-            case 'restart_extension_host':
-                void vscode.commands.executeCommand('workbench.action.restartExtensionHost');
-                break;
-            case 'open_discord':
-                void vscode.env.openExternal(vscode.Uri.parse('https://discord.gg/CRe5xaDBr3'));
-                break;
-        }
+    get serverState(): ServerState {
+        return this._serverState;
     }
 
     get isConnected(): boolean {
@@ -422,6 +339,10 @@ class BackendServerManager implements vscode.Disposable {
 
     get isStarting(): boolean {
         return this._serverState === 'starting';
+    }
+
+    get lastError(): string | undefined {
+        return this._lastError;
     }
 
     get port(): number {
@@ -605,6 +526,7 @@ class BackendServerManager implements vscode.Disposable {
                 'serve', 'backend',
                 '--port', String(this.port),
                 ...(backendHost ? ['--host', backendHost] : []),
+                '--no-gen',
                 '--ato-source', atoBin.source,
                 '--ato-binary-path', atoBinaryPath,
             ];
@@ -626,7 +548,7 @@ class BackendServerManager implements vscode.Disposable {
             }
 
             const command = atoBin.command[0];
-            traceInfo(`BackendServer: Starting server: ${command} ${args.join(' ')}`);
+            traceMilestone('backend spawning');
             this._log('info', `server: Starting: ${command} ${args.join(' ')}`);
 
             // Spawn the server process with unbuffered Python output
@@ -699,7 +621,7 @@ class BackendServerManager implements vscode.Disposable {
 
             if (ready) {
                 this._serverReady = true;
-                traceInfo(`BackendServer: Server started successfully on port ${this.port}`);
+                traceMilestone(`backend ready (port ${this.port})`);
                 this._log('info', `server: Started successfully on port ${this.port}`);
                 this._serverState = 'running';
                 this._updateStatusBar();

@@ -58,3 +58,17 @@ export function traceInfo(...args: Arguments): void {
 export function traceVerbose(...args: Arguments): void {
     channel?.traceVerbose(...args);
 }
+
+// Global startup timer — all times relative to extension activation
+let _t0 = 0;
+
+/** Call once at the start of activate() to set the reference time. */
+export function initTimer(): void {
+    _t0 = Date.now();
+}
+
+/** Log a milestone with time since activation (e.g. "+0.52s  backend spawned"). */
+export function traceMilestone(label: string): void {
+    const elapsed = ((Date.now() - _t0) / 1000).toFixed(2);
+    channel?.traceInfo(`[+${elapsed}s] ${label}`);
+}

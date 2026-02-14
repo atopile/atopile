@@ -14,6 +14,7 @@ class Outcome(StrEnum):
     ERROR = auto()
     SKIPPED = auto()
     CRASHED = auto()
+    TIMEOUT = auto()
 
 
 class EventType(StrEnum):
@@ -81,6 +82,7 @@ class Report(DataClassJsonMixin):
         failed: int = 0
         errors: int = 0
         crashed: int = 0
+        timeout: int = 0
         skipped: int = 0
         running: int = 0
         queued: int = 0

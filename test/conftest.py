@@ -7,14 +7,25 @@ import pathvalidate
 import posthog
 import pytest
 
+from atopile import telemetry
 from faebryk.libs.util import repo_root as _repo_root
 from faebryk.libs.util import robustly_rm_dir
 
 # Disable telemetry for testing
 posthog.disabled = True
+telemetry.client.disabled = True
 
 
-def pytest_configure(config):
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "max_parallel(n): limit concurrent execution to n tests in this group",
+    )
+    config.addinivalue_line(
+        "markers",
+        "worker_affinity(separator): route parametrized tests with the same "
+        "prefix (split on separator) to the same worker process",
+    )
     worker_id = os.environ.get("PYTEST_XDIST_WORKER")
     if worker_id is not None:
         logging.basicConfig(
@@ -22,6 +33,37 @@ def pytest_configure(config):
             filename=Path("artifacts") / f"tests_{worker_id}.log",
             level=config.getini("log_file_level"),
         )
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    """Emit @max_parallel lines during --collect-only for the orchestrator."""
+    if not config.option.collectonly:
+        return
+    seen: set[str] = set()
+    for item in items:
+        marker = item.get_closest_marker("max_parallel")
+        if marker and marker.args:
+            # Use file nodeid prefix as the group key
+            prefix = item.nodeid.split("::", 1)[0] + "::"
+            if prefix not in seen:
+                seen.add(prefix)
+                print(f"@max_parallel:{prefix}{marker.args[0]}")
+
+    # Emit @worker_affinity lines for the orchestrator
+    for item in items:
+        marker = item.get_closest_marker("worker_affinity")
+        if marker:
+            separator: str = marker.kwargs.get("separator", ":")
+            # Extract parametrize ID from nodeid (text between [ and ])
+            bracket_start = item.nodeid.rfind("[")
+            bracket_end = item.nodeid.rfind("]")
+            if bracket_start < 0 or bracket_end < 0:
+                continue
+            param_id = item.nodeid[bracket_start + 1 : bracket_end]
+            group_key = param_id.split(separator, 1)[0]
+            print(f"@worker_affinity:{group_key}|{item.nodeid}")
 
 
 @pytest.fixture()

@@ -3,7 +3,7 @@
     "displayName": "atopile",
     "icon": "ato_logo_256x256.png",
     "description": "IDE support for atopile.",
-    "version": "0.14.0",
+    "version": "0.0.0",
     "preview": false,
     "publisher": "atopile",
     "license": "MIT",
@@ -239,8 +239,8 @@
                 "category": "atopile"
             },
             {
-                "command": "atopile.backendStatus",
-                "title": "Backend Connection Status",
+                "command": "atopile.showMenu",
+                "title": "Show Menu",
                 "category": "atopile"
             }
         ],
@@ -281,7 +281,8 @@
         "vscode-variables": "^1.0.1",
         "which": "^5.0.0",
         "ws": "^8.19.0",
-        "yaml": "^2.8.0"
+        "yaml": "^2.8.0",
+        "@gltf-transform/cli": "^4.1.0"
     },
     "devDependencies": {
         "@novnc/novnc": "~1.5.0",

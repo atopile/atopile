@@ -1,10 +1,11 @@
 const std = @import("std");
+const compat = @import("compat");
 const structure = @import("../structure.zig");
 
 const str = []const u8;
 
 fn list(comptime T: type) type {
-    return std.DoublyLinkedList(T);
+    return compat.DoublyLinkedList(T);
 }
 
 // Constants
@@ -497,7 +498,7 @@ pub const Curve = struct {
 pub const Text = struct {
     text: str,
     at: Xyr,
-    layer: str,
+    layer: TextLayer,
     uuid: ?str = null,
     effects: Effects,
 
@@ -738,6 +739,10 @@ pub const Hatch = struct {
 pub const ConnectPads = struct {
     mode: ?E_zone_connect_pads_mode = null,
     clearance: ?f64 = null,
+
+    pub const fields_meta = .{
+        .mode = structure.SexpField{ .positional = true },
+    };
 };
 
 pub const E_zone_fill_enable = enum {

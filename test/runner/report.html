@@ -170,6 +170,11 @@
         text-transform: uppercase;
       }
 
+      .timeout {
+        color: var(--ctp-peach);
+        font-weight: bold;
+      }
+
       .skipped {
         color: var(--ctp-yellow);
       }
@@ -197,6 +202,10 @@
 
       tr.row-crashed {
         background-color: rgba(203, 166, 247, 0.15);
+      }
+
+      tr.row-timeout {
+        background-color: rgba(250, 179, 135, 0.15);
       }
 
       tr.row-skipped {
@@ -1366,6 +1375,7 @@
         if (key === "f") return toggleFilterByValue("failed");
         if (key === "e") return toggleFilterByValue("error");
         if (key === "c") return toggleFilterByValue("crashed");
+        if (key === "t") return toggleFilterByValue("timeout");
         if (key === "s") return toggleFilterByValue("skipped");
         if (key === "r") return toggleFilterByValue("running");
         if (key === "q") return toggleFilterByValue("queued");
@@ -1864,6 +1874,7 @@
               <li><span class="hotkey-key">f</span> Toggle filter [Failed]</li>
               <li><span class="hotkey-key">e</span> Toggle filter [Error]</li>
               <li><span class="hotkey-key">c</span> Toggle filter [Crashed]</li>
+              <li><span class="hotkey-key">t</span> Toggle filter [Timeout]</li>
               <li><span class="hotkey-key">s</span> Toggle filter [Skipped]</li>
               <li><span class="hotkey-key">r</span> Toggle filter [Running]</li>
               <li><span class="hotkey-key">q</span> Toggle filter [Queued]</li>
@@ -1907,6 +1918,7 @@
         <strong>Failed:</strong> <span class="failed">[[failed]]</span> |
         <strong>Errors:</strong> <span class="error">[[errors]]</span> |
         <strong>Crashed:</strong> <span class="crashed">[[crashed]]</span> |
+        <strong>Timeout:</strong> <span class="timeout">[[timeout]]</span> |
         <strong>Skipped:</strong> <span class="skipped">[[skipped]]</span> |
         <strong>Running:</strong> <span class="running">[[running]]</span> |
         <strong>Queued:</strong> <span class="queued">[[remaining]]</span>
@@ -1973,6 +1985,15 @@
             checked
           />
           Crashed</label
+        >
+        <label
+          ><input
+            type="checkbox"
+            class="outcome-filter"
+            value="timeout"
+            checked
+          />
+          Timeout</label
         >
         <label
           ><input
