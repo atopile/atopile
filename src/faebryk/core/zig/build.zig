@@ -275,9 +275,11 @@ pub fn build(b: *std.Build) void {
 
         const test_comp = b.addTest(.{
             .name = test_name_opt,
-            .root_source_file = b.path(test_file_path),
-            .target = target,
-            .optimize = optimize,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path(test_file_path),
+                .target = target,
+                .optimize = optimize,
+            }),
             .test_runner = .{ .path = b.path("src/test_runner.zig"), .mode = .simple },
         });
 
@@ -286,7 +288,7 @@ pub fn build(b: *std.Build) void {
         test_comp.root_module.addImport("faebryk", faebryk_mod);
 
         // Match existing compile flags
-        test_comp.root_module.sanitize_c = true;
+        test_comp.root_module.sanitize_c = .full;
         test_comp.root_module.omit_frame_pointer = false;
         test_comp.root_module.strip = false;
         test_comp.linkLibC();
