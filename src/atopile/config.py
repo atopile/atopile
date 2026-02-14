@@ -1018,19 +1018,17 @@ class ProjectConfig(BaseConfigModel):
         if duplicates:
             # return self
             config_path = self.paths.root / PROJECT_CONFIG_FILENAME
-            error_lines = [
-                f"Multiple build targets share the same entry point in {config_path}:",
-                "",
-            ]
+            items = []
             for entry, builds in sorted(duplicates.items()):
-                error_lines.append(f"  Entry point: {entry}")
-                error_lines.append(
-                    "    Conflicting build targets: "
-                    + ", ".join(f"`{b}`" for b in sorted(builds)),
+                builds_fmt = ", ".join(f"`{b}`" for b in sorted(builds))
+                items.append(
+                    f"Entry point: `{entry}`\n\n  Conflicting targets: {builds_fmt}"
                 )
-                error_lines.append("")
 
-            raise UserConfigurationError("\n".join(error_lines))
+            raise UserConfigurationError(
+                f"Multiple build targets share the same entry point"
+                f" in {config_path}:\n\n" + md_list(items)
+            )
 
         return self
 

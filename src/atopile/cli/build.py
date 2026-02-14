@@ -16,9 +16,10 @@ from atopile.dataclasses import (
     BuildStatus,
 )
 from atopile.logging import get_logger
-from atopile.logging_utils import BuildPrinter, print_subprocess_output
+from atopile.logging_utils import BuildPrinter
 from atopile.model.build_queue import BuildQueue
 from atopile.telemetry import capture
+from faebryk.libs.package.dist import DistLoadError, DistValidationError
 from faebryk.libs.package.meta import PackageModifiedError
 
 logger = get_logger(__name__)
@@ -69,15 +70,6 @@ def _run_build_queue(
     queue = BuildQueue(max_concurrent=max_concurrent)
 
     build_ids = [build.build_id for build in builds if build.build_id]
-    display_names = {
-        build.build_id: build.display_name for build in builds if build.build_id
-    }
-
-    for build in builds:
-        queue.enqueue(build)
-
-    started: set[str] = set()
-    reported: set[str] = set()
 
     TERMINAL_STATUSES = (
         BuildStatus.SUCCESS,
@@ -87,23 +79,16 @@ def _run_build_queue(
     )
 
     with BuildPrinter(verbose=verbose) as printer:
-        # For verbose mode, stream subprocess output to console
-        if verbose:
-            # Buffer output until the build header is printed to keep ordering.
-            pending_output: dict[str, list[tuple[str, bool]]] = {}
+        # Register all builds so printer knows display names up-front
+        for build in builds:
+            if build.build_id:
+                printer.register_build(build.build_id, build.display_name)
 
-            def _flush_pending(build_id: str) -> None:
-                buffered = pending_output.pop(build_id, [])
-                for text, is_stderr in buffered:
-                    print_subprocess_output(text, is_stderr)
+        for build in builds:
+            queue.enqueue(build)
 
-            def on_output(build_id: str, text: str, is_stderr: bool) -> None:
-                if build_id not in started:
-                    pending_output.setdefault(build_id, []).append((text, is_stderr))
-                    return
-                print_subprocess_output(text, is_stderr)
-
-            queue.on_output = on_output
+        # Route subprocess output through the printer (handles header-before-output)
+        queue.on_output = printer.print_output
 
         def on_update() -> None:
             for build_id in build_ids:
@@ -111,33 +96,24 @@ def _run_build_queue(
                 if not build:
                     continue
 
-                display_name = display_names.get(build_id, build.display_name)
-
                 # Build started
-                if (
-                    build.status in (BuildStatus.BUILDING, *TERMINAL_STATUSES)
-                    and build_id not in started
-                ):
+                if build.status in (BuildStatus.BUILDING, *TERMINAL_STATUSES):
                     printer.build_started(
-                        build_id, display_name, total=build.total_stages
+                        build_id, build.display_name, total=build.total_stages
                     )
-                    started.add(build_id)
-                    if verbose:
-                        _flush_pending(build_id)
 
                 # Stage updates
                 if build.stages:
                     printer.stage_update(build_id, build.stages, build.total_stages)
 
                 # Build completed
-                if build.status in TERMINAL_STATUSES and build_id not in reported:
+                if build.status in TERMINAL_STATUSES:
                     printer.build_completed(
                         build_id,
                         build.status,
                         warnings=build.warnings,
                         errors=build.errors,
                     )
-                    reported.add(build_id)
 
         results = queue.wait_for_builds(
             build_ids, on_update=on_update, poll_interval=0.1
@@ -145,9 +121,9 @@ def _run_build_queue(
 
         # Print build summary boxes after all builds complete
         completed_builds = [
-            queue.find_build(build_id)
+            build
             for build_id in build_ids
-            if queue.find_build(build_id)
+            if (build := queue.find_build(build_id)) is not None
         ]
         printer.print_summary(completed_builds)
 
@@ -441,6 +417,10 @@ def build(
                             f"Dependency {dep.identifier} already exists at "
                             f"{dep.target_path}"
                         )
+                    except (DistValidationError, DistLoadError) as e:
+                        from atopile.errors import UserException
+
+                        raise UserException(str(e), title="Package Error") from e
         except PackageModifiedError as e:
             logger.error(str(e))
             raise typer.Exit(1)
@@ -496,6 +476,10 @@ def build(
     except PackageModifiedError as e:
         logger.error(str(e))
         raise typer.Exit(1)
+    except (DistValidationError, DistLoadError) as e:
+        from atopile.errors import UserException
+
+        raise UserException(str(e), title="Package Error") from e
 
     if open_layout is not None:
         config.project.open_layout_on_build = open_layout

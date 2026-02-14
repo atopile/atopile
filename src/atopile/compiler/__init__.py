@@ -1,3 +1,4 @@
+import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -91,6 +92,10 @@ class DslUndefinedSymbolError(DslException):
     pass
 
 
+class DslDeprecationWarning(DslException):
+    pass
+
+
 # ... map remaining User* types
 
 
@@ -119,6 +124,7 @@ class DslRichException(DslException):
         self.source_node = source_node
         self.file_path = file_path
         self.traceback = traceback or []
+        self._log_level: int = logging.ERROR
 
     @property
     def title(self) -> str:
@@ -245,7 +251,9 @@ class DslRichException(DslException):
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> Generator[ConsoleRenderable, None, None]:
-        yield Text(self.title, style="bold red")
+        is_warning = self._log_level < logging.ERROR
+        title_style = "bold yellow" if is_warning else "bold red"
+        yield Text(self.title, style=title_style)
         yield safe_markdown(self.message, console)
 
         from atopile.compiler.ast_visitor import ASTVisitor
@@ -257,7 +265,8 @@ class DslRichException(DslException):
 
         if self.source_node:
             source_chunk = ASTVisitor.get_source_chunk(self.source_node.instance)
-            yield Text("\nCode causing the error:", style="bold")
+            source_label = "Source" if is_warning else "Code causing the error"
+            yield Text(f"\n{source_label}:", style="bold")
             if source_chunk is None:
                 yield Text(
                     f"Source not available for {self.source_node}", style="dim italic"

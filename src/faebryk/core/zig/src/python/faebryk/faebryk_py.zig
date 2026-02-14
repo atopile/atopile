@@ -35,6 +35,8 @@ var type_graph_type: ?*py.PyTypeObject = null;
 var typegraph_path_error_type: ?*py.PyObject = null;
 var typegraph_instantiation_error_type: ?*py.PyObject = null;
 var typegraph_resolve_error_type: ?*py.PyObject = null;
+var typegraph_unresolved_reference_error_type: ?*py.PyObject = null;
+var typegraph_duplicate_field_error_type: ?*py.PyObject = null;
 var make_child_node_type: ?*py.PyTypeObject = null;
 
 pub const method_descr = bind.method_descr;
@@ -3898,6 +3900,46 @@ fn _raise_instantiation_error(
     py.Py_DECREF(exc_instance.?);
 }
 
+fn _init_typegraph_unresolved_reference_error(module: *py.PyObject) void {
+    if (typegraph_unresolved_reference_error_type != null) return;
+
+    const exc_name = "faebryk.core.zig.TypeGraphUnresolvedReferenceError";
+    const exc = py.PyErr_NewException(exc_name, py.PyExc_ValueError, null);
+    if (exc == null) {
+        py.PyErr_Clear();
+        return;
+    }
+
+    if (py.PyModule_AddObject(module, "TypeGraphUnresolvedReferenceError", exc) != 0) {
+        py.Py_DECREF(exc.?);
+        py.PyErr_Clear();
+        return;
+    }
+
+    typegraph_unresolved_reference_error_type = exc;
+    py.Py_INCREF(exc.?);
+}
+
+fn _init_typegraph_duplicate_field_error(module: *py.PyObject) void {
+    if (typegraph_duplicate_field_error_type != null) return;
+
+    const exc_name = "faebryk.core.zig.TypeGraphDuplicateFieldError";
+    const exc = py.PyErr_NewException(exc_name, py.PyExc_ValueError, null);
+    if (exc == null) {
+        py.PyErr_Clear();
+        return;
+    }
+
+    if (py.PyModule_AddObject(module, "TypeGraphDuplicateFieldError", exc) != 0) {
+        py.Py_DECREF(exc.?);
+        py.PyErr_Clear();
+        return;
+    }
+
+    typegraph_duplicate_field_error_type = exc;
+    py.Py_INCREF(exc.?);
+}
+
 fn _init_typegraph_resolve_error(module: *py.PyObject) void {
     if (typegraph_resolve_error_type != null) return;
 
@@ -4370,7 +4412,7 @@ fn wrap_typegraph_validate_type() type {
     return struct {
         pub const descr = method_descr{
             .name = "validate_type",
-            .doc = "Validate all reference paths in a type node. Returns list of (node, message) tuples for validation errors.",
+            .doc = "Validate all reference paths in a type node. Returns list of TypeGraphValidationError for validation errors.",
             .args_def = struct {
                 type_node: *graph.BoundNodeReference,
 
@@ -4390,6 +4432,7 @@ fn wrap_typegraph_validate_type() type {
             defer {
                 for (errors) |err| {
                     allocator.free(err.message);
+                    allocator.free(err.path);
                 }
                 allocator.free(errors);
             }
@@ -4402,34 +4445,15 @@ fn wrap_typegraph_validate_type() type {
             var idx: usize = 0;
             while (idx < errors.len) : (idx += 1) {
                 const err = errors[idx];
-                const node_obj = graph_py.makeBoundNodePyObject(err.node) orelse {
-                    py.Py_DECREF(list_obj.?);
-                    return null;
-                };
-                const msg_obj = _make_py_string(err.message) orelse {
-                    py.Py_DECREF(node_obj);
+
+                // Create TypeGraphValidationError instance
+                const exc_obj = _make_validation_error(err) orelse {
                     py.Py_DECREF(list_obj.?);
                     return null;
                 };
 
-                const tuple_obj = py.PyTuple_New(2);
-                if (tuple_obj == null) {
-                    py.Py_DECREF(node_obj);
-                    py.Py_DECREF(msg_obj);
-                    py.Py_DECREF(list_obj.?);
-                    return null;
-                }
-
-                if (py.PyTuple_SetItem(tuple_obj, 0, node_obj) != 0 or
-                    py.PyTuple_SetItem(tuple_obj, 1, msg_obj) != 0)
-                {
-                    py.Py_DECREF(tuple_obj.?);
-                    py.Py_DECREF(list_obj.?);
-                    return null;
-                }
-
-                if (py.PyList_SetItem(list_obj, @as(isize, @intCast(idx)), tuple_obj) != 0) {
-                    py.Py_DECREF(tuple_obj.?);
+                if (py.PyList_SetItem(list_obj, @as(isize, @intCast(idx)), exc_obj) != 0) {
+                    py.Py_DECREF(exc_obj);
                     py.Py_DECREF(list_obj.?);
                     return null;
                 }
@@ -4438,6 +4462,63 @@ fn wrap_typegraph_validate_type() type {
             return list_obj;
         }
     };
+}
+
+fn _make_validation_error(err: faebryk.typegraph.TypeGraph.ValidationError) ?*py.PyObject {
+    const error_type = switch (err.kind) {
+        .unresolved_reference => typegraph_unresolved_reference_error_type,
+        .duplicate_field => typegraph_duplicate_field_error_type,
+    };
+
+    if (error_type == null) {
+        py.PyErr_SetString(py.PyExc_ValueError, "TypeGraph validation error type not initialized");
+        return null;
+    }
+
+    // Create exception instance with message
+    const msg_args = py.PyTuple_New(1);
+    if (msg_args == null) return null;
+
+    const msg_obj = _make_py_string(err.message) orelse {
+        py.Py_DECREF(msg_args.?);
+        return null;
+    };
+
+    if (py.PyTuple_SetItem(msg_args, 0, msg_obj) != 0) {
+        py.Py_DECREF(msg_obj);
+        py.Py_DECREF(msg_args.?);
+        return null;
+    }
+
+    const exc_instance = py.PyObject_Call(error_type.?, msg_args, null);
+    py.Py_DECREF(msg_args.?);
+    if (exc_instance == null) return null;
+
+    // Set 'node' attribute (BoundNode)
+    const node_obj = graph_py.makeBoundNodePyObject(err.node) orelse {
+        py.Py_DECREF(exc_instance.?);
+        return null;
+    };
+    if (py.PyObject_SetAttrString(exc_instance.?, "node", node_obj) != 0) {
+        py.Py_DECREF(node_obj);
+        py.Py_DECREF(exc_instance.?);
+        return null;
+    }
+    py.Py_DECREF(node_obj);
+
+    // Set 'path' attribute (str)
+    const path_obj = _make_py_string(err.path) orelse {
+        py.Py_DECREF(exc_instance.?);
+        return null;
+    };
+    if (py.PyObject_SetAttrString(exc_instance.?, "path", path_obj) != 0) {
+        py.Py_DECREF(path_obj);
+        py.Py_DECREF(exc_instance.?);
+        return null;
+    }
+    py.Py_DECREF(path_obj);
+
+    return exc_instance;
 }
 
 fn wrap_typegraph_instantiate() type {
@@ -4990,6 +5071,8 @@ fn wrap_typegraph(root: *py.PyObject) void {
     _init_typegraph_path_error(root);
     _init_typegraph_instantiation_error(root);
     _init_typegraph_resolve_error(root);
+    _init_typegraph_unresolved_reference_error(root);
+    _init_typegraph_duplicate_field_error(root);
 
     type_graph_type = type_registry.getRegisteredTypeObject("TypeGraph");
     if (type_graph_type) |tg_type| {

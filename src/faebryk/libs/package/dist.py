@@ -58,6 +58,10 @@ def _get_non_excluded_project_files(cfg: atopile.config.ProjectConfig) -> list[P
 class DistValidationError(Exception): ...
 
 
+class DistLoadError(Exception):
+    """Failed to load a distribution for a dependency."""
+
+
 class Dist:
     def __init__(self, path: Path):
         self.path = path

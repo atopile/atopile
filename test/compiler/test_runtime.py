@@ -1704,7 +1704,7 @@ def test_assign_to_child_parameter():
         import Resistor
 
         module CustomResistor:
-            resistance: ohms
+            resistance: Resistance
 
         module App:
             r = new Resistor
@@ -1737,6 +1737,46 @@ def test_slice_non_list():
             module App:
                 r_single = new Resistor
                 for r in r_single[:]:  # Attempt to slice a non-list
+                    pass
+            """,
+            "App",
+        )
+
+
+def test_for_loop_nonexistent_field():
+    """Iterating over a field that doesn't exist raises a source-attributed error."""
+    with pytest.raises(
+        DslRichException,
+        match="path could not be resolved",
+    ):
+        build_instance(
+            """
+            #pragma experiment("FOR_LOOP")
+            import Resistor
+
+            module App:
+                r = new Resistor
+                for x in r.nonexistent:
+                    pass
+            """,
+            "App",
+        )
+
+
+def test_for_loop_nonexistent_parent():
+    """
+    Iterating over a path whose parent doesn't exist raises a source-attributed error.
+    """
+    with pytest.raises(
+        DslRichException,
+        match="path could not be resolved",
+    ):
+        build_instance(
+            """
+            #pragma experiment("FOR_LOOP")
+
+            module App:
+                for x in invented.items:
                     pass
             """,
             "App",
@@ -3602,10 +3642,20 @@ class TestDSLExceptionTracebacks:
             """,
                 "App",
             )
-        assert (
-            e.value.message
-            == "Field `power.missing.can_be_operand` could not be resolved"
-        )
+        assert e.value.message == "Field `power` could not be resolved"
+
+    def test_assert_on_missing_field_hides_internal_path(self):
+        """Assert on a missing field should not expose 'can_be_operand' in the error."""
+        with pytest.raises(DslException) as e:
+            build_instance(
+                """
+            module App:
+                assert feedback_divider.r_bottom.resistance within 200kohm +/- 30%
+            """,
+                "App",
+            )
+        assert "can_be_operand" not in e.value.message
+        assert e.value.message == "Field `feedback_divider` could not be resolved"
 
     def test_missing_field_in_make_link(self):
         with pytest.raises(DslException) as e:

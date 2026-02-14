@@ -13,6 +13,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.compiler import (
     CompilerException,
+    DslDeprecationWarning,
     DslException,
     DslFeatureNotEnabledError,
     DslImportError,
@@ -44,9 +45,8 @@ from atopile.compiler.gentypegraph import (
     Symbol,
 )
 from atopile.compiler.overrides import ReferenceOverrideRegistry, TraitOverrideRegistry
-from atopile.errors import DeprecatedException, downgrade
+from atopile.errors import downgrade
 from atopile.logging import get_logger
-from faebryk.core.faebrykpy import EdgeTraversal
 from faebryk.library.Units import UnitsNotCommensurableError
 from faebryk.libs.util import cast_assert, groupby, import_from_path, not_none
 
@@ -332,20 +332,6 @@ class _TypeContextStack:
             case _:
                 raise NotImplementedError(f"Unhandled action: {action}")
 
-    def resolve_reference(self, path: FieldPath) -> graph.BoundNode:
-        type_node, _, _ = self.current()
-        # Apply reference overrides (e.g., reference_shim -> trait pointer deref)
-        # This must happen before validation so virtual fields can be resolved
-        identifiers: list[str | EdgeTraversal] = (
-            ReferenceOverrideRegistry.transform_link_path(list(path.identifiers()))
-        )
-        try:
-            return self._tg.ensure_child_reference(
-                type_node=type_node, path=identifiers
-            )
-        except fbrk.TypeGraphPathError as exc:
-            raise DslUndefinedSymbolError(self._format_path_error(path, exc)) from exc
-
     @staticmethod
     def _format_path_error(
         field_path: FieldPath, error: fbrk.TypeGraphPathError
@@ -628,27 +614,30 @@ class ASTVisitor:
         """
         (*parent_path, container_id) = loop.container_path
 
-        owning_type = (
-            self._tg.resolve_child_path(start_type=type_node, path=list(parent_path))
-            if parent_path
-            else type_node
-        )
-
-        resolved_node = fbrk.Linker.get_resolved_type(
-            type_reference=not_none(
-                self._tg.get_make_child_type_reference_by_identifier(
-                    type_node=not_none(owning_type), identifier=container_id
+        if (
+            # parent path doesn't exist
+            (
+                owning_type := self._tg.resolve_child_path(
+                    start_type=type_node, path=list(parent_path)
+                )
+                if parent_path
+                else type_node
+            )
+            is None
+            # final segment not found on parent
+            or (
+                type_ref := self._tg.get_make_child_type_reference_by_identifier(
+                    type_node=owning_type, identifier=container_id
                 )
             )
-        )
-
-        if owning_type is None:
-            raise CompilerException(f"Cannot resolve type for path {parent_path}")
-
-        if resolved_node is None:
-            # Incomplete linking
-            raise CompilerException(
-                f"Cannot resolve type for path {loop.container_path}"
+            is None
+            # linker couldn't resolve type reference
+            or (resolved_node := fbrk.Linker.get_resolved_type(type_reference=type_ref))
+            is None
+        ):
+            raise DslTypeError(
+                f"Cannot iterate over `{'.'.join(loop.container_path)}`: "
+                f"path could not be resolved"
             )
 
         if (
@@ -687,7 +676,14 @@ class ASTVisitor:
         self, type_node: graph.BoundNode, type_identifier: str, loop: DeferredForLoop
     ) -> None:
         """Execute a single deferred for-loop."""
-        element_paths = self._collect_sequence_element_paths(type_node, loop)
+        try:
+            element_paths = self._collect_sequence_element_paths(type_node, loop)
+        except DslException as ex:
+            raise DslRichException(
+                str(ex),
+                original=ex,
+                source_node=loop.source_node,
+            ) from ex
 
         start, stop, step = loop.slice_spec
         if start is not None or stop is not None or step is not None:
@@ -783,6 +779,19 @@ class ASTVisitor:
             )
 
         self._scope_stack.add_symbol(Symbol(name=type_ref_name, import_ref=import_ref))
+
+    def visit_MultiImportStmt(self, node: AST.MultiImportStmt):
+        with downgrade(DslRichException):
+            raise DslRichException(
+                "Multiple imports on one line is deprecated. "
+                "Please use separate import statements for each module.",
+                original=DslDeprecationWarning(
+                    "Multiple imports on one line is deprecated."
+                ),
+                source_node=node,
+            )
+        for import_node in node.imports.get().as_list():
+            self.visit_ImportStmt(AST.ImportStmt.bind_instance(import_node.instance))
 
     def visit_BlockDefinition(self, node: AST.BlockDefinition):
         if self._scope_stack.depth != 1:
@@ -1136,7 +1145,9 @@ class ASTVisitor:
         if TraitOverrideRegistry.matches_assignment_override(
             target_path.leaf.identifier, assignable_node
         ):
-            return TraitOverrideRegistry.handle_assignment(target_path, assignable_node)
+            return TraitOverrideRegistry.handle_assignment(
+                target_path, assignable_node, source_node=node
+            )
 
         if TraitOverrideRegistry.matches_enum_parameter_override(
             target_path.leaf.identifier, assignable_node
@@ -1325,10 +1336,14 @@ class ASTVisitor:
                 expr_type = F.Expressions.IsSubset
             case AST.ComparisonClause.ComparisonOperator.IS:
                 if rhs_is_literal:
-                    with downgrade(DeprecatedException):
-                        raise DeprecatedException(
+                    with downgrade(DslRichException):
+                        raise DslRichException(
                             "`assert x is <literal>` is deprecated. "
-                            "Use `assert x within <literal>` instead."
+                            "Use `assert x within <literal>` instead.",
+                            original=DslDeprecationWarning(
+                                "`assert x is <literal>` is deprecated."
+                            ),
+                            source_node=node,
                         )
                     expr_type = F.Expressions.IsSubset
                 else:
@@ -1544,26 +1559,45 @@ class ASTVisitor:
 
     # FIXME: refactor to match pattern
     def _resolve_connectable_with_path(
-        self, connectable_node: fabll.Node
-    ) -> tuple[FieldPath, list[AddMakeChildAction]]:
-        """Resolve a connectable node to a path and any actions needed to create it.
+        self,
+        connectable_node: fabll.Node,
+        source_node: fabll.Node | None = None,
+    ) -> tuple[LinkPath, list[AddMakeChildAction]]:
+        """Resolve a connectable to a link path and any creation actions.
 
         Handles two cases:
         - FieldRef: reference to existing field (must exist), no actions
         - Declarations (Signal, Pin): may create if not exists, returns creation actions
+
+        The returned LinkPath has reference overrides already applied.
         """
         if connectable_node.isinstance(AST.FieldRef):
-            return self._resolve_field_ref(connectable_node.cast(t=AST.FieldRef))
-        return self._resolve_declaration(connectable_node)
+            return self._resolve_field_ref(
+                connectable_node.cast(t=AST.FieldRef), source_node=source_node
+            )
+        path, actions = self._resolve_declaration(connectable_node)
+        return list(path.identifiers()), actions
 
     def _resolve_field_ref(
-        self, field_ref: AST.FieldRef
-    ) -> tuple[FieldPath, list[AddMakeChildAction]]:
-        """Resolve a reference to an existing field. Returns empty action list."""
+        self,
+        field_ref: AST.FieldRef,
+        source_node: fabll.Node | None = None,
+    ) -> tuple[LinkPath, list[AddMakeChildAction]]:
+        """Resolve a field reference, apply overrides, and validate in type graph."""
         path = self.visit_FieldRef(field_ref)
-        # FIXME: refactor this, remove resolve_reference
-        self._type_stack.resolve_reference(path)
-        return path, []
+        link_path = ReferenceOverrideRegistry.transform_link_path(
+            LinkPath(list(path.identifiers())), source_node=source_node
+        )
+        type_node, _, _ = self._type_stack.current()
+        try:
+            self._type_stack._tg.ensure_child_reference(
+                type_node=type_node, path=link_path
+            )
+        except fbrk.TypeGraphPathError as exc:
+            raise DslUndefinedSymbolError(
+                self._type_stack._format_path_error(path, exc)
+            ) from exc
+        return link_path, []
 
     def _resolve_declaration(
         self, node: fabll.Node
@@ -1623,17 +1657,11 @@ class ASTVisitor:
         lhs_node = fabll.Traits(lhs).get_obj_raw()
         rhs_node = fabll.Traits(rhs).get_obj_raw()
 
-        lhs_path, lhs_actions = self._resolve_connectable_with_path(lhs_node)
-        rhs_path, rhs_actions = self._resolve_connectable_with_path(rhs_node)
-
-        # Convert FieldPath to LinkPath (list of string identifiers)
-        # Apply legacy path translations (e.g., vcc -> hv, gnd -> lv)
-        # and reference overrides (e.g., reference_shim -> trait pointer deref)
-        lhs_link_path = ReferenceOverrideRegistry.transform_link_path(
-            LinkPath(list(lhs_path.identifiers()))
+        lhs_link_path, lhs_actions = self._resolve_connectable_with_path(
+            lhs_node, source_node=node
         )
-        rhs_link_path = ReferenceOverrideRegistry.transform_link_path(
-            LinkPath(list(rhs_path.identifiers()))
+        rhs_link_path, rhs_actions = self._resolve_connectable_with_path(
+            rhs_node, source_node=node
         )
 
         link_action = AddMakeLinkAction(
@@ -1690,17 +1718,6 @@ class ASTVisitor:
             source_chunk_node=node.source.get(),
         )
 
-    def _field_path_to_link_path(self, field_path: FieldPath) -> LinkPath:
-        """
-        Convert a FieldPath to LinkPath with reference override transformations applied.
-
-        This applies transformations like `reference_shim` -> trait pointer dereference
-        so that virtual fields can be used in connections.
-        """
-        return ReferenceOverrideRegistry.transform_link_path(
-            LinkPath(list(field_path.identifiers()))
-        )
-
     def visit_DirectedConnectStmt(self, node: AST.DirectedConnectStmt):
         """
         `a ~> b` connects a.can_bridge.out_ to b.can_bridge.in_
@@ -1723,16 +1740,16 @@ class ASTVisitor:
                 )
 
         lhs_node = fabll.Traits(lhs).get_obj_raw()
-        lhs_base_path, lhs_actions = self._resolve_connectable_with_path(lhs_node)
-        lhs_link_path = self._field_path_to_link_path(lhs_base_path)
+        lhs_link_path, lhs_actions = self._resolve_connectable_with_path(
+            lhs_node, source_node=node
+        )
 
         if nested_rhs := rhs.try_cast(t=AST.DirectedConnectStmt):
             nested_lhs = nested_rhs.get_lhs()
             nested_lhs_node = fabll.Traits(nested_lhs).get_obj_raw()
-            middle_base_path, middle_actions = self._resolve_connectable_with_path(
-                nested_lhs_node
+            middle_link_path, middle_actions = self._resolve_connectable_with_path(
+                nested_lhs_node, source_node=node
             )
-            middle_link_path = self._field_path_to_link_path(middle_base_path)
 
             link_action = ActionsFactory.directed_link_action(
                 lhs_link_path,
@@ -1745,8 +1762,9 @@ class ASTVisitor:
             return [*lhs_actions, *middle_actions, link_action, *nested_actions]
 
         rhs_node = fabll.Traits(rhs).get_obj_raw()
-        rhs_base_path, rhs_actions = self._resolve_connectable_with_path(rhs_node)
-        rhs_link_path = self._field_path_to_link_path(rhs_base_path)
+        rhs_link_path, rhs_actions = self._resolve_connectable_with_path(
+            rhs_node, source_node=node
+        )
 
         link_action = ActionsFactory.directed_link_action(
             lhs_link_path,
@@ -1836,6 +1854,7 @@ class ASTVisitor:
                     slice_spec=slice_spec,
                     body=node.scope.get(),
                     source_order=len(self._state.pending_execution),
+                    source_node=iterable_node,
                 )
             )
 
@@ -1892,7 +1911,7 @@ class ASTVisitor:
 
         if TraitOverrideRegistry.matches_trait_override(trait_type_name):
             return TraitOverrideRegistry.handle_trait(
-                trait_type_name, target_path_list, template_args
+                trait_type_name, target_path_list, template_args, source_node=node
             )
         else:
             try:

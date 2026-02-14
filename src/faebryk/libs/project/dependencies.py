@@ -9,7 +9,7 @@ import atopile.config as config
 from atopile import errors, version
 from faebryk.libs.backend.packages.api import Errors as ApiErrors
 from faebryk.libs.backend.packages.api import PackagesAPIClient
-from faebryk.libs.package.dist import Dist, DistValidationError
+from faebryk.libs.package.dist import Dist, DistLoadError, DistValidationError
 from faebryk.libs.package.meta import (
     PackageModifiedError,
     PackageSource,
@@ -222,10 +222,15 @@ class ProjectDependency:
                 if self.spec.path_within_repo:
                     path = path / self.spec.path_within_repo
 
-            dist = Dist.build_dist(
-                cfg=path,
-                output_path=Path(temp_dir),
-            )
+            try:
+                dist = Dist.build_dist(
+                    cfg=path,
+                    output_path=Path(temp_dir),
+                )
+            except DistValidationError as e:
+                raise DistLoadError(
+                    f"Could not load distribution for {self.spec}: {e}"
+                ) from e
             self.spec.identifier = dist.identifier
 
         elif isinstance(self.spec, config.RegistryDependencySpec):
@@ -240,6 +245,10 @@ class ProjectDependency:
                     Path(temp_dir),
                     version=selected_release,
                 )
+            except DistValidationError as e:
+                raise DistLoadError(
+                    f"Could not load distribution for {self.spec}: {e}"
+                ) from e
             except ApiErrors.ReleaseNotFoundError as e:
                 raise errors.UserException(
                     f"Release not found: {self.spec.identifier}@{selected_release}"
@@ -580,12 +589,7 @@ class ProjectDependencies:
         for spec in specs:
             dep = ProjectDependency(spec)
             if dep.spec.identifier is None:
-                try:
-                    dep.load_dist()
-                except DistValidationError as e:
-                    raise errors.UserException(
-                        f"Could not load distribution for {spec}: {e}"
-                    ) from e
+                dep.load_dist()
             new_deps.append(dep)
 
         # Check for duplicates

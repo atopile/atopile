@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -167,8 +168,10 @@ rich.reconfigure(
     soft_wrap=not (_FORCE_TERMINAL or sys.stdout.isatty()),
 )
 
-# Console singletons - use these to avoid intermixing logging with other output
-console = rich.get_console()
+# Console singletons
+# for server mode (VSCode Output panel reads stdout)
+_stdout_console = rich.get_console()
+# for all CLI output
 error_console = Console(
     theme=faebryk_theme,
     stderr=True,
@@ -176,6 +179,11 @@ error_console = Console(
     force_terminal=_FORCE_TERMINAL or sys.stderr.isatty(),
     soft_wrap=not (_FORCE_TERMINAL or sys.stderr.isatty()),
 )
+console = error_console
+
+# Protects logical multi-line output groups from between-line interleaving across
+# threads. RLock because build_started() calls print_bar() internally.
+output_lock = threading.RLock()
 
 
 def safe_markdown(message: str, console: Console | None = None) -> ConsoleRenderable:
@@ -462,29 +470,20 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # =============================================================================
 
 
-def print_subprocess_output(
-    text: str,
-    is_stderr: bool = False,
-) -> None:
+def print_subprocess_output(text: str) -> None:
     """
     Print output from a subprocess.
 
     The subprocess log formatter adds source prefix via ATO_LOG_SOURCE env var,
     so we just pass through the output as-is.
-
-    Args:
-        text: The output text (may contain ANSI codes)
-        is_stderr: Whether this is stderr output
     """
     from rich.text import Text
 
     # Handle multi-line text, preserving ANSI codes
     lines = text.rstrip("\n").split("\n")
-    for line in lines:
-        output = Text.from_ansi(line)
-        if is_stderr:
-            error_console.print(output, highlight=False)
-        else:
+    with output_lock:
+        for line in lines:
+            output = Text.from_ansi(line)
             console.print(output, highlight=False)
 
 
@@ -510,7 +509,8 @@ def print_bar(
     fill = char * max(0, remaining)
 
     bar = f"{text_part}{fill}"
-    _console.print(f"[{style}]{bar}[/{style}]")
+    with output_lock:
+        _console.print(f"[{style}]{bar}[/{style}]")
 
 
 def status_rich_icon(status: BuildStatus | str) -> str:
@@ -623,36 +623,64 @@ class BuildPrinter:
         if self._progress:
             self._progress.__exit__(*args)
 
+    def register_build(self, build_id: str, display_name: str) -> None:
+        """Register a build before the queue starts."""
+        if build_id not in self._builds:
+            self._builds[build_id] = _BuildState(
+                display_name=display_name,
+            )
+
     def build_started(
         self, build_id: str, display_name: str, total: int | None = None
     ) -> None:
-        """Called when a build begins."""
-        total_stages = total if total is not None else self.DEFAULT_STAGE_COUNT
-        self._builds[build_id] = _BuildState(
-            display_name=display_name,
-            total_stages=total_stages,
-            status=BuildStatus.BUILDING,
-            started=True,
-            start_time=time.time(),
-        )
+        """Called when a build begins. Idempotent — no-op if already started."""
+        with output_lock:
+            state = self._builds.get(build_id)
+            if state and state.started:
+                return  # already started
 
-        if self.verbose:
-            # Print header bar for verbose mode
-            id_suffix = f" [{build_id}]" if build_id else ""
-            print_bar(
-                f"BUILD START: {display_name}{id_suffix}",
-                style="bold cyan",
-                console_=self._console,
-            )
-        else:
-            # Add task to progress display
-            if self._progress:
-                task_id = self._progress.add_task(
-                    description=display_name,
-                    total=total_stages,
-                    stage="",
+            total_stages = total if total is not None else self.DEFAULT_STAGE_COUNT
+
+            if state:
+                # Registered already — update in place
+                state.total_stages = total_stages
+                state.status = BuildStatus.BUILDING
+                state.started = True
+                state.start_time = time.time()
+            else:
+                state = _BuildState(
+                    display_name=display_name,
+                    total_stages=total_stages,
+                    status=BuildStatus.BUILDING,
+                    started=True,
+                    start_time=time.time(),
                 )
-                self._tasks[build_id] = task_id
+                self._builds[build_id] = state
+
+            if self.verbose:
+                # Print header bar for verbose mode
+                id_suffix = f" [{build_id}]" if build_id else ""
+                print_bar(
+                    f"BUILD START: {display_name}{id_suffix}",
+                    style="bold cyan",
+                    console_=self._console,
+                )
+            else:
+                # Add task to progress display
+                if self._progress:
+                    task_id = self._progress.add_task(
+                        description=display_name,
+                        total=total_stages,
+                        stage="",
+                    )
+                    self._tasks[build_id] = task_id
+
+    def print_output(self, build_id: str, text: str) -> None:
+        """Print subprocess output, ensuring the build header prints first."""
+        state = self._builds.get(build_id)
+        if state and not state.started:
+            self.build_started(build_id, state.display_name)
+        print_subprocess_output(text)
 
     def stage_update(
         self, build_id: str, stages: list[dict], total_stages: int | None = None
@@ -717,22 +745,25 @@ class BuildPrinter:
         errors: int = 0,
     ) -> None:
         """Called when build finishes."""
-        state = self._builds.get(build_id)
-        if not state or state.reported:
-            return
+        with output_lock:
+            state = self._builds.get(build_id)
+            if not state or state.reported:
+                return
 
-        state.status = status
-        state.reported = True
-        display_name = state.display_name
-        elapsed = time.time() - state.start_time if state.start_time else 0.0
+            state.status = status
+            state.reported = True
+            display_name = state.display_name
+            elapsed = time.time() - state.start_time if state.start_time else 0.0
 
-        if self.verbose:
-            self._print_verbose_result(display_name, status, warnings, errors, elapsed)
-        else:
-            # Remove from progress display (summary box will show final status)
-            if self._progress and build_id in self._tasks:
-                task_id = self._tasks[build_id]
-                self._progress.update(task_id, visible=False)
+            if self.verbose:
+                self._print_verbose_result(
+                    display_name, status, warnings, errors, elapsed
+                )
+            else:
+                # Remove from progress display (summary box will show final status)
+                if self._progress and build_id in self._tasks:
+                    task_id = self._tasks[build_id]
+                    self._progress.update(task_id, visible=False)
 
     def get_display_name(self, build_id: str) -> str:
         """Get display name for a build, falling back to truncated build_id."""
@@ -807,10 +838,11 @@ class BuildPrinter:
         if not builds:
             return
 
-        self._console.print()  # Blank line before summary
+        with output_lock:
+            self._console.print()  # Blank line before summary
 
-        for build in builds:
-            self._print_build_box(build)
+            for build in builds:
+                self._print_build_box(build)
 
     def _print_build_box(self, build: "Build") -> None:
         """Print a single build's summary in a box with logs from database."""
@@ -903,16 +935,14 @@ class BuildPrinter:
             renderables.append(
                 Text(f"Warnings ({len(warnings_list)}):", style="bold yellow")
             )
-            for warn in warnings_list[:5]:  # Limit to first 5
-                msg = warn.get("message", "")
-                renderables.append(Text(f"  • {msg}", style="yellow"))
-            if len(warnings_list) > 5:
-                renderables.append(
-                    Text(
-                        f"  ... and {len(warnings_list) - 5} more warnings",
-                        style="dim yellow",
-                    )
-                )
+            from collections import Counter
+
+            counts = Counter(
+                warn.get("message", "").split("\n", 1)[0] for warn in warnings_list
+            )
+            for msg, count in counts.items():
+                prefix = f"(x{count}) " if count > 1 else ""
+                renderables.append(Text(f"  • {prefix}{msg}", style="yellow"))
 
         # Add error message from build if present (fallback)
         if build.error and not errors_list:

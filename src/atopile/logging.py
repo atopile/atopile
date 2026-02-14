@@ -27,7 +27,6 @@ from typing import Any
 
 from rich.console import Console, ConsoleRenderable
 from rich.logging import RichHandler
-from rich.markdown import Markdown
 from rich.text import Text
 from rich.traceback import Traceback
 
@@ -43,8 +42,10 @@ from atopile.logging_utils import (
     LEVEL_CHAR,
     LEVEL_STYLES,
     PLOG,
-    console,
+    _stdout_console,
     error_console,
+    output_lock,
+    safe_markdown,
 )
 
 # Suppress noisy third-party loggers
@@ -977,7 +978,7 @@ class LogHandler(RichHandler):
         use_markdown = getattr(record, "markdown", False)
         use_markup = getattr(record, "markup", self.markup)
         if use_markdown:
-            return Markdown(message)
+            return safe_markdown(message, self.console)
         msg_text = Text.from_markup(message) if use_markup else Text(message)
         if hl := getattr(record, "highlighter", self.highlighter):
             msg_text = hl(msg_text)
@@ -990,6 +991,8 @@ class LogHandler(RichHandler):
     ) -> ConsoleRenderable:
         if record.exc_info and (exc := record.exc_info[1]):
             if isinstance(exc, ConsoleRenderable) or hasattr(exc, "__rich_console__"):
+                if hasattr(exc, "_log_level"):
+                    exc._log_level = record.levelno
                 return exc  # type: ignore
 
         from datetime import datetime
@@ -1176,10 +1179,11 @@ class LogHandler(RichHandler):
         )
 
         try:
-            if record.levelno >= logging.ERROR and record.exc_info:
-                error_console.print(renderable, crop=False, overflow="ignore")
-            else:
-                self.console.print(renderable, crop=False, overflow="ignore")
+            with output_lock:
+                if record.levelno >= logging.ERROR and record.exc_info:
+                    error_console.print(renderable, crop=False, overflow="ignore")
+                else:
+                    self.console.print(renderable, crop=False, overflow="ignore")
         except Exception:
             self.handleError(record)
 
@@ -1355,7 +1359,7 @@ handler.setFormatter(_DEFAULT_FORMATTER)
 logging.basicConfig(level=logging.DEBUG, handlers=[handler])
 
 if _is_serving():
-    handler.console = console
+    handler.console = _stdout_console
 
 atexit.register(BuildLogger.close_all)
 atexit.register(LoggerForTest.close_all)

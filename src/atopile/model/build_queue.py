@@ -52,7 +52,6 @@ class BuildCancelledMsg:
 class BuildOutputMsg:
     build_id: str
     text: str
-    is_stderr: bool = False
 
 
 BuildResultMsg = (
@@ -210,14 +209,13 @@ def _run_build_subprocess(
             )
 
             # Start threads to read stdout/stderr and forward to result_q
-            def stream_output(pipe, is_stderr: bool) -> None:
+            def stream_output(pipe) -> None:
                 try:
                     for line in pipe:
                         result_q.put(
                             BuildOutputMsg(
                                 build_id=build.build_id,
                                 text=line,
-                                is_stderr=is_stderr,
                             )
                         )
                 except Exception:
@@ -226,10 +224,10 @@ def _run_build_subprocess(
                     pipe.close()
 
             stdout_thread = threading.Thread(
-                target=stream_output, args=(process.stdout, False), daemon=True
+                target=stream_output, args=(process.stdout,), daemon=True
             )
             stderr_thread = threading.Thread(
-                target=stream_output, args=(process.stderr, True), daemon=True
+                target=stream_output, args=(process.stderr,), daemon=True
             )
             stdout_thread.start()
             stderr_thread.start()
@@ -366,9 +364,7 @@ class BuildQueue:
         # Callbacks
         self.on_change: Callable[[str, str], None] | None = None
         self.on_completed: Callable[[Build], None] | None = None
-        self.on_output: Callable[[str, str, bool], None] | None = (
-            None  # build_id, text, is_stderr
-        )
+        self.on_output: Callable[[str, str], None] | None = None  # build_id, text
 
     def start(self) -> None:
         """Start the thread pool and orchestrator thread."""
@@ -733,7 +729,7 @@ class BuildQueue:
             elif isinstance(msg, BuildOutputMsg):
                 if self.on_output:
                     try:
-                        self.on_output(msg.build_id, msg.text, msg.is_stderr)
+                        self.on_output(msg.build_id, msg.text)
                     except Exception:
                         log.exception("BuildQueue: on_output callback failed")
 
@@ -771,6 +767,13 @@ class BuildQueue:
         with self._cancel_lock:
             self._cancel_flags.pop(msg.build_id, None)
 
+        if msg.error and status == BuildStatus.FAILED:
+            log.error("BuildQueue: Build %s failed:\n%s", msg.build_id, msg.error)
+        else:
+            log.info(
+                "BuildQueue: Build %s completed with status %s", msg.build_id, status
+            )
+
         if build:
             BuildHistory.set(
                 Build(
@@ -796,13 +799,6 @@ class BuildQueue:
                 self.on_completed(build)
             except Exception:
                 log.exception("BuildQueue: on_completed callback failed")
-
-        if msg.error and status == BuildStatus.FAILED:
-            log.error("BuildQueue: Build %s failed:\n%s", msg.build_id, msg.error)
-        else:
-            log.info(
-                "BuildQueue: Build %s completed with status %s", msg.build_id, status
-            )
 
     def _dispatch_next(self) -> None:
         """Dispatch next pending build if capacity available."""

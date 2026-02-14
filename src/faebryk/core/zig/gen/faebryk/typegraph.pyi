@@ -26,6 +26,18 @@ class TypeGraphInstantiationError(ValueError):
     kind: str
     identifier: str
 
+class TypeGraphUnresolvedReferenceError(ValueError):
+    node: BoundNode
+    """The MakeLink node whose reference path could not be resolved."""
+    path: str
+    """The dot-separated reference path that failed to resolve."""
+
+class TypeGraphDuplicateFieldError(ValueError):
+    node: BoundNode
+    """The MakeChild node that declares a duplicate field."""
+    path: str
+    """The identifier of the duplicate field."""
+
 class TypeGraphResolveError(ValueError):
     node: BoundNode
     """The reference node that caused the resolution failure."""
@@ -179,10 +191,10 @@ class TypeGraph:
         self,
         *,
         type_node: BoundNode,
-    ) -> list[tuple[BoundNode, str]]:
+    ) -> list[TypeGraphUnresolvedReferenceError | TypeGraphDuplicateFieldError]:
         """Validate all reference paths in a type node.
 
-        Returns a list of (node, message) tuples for validation errors.
+        Returns a list of TypeGraphValidationError for validation errors.
         Empty list means the type is valid.
 
         Validates:
